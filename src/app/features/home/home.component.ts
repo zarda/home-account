@@ -1,0 +1,20 @@
+import { Component } from '@angular/core';
+import { MatIconModule } from '@angular/material/icon';
+
+@Component({
+  selector: 'app-home',
+  standalone: true,
+  imports: [MatIconModule],
+  template: `
+    <div class="min-h-screen bg-background flex items-center justify-center">
+      <div class="text-center">
+        <mat-icon class="!text-7xl !w-18 !h-18 text-primary-500">account_balance_wallet</mat-icon>
+        <h1 class="text-3xl font-bold text-primary-500 mt-4">Home Account</h1>
+        <p class="text-gray-600 mt-2">Personal Finance Management</p>
+        <p class="text-sm text-gray-400 mt-8">Phase 1 Complete - Foundation Setup</p>
+      </div>
+    </div>
+  `,
+  styles: ``
+})
+export class HomeComponent {}

@@ -1,0 +1,136 @@
+{
+  "app": {
+    "title": "家計簿",
+    "loading": "読み込み中..."
+  },
+  "common": {
+    "income": "収入",
+    "expense": "支出",
+    "balance": "残高",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "edit": "編集",
+    "add": "追加",
+    "search": "検索",
+    "filter": "フィルター",
+    "export": "エクスポート",
+    "import": "インポート",
+    "settings": "設定",
+    "logout": "ログアウト",
+    "login": "ログイン",
+    "confirm": "確認",
+    "close": "閉じる",
+    "back": "戻る",
+    "next": "次へ",
+    "done": "完了",
+    "error": "エラー",
+    "success": "成功",
+    "warning": "警告",
+    "info": "情報"
+  },
+  "nav": {
+    "dashboard": "ダッシュボード",
+    "transactions": "取引履歴",
+    "budget": "予算",
+    "reports": "レポート",
+    "settings": "設定"
+  },
+  "dashboard": {
+    "title": "ダッシュボード",
+    "monthlyOverview": "月間概要",
+    "recentTransactions": "最近の取引",
+    "budgetProgress": "予算進捗",
+    "quickActions": "クイックアクション",
+    "addIncome": "収入を追加",
+    "addExpense": "支出を追加",
+    "viewAll": "すべて表示"
+  },
+  "transactions": {
+    "title": "取引履歴",
+    "addTransaction": "取引を追加",
+    "editTransaction": "取引を編集",
+    "deleteConfirm": "この取引を削除してもよろしいですか？",
+    "noTransactions": "取引が見つかりません",
+    "filterByCategory": "カテゴリで絞り込む",
+    "filterByDate": "日付で絞り込む",
+    "sortBy": "並べ替え",
+    "date": "日付",
+    "amount": "金額",
+    "category": "カテゴリ",
+    "description": "説明",
+    "note": "メモ"
+  },
+  "budget": {
+    "title": "予算",
+    "createBudget": "予算を作成",
+    "editBudget": "予算を編集",
+    "deleteBudget": "予算を削除",
+    "noBudgets": "予算が設定されていません",
+    "spent": "使用済み",
+    "remaining": "残り",
+    "overBudget": "予算オーバー",
+    "onTrack": "順調"
+  },
+  "reports": {
+    "title": "レポート",
+    "spendingAnalysis": "支出分析",
+    "categoryBreakdown": "カテゴリ別内訳",
+    "monthlyComparison": "月別比較",
+    "exportReport": "レポートをエクスポート"
+  },
+  "settings": {
+    "title": "設定",
+    "profile": "プロフィール",
+    "preferences": "環境設定",
+    "categories": "カテゴリ管理",
+    "recurring": "定期取引",
+    "dataManagement": "データ管理",
+    "language": "言語",
+    "currency": "通貨",
+    "theme": "テーマ",
+    "dateFormat": "日付形式"
+  },
+  "auth": {
+    "signInWithGoogle": "Googleでログイン",
+    "signOut": "ログアウト",
+    "welcome": "ようこそ",
+    "signInRequired": "続行するにはログインしてください"
+  },
+  "categories": {
+    "food": "飲食",
+    "transport": "交通",
+    "shopping": "買い物",
+    "entertainment": "娯楽",
+    "bills": "公共料金",
+    "health": "健康・医療",
+    "personal": "身だしなみ",
+    "education": "教育",
+    "travel": "旅行",
+    "family": "家族・子供",
+    "pets": "ペット",
+    "financial": "金融",
+    "gifts": "贈り物・寄付",
+    "subscriptions": "サブスクリプション",
+    "other": "その他",
+    "salary": "給与",
+    "freelance": "フリーランス",
+    "investments": "投資",
+    "rental": "賃貸収入",
+    "otherIncome": "その他の収入"
+  },
+  "ai": {
+    "scanReceipt": "レシートをスキャン",
+    "importData": "データをインポート",
+    "processing": "AI処理中...",
+    "suggestedCategory": "おすすめカテゴリ",
+    "confidence": "確信度"
+  },
+  "errors": {
+    "generic": "エラーが発生しました。もう一度お試しください。",
+    "network": "ネットワークエラーです。接続を確認してください。",
+    "auth": "認証に失敗しました。再度ログインしてください。",
+    "notFound": "見つかりません",
+    "invalidInput": "入力が無効です"
+  }
+}

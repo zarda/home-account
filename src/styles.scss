@@ -1,0 +1,165 @@
+/* Custom Material Theme - must be first */
+@use '@angular/material' as mat;
+
+// Define custom theme colors
+$primary-palette: (
+  50: #E8EAF6,
+  100: #C5CAE9,
+  200: #9FA8DA,
+  300: #7986CB,
+  400: #5C6BC0,
+  500: #3F51B5,
+  600: #3949AB,
+  700: #303F9F,
+  800: #283593,
+  900: #1A237E,
+  A100: #8C9EFF,
+  A200: #536DFE,
+  A400: #3D5AFE,
+  A700: #304FFE,
+  contrast: (
+    50: rgba(0, 0, 0, 0.87),
+    100: rgba(0, 0, 0, 0.87),
+    200: rgba(0, 0, 0, 0.87),
+    300: white,
+    400: white,
+    500: white,
+    600: white,
+    700: white,
+    800: white,
+    900: white,
+    A100: rgba(0, 0, 0, 0.87),
+    A200: white,
+    A400: white,
+    A700: white,
+  )
+);
+
+$accent-palette: (
+  50: #E0F2F1,
+  100: #B2DFDB,
+  200: #80CBC4,
+  300: #4DB6AC,
+  400: #26A69A,
+  500: #009688,
+  600: #00897B,
+  700: #00796B,
+  800: #00695C,
+  900: #004D40,
+  A100: #A7FFEB,
+  A200: #64FFDA,
+  A400: #1DE9B6,
+  A700: #00BFA5,
+  contrast: (
+    50: rgba(0, 0, 0, 0.87),
+    100: rgba(0, 0, 0, 0.87),
+    200: rgba(0, 0, 0, 0.87),
+    300: rgba(0, 0, 0, 0.87),
+    400: rgba(0, 0, 0, 0.87),
+    500: white,
+    600: white,
+    700: white,
+    800: white,
+    900: white,
+    A100: rgba(0, 0, 0, 0.87),
+    A200: rgba(0, 0, 0, 0.87),
+    A400: rgba(0, 0, 0, 0.87),
+    A700: rgba(0, 0, 0, 0.87),
+  )
+);
+
+// Create the theme
+$home-account-primary: mat.m2-define-palette($primary-palette);
+$home-account-accent: mat.m2-define-palette($accent-palette);
+$home-account-warn: mat.m2-define-palette(mat.$m2-red-palette);
+
+$home-account-theme: mat.m2-define-light-theme((
+  color: (
+    primary: $home-account-primary,
+    accent: $home-account-accent,
+    warn: $home-account-warn,
+  ),
+  typography: mat.m2-define-typography-config(
+    $font-family: '"PT Sans", system-ui, sans-serif',
+  ),
+  density: 0,
+));
+
+// Include theme styles
+@include mat.core();
+@include mat.all-component-themes($home-account-theme);
+
+/* Tailwind CSS v4 */
+@import "tailwindcss";
+
+/* Custom theme configuration */
+@theme {
+  /* Primary - Deep Indigo */
+  --color-primary-50: #E8EAF6;
+  --color-primary-100: #C5CAE9;
+  --color-primary-200: #9FA8DA;
+  --color-primary-300: #7986CB;
+  --color-primary-400: #5C6BC0;
+  --color-primary-500: #3F51B5;
+  --color-primary-600: #3949AB;
+  --color-primary-700: #303F9F;
+  --color-primary-800: #283593;
+  --color-primary-900: #1A237E;
+
+  /* Accent - Teal */
+  --color-accent-50: #E0F2F1;
+  --color-accent-100: #B2DFDB;
+  --color-accent-200: #80CBC4;
+  --color-accent-300: #4DB6AC;
+  --color-accent-400: #26A69A;
+  --color-accent-500: #009688;
+  --color-accent-600: #00897B;
+  --color-accent-700: #00796B;
+  --color-accent-800: #00695C;
+  --color-accent-900: #004D40;
+
+  /* Background */
+  --color-background: #F5F5F5;
+
+  /* Font family */
+  --font-sans: 'PT Sans', system-ui, sans-serif;
+}
+
+/* Google Fonts - PT Sans */
+@import url('https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+/* Material Icons */
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined');
+
+/* Global Styles */
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: 'PT Sans', system-ui, sans-serif;
+  background-color: #F5F5F5;
+}
+
+/* Custom utility classes */
+.mat-elevation-soft {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
