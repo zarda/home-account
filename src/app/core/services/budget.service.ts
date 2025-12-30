@@ -1,0 +1,355 @@
+import { Injectable, inject, signal, computed } from '@angular/core';
+import { Timestamp } from '@angular/fire/firestore';
+import { Observable, map, of, combineLatest } from 'rxjs';
+import { FirestoreService } from './firestore.service';
+import { AuthService } from './auth.service';
+import { TransactionService } from './transaction.service';
+import {
+  Budget,
+  BudgetSummary,
+  BudgetAlert,
+  CreateBudgetDTO
+} from '../../models';
+
+@Injectable({ providedIn: 'root' })
+export class BudgetService {
+  private firestoreService = inject(FirestoreService);
+  private authService = inject(AuthService);
+  private transactionService = inject(TransactionService);
+
+  // Signals
+  budgets = signal<Budget[]>([]);
+  isLoading = signal<boolean>(false);
+
+  // Computed signals
+  activeBudgets = computed(() =>
+    this.budgets().filter(b => b.isActive)
+  );
+
+  totalBudgetAmount = computed(() =>
+    this.activeBudgets().reduce((sum, b) => sum + b.amount, 0)
+  );
+
+  totalSpent = computed(() =>
+    this.activeBudgets().reduce((sum, b) => sum + b.spent, 0)
+  );
+
+  private get userBudgetsPath(): string {
+    const userId = this.authService.userId();
+    if (!userId) throw new Error('User not authenticated');
+    return `users/${userId}/budgets`;
+  }
+
+  // Get all budgets
+  getBudgets(): Observable<Budget[]> {
+    const userId = this.authService.userId();
+    if (!userId) return of([]);
+
+    return this.firestoreService.subscribeToCollection<Budget>(
+      this.userBudgetsPath,
+      { orderBy: [{ field: 'name', direction: 'asc' }] }
+    ).pipe(
+      map(budgets => {
+        this.budgets.set(budgets);
+        return budgets;
+      })
+    );
+  }
+
+  // Get a single budget by ID
+  getBudgetById(id: string): Observable<Budget | null> {
+    return this.firestoreService.subscribeToDocument<Budget>(
+      `${this.userBudgetsPath}/${id}`
+    );
+  }
+
+  // Create a new budget
+  async createBudget(data: CreateBudgetDTO): Promise<string> {
+    this.isLoading.set(true);
+
+    try {
+      const userId = this.authService.userId();
+      if (!userId) throw new Error('User not authenticated');
+
+      const budget: Omit<Budget, 'id'> = {
+        userId,
+        categoryId: data.categoryId,
+        name: data.name,
+        amount: data.amount,
+        currency: data.currency,
+        period: data.period,
+        startDate: data.startDate
+          ? this.firestoreService.dateToTimestamp(data.startDate)
+          : this.getDefaultStartDate(data.period),
+        endDate: data.endDate
+          ? this.firestoreService.dateToTimestamp(data.endDate)
+          : undefined,
+        spent: 0,
+        isActive: true,
+        alertThreshold: data.alertThreshold ?? 80,
+        createdAt: this.firestoreService.getTimestamp(),
+        updatedAt: this.firestoreService.getTimestamp()
+      };
+
+      return await this.firestoreService.addDocument(
+        this.userBudgetsPath,
+        budget
+      );
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  // Update an existing budget
+  async updateBudget(id: string, data: Partial<CreateBudgetDTO>): Promise<void> {
+    this.isLoading.set(true);
+
+    try {
+      const updateData: Partial<Budget> = {};
+
+      if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.amount !== undefined) updateData.amount = data.amount;
+      if (data.currency !== undefined) updateData.currency = data.currency;
+      if (data.period !== undefined) updateData.period = data.period;
+      if (data.alertThreshold !== undefined) updateData.alertThreshold = data.alertThreshold;
+
+      if (data.startDate !== undefined) {
+        updateData.startDate = this.firestoreService.dateToTimestamp(data.startDate);
+      }
+
+      if (data.endDate !== undefined) {
+        updateData.endDate = this.firestoreService.dateToTimestamp(data.endDate);
+      }
+
+      await this.firestoreService.updateDocument(
+        `${this.userBudgetsPath}/${id}`,
+        updateData
+      );
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  // Delete a budget
+  async deleteBudget(id: string): Promise<void> {
+    this.isLoading.set(true);
+
+    try {
+      await this.firestoreService.deleteDocument(
+        `${this.userBudgetsPath}/${id}`
+      );
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  // Deactivate a budget
+  async deactivateBudget(id: string): Promise<void> {
+    await this.firestoreService.updateDocument(
+      `${this.userBudgetsPath}/${id}`,
+      { isActive: false }
+    );
+  }
+
+  // Activate a budget
+  async activateBudget(id: string): Promise<void> {
+    await this.firestoreService.updateDocument(
+      `${this.userBudgetsPath}/${id}`,
+      { isActive: true }
+    );
+  }
+
+  // Get budget progress/summary
+  getBudgetProgress(budgetId: string): Observable<BudgetSummary | null> {
+    return this.getBudgetById(budgetId).pipe(
+      map(budget => {
+        if (!budget) return null;
+
+        const { start, end } = this.getBudgetPeriodDates(budget);
+        const periodString = this.formatPeriodString(start, budget.period);
+
+        return {
+          budgetId: budget.id,
+          period: periodString,
+          totalBudget: budget.amount,
+          totalSpent: budget.spent,
+          remaining: Math.max(0, budget.amount - budget.spent),
+          percentUsed: (budget.spent / budget.amount) * 100,
+          transactions: 0 // Would need to count from transaction service
+        };
+      })
+    );
+  }
+
+  // Check for budget alerts
+  checkBudgetAlerts(): Observable<BudgetAlert[]> {
+    return this.getBudgets().pipe(
+      map(budgets => {
+        const alerts: BudgetAlert[] = [];
+
+        for (const budget of budgets) {
+          if (!budget.isActive) continue;
+
+          const percentUsed = (budget.spent / budget.amount) * 100;
+
+          if (percentUsed >= 100) {
+            alerts.push({
+              budgetId: budget.id,
+              budgetName: budget.name,
+              percentUsed,
+              remaining: 0,
+              severity: 'exceeded'
+            });
+          } else if (percentUsed >= 90) {
+            alerts.push({
+              budgetId: budget.id,
+              budgetName: budget.name,
+              percentUsed,
+              remaining: budget.amount - budget.spent,
+              severity: 'critical'
+            });
+          } else if (percentUsed >= budget.alertThreshold) {
+            alerts.push({
+              budgetId: budget.id,
+              budgetName: budget.name,
+              percentUsed,
+              remaining: budget.amount - budget.spent,
+              severity: 'warning'
+            });
+          }
+        }
+
+        return alerts.sort((a, b) => b.percentUsed - a.percentUsed);
+      })
+    );
+  }
+
+  // Update spent amount for a budget (called when transactions change)
+  async updateBudgetSpent(budgetId: string, spent: number): Promise<void> {
+    await this.firestoreService.updateDocument(
+      `${this.userBudgetsPath}/${budgetId}`,
+      { spent }
+    );
+  }
+
+  // Recalculate spent amount for a budget based on transactions
+  async recalculateBudgetSpent(budgetId: string): Promise<void> {
+    const budget = await this.firestoreService.getDocument<Budget>(
+      `${this.userBudgetsPath}/${budgetId}`
+    );
+
+    if (!budget) return;
+
+    const { start, end } = this.getBudgetPeriodDates(budget);
+
+    // Get transactions for this category in the budget period
+    const transactions = await new Promise<number>((resolve) => {
+      this.transactionService.getTransactions({
+        categoryId: budget.categoryId,
+        startDate: start,
+        endDate: end,
+        type: 'expense'
+      }).subscribe(txns => {
+        const total = txns.reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+        resolve(total);
+      });
+    });
+
+    await this.updateBudgetSpent(budgetId, transactions);
+  }
+
+  // Get budgets by category
+  getBudgetsByCategory(categoryId: string): Observable<Budget[]> {
+    const userId = this.authService.userId();
+    if (!userId) return of([]);
+
+    return this.firestoreService.subscribeToCollection<Budget>(
+      this.userBudgetsPath,
+      {
+        where: [
+          { field: 'categoryId', op: '==', value: categoryId },
+          { field: 'isActive', op: '==', value: true }
+        ]
+      }
+    );
+  }
+
+  // Helper: Get default start date based on period
+  private getDefaultStartDate(period: 'weekly' | 'monthly' | 'yearly'): Timestamp {
+    const now = new Date();
+
+    switch (period) {
+      case 'weekly':
+        // Start of current week (Sunday)
+        const day = now.getDay();
+        const diff = now.getDate() - day;
+        return Timestamp.fromDate(new Date(now.setDate(diff)));
+
+      case 'monthly':
+        // Start of current month
+        return Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), 1));
+
+      case 'yearly':
+        // Start of current year
+        return Timestamp.fromDate(new Date(now.getFullYear(), 0, 1));
+    }
+  }
+
+  // Helper: Get budget period start and end dates
+  private getBudgetPeriodDates(budget: Budget): { start: Date; end: Date } {
+    const startDate = budget.startDate.toDate();
+    let endDate: Date;
+
+    switch (budget.period) {
+      case 'weekly':
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 6);
+        break;
+
+      case 'monthly':
+        endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
+        break;
+
+      case 'yearly':
+        endDate = new Date(startDate.getFullYear(), 11, 31);
+        break;
+    }
+
+    if (budget.endDate) {
+      const budgetEndDate = budget.endDate.toDate();
+      if (budgetEndDate < endDate) {
+        endDate = budgetEndDate;
+      }
+    }
+
+    return { start: startDate, end: endDate };
+  }
+
+  // Helper: Format period string
+  private formatPeriodString(date: Date, period: 'weekly' | 'monthly' | 'yearly'): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+
+    switch (period) {
+      case 'weekly':
+        const weekNum = this.getWeekNumber(date);
+        return `${year}-W${weekNum}`;
+
+      case 'monthly':
+        return `${year}-${month}`;
+
+      case 'yearly':
+        return String(year);
+    }
+  }
+
+  // Helper: Get ISO week number
+  private getWeekNumber(date: Date): number {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  }
+}
