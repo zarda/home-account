@@ -45,7 +45,7 @@ export class ExportService {
     const categories = this.categoryService.categories();
 
     // Filter transactions based on options
-    let filtered = this.filterTransactions(transactions, options);
+    const filtered = this.filterTransactions(transactions, options);
 
     // Build CSV header
     const headers = options?.format === 'summary'
@@ -220,14 +220,14 @@ export class ExportService {
   }
 
   // Parse imported data and convert to transaction DTOs
-  parseImportedData(raw: ImportedTransaction[]): Array<{
+  parseImportedData(raw: ImportedTransaction[]): {
     type: 'income' | 'expense';
     amount: number;
     currency: string;
     categoryId: string;
     description: string;
     date: Date;
-  }> {
+  }[] {
     return raw.map(r => ({
       type: r.type ?? (r.amount >= 0 ? 'income' : 'expense'),
       amount: Math.abs(r.amount),

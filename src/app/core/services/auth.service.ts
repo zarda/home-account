@@ -2,10 +2,10 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import {
   Auth,
   GoogleAuthProvider,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  UserCredential,
   User as FirebaseUser
 } from '@angular/fire/auth';
 import {
@@ -16,8 +16,7 @@ import {
   updateDoc,
   Timestamp
 } from '@angular/fire/firestore';
-import { Observable, from, of } from 'rxjs';
-import { switchMap, map } from 'rxjs/operators';
+import { Observable } from 'rxjs';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 
 @Injectable({ providedIn: 'root' })
@@ -84,16 +83,28 @@ export class AuthService {
     return { id: firebaseUser.uid, ...newUser };
   }
 
-  async signInWithGoogle(): Promise<UserCredential> {
+  /**
+   * Initiates Google sign-in using redirect flow.
+   * The result will be handled by checkRedirectResult() after page reload.
+   */
+  async signInWithGoogle(): Promise<void> {
     const provider = new GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
 
+    await signInWithRedirect(this.auth, provider);
+  }
+
+  /**
+   * Checks for redirect result after returning from Google sign-in.
+   * Should be called on app initialization.
+   */
+  async checkRedirectResult(): Promise<boolean> {
     try {
-      const result = await signInWithPopup(this.auth, provider);
-      return result;
+      const result = await getRedirectResult(this.auth);
+      return result !== null;
     } catch (error) {
-      console.error('Sign in error:', error);
+      console.error('Redirect sign in error:', error);
       throw error;
     }
   }
@@ -115,7 +126,7 @@ export class AuthService {
           try {
             const user = await this.getOrCreateUser(firebaseUser);
             subscriber.next(user);
-          } catch (error) {
+          } catch {
             subscriber.next(null);
           }
         } else {

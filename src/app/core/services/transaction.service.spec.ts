@@ -7,8 +7,6 @@ import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import {
   createTransaction,
-  createIncomeTransactions,
-  createExpenseTransactions,
   createMixedTransactions
 } from './testing/test-data';
 import { Timestamp } from '@angular/fire/firestore';
@@ -263,7 +261,7 @@ describe('TransactionService', () => {
     });
 
     it('should filter by search query', (done) => {
-      service.searchTransactions('coffee').subscribe(transactions => {
+      service.searchTransactions('coffee').subscribe(() => {
         // The mock returns all, but the service should filter
         expect(mockFirestore.getCollectionSpy).toHaveBeenCalled();
         done();

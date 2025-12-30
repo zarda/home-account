@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
-import { Observable, map, of, combineLatest } from 'rxjs';
+import { Observable, map, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
@@ -166,7 +166,7 @@ export class BudgetService {
       map(budget => {
         if (!budget) return null;
 
-        const { start, end } = this.getBudgetPeriodDates(budget);
+        const { start } = this.getBudgetPeriodDates(budget);
         const periodString = this.formatPeriodString(start, budget.period);
 
         return {
@@ -280,11 +280,12 @@ export class BudgetService {
     const now = new Date();
 
     switch (period) {
-      case 'weekly':
+      case 'weekly': {
         // Start of current week (Sunday)
         const day = now.getDay();
         const diff = now.getDate() - day;
         return Timestamp.fromDate(new Date(now.setDate(diff)));
+      }
 
       case 'monthly':
         // Start of current month
@@ -332,9 +333,10 @@ export class BudgetService {
     const month = String(date.getMonth() + 1).padStart(2, '0');
 
     switch (period) {
-      case 'weekly':
+      case 'weekly': {
         const weekNum = this.getWeekNumber(date);
         return `${year}-W${weekNum}`;
+      }
 
       case 'monthly':
         return `${year}-${month}`;

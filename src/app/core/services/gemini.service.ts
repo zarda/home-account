@@ -340,10 +340,10 @@ Consider:
   // Helper: Extract JSON from response that might have markdown formatting
   private extractJson(text: string): string {
     // Remove markdown code blocks if present
-    let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
 
     // Find JSON array or object
-    const jsonMatch = cleaned.match(/[\[\{][\s\S]*[\]\}]/);
+    const jsonMatch = cleaned.match(/[[{][\s\S]*[\]}]/);
     if (jsonMatch) {
       return jsonMatch[0];
     }

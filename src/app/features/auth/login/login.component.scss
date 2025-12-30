@@ -1,0 +1,23 @@
+:host {
+  display: block;
+}
+
+mat-card {
+  border-radius: 12px;
+}
+
+mat-card-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 16px;
+}
+
+.text-primary {
+  color: #3F51B5;
+}
+
+mat-spinner {
+  display: inline-block;
+  vertical-align: middle;
+}

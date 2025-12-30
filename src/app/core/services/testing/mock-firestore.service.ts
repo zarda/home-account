@@ -1,6 +1,6 @@
 /// <reference types="jasmine" />
-import { Injectable, signal } from '@angular/core';
-import { Observable, of, BehaviorSubject } from 'rxjs';
+import { Injectable } from '@angular/core';
+import { Observable, of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 
 /**
@@ -88,7 +88,8 @@ export class MockFirestoreService {
     this.mockData.delete(path);
   }
 
-  generateId(collectionPath: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  generateId(_collectionPath: string): string {
     return `mock-id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 

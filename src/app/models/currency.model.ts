@@ -41,9 +41,7 @@ export const SUPPORTED_CURRENCIES: CurrencyInfo[] = [
   { code: 'NZD', name: 'New Zealand Dollar', symbol: 'NZ$' },
 ];
 
-export interface ExchangeRates {
-  [currencyCode: string]: number;
-}
+export type ExchangeRates = Record<string, number>;
 
 export interface CachedRates {
   rates: ExchangeRates;

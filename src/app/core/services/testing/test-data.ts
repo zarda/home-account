@@ -1,14 +1,12 @@
 import { Timestamp } from '@angular/fire/firestore';
 import {
   User,
-  UserPreferences,
   DEFAULT_USER_PREFERENCES,
   Transaction,
   TransactionType,
   Category,
   CategoryType,
-  Budget,
-  BudgetPeriod
+  Budget
 } from '../../../models';
 
 /**
