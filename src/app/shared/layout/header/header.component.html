@@ -1,0 +1,45 @@
+<mat-toolbar class="header-toolbar">
+  <button
+    mat-icon-button
+    (click)="toggleSidebar.emit()"
+    matTooltip="Toggle sidebar"
+    aria-label="Toggle sidebar"
+    class="menu-button"
+  >
+    <mat-icon>{{ isSidebarOpen ? 'menu_open' : 'menu' }}</mat-icon>
+  </button>
+
+  <span class="app-title">Home Account</span>
+
+  <span class="spacer"></span>
+
+  <!-- User Menu -->
+  @if (currentUser(); as user) {
+    <button mat-icon-button [matMenuTriggerFor]="userMenu" aria-label="User menu">
+      @if (user.photoURL) {
+        <img
+          [src]="user.photoURL"
+          [alt]="user.displayName"
+          class="user-avatar"
+        />
+      } @else {
+        <mat-icon>account_circle</mat-icon>
+      }
+    </button>
+
+    <mat-menu #userMenu="matMenu" xPosition="before">
+      <div class="user-info">
+        <p class="user-name">{{ user.displayName }}</p>
+        <p class="user-email">{{ user.email }}</p>
+      </div>
+      <button mat-menu-item routerLink="/settings">
+        <mat-icon>settings</mat-icon>
+        <span>Settings</span>
+      </button>
+      <button mat-menu-item (click)="logout()">
+        <mat-icon>logout</mat-icon>
+        <span>Sign out</span>
+      </button>
+    </mat-menu>
+  }
+</mat-toolbar>

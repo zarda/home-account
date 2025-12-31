@@ -1,0 +1,65 @@
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  <!-- Income Card -->
+  <mat-card class="!rounded-xl hover:shadow-md transition-shadow">
+    <mat-card-content class="!p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Total Income</p>
+          <p class="text-2xl font-bold text-green-600">
+            {{ formatAmount(income) }}
+          </p>
+        </div>
+        <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+          <mat-icon class="text-green-600">trending_up</mat-icon>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Expenses Card -->
+  <mat-card class="!rounded-xl hover:shadow-md transition-shadow">
+    <mat-card-content class="!p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Total Expenses</p>
+          <p class="text-2xl font-bold text-red-600">
+            {{ formatAmount(expenses) }}
+          </p>
+        </div>
+        <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+          <mat-icon class="text-red-600">trending_down</mat-icon>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Balance Card -->
+  <mat-card class="!rounded-xl hover:shadow-md transition-shadow">
+    <mat-card-content class="!p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-sm text-gray-500 mb-1">Net Balance</p>
+          <p
+            class="text-2xl font-bold"
+            [class.text-green-600]="balance >= 0"
+            [class.text-red-600]="balance < 0"
+          >
+            {{ formatAmount(balance) }}
+          </p>
+        </div>
+        <div
+          class="w-10 h-10 rounded-lg flex items-center justify-center"
+          [class.bg-green-100]="balance >= 0"
+          [class.bg-red-100]="balance < 0"
+        >
+          <mat-icon
+            [class.text-green-600]="balance >= 0"
+            [class.text-red-600]="balance < 0"
+          >
+            account_balance_wallet
+          </mat-icon>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</div>

@@ -1,0 +1,95 @@
+<div class="dashboard-container">
+  <!-- Header -->
+  <div class="header-section">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <p class="text-gray-500 text-sm mt-1">
+        Welcome back, {{ userName() }}
+      </p>
+    </div>
+
+    <mat-button-toggle-group
+      [(ngModel)]="selectedPeriod"
+      (change)="onPeriodChange()"
+      class="period-toggle bg-white"
+    >
+      <mat-button-toggle value="thisMonth">
+        <span class="mobile-label">Month</span>
+        <span class="desktop-label">This Month</span>
+      </mat-button-toggle>
+      <mat-button-toggle value="lastMonth">
+        <span class="mobile-label">Last</span>
+        <span class="desktop-label">Last Month</span>
+      </mat-button-toggle>
+      <mat-button-toggle value="last3Months">
+        <span class="mobile-label">3M</span>
+        <span class="desktop-label">3 Months</span>
+      </mat-button-toggle>
+      <mat-button-toggle value="thisYear">
+        <span class="mobile-label">Year</span>
+        <span class="desktop-label">This Year</span>
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+  </div>
+
+  @if (isLoading()) {
+    <app-loading-spinner message="Loading dashboard data..." />
+  } @else {
+    <!-- Financial Summary Cards (shared) -->
+    <app-financial-summary
+      [income]="totalIncome()"
+      [expenses]="totalExpenses()"
+      [balance]="balance()"
+      [currency]="baseCurrency()"
+    />
+
+    <!-- Mobile Layout -->
+    <div class="mobile-view">
+      <!-- Recent Transactions First on Mobile -->
+      <app-recent-transactions
+        [transactions]="recentTransactions()"
+        [categories]="categoriesMap()"
+      />
+
+      <!-- Spending Chart -->
+      <app-spending-chart
+        [categoryTotals]="categoryTotals()"
+        [categories]="categories()"
+      />
+
+      <!-- Budget Progress -->
+      @if (activeBudgets().length > 0) {
+        <app-budget-progress
+          [budgets]="activeBudgets()"
+          [categories]="categoriesMap()"
+        />
+      }
+    </div>
+
+    <!-- Desktop Layout -->
+    <div class="desktop-view">
+      <!-- Charts and Recent Transactions Grid -->
+      <div class="desktop-grid">
+        <!-- Spending by Category Chart -->
+        <app-spending-chart
+          [categoryTotals]="categoryTotals()"
+          [categories]="categories()"
+        />
+
+        <!-- Recent Transactions -->
+        <app-recent-transactions
+          [transactions]="recentTransactions()"
+          [categories]="categoriesMap()"
+        />
+      </div>
+
+      <!-- Budget Progress -->
+      @if (activeBudgets().length > 0) {
+        <app-budget-progress
+          [budgets]="activeBudgets()"
+          [categories]="categoriesMap()"
+        />
+      }
+    </div>
+  }
+</div>

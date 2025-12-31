@@ -140,6 +140,11 @@ export class CurrencyService {
     return this.currencies().find(c => c.code === code);
   }
 
+  // Get list of supported currencies
+  getSupportedCurrencies(): CurrencyInfo[] {
+    return this.currencies();
+  }
+
   // Set the base currency for conversions
   setBaseCurrency(code: string): void {
     if (this.supportedCurrencyCodes().includes(code)) {

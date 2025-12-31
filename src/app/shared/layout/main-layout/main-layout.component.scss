@@ -1,0 +1,96 @@
+:host {
+  display: block;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.header-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  z-index: 1000;
+  background: white;
+}
+
+.sidebar-container {
+  position: fixed;
+  top: 64px;
+  left: 0;
+  bottom: 0;
+  width: 256px;
+  z-index: 900;
+  background: white;
+  border-right: 1px solid #e5e7eb;
+  transition: transform 0.3s ease;
+}
+
+.sidebar-container.hidden {
+  transform: translateX(-100%);
+}
+
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1100;
+}
+
+.mobile-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  z-index: 1200;
+  background: white;
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.15);
+}
+
+.main-container {
+  position: fixed;
+  top: 64px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  transition: margin-left 0.3s ease;
+}
+
+.main-container.with-sidebar {
+  left: 256px;
+}
+
+.main-container.with-bottom-nav {
+  bottom: 64px;
+}
+
+.content-wrapper {
+  padding: 24px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.bottom-nav-container {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  z-index: 1000;
+}
+
+.bottom-nav-container.visible {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .content-wrapper {
+    padding: 16px;
+  }
+}

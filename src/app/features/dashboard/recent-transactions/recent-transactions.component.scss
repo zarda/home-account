@@ -1,0 +1,164 @@
+.card {
+  border-radius: 16px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+}
+
+.card-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.view-all-link {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #4f46e5;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.view-all-link:hover {
+  color: #4338ca;
+}
+
+.view-all-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.card-content {
+  padding: 0;
+}
+
+.empty-container {
+  padding: 24px 16px;
+}
+
+.transaction-list {
+  padding: 0 0 8px;
+}
+
+.transaction-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.transaction-item:hover {
+  background-color: #f9fafb;
+}
+
+.transaction-item:active {
+  background-color: #f3f4f6;
+}
+
+.category-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.category-icon mat-icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.transaction-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.transaction-description {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transaction-category {
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.transaction-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.amount {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.amount.income {
+  color: #16a34a;
+}
+
+.amount.expense {
+  color: #dc2626;
+}
+
+.transaction-date {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.divider {
+  height: 1px;
+  background-color: #f3f4f6;
+  margin: 0 16px;
+}
+
+@media (max-width: 480px) {
+  .card-header {
+    padding: 14px 14px 10px;
+  }
+
+  .transaction-item {
+    padding: 10px 14px;
+    gap: 10px;
+  }
+
+  .category-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .transaction-description {
+    font-size: 0.875rem;
+  }
+
+  .amount {
+    font-size: 0.875rem;
+  }
+}

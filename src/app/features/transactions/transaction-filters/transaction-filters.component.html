@@ -1,0 +1,121 @@
+<div class="filters-container">
+  <!-- Toolbar Row -->
+  <div class="toolbar">
+    <!-- Search -->
+    <div class="search-wrapper">
+      <mat-icon class="search-icon">search</mat-icon>
+      <input
+        type="text"
+        class="search-input"
+        placeholder="Search transactions..."
+        [(ngModel)]="filters.searchQuery"
+        (input)="onFilterChange()"
+      >
+    </div>
+
+    <!-- Quick Filters (desktop) -->
+    <div class="quick-filters">
+      <button
+        class="quick-btn"
+        [class.active]="isQuickFilterActive('last7Days')"
+        (click)="setQuickFilter('last7Days')"
+      >7D</button>
+      <button
+        class="quick-btn"
+        [class.active]="isQuickFilterActive('last30Days')"
+        (click)="setQuickFilter('last30Days')"
+      >30D</button>
+      <button
+        class="quick-btn"
+        [class.active]="isQuickFilterActive('thisMonth')"
+        (click)="setQuickFilter('thisMonth')"
+      >Month</button>
+    </div>
+
+    <!-- Filter Toggle -->
+    <button
+      class="filter-toggle"
+      [class.has-filters]="activeFilterCount() > 0"
+      (click)="expanded.set(!expanded())"
+    >
+      <mat-icon>tune</mat-icon>
+      @if (activeFilterCount() > 0) {
+        <span class="filter-badge">{{ activeFilterCount() }}</span>
+      }
+    </button>
+
+    <!-- Add Button -->
+    <button class="add-btn" (click)="addTransaction.emit()">
+      <mat-icon>add</mat-icon>
+      <span class="add-label">Add</span>
+    </button>
+  </div>
+
+  <!-- Expandable Filters -->
+  @if (expanded()) {
+    <div class="filter-panel">
+      <div class="filter-grid">
+        <!-- Type -->
+        <mat-form-field appearance="outline" class="compact-field">
+          <mat-label>Type</mat-label>
+          <mat-select [(ngModel)]="filters.type" (selectionChange)="onFilterChange()">
+            <mat-option [value]="undefined">All</mat-option>
+            <mat-option value="income">Income</mat-option>
+            <mat-option value="expense">Expense</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <!-- Category -->
+        <mat-form-field appearance="outline" class="compact-field">
+          <mat-label>Category</mat-label>
+          <mat-select [(ngModel)]="filters.categoryId" (selectionChange)="onFilterChange()">
+            <mat-option [value]="undefined">All</mat-option>
+            <mat-optgroup label="Expense">
+              @for (cat of categories; track cat.id) {
+                <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
+              }
+            </mat-optgroup>
+            <mat-optgroup label="Income">
+              @for (cat of incomeCategories; track cat.id) {
+                <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
+              }
+            </mat-optgroup>
+          </mat-select>
+        </mat-form-field>
+
+        <!-- Date Range -->
+        <mat-form-field appearance="outline" class="compact-field">
+          <mat-label>From</mat-label>
+          <input matInput [matDatepicker]="startPicker" [(ngModel)]="filters.startDate" (dateChange)="onFilterChange()">
+          <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
+          <mat-datepicker #startPicker></mat-datepicker>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="compact-field">
+          <mat-label>To</mat-label>
+          <input matInput [matDatepicker]="endPicker" [(ngModel)]="filters.endDate" (dateChange)="onFilterChange()">
+          <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
+          <mat-datepicker #endPicker></mat-datepicker>
+        </mat-form-field>
+
+        <!-- Amount Range -->
+        <mat-form-field appearance="outline" class="compact-field">
+          <mat-label>Min $</mat-label>
+          <input matInput type="number" [(ngModel)]="filters.minAmount" (input)="onFilterChange()">
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="compact-field">
+          <mat-label>Max $</mat-label>
+          <input matInput type="number" [(ngModel)]="filters.maxAmount" (input)="onFilterChange()">
+        </mat-form-field>
+      </div>
+
+      @if (activeFilterCount() > 0) {
+        <button class="clear-btn" (click)="clearFilters()">
+          <mat-icon>clear</mat-icon>
+          Clear all
+        </button>
+      }
+    </div>
+  }
+</div>

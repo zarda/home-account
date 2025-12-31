@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -18,32 +18,22 @@ import { AuthService } from '../../../core/services/auth.service';
   templateUrl: './login.component.html',
   styleUrl: './login.component.scss'
 })
-export class LoginComponent implements OnInit {
+export class LoginComponent {
   private authService = inject(AuthService);
   private router = inject(Router);
 
   isLoading = signal(false);
   error = signal<string | null>(null);
 
-  async ngOnInit(): Promise<void> {
-    // Check for redirect result when component loads
-    try {
-      const wasRedirected = await this.authService.checkRedirectResult();
-      if (wasRedirected) {
-        this.router.navigate(['/']);
-      }
-    } catch (err: unknown) {
-      this.handleAuthError(err);
-    }
-  }
-
   async signInWithGoogle(): Promise<void> {
     this.isLoading.set(true);
     this.error.set(null);
 
     try {
-      // This will redirect to Google - page will reload after auth
+      // Opens popup for Google sign-in
       await this.authService.signInWithGoogle();
+      // Navigate to dashboard on success
+      this.router.navigate(['/dashboard']);
     } catch (err: unknown) {
       this.handleAuthError(err);
       this.isLoading.set(false);

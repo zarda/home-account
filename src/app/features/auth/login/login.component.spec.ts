@@ -9,7 +9,6 @@ describe('LoginComponent', () => {
   let fixture: ComponentFixture<LoginComponent>;
   let mockAuthService: {
     signInWithGoogle: jasmine.Spy;
-    checkRedirectResult: jasmine.Spy;
   };
   let mockRouter: {
     navigate: jasmine.Spy;
@@ -17,8 +16,7 @@ describe('LoginComponent', () => {
 
   beforeEach(async () => {
     mockAuthService = {
-      signInWithGoogle: jasmine.createSpy('signInWithGoogle').and.returnValue(Promise.resolve()),
-      checkRedirectResult: jasmine.createSpy('checkRedirectResult').and.returnValue(Promise.resolve(false))
+      signInWithGoogle: jasmine.createSpy('signInWithGoogle').and.returnValue(Promise.resolve())
     };
 
     mockRouter = {
@@ -60,39 +58,7 @@ describe('LoginComponent', () => {
     expect(component.error()).toBeNull();
   });
 
-  describe('ngOnInit - redirect result handling', () => {
-    it('should check for redirect result on init', async () => {
-      await fixture.whenStable();
-      expect(mockAuthService.checkRedirectResult).toHaveBeenCalled();
-    });
-
-    it('should navigate to home if redirect was successful', async () => {
-      mockAuthService.checkRedirectResult.and.returnValue(Promise.resolve(true));
-
-      await component.ngOnInit();
-
-      expect(mockRouter.navigate).toHaveBeenCalledWith(['/']);
-    });
-
-    it('should not navigate if no redirect result', async () => {
-      mockAuthService.checkRedirectResult.and.returnValue(Promise.resolve(false));
-
-      await component.ngOnInit();
-
-      expect(mockRouter.navigate).not.toHaveBeenCalled();
-    });
-
-    it('should handle redirect errors', async () => {
-      mockAuthService.checkRedirectResult.and.returnValue(
-        Promise.reject({ code: 'auth/network-request-failed' })
-      );
-
-      await component.ngOnInit();
-
-      expect(component.error()).toBe('Network error. Please check your connection.');
-    });
-  });
-
+  
   describe('signInWithGoogle', () => {
     it('should set loading state when signing in', async () => {
       mockAuthService.signInWithGoogle.and.returnValue(
@@ -112,11 +78,10 @@ describe('LoginComponent', () => {
       expect(mockAuthService.signInWithGoogle).toHaveBeenCalled();
     });
 
-    it('should not navigate immediately (redirect flow)', async () => {
+    it('should navigate to dashboard on successful sign-in', async () => {
       await component.signInWithGoogle();
 
-      // With redirect flow, navigation happens after page reload via checkRedirectResult
-      expect(mockRouter.navigate).not.toHaveBeenCalled();
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/dashboard']);
     });
 
     it('should set error when sign-in is cancelled', async () => {

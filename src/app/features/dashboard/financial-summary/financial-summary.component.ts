@@ -1,0 +1,25 @@
+import { Component, inject, Input } from '@angular/core';
+
+import { MatCardModule } from '@angular/material/card';
+import { MatIconModule } from '@angular/material/icon';
+import { CurrencyService } from '../../../core/services/currency.service';
+
+@Component({
+  selector: 'app-financial-summary',
+  standalone: true,
+  imports: [MatCardModule, MatIconModule],
+  templateUrl: './financial-summary.component.html',
+  styleUrl: './financial-summary.component.scss',
+})
+export class FinancialSummaryComponent {
+  @Input() income = 0;
+  @Input() expenses = 0;
+  @Input() balance = 0;
+  @Input() currency = 'USD';
+
+  private currencyService = inject(CurrencyService);
+
+  formatAmount(amount: number): string {
+    return this.currencyService.formatCurrency(amount, this.currency);
+  }
+}

@@ -1,0 +1,43 @@
+<!-- Header -->
+<div class="header-container">
+  <app-header
+    [isSidebarOpen]="sidebarOpen()"
+    (toggleSidebar)="toggleSidebar()"
+  />
+</div>
+
+<!-- Sidebar (desktop) -->
+@if (!isMobile()) {
+  <div class="sidebar-container" [class.hidden]="!sidebarOpen()">
+    <app-sidebar [isExpanded]="true" />
+  </div>
+}
+
+<!-- Mobile Sidebar Overlay -->
+@if (isMobile() && sidebarOpen()) {
+  <div
+    class="mobile-overlay"
+    role="button"
+    tabindex="0"
+    (click)="closeSidebar()"
+    (keydown.enter)="closeSidebar()"></div>
+  <div class="mobile-sidebar">
+    <app-sidebar [isExpanded]="true" (navItemClicked)="closeSidebar()" />
+  </div>
+}
+
+<!-- Main Content -->
+<div
+  class="main-container"
+  [class.with-sidebar]="!isMobile() && sidebarOpen()"
+  [class.with-bottom-nav]="isMobile()"
+>
+  <div class="content-wrapper">
+    <router-outlet />
+  </div>
+</div>
+
+<!-- Bottom Navigation (mobile only) -->
+<div class="bottom-nav-container" [class.visible]="isMobile()">
+  <app-bottom-nav />
+</div>

@@ -1,0 +1,161 @@
+.dialog-container {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dialog-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.close-button {
+  margin: -8px -8px -8px 0;
+}
+
+.dialog-content {
+  padding: 24px !important;
+  overflow-y: auto !important;
+}
+
+.type-toggle-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.type-toggle {
+  width: 100%;
+  max-width: 320px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.type-button {
+  flex: 1;
+  height: 48px;
+}
+
+.type-button mat-icon {
+  margin-right: 8px;
+}
+
+.type-button span {
+  font-weight: 500;
+}
+
+::ng-deep .type-toggle .mat-button-toggle-checked.expense {
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+
+::ng-deep .type-toggle .mat-button-toggle-checked.income {
+  background-color: #f0fdf4;
+  color: #16a34a;
+}
+
+.amount-section {
+  margin-bottom: 8px;
+}
+
+.amount-row {
+  display: flex;
+  gap: 12px;
+}
+
+.amount-field {
+  flex: 1;
+}
+
+.currency-field {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.full-width {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.category-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.category-option mat-icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 24px !important;
+  border-top: 1px solid #e5e7eb;
+  margin: 0 !important;
+}
+
+.cancel-button {
+  flex: 1;
+  height: 48px;
+}
+
+.submit-button {
+  flex: 2;
+  height: 48px;
+}
+
+.submit-button mat-icon {
+  margin-right: 8px;
+}
+
+.submit-button mat-spinner {
+  display: inline-block;
+  margin-right: 8px;
+}
+
+::ng-deep .mat-mdc-dialog-surface {
+  border-radius: 16px !important;
+}
+
+@media (max-width: 480px) {
+  .dialog-header {
+    padding: 12px 16px;
+  }
+
+  .dialog-content {
+    padding: 16px !important;
+  }
+
+  .dialog-actions {
+    padding: 12px 16px !important;
+    flex-direction: column;
+  }
+
+  .cancel-button,
+  .submit-button {
+    flex: none;
+    width: 100%;
+  }
+
+  .amount-row {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .currency-field {
+    width: 100%;
+  }
+}

@@ -126,7 +126,7 @@ describe('TransactionService', () => {
       });
 
       expect(id).toBeDefined();
-      expect(mockFirestore.addDocumentSpy).toHaveBeenCalled();
+      expect(mockFirestore.addDocumentSpy.calls.length).toBeGreaterThan(0);
     });
 
     it('should set isLoading during operation', async () => {
@@ -154,11 +154,11 @@ describe('TransactionService', () => {
         date: new Date()
       });
 
-      const callArgs = mockFirestore.addDocumentSpy.calls.mostRecent().args;
-      const transactionData = callArgs[1];
+      const callArgs = mockFirestore.addDocumentSpy.mostRecent()?.args ?? [];
+      const transactionData = callArgs[1] as Record<string, unknown>;
 
-      expect(transactionData.currency).toBe('EUR');
-      expect(transactionData.exchangeRate).toBeDefined();
+      expect(transactionData['currency']).toBe('EUR');
+      expect(transactionData['exchangeRate']).toBeDefined();
     });
   });
 
@@ -171,7 +171,7 @@ describe('TransactionService', () => {
         description: 'Updated description'
       });
 
-      expect(mockFirestore.updateDocumentSpy).toHaveBeenCalled();
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBeGreaterThan(0);
     });
 
     it('should set isLoading during update', async () => {
@@ -190,7 +190,8 @@ describe('TransactionService', () => {
     it('should delete transaction', async () => {
       await service.deleteTransaction('txn-1');
 
-      expect(mockFirestore.deleteDocumentSpy).toHaveBeenCalledWith(
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBeGreaterThan(0);
+      expect(mockFirestore.deleteDocumentSpy.mostRecent()?.args[0]).toBe(
         'users/test-user-123/transactions/txn-1'
       );
     });
@@ -233,7 +234,7 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getByDateRange(start, end).subscribe(() => {
-        expect(mockFirestore.getCollectionSpy).toHaveBeenCalled();
+        expect(mockFirestore.getCollectionSpy.calls.length).toBeGreaterThan(0);
         done();
       });
     });
@@ -244,7 +245,7 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getByCategory('food').subscribe(() => {
-        expect(mockFirestore.getCollectionSpy).toHaveBeenCalled();
+        expect(mockFirestore.getCollectionSpy.calls.length).toBeGreaterThan(0);
         done();
       });
     });
@@ -263,7 +264,7 @@ describe('TransactionService', () => {
     it('should filter by search query', (done) => {
       service.searchTransactions('coffee').subscribe(() => {
         // The mock returns all, but the service should filter
-        expect(mockFirestore.getCollectionSpy).toHaveBeenCalled();
+        expect(mockFirestore.getCollectionSpy.calls.length).toBeGreaterThan(0);
         done();
       });
     });
@@ -274,8 +275,9 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getRecentTransactions(5).subscribe(() => {
-        const callArgs = mockFirestore.getCollectionSpy.calls.mostRecent().args;
-        expect(callArgs[1]?.limit).toBe(5);
+        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const options = callArgs[1] as Record<string, unknown> | undefined;
+        expect(options?.['limit']).toBe(5);
         done();
       });
     });
@@ -284,8 +286,9 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getRecentTransactions().subscribe(() => {
-        const callArgs = mockFirestore.getCollectionSpy.calls.mostRecent().args;
-        expect(callArgs[1]?.limit).toBe(10);
+        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const options = callArgs[1] as Record<string, unknown> | undefined;
+        expect(options?.['limit']).toBe(10);
         done();
       });
     });

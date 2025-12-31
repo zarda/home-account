@@ -2,8 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import {
   Auth,
   GoogleAuthProvider,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User as FirebaseUser
@@ -34,10 +33,10 @@ export class AuthService {
   userId = computed(() => this.currentUser()?.id ?? null);
 
   constructor() {
-    this.initAuthStateListener();
+    this.setupAuthStateListener();
   }
 
-  private initAuthStateListener(): void {
+  private setupAuthStateListener(): void {
     onAuthStateChanged(this.auth, async (firebaseUser) => {
       this.firebaseUser.set(firebaseUser);
 
@@ -45,8 +44,7 @@ export class AuthService {
         try {
           const user = await this.getOrCreateUser(firebaseUser);
           this.currentUser.set(user);
-        } catch (error) {
-          console.error('Error fetching user data:', error);
+        } catch {
           this.currentUser.set(null);
         }
       } else {
@@ -84,29 +82,21 @@ export class AuthService {
   }
 
   /**
-   * Initiates Google sign-in using redirect flow.
-   * The result will be handled by checkRedirectResult() after page reload.
+   * Initiates Google sign-in using popup flow.
+   * Returns the authenticated user on success.
    */
-  async signInWithGoogle(): Promise<void> {
+  async signInWithGoogle(): Promise<User> {
     const provider = new GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
 
-    await signInWithRedirect(this.auth, provider);
-  }
+    const result = await signInWithPopup(this.auth, provider);
 
-  /**
-   * Checks for redirect result after returning from Google sign-in.
-   * Should be called on app initialization.
-   */
-  async checkRedirectResult(): Promise<boolean> {
-    try {
-      const result = await getRedirectResult(this.auth);
-      return result !== null;
-    } catch (error) {
-      console.error('Redirect sign in error:', error);
-      throw error;
-    }
+    // Get or create user document
+    const user = await this.getOrCreateUser(result.user);
+    this.currentUser.set(user);
+
+    return user;
   }
 
   async signOut(): Promise<void> {

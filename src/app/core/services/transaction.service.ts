@@ -71,10 +71,13 @@ export class TransactionService {
     }
 
     if (filters?.endDate) {
+      // Set end date to end of day (23:59:59.999) to make it inclusive
+      const endOfDay = new Date(filters.endDate);
+      endOfDay.setHours(23, 59, 59, 999);
       whereConditions.push({
         field: 'date',
         op: '<=',
-        value: Timestamp.fromDate(filters.endDate)
+        value: Timestamp.fromDate(endOfDay)
       });
     }
 
@@ -147,14 +150,15 @@ export class TransactionService {
         exchangeRate,
         categoryId: data.categoryId,
         description: data.description,
-        note: data.note,
         date: this.firestoreService.dateToTimestamp(data.date),
         createdAt: this.firestoreService.getTimestamp(),
         updatedAt: this.firestoreService.getTimestamp(),
-        tags: data.tags,
         isRecurring: data.isRecurring ?? false,
-        recurringId: data.recurringId,
-        location: data.location
+        // Only include optional fields if they have values (Firestore rejects undefined)
+        ...(data.note ? { note: data.note } : {}),
+        ...(data.tags?.length ? { tags: data.tags } : {}),
+        ...(data.recurringId ? { recurringId: data.recurringId } : {}),
+        ...(data.location ? { location: data.location } : {})
       };
 
       // TODO: Handle receipt file upload to Firebase Storage

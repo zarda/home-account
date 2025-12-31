@@ -1,0 +1,63 @@
+<mat-card class="card">
+  <!-- Header -->
+  <div class="card-header">
+    <h3 class="card-title">Recent Transactions</h3>
+    <a routerLink="/transactions" class="view-all-link">
+      View All
+      <mat-icon class="view-all-icon">chevron_right</mat-icon>
+    </a>
+  </div>
+
+  <!-- Content -->
+  <div class="card-content">
+    @if (transactions.length === 0) {
+      <div class="empty-container">
+        <app-empty-state
+          icon="receipt_long"
+          title="No transactions yet"
+          description="Add your first transaction to get started"
+          actionLabel="Add Transaction"
+          actionIcon="add"
+          (action)="onAddTransaction()"
+        />
+      </div>
+    } @else {
+      <div class="transaction-list">
+        @for (transaction of transactions; track transaction.id; let last = $last) {
+          <a routerLink="/transactions" class="transaction-item">
+            <!-- Category Icon -->
+            <div
+              class="category-icon"
+              [style.background-color]="getCategoryColor(transaction.categoryId) + '15'"
+            >
+              <mat-icon [style.color]="getCategoryColor(transaction.categoryId)">
+                {{ getCategoryIcon(transaction.categoryId) }}
+              </mat-icon>
+            </div>
+
+            <!-- Details -->
+            <div class="transaction-details">
+              <span class="transaction-description">{{ transaction.description }}</span>
+              <span class="transaction-category">{{ getCategoryName(transaction.categoryId) }}</span>
+            </div>
+
+            <!-- Amount -->
+            <div class="transaction-amount">
+              <span
+                class="amount"
+                [class.income]="transaction.type === 'income'"
+                [class.expense]="transaction.type === 'expense'"
+              >
+                {{ transaction.type === 'income' ? '+' : '-' }}{{ formatAmount(transaction.amount, transaction.currency) }}
+              </span>
+              <span class="transaction-date">{{ formatRelativeDate(transaction.date) }}</span>
+            </div>
+          </a>
+          @if (!last) {
+            <div class="divider"></div>
+          }
+        }
+      </div>
+    }
+  </div>
+</mat-card>

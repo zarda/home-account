@@ -1,0 +1,47 @@
+<mat-card class="card">
+  <div class="card-header">
+    <h3 class="card-title">Spending by Category</h3>
+  </div>
+
+  <div class="card-content">
+    @if (categoryTotals.length === 0) {
+      <div class="empty-container">
+        <app-empty-state
+          icon="pie_chart"
+          title="No expenses yet"
+          description="Start adding expenses to see your spending breakdown"
+        />
+      </div>
+    } @else {
+      <div class="chart-container">
+        <div class="chart-wrapper">
+          <canvas
+            baseChart
+            [data]="chartData()"
+            [type]="chartType"
+            [options]="chartOptions"
+          ></canvas>
+        </div>
+
+        <div class="legend-container">
+          <ul class="legend-list">
+            @for (item of topCategories(); track item.categoryId) {
+              <li class="legend-item">
+                <div class="legend-label">
+                  <span
+                    class="legend-dot"
+                    [style.background-color]="getCategoryColor(item.categoryId)"
+                  ></span>
+                  <span class="legend-name">{{ getCategoryName(item.categoryId) }}</span>
+                </div>
+                <span class="legend-value">
+                  {{ (item.total / totalSpending() * 100).toFixed(1) }}%
+                </span>
+              </li>
+            }
+          </ul>
+        </div>
+      </div>
+    }
+  </div>
+</mat-card>

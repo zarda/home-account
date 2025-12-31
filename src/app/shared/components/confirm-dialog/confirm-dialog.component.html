@@ -1,0 +1,36 @@
+<div class="p-6">
+  @if (data.icon) {
+    <div class="flex justify-center mb-4">
+      <div
+        class="w-12 h-12 rounded-full flex items-center justify-center"
+        [class.bg-red-100]="data.confirmColor === 'warn'"
+        [class.bg-primary-100]="data.confirmColor !== 'warn'"
+      >
+        <mat-icon
+          class="!text-2xl"
+          [class.text-red-600]="data.confirmColor === 'warn'"
+          [class.text-primary-600]="data.confirmColor !== 'warn'"
+        >
+          {{ data.icon }}
+        </mat-icon>
+      </div>
+    </div>
+  }
+
+  <h2 mat-dialog-title class="text-lg font-semibold text-gray-900 text-center mb-2">
+    {{ data.title }}
+  </h2>
+
+  <mat-dialog-content>
+    <p class="text-sm text-gray-600 text-center">{{ data.message }}</p>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="center" class="mt-6 gap-3">
+    <button mat-stroked-button (click)="onCancel()">
+      {{ data.cancelLabel || 'Cancel' }}
+    </button>
+    <button mat-flat-button [color]="data.confirmColor || 'primary'" (click)="onConfirm()">
+      {{ data.confirmLabel || 'Confirm' }}
+    </button>
+  </mat-dialog-actions>
+</div>
