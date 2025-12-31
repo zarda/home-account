@@ -18,7 +18,7 @@ export interface CurrencyInfo {
   symbol: string;
 }
 
-// Commonly used currencies
+// All currencies available in the app (ExchangeRate-API supports all these)
 export const SUPPORTED_CURRENCIES: CurrencyInfo[] = [
   { code: 'USD', name: 'US Dollar', symbol: '$' },
   { code: 'EUR', name: 'Euro', symbol: '€' },

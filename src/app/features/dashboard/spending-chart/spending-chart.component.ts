@@ -27,9 +27,15 @@ export class SpendingChartComponent {
     return this._categoryTotals();
   }
 
-  @Input() categories: Category[] = [];
+  @Input() set categories(value: Category[]) {
+    this._categories.set(value);
+  }
+  get categories(): Category[] {
+    return this._categories();
+  }
 
   private _categoryTotals = signal<CategoryTotal[]>([]);
+  private _categories = signal<Category[]>([]);
 
   chartType = 'doughnut' as const;
 
@@ -65,9 +71,21 @@ export class SpendingChartComponent {
 
   chartData = computed((): ChartData<'doughnut'> => {
     const top = this.topCategories();
-    const labels = top.map(ct => this.getCategoryName(ct.categoryId));
+    const categories = this._categories();
+
+    const getCategoryName = (categoryId: string): string => {
+      const category = categories.find(c => c.id === categoryId);
+      return category?.name || 'Unknown';
+    };
+
+    const getCategoryColor = (categoryId: string): string => {
+      const category = categories.find(c => c.id === categoryId);
+      return category?.color || '#9E9E9E';
+    };
+
+    const labels = top.map(ct => getCategoryName(ct.categoryId));
     const data = top.map(ct => ct.total);
-    const colors = top.map(ct => this.getCategoryColor(ct.categoryId));
+    const colors = top.map(ct => getCategoryColor(ct.categoryId));
 
     return {
       labels,
@@ -83,12 +101,12 @@ export class SpendingChartComponent {
   });
 
   getCategoryName(categoryId: string): string {
-    const category = this.categories.find(c => c.id === categoryId);
+    const category = this._categories().find(c => c.id === categoryId);
     return category?.name || 'Unknown';
   }
 
   getCategoryColor(categoryId: string): string {
-    const category = this.categories.find(c => c.id === categoryId);
+    const category = this._categories().find(c => c.id === categoryId);
     return category?.color || '#9E9E9E';
   }
 }

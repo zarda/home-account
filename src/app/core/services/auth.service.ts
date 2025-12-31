@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed, EnvironmentInjector, runInInjectionContext } from '@angular/core';
 import {
   Auth,
   GoogleAuthProvider,
@@ -22,6 +22,7 @@ import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 export class AuthService {
   private auth = inject(Auth);
   private firestore = inject(Firestore);
+  private injector = inject(EnvironmentInjector);
 
   // Signals for reactive state
   currentUser = signal<User | null>(null);
@@ -37,21 +38,26 @@ export class AuthService {
   }
 
   private setupAuthStateListener(): void {
-    onAuthStateChanged(this.auth, async (firebaseUser) => {
-      this.firebaseUser.set(firebaseUser);
+    // Run within injection context to prevent AngularFire warnings
+    runInInjectionContext(this.injector, () => {
+      onAuthStateChanged(this.auth, async (firebaseUser) => {
+        this.firebaseUser.set(firebaseUser);
 
-      if (firebaseUser) {
-        try {
-          const user = await this.getOrCreateUser(firebaseUser);
-          this.currentUser.set(user);
-        } catch {
+        if (firebaseUser) {
+          try {
+            const user = await runInInjectionContext(this.injector, () =>
+              this.getOrCreateUser(firebaseUser)
+            );
+            this.currentUser.set(user);
+          } catch {
+            this.currentUser.set(null);
+          }
+        } else {
           this.currentUser.set(null);
         }
-      } else {
-        this.currentUser.set(null);
-      }
 
-      this.isLoading.set(false);
+        this.isLoading.set(false);
+      });
     });
   }
 
@@ -111,20 +117,25 @@ export class AuthService {
 
   getCurrentUser(): Observable<User | null> {
     return new Observable<User | null>((subscriber) => {
-      const unsubscribe = onAuthStateChanged(this.auth, async (firebaseUser) => {
-        if (firebaseUser) {
-          try {
-            const user = await this.getOrCreateUser(firebaseUser);
-            subscriber.next(user);
-          } catch {
+      // Run within injection context to prevent AngularFire warnings
+      return runInInjectionContext(this.injector, () => {
+        const unsubscribe = onAuthStateChanged(this.auth, async (firebaseUser) => {
+          if (firebaseUser) {
+            try {
+              const user = await runInInjectionContext(this.injector, () =>
+                this.getOrCreateUser(firebaseUser)
+              );
+              subscriber.next(user);
+            } catch {
+              subscriber.next(null);
+            }
+          } else {
             subscriber.next(null);
           }
-        } else {
-          subscriber.next(null);
-        }
-      });
+        });
 
-      return () => unsubscribe();
+        return () => unsubscribe();
+      });
     });
   }
 

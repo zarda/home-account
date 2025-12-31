@@ -1,0 +1,25 @@
+.budget-form-dialog {
+  @apply min-w-[400px];
+}
+
+mat-dialog-actions {
+  @apply flex justify-end gap-2;
+}
+
+.threshold-section {
+  .slider-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    mat-slider {
+      width: 90%;
+      display: block;
+    }
+
+    > div {
+      width: 90%;
+    }
+  }
+}

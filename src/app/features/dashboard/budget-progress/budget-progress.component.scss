@@ -1,3 +1,53 @@
 ::ng-deep .mat-mdc-progress-bar {
   --mdc-linear-progress-track-color: rgba(0, 0, 0, 0.08);
 }
+
+.budget-item {
+  @apply p-2.5 bg-gray-50 rounded-lg;
+
+  .budget-header {
+    @apply flex items-center justify-between mb-1.5;
+
+    .budget-info {
+      @apply flex items-center gap-1.5 min-w-0 overflow-hidden;
+
+      mat-icon {
+        @apply text-lg w-5 h-5 flex-shrink-0;
+      }
+
+      .budget-name {
+        @apply text-sm font-medium text-gray-800 truncate;
+      }
+    }
+
+    .budget-percentage {
+      @apply text-xs font-semibold flex-shrink-0 ml-2;
+    }
+  }
+
+  mat-progress-bar {
+    @apply rounded-full;
+    height: 5px;
+  }
+
+  ::ng-deep .mdc-linear-progress {
+    @apply rounded-full;
+    height: 5px;
+  }
+
+  .budget-footer {
+    @apply flex items-center justify-between mt-1 text-xs text-gray-500;
+
+    .budget-amounts {
+      @apply truncate;
+    }
+
+    .budget-remaining {
+      @apply flex-shrink-0 ml-2;
+
+      &.over-budget {
+        @apply text-red-500 font-medium;
+      }
+    }
+  }
+}

@@ -1,7 +1,38 @@
-<div class="flex flex-col items-center justify-center py-16">
-  <div class="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center mb-4">
-    <mat-icon class="!text-4xl !w-10 !h-10 text-primary-600">savings</mat-icon>
+<div class="budgets-page p-4 md:p-6">
+  <!-- Header -->
+  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Budgets</h1>
+      @if (!isLoading() && budgetCount() > 0) {
+        <p class="text-sm text-gray-500 mt-1">
+          {{ budgetCount() }} {{ budgetCount() === 1 ? 'budget' : 'budgets' }}
+        </p>
+      }
+    </div>
+    <button mat-fab extended color="primary" (click)="openAddDialog()">
+      <mat-icon>add</mat-icon>
+      Add Budget
+    </button>
   </div>
-  <h1 class="text-2xl font-bold text-gray-900">Budgets</h1>
-  <p class="text-gray-500 mt-2">Coming in Phase 4.3</p>
+
+  <!-- Content -->
+  @if (isLoading()) {
+    <app-loading-spinner />
+  } @else if (budgets().length === 0) {
+    <app-empty-state
+      icon="savings"
+      title="No budgets yet"
+      description="Create your first budget to start tracking your spending goals and stay on top of your finances."
+      actionLabel="Create Budget"
+      actionIcon="add"
+      (action)="openAddDialog()"
+    />
+  } @else {
+    <app-budget-overview
+      [budgets]="budgets()"
+      [categories]="categoriesMap()"
+      (edit)="openEditDialog($event)"
+      (delete)="confirmDelete($event)"
+    />
+  }
 </div>

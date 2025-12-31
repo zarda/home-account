@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed, Injector } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { Observable, map, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
@@ -17,6 +17,15 @@ export class TransactionService {
   private firestoreService = inject(FirestoreService);
   private authService = inject(AuthService);
   private currencyService = inject(CurrencyService);
+  private injector = inject(Injector);
+
+  // Helper to update budgets after transaction changes
+  private async updateAffectedBudgets(categoryId: string): Promise<void> {
+    // Lazy import to avoid circular dependency
+    const { BudgetService } = await import('./budget.service');
+    const budgetService = this.injector.get(BudgetService);
+    await budgetService.recalculateBudgetsForCategory(categoryId);
+  }
 
   // Signals
   transactions = signal<Transaction[]>([]);
@@ -168,6 +177,11 @@ export class TransactionService {
         transaction
       );
 
+      // Update affected budgets if this is an expense
+      if (data.type === 'expense') {
+        await this.updateAffectedBudgets(data.categoryId);
+      }
+
       return id;
     } finally {
       this.isLoading.set(false);
@@ -179,6 +193,11 @@ export class TransactionService {
     this.isLoading.set(true);
 
     try {
+      // Get the current transaction to track category changes
+      const currentTransaction = await this.firestoreService.getDocument<Transaction>(
+        `${this.userTransactionsPath}/${id}`
+      );
+
       const updateData: Partial<Transaction> = {};
 
       if (data.type !== undefined) updateData.type = data.type;
@@ -194,10 +213,6 @@ export class TransactionService {
 
       // Recalculate amount in base currency if amount or currency changed
       if (data.amount !== undefined || data.currency !== undefined) {
-        const currentTransaction = await this.firestoreService.getDocument<Transaction>(
-          `${this.userTransactionsPath}/${id}`
-        );
-
         if (currentTransaction) {
           const amount = data.amount ?? currentTransaction.amount;
           const currency = data.currency ?? currentTransaction.currency;
@@ -215,6 +230,26 @@ export class TransactionService {
         `${this.userTransactionsPath}/${id}`,
         updateData
       );
+
+      // Update affected budgets for expense transactions
+      if (currentTransaction) {
+        const wasExpense = currentTransaction.type === 'expense';
+        const isExpense = (data.type ?? currentTransaction.type) === 'expense';
+        const oldCategoryId = currentTransaction.categoryId;
+        const newCategoryId = data.categoryId ?? oldCategoryId;
+
+        // If category changed or amount/type changed, recalculate affected budgets
+        if (wasExpense || isExpense) {
+          if (oldCategoryId !== newCategoryId) {
+            // Category changed - update both old and new
+            await this.updateAffectedBudgets(oldCategoryId);
+            await this.updateAffectedBudgets(newCategoryId);
+          } else if (wasExpense || isExpense) {
+            // Same category but amount or type might have changed
+            await this.updateAffectedBudgets(oldCategoryId);
+          }
+        }
+      }
     } finally {
       this.isLoading.set(false);
     }
@@ -225,9 +260,19 @@ export class TransactionService {
     this.isLoading.set(true);
 
     try {
+      // Get the transaction before deleting to know which budget to update
+      const transaction = await this.firestoreService.getDocument<Transaction>(
+        `${this.userTransactionsPath}/${id}`
+      );
+
       await this.firestoreService.deleteDocument(
         `${this.userTransactionsPath}/${id}`
       );
+
+      // Update affected budget if this was an expense
+      if (transaction?.type === 'expense') {
+        await this.updateAffectedBudgets(transaction.categoryId);
+      }
     } finally {
       this.isLoading.set(false);
     }

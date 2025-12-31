@@ -109,8 +109,10 @@
         @if (isSubmitting()) {
           <mat-spinner diameter="20"></mat-spinner>
         } @else {
-          <mat-icon>{{ data.mode === 'add' ? 'add' : 'save' }}</mat-icon>
-          {{ data.mode === 'add' ? 'Add Transaction' : 'Save Changes' }}
+          <ng-container>
+            <mat-icon>{{ data.mode === 'add' ? 'add' : 'save' }}</mat-icon>
+            {{ data.mode === 'add' ? 'Add Transaction' : 'Save Changes' }}
+          </ng-container>
         }
       </button>
     </mat-dialog-actions>

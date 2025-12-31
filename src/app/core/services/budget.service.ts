@@ -1,9 +1,10 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
-import { Observable, map, of } from 'rxjs';
+import { Observable, map, of, firstValueFrom } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
+import { CurrencyService } from './currency.service';
 import {
   Budget,
   BudgetSummary,
@@ -16,6 +17,7 @@ export class BudgetService {
   private firestoreService = inject(FirestoreService);
   private authService = inject(AuthService);
   private transactionService = inject(TransactionService);
+  private currencyService = inject(CurrencyService);
 
   // Signals
   budgets = signal<Budget[]>([]);
@@ -71,7 +73,7 @@ export class BudgetService {
       const userId = this.authService.userId();
       if (!userId) throw new Error('User not authenticated');
 
-      const budget: Omit<Budget, 'id'> = {
+      const budget: Omit<Budget, 'id' | 'endDate'> & { endDate?: Budget['endDate'] } = {
         userId,
         categoryId: data.categoryId,
         name: data.name,
@@ -81,9 +83,6 @@ export class BudgetService {
         startDate: data.startDate
           ? this.firestoreService.dateToTimestamp(data.startDate)
           : this.getDefaultStartDate(data.period),
-        endDate: data.endDate
-          ? this.firestoreService.dateToTimestamp(data.endDate)
-          : undefined,
         spent: 0,
         isActive: true,
         alertThreshold: data.alertThreshold ?? 80,
@@ -91,10 +90,20 @@ export class BudgetService {
         updatedAt: this.firestoreService.getTimestamp()
       };
 
-      return await this.firestoreService.addDocument(
+      // Only add endDate if it's defined (Firestore rejects undefined values)
+      if (data.endDate) {
+        budget.endDate = this.firestoreService.dateToTimestamp(data.endDate);
+      }
+
+      const id = await this.firestoreService.addDocument(
         this.userBudgetsPath,
         budget
       );
+
+      // Recalculate spent based on existing transactions
+      await this.recalculateBudgetSpent(id);
+
+      return id;
     } finally {
       this.isLoading.set(false);
     }
@@ -126,6 +135,12 @@ export class BudgetService {
         `${this.userBudgetsPath}/${id}`,
         updateData
       );
+
+      // Recalculate spent if category, period, or dates changed
+      if (data.categoryId !== undefined || data.period !== undefined ||
+          data.startDate !== undefined || data.endDate !== undefined) {
+        await this.recalculateBudgetSpent(id);
+      }
     } finally {
       this.isLoading.set(false);
     }
@@ -244,19 +259,40 @@ export class BudgetService {
     const { start, end } = this.getBudgetPeriodDates(budget);
 
     // Get transactions for this category in the budget period
-    const transactions = await new Promise<number>((resolve) => {
+    const txns = await firstValueFrom(
       this.transactionService.getTransactions({
         categoryId: budget.categoryId,
         startDate: start,
         endDate: end,
         type: 'expense'
-      }).subscribe(txns => {
-        const total = txns.reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
-        resolve(total);
-      });
-    });
+      })
+    );
 
-    await this.updateBudgetSpent(budgetId, transactions);
+    // Ensure exchange rates are loaded before currency conversion
+    await this.currencyService.ensureRatesLoaded();
+
+    // Convert each transaction to the budget's currency
+    const totalSpent = txns.reduce((sum, t) => {
+      const amountInBudgetCurrency = this.currencyService.convert(
+        t.amount,
+        t.currency,
+        budget.currency
+      );
+      return sum + amountInBudgetCurrency;
+    }, 0);
+
+    await this.updateBudgetSpent(budgetId, totalSpent);
+  }
+
+  // Recalculate spent for all active budgets in a category
+  async recalculateBudgetsForCategory(categoryId: string): Promise<void> {
+    const budgets = this.budgets().filter(b =>
+      b.categoryId === categoryId && b.isActive
+    );
+
+    for (const budget of budgets) {
+      await this.recalculateBudgetSpent(budget.id);
+    }
   }
 
   // Get budgets by category

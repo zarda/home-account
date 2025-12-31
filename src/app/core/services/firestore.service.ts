@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, EnvironmentInjector, runInInjectionContext } from '@angular/core';
 import {
   Firestore,
   collection,
@@ -36,6 +36,7 @@ type WhereFilterOp = '<' | '<=' | '==' | '!=' | '>=' | '>' | 'array-contains' | 
 @Injectable({ providedIn: 'root' })
 export class FirestoreService {
   private firestore = inject(Firestore);
+  private injector = inject(EnvironmentInjector);
 
   // Get a collection reference
   getCollectionRef<T = DocumentData>(path: string): CollectionReference<T> {
@@ -77,48 +78,54 @@ export class FirestoreService {
     options?: QueryOptions
   ): Observable<T[]> {
     return new Observable<T[]>((subscriber) => {
-      const collectionRef = collection(this.firestore, collectionPath);
-      const constraints = this.buildQueryConstraints(options);
-      const q = query(collectionRef, ...constraints);
+      // Run within injection context to prevent AngularFire warnings
+      return runInInjectionContext(this.injector, () => {
+        const collectionRef = collection(this.firestore, collectionPath);
+        const constraints = this.buildQueryConstraints(options);
+        const q = query(collectionRef, ...constraints);
 
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot: QuerySnapshot) => {
-          const data = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as T[];
-          subscriber.next(data);
-        },
-        (error) => {
-          subscriber.error(error);
-        }
-      );
+        const unsubscribe = onSnapshot(
+          q,
+          (snapshot: QuerySnapshot) => {
+            const data = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            })) as T[];
+            subscriber.next(data);
+          },
+          (error) => {
+            subscriber.error(error);
+          }
+        );
 
-      return () => unsubscribe();
+        return () => unsubscribe();
+      });
     });
   }
 
   // Real-time subscription to a single document
   subscribeToDocument<T>(path: string): Observable<T | null> {
     return new Observable<T | null>((subscriber) => {
-      const docRef = doc(this.firestore, path);
+      // Run within injection context to prevent AngularFire warnings
+      return runInInjectionContext(this.injector, () => {
+        const docRef = doc(this.firestore, path);
 
-      const unsubscribe = onSnapshot(
-        docRef,
-        (snapshot) => {
-          if (snapshot.exists()) {
-            subscriber.next({ id: snapshot.id, ...snapshot.data() } as T);
-          } else {
-            subscriber.next(null);
+        const unsubscribe = onSnapshot(
+          docRef,
+          (snapshot) => {
+            if (snapshot.exists()) {
+              subscriber.next({ id: snapshot.id, ...snapshot.data() } as T);
+            } else {
+              subscriber.next(null);
+            }
+          },
+          (error) => {
+            subscriber.error(error);
           }
-        },
-        (error) => {
-          subscriber.error(error);
-        }
-      );
+        );
 
-      return () => unsubscribe();
+        return () => unsubscribe();
+      });
     });
   }
 

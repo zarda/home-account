@@ -1,0 +1,118 @@
+.budget-card {
+  @apply rounded-lg shadow-sm border border-gray-100 p-3 sm:p-4 overflow-hidden;
+  min-width: 240px;
+
+  .card-header {
+    @apply flex items-center gap-2 sm:gap-3 mb-3;
+
+    .category-icon {
+      @apply w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0;
+
+      mat-icon {
+        @apply text-lg sm:text-xl;
+      }
+    }
+
+    .header-content {
+      @apply flex-1 min-w-0 overflow-hidden;
+
+      .budget-name {
+        @apply text-sm sm:text-base font-medium text-gray-800 truncate m-0 leading-tight;
+      }
+
+      .budget-meta {
+        @apply text-xs text-gray-400 block truncate;
+      }
+    }
+
+    .menu-btn {
+      @apply w-7 h-7 sm:w-8 sm:h-8 text-gray-400 flex-shrink-0;
+
+      mat-icon {
+        @apply text-base sm:text-lg;
+      }
+    }
+  }
+
+  .progress-section {
+    @apply overflow-hidden;
+
+    .amount-row {
+      @apply flex items-baseline justify-between gap-2 mb-1.5;
+
+      .amount-text {
+        @apply flex items-baseline gap-1 min-w-0 overflow-hidden;
+
+        .spent {
+          @apply text-base sm:text-xl font-semibold text-gray-800 truncate;
+
+          &.over-budget {
+            @apply text-red-600;
+          }
+        }
+
+        .limit {
+          @apply text-xs sm:text-sm text-gray-400 truncate;
+        }
+      }
+
+      .percentage {
+        @apply text-xs sm:text-sm font-medium flex-shrink-0;
+      }
+    }
+
+    mat-progress-bar {
+      @apply rounded-full;
+      height: 6px;
+    }
+
+    ::ng-deep .mdc-linear-progress {
+      @apply rounded-full;
+      height: 6px;
+    }
+
+    .status-row {
+      @apply flex items-center justify-between gap-2 mt-1.5 text-xs sm:text-sm;
+
+      .remaining {
+        @apply text-gray-500 truncate min-w-0;
+
+        &.over-budget {
+          @apply text-red-500 font-medium;
+        }
+      }
+
+      .alert {
+        @apply flex items-center gap-0.5 font-medium flex-shrink-0;
+
+        mat-icon {
+          @apply w-3.5 h-3.5 text-xs flex-shrink-0;
+        }
+
+        .alert-text {
+          @apply hidden sm:inline;
+        }
+
+        &.alert-warning {
+          @apply text-yellow-600;
+        }
+
+        &.alert-critical {
+          @apply text-orange-600;
+        }
+
+        &.alert-exceeded {
+          @apply text-red-600;
+        }
+      }
+    }
+  }
+
+  .delete-item {
+    @apply text-red-600;
+
+    mat-icon {
+      @apply text-red-600;
+    }
+  }
+}

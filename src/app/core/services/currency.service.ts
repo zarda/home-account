@@ -8,10 +8,10 @@ import {
   CachedRates,
   SUPPORTED_CURRENCIES
 } from '../../models';
-import { environment } from '../../../environments/environment';
 
-const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
-const CURRENCY_API_URL = 'https://api.freecurrencyapi.com/v1/latest';
+const CACHE_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
+// Using ExchangeRate-API (free, no API key required, supports TWD/VND)
+const CURRENCY_API_URL = 'https://open.er-api.com/v6/latest/USD';
 
 @Injectable({ providedIn: 'root' })
 export class CurrencyService {
@@ -23,6 +23,8 @@ export class CurrencyService {
   baseCurrency = signal<string>('USD');
   isLoading = signal<boolean>(false);
   lastUpdated = signal<Date | null>(null);
+  private ratesInitialized = signal<boolean>(false);
+  private initPromise: Promise<void> | null = null;
 
   // Computed signals
   supportedCurrencyCodes = computed(() =>
@@ -30,7 +32,7 @@ export class CurrencyService {
   );
 
   constructor() {
-    this.initializeRates();
+    this.initPromise = this.initializeRates();
   }
 
   // Initialize exchange rates from cache or API
@@ -41,15 +43,28 @@ export class CurrencyService {
 
       if (cached && !this.isExpired(cached.lastUpdated)) {
         this.setRatesFromCache(cached);
+        this.ratesInitialized.set(true);
         return;
       }
 
       // Fetch fresh rates if cache is expired or doesn't exist
       await this.refreshRates();
+      this.ratesInitialized.set(true);
     } catch (error) {
       console.error('Failed to initialize exchange rates:', error);
       // Use default rates (1:1 with USD)
       this.setDefaultRates();
+      this.ratesInitialized.set(true);
+    }
+  }
+
+  // Wait for exchange rates to be initialized
+  async ensureRatesLoaded(): Promise<void> {
+    if (this.ratesInitialized()) {
+      return;
+    }
+    if (this.initPromise) {
+      await this.initPromise;
     }
   }
 
@@ -76,23 +91,12 @@ export class CurrencyService {
     return amount * rate;
   }
 
-  // Refresh exchange rates from API
+  // Refresh exchange rates from ExchangeRate-API (free, no key required)
   async refreshRates(): Promise<void> {
     this.isLoading.set(true);
 
     try {
-      const apiKey = environment.currencyApiKey;
-
-      if (!apiKey || apiKey.startsWith('${')) {
-        console.warn('Currency API key not configured, using default rates');
-        this.setDefaultRates();
-        return;
-      }
-
-      const currencies = this.supportedCurrencyCodes().join(',');
-      const response = await fetch(
-        `${CURRENCY_API_URL}?apikey=${apiKey}&base_currency=USD&currencies=${currencies}`
-      );
+      const response = await fetch(CURRENCY_API_URL);
 
       if (!response.ok) {
         throw new Error(`API request failed: ${response.status}`);
@@ -100,14 +104,14 @@ export class CurrencyService {
 
       const data = await response.json();
 
-      if (data.data) {
-        const rates = new Map<string, number>(Object.entries(data.data));
-        rates.set('USD', 1); // Ensure USD is in the map
+      // ExchangeRate-API returns { result: "success", rates: { USD: 1, EUR: 0.92, ... } }
+      if (data.result === 'success' && data.rates) {
+        const rates = new Map<string, number>(Object.entries(data.rates));
         this.exchangeRates.set(rates);
         this.lastUpdated.set(new Date());
 
         // Cache rates in Firestore
-        await this.cacheRates(data.data);
+        await this.cacheRates(data.rates);
       }
     } catch (error) {
       console.error('Failed to refresh exchange rates:', error);
@@ -167,16 +171,23 @@ export class CurrencyService {
   // Get cached rates from Firestore
   private async getCachedRates(): Promise<CachedRates | null> {
     try {
-      const doc = await this.firestoreService.getDocument<CachedRates & { lastUpdated: Timestamp }>(
+      const doc = await this.firestoreService.getDocument<Record<string, unknown>>(
         'currencies/rates'
       );
 
-      if (doc) {
-        const { lastUpdated, ...rates } = doc;
-        return {
-          rates: rates as unknown as ExchangeRates,
-          lastUpdated
-        };
+      if (doc && doc['lastUpdated']) {
+        // Extract lastUpdated and filter out non-rate fields (id, lastUpdated, updatedAt)
+        const lastUpdated = doc['lastUpdated'] as Timestamp;
+        const rates: ExchangeRates = {};
+
+        for (const [key, value] of Object.entries(doc)) {
+          // Only include numeric values (exchange rates), skip metadata fields
+          if (typeof value === 'number') {
+            rates[key] = value;
+          }
+        }
+
+        return { rates, lastUpdated };
       }
       return null;
     } catch (error) {
@@ -200,12 +211,9 @@ export class CurrencyService {
     this.lastUpdated.set(cached.lastUpdated.toDate());
   }
 
-  // Set default rates (all 1:1 with USD for development)
-  private setDefaultRates(): void {
-    const defaultRates = new Map<string, number>();
-
-    // Set some approximate rates for development
-    const approximateRates: Record<string, number> = {
+  // Get default rates as object (fallback when API is unavailable)
+  private getDefaultRatesObject(): Record<string, number> {
+    return {
       USD: 1,
       EUR: 0.92,
       GBP: 0.79,
@@ -226,11 +234,12 @@ export class CurrencyService {
       CHF: 0.88,
       NZD: 1.64
     };
+  }
 
-    for (const [code, rate] of Object.entries(approximateRates)) {
-      defaultRates.set(code, rate);
-    }
-
+  // Set default rates (all 1:1 with USD for development)
+  private setDefaultRates(): void {
+    const approximateRates = this.getDefaultRatesObject();
+    const defaultRates = new Map<string, number>(Object.entries(approximateRates));
     this.exchangeRates.set(defaultRates);
     this.lastUpdated.set(new Date());
   }

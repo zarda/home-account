@@ -60,8 +60,16 @@ export class BudgetProgressComponent {
   getRemainingText(budget: Budget): string {
     const remaining = budget.amount - budget.spent;
     if (remaining <= 0) {
-      return 'Over budget!';
+      const over = budget.spent - budget.amount;
+      return `${this.formatAmount(over, budget.currency)} over`;
     }
-    return `${this.formatAmount(remaining, budget.currency)} remaining`;
+    return `${this.formatAmount(remaining, budget.currency)} left`;
+  }
+
+  getPercentageClass(budget: Budget): string {
+    const percentage = this.getPercentage(budget);
+    if (percentage >= 100) return 'text-red-600';
+    if (percentage >= 80) return 'text-yellow-600';
+    return 'text-green-600';
   }
 }
