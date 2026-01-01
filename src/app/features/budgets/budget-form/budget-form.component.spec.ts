@@ -148,6 +148,7 @@ describe('BudgetFormComponent', () => {
       expect(component.form.get('name')?.value).toBe('');
       expect(component.form.get('categoryId')?.value).toBe('');
       expect(component.form.get('amount')?.value).toBe('');
+      expect(component.form.get('startDate')?.value).toBeNull();
     });
 
     it('should use default currency from user preferences', () => {
@@ -200,6 +201,11 @@ describe('BudgetFormComponent', () => {
       expect(component.form.get('currency')?.value).toBe('EUR');
       expect(component.form.get('period')?.value).toBe('yearly');
       expect(component.form.get('alertThreshold')?.value).toBe(90);
+    });
+
+    it('should load startDate from existing budget', () => {
+      const startDateValue = component.form.get('startDate')?.value;
+      expect(startDateValue).toBeInstanceOf(Date);
     });
   });
 
@@ -366,6 +372,54 @@ describe('BudgetFormComponent', () => {
       await component.onSubmit();
 
       expect(component.isSubmitting()).toBe(false);
+    });
+
+    it('should include startDate in createBudget when provided', async () => {
+      const customStartDate = new Date(2024, 0, 15); // Jan 15, 2024
+      component.form.patchValue({
+        name: 'Test Budget',
+        categoryId: 'cat1',
+        amount: 100,
+        currency: 'USD',
+        period: 'monthly',
+        alertThreshold: 80,
+        startDate: customStartDate
+      });
+
+      await component.onSubmit();
+
+      expect(mockBudgetService.createBudget).toHaveBeenCalledWith({
+        name: 'Test Budget',
+        categoryId: 'cat1',
+        amount: 100,
+        currency: 'USD',
+        period: 'monthly',
+        alertThreshold: 80,
+        startDate: customStartDate
+      });
+    });
+
+    it('should not include startDate in createBudget when null', async () => {
+      component.form.patchValue({
+        name: 'Test Budget',
+        categoryId: 'cat1',
+        amount: 100,
+        currency: 'USD',
+        period: 'monthly',
+        alertThreshold: 80,
+        startDate: null
+      });
+
+      await component.onSubmit();
+
+      expect(mockBudgetService.createBudget).toHaveBeenCalledWith({
+        name: 'Test Budget',
+        categoryId: 'cat1',
+        amount: 100,
+        currency: 'USD',
+        period: 'monthly',
+        alertThreshold: 80
+      });
     });
   });
 

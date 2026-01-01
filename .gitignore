@@ -40,3 +40,7 @@ Thumbs.db
 .claude/
 PLAN.md
 .editorconfig
+
+# Local production environment (contains secrets)
+src/environments/environment.prod-local.ts
+.firebase/

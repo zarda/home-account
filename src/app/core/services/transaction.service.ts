@@ -355,4 +355,41 @@ export class TransactionService {
       }
     );
   }
+
+  // Get transaction dates for a month (for calendar highlighting)
+  getTransactionDatesForMonth(year: number, month: number): Observable<Map<string, 'income' | 'expense' | 'both'>> {
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+
+    const userId = this.authService.userId();
+    if (!userId) return of(new Map());
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      {
+        where: [
+          { field: 'date', op: '>=', value: Timestamp.fromDate(startDate) },
+          { field: 'date', op: '<=', value: Timestamp.fromDate(endDate) }
+        ]
+      }
+    ).pipe(
+      map(transactions => {
+        const dateMap = new Map<string, 'income' | 'expense' | 'both'>();
+
+        for (const t of transactions) {
+          const date = t.date.toDate();
+          const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+          const existing = dateMap.get(dateKey);
+
+          if (!existing) {
+            dateMap.set(dateKey, t.type);
+          } else if (existing !== t.type) {
+            dateMap.set(dateKey, 'both');
+          }
+        }
+
+        return dateMap;
+      })
+    );
+  }
 }

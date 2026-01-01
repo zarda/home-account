@@ -10,6 +10,9 @@ import { MatSliderModule } from '@angular/material/slider';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { BudgetService } from '../../../core/services/budget.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -35,7 +38,10 @@ export interface BudgetFormDialogData {
     MatSliderModule,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    MatTooltipModule
   ],
   templateUrl: './budget-form.component.html',
   styleUrl: './budget-form.component.scss'
@@ -76,12 +82,16 @@ export class BudgetFormComponent implements OnInit {
     const budget = this.data.budget;
     const defaultCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
 
+    // Convert Firestore Timestamp to Date for the form
+    const startDate = budget?.startDate?.toDate() || null;
+
     this.form = this.fb.group({
       name: [budget?.name || '', Validators.required],
       categoryId: [budget?.categoryId || '', Validators.required],
       amount: [budget?.amount || '', [Validators.required, Validators.min(0.01)]],
       currency: [budget?.currency || defaultCurrency, Validators.required],
       period: [budget?.period || 'monthly', Validators.required],
+      startDate: [startDate],
       alertThreshold: [budget?.alertThreshold || 80]
     });
   }
@@ -106,6 +116,11 @@ export class BudgetFormComponent implements OnInit {
         period: formValue.period,
         alertThreshold: formValue.alertThreshold
       };
+
+      // Only include startDate if user selected one
+      if (formValue.startDate) {
+        budgetData.startDate = formValue.startDate;
+      }
 
       if (this.data.mode === 'add') {
         await this.budgetService.createBudget(budgetData);

@@ -1,38 +1,41 @@
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, EventEmitter, inject, Input, OnDestroy, OnInit, Output, signal, ViewChild } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
-import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatInputModule } from '@angular/material/input';
-import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatChipsModule } from '@angular/material/chips';
-import { MatExpansionModule } from '@angular/material/expansion';
+import { Subscription } from 'rxjs';
 import { Category, TransactionFilters } from '../../../models';
+import { TransactionService } from '../../../core/services/transaction.service';
 
 @Component({
   selector: 'app-transaction-filters',
   standalone: true,
   imports: [
     FormsModule,
-    MatCardModule,
     MatFormFieldModule,
     MatSelectModule,
     MatInputModule,
     MatDatepickerModule,
     MatNativeDateModule,
     MatButtonModule,
-    MatIconModule,
-    MatChipsModule,
-    MatExpansionModule
+    MatIconModule
   ],
   templateUrl: './transaction-filters.component.html',
   styleUrl: './transaction-filters.component.scss',
 })
-export class TransactionFiltersComponent {
+export class TransactionFiltersComponent implements OnInit, OnDestroy, AfterViewInit {
+  private transactionService = inject(TransactionService);
+  private cdr = inject(ChangeDetectorRef);
+
+  @ViewChild('dayPicker') dayPicker!: MatDatepicker<Date>;
+  @ViewChild('startPicker') startPicker!: MatDatepicker<Date>;
+  @ViewChild('endPicker') endPicker!: MatDatepicker<Date>;
+
   @Input() categories: Category[] = [];
   @Input() incomeCategories: Category[] = [];
   @Output() filtersChanged = new EventEmitter<TransactionFilters>();
@@ -42,6 +45,103 @@ export class TransactionFiltersComponent {
   activeQuickFilter = signal<string | null>(null);
 
   filters: TransactionFilters = {};
+
+  // Store transaction dates for calendar highlighting - keyed by "year-month"
+  private transactionDatesCache = new Map<string, Map<string, 'income' | 'expense' | 'both'>>();
+  private loadingMonths = new Set<string>();
+  private datesSubs: Subscription[] = [];
+
+  ngOnInit(): void {
+    // Default to today's transactions
+    this.setQuickFilter('today');
+  }
+
+  ngAfterViewInit(): void {
+    // Subscribe to datepicker view changes to pre-load data
+    this.setupDatepickerListeners(this.dayPicker);
+    this.setupDatepickerListeners(this.startPicker);
+    this.setupDatepickerListeners(this.endPicker);
+  }
+
+  ngOnDestroy(): void {
+    this.datesSubs.forEach(sub => sub.unsubscribe());
+  }
+
+  private setupDatepickerListeners(picker: MatDatepicker<Date>): void {
+    if (!picker) return;
+
+    // When picker opens, load current and adjacent months
+    const openSub = picker.openedStream.subscribe(() => {
+      const now = new Date();
+      this.preloadMonthsAround(now.getFullYear(), now.getMonth());
+    });
+    this.datesSubs.push(openSub);
+  }
+
+  private preloadMonthsAround(year: number, month: number): void {
+    // Previous month
+    const prevMonth = month === 0 ? 11 : month - 1;
+    const prevYear = month === 0 ? year - 1 : year;
+    this.loadTransactionDatesForMonth(prevYear, prevMonth);
+
+    // Current month
+    this.loadTransactionDatesForMonth(year, month);
+
+    // Next month
+    const nextMonth = month === 11 ? 0 : month + 1;
+    const nextYear = month === 11 ? year + 1 : year;
+    this.loadTransactionDatesForMonth(nextYear, nextMonth);
+  }
+
+  // Called when user navigates to a different month in the calendar
+  onCalendarMonthChange(date: Date): void {
+    this.preloadMonthsAround(date.getFullYear(), date.getMonth());
+  }
+
+  // Called when user selects a different year
+  onCalendarYearChange(date: Date): void {
+    this.preloadMonthsAround(date.getFullYear(), date.getMonth());
+  }
+
+  // Load transaction dates for a specific month (with caching)
+  private loadTransactionDatesForMonth(year: number, month: number): void {
+    const monthKey = `${year}-${month}`;
+
+    // Skip if already loaded or loading
+    if (this.transactionDatesCache.has(monthKey) || this.loadingMonths.has(monthKey)) {
+      return;
+    }
+
+    this.loadingMonths.add(monthKey);
+    const sub = this.transactionService.getTransactionDatesForMonth(year, month).subscribe(dates => {
+      this.transactionDatesCache.set(monthKey, dates);
+      this.loadingMonths.delete(monthKey);
+      this.cdr.markForCheck(); // Trigger re-render of calendar cells
+    });
+    this.datesSubs.push(sub);
+  }
+
+  // Date class function for highlighting dates with transactions
+  dateClass = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const monthKey = `${year}-${month}`;
+
+    // Trigger loading for this month if not cached
+    if (!this.transactionDatesCache.has(monthKey)) {
+      this.loadTransactionDatesForMonth(year, month);
+      return '';
+    }
+
+    const monthData = this.transactionDatesCache.get(monthKey);
+    const dateKey = `${year}-${month}-${date.getDate()}`;
+    const type = monthData?.get(dateKey);
+
+    if (type === 'income') return 'has-income';
+    if (type === 'expense') return 'has-expense';
+    if (type === 'both') return 'has-both';
+    return '';
+  };
 
   activeFilterCount(): number {
     let count = 0;
@@ -65,27 +165,35 @@ export class TransactionFiltersComponent {
     const now = new Date();
 
     switch (filter) {
+      case 'today':
+        this.filters.startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        this.filters.endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        break;
+
+      case 'thisWeek': {
+        const dayOfWeek = now.getDay();
+        const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
+        const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6, 23, 59, 59, 999);
+        this.filters.startDate = monday;
+        this.filters.endDate = sunday;
+        break;
+      }
+
       case 'thisMonth':
         this.filters.startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        this.filters.endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-
-      case 'lastMonth':
-        this.filters.startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        this.filters.endDate = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-
-      case 'last7Days':
-        this.filters.endDate = new Date();
-        this.filters.startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-
-      case 'last30Days':
-        this.filters.endDate = new Date();
-        this.filters.startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        this.filters.endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
         break;
     }
 
+    this.emitFilters();
+  }
+
+  setDateFilter(date: Date | null): void {
+    if (!date) return;
+    this.activeQuickFilter.set(null);
+    this.filters.startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    this.filters.endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
     this.emitFilters();
   }
 

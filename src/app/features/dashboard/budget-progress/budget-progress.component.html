@@ -30,7 +30,7 @@
 
           <div class="budget-footer">
             <span class="budget-amounts">
-              {{ formatAmount(budget.spent, budget.currency) }} / {{ formatAmount(budget.amount, budget.currency) }}
+              {{ formatAmount(getBudgetSpent(budget), budget.currency) }} / {{ formatAmount(budget.amount, budget.currency) }}
             </span>
           </div>
         </div>

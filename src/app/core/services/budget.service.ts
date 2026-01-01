@@ -333,34 +333,94 @@ export class BudgetService {
     }
   }
 
-  // Helper: Get budget period start and end dates
+  // Helper: Get budget period start and end dates for the CURRENT period
   private getBudgetPeriodDates(budget: Budget): { start: Date; end: Date } {
-    const startDate = budget.startDate.toDate();
-    let endDate: Date;
+    const now = new Date();
+    const budgetStartDate = budget.startDate.toDate();
+    let periodStart: Date;
+    let periodEnd: Date;
 
     switch (budget.period) {
-      case 'weekly':
-        endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + 6);
-        break;
+      case 'weekly': {
+        // Get the day of week from budget start (0=Sunday, 1=Monday, etc.)
+        const startDayOfWeek = budgetStartDate.getDay();
+        // Calculate current week's start based on the same day of week
+        const currentDayOfWeek = now.getDay();
+        const daysToSubtract = (currentDayOfWeek - startDayOfWeek + 7) % 7;
+        periodStart = new Date(now);
+        periodStart.setDate(now.getDate() - daysToSubtract);
+        periodStart.setHours(0, 0, 0, 0);
 
-      case 'monthly':
-        endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
+        periodEnd = new Date(periodStart);
+        periodEnd.setDate(periodStart.getDate() + 6);
+        periodEnd.setHours(23, 59, 59, 999);
         break;
+      }
 
-      case 'yearly':
-        endDate = new Date(startDate.getFullYear(), 11, 31);
+      case 'monthly': {
+        // Get the day of month from budget start
+        const startDayOfMonth = budgetStartDate.getDate();
+        // Calculate current period based on the same day of month
+        let year = now.getFullYear();
+        let month = now.getMonth();
+
+        // If we haven't reached the start day this month, use previous month
+        if (now.getDate() < startDayOfMonth) {
+          month--;
+          if (month < 0) {
+            month = 11;
+            year--;
+          }
+        }
+
+        // Handle case where start day doesn't exist in current month (e.g., 31st in Feb)
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const actualStartDay = Math.min(startDayOfMonth, daysInMonth);
+
+        periodStart = new Date(year, month, actualStartDay, 0, 0, 0, 0);
+
+        // End is one day before next period start
+        let endYear = year;
+        let endMonth = month + 1;
+        if (endMonth > 11) {
+          endMonth = 0;
+          endYear++;
+        }
+        const daysInEndMonth = new Date(endYear, endMonth + 1, 0).getDate();
+        const actualEndDay = Math.min(startDayOfMonth, daysInEndMonth);
+        periodEnd = new Date(endYear, endMonth, actualEndDay, 0, 0, 0, 0);
+        periodEnd.setMilliseconds(periodEnd.getMilliseconds() - 1);
         break;
-    }
+      }
 
-    if (budget.endDate) {
-      const budgetEndDate = budget.endDate.toDate();
-      if (budgetEndDate < endDate) {
-        endDate = budgetEndDate;
+      case 'yearly': {
+        // Get month and day from budget start
+        const startMonth = budgetStartDate.getMonth();
+        const startDay = budgetStartDate.getDate();
+        let year = now.getFullYear();
+
+        // Check if we've passed the start date this year
+        const thisYearStart = new Date(year, startMonth, startDay);
+        if (now < thisYearStart) {
+          year--;
+        }
+
+        periodStart = new Date(year, startMonth, startDay, 0, 0, 0, 0);
+        periodEnd = new Date(year + 1, startMonth, startDay, 0, 0, 0, 0);
+        periodEnd.setMilliseconds(periodEnd.getMilliseconds() - 1);
+        break;
       }
     }
 
-    return { start: startDate, end: endDate };
+    // Respect budget's custom end date if set
+    if (budget.endDate) {
+      const budgetEndDate = budget.endDate.toDate();
+      if (budgetEndDate < periodEnd) {
+        periodEnd = budgetEndDate;
+      }
+    }
+
+    return { start: periodStart, end: periodEnd };
   }
 
   // Helper: Format period string

@@ -1,6 +1,11 @@
-import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnInit, signal, ViewChild } from '@angular/core';
 
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
 import { FormsModule } from '@angular/forms';
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
@@ -13,7 +18,13 @@ import { RecentTransactionsComponent } from './recent-transactions/recent-transa
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 
-type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear';
+type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'custom';
+
+interface CustomPeriod {
+  type: 'month' | 'year';
+  year: number;
+  month?: number; // 0-11, only for type 'month'
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -21,6 +32,11 @@ type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear';
   imports: [
     FormsModule,
     MatButtonToggleModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    MatMenuModule,
+    MatIconModule,
+    MatButtonModule,
     FinancialSummaryComponent,
     SpendingChartComponent,
     RecentTransactionsComponent,
@@ -39,6 +55,23 @@ export class DashboardComponent implements OnInit {
   selectedPeriod: PeriodOption = 'thisMonth';
   isLoading = signal(true);
 
+  // Custom period selection
+  customPeriod = signal<CustomPeriod | null>(null);
+
+  customPeriodLabel = computed(() => {
+    const cp = this.customPeriod();
+    if (!cp) return '';
+    if (cp.type === 'year') return cp.year.toString();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[cp.month!]} ${cp.year}`;
+  });
+
+  isCustomPeriod = computed(() => this.selectedPeriod === 'custom');
+
+  // ViewChild for date pickers
+  @ViewChild('monthPicker') monthPicker!: MatDatepicker<Date>;
+  @ViewChild('yearPicker') yearPicker!: MatDatepicker<Date>;
+
   // User info
   userName = computed(() => {
     const user = this.authService.currentUser();
@@ -53,6 +86,7 @@ export class DashboardComponent implements OnInit {
   totalIncome = this.transactionService.totalIncome;
   totalExpenses = this.transactionService.totalExpense;
   balance = this.transactionService.balance;
+  transactions = this.transactionService.transactions;
   recentTransactions = signal<Transaction[]>([]);
 
   categoryTotals = computed(() => {
@@ -101,6 +135,43 @@ export class DashboardComponent implements OnInit {
   }
 
   onPeriodChange(): void {
+    this.customPeriod.set(null); // Clear custom when toggle clicked
+    this.loadData();
+  }
+
+  // Month/Year picker methods
+  openMonthPicker(): void {
+    this.monthPicker.open();
+  }
+
+  openYearPicker(): void {
+    this.yearPicker.open();
+  }
+
+  onMonthSelected(date: Date, picker: MatDatepicker<Date>): void {
+    picker.close();
+    this.customPeriod.set({
+      type: 'month',
+      year: date.getFullYear(),
+      month: date.getMonth()
+    });
+    this.selectedPeriod = 'custom';
+    this.loadData();
+  }
+
+  onYearSelected(date: Date, picker: MatDatepicker<Date>): void {
+    picker.close();
+    this.customPeriod.set({
+      type: 'year',
+      year: date.getFullYear()
+    });
+    this.selectedPeriod = 'custom';
+    this.loadData();
+  }
+
+  clearCustomPeriod(): void {
+    this.customPeriod.set(null);
+    this.selectedPeriod = 'thisMonth';
     this.loadData();
   }
 
@@ -135,6 +206,25 @@ export class DashboardComponent implements OnInit {
   private getPeriodDates(): { start: Date; end: Date } {
     const now = new Date();
 
+    // Handle custom period first
+    if (this.selectedPeriod === 'custom') {
+      const cp = this.customPeriod();
+      if (cp) {
+        if (cp.type === 'month') {
+          return {
+            start: new Date(cp.year, cp.month!, 1),
+            end: new Date(cp.year, cp.month! + 1, 0, 23, 59, 59)
+          };
+        } else {
+          // Full year
+          return {
+            start: new Date(cp.year, 0, 1),
+            end: new Date(cp.year, 11, 31, 23, 59, 59)
+          };
+        }
+      }
+    }
+
     switch (this.selectedPeriod) {
       case 'thisMonth':
         return {
@@ -155,6 +245,7 @@ export class DashboardComponent implements OnInit {
         };
 
       case 'thisYear':
+      default:
         return {
           start: new Date(now.getFullYear(), 0, 1),
           end: new Date(now.getFullYear(), 11, 31, 23, 59, 59)

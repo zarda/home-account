@@ -45,8 +45,16 @@
 }
 
 .quick-filters {
-  display: none;
+  display: flex;
+  flex: 1;
   gap: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .quick-btn {
@@ -59,6 +67,8 @@
   color: #6b7280;
   cursor: pointer;
   transition: all 0.15s ease;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .quick-btn:hover {
@@ -70,6 +80,19 @@
   background: #4f46e5;
   border-color: #4f46e5;
   color: white;
+}
+
+.quick-btn.date-picker-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+}
+
+.quick-btn.date-picker-btn mat-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
 }
 
 .filter-toggle {
@@ -150,6 +173,10 @@
   padding: 12px;
   border-top: 1px solid #f3f4f6;
   background: #fafafa;
+
+  .search-wrapper {
+    margin-bottom: 12px;
+  }
 }
 
 .filter-grid {
@@ -206,10 +233,6 @@
     padding: 10px 16px;
   }
 
-  .quick-filters {
-    display: flex;
-  }
-
   .add-label {
     display: inline;
   }
@@ -222,5 +245,46 @@
 @media (min-width: 1024px) {
   .filter-grid {
     grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+// Calendar date highlighting (must use ::ng-deep as datepicker renders in overlay)
+::ng-deep .mat-calendar-body-cell-content {
+  // Make room for dots below the date number
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 6px;
+}
+
+::ng-deep .mat-calendar-body-cell {
+  &.has-income,
+  &.has-expense,
+  &.has-both {
+    .mat-calendar-body-cell-content::after {
+      content: '';
+      display: block;
+      margin-top: 2px;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+    }
+  }
+
+  &.has-income .mat-calendar-body-cell-content::after {
+    background-color: #22c55e;
+  }
+
+  &.has-expense .mat-calendar-body-cell-content::after {
+    background-color: #ef4444;
+  }
+
+  // Two separate dots for both income and expense
+  &.has-both .mat-calendar-body-cell-content::after {
+    width: 10px;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #22c55e 45%, transparent 45%, transparent 55%, #ef4444 55%);
   }
 }

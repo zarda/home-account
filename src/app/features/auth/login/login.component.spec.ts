@@ -167,7 +167,7 @@ describe('LoginComponent', () => {
       await component.signInWithGoogle();
       fixture.detectChanges();
 
-      const errorDiv = fixture.nativeElement.querySelector('.bg-red-100');
+      const errorDiv = fixture.nativeElement.querySelector('.error-message');
       expect(errorDiv).toBeTruthy();
       expect(errorDiv.textContent).toContain('Sign-in was cancelled');
     });

@@ -8,28 +8,79 @@
       </p>
     </div>
 
-    <mat-button-toggle-group
-      [(ngModel)]="selectedPeriod"
-      (change)="onPeriodChange()"
-      class="period-toggle bg-white"
-    >
-      <mat-button-toggle value="thisMonth">
-        <span class="mobile-label">Month</span>
-        <span class="desktop-label">This Month</span>
-      </mat-button-toggle>
-      <mat-button-toggle value="lastMonth">
-        <span class="mobile-label">Last</span>
-        <span class="desktop-label">Last Month</span>
-      </mat-button-toggle>
-      <mat-button-toggle value="last3Months">
-        <span class="mobile-label">3M</span>
-        <span class="desktop-label">3 Months</span>
-      </mat-button-toggle>
-      <mat-button-toggle value="thisYear">
-        <span class="mobile-label">Year</span>
-        <span class="desktop-label">This Year</span>
-      </mat-button-toggle>
-    </mat-button-toggle-group>
+    <div class="period-controls">
+      <mat-button-toggle-group
+        [value]="isCustomPeriod() ? null : selectedPeriod"
+        (change)="selectedPeriod = $event.value; onPeriodChange()"
+        class="period-toggle bg-white"
+      >
+        <mat-button-toggle value="thisMonth">
+          <span class="mobile-label">Month</span>
+          <span class="desktop-label">This Month</span>
+        </mat-button-toggle>
+        <mat-button-toggle value="lastMonth">
+          <span class="mobile-label">Last</span>
+          <span class="desktop-label">Last Month</span>
+        </mat-button-toggle>
+        <mat-button-toggle value="last3Months">
+          <span class="mobile-label">3M</span>
+          <span class="desktop-label">3 Months</span>
+        </mat-button-toggle>
+        <mat-button-toggle value="thisYear">
+          <span class="mobile-label">Year</span>
+          <span class="desktop-label">This Year</span>
+        </mat-button-toggle>
+      </mat-button-toggle-group>
+
+      <!-- Custom Period Picker -->
+      <div class="custom-period-picker">
+        <button
+          mat-icon-button
+          [matMenuTriggerFor]="periodMenu"
+          [class.active]="isCustomPeriod()"
+          class="picker-btn"
+        >
+          <mat-icon>calendar_month</mat-icon>
+        </button>
+
+        <mat-menu #periodMenu="matMenu">
+          <button mat-menu-item (click)="openMonthPicker()">
+            <mat-icon>event</mat-icon>
+            <span>Select Month</span>
+          </button>
+          <button mat-menu-item (click)="openYearPicker()">
+            <mat-icon>date_range</mat-icon>
+            <span>Select Year</span>
+          </button>
+        </mat-menu>
+
+        <!-- Hidden Month Picker -->
+        <input [matDatepicker]="monthPicker" style="display: none">
+        <mat-datepicker
+          #monthPicker
+          startView="year"
+          (monthSelected)="onMonthSelected($event, monthPicker)"
+        ></mat-datepicker>
+
+        <!-- Hidden Year Picker -->
+        <input [matDatepicker]="yearPicker" style="display: none">
+        <mat-datepicker
+          #yearPicker
+          startView="multi-year"
+          (yearSelected)="onYearSelected($event, yearPicker)"
+        ></mat-datepicker>
+
+        <!-- Selected Period Chip -->
+        @if (isCustomPeriod()) {
+          <div class="period-chip">
+            <span>{{ customPeriodLabel() }}</span>
+            <button mat-icon-button (click)="clearCustomPeriod()" class="clear-btn">
+              <mat-icon>close</mat-icon>
+            </button>
+          </div>
+        }
+      </div>
+    </div>
   </div>
 
   @if (isLoading()) {
@@ -62,6 +113,8 @@
         <app-budget-progress
           [budgets]="activeBudgets()"
           [categories]="categoriesMap()"
+          [transactions]="transactions()"
+          [baseCurrency]="baseCurrency()"
         />
       }
     </div>
@@ -88,6 +141,8 @@
         <app-budget-progress
           [budgets]="activeBudgets()"
           [categories]="categoriesMap()"
+          [transactions]="transactions()"
+          [baseCurrency]="baseCurrency()"
         />
       }
     </div>

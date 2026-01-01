@@ -5,7 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { Budget, Category } from '../../../models';
+import { Budget, Category, Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 
@@ -25,9 +25,26 @@ import { CategoryHelperService } from '../../../core/services/category-helper.se
 export class BudgetProgressComponent {
   @Input() budgets: Budget[] = [];
   @Input() categories: Map<string, Category> = new Map<string, Category>();
+  @Input() transactions: Transaction[] = [];
+  @Input() baseCurrency = 'USD';
 
   private currencyService = inject(CurrencyService);
   private categoryHelperService = inject(CategoryHelperService);
+
+  // Calculate spent for a budget based on transactions in the current period
+  // Returns the spent amount in the BUDGET's currency for proper comparison
+  getBudgetSpent(budget: Budget): number {
+    // Sum transactions in base currency
+    const spentInBaseCurrency = this.transactions
+      .filter(t => t.categoryId === budget.categoryId && t.type === 'expense')
+      .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+
+    // Convert from base currency to budget's currency
+    if (this.baseCurrency === budget.currency) {
+      return spentInBaseCurrency;
+    }
+    return this.currencyService.convert(spentInBaseCurrency, this.baseCurrency, budget.currency);
+  }
 
   getCategoryName(categoryId: string): string {
     return this.categoryHelperService.getCategoryName(categoryId, this.categories);
@@ -47,7 +64,8 @@ export class BudgetProgressComponent {
 
   getPercentage(budget: Budget): number {
     if (budget.amount === 0) return 0;
-    return Math.min((budget.spent / budget.amount) * 100, 100);
+    const spent = this.getBudgetSpent(budget);
+    return Math.min((spent / budget.amount) * 100, 100);
   }
 
   getProgressColor(budget: Budget): 'primary' | 'accent' | 'warn' {
@@ -58,9 +76,10 @@ export class BudgetProgressComponent {
   }
 
   getRemainingText(budget: Budget): string {
-    const remaining = budget.amount - budget.spent;
+    const spent = this.getBudgetSpent(budget);
+    const remaining = budget.amount - spent;
     if (remaining <= 0) {
-      const over = budget.spent - budget.amount;
+      const over = spent - budget.amount;
       return `${this.formatAmount(over, budget.currency)} over`;
     }
     return `${this.formatAmount(remaining, budget.currency)} left`;

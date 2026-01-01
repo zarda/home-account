@@ -65,15 +65,26 @@
         </mat-form-field>
       </div>
 
-      <!-- Period selection -->
-      <mat-form-field appearance="outline" class="w-full">
-        <mat-label>Budget Period</mat-label>
-        <mat-select formControlName="period">
-          @for (period of periods; track period.value) {
-            <mat-option [value]="period.value">{{ period.label }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+      <!-- Period and Start Date -->
+      <div class="flex gap-4">
+        <mat-form-field appearance="outline" class="flex-1">
+          <mat-label>Budget Period</mat-label>
+          <mat-select formControlName="period">
+            @for (period of periods; track period.value) {
+              <mat-option [value]="period.value">{{ period.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="flex-1"
+                        matTooltip="Defines when budget period begins"
+                        matTooltipPosition="above">
+          <mat-label>Start Date (Optional)</mat-label>
+          <input matInput [matDatepicker]="picker" formControlName="startDate" placeholder="Use default">
+          <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
+          <mat-datepicker #picker></mat-datepicker>
+        </mat-form-field>
+      </div>
 
       <!-- Alert threshold slider -->
       <div class="threshold-section mt-4 mb-2">
