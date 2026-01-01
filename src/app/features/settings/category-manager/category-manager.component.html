@@ -1,0 +1,71 @@
+<div class="category-manager">
+  <!-- Type Toggle & Add Button -->
+  <div class="manager-header">
+    <mat-button-toggle-group [(ngModel)]="selectedType">
+      <mat-button-toggle value="expense">
+        <mat-icon>trending_down</mat-icon>
+        Expenses
+      </mat-button-toggle>
+      <mat-button-toggle value="income">
+        <mat-icon>trending_up</mat-icon>
+        Income
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+
+    <button mat-flat-button color="primary" (click)="openAddDialog()">
+      <mat-icon>add</mat-icon>
+      Add Category
+    </button>
+  </div>
+
+  <!-- Categories List with Drag & Drop -->
+  <div
+    cdkDropList
+    [cdkDropListData]="filteredCategories"
+    (cdkDropListDropped)="onDrop($event)"
+    class="categories-list"
+  >
+    @for (category of filteredCategories; track category.id) {
+      <div class="category-item" cdkDrag>
+        <div class="drag-handle" cdkDragHandle>
+          <mat-icon>drag_indicator</mat-icon>
+        </div>
+
+        <div class="category-icon" [style.background-color]="category.color + '20'">
+          <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
+        </div>
+
+        <div class="category-info">
+          <span class="category-name">{{ category.name }}</span>
+          @if (category.isDefault) {
+            <span class="default-badge">Default</span>
+          }
+        </div>
+
+        <button mat-icon-button [matMenuTriggerFor]="categoryMenu">
+          <mat-icon>more_vert</mat-icon>
+        </button>
+
+        <mat-menu #categoryMenu="matMenu">
+          <button mat-menu-item (click)="openEditDialog(category)">
+            <mat-icon>edit</mat-icon>
+            <span>Edit</span>
+          </button>
+          @if (!category.isDefault) {
+            <button mat-menu-item (click)="deleteCategory(category)" class="delete-option">
+              <mat-icon>delete</mat-icon>
+              <span>Delete</span>
+            </button>
+          }
+        </mat-menu>
+      </div>
+    }
+  </div>
+
+  @if (filteredCategories.length === 0 && !isLoading()) {
+    <div class="empty-state">
+      <mat-icon>category</mat-icon>
+      <p>No {{ selectedType }} categories found</p>
+    </div>
+  }
+</div>

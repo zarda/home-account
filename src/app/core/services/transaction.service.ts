@@ -278,6 +278,24 @@ export class TransactionService {
     }
   }
 
+  // Delete all transactions (danger zone)
+  async deleteAllTransactions(): Promise<void> {
+    this.isLoading.set(true);
+
+    try {
+      const transactions = this.transactions();
+
+      // Delete in batches
+      for (const transaction of transactions) {
+        await this.firestoreService.deleteDocument(
+          `${this.userTransactionsPath}/${transaction.id}`
+        );
+      }
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
   // Get transactions by date range
   getByDateRange(start: Date, end: Date): Observable<Transaction[]> {
     return this.getTransactions({

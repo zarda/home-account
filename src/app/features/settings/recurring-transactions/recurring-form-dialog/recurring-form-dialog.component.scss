@@ -1,0 +1,147 @@
+.form-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 350px;
+  max-width: 450px;
+
+  mat-form-field {
+    width: 100%;
+  }
+}
+
+// Type Toggle
+.type-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.type-toggle {
+  ::ng-deep {
+    .mat-button-toggle-appearance-standard {
+      background: transparent;
+    }
+
+    .mat-button-toggle-checked {
+      &:first-child {
+        background: #fef2f2;
+        color: #dc2626;
+      }
+
+      &:last-child {
+        background: #f0fdf4;
+        color: #16a34a;
+      }
+    }
+  }
+
+  mat-icon {
+    margin-right: 4px;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+// Amount Row
+.amount-row {
+  display: flex;
+  gap: 12px;
+}
+
+.amount-field {
+  flex: 2;
+}
+
+.currency-field {
+  flex: 1;
+  min-width: 100px;
+}
+
+// Frequency Row
+.frequency-row {
+  display: flex;
+  gap: 12px;
+}
+
+.interval-field {
+  flex: 1;
+  max-width: 100px;
+}
+
+.frequency-type-field {
+  flex: 2;
+}
+
+// Section Divider
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e5e7eb;
+  }
+}
+
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+// Frequency Preview
+.frequency-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border-radius: 8px;
+  color: #16a34a;
+  font-size: 0.875rem;
+  font-weight: 500;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// End Date Toggle
+.end-date-toggle {
+  display: flex;
+
+  button {
+    color: #6b7280;
+
+    mat-icon {
+      margin-right: 4px;
+    }
+  }
+}
+
+// Category option styling
+::ng-deep .mat-mdc-option {
+  mat-icon {
+    margin-right: 8px;
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+// Dialog actions
+mat-dialog-actions {
+  padding: 16px 24px !important;
+  gap: 8px;
+}

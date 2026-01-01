@@ -1,0 +1,85 @@
+<div class="recurring-transactions">
+  <div class="section-header">
+    <div class="header-text">
+      <h3>Recurring Transactions</h3>
+      <p class="section-description">Manage your recurring income and expenses</p>
+    </div>
+    <button mat-flat-button color="primary" (click)="openAddDialog()" class="add-btn">
+      <mat-icon>add</mat-icon>
+      Add
+    </button>
+  </div>
+
+  @if (isLoading()) {
+    <div class="loading-state">
+      <mat-spinner diameter="32"></mat-spinner>
+    </div>
+  } @else if (recurringTransactions().length === 0) {
+    <app-empty-state
+      icon="repeat"
+      title="No Recurring Transactions"
+      description="Set up recurring transactions to automatically track regular income and expenses."
+    />
+  } @else {
+    <div class="recurring-list">
+      @for (recurring of recurringTransactions(); track recurring.id) {
+        <div class="recurring-item" [class.paused]="!recurring.isActive">
+          <div class="recurring-icon" [style.background-color]="getCategoryColor(recurring.categoryId) + '20'">
+            <mat-icon [style.color]="getCategoryColor(recurring.categoryId)">
+              {{ getCategoryIcon(recurring.categoryId) }}
+            </mat-icon>
+          </div>
+
+          <div class="recurring-details">
+            <div class="recurring-main">
+              <span class="recurring-name">{{ recurring.name }}</span>
+              <span class="recurring-amount" [class.expense]="recurring.type === 'expense'" [class.income]="recurring.type === 'income'">
+                {{ recurring.type === 'expense' ? '-' : '+' }}{{ recurring.amount | currency:recurring.currency:'symbol':'1.2-2' }}
+              </span>
+            </div>
+            <div class="recurring-meta">
+              <span class="recurring-category">{{ getCategoryName(recurring.categoryId) }}</span>
+              <span class="recurring-frequency">
+                <mat-icon>schedule</mat-icon>
+                {{ getFrequencyText(recurring) }}
+              </span>
+              @if (recurring.nextOccurrence) {
+                <span class="recurring-next">
+                  Next: {{ recurring.nextOccurrence.toDate() | date:'MMM d, yyyy' }}
+                </span>
+              }
+            </div>
+          </div>
+
+          <div class="recurring-status">
+            @if (!recurring.isActive) {
+              <mat-chip class="status-chip paused">Paused</mat-chip>
+            }
+          </div>
+
+          <button mat-icon-button [matMenuTriggerFor]="actionMenu" class="action-btn">
+            <mat-icon>more_vert</mat-icon>
+          </button>
+
+          <mat-menu #actionMenu="matMenu">
+            @if (recurring.isActive) {
+              <button mat-menu-item (click)="toggleActive(recurring)">
+                <mat-icon>pause</mat-icon>
+                <span>Pause</span>
+              </button>
+            } @else {
+              <button mat-menu-item (click)="toggleActive(recurring)">
+                <mat-icon>play_arrow</mat-icon>
+                <span>Resume</span>
+              </button>
+            }
+            <button mat-menu-item (click)="deleteRecurring(recurring)" class="delete-action">
+              <mat-icon>delete</mat-icon>
+              <span>Delete</span>
+            </button>
+          </mat-menu>
+        </div>
+      }
+    </div>
+  }
+</div>

@@ -1,0 +1,276 @@
+.data-management {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin: 0;
+  }
+}
+
+.section-icon {
+  color: #4f46e5;
+  font-size: 24px;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+
+  &.danger {
+    color: #dc2626;
+  }
+}
+
+.section-description {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 4px 0 0 0;
+}
+
+// Export Options
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  height: auto;
+  text-align: left;
+  border-radius: 12px;
+  border-color: #e5e7eb;
+
+  mat-icon {
+    color: #4f46e5;
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .btn-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .btn-title {
+    font-weight: 500;
+    color: #1f2937;
+  }
+
+  .btn-subtitle {
+    font-size: 0.75rem;
+    color: #6b7280;
+    font-weight: 400;
+  }
+
+  &:hover:not(:disabled) {
+    border-color: #c7d2fe;
+    background: #f5f3ff;
+  }
+}
+
+// Import Dropzone
+.import-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  border: 2px dashed #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  mat-icon {
+    font-size: 40px;
+    width: 40px;
+    height: 40px;
+    color: #9ca3af;
+  }
+
+  &:hover {
+    border-color: #c7d2fe;
+    background: #f5f3ff;
+
+    mat-icon {
+      color: #4f46e5;
+    }
+  }
+}
+
+.dropzone-text {
+  font-weight: 500;
+  color: #374151;
+}
+
+.dropzone-hint {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+// Import Preview
+.import-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 12px;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #374151;
+
+  mat-icon {
+    color: #4f46e5;
+  }
+}
+
+.preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preview-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.preview-date {
+  color: #6b7280;
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.preview-desc {
+  flex: 1;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-amount {
+  font-weight: 500;
+  white-space: nowrap;
+
+  &.income {
+    color: #16a34a;
+  }
+
+  &.expense {
+    color: #dc2626;
+  }
+}
+
+.preview-more {
+  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+  padding: 8px;
+}
+
+.progress-text {
+  text-align: center;
+  font-size: 0.875rem;
+  color: #4f46e5;
+}
+
+.preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+// Danger Zone
+.danger-zone {
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fef2f2;
+}
+
+.danger-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.danger-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+}
+
+.danger-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.danger-title {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.danger-desc {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+@media (max-width: 640px) {
+  .danger-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+
+    button {
+      align-self: flex-end;
+    }
+  }
+
+  .export-options {
+    gap: 8px;
+  }
+
+  .export-btn {
+    padding: 12px;
+  }
+}

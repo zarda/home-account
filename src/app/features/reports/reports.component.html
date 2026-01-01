@@ -1,7 +1,144 @@
-<div class="flex flex-col items-center justify-center py-16">
-  <div class="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center mb-4">
-    <mat-icon class="!text-4xl !w-10 !h-10 text-primary-600">bar_chart</mat-icon>
+<div class="reports-container">
+  <!-- Header -->
+  <div class="header-section">
+    <div class="header-left">
+      <h1 class="text-2xl font-bold text-gray-900">Reports</h1>
+      <p class="text-gray-500 text-sm mt-1">Analyze your financial data</p>
+    </div>
+
+    <div class="header-right">
+      <div class="period-controls">
+        <mat-button-toggle-group
+          [value]="isCustomPeriod() ? null : selectedPeriod"
+          (change)="selectedPeriod = $event.value; onPeriodChange()"
+          class="period-toggle bg-white"
+        >
+          <mat-button-toggle value="thisMonth">
+            <span class="mobile-label">Month</span>
+            <span class="desktop-label">This Month</span>
+          </mat-button-toggle>
+          <mat-button-toggle value="lastMonth">
+            <span class="mobile-label">Last</span>
+            <span class="desktop-label">Last Month</span>
+          </mat-button-toggle>
+          <mat-button-toggle value="last3Months">
+            <span class="mobile-label">3M</span>
+            <span class="desktop-label">3 Months</span>
+          </mat-button-toggle>
+          <mat-button-toggle value="thisYear">
+            <span class="mobile-label">Year</span>
+            <span class="desktop-label">This Year</span>
+          </mat-button-toggle>
+        </mat-button-toggle-group>
+
+        <!-- Custom Period Picker -->
+        <div class="custom-period-picker">
+          <button
+            mat-icon-button
+            [matMenuTriggerFor]="periodMenu"
+            [class.active]="isCustomPeriod()"
+            class="picker-btn"
+          >
+            <mat-icon>calendar_month</mat-icon>
+          </button>
+
+          <mat-menu #periodMenu="matMenu">
+            <button mat-menu-item (click)="openMonthPicker()">
+              <mat-icon>event</mat-icon>
+              <span>Select Month</span>
+            </button>
+            <button mat-menu-item (click)="openYearPicker()">
+              <mat-icon>date_range</mat-icon>
+              <span>Select Year</span>
+            </button>
+          </mat-menu>
+
+          <!-- Hidden Month Picker -->
+          <input [matDatepicker]="monthPicker" style="display: none">
+          <mat-datepicker
+            #monthPicker
+            startView="year"
+            (monthSelected)="onMonthSelected($event, monthPicker)"
+          ></mat-datepicker>
+
+          <!-- Hidden Year Picker -->
+          <input [matDatepicker]="yearPicker" style="display: none">
+          <mat-datepicker
+            #yearPicker
+            startView="multi-year"
+            (yearSelected)="onYearSelected($event, yearPicker)"
+          ></mat-datepicker>
+
+          <!-- Selected Period Chip -->
+          @if (isCustomPeriod()) {
+            <div class="period-chip">
+              <span>{{ customPeriodLabel() }}</span>
+              <button mat-icon-button (click)="clearCustomPeriod()" class="clear-btn">
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+
+      <button mat-flat-button color="primary" (click)="openExportDialog()" class="export-btn">
+        <mat-icon>download</mat-icon>
+        <span class="desktop-label">Export</span>
+      </button>
+    </div>
   </div>
-  <h1 class="text-2xl font-bold text-gray-900">Reports</h1>
-  <p class="text-gray-500 mt-2">Coming in Phase 4.4</p>
+
+  @if (isLoading()) {
+    <app-loading-spinner message="Loading report data..." />
+  } @else {
+    <!-- Tabs Navigation -->
+    <mat-tab-group
+      [(selectedIndex)]="selectedTabIndex"
+      class="reports-tabs"
+      animationDuration="200ms"
+    >
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon class="tab-icon">show_chart</mat-icon>
+          <span class="tab-label">Spending Analysis</span>
+        </ng-template>
+        <div class="tab-content">
+          <app-spending-analysis
+            [transactions]="transactions()"
+            [categories]="categories()"
+            [dateRange]="dateRange()"
+            [currency]="baseCurrency()"
+          />
+        </div>
+      </mat-tab>
+
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon class="tab-icon">pie_chart</mat-icon>
+          <span class="tab-label">Category Breakdown</span>
+        </ng-template>
+        <div class="tab-content">
+          <app-category-breakdown
+            [transactions]="transactions()"
+            [categories]="categories()"
+            [currency]="baseCurrency()"
+          />
+        </div>
+      </mat-tab>
+
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon class="tab-icon">bar_chart</mat-icon>
+          <span class="tab-label">Monthly Comparison</span>
+        </ng-template>
+        <div class="tab-content">
+          <app-monthly-comparison
+            [transactions]="transactions()"
+            [dateRange]="dateRange()"
+            [currency]="baseCurrency()"
+          />
+        </div>
+      </mat-tab>
+    </mat-tab-group>
+  }
 </div>

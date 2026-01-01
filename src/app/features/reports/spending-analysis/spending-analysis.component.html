@@ -1,0 +1,96 @@
+@if (!hasData()) {
+  <app-empty-state
+    icon="show_chart"
+    title="No Data Available"
+    description="Add some transactions to see your spending analysis."
+  />
+} @else {
+  <div class="spending-analysis">
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+      <div class="summary-card income">
+        <div class="card-icon">
+          <mat-icon>trending_up</mat-icon>
+        </div>
+        <div class="card-content">
+          <span class="label">Total Income</span>
+          <span class="value">{{ totalIncome() | currency:currencyCode:'symbol':'1.2-2' }}</span>
+        </div>
+      </div>
+
+      <div class="summary-card expense">
+        <div class="card-icon">
+          <mat-icon>trending_down</mat-icon>
+        </div>
+        <div class="card-content">
+          <span class="label">Total Expenses</span>
+          <span class="value">{{ totalExpenses() | currency:currencyCode:'symbol':'1.2-2' }}</span>
+        </div>
+      </div>
+
+      <div class="summary-card" [class.positive]="netSavings() >= 0" [class.negative]="netSavings() < 0">
+        <div class="card-icon">
+          <mat-icon>{{ netSavings() >= 0 ? 'savings' : 'money_off' }}</mat-icon>
+        </div>
+        <div class="card-content">
+          <span class="label">Net Savings</span>
+          <span class="value">{{ netSavings() | currency:currencyCode:'symbol':'1.2-2' }}</span>
+          <span class="rate" [class.positive]="savingsRate() >= 0" [class.negative]="savingsRate() < 0">
+            {{ savingsRate() >= 0 ? '+' : '' }}{{ savingsRate() | number:'1.1-1' }}%
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trend Chart -->
+    <mat-card class="chart-card">
+      <mat-card-header>
+        <mat-card-title>Income vs Expenses Trend</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="chart-container">
+          <canvas
+            baseChart
+            [type]="chartType"
+            [data]="chartData()"
+            [options]="chartOptions"
+          ></canvas>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Top Spending Categories -->
+    <mat-card class="categories-card">
+      <mat-card-header>
+        <mat-card-title>Top Spending Categories</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="categories-list">
+          @for (category of topCategories(); track category.categoryId) {
+            <div class="category-item">
+              <div class="category-info">
+                <div class="category-icon" [style.background-color]="category.color + '20'">
+                  <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
+                </div>
+                <div class="category-details">
+                  <span class="category-name">{{ category.name }}</span>
+                  <span class="category-amount">{{ category.total | currency:currencyCode:'symbol':'1.2-2' }}</span>
+                </div>
+              </div>
+              <div class="category-percentage">
+                <div class="progress-bar">
+                  <div
+                    class="progress-fill"
+                    [style.width.%]="category.percentage"
+                    [style.background-color]="category.color"
+                  ></div>
+                </div>
+                <span class="percentage-text">{{ category.percentage | number:'1.1-1' }}%</span>
+              </div>
+            </div>
+          }
+        </div>
+      </mat-card-content>
+    </mat-card>
+  </div>
+}

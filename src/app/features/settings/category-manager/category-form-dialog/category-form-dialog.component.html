@@ -1,0 +1,72 @@
+<h2 mat-dialog-title>{{ title }}</h2>
+
+<mat-dialog-content>
+  <div class="form-content">
+    <!-- Category Name -->
+    <mat-form-field appearance="outline">
+      <mat-label>Category Name</mat-label>
+      <input matInput [(ngModel)]="name" placeholder="e.g., Coffee" maxlength="50">
+    </mat-form-field>
+
+    <!-- Icon Selection -->
+    <div class="icon-section">
+      <span class="section-label">Icon</span>
+      <div class="icons-grid" role="radiogroup" aria-label="Icon selection">
+        @for (icon of icons; track icon) {
+          <button
+            type="button"
+            class="icon-btn"
+            [class.selected]="selectedIcon === icon"
+            [style.color]="selectedIcon === icon ? selectedColor : ''"
+            (click)="selectIcon(icon)"
+          >
+            <mat-icon>{{ icon }}</mat-icon>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Color Selection -->
+    <div class="color-section">
+      <span class="section-label">Color</span>
+      <div class="colors-grid" role="radiogroup" aria-label="Color selection">
+        @for (color of colors; track color) {
+          <button
+            type="button"
+            class="color-btn"
+            [class.selected]="selectedColor === color"
+            [style.background-color]="color"
+            (click)="selectColor(color)"
+          >
+            @if (selectedColor === color) {
+              <mat-icon>check</mat-icon>
+            }
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Preview -->
+    <div class="preview-section">
+      <span class="section-label">Preview</span>
+      <div class="preview-item">
+        <div class="preview-icon" [style.background-color]="selectedColor + '20'">
+          <mat-icon [style.color]="selectedColor">{{ selectedIcon }}</mat-icon>
+        </div>
+        <span class="preview-name">{{ name || 'Category Name' }}</span>
+      </div>
+    </div>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()">Cancel</button>
+  <button
+    mat-flat-button
+    color="primary"
+    (click)="save()"
+    [disabled]="!isValid"
+  >
+    {{ isEdit ? 'Save Changes' : 'Create Category' }}
+  </button>
+</mat-dialog-actions>

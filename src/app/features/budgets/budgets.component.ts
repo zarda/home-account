@@ -73,8 +73,7 @@ export class BudgetsComponent implements OnInit, OnDestroy {
       next: () => {
         this.isLoading.set(false);
       },
-      error: (error) => {
-        console.error('Failed to load budgets:', error);
+      error: () => {
         this.isLoading.set(false);
       }
     });
@@ -121,8 +120,8 @@ export class BudgetsComponent implements OnInit, OnDestroy {
       if (confirmed) {
         try {
           await this.budgetService.deleteBudget(budget.id);
-        } catch (error) {
-          console.error('Failed to delete budget:', error);
+        } catch {
+          // Delete failed silently
         }
       }
     });

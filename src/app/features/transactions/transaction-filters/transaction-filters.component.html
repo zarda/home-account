@@ -32,6 +32,37 @@
         (monthSelected)="onCalendarMonthChange($event)"
         (yearSelected)="onCalendarYearChange($event)"
       ></mat-datepicker>
+
+      <!-- Period Picker Menu -->
+      <button class="quick-btn date-picker-btn" [matMenuTriggerFor]="periodMenu">
+        <mat-icon>calendar_month</mat-icon>
+      </button>
+      <mat-menu #periodMenu="matMenu">
+        <button mat-menu-item (click)="openMonthPicker()">
+          <mat-icon>event</mat-icon>
+          <span>Select Month</span>
+        </button>
+        <button mat-menu-item (click)="openYearPicker()">
+          <mat-icon>date_range</mat-icon>
+          <span>Select Year</span>
+        </button>
+      </mat-menu>
+
+      <!-- Hidden Month Picker -->
+      <input [matDatepicker]="monthPicker" style="display: none">
+      <mat-datepicker
+        #monthPicker
+        startView="year"
+        (monthSelected)="onMonthSelected($event, monthPicker)"
+      ></mat-datepicker>
+
+      <!-- Hidden Year Picker -->
+      <input [matDatepicker]="yearPicker" style="display: none">
+      <mat-datepicker
+        #yearPicker
+        startView="multi-year"
+        (yearSelected)="onYearSelected($event, yearPicker)"
+      ></mat-datepicker>
     </div>
 
     <!-- Filter Toggle -->

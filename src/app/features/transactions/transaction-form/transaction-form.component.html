@@ -82,10 +82,27 @@
         <mat-label>Date</mat-label>
         <input matInput [matDatepicker]="picker" formControlName="date">
         <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
-        <mat-datepicker #picker touchUi></mat-datepicker>
+        <mat-datepicker
+          #picker
+          touchUi
+          [dateClass]="dateClass"
+          (monthSelected)="onCalendarMonthChange($event)"
+          (yearSelected)="onCalendarYearChange($event)"
+        ></mat-datepicker>
         @if (form.controls['date'].hasError('required')) {
           <mat-error>Date is required</mat-error>
         }
+      </mat-form-field>
+
+      <!-- Period (Optional) -->
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Budget Period (Optional)</mat-label>
+        <mat-select formControlName="period">
+          <mat-option [value]="null">None</mat-option>
+          @for (period of periods; track period.value) {
+            <mat-option [value]="period.value">{{ period.label }}</mat-option>
+          }
+        </mat-select>
       </mat-form-field>
 
       <!-- Note (Optional) -->

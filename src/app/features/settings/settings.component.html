@@ -1,7 +1,81 @@
-<div class="flex flex-col items-center justify-center py-16">
-  <div class="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center mb-4">
-    <mat-icon class="!text-4xl !w-10 !h-10 text-primary-600">settings</mat-icon>
+<div class="settings-container">
+  <!-- Header -->
+  <div class="header-section">
+    <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
+    <p class="text-gray-500 text-sm mt-1">Manage your preferences and account</p>
   </div>
-  <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
-  <p class="text-gray-500 mt-2">Coming in Phase 4.5</p>
+
+  <!-- User Card -->
+  <div class="user-card">
+    @if (userPhoto) {
+      <img [src]="userPhoto" alt="Profile" class="user-avatar">
+    } @else {
+      <div class="user-avatar-placeholder">
+        <mat-icon>person</mat-icon>
+      </div>
+    }
+    <div class="user-info">
+      <span class="user-name">{{ userName }}</span>
+      <span class="user-email">{{ userEmail }}</span>
+    </div>
+  </div>
+
+  <!-- Settings Sections -->
+  <mat-accordion class="settings-accordion" multi>
+    <!-- Profile & Preferences -->
+    <mat-expansion-panel [expanded]="true">
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <mat-icon class="section-icon">tune</mat-icon>
+          Preferences
+        </mat-panel-title>
+        <mat-panel-description>
+          Currency, theme, and display settings
+        </mat-panel-description>
+      </mat-expansion-panel-header>
+      <app-profile-settings />
+    </mat-expansion-panel>
+
+    <!-- Category Manager -->
+    <mat-expansion-panel>
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <mat-icon class="section-icon">category</mat-icon>
+          Categories
+        </mat-panel-title>
+        <mat-panel-description>
+          Manage your income and expense categories
+        </mat-panel-description>
+      </mat-expansion-panel-header>
+      <app-category-manager />
+    </mat-expansion-panel>
+
+    <!-- Recurring Transactions -->
+    <mat-expansion-panel>
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <mat-icon class="section-icon">repeat</mat-icon>
+          Recurring Transactions
+        </mat-panel-title>
+        <mat-panel-description>
+          Manage scheduled transactions
+        </mat-panel-description>
+      </mat-expansion-panel-header>
+      <app-recurring-transactions />
+    </mat-expansion-panel>
+
+    <!-- Data Management -->
+    <mat-expansion-panel>
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <mat-icon class="section-icon">cloud_sync</mat-icon>
+          Data Management
+        </mat-panel-title>
+        <mat-panel-description>
+          Export, import, and backup your data
+        </mat-panel-description>
+      </mat-expansion-panel-header>
+      <app-data-management />
+    </mat-expansion-panel>
+  </mat-accordion>
 </div>

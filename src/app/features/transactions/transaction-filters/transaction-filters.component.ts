@@ -8,6 +8,7 @@ import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
 import { Subscription } from 'rxjs';
 import { Category, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
@@ -23,7 +24,8 @@ import { TransactionService } from '../../../core/services/transaction.service';
     MatDatepickerModule,
     MatNativeDateModule,
     MatButtonModule,
-    MatIconModule
+    MatIconModule,
+    MatMenuModule
   ],
   templateUrl: './transaction-filters.component.html',
   styleUrl: './transaction-filters.component.scss',
@@ -35,6 +37,8 @@ export class TransactionFiltersComponent implements OnInit, OnDestroy, AfterView
   @ViewChild('dayPicker') dayPicker!: MatDatepicker<Date>;
   @ViewChild('startPicker') startPicker!: MatDatepicker<Date>;
   @ViewChild('endPicker') endPicker!: MatDatepicker<Date>;
+  @ViewChild('monthPicker') monthPicker!: MatDatepicker<Date>;
+  @ViewChild('yearPicker') yearPicker!: MatDatepicker<Date>;
 
   @Input() categories: Category[] = [];
   @Input() incomeCategories: Category[] = [];
@@ -194,6 +198,30 @@ export class TransactionFiltersComponent implements OnInit, OnDestroy, AfterView
     this.activeQuickFilter.set(null);
     this.filters.startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     this.filters.endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+    this.emitFilters();
+  }
+
+  openMonthPicker(): void {
+    this.monthPicker.open();
+  }
+
+  openYearPicker(): void {
+    this.yearPicker.open();
+  }
+
+  onMonthSelected(date: Date, picker: MatDatepicker<Date>): void {
+    picker.close();
+    this.activeQuickFilter.set(null);
+    this.filters.startDate = new Date(date.getFullYear(), date.getMonth(), 1);
+    this.filters.endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+    this.emitFilters();
+  }
+
+  onYearSelected(date: Date, picker: MatDatepicker<Date>): void {
+    picker.close();
+    this.activeQuickFilter.set(null);
+    this.filters.startDate = new Date(date.getFullYear(), 0, 1);
+    this.filters.endDate = new Date(date.getFullYear(), 11, 31, 23, 59, 59, 999);
     this.emitFilters();
   }
 

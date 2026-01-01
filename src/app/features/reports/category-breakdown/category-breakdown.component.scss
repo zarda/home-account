@@ -1,0 +1,237 @@
+.category-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+// Type Toggle Section
+.type-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+
+  mat-button-toggle-group {
+    mat-icon {
+      margin-right: 8px;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+  }
+}
+
+.total-display {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .total-label {
+    font-size: 0.875rem;
+    color: #6b7280;
+  }
+
+  .total-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+
+    &.expense {
+      color: #ef4444;
+    }
+
+    &.income {
+      color: #22c55e;
+    }
+  }
+}
+
+// Categories Accordion
+.categories-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  ::ng-deep {
+    .mat-expansion-panel {
+      border-radius: 12px !important;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+
+      &:not(.mat-expanded) {
+        border-radius: 12px !important;
+      }
+    }
+
+    .mat-expansion-panel-header {
+      padding: 16px 20px;
+    }
+
+    .mat-expansion-panel-body {
+      padding: 0 20px 20px;
+    }
+  }
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.category-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.category-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  .category-name {
+    font-weight: 500;
+    color: #1f2937;
+    font-size: 1rem;
+  }
+
+  .category-count {
+    font-size: 0.75rem;
+    color: #9ca3af;
+  }
+}
+
+.category-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  .category-amount {
+    font-weight: 600;
+    color: #1f2937;
+  }
+
+  .category-percentage {
+    padding: 2px 8px;
+    background: #f3f4f6;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #6b7280;
+  }
+}
+
+// Category Details
+.category-details {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.percentage-bar {
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.percentage-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+
+  .stat-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+
+  .stat-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1f2937;
+  }
+}
+
+// Recent Transactions
+.recent-transactions {
+  margin-top: 8px;
+}
+
+.section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 12px 0;
+}
+
+.transactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transaction-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.transaction-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  .transaction-description {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1f2937;
+  }
+
+  .transaction-date {
+    font-size: 0.75rem;
+    color: #9ca3af;
+  }
+}
+
+.transaction-amount {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+@media (min-width: 768px) {
+  .type-toggle {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

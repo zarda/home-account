@@ -41,8 +41,6 @@ export class LoginComponent {
   }
 
   private handleAuthError(err: unknown): void {
-    console.error('Login error:', err);
-
     const error = err as { code?: string; message?: string };
     if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
       this.error.set('Sign-in was cancelled. Please try again.');

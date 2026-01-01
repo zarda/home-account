@@ -112,8 +112,8 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     try {
       await this.transactionService.deleteTransaction(transaction.id);
       // No need to reload - real-time subscription auto-updates
-    } catch (error) {
-      console.error('Failed to delete transaction:', error);
+    } catch {
+      // Error handled silently - snackbar could be added here
     }
   }
 }

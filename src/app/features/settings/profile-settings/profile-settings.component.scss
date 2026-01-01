@@ -1,0 +1,73 @@
+.profile-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 8px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.setting-item {
+  mat-form-field {
+    width: 100%;
+  }
+}
+
+// Theme Section
+.theme-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.theme-toggle {
+  mat-button-toggle {
+    flex: 1;
+
+    mat-icon {
+      margin-right: 8px;
+    }
+  }
+}
+
+// Actions
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+
+  button {
+    mat-icon {
+      margin-right: 8px;
+    }
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (min-width: 768px) {
+  .settings-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

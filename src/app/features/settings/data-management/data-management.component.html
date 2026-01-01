@@ -1,0 +1,146 @@
+<div class="data-management">
+  <!-- Export Section -->
+  <div class="section">
+    <div class="section-header">
+      <mat-icon class="section-icon">download</mat-icon>
+      <div>
+        <h3>Export Data</h3>
+        <p class="section-description">Download your data for backup or analysis</p>
+      </div>
+    </div>
+
+    <div class="export-options">
+      <button
+        mat-stroked-button
+        class="export-btn"
+        (click)="exportFullBackup()"
+        [disabled]="isExporting()"
+      >
+        <mat-icon>backup</mat-icon>
+        <div class="btn-content">
+          <span class="btn-title">Full Backup</span>
+          <span class="btn-subtitle">JSON format, includes all data</span>
+        </div>
+      </button>
+
+      <button
+        mat-stroked-button
+        class="export-btn"
+        (click)="exportTransactionsCSV()"
+        [disabled]="isExporting()"
+      >
+        <mat-icon>table_chart</mat-icon>
+        <div class="btn-content">
+          <span class="btn-title">Transactions CSV</span>
+          <span class="btn-subtitle">Spreadsheet compatible</span>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Import Section -->
+  <div class="section">
+    <div class="section-header">
+      <mat-icon class="section-icon">upload</mat-icon>
+      <div>
+        <h3>Import Data</h3>
+        <p class="section-description">Import transactions from CSV or restore a backup</p>
+      </div>
+    </div>
+
+    @if (!showImportPreview()) {
+      <div class="import-dropzone" role="button" tabindex="0" (click)="fileInput.click()" (keydown.enter)="fileInput.click()" (keydown.space)="fileInput.click()">
+        <input
+          #fileInput
+          type="file"
+          accept=".csv,.json"
+          (change)="onFileSelected($event)"
+          hidden
+        />
+        @if (isImporting()) {
+          <mat-spinner diameter="32"></mat-spinner>
+          <span>Processing file...</span>
+        } @else {
+          <mat-icon>cloud_upload</mat-icon>
+          <span class="dropzone-text">Click to upload CSV or JSON file</span>
+          <span class="dropzone-hint">Supports bank exports and backup files</span>
+        }
+      </div>
+    } @else {
+      <!-- Import Preview -->
+      <div class="import-preview">
+        <div class="preview-header">
+          <mat-icon>preview</mat-icon>
+          <span>Preview: {{ importedTransactions().length }} transactions found</span>
+        </div>
+
+        <div class="preview-list">
+          @for (transaction of importedTransactions().slice(0, 5); track $index) {
+            <div class="preview-item">
+              <span class="preview-date">{{ transaction.date | date:'MMM d, yyyy' }}</span>
+              <span class="preview-desc">{{ transaction.description }}</span>
+              <span class="preview-amount" [class.income]="transaction.type === 'income'" [class.expense]="transaction.type === 'expense'">
+                {{ transaction.type === 'expense' ? '-' : '+' }}{{ transaction.amount | currency:'USD':'symbol':'1.2-2' }}
+              </span>
+            </div>
+          }
+          @if (importedTransactions().length > 5) {
+            <div class="preview-more">
+              ...and {{ importedTransactions().length - 5 }} more transactions
+            </div>
+          }
+        </div>
+
+        @if (importProgress() > 0 && importProgress() < 100) {
+          <mat-progress-bar mode="determinate" [value]="importProgress()"></mat-progress-bar>
+          <span class="progress-text">Importing... {{ importProgress() }}%</span>
+        }
+
+        <div class="preview-actions">
+          <button mat-button (click)="cancelImport()">Cancel</button>
+          <button
+            mat-flat-button
+            color="primary"
+            (click)="confirmImport()"
+            [disabled]="isImporting()"
+          >
+            Import {{ importedTransactions().length }} Transactions
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="section danger-zone">
+    <div class="section-header">
+      <mat-icon class="section-icon danger">warning</mat-icon>
+      <div>
+        <h3>Danger Zone</h3>
+        <p class="section-description">Irreversible actions</p>
+      </div>
+    </div>
+
+    <div class="danger-actions">
+      <div class="danger-item">
+        <div class="danger-info">
+          <span class="danger-title">Delete All Transactions</span>
+          <span class="danger-desc">Permanently remove all transaction history</span>
+        </div>
+        <button mat-stroked-button color="warn" (click)="deleteAllTransactions()">
+          Delete All
+        </button>
+      </div>
+
+      <div class="danger-item">
+        <div class="danger-info">
+          <span class="danger-title">Sign Out</span>
+          <span class="danger-desc">Sign out of your account</span>
+        </div>
+        <button mat-stroked-button (click)="signOut()">
+          Sign Out
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

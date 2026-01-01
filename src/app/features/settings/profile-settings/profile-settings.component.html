@@ -1,0 +1,80 @@
+<div class="profile-settings">
+  <div class="settings-grid">
+    <!-- Base Currency -->
+    <div class="setting-item">
+      <mat-form-field appearance="outline">
+        <mat-label>Base Currency</mat-label>
+        <mat-select [(ngModel)]="baseCurrency">
+          @for (currency of currencies; track currency.code) {
+            <mat-option [value]="currency.code">
+              {{ currency.symbol }} {{ currency.name }} ({{ currency.code }})
+            </mat-option>
+          }
+        </mat-select>
+        <mat-hint>All amounts will be displayed in this currency</mat-hint>
+      </mat-form-field>
+    </div>
+
+    <!-- Date Format -->
+    <div class="setting-item">
+      <mat-form-field appearance="outline">
+        <mat-label>Date Format</mat-label>
+        <mat-select [(ngModel)]="dateFormat">
+          @for (format of dateFormats; track format.value) {
+            <mat-option [value]="format.value">{{ format.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+
+    <!-- Language -->
+    <div class="setting-item">
+      <mat-form-field appearance="outline">
+        <mat-label>Language</mat-label>
+        <mat-select [(ngModel)]="language">
+          @for (lang of languages; track lang.code) {
+            <mat-option [value]="lang.code">{{ lang.name }}</mat-option>
+          }
+        </mat-select>
+        <mat-hint>Requires page refresh to apply</mat-hint>
+      </mat-form-field>
+    </div>
+  </div>
+
+  <!-- Theme Selection -->
+  <div class="theme-section">
+    <span class="section-label" id="theme-label">Theme</span>
+    <mat-button-toggle-group [(ngModel)]="theme" class="theme-toggle" aria-labelledby="theme-label">
+      <mat-button-toggle value="light">
+        <mat-icon>light_mode</mat-icon>
+        <span>Light</span>
+      </mat-button-toggle>
+      <mat-button-toggle value="dark">
+        <mat-icon>dark_mode</mat-icon>
+        <span>Dark</span>
+      </mat-button-toggle>
+      <mat-button-toggle value="system">
+        <mat-icon>settings_brightness</mat-icon>
+        <span>System</span>
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+  </div>
+
+  <!-- Save Button -->
+  <div class="actions">
+    <button
+      mat-flat-button
+      color="primary"
+      (click)="savePreferences()"
+      [disabled]="isSaving()"
+    >
+      @if (isSaving()) {
+        <mat-icon class="spin">sync</mat-icon>
+        Saving...
+      } @else {
+        <mat-icon>save</mat-icon>
+        Save Preferences
+      }
+    </button>
+  </div>
+</div>

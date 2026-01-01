@@ -1,11 +1,14 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, computed, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
+import { CommonModule } from '@angular/common';
 
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
+import { Subscription } from 'rxjs';
+import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
@@ -14,7 +17,7 @@ import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { Transaction, CreateTransactionDTO } from '../../../models';
+import { Transaction, CreateTransactionDTO, BudgetPeriod } from '../../../models';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -25,12 +28,14 @@ interface DialogData {
   selector: 'app-transaction-form',
   standalone: true,
   imports: [
+    CommonModule,
     ReactiveFormsModule,
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
     MatDatepickerModule,
+    MatNativeDateModule,
     MatButtonModule,
     MatButtonToggleModule,
     MatIconModule,
@@ -39,7 +44,7 @@ interface DialogData {
   templateUrl: './transaction-form.component.html',
   styleUrl: './transaction-form.component.scss',
 })
-export class TransactionFormComponent implements OnInit {
+export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestroy {
   private fb = inject(FormBuilder);
   private dialogRef = inject(MatDialogRef<TransactionFormComponent>);
   data: DialogData = inject(MAT_DIALOG_DATA);
@@ -47,6 +52,9 @@ export class TransactionFormComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
+  private cdr = inject(ChangeDetectorRef);
+
+  @ViewChild('picker') picker!: MatDatepicker<Date>;
 
   form!: FormGroup;
   isSubmitting = signal(false);
@@ -55,6 +63,17 @@ export class TransactionFormComponent implements OnInit {
   currencies = this.currencyService.getSupportedCurrencies();
   expenseCategories = this.categoryService.expenseCategories;
   incomeCategories = this.categoryService.incomeCategories;
+
+  periods: { value: BudgetPeriod; label: string }[] = [
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'yearly', label: 'Yearly' }
+  ];
+
+  // Store transaction dates for calendar highlighting - keyed by "year-month"
+  private transactionDatesCache = new Map<string, Map<string, 'income' | 'expense' | 'both'>>();
+  private loadingMonths = new Set<string>();
+  private datesSubs: Subscription[] = [];
 
   // Computed signal that reacts to both type changes and category loading
   filteredCategories = computed(() => {
@@ -74,20 +93,81 @@ export class TransactionFormComponent implements OnInit {
 
   ngOnInit(): void {
     this.initForm();
-
-    // Watch for type changes
-    this.form.get('type')?.valueChanges.subscribe((type) => {
-      this.transactionType.set(type);
-      // Reset category if it doesn't match the type
-      const currentCategoryId = this.form.get('categoryId')?.value;
-      if (currentCategoryId) {
-        const validCategories = this.filteredCategories();
-        if (!validCategories.some(c => c.id === currentCategoryId)) {
-          this.form.patchValue({ categoryId: '' });
-        }
-      }
-    });
   }
+
+  ngAfterViewInit(): void {
+    this.setupDatepickerListeners();
+  }
+
+  ngOnDestroy(): void {
+    this.datesSubs.forEach(sub => sub.unsubscribe());
+  }
+
+  private setupDatepickerListeners(): void {
+    if (!this.picker) return;
+
+    const openSub = this.picker.openedStream.subscribe(() => {
+      const now = new Date();
+      this.preloadMonthsAround(now.getFullYear(), now.getMonth());
+    });
+    this.datesSubs.push(openSub);
+  }
+
+  private preloadMonthsAround(year: number, month: number): void {
+    const prevMonth = month === 0 ? 11 : month - 1;
+    const prevYear = month === 0 ? year - 1 : year;
+    this.loadTransactionDatesForMonth(prevYear, prevMonth);
+
+    this.loadTransactionDatesForMonth(year, month);
+
+    const nextMonth = month === 11 ? 0 : month + 1;
+    const nextYear = month === 11 ? year + 1 : year;
+    this.loadTransactionDatesForMonth(nextYear, nextMonth);
+  }
+
+  onCalendarMonthChange(date: Date): void {
+    this.preloadMonthsAround(date.getFullYear(), date.getMonth());
+  }
+
+  onCalendarYearChange(date: Date): void {
+    this.preloadMonthsAround(date.getFullYear(), date.getMonth());
+  }
+
+  private loadTransactionDatesForMonth(year: number, month: number): void {
+    const monthKey = `${year}-${month}`;
+
+    if (this.transactionDatesCache.has(monthKey) || this.loadingMonths.has(monthKey)) {
+      return;
+    }
+
+    this.loadingMonths.add(monthKey);
+    const sub = this.transactionService.getTransactionDatesForMonth(year, month).subscribe(dates => {
+      this.transactionDatesCache.set(monthKey, dates);
+      this.loadingMonths.delete(monthKey);
+      this.cdr.markForCheck();
+    });
+    this.datesSubs.push(sub);
+  }
+
+  dateClass = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const monthKey = `${year}-${month}`;
+
+    if (!this.transactionDatesCache.has(monthKey)) {
+      this.loadTransactionDatesForMonth(year, month);
+      return '';
+    }
+
+    const monthData = this.transactionDatesCache.get(monthKey);
+    const dateKey = `${year}-${month}-${date.getDate()}`;
+    const type = monthData?.get(dateKey);
+
+    if (type === 'income') return 'has-income';
+    if (type === 'expense') return 'has-expense';
+    if (type === 'both') return 'has-both';
+    return '';
+  };
 
   private initForm(): void {
     const transaction = this.data.transaction;
@@ -104,6 +184,20 @@ export class TransactionFormComponent implements OnInit {
       description: [transaction?.description || '', Validators.required],
       date: [transaction?.date?.toDate?.() || new Date(), Validators.required],
       note: [transaction?.note || ''],
+      period: [transaction?.period || null],
+    });
+
+    // Watch for type changes
+    this.form.get('type')?.valueChanges.subscribe((type) => {
+      this.transactionType.set(type);
+      // Reset category if it doesn't match the type
+      const currentCategoryId = this.form.get('categoryId')?.value;
+      if (currentCategoryId) {
+        const validCategories = this.filteredCategories();
+        if (!validCategories.some(c => c.id === currentCategoryId)) {
+          this.form.patchValue({ categoryId: '' });
+        }
+      }
     });
   }
 
@@ -123,6 +217,7 @@ export class TransactionFormComponent implements OnInit {
         description: formValue.description,
         date: formValue.date,
         ...(formValue.note ? { note: formValue.note } : {}),
+        ...(formValue.period ? { period: formValue.period } : {}),
       };
 
       if (this.data.mode === 'add') {
@@ -135,8 +230,8 @@ export class TransactionFormComponent implements OnInit {
       }
 
       this.dialogRef.close(true);
-    } catch (error) {
-      console.error('Failed to save transaction:', error);
+    } catch {
+      // Save failed - could add snackbar notification here
     } finally {
       this.isSubmitting.set(false);
     }

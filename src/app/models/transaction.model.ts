@@ -1,4 +1,5 @@
 import { Timestamp } from '@angular/fire/firestore';
+import { BudgetPeriod } from './budget.model';
 
 export type TransactionType = 'income' | 'expense';
 
@@ -21,6 +22,7 @@ export interface Transaction {
   isRecurring: boolean;
   recurringId?: string;          // Link to RecurringTransaction
   location?: TransactionLocation;
+  period?: BudgetPeriod;         // Budget period association
 }
 
 export interface TransactionLocation {
@@ -53,6 +55,7 @@ export interface CreateTransactionDTO {
   isRecurring?: boolean;
   recurringId?: string;
   location?: TransactionLocation;
+  period?: BudgetPeriod;
 }
 
 export interface MonthlyTotal {

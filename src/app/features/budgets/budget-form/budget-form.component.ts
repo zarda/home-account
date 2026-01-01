@@ -129,8 +129,8 @@ export class BudgetFormComponent implements OnInit {
       }
 
       this.dialogRef.close(true);
-    } catch (error) {
-      console.error('Failed to save budget:', error);
+    } catch {
+      // Save failed - could add snackbar notification here
     } finally {
       this.isSubmitting.set(false);
     }

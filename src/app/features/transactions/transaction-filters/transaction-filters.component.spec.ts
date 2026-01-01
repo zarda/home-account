@@ -1,10 +1,9 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { signal } from '@angular/core';
 import { of } from 'rxjs';
 import { TransactionFiltersComponent } from './transaction-filters.component';
 import { TransactionService } from '../../../core/services/transaction.service';
-import { Category, TransactionFilters } from '../../../models';
+import { Category } from '../../../models';
 
 describe('TransactionFiltersComponent', () => {
   let component: TransactionFiltersComponent;
