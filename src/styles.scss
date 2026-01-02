@@ -85,9 +85,27 @@ $home-account-theme: mat.m2-define-light-theme((
   density: 0,
 ));
 
+// Define dark theme
+$home-account-dark-theme: mat.m2-define-dark-theme((
+  color: (
+    primary: $home-account-primary,
+    accent: $home-account-accent,
+    warn: $home-account-warn,
+  ),
+  typography: mat.m2-define-typography-config(
+    $font-family: '"PT Sans", system-ui, sans-serif',
+  ),
+  density: 0,
+));
+
 // Include theme styles
 @include mat.core();
 @include mat.all-component-themes($home-account-theme);
+
+// Apply dark theme colors when dark-theme class is present
+.dark-theme {
+  @include mat.all-component-colors($home-account-dark-theme);
+}
 
 /* Tailwind CSS v3 */
 @tailwind base;
@@ -100,12 +118,120 @@ $home-account-theme: mat.m2-define-light-theme((
 /* Material Icons */
 @import url('https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined');
 
+/* CSS Variables for Theming */
+:root {
+  // Surface colors
+  --surface-background: #f5f5f5;
+  --surface-card: #ffffff;
+  --surface-elevated: #ffffff;
+  --surface-hover: #f9fafb;
+  --surface-active: #eef2ff;
+
+  // Border colors
+  --border-primary: #e5e7eb;
+  --border-secondary: #f3f4f6;
+
+  // Text colors
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6b7280;
+  --text-disabled: #9ca3af;
+  --text-inverse: #ffffff;
+
+  // Brand colors
+  --color-primary: #3F51B5;
+  --color-primary-light: #eef2ff;
+  --color-primary-dark: #303F9F;
+  --color-accent: #4f46e5;
+  --color-accent-light: #818cf8;
+
+  // Semantic colors
+  --color-success: #22c55e;
+  --color-success-light: #dcfce7;
+  --color-error: #ef4444;
+  --color-error-light: #fee2e2;
+  --color-warning: #eab308;
+  --color-warning-light: #fef9c3;
+  --color-info: #3b82f6;
+  --color-info-light: #dbeafe;
+
+  // Income/Expense colors
+  --color-income: #22c55e;
+  --color-income-light: #dcfce7;
+  --color-expense: #ef4444;
+  --color-expense-light: #fee2e2;
+
+  // Scrollbar
+  --scrollbar-track: #f1f1f1;
+  --scrollbar-thumb: #c1c1c1;
+  --scrollbar-thumb-hover: #a8a8a8;
+
+  // Shadows
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  // Overlay
+  --overlay-backdrop: rgba(0, 0, 0, 0.5);
+}
+
+// Dark theme variables
+.dark-theme {
+  --surface-background: #121212;
+  --surface-card: #1e1e1e;
+  --surface-elevated: #2d2d2d;
+  --surface-hover: #3d3d3d;
+  --surface-active: #303F9F;
+
+  --border-primary: #3d3d3d;
+  --border-secondary: #2d2d2d;
+
+  --text-primary: #ffffff;
+  --text-secondary: #e5e7eb;
+  --text-muted: #9ca3af;
+  --text-disabled: #6b7280;
+  --text-inverse: #111827;
+
+  --color-primary: #7986CB;
+  --color-primary-light: #303F9F;
+  --color-primary-dark: #5C6BC0;
+  --color-accent: #818cf8;
+  --color-accent-light: #a5b4fc;
+
+  --color-success: #4ade80;
+  --color-success-light: #166534;
+  --color-error: #f87171;
+  --color-error-light: #991b1b;
+  --color-warning: #facc15;
+  --color-warning-light: #854d0e;
+  --color-info: #60a5fa;
+  --color-info-light: #1e40af;
+
+  --color-income: #4ade80;
+  --color-income-light: #166534;
+  --color-expense: #f87171;
+  --color-expense-light: #991b1b;
+
+  --scrollbar-track: #2d2d2d;
+  --scrollbar-thumb: #4a4a4a;
+  --scrollbar-thumb-hover: #5a5a5a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4);
+  --shadow-overlay: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+  --overlay-backdrop: rgba(0, 0, 0, 0.7);
+}
+
 /* Global Styles */
 html, body {
   height: 100%;
   margin: 0;
   font-family: 'PT Sans', system-ui, sans-serif;
-  background-color: #F5F5F5;
+  background-color: var(--surface-background);
+  color: var(--text-primary);
 }
 
 /* Custom utility classes */
@@ -120,15 +246,107 @@ html, body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scrollbar-track);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--scrollbar-thumb-hover);
+}
+
+// Material component dark mode overrides
+.dark-theme {
+  // mat-button-toggle styling
+  .mat-button-toggle-group {
+    border-color: var(--border-primary);
+  }
+
+  .mat-button-toggle {
+    background: transparent;
+    color: var(--text-primary);
+
+    &.mat-button-toggle-checked {
+      background: var(--color-accent);
+      color: white;
+    }
+  }
+
+  .mat-button-toggle-appearance-standard .mat-button-toggle-label-content {
+    color: var(--text-primary);
+  }
+
+  // mat-form-field styling for filter forms
+  .mat-mdc-form-field {
+    .mdc-text-field--outlined .mdc-notched-outline__leading,
+    .mdc-text-field--outlined .mdc-notched-outline__notch,
+    .mdc-text-field--outlined .mdc-notched-outline__trailing {
+      border-color: var(--border-primary);
+    }
+
+    .mdc-floating-label {
+      color: var(--text-muted);
+    }
+
+    .mat-mdc-select-value,
+    .mat-mdc-input-element {
+      color: var(--text-primary);
+    }
+  }
+
+  // mat-select dropdown
+  .mat-mdc-select-panel {
+    background: var(--surface-card);
+  }
+
+  .mat-mdc-option {
+    color: var(--text-primary);
+
+    &:hover:not(.mdc-list-item--disabled) {
+      background: var(--surface-hover);
+    }
+  }
+
+  .mat-mdc-optgroup-label {
+    color: var(--text-muted);
+  }
+
+  // mat-datepicker
+  .mat-datepicker-content {
+    background: var(--surface-card);
+    color: var(--text-primary);
+  }
+
+  .mat-calendar-body-cell-content {
+    color: var(--text-primary);
+  }
+
+  .mat-calendar-body-disabled > .mat-calendar-body-cell-content {
+    color: var(--text-disabled);
+  }
+
+  // mat-dialog styling
+  .mat-mdc-dialog-surface {
+    background: var(--surface-card) !important;
+    color: var(--text-primary);
+  }
+
+  .mat-mdc-dialog-container .mdc-dialog__content {
+    color: var(--text-primary);
+  }
+
+  // mat-slider styling
+  .mat-mdc-slider .mdc-slider__track--inactive {
+    background-color: var(--border-primary);
+  }
+
+  // Stroked button styling
+  .mat-mdc-outlined-button:not(:disabled) {
+    border-color: var(--border-primary);
+    color: var(--text-primary);
+  }
 }

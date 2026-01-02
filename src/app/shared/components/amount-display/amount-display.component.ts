@@ -40,11 +40,11 @@ export class AmountDisplayComponent {
   colorClass = computed(() => {
     switch (this.type) {
       case 'income':
-        return 'text-green-600';
+        return 'text-green-600 dark:text-green-400';
       case 'expense':
-        return 'text-red-600';
+        return 'text-red-600 dark:text-red-400';
       default:
-        return 'text-gray-900';
+        return 'text-gray-900 dark:text-gray-100';
     }
   });
 }

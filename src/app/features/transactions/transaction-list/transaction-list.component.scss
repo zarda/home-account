@@ -12,7 +12,7 @@
 
 /* Mobile List Styles */
 .mobile-list {
-  background: white;
+  @apply bg-white dark:bg-gray-800;
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -28,11 +28,11 @@
 }
 
 .mobile-item:hover {
-  background-color: #f9fafb;
+  @apply bg-gray-50 dark:bg-gray-700;
 }
 
 .mobile-item:active {
-  background-color: #f3f4f6;
+  @apply bg-gray-100 dark:bg-gray-600;
 }
 
 .category-icon {
@@ -62,7 +62,7 @@
 .item-description {
   font-size: 0.9375rem;
   font-weight: 500;
-  color: #111827;
+  @apply text-gray-900 dark:text-gray-100;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -70,7 +70,7 @@
 
 .item-category {
   font-size: 0.8125rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
 .item-amount {
@@ -96,7 +96,7 @@
 
 .item-date {
   font-size: 0.75rem;
-  color: #9ca3af;
+  @apply text-gray-400 dark:text-gray-500;
 }
 
 .mobile-menu-btn {
@@ -107,13 +107,13 @@
 
 .mobile-divider {
   height: 1px;
-  background-color: #f3f4f6;
+  @apply bg-gray-100 dark:bg-gray-700;
   margin: 0 16px;
 }
 
 /* Desktop Table Styles */
 .desktop-view {
-  background: white;
+  @apply bg-white dark:bg-gray-800;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   overflow: hidden;
@@ -124,17 +124,17 @@
 }
 
 ::ng-deep .desktop-table .mat-mdc-header-row {
-  background: #f9fafb;
+  @apply bg-gray-50 dark:bg-gray-900;
   height: 40px;
 }
 
 ::ng-deep .desktop-table .mat-mdc-header-cell {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid #e5e7eb;
+  @apply border-b border-gray-200 dark:border-gray-700;
 }
 
 ::ng-deep .desktop-table .mat-mdc-row {
@@ -143,11 +143,11 @@
 }
 
 ::ng-deep .desktop-table .mat-mdc-row:hover {
-  background-color: #f9fafb;
+  @apply bg-gray-50 dark:bg-gray-700;
 }
 
 ::ng-deep .desktop-table .mat-mdc-cell {
-  border-bottom: 1px solid #f3f4f6;
+  @apply border-b border-gray-100 dark:border-gray-700;
 }
 
 .col-date {
@@ -177,7 +177,7 @@
 
 .date-text {
   font-size: 0.8125rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
 .category-cell {
@@ -204,20 +204,20 @@
 
 .category-name {
   font-size: 0.8125rem;
-  color: #374151;
+  @apply text-gray-700 dark:text-gray-300;
 }
 
 .description-text {
   font-size: 0.875rem;
   font-weight: 500;
-  color: #111827;
+  @apply text-gray-900 dark:text-gray-100;
 }
 
 .note-icon {
   font-size: 14px !important;
   width: 14px !important;
   height: 14px !important;
-  color: #9ca3af;
+  @apply text-gray-400 dark:text-gray-500;
   margin-left: 4px;
   vertical-align: middle;
 }

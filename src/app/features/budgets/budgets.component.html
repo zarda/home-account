@@ -2,9 +2,9 @@
   <!-- Header -->
   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">{{ 'budget.title' | translate }}</h1>
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ 'budget.title' | translate }}</h1>
       @if (!isLoading() && budgetCount() > 0) {
-        <p class="text-sm text-gray-500 mt-1">
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
           {{ budgetCount() }} {{ 'budget.budgetCount' | translate }}
         </p>
       }

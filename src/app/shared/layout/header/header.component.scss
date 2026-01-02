@@ -6,9 +6,9 @@
 
 .header-toolbar {
   height: 64px;
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-sm);
   padding: 0 16px;
 }
 
@@ -19,7 +19,7 @@
 .app-title {
   font-size: 1.25rem;
   font-weight: 600;
-  color: #3F51B5;
+  color: var(--color-primary);
 }
 
 .spacer {
@@ -38,17 +38,17 @@
 
 .user-info {
   padding: 12px 16px;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--border-secondary);
 }
 
 .user-name {
   font-weight: 500;
-  color: #111827;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .user-email {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: var(--text-muted);
   margin: 4px 0 0 0;
 }

@@ -55,7 +55,18 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private transactionsSub?: Subscription;
   private categoriesSub?: Subscription;
 
+  initialDate = signal<Date | undefined>(undefined);
+
   ngOnInit(): void {
+    // Check for date query param to pre-filter
+    const dateParam = this.route.snapshot.queryParamMap.get('date');
+    if (dateParam) {
+      const date = new Date(dateParam);
+      if (!isNaN(date.getTime())) {
+        this.initialDate.set(date);
+      }
+    }
+
     // Load categories (only once)
     this.categoriesSub = this.categoryService.loadCategories().subscribe();
 

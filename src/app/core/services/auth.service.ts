@@ -18,6 +18,7 @@ import {
 import { Observable } from 'rxjs';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 import { TranslationService, SupportedLocale } from './translation.service';
+import { ThemeService, ThemePreference } from './theme.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -25,6 +26,7 @@ export class AuthService {
   private firestore = inject(Firestore);
   private injector = inject(EnvironmentInjector);
   private translationService = inject(TranslationService);
+  private themeService = inject(ThemeService);
 
   // Signals for reactive state
   currentUser = signal<User | null>(null);
@@ -37,19 +39,27 @@ export class AuthService {
 
   constructor() {
     this.setupAuthStateListener();
-    this.setupLanguageSyncEffect();
+    this.setupPreferencesSyncEffect();
   }
 
   /**
-   * Sync language preference from database when user data changes.
+   * Sync language and theme preferences from database when user data changes.
    * Database is the source of truth for authenticated users.
    */
-  private setupLanguageSyncEffect(): void {
+  private setupPreferencesSyncEffect(): void {
     effect(() => {
       const user = this.currentUser();
-      if (user?.preferences?.language) {
-        const locale = user.preferences.language as SupportedLocale;
-        this.translationService.syncFromDatabase(locale);
+      if (user?.preferences) {
+        // Sync language
+        if (user.preferences.language) {
+          const locale = user.preferences.language as SupportedLocale;
+          this.translationService.syncFromDatabase(locale);
+        }
+        // Sync theme
+        if (user.preferences.theme) {
+          const theme = user.preferences.theme as ThemePreference;
+          this.themeService.init(theme);
+        }
       }
     });
   }

@@ -68,8 +68,15 @@ export class DataManagementComponent {
       });
 
       const date = new Date().toISOString().split('T')[0];
-      this.exportService.downloadBlob(blob, `home-account-backup-${date}.json`);
-      this.snackBar.open(this.t('settings.backupExported'), this.t('common.close'), { duration: 3000 });
+      const success = await this.exportService.downloadBlobWithPicker(
+        blob,
+        `home-account-backup-${date}.json`,
+        'application/json'
+      );
+
+      if (success) {
+        this.snackBar.open(this.t('settings.backupExported'), this.t('common.close'), { duration: 3000 });
+      }
     } catch {
       this.snackBar.open(this.t('settings.backupExportFailed'), this.t('common.close'), { duration: 3000 });
     } finally {
@@ -85,8 +92,15 @@ export class DataManagementComponent {
       const blob = this.exportService.exportToCSV(transactions);
 
       const date = new Date().toISOString().split('T')[0];
-      this.exportService.downloadBlob(blob, `transactions-${date}.csv`);
-      this.snackBar.open(this.t('settings.transactionsExported'), this.t('common.close'), { duration: 3000 });
+      const success = await this.exportService.downloadBlobWithPicker(
+        blob,
+        `transactions-${date}.csv`,
+        'text/csv'
+      );
+
+      if (success) {
+        this.snackBar.open(this.t('settings.transactionsExported'), this.t('common.close'), { duration: 3000 });
+      }
     } catch {
       this.snackBar.open(this.t('settings.transactionsExportFailed'), this.t('common.close'), { duration: 3000 });
     } finally {

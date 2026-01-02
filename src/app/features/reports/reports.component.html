@@ -2,8 +2,8 @@
   <!-- Header -->
   <div class="header-section">
     <div class="header-left">
-      <h1 class="text-2xl font-bold text-gray-900">{{ 'reports.title' | translate }}</h1>
-      <p class="text-gray-500 text-sm mt-1">{{ 'reports.subtitle' | translate }}</p>
+      <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ 'reports.title' | translate }}</h1>
+      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ 'reports.subtitle' | translate }}</p>
     </div>
 
     <div class="header-right">
@@ -11,7 +11,7 @@
         <mat-button-toggle-group
           [value]="isCustomPeriod() ? null : selectedPeriod"
           (change)="selectedPeriod = $event.value; onPeriodChange()"
-          class="period-toggle bg-white"
+          class="period-toggle bg-white dark:bg-gray-800"
         >
           <mat-button-toggle value="thisMonth">
             <span class="mobile-label">{{ 'dashboard.thisMonthShort' | translate }}</span>

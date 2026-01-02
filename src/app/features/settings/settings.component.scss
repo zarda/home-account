@@ -16,9 +16,9 @@
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: white;
+  background: var(--surface-card);
   border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
 }
 
 .user-avatar {
@@ -32,7 +32,7 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: #f3f4f6;
+  background: var(--surface-hover);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -41,7 +41,7 @@
     font-size: 32px;
     width: 32px;
     height: 32px;
-    color: #9ca3af;
+    color: var(--text-disabled);
   }
 }
 
@@ -53,12 +53,12 @@
   .user-name {
     font-size: 1.125rem;
     font-weight: 600;
-    color: #1f2937;
+    color: var(--text-primary);
   }
 
   .user-email {
     font-size: 0.875rem;
-    color: #6b7280;
+    color: var(--text-muted);
   }
 }
 
@@ -71,7 +71,8 @@
   ::ng-deep {
     .mat-expansion-panel {
       border-radius: 12px !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+      box-shadow: var(--shadow-sm) !important;
+      background: var(--surface-card);
 
       &:not(.mat-expanded) {
         border-radius: 12px !important;
@@ -98,14 +99,14 @@
     }
 
     .mat-expansion-panel-header-description {
-      color: #6b7280;
+      color: var(--text-muted);
       font-size: 0.875rem;
     }
   }
 }
 
 .section-icon {
-  color: #4f46e5;
+  color: var(--color-accent);
   font-size: 22px;
   width: 22px;
   height: 22px;

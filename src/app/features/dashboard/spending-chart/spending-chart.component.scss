@@ -11,7 +11,7 @@
 .card-title {
   font-size: 1.125rem;
   font-weight: 600;
-  color: #111827;
+  @apply text-gray-900 dark:text-gray-100;
   margin: 0;
 }
 
@@ -70,12 +70,12 @@
 }
 
 .legend-name {
-  color: #374151;
+  @apply text-gray-700 dark:text-gray-300;
 }
 
 .legend-value {
   font-weight: 500;
-  color: #111827;
+  @apply text-gray-900 dark:text-gray-100;
 }
 
 @media (min-width: 768px) {

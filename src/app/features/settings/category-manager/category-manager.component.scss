@@ -35,12 +35,12 @@
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: #f9fafb;
+  @apply bg-gray-50 dark:bg-gray-800;
   border-radius: 8px;
   transition: all 0.2s;
 
   &:hover {
-    background: #f3f4f6;
+    @apply bg-gray-100 dark:bg-gray-700;
   }
 
   &.cdk-drag-preview {
@@ -54,7 +54,7 @@
 
 .drag-handle {
   cursor: grab;
-  color: #9ca3af;
+  @apply text-gray-400 dark:text-gray-500;
   display: flex;
   align-items: center;
 
@@ -94,7 +94,7 @@
 
   .category-name {
     font-weight: 500;
-    color: #1f2937;
+    @apply text-gray-800 dark:text-gray-100;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -104,8 +104,8 @@
     font-size: 0.625rem;
     text-transform: uppercase;
     padding: 2px 6px;
-    background: #e5e7eb;
-    color: #6b7280;
+    @apply bg-gray-200 dark:bg-gray-700;
+    @apply text-gray-500 dark:text-gray-400;
     border-radius: 4px;
     font-weight: 500;
     letter-spacing: 0.5px;
@@ -126,7 +126,7 @@
   flex-direction: column;
   align-items: center;
   padding: 32px;
-  color: #9ca3af;
+  @apply text-gray-400 dark:text-gray-500;
 
   mat-icon {
     font-size: 48px;

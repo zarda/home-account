@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectorRef, Component, EventEmitter, inject, Input, OnDestroy, OnInit, Output, signal, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, EventEmitter, inject, Input, OnChanges, OnDestroy, OnInit, Output, signal, SimpleChanges, ViewChild } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -32,7 +32,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   templateUrl: './transaction-filters.component.html',
   styleUrl: './transaction-filters.component.scss',
 })
-export class TransactionFiltersComponent implements OnInit, OnDestroy, AfterViewInit {
+export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy, AfterViewInit {
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);
 
@@ -44,6 +44,7 @@ export class TransactionFiltersComponent implements OnInit, OnDestroy, AfterView
 
   @Input() categories: Category[] = [];
   @Input() incomeCategories: Category[] = [];
+  @Input() initialDate?: Date;
   @Output() filtersChanged = new EventEmitter<TransactionFilters>();
   @Output() addTransaction = new EventEmitter<void>();
 
@@ -57,9 +58,23 @@ export class TransactionFiltersComponent implements OnInit, OnDestroy, AfterView
   private loadingMonths = new Set<string>();
   private datesSubs: Subscription[] = [];
 
+  private initialFilterApplied = false;
+
   ngOnInit(): void {
-    // Default to today's transactions
-    this.setQuickFilter('today');
+    // Default filter will be applied in ngOnChanges or after a tick if no initialDate
+    setTimeout(() => {
+      if (!this.initialFilterApplied) {
+        this.setQuickFilter('today');
+        this.initialFilterApplied = true;
+      }
+    });
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['initialDate'] && changes['initialDate'].currentValue) {
+      this.setDateFilter(changes['initialDate'].currentValue);
+      this.initialFilterApplied = true;
+    }
   }
 
   ngAfterViewInit(): void {

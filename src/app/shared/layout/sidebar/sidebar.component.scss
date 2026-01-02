@@ -2,7 +2,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  background: white;
+  background: var(--surface-card);
 }
 
 nav {
@@ -18,18 +18,18 @@ nav {
 }
 
 .nav-item:hover {
-  background-color: #f9fafb;
+  background-color: var(--surface-hover);
 }
 
 .nav-item.active {
-  background-color: #eef2ff;
+  background-color: var(--surface-active);
 }
 
 .nav-item.active mat-icon {
-  color: #4f46e5;
+  color: var(--color-accent);
 }
 
 .nav-item.active span {
-  color: #4f46e5;
+  color: var(--color-accent);
   font-weight: 500;
 }

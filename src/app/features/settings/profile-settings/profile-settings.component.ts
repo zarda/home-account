@@ -11,6 +11,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
+import { ThemeService, ThemePreference } from '../../../core/services/theme.service';
 import { SUPPORTED_CURRENCIES } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -35,12 +36,13 @@ export class ProfileSettingsComponent {
   private authService = inject(AuthService);
   private snackBar = inject(MatSnackBar);
   private translationService = inject(TranslationService);
+  private themeService = inject(ThemeService);
 
   currencies = SUPPORTED_CURRENCIES;
 
   // Current preferences
   baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
-  theme: 'light' | 'dark' | 'system' = this.authService.currentUser()?.preferences?.theme || 'system';
+  theme: ThemePreference = this.authService.currentUser()?.preferences?.theme || 'system';
   dateFormat = this.authService.currentUser()?.preferences?.dateFormat || 'MM/DD/YYYY';
   language: SupportedLocale = (this.authService.currentUser()?.preferences?.language as SupportedLocale) || this.translationService.currentLocale();
 
@@ -61,6 +63,8 @@ export class ProfileSettingsComponent {
   }
 
   async onThemeChange(): Promise<void> {
+    // Apply theme immediately
+    this.themeService.setTheme(this.theme);
     await this.savePreference({ theme: this.theme });
   }
 

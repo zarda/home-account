@@ -96,12 +96,12 @@
 
       <!-- Alert threshold slider -->
       <div class="threshold-section mt-4 mb-2">
-        <span class="block text-xs text-gray-500 mb-3 text-center" id="threshold-label">{{ 'budget.alertWhenReaches' | translate }}: <strong class="text-sm text-gray-700">{{ form.value.alertThreshold }}%</strong></span>
+        <span class="block text-xs text-gray-500 dark:text-gray-400 mb-3 text-center" id="threshold-label">{{ 'budget.alertWhenReaches' | translate }}: <strong class="text-sm text-gray-700 dark:text-gray-200">{{ form.value.alertThreshold }}%</strong></span>
         <div class="slider-container">
           <mat-slider min="50" max="100" step="5" aria-labelledby="threshold-label" discrete>
             <input matSliderThumb formControlName="alertThreshold">
           </mat-slider>
-          <div class="flex justify-between text-xs text-gray-400 mt-1">
+          <div class="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-1">
             <span>50%</span>
             <span>100%</span>
           </div>

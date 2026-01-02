@@ -1,11 +1,12 @@
 <div class="flex flex-col gap-4">
   <!-- Header -->
-  <h1 class="text-2xl font-bold text-gray-900 m-0 flex items-center gap-2">{{ 'transactions.title' | translate }} <span class="text-base font-normal text-gray-400 leading-none">({{ transactionCount() }})</span></h1>
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100 m-0 flex items-center gap-2">{{ 'transactions.title' | translate }} <span class="text-base font-normal text-gray-400 dark:text-gray-500 leading-none">({{ transactionCount() }})</span></h1>
 
   <!-- Filters with Add button integrated -->
   <app-transaction-filters
     [categories]="expenseCategories()"
     [incomeCategories]="incomeCategories()"
+    [initialDate]="initialDate()"
     (filtersChanged)="onFiltersChanged($event)"
     (addTransaction)="openAddDialog()"
   />

@@ -18,7 +18,7 @@
   h3 {
     font-size: 1rem;
     font-weight: 600;
-    color: #1f2937;
+    @apply text-gray-800 dark:text-gray-100;
     margin: 0;
   }
 }
@@ -37,7 +37,7 @@
 
 .section-description {
   font-size: 0.875rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
   margin: 4px 0 0 0;
 }
 
@@ -56,7 +56,7 @@
   height: auto;
   text-align: left;
   border-radius: 12px;
-  border-color: #e5e7eb;
+  @apply border-gray-200 dark:border-gray-700;
 
   mat-icon {
     color: #4f46e5;
@@ -73,18 +73,18 @@
 
   .btn-title {
     font-weight: 500;
-    color: #1f2937;
+    @apply text-gray-800 dark:text-gray-100;
   }
 
   .btn-subtitle {
     font-size: 0.75rem;
-    color: #6b7280;
+    @apply text-gray-500 dark:text-gray-400;
     font-weight: 400;
   }
 
   &:hover:not(:disabled) {
-    border-color: #c7d2fe;
-    background: #f5f3ff;
+    @apply border-indigo-200 dark:border-indigo-600;
+    @apply bg-indigo-50 dark:bg-indigo-900/30;
   }
 }
 
@@ -96,9 +96,9 @@
   justify-content: center;
   gap: 12px;
   padding: 32px;
-  border: 2px dashed #e5e7eb;
+  @apply border-2 border-dashed border-gray-200 dark:border-gray-700;
   border-radius: 12px;
-  background: #f9fafb;
+  @apply bg-gray-50 dark:bg-gray-800;
   cursor: pointer;
   transition: all 0.2s;
 
@@ -106,12 +106,12 @@
     font-size: 40px;
     width: 40px;
     height: 40px;
-    color: #9ca3af;
+    @apply text-gray-400 dark:text-gray-500;
   }
 
   &:hover {
-    border-color: #c7d2fe;
-    background: #f5f3ff;
+    @apply border-indigo-200 dark:border-indigo-600;
+    @apply bg-indigo-50 dark:bg-indigo-900/30;
 
     mat-icon {
       color: #4f46e5;
@@ -121,12 +121,12 @@
 
 .dropzone-text {
   font-weight: 500;
-  color: #374151;
+  @apply text-gray-700 dark:text-gray-300;
 }
 
 .dropzone-hint {
   font-size: 0.875rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
 // Import Preview
@@ -135,7 +135,7 @@
   flex-direction: column;
   gap: 16px;
   padding: 16px;
-  background: #f9fafb;
+  @apply bg-gray-50 dark:bg-gray-800;
   border-radius: 12px;
 }
 
@@ -144,7 +144,7 @@
   align-items: center;
   gap: 8px;
   font-weight: 500;
-  color: #374151;
+  @apply text-gray-700 dark:text-gray-300;
 
   mat-icon {
     color: #4f46e5;
@@ -162,20 +162,20 @@
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
-  background: white;
+  @apply bg-white dark:bg-gray-700;
   border-radius: 8px;
   font-size: 0.875rem;
 }
 
 .preview-date {
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
   width: 90px;
   flex-shrink: 0;
 }
 
 .preview-desc {
   flex: 1;
-  color: #374151;
+  @apply text-gray-700 dark:text-gray-300;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -197,7 +197,7 @@
 .preview-more {
   text-align: center;
   font-size: 0.875rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
   padding: 8px;
 }
 
@@ -212,15 +212,15 @@
   justify-content: flex-end;
   gap: 12px;
   padding-top: 8px;
-  border-top: 1px solid #e5e7eb;
+  @apply border-t border-gray-200 dark:border-gray-700;
 }
 
 // Danger Zone
 .danger-zone {
-  border: 1px solid #fecaca;
+  @apply border border-red-200 dark:border-red-900;
   border-radius: 12px;
   padding: 16px;
-  background: #fef2f2;
+  @apply bg-red-50 dark:bg-red-950;
 }
 
 .danger-actions {
@@ -235,7 +235,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px;
-  background: white;
+  @apply bg-white dark:bg-red-950;
   border-radius: 8px;
 }
 
@@ -247,12 +247,12 @@
 
 .danger-title {
   font-weight: 500;
-  color: #1f2937;
+  @apply text-gray-800 dark:text-gray-100;
 }
 
 .danger-desc {
   font-size: 0.75rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
 @media (max-width: 640px) {

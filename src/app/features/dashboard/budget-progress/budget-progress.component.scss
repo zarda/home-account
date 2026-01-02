@@ -1,9 +1,18 @@
+// Manage link dark mode styling
+:host ::ng-deep .mat-mdc-button.mat-primary {
+  @apply dark:text-indigo-400;
+}
+
 ::ng-deep .mat-mdc-progress-bar {
   --mdc-linear-progress-track-color: rgba(0, 0, 0, 0.08);
 }
 
+.dark-theme ::ng-deep .mat-mdc-progress-bar {
+  --mdc-linear-progress-track-color: rgba(255, 255, 255, 0.12);
+}
+
 .budget-item {
-  @apply p-2.5 bg-gray-50 rounded-lg;
+  @apply p-2.5 bg-gray-50 dark:bg-gray-800 rounded-lg;
 
   .budget-header {
     @apply flex items-center justify-between mb-1.5;
@@ -16,7 +25,7 @@
       }
 
       .budget-name {
-        @apply text-sm font-medium text-gray-800 truncate;
+        @apply text-sm font-medium text-gray-800 dark:text-gray-100 truncate;
       }
     }
 
@@ -36,7 +45,7 @@
   }
 
   .budget-footer {
-    @apply flex items-center justify-between mt-1 text-xs text-gray-500;
+    @apply flex items-center justify-between mt-1 text-xs text-gray-500 dark:text-gray-400;
 
     .budget-amounts {
       @apply truncate;
@@ -46,7 +55,7 @@
       @apply flex-shrink-0 ml-2;
 
       &.over-budget {
-        @apply text-red-500 font-medium;
+        @apply text-red-500 dark:text-red-400 font-medium;
       }
     }
   }

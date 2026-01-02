@@ -6,30 +6,25 @@
   />
 </div>
 
-<!-- Sidebar (desktop) -->
-@if (!isMobile()) {
-  <div class="sidebar-container" [class.hidden]="!sidebarOpen()">
-    <app-sidebar [isExpanded]="true" />
-  </div>
-}
-
-<!-- Mobile Sidebar Overlay -->
-@if (isMobile() && sidebarOpen()) {
+<!-- Sidebar Overlay (all screen sizes) -->
+@if (sidebarOpen()) {
   <div
-    class="mobile-overlay"
+    class="sidebar-backdrop"
     role="button"
     tabindex="0"
+    aria-label="Close sidebar"
     (click)="closeSidebar()"
-    (keydown.enter)="closeSidebar()"></div>
-  <div class="mobile-sidebar">
-    <app-sidebar [isExpanded]="true" (navItemClicked)="closeSidebar()" />
+    (keydown.enter)="closeSidebar()"
+    (keydown.escape)="closeSidebar()"
+  ></div>
+  <div class="sidebar-drawer" [class.tablet-mobile]="isOverlayMode()">
+    <app-sidebar [isExpanded]="true" (navItemClicked)="onNavItemClicked()" />
   </div>
 }
 
 <!-- Main Content -->
 <div
   class="main-container"
-  [class.with-sidebar]="!isMobile() && sidebarOpen()"
   [class.with-bottom-nav]="isMobile()"
 >
   <div class="content-wrapper">

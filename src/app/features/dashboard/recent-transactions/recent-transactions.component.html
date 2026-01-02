@@ -24,7 +24,7 @@
     } @else {
       <div class="transaction-list">
         @for (transaction of transactions; track transaction.id; let last = $last) {
-          <a routerLink="/transactions" class="transaction-item">
+          <div class="transaction-item" (click)="onTransactionClick(transaction)">
             <!-- Category Icon -->
             <div
               class="category-icon"
@@ -52,7 +52,7 @@
               </span>
               <span class="transaction-date">{{ formatRelativeDate(transaction.date) }}</span>
             </div>
-          </a>
+          </div>
           @if (!last) {
             <div class="divider"></div>
           }

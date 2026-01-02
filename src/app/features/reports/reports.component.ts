@@ -184,7 +184,8 @@ export class ReportsComponent implements OnInit {
 
   openExportDialog(): void {
     this.dialog.open(ExportDialogComponent, {
-      width: '500px',
+      width: '100%',
+      maxWidth: '500px',
       data: {
         transactions: this.transactions(),
         categories: this.categories(),

@@ -9,8 +9,8 @@
   align-items: center;
   justify-content: space-around;
   height: 100%;
-  background: white;
-  border-top: 1px solid #e5e7eb;
+  background: var(--surface-card);
+  border-top: 1px solid var(--border-primary);
   padding: 0 8px;
 }
 
@@ -21,21 +21,21 @@
   flex: 1;
   max-width: 72px;
   height: 48px;
-  color: #6b7280;
+  color: var(--text-muted);
   text-decoration: none;
   border-radius: 8px;
 }
 
 .nav-item:hover {
-  background-color: #f3f4f6;
+  background-color: var(--surface-hover);
 }
 
 .nav-item.active {
-  color: #4f46e5;
+  color: var(--color-accent);
 }
 
 .nav-item.active mat-icon {
-  color: #4f46e5;
+  color: var(--color-accent);
 }
 
 .action-button {
@@ -46,13 +46,13 @@
   height: 48px;
   margin-top: -16px;
   border-radius: 50%;
-  background: #4f46e5;
-  color: white;
+  background: var(--color-accent);
+  color: var(--text-inverse);
   border: none;
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
   cursor: pointer;
 }
 
 .action-button:hover {
-  background: #4338ca;
+  background: var(--color-primary-dark);
 }

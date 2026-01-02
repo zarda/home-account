@@ -9,13 +9,13 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  border-bottom: 1px solid #e5e7eb;
+  @apply border-b border-gray-200 dark:border-gray-700;
 }
 
 .dialog-title {
   font-size: 1.25rem;
   font-weight: 600;
-  color: #111827;
+  @apply text-gray-900 dark:text-gray-100;
   margin: 0;
 }
 
@@ -55,13 +55,13 @@
 }
 
 ::ng-deep .type-toggle .mat-button-toggle-checked.expense {
-  background-color: #fef2f2;
-  color: #dc2626;
+  background-color: var(--color-expense-light);
+  color: var(--color-expense);
 }
 
 ::ng-deep .type-toggle .mat-button-toggle-checked.income {
-  background-color: #f0fdf4;
-  color: #16a34a;
+  background-color: var(--color-income-light);
+  color: var(--color-income);
 }
 
 .amount-section {
@@ -103,7 +103,7 @@
   display: flex;
   gap: 12px;
   padding: 16px 24px !important;
-  border-top: 1px solid #e5e7eb;
+  @apply border-t border-gray-200 dark:border-gray-700;
   margin: 0 !important;
 }
 

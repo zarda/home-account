@@ -14,7 +14,7 @@
 .card-title {
   font-size: 1.125rem;
   font-weight: 600;
-  color: #111827;
+  @apply text-gray-900 dark:text-gray-100;
   margin: 0;
 }
 
@@ -24,13 +24,13 @@
   gap: 2px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #4f46e5;
+  @apply text-indigo-600 dark:text-indigo-400;
   text-decoration: none;
   transition: color 0.15s ease;
 }
 
 .view-all-link:hover {
-  color: #4338ca;
+  @apply text-indigo-700 dark:text-indigo-300;
 }
 
 .view-all-icon {
@@ -62,11 +62,11 @@
 }
 
 .transaction-item:hover {
-  background-color: #f9fafb;
+  @apply bg-gray-50 dark:bg-gray-800;
 }
 
 .transaction-item:active {
-  background-color: #f3f4f6;
+  @apply bg-gray-100 dark:bg-gray-700;
 }
 
 .category-icon {
@@ -96,7 +96,7 @@
 .transaction-description {
   font-size: 0.9375rem;
   font-weight: 500;
-  color: #111827;
+  @apply text-gray-900 dark:text-gray-100;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -104,7 +104,7 @@
 
 .transaction-category {
   font-size: 0.8125rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
 .transaction-amount {
@@ -121,21 +121,21 @@
 }
 
 .amount.income {
-  color: #16a34a;
+  @apply text-green-600 dark:text-green-400;
 }
 
 .amount.expense {
-  color: #dc2626;
+  @apply text-red-600 dark:text-red-400;
 }
 
 .transaction-date {
   font-size: 0.75rem;
-  color: #9ca3af;
+  @apply text-gray-400 dark:text-gray-500;
 }
 
 .divider {
   height: 1px;
-  background-color: #f3f4f6;
+  @apply bg-gray-100 dark:bg-gray-700;
   margin: 0 16px;
 }
 

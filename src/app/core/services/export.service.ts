@@ -6,6 +6,30 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { Transaction, Category, MonthlyTotal } from '../../models';
 
+// File System Access API type declarations
+interface SaveFilePickerOptions {
+  suggestedName?: string;
+  types?: Array<{
+    description: string;
+    accept: Record<string, string[]>;
+  }>;
+}
+
+interface FileSystemFileHandle {
+  createWritable(): Promise<FileSystemWritableFileStream>;
+}
+
+interface FileSystemWritableFileStream extends WritableStream {
+  write(data: Blob | BufferSource | string): Promise<void>;
+  close(): Promise<void>;
+}
+
+declare global {
+  interface Window {
+    showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
+  }
+}
+
 export interface ExportOptions {
   dateRange?: { start: Date; end: Date };
   categories?: string[];
@@ -417,7 +441,70 @@ export class ExportService {
     return isNaN(parsed) ? new Date() : new Date(parsed);
   }
 
-  // Download helper
+  // Check if File System Access API is available
+  isFileSystemAccessSupported(): boolean {
+    return typeof window !== 'undefined' && 'showSaveFilePicker' in window;
+  }
+
+  /**
+   * Download blob with native file picker (File System Access API)
+   * Falls back to legacy download for unsupported browsers
+   * @returns true if file was saved, false if user cancelled
+   */
+  async downloadBlobWithPicker(
+    blob: Blob,
+    filename: string,
+    mimeType: string
+  ): Promise<boolean> {
+    // Try modern File System Access API first (Chrome, Edge)
+    if (this.isFileSystemAccessSupported()) {
+      try {
+        const extension = filename.split('.').pop() || '';
+        const fileTypes = this.getFileTypeOptions(extension, mimeType);
+
+        const handle = await window.showSaveFilePicker!({
+          suggestedName: filename,
+          types: fileTypes,
+        });
+
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return true;
+      } catch (error) {
+        // User cancelled or API error
+        if ((error as Error).name === 'AbortError') {
+          return false; // User cancelled - don't fall back
+        }
+        console.warn('File System Access API failed, falling back to legacy download:', error);
+      }
+    }
+
+    // Fallback: Legacy download method (Safari, Firefox, older browsers)
+    this.downloadBlob(blob, filename);
+    return true;
+  }
+
+  private getFileTypeOptions(extension: string, mimeType: string): SaveFilePickerOptions['types'] {
+    const types: Record<string, { description: string; accept: Record<string, string[]> }> = {
+      csv: {
+        description: 'CSV Files',
+        accept: { 'text/csv': ['.csv'] },
+      },
+      pdf: {
+        description: 'PDF Files',
+        accept: { 'application/pdf': ['.pdf'] },
+      },
+      json: {
+        description: 'JSON Files',
+        accept: { 'application/json': ['.json'] },
+      },
+    };
+
+    return types[extension] ? [types[extension]] : [];
+  }
+
+  // Legacy download helper (fallback for unsupported browsers)
   downloadBlob(blob: Blob, filename: string): void {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

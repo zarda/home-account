@@ -13,7 +13,7 @@
   h3 {
     font-size: 1rem;
     font-weight: 600;
-    color: #1f2937;
+    @apply text-gray-800 dark:text-gray-100;
     margin: 0 0 4px 0;
   }
 }
@@ -32,7 +32,7 @@
 
 .section-description {
   font-size: 0.875rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
   margin: 0;
 }
 
@@ -54,12 +54,12 @@
   align-items: center;
   gap: 12px;
   padding: 16px;
-  background: #f9fafb;
+  @apply bg-gray-50 dark:bg-gray-800;
   border-radius: 12px;
   transition: all 0.2s;
 
   &:hover {
-    background: #f3f4f6;
+    @apply bg-gray-100 dark:bg-gray-700;
   }
 
   &.paused {
@@ -100,7 +100,7 @@
 
 .recurring-name {
   font-weight: 500;
-  color: #1f2937;
+  @apply text-gray-800 dark:text-gray-100;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -126,11 +126,11 @@
   gap: 12px;
   flex-wrap: wrap;
   font-size: 0.8rem;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
 .recurring-category {
-  background: #e5e7eb;
+  @apply bg-gray-200 dark:bg-gray-700;
   padding: 2px 8px;
   border-radius: 4px;
 }
@@ -165,10 +165,10 @@
 
 .action-btn {
   flex-shrink: 0;
-  color: #9ca3af;
+  @apply text-gray-400 dark:text-gray-500;
 
   &:hover {
-    color: #6b7280;
+    @apply text-gray-500 dark:text-gray-400;
   }
 }
 

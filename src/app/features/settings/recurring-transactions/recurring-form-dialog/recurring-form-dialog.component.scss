@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-width: 350px;
+  width: 100%;
   max-width: 450px;
 
   mat-form-field {
@@ -18,20 +18,30 @@
 }
 
 .type-toggle {
+  width: 100%;
+
   ::ng-deep {
+    .mat-button-toggle-group {
+      width: 100%;
+    }
+
+    .mat-button-toggle {
+      flex: 1;
+    }
+
     .mat-button-toggle-appearance-standard {
       background: transparent;
     }
 
     .mat-button-toggle-checked {
       &:first-child {
-        background: #fef2f2;
-        color: #dc2626;
+        background: var(--color-expense-light);
+        color: var(--color-expense);
       }
 
       &:last-child {
-        background: #f0fdf4;
-        color: #16a34a;
+        background: var(--color-income-light);
+        color: var(--color-income);
       }
     }
   }
@@ -52,11 +62,12 @@
 
 .amount-field {
   flex: 2;
+  min-width: 0; // Allow shrinking below content width
 }
 
 .currency-field {
   flex: 1;
-  min-width: 100px;
+  min-width: 90px;
 }
 
 // Frequency Row
@@ -67,11 +78,13 @@
 
 .interval-field {
   flex: 1;
+  min-width: 80px;
   max-width: 100px;
 }
 
 .frequency-type-field {
   flex: 2;
+  min-width: 0;
 }
 
 // Section Divider
@@ -86,14 +99,14 @@
     content: '';
     flex: 1;
     height: 1px;
-    background: #e5e7eb;
+    background: var(--border-primary);
   }
 }
 
 .section-label {
   font-size: 0.75rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -104,9 +117,9 @@
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: #f0fdf4;
+  background: var(--color-income-light);
   border-radius: 8px;
-  color: #16a34a;
+  color: var(--color-income);
   font-size: 0.875rem;
   font-weight: 500;
 
@@ -122,7 +135,7 @@
   display: flex;
 
   button {
-    color: #6b7280;
+    color: var(--text-muted);
 
     mat-icon {
       margin-right: 4px;
@@ -144,4 +157,36 @@
 mat-dialog-actions {
   padding: 16px 24px !important;
   gap: 8px;
+}
+
+// Mobile responsive adjustments
+@media (max-width: 480px) {
+  .form-content {
+    gap: 12px;
+  }
+
+  .amount-row,
+  .frequency-row {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .amount-field,
+  .currency-field,
+  .interval-field,
+  .frequency-type-field {
+    flex: none;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  mat-dialog-actions {
+    padding: 12px 16px !important;
+    flex-direction: column;
+
+    button {
+      width: 100%;
+    }
+  }
 }

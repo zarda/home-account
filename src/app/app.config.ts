@@ -11,6 +11,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { TranslationService } from './core/services/translation.service';
+import { ThemeService } from './core/services/theme.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -24,6 +25,10 @@ export const appConfig: ApplicationConfig = {
     provideAuth(() => getAuth()),
     provideFirestore(() => getFirestore()),
     provideCharts(withDefaultRegisterables()),
-    provideAppInitializer(() => inject(TranslationService).init())
+    provideAppInitializer(() => inject(TranslationService).init()),
+    provideAppInitializer(() => {
+      // Initialize theme service (will apply saved theme once user preferences load)
+      inject(ThemeService);
+    })
   ]
 };

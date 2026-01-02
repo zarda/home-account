@@ -90,27 +90,31 @@ export class ExportDialogComponent {
       const now = new Date();
       const dateStr = now.toISOString().split('T')[0];
 
+      let success = false;
       switch (this.selectedFormat) {
         case 'csv':
-          await this.exportCSV(dateStr);
+          success = await this.exportCSV(dateStr);
           break;
         case 'pdf':
-          await this.exportPDF(dateStr);
+          success = await this.exportPDF(dateStr);
           break;
         case 'json':
-          await this.exportJSON(dateStr);
+          success = await this.exportJSON(dateStr);
           break;
       }
 
-      this.dialogRef.close(true);
+      if (success) {
+        this.dialogRef.close(true);
+      }
+      // If user cancelled, don't close dialog
     } catch {
-      // Export failed - dialog will close without success
+      // Export failed - dialog stays open
     } finally {
       this.isExporting = false;
     }
   }
 
-  private async exportCSV(dateStr: string): Promise<void> {
+  private async exportCSV(dateStr: string): Promise<boolean> {
     const blob = this.exportService.exportToCSV(
       this.data.transactions,
       {
@@ -118,10 +122,14 @@ export class ExportDialogComponent {
         format: this.includeDetails ? 'detailed' : 'summary',
       }
     );
-    this.exportService.downloadBlob(blob, `transactions-${dateStr}.csv`);
+    return this.exportService.downloadBlobWithPicker(
+      blob,
+      `transactions-${dateStr}.csv`,
+      'text/csv'
+    );
   }
 
-  private async exportPDF(dateStr: string): Promise<void> {
+  private async exportPDF(dateStr: string): Promise<boolean> {
     const totalIncome = this.data.transactions
       .filter(t => t.type === 'income')
       .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
@@ -154,17 +162,25 @@ export class ExportDialogComponent {
     };
 
     const blob = await this.exportService.exportToPDF(reportData);
-    this.exportService.downloadBlob(blob, `report-${dateStr}.pdf`);
+    return this.exportService.downloadBlobWithPicker(
+      blob,
+      `report-${dateStr}.pdf`,
+      'application/pdf'
+    );
   }
 
-  private async exportJSON(dateStr: string): Promise<void> {
+  private async exportJSON(dateStr: string): Promise<boolean> {
     const blob = this.exportService.exportToJSON({
       transactions: this.data.transactions,
       categories: this.data.categories,
       exportDate: new Date().toISOString(),
       version: '1.0',
     });
-    this.exportService.downloadBlob(blob, `backup-${dateStr}.json`);
+    return this.exportService.downloadBlobWithPicker(
+      blob,
+      `backup-${dateStr}.json`,
+      'application/json'
+    );
   }
 
   cancel(): void {

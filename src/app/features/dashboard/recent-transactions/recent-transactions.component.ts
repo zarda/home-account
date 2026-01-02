@@ -1,6 +1,6 @@
 import { Component, inject, Input } from '@angular/core';
 
-import { RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,7 +16,6 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   selector: 'app-recent-transactions',
   standalone: true,
   imports: [
-    RouterLink,
     MatCardModule,
     MatIconModule,
     MatButtonModule,
@@ -30,6 +29,7 @@ export class RecentTransactionsComponent {
   @Input() transactions: Transaction[] = [];
   @Input() categories: Map<string, Category> = new Map<string, Category>();
 
+  private router = inject(Router);
   private currencyService = inject(CurrencyService);
   private dateFormatService = inject(DateFormatService);
   private categoryHelperService = inject(CategoryHelperService);
@@ -61,5 +61,17 @@ export class RecentTransactionsComponent {
   onAddTransaction(): void {
     // Navigate to transactions page with add mode
     window.location.href = '/transactions?action=add';
+  }
+
+  onTransactionClick(transaction: Transaction): void {
+    const date = transaction.date instanceof Timestamp
+      ? transaction.date.toDate()
+      : new Date(transaction.date as unknown as Date);
+    // Format as YYYY-MM-DD using local timezone (not UTC)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    this.router.navigate(['/transactions'], { queryParams: { date: dateStr } });
   }
 }

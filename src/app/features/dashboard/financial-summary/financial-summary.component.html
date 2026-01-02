@@ -4,13 +4,13 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 mb-1">{{ 'common.totalIncome' | translate }}</p>
-          <p class="text-2xl font-bold text-green-600">
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.totalIncome' | translate }}</p>
+          <p class="text-2xl font-bold text-green-600 dark:text-green-400">
             {{ formatAmount(income) }}
           </p>
         </div>
-        <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-          <mat-icon class="text-green-600">trending_up</mat-icon>
+        <div class="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
+          <mat-icon class="text-green-600 dark:text-green-400">trending_up</mat-icon>
         </div>
       </div>
     </mat-card-content>
@@ -21,13 +21,13 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 mb-1">{{ 'common.totalExpenses' | translate }}</p>
-          <p class="text-2xl font-bold text-red-600">
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.totalExpenses' | translate }}</p>
+          <p class="text-2xl font-bold text-red-600 dark:text-red-400">
             {{ formatAmount(expenses) }}
           </p>
         </div>
-        <div class="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
-          <mat-icon class="text-red-600">trending_down</mat-icon>
+        <div class="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900 flex items-center justify-center">
+          <mat-icon class="text-red-600 dark:text-red-400">trending_down</mat-icon>
         </div>
       </div>
     </mat-card-content>
@@ -38,11 +38,13 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 mb-1">{{ 'common.netBalance' | translate }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.netBalance' | translate }}</p>
           <p
             class="text-2xl font-bold"
             [class.text-green-600]="balance >= 0"
+            [class.dark:text-green-400]="balance >= 0"
             [class.text-red-600]="balance < 0"
+            [class.dark:text-red-400]="balance < 0"
           >
             {{ formatAmount(balance) }}
           </p>
@@ -50,11 +52,15 @@
         <div
           class="w-10 h-10 rounded-lg flex items-center justify-center"
           [class.bg-green-100]="balance >= 0"
+          [class.dark:bg-green-900]="balance >= 0"
           [class.bg-red-100]="balance < 0"
+          [class.dark:bg-red-900]="balance < 0"
         >
           <mat-icon
             [class.text-green-600]="balance >= 0"
+            [class.dark:text-green-400]="balance >= 0"
             [class.text-red-600]="balance < 0"
+            [class.dark:text-red-400]="balance < 0"
           >
             account_balance_wallet
           </mat-icon>

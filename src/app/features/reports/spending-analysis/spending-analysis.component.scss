@@ -16,9 +16,9 @@
   align-items: center;
   gap: 16px;
   padding: 20px;
-  background: white;
+  @apply bg-white dark:bg-gray-800;
   border-radius: 12px;
-  border: 1px solid #e5e7eb;
+  @apply border border-gray-200 dark:border-gray-700;
 
   .card-icon {
     width: 48px;
@@ -42,7 +42,7 @@
 
     .label {
       font-size: 0.875rem;
-      color: #6b7280;
+      @apply text-gray-500 dark:text-gray-400;
     }
 
     .value {
@@ -192,12 +192,12 @@
 
   .category-name {
     font-weight: 500;
-    color: #1f2937;
+    @apply text-gray-800 dark:text-gray-100;
   }
 
   .category-amount {
     font-size: 0.875rem;
-    color: #6b7280;
+    @apply text-gray-500 dark:text-gray-400;
   }
 }
 
@@ -210,7 +210,7 @@
 .progress-bar {
   flex: 1;
   height: 8px;
-  background: #f3f4f6;
+  @apply bg-gray-100 dark:bg-gray-700;
   border-radius: 4px;
   overflow: hidden;
 }
@@ -226,7 +226,7 @@
   text-align: right;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #6b7280;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
 @media (min-width: 768px) {

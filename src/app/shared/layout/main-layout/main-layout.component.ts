@@ -21,9 +21,9 @@ export class MainLayoutComponent {
   sidebarOpen = signal(false); // Start closed, will open on desktop
 
   constructor() {
-    // Auto-close sidebar when switching to mobile, auto-open on desktop
+    // Auto-close sidebar on tablet/mobile, auto-open on desktop
     effect(() => {
-      if (this.isMobile()) {
+      if (this.isOverlayMode()) {
         this.sidebarOpen.set(false);
       } else {
         this.sidebarOpen.set(true);
@@ -56,11 +56,21 @@ export class MainLayoutComponent {
   isTablet = computed(() => this.breakpointSignal().isTablet);
   isDesktop = computed(() => this.breakpointSignal().isDesktop);
 
+  // Sidebar should be overlay mode on tablet and mobile
+  isOverlayMode = computed(() => this.isMobile() || this.isTablet());
+
   toggleSidebar(): void {
     this.sidebarOpen.update((open) => !open);
   }
 
   closeSidebar(): void {
     this.sidebarOpen.set(false);
+  }
+
+  onNavItemClicked(): void {
+    // On tablet/mobile, close sidebar after navigation
+    if (this.isOverlayMode()) {
+      this.closeSidebar();
+    }
   }
 }

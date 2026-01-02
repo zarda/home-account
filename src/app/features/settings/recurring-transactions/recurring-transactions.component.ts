@@ -121,7 +121,8 @@ export class RecurringTransactionsComponent implements OnInit {
 
   openAddDialog(): void {
     const dialogRef = this.dialog.open(RecurringFormDialogComponent, {
-      width: '500px',
+      width: '100%',
+      maxWidth: '500px',
       data: {}
     });
 
