@@ -8,12 +8,14 @@ import { Subscription } from 'rxjs';
 
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
+import { TranslationService } from '../../core/services/translation.service';
 import { Budget, Category } from '../../models';
 import { BudgetOverviewComponent } from './budget-overview/budget-overview.component';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form/budget-form.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
+import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-budgets',
@@ -24,7 +26,8 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/componen
     MatIconModule,
     BudgetOverviewComponent,
     LoadingSpinnerComponent,
-    EmptyStateComponent
+    EmptyStateComponent,
+    TranslatePipe
   ],
   templateUrl: './budgets.component.html',
   styleUrl: './budgets.component.scss',
@@ -32,6 +35,7 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/componen
 export class BudgetsComponent implements OnInit, OnDestroy {
   private budgetService = inject(BudgetService);
   private categoryService = inject(CategoryService);
+  private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
 
   budgets = this.budgetService.budgets;
@@ -107,10 +111,10 @@ export class BudgetsComponent implements OnInit, OnDestroy {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       width: '400px',
       data: {
-        title: 'Delete Budget',
-        message: `Are you sure you want to delete "${budget.name}"? This action cannot be undone.`,
-        confirmLabel: 'Delete',
-        cancelLabel: 'Cancel',
+        title: this.translationService.t('budget.deleteBudget'),
+        message: this.translationService.t('budget.deleteConfirmMessage', { name: budget.name }),
+        confirmLabel: this.translationService.t('common.delete'),
+        cancelLabel: this.translationService.t('common.cancel'),
         confirmColor: 'warn',
         icon: 'delete'
       } as ConfirmDialogData,

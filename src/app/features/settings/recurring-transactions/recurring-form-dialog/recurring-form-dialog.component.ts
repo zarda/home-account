@@ -14,28 +14,13 @@ import { MatNativeDateModule } from '@angular/material/core';
 
 import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { TranslationService } from '../../../../core/services/translation.service';
 import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category } from '../../../../models';
+import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
 interface DialogData {
   recurring?: RecurringTransaction;
 }
-
-const FREQUENCY_OPTIONS: { value: FrequencyType; label: string }[] = [
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'yearly', label: 'Yearly' },
-];
-
-const DAYS_OF_WEEK = [
-  { value: 0, label: 'Sunday' },
-  { value: 1, label: 'Monday' },
-  { value: 2, label: 'Tuesday' },
-  { value: 3, label: 'Wednesday' },
-  { value: 4, label: 'Thursday' },
-  { value: 5, label: 'Friday' },
-  { value: 6, label: 'Saturday' },
-];
 
 @Component({
   selector: 'app-recurring-form-dialog',
@@ -52,6 +37,7 @@ const DAYS_OF_WEEK = [
     MatIconModule,
     MatDatepickerModule,
     MatNativeDateModule,
+    TranslatePipe,
   ],
   templateUrl: './recurring-form-dialog.component.html',
   styleUrl: './recurring-form-dialog.component.scss',
@@ -61,6 +47,7 @@ export class RecurringFormDialogComponent implements OnInit {
   private data = inject<DialogData>(MAT_DIALOG_DATA);
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
+  private translationService = inject(TranslationService);
 
   // Form data
   name = '';
@@ -77,9 +64,28 @@ export class RecurringFormDialogComponent implements OnInit {
   endDate: Date | null = null;
   hasEndDate = false;
 
-  // Options
-  frequencyOptions = FREQUENCY_OPTIONS;
-  daysOfWeek = DAYS_OF_WEEK;
+  // Options - computed for translation
+  get frequencyOptions(): { value: FrequencyType; label: string }[] {
+    return [
+      { value: 'daily', label: this.translationService.t('frequency.daily') },
+      { value: 'weekly', label: this.translationService.t('frequency.weekly') },
+      { value: 'monthly', label: this.translationService.t('frequency.monthly') },
+      { value: 'yearly', label: this.translationService.t('frequency.yearly') },
+    ];
+  }
+
+  get daysOfWeek(): { value: number; label: string }[] {
+    return [
+      { value: 0, label: this.translationService.t('days.sunday') },
+      { value: 1, label: this.translationService.t('days.monday') },
+      { value: 2, label: this.translationService.t('days.tuesday') },
+      { value: 3, label: this.translationService.t('days.wednesday') },
+      { value: 4, label: this.translationService.t('days.thursday') },
+      { value: 5, label: this.translationService.t('days.friday') },
+      { value: 6, label: this.translationService.t('days.saturday') },
+    ];
+  }
+
   daysOfMonth = Array.from({ length: 31 }, (_, i) => i + 1);
 
   currencies = this.currencyService.currencies;
@@ -97,7 +103,7 @@ export class RecurringFormDialogComponent implements OnInit {
   }
 
   get title(): string {
-    return this.isEdit ? 'Edit Recurring Transaction' : 'Add Recurring Transaction';
+    return this.translationService.t(this.isEdit ? 'settings.editRecurring' : 'settings.addRecurring');
   }
 
   get isValid(): boolean {
@@ -119,23 +125,29 @@ export class RecurringFormDialogComponent implements OnInit {
   }
 
   get frequencyPreview(): string {
+    const t = this.translationService.t.bind(this.translationService);
     switch (this.frequencyType) {
       case 'daily':
-        return this.interval === 1 ? 'Every day' : `Every ${this.interval} days`;
-      case 'weekly': {
-        const day = DAYS_OF_WEEK.find(d => d.value === this.dayOfWeek)?.label || '';
         return this.interval === 1
-          ? `Every ${day}`
-          : `Every ${this.interval} weeks on ${day}`;
+          ? t('settings.everyDay')
+          : t('settings.everyNDays', { n: this.interval });
+      case 'weekly': {
+        const day = this.daysOfWeek.find(d => d.value === this.dayOfWeek)?.label || '';
+        return this.interval === 1
+          ? t('settings.everyWeekday', { day })
+          : t('settings.everyNWeeksOn', { n: this.interval, day });
       }
       case 'monthly': {
-        const suffix = this.getDaySuffix(this.dayOfMonth || 1);
+        const day = this.dayOfMonth ?? 1;
+        const suffix = this.getDaySuffix(day);
         return this.interval === 1
-          ? `Every month on the ${this.dayOfMonth}${suffix}`
-          : `Every ${this.interval} months on the ${this.dayOfMonth}${suffix}`;
+          ? t('settings.everyMonthOn', { day, suffix })
+          : t('settings.everyNMonthsOn', { n: this.interval, day, suffix });
       }
       case 'yearly':
-        return this.interval === 1 ? 'Every year' : `Every ${this.interval} years`;
+        return this.interval === 1
+          ? t('settings.everyYear')
+          : t('settings.everyNYears', { n: this.interval });
       default:
         return '';
     }

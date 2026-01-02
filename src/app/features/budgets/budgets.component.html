@@ -2,16 +2,16 @@
   <!-- Header -->
   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">Budgets</h1>
+      <h1 class="text-2xl font-bold text-gray-900">{{ 'budget.title' | translate }}</h1>
       @if (!isLoading() && budgetCount() > 0) {
         <p class="text-sm text-gray-500 mt-1">
-          {{ budgetCount() }} {{ budgetCount() === 1 ? 'budget' : 'budgets' }}
+          {{ budgetCount() }} {{ 'budget.budgetCount' | translate }}
         </p>
       }
     </div>
     <button mat-fab extended color="primary" (click)="openAddDialog()">
       <mat-icon>add</mat-icon>
-      Add Budget
+      {{ 'budget.addBudget' | translate }}
     </button>
   </div>
 
@@ -21,9 +21,9 @@
   } @else if (budgets().length === 0) {
     <app-empty-state
       icon="savings"
-      title="No budgets yet"
-      description="Create your first budget to start tracking your spending goals and stay on top of your finances."
-      actionLabel="Create Budget"
+      [title]="'budget.noBudgets' | translate"
+      [description]="'budget.noBudgetsDescription' | translate"
+      [actionLabel]="'budget.createBudget' | translate"
       actionIcon="add"
       (action)="openAddDialog()"
     />

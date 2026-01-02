@@ -209,13 +209,19 @@ export class CategoryService {
     const categories: Category[] = [];
     let order = 0;
 
+    // Helper to extract key name from translation key for ID generation
+    const getKeyName = (nameKey: string): string => {
+      const parts = nameKey.split('.');
+      return parts[parts.length - 1];
+    };
+
     // Process expense groups
     for (const group of DEFAULT_EXPENSE_GROUPS) {
       // Add group as parent category
       categories.push({
         id: group.id,
         userId: null,
-        name: group.name,
+        name: group.nameKey,  // Store translation key as name
         icon: group.icon,
         color: group.color,
         type: 'expense',
@@ -226,10 +232,11 @@ export class CategoryService {
 
       // Add subcategories
       for (const item of group.categories) {
+        const keyName = getKeyName(item.nameKey);
         categories.push({
-          id: `${group.id}_${item.name.toLowerCase().replace(/\s+/g, '_')}`,
+          id: `${group.id}_${keyName}`,
           userId: null,
-          name: item.name,
+          name: item.nameKey,  // Store translation key as name
           icon: item.icon,
           color: group.color,
           type: 'expense',
@@ -247,7 +254,7 @@ export class CategoryService {
       categories.push({
         id: group.id,
         userId: null,
-        name: group.name,
+        name: group.nameKey,  // Store translation key as name
         icon: group.icon,
         color: group.color,
         type: 'income',
@@ -258,10 +265,11 @@ export class CategoryService {
 
       // Add subcategories
       for (const item of group.categories) {
+        const keyName = getKeyName(item.nameKey);
         categories.push({
-          id: `${group.id}_${item.name.toLowerCase().replace(/\s+/g, '_')}`,
+          id: `${group.id}_${keyName}`,
           userId: null,
-          name: item.name,
+          name: item.nameKey,  // Store translation key as name
           icon: item.icon,
           color: group.color,
           type: 'income',

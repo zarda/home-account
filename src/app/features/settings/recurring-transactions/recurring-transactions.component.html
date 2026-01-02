@@ -1,12 +1,12 @@
 <div class="recurring-transactions">
   <div class="section-header">
     <div class="header-text">
-      <h3>Recurring Transactions</h3>
-      <p class="section-description">Manage your recurring income and expenses</p>
+      <h3>{{ 'settings.recurring' | translate }}</h3>
+      <p class="section-description">{{ 'settings.manageRecurring' | translate }}</p>
     </div>
     <button mat-flat-button color="primary" (click)="openAddDialog()" class="add-btn">
       <mat-icon>add</mat-icon>
-      Add
+      {{ 'common.add' | translate }}
     </button>
   </div>
 
@@ -17,8 +17,8 @@
   } @else if (recurringTransactions().length === 0) {
     <app-empty-state
       icon="repeat"
-      title="No Recurring Transactions"
-      description="Set up recurring transactions to automatically track regular income and expenses."
+      [title]="'settings.noRecurring' | translate"
+      [description]="'settings.noRecurringDescription' | translate"
     />
   } @else {
     <div class="recurring-list">
@@ -45,7 +45,7 @@
               </span>
               @if (recurring.nextOccurrence) {
                 <span class="recurring-next">
-                  Next: {{ recurring.nextOccurrence.toDate() | date:'MMM d, yyyy' }}
+                  {{ 'settings.nextOccurrence' | translate:{ date: (recurring.nextOccurrence.toDate() | date:'MMM d, yyyy') ?? '' } }}
                 </span>
               }
             </div>
@@ -53,7 +53,7 @@
 
           <div class="recurring-status">
             @if (!recurring.isActive) {
-              <mat-chip class="status-chip paused">Paused</mat-chip>
+              <mat-chip class="status-chip paused">{{ 'settings.paused' | translate }}</mat-chip>
             }
           </div>
 
@@ -65,17 +65,17 @@
             @if (recurring.isActive) {
               <button mat-menu-item (click)="toggleActive(recurring)">
                 <mat-icon>pause</mat-icon>
-                <span>Pause</span>
+                <span>{{ 'settings.pause' | translate }}</span>
               </button>
             } @else {
               <button mat-menu-item (click)="toggleActive(recurring)">
                 <mat-icon>play_arrow</mat-icon>
-                <span>Resume</span>
+                <span>{{ 'settings.resume' | translate }}</span>
               </button>
             }
             <button mat-menu-item (click)="deleteRecurring(recurring)" class="delete-action">
               <mat-icon>delete</mat-icon>
-              <span>Delete</span>
+              <span>{{ 'common.delete' | translate }}</span>
             </button>
           </mat-menu>
         </div>

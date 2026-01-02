@@ -4,8 +4,8 @@
     <div class="section-header">
       <mat-icon class="section-icon">download</mat-icon>
       <div>
-        <h3>Export Data</h3>
-        <p class="section-description">Download your data for backup or analysis</p>
+        <h3>{{ 'settings.exportData' | translate }}</h3>
+        <p class="section-description">{{ 'settings.exportDataDescription' | translate }}</p>
       </div>
     </div>
 
@@ -18,8 +18,8 @@
       >
         <mat-icon>backup</mat-icon>
         <div class="btn-content">
-          <span class="btn-title">Full Backup</span>
-          <span class="btn-subtitle">JSON format, includes all data</span>
+          <span class="btn-title">{{ 'settings.fullBackup' | translate }}</span>
+          <span class="btn-subtitle">{{ 'settings.fullBackupDescription' | translate }}</span>
         </div>
       </button>
 
@@ -31,8 +31,8 @@
       >
         <mat-icon>table_chart</mat-icon>
         <div class="btn-content">
-          <span class="btn-title">Transactions CSV</span>
-          <span class="btn-subtitle">Spreadsheet compatible</span>
+          <span class="btn-title">{{ 'settings.transactionsCsv' | translate }}</span>
+          <span class="btn-subtitle">{{ 'settings.transactionsCsvDescription' | translate }}</span>
         </div>
       </button>
     </div>
@@ -43,8 +43,8 @@
     <div class="section-header">
       <mat-icon class="section-icon">upload</mat-icon>
       <div>
-        <h3>Import Data</h3>
-        <p class="section-description">Import transactions from CSV or restore a backup</p>
+        <h3>{{ 'settings.importData' | translate }}</h3>
+        <p class="section-description">{{ 'settings.importDataDescription' | translate }}</p>
       </div>
     </div>
 
@@ -59,11 +59,11 @@
         />
         @if (isImporting()) {
           <mat-spinner diameter="32"></mat-spinner>
-          <span>Processing file...</span>
+          <span>{{ 'settings.processingFile' | translate }}</span>
         } @else {
           <mat-icon>cloud_upload</mat-icon>
-          <span class="dropzone-text">Click to upload CSV or JSON file</span>
-          <span class="dropzone-hint">Supports bank exports and backup files</span>
+          <span class="dropzone-text">{{ 'settings.uploadPrompt' | translate }}</span>
+          <span class="dropzone-hint">{{ 'settings.uploadHint' | translate }}</span>
         }
       </div>
     } @else {
@@ -71,7 +71,7 @@
       <div class="import-preview">
         <div class="preview-header">
           <mat-icon>preview</mat-icon>
-          <span>Preview: {{ importedTransactions().length }} transactions found</span>
+          <span>{{ 'settings.previewTransactions' | translate:{ count: importedTransactions().length } }}</span>
         </div>
 
         <div class="preview-list">
@@ -86,25 +86,25 @@
           }
           @if (importedTransactions().length > 5) {
             <div class="preview-more">
-              ...and {{ importedTransactions().length - 5 }} more transactions
+              {{ 'settings.moreTransactions' | translate:{ count: importedTransactions().length - 5 } }}
             </div>
           }
         </div>
 
         @if (importProgress() > 0 && importProgress() < 100) {
           <mat-progress-bar mode="determinate" [value]="importProgress()"></mat-progress-bar>
-          <span class="progress-text">Importing... {{ importProgress() }}%</span>
+          <span class="progress-text">{{ 'settings.importingProgress' | translate:{ progress: importProgress() } }}</span>
         }
 
         <div class="preview-actions">
-          <button mat-button (click)="cancelImport()">Cancel</button>
+          <button mat-button (click)="cancelImport()">{{ 'common.cancel' | translate }}</button>
           <button
             mat-flat-button
             color="primary"
             (click)="confirmImport()"
             [disabled]="isImporting()"
           >
-            Import {{ importedTransactions().length }} Transactions
+            {{ 'settings.importTransactions' | translate:{ count: importedTransactions().length } }}
           </button>
         </div>
       </div>
@@ -116,29 +116,29 @@
     <div class="section-header">
       <mat-icon class="section-icon danger">warning</mat-icon>
       <div>
-        <h3>Danger Zone</h3>
-        <p class="section-description">Irreversible actions</p>
+        <h3>{{ 'settings.dangerZone' | translate }}</h3>
+        <p class="section-description">{{ 'settings.irreversibleActions' | translate }}</p>
       </div>
     </div>
 
     <div class="danger-actions">
       <div class="danger-item">
         <div class="danger-info">
-          <span class="danger-title">Delete All Transactions</span>
-          <span class="danger-desc">Permanently remove all transaction history</span>
+          <span class="danger-title">{{ 'settings.deleteAllTransactions' | translate }}</span>
+          <span class="danger-desc">{{ 'settings.deleteAllDescription' | translate }}</span>
         </div>
         <button mat-stroked-button color="warn" (click)="deleteAllTransactions()">
-          Delete All
+          {{ 'settings.deleteAll' | translate }}
         </button>
       </div>
 
       <div class="danger-item">
         <div class="danger-info">
-          <span class="danger-title">Sign Out</span>
-          <span class="danger-desc">Sign out of your account</span>
+          <span class="danger-title">{{ 'auth.signOut' | translate }}</span>
+          <span class="danger-desc">{{ 'settings.signOutDescription' | translate }}</span>
         </div>
         <button mat-stroked-button (click)="signOut()">
-          Sign Out
+          {{ 'auth.signOut' | translate }}
         </button>
       </div>
     </div>

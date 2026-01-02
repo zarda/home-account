@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatExpansionModule } from '@angular/material/expansion';
 
 import { AuthService } from '../../core/services/auth.service';
+import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { ProfileSettingsComponent } from './profile-settings/profile-settings.component';
 import { CategoryManagerComponent } from './category-manager/category-manager.component';
 import { RecurringTransactionsComponent } from './recurring-transactions/recurring-transactions.component';
@@ -21,6 +22,7 @@ import { DataManagementComponent } from './data-management/data-management.compo
     CategoryManagerComponent,
     RecurringTransactionsComponent,
     DataManagementComponent,
+    TranslatePipe,
   ],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',

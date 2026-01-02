@@ -3,11 +3,12 @@ import { Component, inject, Input } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-financial-summary',
   standalone: true,
-  imports: [MatCardModule, MatIconModule],
+  imports: [MatCardModule, MatIconModule, TranslatePipe],
   templateUrl: './financial-summary.component.html',
   styleUrl: './financial-summary.component.scss',
 })

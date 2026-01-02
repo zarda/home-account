@@ -11,32 +11,32 @@
       >
         <mat-button-toggle value="expense">
           <mat-icon>trending_down</mat-icon>
-          Expense
+          {{ 'common.expense' | translate }}
         </mat-button-toggle>
         <mat-button-toggle value="income">
           <mat-icon>trending_up</mat-icon>
-          Income
+          {{ 'common.income' | translate }}
         </mat-button-toggle>
       </mat-button-toggle-group>
     </div>
 
     <!-- Name -->
     <mat-form-field appearance="outline">
-      <mat-label>Name</mat-label>
-      <input matInput [(ngModel)]="name" placeholder="e.g., Netflix Subscription" />
+      <mat-label>{{ 'settings.name' | translate }}</mat-label>
+      <input matInput [(ngModel)]="name" [placeholder]="'settings.namePlaceholder' | translate" />
       <mat-icon matPrefix>label</mat-icon>
     </mat-form-field>
 
     <!-- Amount and Currency -->
     <div class="amount-row">
       <mat-form-field appearance="outline" class="amount-field">
-        <mat-label>Amount</mat-label>
+        <mat-label>{{ 'transactions.amount' | translate }}</mat-label>
         <input matInput type="number" [(ngModel)]="amount" min="0" step="0.01" />
         <mat-icon matPrefix>attach_money</mat-icon>
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="currency-field">
-        <mat-label>Currency</mat-label>
+        <mat-label>{{ 'settings.currency' | translate }}</mat-label>
         <mat-select [(ngModel)]="currency">
           @for (curr of currencies(); track curr.code) {
             <mat-option [value]="curr.code">
@@ -49,12 +49,12 @@
 
     <!-- Category -->
     <mat-form-field appearance="outline">
-      <mat-label>Category</mat-label>
+      <mat-label>{{ 'transactions.category' | translate }}</mat-label>
       <mat-select [(ngModel)]="categoryId">
         @for (category of filteredCategories(); track category.id) {
           <mat-option [value]="category.id">
             <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
-            {{ category.name }}
+            {{ category.name | translate }}
           </mat-option>
         }
       </mat-select>
@@ -63,24 +63,24 @@
 
     <!-- Description -->
     <mat-form-field appearance="outline">
-      <mat-label>Description (optional)</mat-label>
-      <input matInput [(ngModel)]="description" placeholder="Additional details" />
+      <mat-label>{{ 'transactions.description' | translate }} ({{ 'settings.optional' | translate }})</mat-label>
+      <input matInput [(ngModel)]="description" [placeholder]="'transactions.descriptionPlaceholder' | translate" />
       <mat-icon matPrefix>notes</mat-icon>
     </mat-form-field>
 
     <!-- Frequency Section -->
     <div class="section-divider">
-      <span class="section-label">Frequency</span>
+      <span class="section-label">{{ 'settings.frequency' | translate }}</span>
     </div>
 
     <div class="frequency-row">
       <mat-form-field appearance="outline" class="interval-field">
-        <mat-label>Every</mat-label>
+        <mat-label>{{ 'settings.every' | translate }}</mat-label>
         <input matInput type="number" [(ngModel)]="interval" min="1" />
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="frequency-type-field">
-        <mat-label>Period</mat-label>
+        <mat-label>{{ 'settings.period' | translate }}</mat-label>
         <mat-select [(ngModel)]="frequencyType" (selectionChange)="onFrequencyTypeChange()">
           @for (freq of frequencyOptions; track freq.value) {
             <mat-option [value]="freq.value">{{ freq.label }}</mat-option>
@@ -92,7 +92,7 @@
     <!-- Day of Week (for weekly) -->
     @if (showDayOfWeek) {
       <mat-form-field appearance="outline">
-        <mat-label>On</mat-label>
+        <mat-label>{{ 'settings.on' | translate }}</mat-label>
         <mat-select [(ngModel)]="dayOfWeek">
           @for (day of daysOfWeek; track day.value) {
             <mat-option [value]="day.value">{{ day.label }}</mat-option>
@@ -105,7 +105,7 @@
     <!-- Day of Month (for monthly/yearly) -->
     @if (showDayOfMonth) {
       <mat-form-field appearance="outline">
-        <mat-label>On day</mat-label>
+        <mat-label>{{ 'settings.onDay' | translate }}</mat-label>
         <mat-select [(ngModel)]="dayOfMonth">
           @for (day of daysOfMonth; track day) {
             <mat-option [value]="day">{{ day }}</mat-option>
@@ -123,12 +123,12 @@
 
     <!-- Date Section -->
     <div class="section-divider">
-      <span class="section-label">Duration</span>
+      <span class="section-label">{{ 'settings.duration' | translate }}</span>
     </div>
 
     <!-- Start Date -->
     <mat-form-field appearance="outline">
-      <mat-label>Start Date</mat-label>
+      <mat-label>{{ 'settings.startDate' | translate }}</mat-label>
       <input matInput [matDatepicker]="startPicker" [(ngModel)]="startDate" />
       <mat-datepicker-toggle matSuffix [for]="startPicker"></mat-datepicker-toggle>
       <mat-datepicker #startPicker></mat-datepicker>
@@ -139,14 +139,14 @@
     <div class="end-date-toggle">
       <button mat-button (click)="toggleEndDate()" type="button">
         <mat-icon>{{ hasEndDate ? 'event_busy' : 'event_available' }}</mat-icon>
-        {{ hasEndDate ? 'Remove end date' : 'Add end date' }}
+        {{ hasEndDate ? ('settings.removeEndDate' | translate) : ('settings.addEndDate' | translate) }}
       </button>
     </div>
 
     <!-- End Date -->
     @if (hasEndDate) {
       <mat-form-field appearance="outline">
-        <mat-label>End Date</mat-label>
+        <mat-label>{{ 'settings.endDate' | translate }}</mat-label>
         <input matInput [matDatepicker]="endPicker" [(ngModel)]="endDate" [min]="startDate" />
         <mat-datepicker-toggle matSuffix [for]="endPicker"></mat-datepicker-toggle>
         <mat-datepicker #endPicker></mat-datepicker>
@@ -157,8 +157,8 @@
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
-  <button mat-button (click)="cancel()">Cancel</button>
+  <button mat-button (click)="cancel()">{{ 'common.cancel' | translate }}</button>
   <button mat-flat-button color="primary" (click)="save()" [disabled]="!isValid">
-    {{ isEdit ? 'Save Changes' : 'Create' }}
+    {{ isEdit ? ('settings.saveChanges' | translate) : ('settings.create' | translate) }}
   </button>
 </mat-dialog-actions>

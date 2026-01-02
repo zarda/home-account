@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -10,7 +10,9 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { SUPPORTED_CURRENCIES } from '../../../models';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-profile-settings',
@@ -24,6 +26,7 @@ import { SUPPORTED_CURRENCIES } from '../../../models';
     MatIconModule,
     MatButtonToggleModule,
     MatSnackBarModule,
+    TranslatePipe,
   ],
   templateUrl: './profile-settings.component.html',
   styleUrl: './profile-settings.component.scss',
@@ -31,15 +34,15 @@ import { SUPPORTED_CURRENCIES } from '../../../models';
 export class ProfileSettingsComponent {
   private authService = inject(AuthService);
   private snackBar = inject(MatSnackBar);
+  private translationService = inject(TranslationService);
 
   currencies = SUPPORTED_CURRENCIES;
-  isSaving = signal(false);
 
   // Current preferences
   baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
   theme: 'light' | 'dark' | 'system' = this.authService.currentUser()?.preferences?.theme || 'system';
   dateFormat = this.authService.currentUser()?.preferences?.dateFormat || 'MM/DD/YYYY';
-  language = this.authService.currentUser()?.preferences?.language || 'en';
+  language: SupportedLocale = (this.authService.currentUser()?.preferences?.language as SupportedLocale) || this.translationService.currentLocale();
 
   dateFormats = [
     { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (12/31/2024)' },
@@ -47,34 +50,36 @@ export class ProfileSettingsComponent {
     { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2024-12-31)' },
   ];
 
-  languages = [
-    { code: 'en', name: 'English' },
-    { code: 'zh-Hant', name: '繁體中文' },
-    { code: 'ja', name: '日本語' },
-  ];
+  languages = this.translationService.languages;
 
-  async savePreferences(): Promise<void> {
-    this.isSaving.set(true);
+  async onCurrencyChange(): Promise<void> {
+    await this.savePreference({ baseCurrency: this.baseCurrency });
+  }
 
+  async onDateFormatChange(): Promise<void> {
+    await this.savePreference({ dateFormat: this.dateFormat });
+  }
+
+  async onThemeChange(): Promise<void> {
+    await this.savePreference({ theme: this.theme });
+  }
+
+  async onLanguageChange(): Promise<void> {
+    await this.translationService.setLocale(this.language);
+    await this.savePreference({ language: this.language });
+  }
+
+  private async savePreference(pref: Record<string, unknown>): Promise<void> {
     try {
       await this.authService.updateUserPreferences({
-        baseCurrency: this.baseCurrency,
-        theme: this.theme,
-        dateFormat: this.dateFormat,
-        language: this.language,
-      });
-
-      this.snackBar.open('Preferences saved successfully', 'Close', {
-        duration: 3000,
-        horizontalPosition: 'center',
+        ...this.authService.currentUser()?.preferences,
+        ...pref,
       });
     } catch {
-      this.snackBar.open('Failed to save preferences', 'Close', {
+      this.snackBar.open(this.translationService.t('common.error'), this.translationService.t('common.close'), {
         duration: 3000,
         horizontalPosition: 'center',
       });
-    } finally {
-      this.isSaving.set(false);
     }
   }
 }

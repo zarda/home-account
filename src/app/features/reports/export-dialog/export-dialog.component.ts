@@ -10,7 +10,9 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { ExportService, ReportData } from '../../../core/services/export.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction, Category } from '../../../models';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 type ExportFormat = 'csv' | 'pdf' | 'json';
 
@@ -33,6 +35,7 @@ interface ExportDialogData {
     MatRadioModule,
     MatCheckboxModule,
     MatProgressSpinnerModule,
+    TranslatePipe,
   ],
   templateUrl: './export-dialog.component.html',
   styleUrl: './export-dialog.component.scss',
@@ -41,31 +44,34 @@ export class ExportDialogComponent {
   private dialogRef = inject(MatDialogRef<ExportDialogComponent>);
   private data = inject<ExportDialogData>(MAT_DIALOG_DATA);
   private exportService = inject(ExportService);
+  private translationService = inject(TranslationService);
 
   selectedFormat: ExportFormat = 'csv';
   includeDetails = true;
   isExporting = false;
 
-  formatOptions = [
-    {
-      value: 'csv' as ExportFormat,
-      label: 'CSV',
-      description: 'Spreadsheet format, great for Excel or Google Sheets',
-      icon: 'table_chart',
-    },
-    {
-      value: 'pdf' as ExportFormat,
-      label: 'PDF Report',
-      description: 'Formatted report with charts and summary',
-      icon: 'picture_as_pdf',
-    },
-    {
-      value: 'json' as ExportFormat,
-      label: 'JSON Backup',
-      description: 'Full data export for backup purposes',
-      icon: 'code',
-    },
-  ];
+  get formatOptions() {
+    return [
+      {
+        value: 'csv' as ExportFormat,
+        label: 'CSV',
+        description: this.translationService.t('reports.csvDescription'),
+        icon: 'table_chart',
+      },
+      {
+        value: 'pdf' as ExportFormat,
+        label: 'PDF',
+        description: this.translationService.t('reports.pdfDescription'),
+        icon: 'picture_as_pdf',
+      },
+      {
+        value: 'json' as ExportFormat,
+        label: 'JSON',
+        description: this.translationService.t('reports.jsonDescription'),
+        icon: 'code',
+      },
+    ];
+  }
 
   get transactionCount(): number {
     return this.data.transactions.length;

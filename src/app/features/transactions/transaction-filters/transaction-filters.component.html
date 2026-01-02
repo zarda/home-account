@@ -7,17 +7,17 @@
         class="quick-btn"
         [class.active]="isQuickFilterActive('today')"
         (click)="setQuickFilter('today')"
-      >Today</button>
+      >{{ 'transactions.today' | translate }}</button>
       <button
         class="quick-btn"
         [class.active]="isQuickFilterActive('thisWeek')"
         (click)="setQuickFilter('thisWeek')"
-      >Week</button>
+      >{{ 'transactions.week' | translate }}</button>
       <button
         class="quick-btn"
         [class.active]="isQuickFilterActive('thisMonth')"
         (click)="setQuickFilter('thisMonth')"
-      >Month</button>
+      >{{ 'transactions.month' | translate }}</button>
       <button class="quick-btn date-picker-btn" (click)="dayPicker.open()">
         <mat-icon>calendar_today</mat-icon>
       </button>
@@ -40,11 +40,11 @@
       <mat-menu #periodMenu="matMenu">
         <button mat-menu-item (click)="openMonthPicker()">
           <mat-icon>event</mat-icon>
-          <span>Select Month</span>
+          <span>{{ 'dashboard.selectMonth' | translate }}</span>
         </button>
         <button mat-menu-item (click)="openYearPicker()">
           <mat-icon>date_range</mat-icon>
-          <span>Select Year</span>
+          <span>{{ 'dashboard.selectYear' | translate }}</span>
         </button>
       </mat-menu>
 
@@ -80,7 +80,7 @@
     <!-- Add Button -->
     <button class="add-btn" (click)="addTransaction.emit()">
       <mat-icon>add</mat-icon>
-      <span class="add-label">Add</span>
+      <span class="add-label">{{ 'common.add' | translate }}</span>
     </button>
   </div>
 
@@ -93,7 +93,7 @@
         <input
           type="text"
           class="search-input"
-          placeholder="Search transactions..."
+          [placeholder]="'transactions.searchPlaceholder' | translate"
           [(ngModel)]="filters.searchQuery"
           (input)="onFilterChange()"
         >
@@ -102,27 +102,27 @@
       <div class="filter-grid">
         <!-- Type -->
         <mat-form-field appearance="outline" class="compact-field">
-          <mat-label>Type</mat-label>
+          <mat-label>{{ 'transactions.type' | translate }}</mat-label>
           <mat-select [(ngModel)]="filters.type" (selectionChange)="onFilterChange()">
-            <mat-option [value]="undefined">All</mat-option>
-            <mat-option value="income">Income</mat-option>
-            <mat-option value="expense">Expense</mat-option>
+            <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
+            <mat-option value="income">{{ 'common.income' | translate }}</mat-option>
+            <mat-option value="expense">{{ 'common.expense' | translate }}</mat-option>
           </mat-select>
         </mat-form-field>
 
         <!-- Category -->
         <mat-form-field appearance="outline" class="compact-field">
-          <mat-label>Category</mat-label>
+          <mat-label>{{ 'transactions.category' | translate }}</mat-label>
           <mat-select [(ngModel)]="filters.categoryId" (selectionChange)="onFilterChange()">
-            <mat-option [value]="undefined">All</mat-option>
-            <mat-optgroup label="Expense">
+            <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
+            <mat-optgroup [label]="'common.expense' | translate">
               @for (cat of categories; track cat.id) {
-                <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
+                <mat-option [value]="cat.id">{{ cat.name | translate }}</mat-option>
               }
             </mat-optgroup>
-            <mat-optgroup label="Income">
+            <mat-optgroup [label]="'common.income' | translate">
               @for (cat of incomeCategories; track cat.id) {
-                <mat-option [value]="cat.id">{{ cat.name }}</mat-option>
+                <mat-option [value]="cat.id">{{ cat.name | translate }}</mat-option>
               }
             </mat-optgroup>
           </mat-select>
@@ -130,7 +130,7 @@
 
         <!-- Date Range -->
         <mat-form-field appearance="outline" class="compact-field">
-          <mat-label>From</mat-label>
+          <mat-label>{{ 'transactions.from' | translate }}</mat-label>
           <input matInput [matDatepicker]="startPicker" [(ngModel)]="filters.startDate" (dateChange)="onFilterChange()">
           <mat-datepicker-toggle matIconSuffix [for]="startPicker"></mat-datepicker-toggle>
           <mat-datepicker
@@ -142,7 +142,7 @@
         </mat-form-field>
 
         <mat-form-field appearance="outline" class="compact-field">
-          <mat-label>To</mat-label>
+          <mat-label>{{ 'transactions.to' | translate }}</mat-label>
           <input matInput [matDatepicker]="endPicker" [(ngModel)]="filters.endDate" (dateChange)="onFilterChange()">
           <mat-datepicker-toggle matIconSuffix [for]="endPicker"></mat-datepicker-toggle>
           <mat-datepicker
@@ -155,12 +155,12 @@
 
         <!-- Amount Range -->
         <mat-form-field appearance="outline" class="compact-field">
-          <mat-label>Min $</mat-label>
+          <mat-label>{{ 'transactions.minAmount' | translate }}</mat-label>
           <input matInput type="number" [(ngModel)]="filters.minAmount" (input)="onFilterChange()">
         </mat-form-field>
 
         <mat-form-field appearance="outline" class="compact-field">
-          <mat-label>Max $</mat-label>
+          <mat-label>{{ 'transactions.maxAmount' | translate }}</mat-label>
           <input matInput type="number" [(ngModel)]="filters.maxAmount" (input)="onFilterChange()">
         </mat-form-field>
       </div>
@@ -168,7 +168,7 @@
       @if (activeFilterCount() > 0) {
         <button class="clear-btn" (click)="clearFilters()">
           <mat-icon>clear</mat-icon>
-          Clear all
+          {{ 'transactions.clearAll' | translate }}
         </button>
       }
     </div>

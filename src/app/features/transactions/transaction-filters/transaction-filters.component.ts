@@ -12,6 +12,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { Subscription } from 'rxjs';
 import { Category, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-transaction-filters',
@@ -25,7 +26,8 @@ import { TransactionService } from '../../../core/services/transaction.service';
     MatNativeDateModule,
     MatButtonModule,
     MatIconModule,
-    MatMenuModule
+    MatMenuModule,
+    TranslatePipe
   ],
   templateUrl: './transaction-filters.component.html',
   styleUrl: './transaction-filters.component.scss',

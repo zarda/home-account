@@ -15,7 +15,9 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
+import { TranslationService } from '../../core/services/translation.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { SpendingAnalysisComponent } from './spending-analysis/spending-analysis.component';
 import { CategoryBreakdownComponent } from './category-breakdown/category-breakdown.component';
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
@@ -48,6 +50,7 @@ interface CustomPeriod {
     SpendingAnalysisComponent,
     CategoryBreakdownComponent,
     MonthlyComparisonComponent,
+    TranslatePipe,
   ],
   templateUrl: './reports.component.html',
   styleUrl: './reports.component.scss',
@@ -57,6 +60,7 @@ export class ReportsComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private authService = inject(AuthService);
   private currencyService = inject(CurrencyService);
+  private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
 
   selectedPeriod: PeriodOption = 'thisMonth';

@@ -17,7 +17,7 @@ export interface Category {
 
 export interface CategoryGroup {
   id: string;
-  name: string;
+  nameKey: string;  // Translation key, e.g., 'categoryNames.food'
   icon: string;
   color: string;
   type: TransactionType;
@@ -25,7 +25,7 @@ export interface CategoryGroup {
 }
 
 export interface CategoryItem {
-  name: string;
+  nameKey: string;  // Translation key, e.g., 'categoryNames.restaurants'
   icon: string;
 }
 
@@ -41,204 +41,204 @@ export interface CreateCategoryDTO {
 export const DEFAULT_EXPENSE_GROUPS: CategoryGroup[] = [
   {
     id: 'food',
-    name: 'Food & Drinks',
+    nameKey: 'categoryNames.food',
     icon: 'restaurant',
     color: '#FF5722',
     type: 'expense',
     categories: [
-      { name: 'Restaurants', icon: 'restaurant' },
-      { name: 'Groceries', icon: 'shopping_cart' },
-      { name: 'Coffee & Drinks', icon: 'local_cafe' },
-      { name: 'Fast Food', icon: 'fastfood' },
-      { name: 'Delivery', icon: 'delivery_dining' },
+      { nameKey: 'categoryNames.restaurants', icon: 'restaurant' },
+      { nameKey: 'categoryNames.groceries', icon: 'shopping_cart' },
+      { nameKey: 'categoryNames.coffeeAndDrinks', icon: 'local_cafe' },
+      { nameKey: 'categoryNames.fastFood', icon: 'fastfood' },
+      { nameKey: 'categoryNames.delivery', icon: 'delivery_dining' },
     ]
   },
   {
     id: 'transport',
-    name: 'Transportation',
+    nameKey: 'categoryNames.transport',
     icon: 'directions_car',
     color: '#2196F3',
     type: 'expense',
     categories: [
-      { name: 'Fuel & Gas', icon: 'local_gas_station' },
-      { name: 'Parking', icon: 'local_parking' },
-      { name: 'Public Transit', icon: 'directions_bus' },
-      { name: 'Taxi & Ride Share', icon: 'local_taxi' },
-      { name: 'Car Maintenance', icon: 'car_repair' },
-      { name: 'Car Insurance', icon: 'verified_user' },
+      { nameKey: 'categoryNames.fuelAndGas', icon: 'local_gas_station' },
+      { nameKey: 'categoryNames.parking', icon: 'local_parking' },
+      { nameKey: 'categoryNames.publicTransit', icon: 'directions_bus' },
+      { nameKey: 'categoryNames.taxiAndRideShare', icon: 'local_taxi' },
+      { nameKey: 'categoryNames.carMaintenance', icon: 'car_repair' },
+      { nameKey: 'categoryNames.carInsurance', icon: 'verified_user' },
     ]
   },
   {
     id: 'shopping',
-    name: 'Shopping',
+    nameKey: 'categoryNames.shopping',
     icon: 'shopping_bag',
     color: '#9C27B0',
     type: 'expense',
     categories: [
-      { name: 'Clothing & Fashion', icon: 'checkroom' },
-      { name: 'Electronics', icon: 'devices' },
-      { name: 'Home & Garden', icon: 'home' },
-      { name: 'Furniture', icon: 'chair' },
-      { name: 'Online Shopping', icon: 'local_shipping' },
+      { nameKey: 'categoryNames.clothingAndFashion', icon: 'checkroom' },
+      { nameKey: 'categoryNames.electronics', icon: 'devices' },
+      { nameKey: 'categoryNames.homeAndGarden', icon: 'home' },
+      { nameKey: 'categoryNames.furniture', icon: 'chair' },
+      { nameKey: 'categoryNames.onlineShopping', icon: 'local_shipping' },
     ]
   },
   {
     id: 'entertainment',
-    name: 'Entertainment',
+    nameKey: 'categoryNames.entertainment',
     icon: 'movie',
     color: '#E91E63',
     type: 'expense',
     categories: [
-      { name: 'Movies & Shows', icon: 'theaters' },
-      { name: 'Games & Hobbies', icon: 'sports_esports' },
-      { name: 'Music & Concerts', icon: 'headphones' },
-      { name: 'Books & Magazines', icon: 'menu_book' },
-      { name: 'Bars & Nightlife', icon: 'nightlife' },
+      { nameKey: 'categoryNames.moviesAndShows', icon: 'theaters' },
+      { nameKey: 'categoryNames.gamesAndHobbies', icon: 'sports_esports' },
+      { nameKey: 'categoryNames.musicAndConcerts', icon: 'headphones' },
+      { nameKey: 'categoryNames.booksAndMagazines', icon: 'menu_book' },
+      { nameKey: 'categoryNames.barsAndNightlife', icon: 'nightlife' },
     ]
   },
   {
     id: 'bills',
-    name: 'Bills & Utilities',
+    nameKey: 'categoryNames.bills',
     icon: 'receipt',
     color: '#607D8B',
     type: 'expense',
     categories: [
-      { name: 'Electricity', icon: 'bolt' },
-      { name: 'Water', icon: 'water_drop' },
-      { name: 'Internet & Phone', icon: 'wifi' },
-      { name: 'Rent & Mortgage', icon: 'apartment' },
-      { name: 'Gas & Heating', icon: 'local_fire_department' },
+      { nameKey: 'categoryNames.electricity', icon: 'bolt' },
+      { nameKey: 'categoryNames.water', icon: 'water_drop' },
+      { nameKey: 'categoryNames.internetAndPhone', icon: 'wifi' },
+      { nameKey: 'categoryNames.rentAndMortgage', icon: 'apartment' },
+      { nameKey: 'categoryNames.gasAndHeating', icon: 'local_fire_department' },
     ]
   },
   {
     id: 'health',
-    name: 'Health & Wellness',
+    nameKey: 'categoryNames.health',
     icon: 'local_hospital',
     color: '#4CAF50',
     type: 'expense',
     categories: [
-      { name: 'Doctor & Clinic', icon: 'medical_services' },
-      { name: 'Pharmacy & Medicine', icon: 'medication' },
-      { name: 'Gym & Fitness', icon: 'fitness_center' },
-      { name: 'Sports', icon: 'sports_soccer' },
-      { name: 'Mental Health', icon: 'psychology' },
+      { nameKey: 'categoryNames.doctorAndClinic', icon: 'medical_services' },
+      { nameKey: 'categoryNames.pharmacyAndMedicine', icon: 'medication' },
+      { nameKey: 'categoryNames.gymAndFitness', icon: 'fitness_center' },
+      { nameKey: 'categoryNames.sports', icon: 'sports_soccer' },
+      { nameKey: 'categoryNames.mentalHealth', icon: 'psychology' },
     ]
   },
   {
     id: 'personal',
-    name: 'Personal Care',
+    nameKey: 'categoryNames.personal',
     icon: 'spa',
     color: '#FF9800',
     type: 'expense',
     categories: [
-      { name: 'Hair & Beauty', icon: 'face' },
-      { name: 'Cosmetics', icon: 'brush' },
-      { name: 'Spa & Massage', icon: 'spa' },
-      { name: 'Laundry & Cleaning', icon: 'local_laundry_service' },
+      { nameKey: 'categoryNames.hairAndBeauty', icon: 'face' },
+      { nameKey: 'categoryNames.cosmetics', icon: 'brush' },
+      { nameKey: 'categoryNames.spaAndMassage', icon: 'spa' },
+      { nameKey: 'categoryNames.laundryAndCleaning', icon: 'local_laundry_service' },
     ]
   },
   {
     id: 'education',
-    name: 'Education',
+    nameKey: 'categoryNames.education',
     icon: 'school',
     color: '#3F51B5',
     type: 'expense',
     categories: [
-      { name: 'Tuition Fees', icon: 'account_balance' },
-      { name: 'Courses & Training', icon: 'library_books' },
-      { name: 'Books & Supplies', icon: 'auto_stories' },
-      { name: 'Online Learning', icon: 'computer' },
+      { nameKey: 'categoryNames.tuitionFees', icon: 'account_balance' },
+      { nameKey: 'categoryNames.coursesAndTraining', icon: 'library_books' },
+      { nameKey: 'categoryNames.booksAndSupplies', icon: 'auto_stories' },
+      { nameKey: 'categoryNames.onlineLearning', icon: 'computer' },
     ]
   },
   {
     id: 'travel',
-    name: 'Travel & Vacation',
+    nameKey: 'categoryNames.travel',
     icon: 'flight',
     color: '#00BCD4',
     type: 'expense',
     categories: [
-      { name: 'Flights', icon: 'flight' },
-      { name: 'Hotels & Accommodation', icon: 'hotel' },
-      { name: 'Vacation Activities', icon: 'beach_access' },
-      { name: 'Travel Insurance', icon: 'health_and_safety' },
+      { nameKey: 'categoryNames.flights', icon: 'flight' },
+      { nameKey: 'categoryNames.hotelsAndAccommodation', icon: 'hotel' },
+      { nameKey: 'categoryNames.vacationActivities', icon: 'beach_access' },
+      { nameKey: 'categoryNames.travelInsurance', icon: 'health_and_safety' },
     ]
   },
   {
     id: 'family',
-    name: 'Family & Kids',
+    nameKey: 'categoryNames.family',
     icon: 'child_care',
     color: '#FF80AB',
     type: 'expense',
     categories: [
-      { name: 'Childcare', icon: 'baby_changing_station' },
-      { name: 'School Fees', icon: 'backpack' },
-      { name: 'Toys & Games', icon: 'toys' },
-      { name: 'Kids Clothing', icon: 'child_friendly' },
-      { name: 'Kids Activities', icon: 'sports_kabaddi' },
+      { nameKey: 'categoryNames.childcare', icon: 'baby_changing_station' },
+      { nameKey: 'categoryNames.schoolFees', icon: 'backpack' },
+      { nameKey: 'categoryNames.toysAndGames', icon: 'toys' },
+      { nameKey: 'categoryNames.kidsClothing', icon: 'child_friendly' },
+      { nameKey: 'categoryNames.kidsActivities', icon: 'sports_kabaddi' },
     ]
   },
   {
     id: 'pets',
-    name: 'Pets',
+    nameKey: 'categoryNames.pets',
     icon: 'pets',
     color: '#795548',
     type: 'expense',
     categories: [
-      { name: 'Pet Food', icon: 'set_meal' },
-      { name: 'Vet & Pet Care', icon: 'healing' },
-      { name: 'Pet Supplies', icon: 'inventory_2' },
-      { name: 'Pet Grooming', icon: 'content_cut' },
+      { nameKey: 'categoryNames.petFood', icon: 'set_meal' },
+      { nameKey: 'categoryNames.vetAndPetCare', icon: 'healing' },
+      { nameKey: 'categoryNames.petSupplies', icon: 'inventory_2' },
+      { nameKey: 'categoryNames.petGrooming', icon: 'content_cut' },
     ]
   },
   {
     id: 'financial',
-    name: 'Financial',
+    nameKey: 'categoryNames.financial',
     icon: 'account_balance',
     color: '#78909C',
     type: 'expense',
     categories: [
-      { name: 'Insurance', icon: 'security' },
-      { name: 'Taxes', icon: 'receipt_long' },
-      { name: 'Bank Fees', icon: 'credit_card' },
-      { name: 'Loans & Debt', icon: 'money_off' },
-      { name: 'Investment Fees', icon: 'trending_down' },
+      { nameKey: 'categoryNames.insurance', icon: 'security' },
+      { nameKey: 'categoryNames.taxes', icon: 'receipt_long' },
+      { nameKey: 'categoryNames.bankFees', icon: 'credit_card' },
+      { nameKey: 'categoryNames.loansAndDebt', icon: 'money_off' },
+      { nameKey: 'categoryNames.investmentFees', icon: 'trending_down' },
     ]
   },
   {
     id: 'gifts',
-    name: 'Gifts & Donations',
+    nameKey: 'categoryNames.gifts',
     icon: 'card_giftcard',
     color: '#CE93D8',
     type: 'expense',
     categories: [
-      { name: 'Gifts Given', icon: 'redeem' },
-      { name: 'Charity & Donations', icon: 'volunteer_activism' },
-      { name: 'Religious Donations', icon: 'church' },
+      { nameKey: 'categoryNames.giftsGiven', icon: 'redeem' },
+      { nameKey: 'categoryNames.charityAndDonations', icon: 'volunteer_activism' },
+      { nameKey: 'categoryNames.religiousDonations', icon: 'church' },
     ]
   },
   {
     id: 'subscriptions',
-    name: 'Subscriptions',
+    nameKey: 'categoryNames.subscriptions',
     icon: 'subscriptions',
     color: '#B39DDB',
     type: 'expense',
     categories: [
-      { name: 'Streaming Services', icon: 'live_tv' },
-      { name: 'Software & Apps', icon: 'apps' },
-      { name: 'Memberships', icon: 'card_membership' },
-      { name: 'News & Magazines', icon: 'newspaper' },
+      { nameKey: 'categoryNames.streamingServices', icon: 'live_tv' },
+      { nameKey: 'categoryNames.softwareAndApps', icon: 'apps' },
+      { nameKey: 'categoryNames.memberships', icon: 'card_membership' },
+      { nameKey: 'categoryNames.newsAndMagazines', icon: 'newspaper' },
     ]
   },
   {
     id: 'other_expense',
-    name: 'Other',
+    nameKey: 'categoryNames.otherExpense',
     icon: 'more_horiz',
     color: '#9E9E9E',
     type: 'expense',
     categories: [
-      { name: 'Office & Work', icon: 'work' },
-      { name: 'Legal & Professional', icon: 'gavel' },
-      { name: 'Miscellaneous', icon: 'category' },
+      { nameKey: 'categoryNames.officeAndWork', icon: 'work' },
+      { nameKey: 'categoryNames.legalAndProfessional', icon: 'gavel' },
+      { nameKey: 'categoryNames.miscellaneous', icon: 'category' },
     ]
   },
 ];
@@ -247,90 +247,90 @@ export const DEFAULT_EXPENSE_GROUPS: CategoryGroup[] = [
 export const DEFAULT_INCOME_GROUPS: CategoryGroup[] = [
   {
     id: 'employment',
-    name: 'Employment',
+    nameKey: 'categoryNames.employment',
     icon: 'payments',
     color: '#4CAF50',
     type: 'income',
     categories: [
-      { name: 'Salary', icon: 'payments' },
-      { name: 'Wages', icon: 'attach_money' },
-      { name: 'Bonus', icon: 'celebration' },
-      { name: 'Commission', icon: 'percent' },
-      { name: 'Overtime', icon: 'schedule' },
-      { name: 'Tips', icon: 'savings' },
+      { nameKey: 'categoryNames.salary', icon: 'payments' },
+      { nameKey: 'categoryNames.wages', icon: 'attach_money' },
+      { nameKey: 'categoryNames.bonus', icon: 'celebration' },
+      { nameKey: 'categoryNames.commission', icon: 'percent' },
+      { nameKey: 'categoryNames.overtime', icon: 'schedule' },
+      { nameKey: 'categoryNames.tips', icon: 'savings' },
     ]
   },
   {
     id: 'self_employment',
-    name: 'Self-Employment',
+    nameKey: 'categoryNames.selfEmployment',
     icon: 'store',
     color: '#8BC34A',
     type: 'income',
     categories: [
-      { name: 'Freelance', icon: 'work' },
-      { name: 'Business Income', icon: 'store' },
-      { name: 'Consulting', icon: 'psychology' },
-      { name: 'Side Hustle', icon: 'handyman' },
-      { name: 'Contract Work', icon: 'description' },
+      { nameKey: 'categoryNames.freelance', icon: 'work' },
+      { nameKey: 'categoryNames.businessIncome', icon: 'store' },
+      { nameKey: 'categoryNames.consulting', icon: 'psychology' },
+      { nameKey: 'categoryNames.sideHustle', icon: 'handyman' },
+      { nameKey: 'categoryNames.contractWork', icon: 'description' },
     ]
   },
   {
     id: 'investments',
-    name: 'Investments',
+    nameKey: 'categoryNames.investments',
     icon: 'trending_up',
     color: '#00BCD4',
     type: 'income',
     categories: [
-      { name: 'Dividends', icon: 'pie_chart' },
-      { name: 'Interest Income', icon: 'account_balance' },
-      { name: 'Capital Gains', icon: 'show_chart' },
-      { name: 'Crypto Gains', icon: 'currency_bitcoin' },
-      { name: 'Stock Sale', icon: 'sell' },
+      { nameKey: 'categoryNames.dividends', icon: 'pie_chart' },
+      { nameKey: 'categoryNames.interestIncome', icon: 'account_balance' },
+      { nameKey: 'categoryNames.capitalGains', icon: 'show_chart' },
+      { nameKey: 'categoryNames.cryptoGains', icon: 'currency_bitcoin' },
+      { nameKey: 'categoryNames.stockSale', icon: 'sell' },
     ]
   },
   {
     id: 'rental',
-    name: 'Rental & Property',
+    nameKey: 'categoryNames.rental',
     icon: 'apartment',
     color: '#FF9800',
     type: 'income',
     categories: [
-      { name: 'Rental Income', icon: 'apartment' },
-      { name: 'Property Sale', icon: 'home' },
-      { name: 'Airbnb Income', icon: 'hotel' },
+      { nameKey: 'categoryNames.rentalIncome', icon: 'apartment' },
+      { nameKey: 'categoryNames.propertySale', icon: 'home' },
+      { nameKey: 'categoryNames.airbnbIncome', icon: 'hotel' },
     ]
   },
   {
     id: 'government',
-    name: 'Government & Benefits',
+    nameKey: 'categoryNames.government',
     icon: 'account_balance_wallet',
     color: '#2196F3',
     type: 'income',
     categories: [
-      { name: 'Tax Refund', icon: 'receipt_long' },
-      { name: 'Government Benefits', icon: 'account_balance_wallet' },
-      { name: 'Pension', icon: 'elderly' },
-      { name: 'Social Security', icon: 'security' },
-      { name: 'Unemployment', icon: 'work_off' },
+      { nameKey: 'categoryNames.taxRefund', icon: 'receipt_long' },
+      { nameKey: 'categoryNames.governmentBenefits', icon: 'account_balance_wallet' },
+      { nameKey: 'categoryNames.pension', icon: 'elderly' },
+      { nameKey: 'categoryNames.socialSecurity', icon: 'security' },
+      { nameKey: 'categoryNames.unemployment', icon: 'work_off' },
     ]
   },
   {
     id: 'other_income',
-    name: 'Other Income',
+    nameKey: 'categoryNames.otherIncome',
     icon: 'attach_money',
     color: '#9C27B0',
     type: 'income',
     categories: [
-      { name: 'Gift Received', icon: 'card_giftcard' },
-      { name: 'Inheritance', icon: 'family_restroom' },
-      { name: 'Lottery & Winnings', icon: 'casino' },
-      { name: 'Refund', icon: 'replay' },
-      { name: 'Cashback & Rewards', icon: 'redeem' },
-      { name: 'Reimbursement', icon: 'request_quote' },
-      { name: 'Sale of Items', icon: 'sell' },
-      { name: 'Scholarship & Grants', icon: 'school' },
-      { name: 'Alimony Received', icon: 'family_restroom' },
-      { name: 'Miscellaneous', icon: 'attach_money' },
+      { nameKey: 'categoryNames.giftReceived', icon: 'card_giftcard' },
+      { nameKey: 'categoryNames.inheritance', icon: 'family_restroom' },
+      { nameKey: 'categoryNames.lotteryAndWinnings', icon: 'casino' },
+      { nameKey: 'categoryNames.refund', icon: 'replay' },
+      { nameKey: 'categoryNames.cashbackAndRewards', icon: 'redeem' },
+      { nameKey: 'categoryNames.reimbursement', icon: 'request_quote' },
+      { nameKey: 'categoryNames.saleOfItems', icon: 'sell' },
+      { nameKey: 'categoryNames.scholarshipAndGrants', icon: 'school' },
+      { nameKey: 'categoryNames.alimonyReceived', icon: 'family_restroom' },
+      { nameKey: 'categoryNames.miscellaneous', icon: 'attach_money' },
     ]
   },
 ];

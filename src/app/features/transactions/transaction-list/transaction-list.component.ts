@@ -12,8 +12,10 @@ import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-transaction-list',
@@ -25,7 +27,8 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/compo
     MatButtonModule,
     MatMenuModule,
     MatTooltipModule,
-    EmptyStateComponent
+    EmptyStateComponent,
+    TranslatePipe
   ],
   templateUrl: './transaction-list.component.html',
   styleUrl: './transaction-list.component.scss',
@@ -39,6 +42,7 @@ export class TransactionListComponent {
   private currencyService = inject(CurrencyService);
   private dateFormatService = inject(DateFormatService);
   private categoryHelperService = inject(CategoryHelperService);
+  private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
 
   displayedColumns = ['date', 'category', 'description', 'amount', 'actions'];
@@ -102,10 +106,10 @@ export class TransactionListComponent {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       width: '400px',
       data: {
-        title: 'Delete Transaction',
-        message: `Are you sure you want to delete "${transaction.description}"? This action cannot be undone.`,
-        confirmLabel: 'Delete',
-        cancelLabel: 'Cancel',
+        title: this.translationService.t('transactions.deleteTransaction'),
+        message: this.translationService.t('transactions.deleteConfirmMessage', { description: transaction.description }),
+        confirmLabel: this.translationService.t('common.delete'),
+        cancelLabel: this.translationService.t('common.cancel'),
         confirmColor: 'warn',
         icon: 'delete',
       } as ConfirmDialogData,

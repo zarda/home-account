@@ -5,12 +5,14 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ProfileSettingsComponent } from './profile-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService } from '../../../core/services/translation.service';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
   let fixture: ComponentFixture<ProfileSettingsComponent>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
 
   const mockUser = {
     preferences: {
@@ -29,11 +31,23 @@ describe('ProfileSettingsComponent', () => {
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
 
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['setLocale', 't'], {
+      currentLocale: signal('en'),
+      languages: [
+        { code: 'en', name: 'English', nativeName: 'English' },
+        { code: 'tc', name: 'Traditional Chinese', nativeName: '繁體中文' },
+        { code: 'ja', name: 'Japanese', nativeName: '日本語' }
+      ]
+    });
+    mockTranslationService.setLocale.and.returnValue(Promise.resolve());
+    mockTranslationService.t.and.callFake((key: string) => key);
+
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
-        { provide: MatSnackBar, useValue: mockSnackBar }
+        { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: TranslationService, useValue: mockTranslationService }
       ]
     }).compileComponents();
 
@@ -62,10 +76,6 @@ describe('ProfileSettingsComponent', () => {
     it('should load language from user preferences', () => {
       expect(component.language).toBe('en');
     });
-
-    it('should not be saving initially', () => {
-      expect(component.isSaving()).toBeFalse();
-    });
   });
 
   describe('available options', () => {
@@ -82,26 +92,34 @@ describe('ProfileSettingsComponent', () => {
     });
   });
 
-  describe('savePreferences', () => {
-    it('should call updateUserPreferences with form values', async () => {
+  describe('preference changes', () => {
+    it('should save currency preference on change', async () => {
       component.baseCurrency = 'EUR';
-      component.theme = 'dark';
-      component.dateFormat = 'DD/MM/YYYY';
-      component.language = 'zh-Hant';
+      await component.onCurrencyChange();
 
-      await component.savePreferences();
-
-      expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
-        baseCurrency: 'EUR',
-        theme: 'dark',
-        dateFormat: 'DD/MM/YYYY',
-        language: 'zh-Hant'
-      });
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalled();
     });
 
-    it('should set isSaving to true when saving', () => {
-      component.savePreferences();
-      expect(component.isSaving()).toBeTrue();
+    it('should save theme preference on change', async () => {
+      component.theme = 'dark';
+      await component.onThemeChange();
+
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalled();
+    });
+
+    it('should save date format preference on change', async () => {
+      component.dateFormat = 'DD/MM/YYYY';
+      await component.onDateFormatChange();
+
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalled();
+    });
+
+    it('should save language preference and update locale on change', async () => {
+      component.language = 'tc';
+      await component.onLanguageChange();
+
+      expect(mockTranslationService.setLocale).toHaveBeenCalledWith('tc');
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalled();
     });
   });
 });

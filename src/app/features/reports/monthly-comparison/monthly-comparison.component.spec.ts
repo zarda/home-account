@@ -6,6 +6,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { MonthlyComparisonComponent } from './monthly-comparison.component';
 import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { TranslationService } from '../../../core/services/translation.service';
 
 describe('MonthlyComparisonComponent', () => {
   let component: MonthlyComparisonComponent;
@@ -81,10 +82,22 @@ describe('MonthlyComparisonComponent', () => {
       convert: (amount: number) => amount // 1:1 conversion for tests
     };
 
+    const mockTranslationService = {
+      t: (key: string) => {
+        const translations: Record<string, string> = {
+          'common.income': 'Income',
+          'common.totalExpenses': 'Expenses'
+        };
+        return translations[key] || key;
+      },
+      getIntlLocale: () => 'en-US'
+    };
+
     await TestBed.configureTestingModule({
       imports: [MonthlyComparisonComponent, NoopAnimationsModule],
       providers: [
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        { provide: TranslationService, useValue: mockTranslationService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })

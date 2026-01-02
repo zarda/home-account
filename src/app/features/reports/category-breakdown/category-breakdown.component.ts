@@ -9,6 +9,8 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { Transaction, Category } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { TranslationService } from '../../../core/services/translation.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 interface CategoryBreakdown {
   categoryId: string;
@@ -31,13 +33,15 @@ interface CategoryBreakdown {
     MatButtonToggleModule,
     MatExpansionModule,
     EmptyStateComponent,
-    CurrencyPipe
+    CurrencyPipe,
+    TranslatePipe
   ],
   templateUrl: './category-breakdown.component.html',
   styleUrl: './category-breakdown.component.scss',
 })
 export class CategoryBreakdownComponent {
   private currencyService = inject(CurrencyService);
+  translationService = inject(TranslationService);
 
   @Input() set transactions(value: Transaction[]) {
     this._transactions.set(value);

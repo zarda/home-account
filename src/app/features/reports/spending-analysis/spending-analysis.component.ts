@@ -9,9 +9,12 @@ import { ChartConfiguration, ChartData } from 'chart.js';
 import { Transaction, Category } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { TranslationService } from '../../../core/services/translation.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 interface MonthlyData {
   month: string;
+  monthKey: string;
   income: number;
   expense: number;
   balance: number;
@@ -26,13 +29,15 @@ interface MonthlyData {
     MatIconModule,
     BaseChartDirective,
     EmptyStateComponent,
-    CurrencyPipe
+    CurrencyPipe,
+    TranslatePipe
   ],
   templateUrl: './spending-analysis.component.html',
   styleUrl: './spending-analysis.component.scss',
 })
 export class SpendingAnalysisComponent {
   private currencyService = inject(CurrencyService);
+  private translationService = inject(TranslationService);
 
   @Input() set transactions(value: Transaction[]) {
     this._transactions.set(value);
@@ -73,9 +78,10 @@ export class SpendingAnalysisComponent {
     return this.currencyService.convert(t.amount, t.currency, this._currency());
   }
 
-  // Chart options as a getter to use dynamic currency symbol
-  get chartOptions(): ChartConfiguration<'line'>['options'] {
+  // Chart options as computed signal to prevent re-renders
+  chartOptions = computed((): ChartConfiguration<'line'>['options'] => {
     const symbol = this.getCurrencySymbol();
+    const locale = this.translationService.getIntlLocale();
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -92,7 +98,7 @@ export class SpendingAnalysisComponent {
           callbacks: {
             label: (context) => {
               const value = context.parsed.y ?? 0;
-              return `${context.dataset.label}: ${symbol}${value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+              return `${context.dataset.label}: ${symbol}${value.toLocaleString(locale, { minimumFractionDigits: 2 })}`;
             },
           },
         },
@@ -101,12 +107,14 @@ export class SpendingAnalysisComponent {
         y: {
           beginAtZero: true,
           ticks: {
-            callback: (value) => `${symbol}${Number(value).toLocaleString()}`,
+            callback: (value) => {
+              return `${symbol}${Number(value).toLocaleString(locale)}`;
+            },
           },
         },
       },
     };
-  }
+  });
 
   // Computed: Monthly data aggregation
   monthlyData = computed<MonthlyData[]>(() => {
@@ -143,21 +151,25 @@ export class SpendingAnalysisComponent {
     }
 
     // Convert to array and sort
+    const locale = this.translationService.getIntlLocale();
     return Array.from(monthlyMap.entries())
       .map(([key, data]) => {
         const [year, month] = key.split('-');
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        // Use locale-aware month name
+        const monthDate = new Date(parseInt(year), parseInt(month) - 1);
+        const monthLabel = monthDate.toLocaleDateString(locale, { month: 'short', year: 'numeric' });
         return {
-          month: `${monthNames[parseInt(month) - 1]} ${year}`,
+          month: monthLabel,
+          monthKey: key, // Keep sortable key
           income: data.income,
           expense: data.expense,
           balance: data.income - data.expense,
         };
       })
-      .sort((a, b) => a.month.localeCompare(b.month));
+      .sort((a, b) => a.monthKey.localeCompare(b.monthKey));
   });
 
-  // Computed: Chart data
+  // Chart data as computed signal to prevent re-renders
   chartData = computed((): ChartData<'line'> => {
     const data = this.monthlyData();
 
@@ -165,7 +177,7 @@ export class SpendingAnalysisComponent {
       labels: data.map(d => d.month),
       datasets: [
         {
-          label: 'Income',
+          label: this.translationService.t('common.income'),
           data: data.map(d => d.income),
           borderColor: '#22c55e',
           backgroundColor: 'rgba(34, 197, 94, 0.1)',
@@ -173,7 +185,7 @@ export class SpendingAnalysisComponent {
           tension: 0.3,
         },
         {
-          label: 'Expenses',
+          label: this.translationService.t('common.totalExpenses'),
           data: data.map(d => d.expense),
           borderColor: '#ef4444',
           backgroundColor: 'rgba(239, 68, 68, 0.1)',

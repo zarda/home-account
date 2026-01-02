@@ -5,6 +5,8 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService } from '../../../core/services/translation.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-login',
@@ -13,7 +15,8 @@ import { AuthService } from '../../../core/services/auth.service';
     MatButtonModule,
     MatCardModule,
     MatIconModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    TranslatePipe
   ],
   templateUrl: './login.component.html',
   styleUrl: './login.component.scss'
@@ -21,6 +24,7 @@ import { AuthService } from '../../../core/services/auth.service';
 export class LoginComponent {
   private authService = inject(AuthService);
   private router = inject(Router);
+  private translationService = inject(TranslationService);
 
   isLoading = signal(false);
   error = signal<string | null>(null);
@@ -43,13 +47,13 @@ export class LoginComponent {
   private handleAuthError(err: unknown): void {
     const error = err as { code?: string; message?: string };
     if (error.code === 'auth/cancelled-popup-request' || error.code === 'auth/popup-closed-by-user') {
-      this.error.set('Sign-in was cancelled. Please try again.');
+      this.error.set(this.translationService.t('auth.signInCancelled'));
     } else if (error.code === 'auth/network-request-failed') {
-      this.error.set('Network error. Please check your connection.');
+      this.error.set(this.translationService.t('auth.networkError'));
     } else if (error.code === 'auth/user-cancelled') {
-      this.error.set('Sign-in was cancelled. Please try again.');
+      this.error.set(this.translationService.t('auth.signInCancelled'));
     } else {
-      this.error.set('Failed to sign in. Please try again.');
+      this.error.set(this.translationService.t('auth.signInFailed'));
     }
   }
 }

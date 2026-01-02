@@ -2,7 +2,7 @@
   <!-- Header -->
   <div class="dialog-header">
     <h2 class="dialog-title">
-      {{ data.mode === 'add' ? 'Add Transaction' : 'Edit Transaction' }}
+      {{ data.mode === 'add' ? ('transactions.addTransaction' | translate) : ('transactions.editTransaction' | translate) }}
     </h2>
     <button mat-icon-button (click)="onCancel()" class="close-button">
       <mat-icon>close</mat-icon>
@@ -16,11 +16,11 @@
         <mat-button-toggle-group formControlName="type" class="type-toggle">
           <mat-button-toggle value="expense" class="type-button expense">
             <mat-icon>trending_down</mat-icon>
-            <span>Expense</span>
+            <span>{{ 'common.expense' | translate }}</span>
           </mat-button-toggle>
           <mat-button-toggle value="income" class="type-button income">
             <mat-icon>trending_up</mat-icon>
-            <span>Income</span>
+            <span>{{ 'common.income' | translate }}</span>
           </mat-button-toggle>
         </mat-button-toggle-group>
       </div>
@@ -29,18 +29,18 @@
       <div class="amount-section">
         <div class="amount-row">
           <mat-form-field appearance="outline" class="amount-field">
-            <mat-label>Amount</mat-label>
+            <mat-label>{{ 'transactions.amount' | translate }}</mat-label>
             <input matInput type="number" formControlName="amount" step="0.01" min="0" inputmode="decimal">
             @if (form.controls['amount'].hasError('required')) {
-              <mat-error>Required</mat-error>
+              <mat-error>{{ 'transactions.required' | translate }}</mat-error>
             }
             @if (form.controls['amount'].hasError('min')) {
-              <mat-error>Must be positive</mat-error>
+              <mat-error>{{ 'transactions.mustBePositive' | translate }}</mat-error>
             }
           </mat-form-field>
 
           <mat-form-field appearance="outline" class="currency-field">
-            <mat-label>Currency</mat-label>
+            <mat-label>{{ 'settings.currency' | translate }}</mat-label>
             <mat-select formControlName="currency">
               @for (curr of currencies; track curr.code) {
                 <mat-option [value]="curr.code">{{ curr.code }}</mat-option>
@@ -52,34 +52,42 @@
 
       <!-- Category -->
       <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Category</mat-label>
+        <mat-label>{{ 'transactions.category' | translate }}</mat-label>
         <mat-select formControlName="categoryId">
+          <mat-select-trigger>
+            @if (selectedCategory(); as cat) {
+              <div class="category-option">
+                <mat-icon [style.color]="cat.color">{{ cat.icon }}</mat-icon>
+                <span>{{ cat.name | translate }}</span>
+              </div>
+            }
+          </mat-select-trigger>
           @for (cat of filteredCategories(); track cat.id) {
             <mat-option [value]="cat.id">
               <div class="category-option">
                 <mat-icon [style.color]="cat.color">{{ cat.icon }}</mat-icon>
-                <span>{{ cat.name }}</span>
+                <span>{{ cat.name | translate }}</span>
               </div>
             </mat-option>
           }
         </mat-select>
         @if (form.controls['categoryId'].hasError('required')) {
-          <mat-error>Category is required</mat-error>
+          <mat-error>{{ 'transactions.categoryRequired' | translate }}</mat-error>
         }
       </mat-form-field>
 
       <!-- Description -->
       <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Description</mat-label>
-        <input matInput formControlName="description" placeholder="e.g., Grocery shopping">
+        <mat-label>{{ 'transactions.description' | translate }}</mat-label>
+        <input matInput formControlName="description" [placeholder]="'transactions.descriptionPlaceholder' | translate">
         @if (form.controls['description'].hasError('required')) {
-          <mat-error>Description is required</mat-error>
+          <mat-error>{{ 'transactions.descriptionRequired' | translate }}</mat-error>
         }
       </mat-form-field>
 
       <!-- Date -->
       <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Date</mat-label>
+        <mat-label>{{ 'transactions.date' | translate }}</mat-label>
         <input matInput [matDatepicker]="picker" formControlName="date">
         <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
         <mat-datepicker
@@ -90,15 +98,15 @@
           (yearSelected)="onCalendarYearChange($event)"
         ></mat-datepicker>
         @if (form.controls['date'].hasError('required')) {
-          <mat-error>Date is required</mat-error>
+          <mat-error>{{ 'transactions.dateRequired' | translate }}</mat-error>
         }
       </mat-form-field>
 
       <!-- Period (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Budget Period (Optional)</mat-label>
+        <mat-label>{{ 'transactions.budgetPeriod' | translate }}</mat-label>
         <mat-select formControlName="period">
-          <mat-option [value]="null">None</mat-option>
+          <mat-option [value]="null">{{ 'transactions.none' | translate }}</mat-option>
           @for (period of periods; track period.value) {
             <mat-option [value]="period.value">{{ period.label }}</mat-option>
           }
@@ -107,14 +115,14 @@
 
       <!-- Note (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Note (Optional)</mat-label>
-        <textarea matInput formControlName="note" rows="2" placeholder="Additional details..."></textarea>
+        <mat-label>{{ 'transactions.noteOptional' | translate }}</mat-label>
+        <textarea matInput formControlName="note" rows="2" [placeholder]="'transactions.notePlaceholder' | translate"></textarea>
       </mat-form-field>
     </mat-dialog-content>
 
     <mat-dialog-actions class="dialog-actions">
       <button mat-stroked-button type="button" (click)="onCancel()" class="cancel-button">
-        Cancel
+        {{ 'common.cancel' | translate }}
       </button>
       <button
         mat-flat-button
@@ -128,7 +136,7 @@
         } @else {
           <ng-container>
             <mat-icon>{{ data.mode === 'add' ? 'add' : 'save' }}</mat-icon>
-            {{ data.mode === 'add' ? 'Add Transaction' : 'Save Changes' }}
+            {{ data.mode === 'add' ? ('transactions.addTransaction' | translate) : ('transactions.saveChanges' | translate) }}
           </ng-container>
         }
       </button>

@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { firstValueFrom } from 'rxjs';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -12,7 +13,9 @@ import { ExportService, ImportedTransaction } from '../../../core/services/expor
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-data-management',
@@ -25,6 +28,7 @@ import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialo
     MatProgressBarModule,
     MatDialogModule,
     MatSnackBarModule,
+    TranslatePipe,
   ],
   templateUrl: './data-management.component.html',
   styleUrl: './data-management.component.scss',
@@ -34,8 +38,13 @@ export class DataManagementComponent {
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
   private authService = inject(AuthService);
+  private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+
+  private t(key: string, params?: Record<string, string | number>): string {
+    return this.translationService.t(key, params);
+  }
 
   isExporting = signal(false);
   isImporting = signal(false);
@@ -47,7 +56,8 @@ export class DataManagementComponent {
   async exportFullBackup(): Promise<void> {
     this.isExporting.set(true);
     try {
-      const transactions = this.transactionService.transactions();
+      // Fetch ALL transactions from database (not just what's loaded in the signal)
+      const transactions = await firstValueFrom(this.transactionService.getAllTransactions());
       const categories = this.categoryService.categories();
 
       const blob = this.exportService.exportToJSON({
@@ -59,9 +69,9 @@ export class DataManagementComponent {
 
       const date = new Date().toISOString().split('T')[0];
       this.exportService.downloadBlob(blob, `home-account-backup-${date}.json`);
-      this.snackBar.open('Backup exported successfully', 'Close', { duration: 3000 });
+      this.snackBar.open(this.t('settings.backupExported'), this.t('common.close'), { duration: 3000 });
     } catch {
-      this.snackBar.open('Failed to export backup', 'Close', { duration: 3000 });
+      this.snackBar.open(this.t('settings.backupExportFailed'), this.t('common.close'), { duration: 3000 });
     } finally {
       this.isExporting.set(false);
     }
@@ -70,14 +80,15 @@ export class DataManagementComponent {
   async exportTransactionsCSV(): Promise<void> {
     this.isExporting.set(true);
     try {
-      const transactions = this.transactionService.transactions();
+      // Fetch ALL transactions from database (not just what's loaded in the signal)
+      const transactions = await firstValueFrom(this.transactionService.getAllTransactions());
       const blob = this.exportService.exportToCSV(transactions);
 
       const date = new Date().toISOString().split('T')[0];
       this.exportService.downloadBlob(blob, `transactions-${date}.csv`);
-      this.snackBar.open('Transactions exported successfully', 'Close', { duration: 3000 });
+      this.snackBar.open(this.t('settings.transactionsExported'), this.t('common.close'), { duration: 3000 });
     } catch {
-      this.snackBar.open('Failed to export transactions', 'Close', { duration: 3000 });
+      this.snackBar.open(this.t('settings.transactionsExportFailed'), this.t('common.close'), { duration: 3000 });
     } finally {
       this.isExporting.set(false);
     }
@@ -94,7 +105,7 @@ export class DataManagementComponent {
     const isJSON = file.name.endsWith('.json');
 
     if (!isCSV && !isJSON) {
-      this.snackBar.open('Please select a CSV or JSON file', 'Close', { duration: 3000 });
+      this.snackBar.open(this.t('settings.selectCsvOrJson'), this.t('common.close'), { duration: 3000 });
       return;
     }
 
@@ -115,7 +126,7 @@ export class DataManagementComponent {
       this.importedTransactions.set(transactions);
       this.showImportPreview.set(true);
     } catch {
-      this.snackBar.open('Failed to parse CSV file', 'Close', { duration: 3000 });
+      this.snackBar.open(this.t('settings.csvParseFailed'), this.t('common.close'), { duration: 3000 });
     } finally {
       this.isImporting.set(false);
     }
@@ -144,14 +155,14 @@ export class DataManagementComponent {
         this.importedTransactions.set(transactions);
         this.showImportPreview.set(true);
       } catch {
-        this.snackBar.open('Invalid backup file format', 'Close', { duration: 3000 });
+        this.snackBar.open(this.t('settings.invalidBackupFormat'), this.t('common.close'), { duration: 3000 });
       } finally {
         this.isImporting.set(false);
       }
     };
 
     reader.onerror = () => {
-      this.snackBar.open('Failed to read file', 'Close', { duration: 3000 });
+      this.snackBar.open(this.t('settings.fileReadFailed'), this.t('common.close'), { duration: 3000 });
       this.isImporting.set(false);
     };
 
@@ -164,9 +175,9 @@ export class DataManagementComponent {
 
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: 'Confirm Import',
-        message: `Import ${transactions.length} transactions? This will add new transactions to your account.`,
-        confirmText: 'Import',
+        title: this.t('settings.confirmImport'),
+        message: this.t('settings.confirmImportMessage', { count: transactions.length }),
+        confirmLabel: this.t('common.import'),
         confirmColor: 'primary'
       }
     });
@@ -183,7 +194,7 @@ export class DataManagementComponent {
           this.importProgress.set(Math.round(((i + 1) / parsed.length) * 100));
         }
 
-        this.snackBar.open(`${transactions.length} transactions imported`, 'Close', { duration: 3000 });
+        this.snackBar.open(this.t('settings.transactionsImported', { count: transactions.length }), this.t('common.close'), { duration: 3000 });
         this.cancelImport();
         this.isImporting.set(false);
       }
@@ -200,9 +211,9 @@ export class DataManagementComponent {
   deleteAllTransactions(): void {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: 'Delete All Transactions',
-        message: 'This will permanently delete ALL transactions. This action cannot be undone. Are you absolutely sure?',
-        confirmText: 'Delete All',
+        title: this.t('settings.deleteAllTransactions'),
+        message: this.t('settings.deleteAllConfirmMessage'),
+        confirmLabel: this.t('settings.deleteAll'),
         confirmColor: 'warn'
       }
     });
@@ -212,9 +223,9 @@ export class DataManagementComponent {
         // Second confirmation
         const secondConfirm = this.dialog.open(ConfirmDialogComponent, {
           data: {
-            title: 'Final Confirmation',
-            message: 'Type "DELETE" to confirm deletion of all transactions.',
-            confirmText: 'Confirm Delete',
+            title: this.t('settings.finalConfirmation'),
+            message: this.t('settings.typeDeleteConfirm'),
+            confirmLabel: this.t('settings.confirmDelete'),
             confirmColor: 'warn'
           }
         });
@@ -223,9 +234,9 @@ export class DataManagementComponent {
           if (finalConfirm) {
             try {
               await this.transactionService.deleteAllTransactions();
-              this.snackBar.open('All transactions deleted', 'Close', { duration: 3000 });
+              this.snackBar.open(this.t('settings.allTransactionsDeleted'), this.t('common.close'), { duration: 3000 });
             } catch {
-              this.snackBar.open('Failed to delete transactions', 'Close', { duration: 3000 });
+              this.snackBar.open(this.t('settings.deleteTransactionsFailed'), this.t('common.close'), { duration: 3000 });
             }
           }
         });
@@ -236,9 +247,9 @@ export class DataManagementComponent {
   signOut(): void {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: 'Sign Out',
-        message: 'Are you sure you want to sign out?',
-        confirmText: 'Sign Out',
+        title: this.t('auth.signOut'),
+        message: this.t('settings.signOutConfirm'),
+        confirmLabel: this.t('auth.signOut'),
         confirmColor: 'primary'
       }
     });

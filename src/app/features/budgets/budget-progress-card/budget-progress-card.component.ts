@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, inject, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 import { MatCardModule } from '@angular/material/card';
@@ -10,6 +10,8 @@ import { MatButtonModule } from '@angular/material/button';
 
 import { Budget, BudgetPeriod } from '../../../models';
 import { Category } from '../../../models';
+import { TranslationService } from '../../../core/services/translation.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-budget-progress-card',
@@ -21,12 +23,15 @@ import { Category } from '../../../models';
     MatIconModule,
     MatMenuModule,
     MatChipsModule,
-    MatButtonModule
+    MatButtonModule,
+    TranslatePipe
   ],
   templateUrl: './budget-progress-card.component.html',
   styleUrls: ['./budget-progress-card.component.scss']
 })
 export class BudgetProgressCardComponent {
+  private translationService = inject(TranslationService);
+
   @Input({ required: true }) budget!: Budget;
   @Input() category: Category | undefined;
 
@@ -74,11 +79,11 @@ export class BudgetProgressCardComponent {
   get alertText(): string {
     switch (this.alertSeverity) {
       case 'exceeded':
-        return 'Budget exceeded!';
+        return this.translationService.t('budget.budgetExceeded');
       case 'critical':
-        return 'Almost at limit';
+        return this.translationService.t('budget.almostAtLimit');
       case 'warning':
-        return 'Approaching limit';
+        return this.translationService.t('budget.approachingLimit');
     }
   }
 
@@ -107,16 +112,17 @@ export class BudgetProgressCardComponent {
   getPeriodLabel(period: BudgetPeriod): string {
     switch (period) {
       case 'weekly':
-        return 'Weekly';
+        return this.translationService.t('transactions.weekly');
       case 'monthly':
-        return 'Monthly';
+        return this.translationService.t('transactions.monthly');
       case 'yearly':
-        return 'Yearly';
+        return this.translationService.t('transactions.yearly');
     }
   }
 
   formatCurrency(amount: number): string {
-    return new Intl.NumberFormat('en-US', {
+    const locale = this.translationService.getIntlLocale();
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: this.budget.currency,
       minimumFractionDigits: 0,
@@ -127,8 +133,8 @@ export class BudgetProgressCardComponent {
   getRemainingText(): string {
     if (this.isOverBudget) {
       const over = this.budget.spent - this.budget.amount;
-      return `${this.formatCurrency(over)} over`;
+      return this.translationService.t('budget.amountOver', { amount: this.formatCurrency(over) });
     }
-    return `${this.formatCurrency(this.remaining)} left`;
+    return this.translationService.t('budget.amountLeft', { amount: this.formatCurrency(this.remaining) });
   }
 }

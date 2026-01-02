@@ -4,7 +4,7 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 mb-1">Total Income</p>
+          <p class="text-sm text-gray-500 mb-1">{{ 'common.totalIncome' | translate }}</p>
           <p class="text-2xl font-bold text-green-600">
             {{ formatAmount(income) }}
           </p>
@@ -21,7 +21,7 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 mb-1">Total Expenses</p>
+          <p class="text-sm text-gray-500 mb-1">{{ 'common.totalExpenses' | translate }}</p>
           <p class="text-2xl font-bold text-red-600">
             {{ formatAmount(expenses) }}
           </p>
@@ -38,7 +38,7 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 mb-1">Net Balance</p>
+          <p class="text-sm text-gray-500 mb-1">{{ 'common.netBalance' | translate }}</p>
           <p
             class="text-2xl font-bold"
             [class.text-green-600]="balance >= 0"

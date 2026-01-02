@@ -17,7 +17,9 @@ import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction, CreateTransactionDTO, BudgetPeriod } from '../../../models';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -39,7 +41,8 @@ interface DialogData {
     MatButtonModule,
     MatButtonToggleModule,
     MatIconModule,
-    MatProgressSpinnerModule
+    MatProgressSpinnerModule,
+    TranslatePipe
   ],
   templateUrl: './transaction-form.component.html',
   styleUrl: './transaction-form.component.scss',
@@ -52,6 +55,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
+  private translationService = inject(TranslationService);
   private cdr = inject(ChangeDetectorRef);
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
@@ -59,16 +63,19 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   form!: FormGroup;
   isSubmitting = signal(false);
   transactionType = signal<'expense' | 'income'>('expense');
+  private categoryIdSignal = signal<string>('');
 
   currencies = this.currencyService.getSupportedCurrencies();
   expenseCategories = this.categoryService.expenseCategories;
   incomeCategories = this.categoryService.incomeCategories;
 
-  periods: { value: BudgetPeriod; label: string }[] = [
-    { value: 'weekly', label: 'Weekly' },
-    { value: 'monthly', label: 'Monthly' },
-    { value: 'yearly', label: 'Yearly' }
-  ];
+  get periods(): { value: BudgetPeriod; label: string }[] {
+    return [
+      { value: 'weekly', label: this.translationService.t('transactions.weekly') },
+      { value: 'monthly', label: this.translationService.t('transactions.monthly') },
+      { value: 'yearly', label: this.translationService.t('transactions.yearly') }
+    ];
+  }
 
   // Store transaction dates for calendar highlighting - keyed by "year-month"
   private transactionDatesCache = new Map<string, Map<string, 'income' | 'expense' | 'both'>>();
@@ -82,6 +89,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       return this.incomeCategories();
     }
     return this.expenseCategories();
+  });
+
+  // Computed signal for selected category (used by mat-select-trigger)
+  selectedCategory = computed(() => {
+    const categoryId = this.categoryIdSignal();
+    if (!categoryId) return null;
+    return this.filteredCategories().find(c => c.id === categoryId) || null;
   });
 
   constructor() {
@@ -198,6 +212,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           this.form.patchValue({ categoryId: '' });
         }
       }
+    });
+
+    // Watch for category changes to update the trigger display
+    this.categoryIdSignal.set(transaction?.categoryId || '');
+    this.form.get('categoryId')?.valueChanges.subscribe((categoryId) => {
+      this.categoryIdSignal.set(categoryId || '');
     });
   }
 

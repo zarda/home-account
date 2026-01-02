@@ -52,9 +52,9 @@ describe('BudgetFormComponent', () => {
   ];
 
   const mockCurrencies = [
-    { code: 'USD', name: 'US Dollar', symbol: '$' },
-    { code: 'EUR', name: 'Euro', symbol: '€' },
-    { code: 'TWD', name: 'Taiwan Dollar', symbol: 'NT$' }
+    { code: 'USD', nameKey: 'currencies.usd', symbol: '$' },
+    { code: 'EUR', nameKey: 'currencies.eur', symbol: '€' },
+    { code: 'TWD', nameKey: 'currencies.twd', symbol: 'NT$' }
   ];
 
   const mockTimestamp = {

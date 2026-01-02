@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -18,7 +18,9 @@ import { BudgetService } from '../../../core/services/budget.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { Budget, CreateBudgetDTO, BudgetPeriod } from '../../../models';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 export interface BudgetFormDialogData {
   mode: 'add' | 'edit';
@@ -41,7 +43,8 @@ export interface BudgetFormDialogData {
     MatProgressSpinnerModule,
     MatDatepickerModule,
     MatNativeDateModule,
-    MatTooltipModule
+    MatTooltipModule,
+    TranslatePipe
   ],
   templateUrl: './budget-form.component.html',
   styleUrl: './budget-form.component.scss'
@@ -54,18 +57,29 @@ export class BudgetFormComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
+  private translationService = inject(TranslationService);
 
   form!: FormGroup;
   isSubmitting = signal(false);
+  private categoryIdSignal = signal<string>('');
 
   currencies = this.currencyService.getSupportedCurrencies();
   expenseCategories = this.categoryService.expenseCategories;
 
-  periods: { value: BudgetPeriod; label: string }[] = [
-    { value: 'weekly', label: 'Weekly' },
-    { value: 'monthly', label: 'Monthly' },
-    { value: 'yearly', label: 'Yearly' }
-  ];
+  // Computed signal for selected category (used by mat-select-trigger)
+  selectedCategory = computed(() => {
+    const categoryId = this.categoryIdSignal();
+    if (!categoryId) return null;
+    return this.expenseCategories().find(c => c.id === categoryId) || null;
+  });
+
+  get periods(): { value: BudgetPeriod; label: string }[] {
+    return [
+      { value: 'weekly', label: this.translationService.t('transactions.weekly') },
+      { value: 'monthly', label: this.translationService.t('transactions.monthly') },
+      { value: 'yearly', label: this.translationService.t('transactions.yearly') }
+    ];
+  }
 
   constructor() {
     // Load categories if not already loaded
@@ -93,6 +107,12 @@ export class BudgetFormComponent implements OnInit {
       period: [budget?.period || 'monthly', Validators.required],
       startDate: [startDate],
       alertThreshold: [budget?.alertThreshold || 80]
+    });
+
+    // Watch for category changes to update the trigger display
+    this.categoryIdSignal.set(budget?.categoryId || '');
+    this.form.get('categoryId')?.valueChanges.subscribe((categoryId) => {
+      this.categoryIdSignal.set(categoryId || '');
     });
   }
 

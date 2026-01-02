@@ -2,6 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { Observable, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
+import { TranslationService } from './translation.service';
 import {
   CurrencyInfo,
   ExchangeRates,
@@ -16,6 +17,7 @@ const CURRENCY_API_URL = 'https://open.er-api.com/v6/latest/USD';
 @Injectable({ providedIn: 'root' })
 export class CurrencyService {
   private firestoreService = inject(FirestoreService);
+  private translationService = inject(TranslationService);
 
   // Signals
   currencies = signal<CurrencyInfo[]>(SUPPORTED_CURRENCIES);
@@ -124,9 +126,10 @@ export class CurrencyService {
   // Format currency amount for display
   formatCurrency(amount: number, currencyCode: string): string {
     const currency = this.currencies().find(c => c.code === currencyCode);
+    const locale = this.translationService.getIntlLocale();
 
     try {
-      return new Intl.NumberFormat('en-US', {
+      return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: currencyCode,
         minimumFractionDigits: currencyCode === 'JPY' || currencyCode === 'KRW' ? 0 : 2,

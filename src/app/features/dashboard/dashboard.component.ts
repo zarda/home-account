@@ -10,13 +10,16 @@ import { FormsModule } from '@angular/forms';
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
+import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
+import { TranslationService } from '../../core/services/translation.service';
 import { Transaction, Category } from '../../models';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 
 type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'custom';
 
@@ -41,7 +44,8 @@ interface CustomPeriod {
     SpendingChartComponent,
     RecentTransactionsComponent,
     BudgetProgressComponent,
-    LoadingSpinnerComponent
+    LoadingSpinnerComponent,
+    TranslatePipe
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
@@ -50,7 +54,9 @@ export class DashboardComponent implements OnInit {
   private transactionService = inject(TransactionService);
   private budgetService = inject(BudgetService);
   private categoryService = inject(CategoryService);
+  private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
+  private translationService = inject(TranslationService);
 
   selectedPeriod: PeriodOption = 'thisMonth';
   isLoading = signal(true);
@@ -83,20 +89,36 @@ export class DashboardComponent implements OnInit {
   });
 
   // Transaction data
-  totalIncome = this.transactionService.totalIncome;
-  totalExpenses = this.transactionService.totalExpense;
-  balance = this.transactionService.balance;
   transactions = this.transactionService.transactions;
   recentTransactions = signal<Transaction[]>([]);
 
+  // Compute totals with real-time currency conversion to user's base currency
+  totalIncome = computed(() => {
+    const baseCurrency = this.baseCurrency();
+    return this.transactions()
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, baseCurrency), 0);
+  });
+
+  totalExpenses = computed(() => {
+    const baseCurrency = this.baseCurrency();
+    return this.transactions()
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, baseCurrency), 0);
+  });
+
+  balance = computed(() => this.totalIncome() - this.totalExpenses());
+
   categoryTotals = computed(() => {
-    const transactions = this.transactionService.transactions();
+    const baseCurrency = this.baseCurrency();
+    const transactions = this.transactions();
     const expenseTransactions = transactions.filter(t => t.type === 'expense');
 
     const totals = new Map<string, number>();
     for (const t of expenseTransactions) {
       const current = totals.get(t.categoryId) || 0;
-      totals.set(t.categoryId, current + t.amountInBaseCurrency);
+      const convertedAmount = this.currencyService.convert(t.amount, t.currency, baseCurrency);
+      totals.set(t.categoryId, current + convertedAmount);
     }
 
     return Array.from(totals.entries())

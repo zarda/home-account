@@ -3,11 +3,12 @@ import { Component, Input } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
 import { Category } from '../../../models';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 @Component({
   selector: 'app-category-chip',
   standalone: true,
-  imports: [MatIconModule, MatChipsModule],
+  imports: [MatIconModule, MatChipsModule, TranslatePipe],
   template: `
     @if (category) {
       <span
@@ -17,7 +18,7 @@ import { Category } from '../../../models';
       >
         <mat-icon class="!text-base !w-4 !h-4">{{ category.icon }}</mat-icon>
         @if (showLabel) {
-          <span class="font-medium">{{ category.name }}</span>
+          <span class="font-medium">{{ category.name | translate }}</span>
         }
       </span>
     } @else if (icon && color) {
@@ -28,7 +29,7 @@ import { Category } from '../../../models';
       >
         <mat-icon class="!text-base !w-4 !h-4">{{ icon }}</mat-icon>
         @if (showLabel && label) {
-          <span class="font-medium">{{ label }}</span>
+          <span class="font-medium">{{ label | translate }}</span>
         }
       </span>
     }

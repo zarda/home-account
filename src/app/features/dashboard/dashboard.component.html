@@ -2,9 +2,9 @@
   <!-- Header -->
   <div class="header-section">
     <div>
-      <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <h1 class="text-2xl font-bold text-gray-900">{{ 'dashboard.title' | translate }}</h1>
       <p class="text-gray-500 text-sm mt-1">
-        Welcome back, {{ userName() }}
+        {{ 'common.welcome' | translate }}, {{ userName() }}
       </p>
     </div>
 
@@ -15,20 +15,20 @@
         class="period-toggle bg-white"
       >
         <mat-button-toggle value="thisMonth">
-          <span class="mobile-label">Month</span>
-          <span class="desktop-label">This Month</span>
+          <span class="mobile-label">{{ 'dashboard.thisMonthShort' | translate }}</span>
+          <span class="desktop-label">{{ 'dashboard.thisMonth' | translate }}</span>
         </mat-button-toggle>
         <mat-button-toggle value="lastMonth">
-          <span class="mobile-label">Last</span>
-          <span class="desktop-label">Last Month</span>
+          <span class="mobile-label">{{ 'dashboard.lastMonthShort' | translate }}</span>
+          <span class="desktop-label">{{ 'dashboard.lastMonth' | translate }}</span>
         </mat-button-toggle>
         <mat-button-toggle value="last3Months">
-          <span class="mobile-label">3M</span>
-          <span class="desktop-label">3 Months</span>
+          <span class="mobile-label">{{ 'dashboard.last3MonthsShort' | translate }}</span>
+          <span class="desktop-label">{{ 'dashboard.last3Months' | translate }}</span>
         </mat-button-toggle>
         <mat-button-toggle value="thisYear">
-          <span class="mobile-label">Year</span>
-          <span class="desktop-label">This Year</span>
+          <span class="mobile-label">{{ 'dashboard.thisYearShort' | translate }}</span>
+          <span class="desktop-label">{{ 'dashboard.thisYear' | translate }}</span>
         </mat-button-toggle>
       </mat-button-toggle-group>
 
@@ -46,11 +46,11 @@
         <mat-menu #periodMenu="matMenu">
           <button mat-menu-item (click)="openMonthPicker()">
             <mat-icon>event</mat-icon>
-            <span>Select Month</span>
+            <span>{{ 'dashboard.selectMonth' | translate }}</span>
           </button>
           <button mat-menu-item (click)="openYearPicker()">
             <mat-icon>date_range</mat-icon>
-            <span>Select Year</span>
+            <span>{{ 'dashboard.selectYear' | translate }}</span>
           </button>
         </mat-menu>
 
@@ -84,7 +84,7 @@
   </div>
 
   @if (isLoading()) {
-    <app-loading-spinner message="Loading dashboard data..." />
+    <app-loading-spinner [message]="'dashboard.loadingData' | translate" />
   } @else {
     <!-- Financial Summary Cards (shared) -->
     <app-financial-summary

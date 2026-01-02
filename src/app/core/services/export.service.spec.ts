@@ -2,12 +2,27 @@ import { TestBed } from '@angular/core/testing';
 import { ExportService } from './export.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
+import { TranslationService } from './translation.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
-import { createTransaction, createCategoryHierarchy } from './testing/test-data';
+import { createTransaction, createCategory, createCategoryHierarchy } from './testing/test-data';
 import { Timestamp } from '@angular/fire/firestore';
+
+class MockTranslationService {
+  t(key: string): string {
+    // Simulate translation by returning mapped values for known keys
+    const translations: Record<string, string> = {
+      'categoryNames.food': 'Food & Drinks',
+      'categoryNames.restaurants': 'Restaurants',
+      'categoryNames.groceries': 'Groceries',
+      'categoryNames.transport': 'Transportation',
+      'categoryNames.salary': 'Salary'
+    };
+    return translations[key] ?? key;
+  }
+}
 
 describe('ExportService', () => {
   let service: ExportService;
@@ -20,6 +35,7 @@ describe('ExportService', () => {
         ExportService,
         CategoryService,
         CurrencyService,
+        { provide: TranslationService, useClass: MockTranslationService },
         { provide: FirestoreService, useClass: MockFirestoreService },
         { provide: AuthService, useClass: MockAuthService }
       ]
@@ -122,6 +138,71 @@ describe('ExportService', () => {
         const headerLine = content.split('\n')[0];
         const columns = headerLine.split(',');
         expect(columns.length).toBe(5); // Date, Type, Category, Amount, Currency
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
+    it('should translate category names using translation keys', (done) => {
+      // Create a category with a translation key as name
+      const categoryWithTranslationKey = createCategory({
+        id: 'food_test',
+        name: 'categoryNames.food', // Translation key
+        type: 'expense'
+      });
+      categoryService.categories.set([categoryWithTranslationKey]);
+
+      const transaction = createTransaction({
+        categoryId: 'food_test'
+      });
+      const blob = service.exportToCSV([transaction]);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const content = reader.result as string;
+        // Should contain translated name, not the translation key
+        expect(content).toContain('Food & Drinks');
+        expect(content).not.toContain('categoryNames.food');
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
+    it('should return Unknown for missing categories', (done) => {
+      categoryService.categories.set([]);
+
+      const transaction = createTransaction({
+        categoryId: 'non_existent_category'
+      });
+      const blob = service.exportToCSV([transaction]);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const content = reader.result as string;
+        expect(content).toContain('Unknown');
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
+    it('should translate category names in summary format', (done) => {
+      const categoryWithTranslationKey = createCategory({
+        id: 'transport_test',
+        name: 'categoryNames.transport',
+        type: 'expense'
+      });
+      categoryService.categories.set([categoryWithTranslationKey]);
+
+      const transaction = createTransaction({
+        categoryId: 'transport_test'
+      });
+      const blob = service.exportToCSV([transaction], { format: 'summary' });
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const content = reader.result as string;
+        expect(content).toContain('Transportation');
+        expect(content).not.toContain('categoryNames.transport');
         done();
       };
       reader.readAsText(blob);

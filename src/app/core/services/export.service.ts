@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
+import { TranslationService } from './translation.service';
 import { Transaction, Category, MonthlyTotal } from '../../models';
 
 export interface ExportOptions {
@@ -39,6 +40,12 @@ export interface ImportedTransaction {
 export class ExportService {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
+  private translationService = inject(TranslationService);
+
+  // Helper: Get translated category name
+  private getCategoryName(category: Category | undefined): string {
+    return category?.name ? this.translationService.t(category.name) : 'Unknown';
+  }
 
   // Export transactions to CSV
   exportToCSV(transactions: Transaction[], options?: ExportOptions): Blob {
@@ -61,7 +68,7 @@ export class ExportService {
         return [
           date,
           t.type,
-          category?.name ?? 'Unknown',
+          this.getCategoryName(category),
           t.amount.toString(),
           t.currency
         ];
@@ -70,7 +77,7 @@ export class ExportService {
       return [
         date,
         t.type,
-        category?.name ?? 'Unknown',
+        this.getCategoryName(category),
         this.escapeCSV(t.description),
         t.amount.toString(),
         t.currency,
@@ -124,7 +131,7 @@ export class ExportService {
         .map(c => {
           const category = report.categories.find(cat => cat.id === c.categoryId);
           return [
-            category?.name ?? 'Unknown',
+            this.getCategoryName(category),
             this.currencyService.formatCurrency(c.total, 'USD'),
             `${((c.total / report.summary.expense) * 100).toFixed(1)}%`
           ];
@@ -152,7 +159,7 @@ export class ExportService {
         return [
           t.date.toDate().toLocaleDateString(),
           t.type === 'income' ? '+' : '-',
-          category?.name ?? 'Unknown',
+          this.getCategoryName(category),
           t.description.substring(0, 30),
           this.currencyService.formatCurrency(t.amount, t.currency)
         ];

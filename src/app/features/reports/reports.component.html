@@ -2,8 +2,8 @@
   <!-- Header -->
   <div class="header-section">
     <div class="header-left">
-      <h1 class="text-2xl font-bold text-gray-900">Reports</h1>
-      <p class="text-gray-500 text-sm mt-1">Analyze your financial data</p>
+      <h1 class="text-2xl font-bold text-gray-900">{{ 'reports.title' | translate }}</h1>
+      <p class="text-gray-500 text-sm mt-1">{{ 'reports.subtitle' | translate }}</p>
     </div>
 
     <div class="header-right">
@@ -14,20 +14,20 @@
           class="period-toggle bg-white"
         >
           <mat-button-toggle value="thisMonth">
-            <span class="mobile-label">Month</span>
-            <span class="desktop-label">This Month</span>
+            <span class="mobile-label">{{ 'dashboard.thisMonthShort' | translate }}</span>
+            <span class="desktop-label">{{ 'dashboard.thisMonth' | translate }}</span>
           </mat-button-toggle>
           <mat-button-toggle value="lastMonth">
-            <span class="mobile-label">Last</span>
-            <span class="desktop-label">Last Month</span>
+            <span class="mobile-label">{{ 'dashboard.lastMonthShort' | translate }}</span>
+            <span class="desktop-label">{{ 'dashboard.lastMonth' | translate }}</span>
           </mat-button-toggle>
           <mat-button-toggle value="last3Months">
-            <span class="mobile-label">3M</span>
-            <span class="desktop-label">3 Months</span>
+            <span class="mobile-label">{{ 'dashboard.last3MonthsShort' | translate }}</span>
+            <span class="desktop-label">{{ 'dashboard.last3Months' | translate }}</span>
           </mat-button-toggle>
           <mat-button-toggle value="thisYear">
-            <span class="mobile-label">Year</span>
-            <span class="desktop-label">This Year</span>
+            <span class="mobile-label">{{ 'dashboard.thisYearShort' | translate }}</span>
+            <span class="desktop-label">{{ 'dashboard.thisYear' | translate }}</span>
           </mat-button-toggle>
         </mat-button-toggle-group>
 
@@ -45,11 +45,11 @@
           <mat-menu #periodMenu="matMenu">
             <button mat-menu-item (click)="openMonthPicker()">
               <mat-icon>event</mat-icon>
-              <span>Select Month</span>
+              <span>{{ 'reports.selectMonth' | translate }}</span>
             </button>
             <button mat-menu-item (click)="openYearPicker()">
               <mat-icon>date_range</mat-icon>
-              <span>Select Year</span>
+              <span>{{ 'reports.selectYear' | translate }}</span>
             </button>
           </mat-menu>
 
@@ -83,13 +83,13 @@
 
       <button mat-flat-button color="primary" (click)="openExportDialog()" class="export-btn">
         <mat-icon>download</mat-icon>
-        <span class="desktop-label">Export</span>
+        <span class="desktop-label">{{ 'common.export' | translate }}</span>
       </button>
     </div>
   </div>
 
   @if (isLoading()) {
-    <app-loading-spinner message="Loading report data..." />
+    <app-loading-spinner [message]="'reports.loadingData' | translate" />
   } @else {
     <!-- Tabs Navigation -->
     <mat-tab-group
@@ -100,7 +100,7 @@
       <mat-tab>
         <ng-template mat-tab-label>
           <mat-icon class="tab-icon">show_chart</mat-icon>
-          <span class="tab-label">Spending Analysis</span>
+          <span class="tab-label">{{ 'reports.spendingAnalysis' | translate }}</span>
         </ng-template>
         <div class="tab-content">
           <app-spending-analysis
@@ -115,7 +115,7 @@
       <mat-tab>
         <ng-template mat-tab-label>
           <mat-icon class="tab-icon">pie_chart</mat-icon>
-          <span class="tab-label">Category Breakdown</span>
+          <span class="tab-label">{{ 'reports.categoryBreakdown' | translate }}</span>
         </ng-template>
         <div class="tab-content">
           <app-category-breakdown
@@ -129,7 +129,7 @@
       <mat-tab>
         <ng-template mat-tab-label>
           <mat-icon class="tab-icon">bar_chart</mat-icon>
-          <span class="tab-label">Monthly Comparison</span>
+          <span class="tab-label">{{ 'reports.monthlyComparison' | translate }}</span>
         </ng-template>
         <div class="tab-content">
           <app-monthly-comparison

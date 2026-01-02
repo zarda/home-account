@@ -1,8 +1,8 @@
 <div class="settings-container">
   <!-- Header -->
   <div class="header-section">
-    <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
-    <p class="text-gray-500 text-sm mt-1">Manage your preferences and account</p>
+    <h1 class="text-2xl font-bold text-gray-900">{{ 'settings.title' | translate }}</h1>
+    <p class="text-gray-500 text-sm mt-1">{{ 'settings.subtitle' | translate }}</p>
   </div>
 
   <!-- User Card -->
@@ -27,10 +27,10 @@
       <mat-expansion-panel-header>
         <mat-panel-title>
           <mat-icon class="section-icon">tune</mat-icon>
-          Preferences
+          {{ 'settings.preferences' | translate }}
         </mat-panel-title>
         <mat-panel-description>
-          Currency, theme, and display settings
+          {{ 'settings.preferencesDescription' | translate }}
         </mat-panel-description>
       </mat-expansion-panel-header>
       <app-profile-settings />
@@ -41,10 +41,10 @@
       <mat-expansion-panel-header>
         <mat-panel-title>
           <mat-icon class="section-icon">category</mat-icon>
-          Categories
+          {{ 'settings.categories' | translate }}
         </mat-panel-title>
         <mat-panel-description>
-          Manage your income and expense categories
+          {{ 'settings.categoriesDescription' | translate }}
         </mat-panel-description>
       </mat-expansion-panel-header>
       <app-category-manager />
@@ -55,10 +55,10 @@
       <mat-expansion-panel-header>
         <mat-panel-title>
           <mat-icon class="section-icon">repeat</mat-icon>
-          Recurring Transactions
+          {{ 'settings.recurring' | translate }}
         </mat-panel-title>
         <mat-panel-description>
-          Manage scheduled transactions
+          {{ 'settings.recurringDescription' | translate }}
         </mat-panel-description>
       </mat-expansion-panel-header>
       <app-recurring-transactions />
@@ -69,10 +69,10 @@
       <mat-expansion-panel-header>
         <mat-panel-title>
           <mat-icon class="section-icon">cloud_sync</mat-icon>
-          Data Management
+          {{ 'settings.dataManagement' | translate }}
         </mat-panel-title>
         <mat-panel-description>
-          Export, import, and backup your data
+          {{ 'settings.dataManagementDescription' | translate }}
         </mat-panel-description>
       </mat-expansion-panel-header>
       <app-data-management />

@@ -1,8 +1,8 @@
 @if (transactions.length === 0) {
   <app-empty-state
     icon="receipt_long"
-    title="No transactions found"
-    description="Try adjusting your filters or add a new transaction"
+    [title]="'transactions.noTransactions' | translate"
+    [description]="'transactions.adjustFilters' | translate"
   />
 } @else {
   <!-- Mobile View -->
@@ -55,11 +55,11 @@
           <mat-menu #mobileMenu="matMenu">
             <button mat-menu-item (click)="edit.emit(transaction)">
               <mat-icon>edit</mat-icon>
-              <span>Edit</span>
+              <span>{{ 'common.edit' | translate }}</span>
             </button>
             <button mat-menu-item (click)="confirmDelete(transaction)">
               <mat-icon class="text-red-500">delete</mat-icon>
-              <span class="text-red-500">Delete</span>
+              <span class="text-red-500">{{ 'common.delete' | translate }}</span>
             </button>
           </mat-menu>
         </div>
@@ -75,7 +75,7 @@
     <table mat-table [dataSource]="sortedTransactions" matSort (matSortChange)="onSortChange($event)" class="desktop-table">
       <!-- Date Column -->
       <ng-container matColumnDef="date">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-date">Date</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-date">{{ 'transactions.date' | translate }}</th>
         <td mat-cell *matCellDef="let transaction" class="col-date">
           <span class="date-text">{{ formatRelativeDate(transaction.date) }}</span>
         </td>
@@ -83,7 +83,7 @@
 
       <!-- Category Column -->
       <ng-container matColumnDef="category">
-        <th mat-header-cell *matHeaderCellDef class="col-category">Category</th>
+        <th mat-header-cell *matHeaderCellDef class="col-category">{{ 'transactions.category' | translate }}</th>
         <td mat-cell *matCellDef="let transaction" class="col-category">
           <div class="category-cell">
             <div
@@ -101,7 +101,7 @@
 
       <!-- Description Column -->
       <ng-container matColumnDef="description">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-description">Description</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-description">{{ 'transactions.description' | translate }}</th>
         <td mat-cell *matCellDef="let transaction" class="col-description">
           <span class="description-text">{{ transaction.description }}</span>
           @if (transaction.note) {
@@ -112,7 +112,7 @@
 
       <!-- Amount Column -->
       <ng-container matColumnDef="amount">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-amount">Amount</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-amount">{{ 'transactions.amount' | translate }}</th>
         <td mat-cell *matCellDef="let transaction" class="col-amount">
           <span
             class="amount-text"
@@ -134,11 +134,11 @@
           <mat-menu #menu="matMenu">
             <button mat-menu-item (click)="edit.emit(transaction)">
               <mat-icon>edit</mat-icon>
-              <span>Edit</span>
+              <span>{{ 'common.edit' | translate }}</span>
             </button>
             <button mat-menu-item (click)="confirmDelete(transaction)">
               <mat-icon class="text-red-500">delete</mat-icon>
-              <span class="text-red-500">Delete</span>
+              <span class="text-red-500">{{ 'common.delete' | translate }}</span>
             </button>
           </mat-menu>
         </td>

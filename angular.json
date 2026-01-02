@@ -36,9 +36,9 @@
       "sourceRoot": "src",
       "prefix": "app",
       "i18n": {
-        "sourceLocale": "en-US",
+        "sourceLocale": "en",
         "locales": {
-          "zh-Hant": "src/locale/messages.zh-Hant.xlf",
+          "tc": "src/locale/messages.tc.xlf",
           "ja": "src/locale/messages.ja.xlf"
         }
       },

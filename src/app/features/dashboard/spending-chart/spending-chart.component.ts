@@ -1,11 +1,13 @@
-import { Component, computed, Input, signal } from '@angular/core';
+import { Component, computed, inject, Input, signal } from '@angular/core';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
 import { Category } from '../../../models';
+import { TranslationService } from '../../../core/services/translation.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 interface CategoryTotal {
   categoryId: string;
@@ -15,11 +17,13 @@ interface CategoryTotal {
 @Component({
   selector: 'app-spending-chart',
   standalone: true,
-  imports: [MatCardModule, MatIconModule, BaseChartDirective, EmptyStateComponent],
+  imports: [MatCardModule, MatIconModule, BaseChartDirective, EmptyStateComponent, TranslatePipe],
   templateUrl: './spending-chart.component.html',
   styleUrl: './spending-chart.component.scss',
 })
 export class SpendingChartComponent {
+  private translationService = inject(TranslationService);
+
   @Input() set categoryTotals(value: CategoryTotal[]) {
     this._categoryTotals.set(value);
   }
@@ -75,7 +79,7 @@ export class SpendingChartComponent {
 
     const getCategoryName = (categoryId: string): string => {
       const category = categories.find(c => c.id === categoryId);
-      return category?.name || 'Unknown';
+      return category?.name ? this.translationService.t(category.name) : 'Unknown';
     };
 
     const getCategoryColor = (categoryId: string): string => {
@@ -102,7 +106,7 @@ export class SpendingChartComponent {
 
   getCategoryName(categoryId: string): string {
     const category = this._categories().find(c => c.id === categoryId);
-    return category?.name || 'Unknown';
+    return category?.name ? this.translationService.t(category.name) : 'Unknown';
   }
 
   getCategoryColor(categoryId: string): string {

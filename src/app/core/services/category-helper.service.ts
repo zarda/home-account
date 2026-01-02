@@ -1,13 +1,17 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { Category } from '../../models';
+import { TranslationService } from './translation.service';
 
 @Injectable({ providedIn: 'root' })
 export class CategoryHelperService {
+  private translationService = inject(TranslationService);
+
   /**
-   * Gets the category name from a categories map
+   * Gets the category name from a categories map (translated)
    */
   getCategoryName(categoryId: string, categories: Map<string, Category>): string {
-    return categories.get(categoryId)?.name || 'Unknown';
+    const name = categories.get(categoryId)?.name;
+    return name ? this.translationService.t(name) : 'Unknown';
   }
 
   /**
@@ -25,11 +29,11 @@ export class CategoryHelperService {
   }
 
   /**
-   * Gets the category name from a categories array
+   * Gets the category name from a categories array (translated)
    */
   getCategoryNameFromArray(categoryId: string, categories: Category[]): string {
     const category = categories.find(c => c.id === categoryId);
-    return category?.name || 'Unknown';
+    return category?.name ? this.translationService.t(category.name) : 'Unknown';
   }
 
   /**

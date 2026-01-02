@@ -10,6 +10,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-recent-transactions',
@@ -19,7 +20,8 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
     MatCardModule,
     MatIconModule,
     MatButtonModule,
-    EmptyStateComponent
+    EmptyStateComponent,
+    TranslatePipe
   ],
   templateUrl: './recent-transactions.component.html',
   styleUrl: './recent-transactions.component.scss',

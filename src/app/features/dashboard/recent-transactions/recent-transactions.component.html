@@ -1,9 +1,9 @@
 <mat-card class="card">
   <!-- Header -->
   <div class="card-header">
-    <h3 class="card-title">Recent Transactions</h3>
+    <h3 class="card-title">{{ 'dashboard.recentTransactions' | translate }}</h3>
     <a routerLink="/transactions" class="view-all-link">
-      View All
+      {{ 'dashboard.viewAll' | translate }}
       <mat-icon class="view-all-icon">chevron_right</mat-icon>
     </a>
   </div>
@@ -14,9 +14,9 @@
       <div class="empty-container">
         <app-empty-state
           icon="receipt_long"
-          title="No transactions yet"
-          description="Add your first transaction to get started"
-          actionLabel="Add Transaction"
+          [title]="'transactions.noTransactions' | translate"
+          [description]="'dashboard.addFirstTransaction' | translate"
+          [actionLabel]="'transactions.addTransaction' | translate"
           actionIcon="add"
           (action)="onAddTransaction()"
         />

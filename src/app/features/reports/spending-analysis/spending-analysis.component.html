@@ -1,8 +1,8 @@
 @if (!hasData()) {
   <app-empty-state
     icon="show_chart"
-    title="No Data Available"
-    description="Add some transactions to see your spending analysis."
+    [title]="'reports.noDataAvailable' | translate"
+    [description]="'reports.addTransactionsToSee' | translate"
   />
 } @else {
   <div class="spending-analysis">
@@ -13,7 +13,7 @@
           <mat-icon>trending_up</mat-icon>
         </div>
         <div class="card-content">
-          <span class="label">Total Income</span>
+          <span class="label">{{ 'reports.totalIncome' | translate }}</span>
           <span class="value">{{ totalIncome() | currency:currencyCode:'symbol':'1.2-2' }}</span>
         </div>
       </div>
@@ -23,7 +23,7 @@
           <mat-icon>trending_down</mat-icon>
         </div>
         <div class="card-content">
-          <span class="label">Total Expenses</span>
+          <span class="label">{{ 'reports.totalExpenses' | translate }}</span>
           <span class="value">{{ totalExpenses() | currency:currencyCode:'symbol':'1.2-2' }}</span>
         </div>
       </div>
@@ -33,7 +33,7 @@
           <mat-icon>{{ netSavings() >= 0 ? 'savings' : 'money_off' }}</mat-icon>
         </div>
         <div class="card-content">
-          <span class="label">Net Savings</span>
+          <span class="label">{{ 'reports.netSavings' | translate }}</span>
           <span class="value">{{ netSavings() | currency:currencyCode:'symbol':'1.2-2' }}</span>
           <span class="rate" [class.positive]="savingsRate() >= 0" [class.negative]="savingsRate() < 0">
             {{ savingsRate() >= 0 ? '+' : '' }}{{ savingsRate() | number:'1.1-1' }}%
@@ -45,7 +45,7 @@
     <!-- Trend Chart -->
     <mat-card class="chart-card">
       <mat-card-header>
-        <mat-card-title>Income vs Expenses Trend</mat-card-title>
+        <mat-card-title>{{ 'reports.incomeVsExpensesTrend' | translate }}</mat-card-title>
       </mat-card-header>
       <mat-card-content>
         <div class="chart-container">
@@ -53,7 +53,7 @@
             baseChart
             [type]="chartType"
             [data]="chartData()"
-            [options]="chartOptions"
+            [options]="chartOptions()"
           ></canvas>
         </div>
       </mat-card-content>
@@ -62,7 +62,7 @@
     <!-- Top Spending Categories -->
     <mat-card class="categories-card">
       <mat-card-header>
-        <mat-card-title>Top Spending Categories</mat-card-title>
+        <mat-card-title>{{ 'reports.topSpendingCategories' | translate }}</mat-card-title>
       </mat-card-header>
       <mat-card-content>
         <div class="categories-list">
@@ -73,7 +73,7 @@
                   <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
                 </div>
                 <div class="category-details">
-                  <span class="category-name">{{ category.name }}</span>
+                  <span class="category-name">{{ category.name | translate }}</span>
                   <span class="category-amount">{{ category.total | currency:currencyCode:'symbol':'1.2-2' }}</span>
                 </div>
               </div>

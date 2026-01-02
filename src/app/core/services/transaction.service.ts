@@ -360,6 +360,19 @@ export class TransactionService {
     }));
   }
 
+  // Get all transactions (for full export - no filters)
+  getAllTransactions(): Observable<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return of([]);
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      {
+        orderBy: [{ field: 'date', direction: 'desc' }]
+      }
+    );
+  }
+
   // Get recent transactions
   getRecentTransactions(count = 10): Observable<Transaction[]> {
     const userId = this.authService.userId();

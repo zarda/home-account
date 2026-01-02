@@ -1,6 +1,6 @@
 <div class="flex flex-col gap-4">
   <!-- Header -->
-  <h1 class="text-2xl font-bold text-gray-900 m-0 flex items-center gap-2">Transactions <span class="text-base font-normal text-gray-400 leading-none">({{ transactionCount() }})</span></h1>
+  <h1 class="text-2xl font-bold text-gray-900 m-0 flex items-center gap-2">{{ 'transactions.title' | translate }} <span class="text-base font-normal text-gray-400 leading-none">({{ transactionCount() }})</span></h1>
 
   <!-- Filters with Add button integrated -->
   <app-transaction-filters
@@ -12,7 +12,7 @@
 
   <!-- Transaction List -->
   @if (isLoading()) {
-    <app-loading-spinner message="Loading transactions..." />
+    <app-loading-spinner [message]="'transactions.loading' | translate" />
   } @else {
     <app-transaction-list
       [transactions]="transactions()"

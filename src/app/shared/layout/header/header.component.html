@@ -2,14 +2,14 @@
   <button
     mat-icon-button
     (click)="toggleSidebar.emit()"
-    matTooltip="Toggle sidebar"
+    [matTooltip]="'common.toggleSidebar' | translate"
     aria-label="Toggle sidebar"
     class="menu-button"
   >
     <mat-icon>{{ isSidebarOpen ? 'menu_open' : 'menu' }}</mat-icon>
   </button>
 
-  <span class="app-title">Home Account</span>
+  <span class="app-title">{{ 'app.title' | translate }}</span>
 
   <span class="spacer"></span>
 
@@ -34,11 +34,11 @@
       </div>
       <button mat-menu-item routerLink="/settings">
         <mat-icon>settings</mat-icon>
-        <span>Settings</span>
+        <span>{{ 'common.settings' | translate }}</span>
       </button>
       <button mat-menu-item (click)="logout()">
         <mat-icon>logout</mat-icon>
-        <span>Sign out</span>
+        <span>{{ 'auth.signOut' | translate }}</span>
       </button>
     </mat-menu>
   }

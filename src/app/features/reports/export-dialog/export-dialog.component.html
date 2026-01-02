@@ -1,6 +1,6 @@
 <h2 mat-dialog-title>
   <mat-icon class="title-icon">download</mat-icon>
-  Export Data
+  {{ 'reports.exportData' | translate }}
 </h2>
 
 <mat-dialog-content>
@@ -9,7 +9,7 @@
     <div class="export-info">
       <div class="info-item">
         <mat-icon>receipt_long</mat-icon>
-        <span>{{ transactionCount }} transactions</span>
+        <span>{{ transactionCount }} {{ 'reports.transactionsCount' | translate }}</span>
       </div>
       <div class="info-item">
         <mat-icon>date_range</mat-icon>
@@ -19,7 +19,7 @@
 
     <!-- Format Selection -->
     <div class="format-selection">
-      <span class="section-label" id="format-label">Export Format</span>
+      <span class="section-label" id="format-label">{{ 'reports.exportFormat' | translate }}</span>
       <mat-radio-group [(ngModel)]="selectedFormat" class="format-radio-group" aria-labelledby="format-label">
         @for (option of formatOptions; track option.value) {
           <mat-radio-button [value]="option.value" class="format-option">
@@ -40,9 +40,9 @@
     <!-- Options -->
     @if (selectedFormat === 'csv') {
       <div class="export-options">
-        <span class="section-label">Options</span>
+        <span class="section-label">{{ 'reports.options' | translate }}</span>
         <mat-checkbox [(ngModel)]="includeDetails">
-          Include detailed information (notes, tags)
+          {{ 'reports.includeDetails' | translate }}
         </mat-checkbox>
       </div>
     }
@@ -50,7 +50,7 @@
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
-  <button mat-button (click)="cancel()" [disabled]="isExporting">Cancel</button>
+  <button mat-button (click)="cancel()" [disabled]="isExporting">{{ 'common.cancel' | translate }}</button>
   <button
     mat-flat-button
     color="primary"
@@ -59,10 +59,12 @@
   >
     @if (isExporting) {
       <mat-spinner diameter="20" class="btn-spinner"></mat-spinner>
-      Exporting...
+      {{ 'reports.exporting' | translate }}
     } @else {
-      <mat-icon>download</mat-icon>
-      Export
+      <ng-container>
+        <mat-icon>download</mat-icon>
+        {{ 'common.export' | translate }}
+      </ng-container>
     }
   </button>
 </mat-dialog-actions>

@@ -1,6 +1,6 @@
 <mat-card class="card">
   <div class="card-header">
-    <h3 class="card-title">Spending by Category</h3>
+    <h3 class="card-title">{{ 'dashboard.spendingByCategory' | translate }}</h3>
   </div>
 
   <div class="card-content">
@@ -8,8 +8,8 @@
       <div class="empty-container">
         <app-empty-state
           icon="pie_chart"
-          title="No expenses yet"
-          description="Start adding expenses to see your spending breakdown"
+          [title]="'dashboard.noExpenses' | translate"
+          [description]="'dashboard.addExpensesToSeeBreakdown' | translate"
         />
       </div>
     } @else {

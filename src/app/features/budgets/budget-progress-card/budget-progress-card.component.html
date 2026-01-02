@@ -18,11 +18,11 @@
     <mat-menu #menu="matMenu">
       <button mat-menu-item (click)="edit.emit()">
         <mat-icon>edit</mat-icon>
-        <span>Edit</span>
+        <span>{{ 'common.edit' | translate }}</span>
       </button>
       <button mat-menu-item (click)="delete.emit()" class="delete-item">
         <mat-icon>delete</mat-icon>
-        <span>Delete</span>
+        <span>{{ 'common.delete' | translate }}</span>
       </button>
     </mat-menu>
   </div>

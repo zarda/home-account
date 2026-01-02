@@ -8,6 +8,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Budget, Category, Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-budget-progress',
@@ -17,7 +18,8 @@ import { CategoryHelperService } from '../../../core/services/category-helper.se
     MatCardModule,
     MatIconModule,
     MatButtonModule,
-    MatProgressBarModule
+    MatProgressBarModule,
+    TranslatePipe
   ],
   templateUrl: './budget-progress.component.html',
   styleUrl: './budget-progress.component.scss',
@@ -34,16 +36,10 @@ export class BudgetProgressComponent {
   // Calculate spent for a budget based on transactions in the current period
   // Returns the spent amount in the BUDGET's currency for proper comparison
   getBudgetSpent(budget: Budget): number {
-    // Sum transactions in base currency
-    const spentInBaseCurrency = this.transactions
+    // Convert each transaction directly to budget's currency
+    return this.transactions
       .filter(t => t.categoryId === budget.categoryId && t.type === 'expense')
-      .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
-
-    // Convert from base currency to budget's currency
-    if (this.baseCurrency === budget.currency) {
-      return spentInBaseCurrency;
-    }
-    return this.currencyService.convert(spentInBaseCurrency, this.baseCurrency, budget.currency);
+      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, budget.currency), 0);
   }
 
   getCategoryName(categoryId: string): string {

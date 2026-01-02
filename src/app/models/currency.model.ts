@@ -14,31 +14,31 @@ export interface Currency {
 
 export interface CurrencyInfo {
   code: string;
-  name: string;
+  nameKey: string;  // Translation key, e.g., 'currencies.usd'
   symbol: string;
 }
 
 // All currencies available in the app (ExchangeRate-API supports all these)
 export const SUPPORTED_CURRENCIES: CurrencyInfo[] = [
-  { code: 'USD', name: 'US Dollar', symbol: '$' },
-  { code: 'EUR', name: 'Euro', symbol: '€' },
-  { code: 'GBP', name: 'British Pound', symbol: '£' },
-  { code: 'THB', name: 'Thai Baht', symbol: '฿' },
-  { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
-  { code: 'CNY', name: 'Chinese Yuan', symbol: '¥' },
-  { code: 'KRW', name: 'South Korean Won', symbol: '₩' },
-  { code: 'SGD', name: 'Singapore Dollar', symbol: 'S$' },
-  { code: 'AUD', name: 'Australian Dollar', symbol: 'A$' },
-  { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
-  { code: 'TWD', name: 'Taiwan Dollar', symbol: 'NT$' },
-  { code: 'HKD', name: 'Hong Kong Dollar', symbol: 'HK$' },
-  { code: 'MYR', name: 'Malaysian Ringgit', symbol: 'RM' },
-  { code: 'PHP', name: 'Philippine Peso', symbol: '₱' },
-  { code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp' },
-  { code: 'VND', name: 'Vietnamese Dong', symbol: '₫' },
-  { code: 'CAD', name: 'Canadian Dollar', symbol: 'C$' },
-  { code: 'CHF', name: 'Swiss Franc', symbol: 'CHF' },
-  { code: 'NZD', name: 'New Zealand Dollar', symbol: 'NZ$' },
+  { code: 'USD', nameKey: 'currencies.usd', symbol: '$' },
+  { code: 'EUR', nameKey: 'currencies.eur', symbol: '€' },
+  { code: 'GBP', nameKey: 'currencies.gbp', symbol: '£' },
+  { code: 'THB', nameKey: 'currencies.thb', symbol: '฿' },
+  { code: 'JPY', nameKey: 'currencies.jpy', symbol: '¥' },
+  { code: 'CNY', nameKey: 'currencies.cny', symbol: '¥' },
+  { code: 'KRW', nameKey: 'currencies.krw', symbol: '₩' },
+  { code: 'SGD', nameKey: 'currencies.sgd', symbol: 'S$' },
+  { code: 'AUD', nameKey: 'currencies.aud', symbol: 'A$' },
+  { code: 'INR', nameKey: 'currencies.inr', symbol: '₹' },
+  { code: 'TWD', nameKey: 'currencies.twd', symbol: 'NT$' },
+  { code: 'HKD', nameKey: 'currencies.hkd', symbol: 'HK$' },
+  { code: 'MYR', nameKey: 'currencies.myr', symbol: 'RM' },
+  { code: 'PHP', nameKey: 'currencies.php', symbol: '₱' },
+  { code: 'IDR', nameKey: 'currencies.idr', symbol: 'Rp' },
+  { code: 'VND', nameKey: 'currencies.vnd', symbol: '₫' },
+  { code: 'CAD', nameKey: 'currencies.cad', symbol: 'C$' },
+  { code: 'CHF', nameKey: 'currencies.chf', symbol: 'CHF' },
+  { code: 'NZD', nameKey: 'currencies.nzd', symbol: 'NZ$' },
 ];
 
 export type ExchangeRates = Record<string, number>;

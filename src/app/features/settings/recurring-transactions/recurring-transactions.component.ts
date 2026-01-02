@@ -11,10 +11,12 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { RecurringService } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { RecurringTransaction, Category, CreateRecurringDTO } from '../../../models';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
+import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-recurring-transactions',
@@ -31,6 +33,7 @@ import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-
     EmptyStateComponent,
     CurrencyPipe,
     DatePipe,
+    TranslatePipe,
   ],
   templateUrl: './recurring-transactions.component.html',
   styleUrl: './recurring-transactions.component.scss',
@@ -38,8 +41,13 @@ import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-
 export class RecurringTransactionsComponent implements OnInit {
   private recurringService = inject(RecurringService);
   private categoryService = inject(CategoryService);
+  private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+
+  private t(key: string, params?: Record<string, string | number>): string {
+    return this.translationService.t(key, params);
+  }
 
   recurringTransactions = signal<RecurringTransaction[]>([]);
   categories = signal<Category[]>([]);
@@ -65,7 +73,7 @@ export class RecurringTransactionsComponent implements OnInit {
 
   getCategoryName(categoryId: string): string {
     const category = this.categories().find(c => c.id === categoryId);
-    return category?.name || 'Unknown';
+    return category?.name ? this.translationService.t(category.name) : 'Unknown';
   }
 
   getCategoryIcon(categoryId: string): string {
@@ -85,19 +93,19 @@ export class RecurringTransactionsComponent implements OnInit {
   async toggleActive(recurring: RecurringTransaction): Promise<void> {
     if (recurring.isActive) {
       await this.recurringService.pauseRecurring(recurring.id);
-      this.snackBar.open('Recurring transaction paused', 'Close', { duration: 2000 });
+      this.snackBar.open(this.t('settings.recurringPaused'), this.t('common.close'), { duration: 2000 });
     } else {
       await this.recurringService.resumeRecurring(recurring.id);
-      this.snackBar.open('Recurring transaction resumed', 'Close', { duration: 2000 });
+      this.snackBar.open(this.t('settings.recurringResumed'), this.t('common.close'), { duration: 2000 });
     }
   }
 
   deleteRecurring(recurring: RecurringTransaction): void {
     const dialogRef = this.dialog.open(ConfirmDialogComponent, {
       data: {
-        title: 'Delete Recurring Transaction',
-        message: `Are you sure you want to delete "${recurring.name}"? This will not affect existing transactions.`,
-        confirmText: 'Delete',
+        title: this.t('settings.deleteRecurringTitle'),
+        message: this.t('settings.deleteRecurringMessage', { name: recurring.name }),
+        confirmLabel: this.t('common.delete'),
         confirmColor: 'warn',
       }
     });
@@ -105,7 +113,7 @@ export class RecurringTransactionsComponent implements OnInit {
     dialogRef.afterClosed().subscribe(confirmed => {
       if (confirmed) {
         this.recurringService.deleteRecurring(recurring.id).then(() => {
-          this.snackBar.open('Recurring transaction deleted', 'Close', { duration: 2000 });
+          this.snackBar.open(this.t('settings.recurringDeleted'), this.t('common.close'), { duration: 2000 });
         });
       }
     });
@@ -120,9 +128,9 @@ export class RecurringTransactionsComponent implements OnInit {
     dialogRef.afterClosed().subscribe((result: CreateRecurringDTO | undefined) => {
       if (result) {
         this.recurringService.createRecurring(result).then(() => {
-          this.snackBar.open('Recurring transaction created', 'Close', { duration: 2000 });
+          this.snackBar.open(this.t('settings.recurringCreated'), this.t('common.close'), { duration: 2000 });
         }).catch(() => {
-          this.snackBar.open('Failed to create recurring transaction', 'Close', { duration: 3000 });
+          this.snackBar.open(this.t('settings.recurringCreateFailed'), this.t('common.close'), { duration: 3000 });
         });
       }
     });

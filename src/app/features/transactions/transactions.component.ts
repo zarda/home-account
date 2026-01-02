@@ -12,6 +12,7 @@ import { TransactionListComponent } from './transaction-list/transaction-list.co
 import { TransactionFiltersComponent } from './transaction-filters/transaction-filters.component';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-transactions',
@@ -21,7 +22,8 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
     MatIconModule,
     TransactionListComponent,
     TransactionFiltersComponent,
-    LoadingSpinnerComponent
+    LoadingSpinnerComponent,
+    TranslatePipe
   ],
   templateUrl: './transactions.component.html',
   styleUrl: './transactions.component.scss',

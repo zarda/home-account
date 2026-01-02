@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed, EnvironmentInjector, runInInjectionContext } from '@angular/core';
+import { Injectable, inject, signal, computed, EnvironmentInjector, runInInjectionContext, effect } from '@angular/core';
 import {
   Auth,
   GoogleAuthProvider,
@@ -17,12 +17,14 @@ import {
 } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
+import { TranslationService, SupportedLocale } from './translation.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private auth = inject(Auth);
   private firestore = inject(Firestore);
   private injector = inject(EnvironmentInjector);
+  private translationService = inject(TranslationService);
 
   // Signals for reactive state
   currentUser = signal<User | null>(null);
@@ -35,6 +37,21 @@ export class AuthService {
 
   constructor() {
     this.setupAuthStateListener();
+    this.setupLanguageSyncEffect();
+  }
+
+  /**
+   * Sync language preference from database when user data changes.
+   * Database is the source of truth for authenticated users.
+   */
+  private setupLanguageSyncEffect(): void {
+    effect(() => {
+      const user = this.currentUser();
+      if (user?.preferences?.language) {
+        const locale = user.preferences.language as SupportedLocale;
+        this.translationService.syncFromDatabase(locale);
+      }
+    });
   }
 
   private setupAuthStateListener(): void {

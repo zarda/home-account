@@ -141,7 +141,7 @@ describe('CurrencyService', () => {
       const info = service.getCurrencyInfo('USD');
       expect(info).toBeDefined();
       expect(info?.code).toBe('USD');
-      expect(info?.name).toBe('US Dollar');
+      expect(info?.nameKey).toBe('currencies.usd');
       expect(info?.symbol).toBe('$');
     });
 

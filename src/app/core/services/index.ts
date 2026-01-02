@@ -7,3 +7,4 @@ export * from './currency.service';
 export * from './recurring.service';
 export * from './gemini.service';
 export * from './export.service';
+export * from './translation.service';

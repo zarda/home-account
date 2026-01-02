@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 @Component({
   selector: 'app-header',
@@ -17,7 +18,8 @@ import { AuthService } from '../../../core/services/auth.service';
     MatIconModule,
     MatButtonModule,
     MatMenuModule,
-    MatTooltipModule
+    MatTooltipModule,
+    TranslatePipe
   ],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
