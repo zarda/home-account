@@ -189,7 +189,25 @@
     "jsonDescription": "Full data export for backup purposes",
     "transactionsLabel": "{{count}} transactions",
     "selectMonth": "Select Month",
-    "selectYear": "Select Year"
+    "selectYear": "Select Year",
+    "pdf": {
+      "title": "Financial Report",
+      "summary": "Summary",
+      "totalIncome": "Total Income",
+      "totalExpenses": "Total Expenses",
+      "balance": "Balance",
+      "totalTransactions": "Total Transactions",
+      "spendingByCategory": "Spending by Category",
+      "category": "Category",
+      "amount": "Amount",
+      "percentOfTotal": "% of Total",
+      "transactions": "Transactions",
+      "date": "Date",
+      "type": "Type",
+      "description": "Description",
+      "pageOf": "Page {{current}} of {{total}}",
+      "generatedOn": "Generated on {{date}}"
+    }
   },
   "settings": {
     "title": "Settings",

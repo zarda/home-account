@@ -189,7 +189,25 @@
     "jsonDescription": "バックアップ用の完全なデータエクスポート",
     "transactionsLabel": "{{count}} 件の取引",
     "selectMonth": "月を選択",
-    "selectYear": "年を選択"
+    "selectYear": "年を選択",
+    "pdf": {
+      "title": "財務レポート",
+      "summary": "サマリー",
+      "totalIncome": "総収入",
+      "totalExpenses": "総支出",
+      "balance": "残高",
+      "totalTransactions": "取引件数",
+      "spendingByCategory": "カテゴリ別支出",
+      "category": "カテゴリ",
+      "amount": "金額",
+      "percentOfTotal": "割合",
+      "transactions": "取引明細",
+      "date": "日付",
+      "type": "種類",
+      "description": "説明",
+      "pageOf": "{{current}} / {{total}} ページ",
+      "generatedOn": "作成日: {{date}}"
+    }
   },
   "settings": {
     "title": "設定",

@@ -189,7 +189,25 @@
     "jsonDescription": "完整資料匯出，用於備份",
     "transactionsLabel": "{{count}} 筆交易",
     "selectMonth": "選擇月份",
-    "selectYear": "選擇年份"
+    "selectYear": "選擇年份",
+    "pdf": {
+      "title": "財務報表",
+      "summary": "摘要",
+      "totalIncome": "總收入",
+      "totalExpenses": "總支出",
+      "balance": "餘額",
+      "totalTransactions": "交易筆數",
+      "spendingByCategory": "各類別支出",
+      "category": "類別",
+      "amount": "金額",
+      "percentOfTotal": "佔比",
+      "transactions": "交易明細",
+      "date": "日期",
+      "type": "類型",
+      "description": "描述",
+      "pageOf": "第 {{current}} 頁，共 {{total}} 頁",
+      "generatedOn": "產生於 {{date}}"
+    }
   },
   "settings": {
     "title": "設定",

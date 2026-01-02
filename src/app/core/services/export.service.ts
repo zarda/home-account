@@ -43,6 +43,7 @@ export interface ReportData {
   transactions: Transaction[];
   summary: MonthlyTotal;
   categories: Category[];
+  currency: string;
 }
 
 export interface ExportData {
@@ -65,6 +66,65 @@ export class ExportService {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+
+  // Convert ArrayBuffer to base64 string (handles large binary data)
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000; // Process in 32KB chunks to avoid call stack issues
+    let binary = '';
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+
+    return btoa(binary);
+  }
+
+  // Font URLs for different languages
+  private readonly fontUrls: Record<string, string> = {
+    // Noto Sans JP (Japanese) - covers hiragana, katakana, kanji
+    ja: 'https://fonts.gstatic.com/s/notosansjp/v55/-F6jfjtqLzI2JPCgQBnw7HFyzSD-AsregP8VFBEj75s.ttf',
+    // Noto Sans TC (Traditional Chinese)
+    tc: 'https://fonts.gstatic.com/s/notosanstc/v38/-nFuOG829Oofr2wohFbTp9ifNAn722rq0MXz76Cy_Co.ttf',
+  };
+
+  // Cache fonts by language
+  private fontCache = new Map<string, string>();
+
+  // Load CJK font based on current language
+  private async loadCJKFont(): Promise<string | null> {
+    // Detect current language from translation service
+    const currentLang = this.translationService.currentLocale();
+    const fontKey = currentLang === 'ja' ? 'ja' : 'tc'; // Default to TC for non-Japanese
+
+    // Check cache first
+    if (this.fontCache.has(fontKey)) {
+      return this.fontCache.get(fontKey)!;
+    }
+
+    const url = this.fontUrls[fontKey];
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        console.warn(`Failed to fetch font from ${url}:`, response.status);
+        return null;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+
+      // Convert to base64 using chunked approach for large files
+      const base64 = this.arrayBufferToBase64(arrayBuffer);
+
+      this.fontCache.set(fontKey, base64);
+      return base64;
+    } catch (error) {
+      console.warn(`Error loading font from ${url}:`, error);
+      return null;
+    }
+  }
 
   // Helper: Get translated category name
   private getCategoryName(category: Category | undefined): string {
@@ -120,14 +180,35 @@ export class ExportService {
     return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   }
 
+  // Helper: Get PDF translation
+  private pdfT(key: string): string {
+    return this.translationService.t(`reports.pdf.${key}`);
+  }
+
   // Export report to PDF
   async exportToPDF(report: ReportData): Promise<Blob> {
     const doc = new jsPDF();
+
+    // Try to load and embed CJK font for Chinese/Japanese character support
+    const fontBase64 = await this.loadCJKFont();
+    let fontName = 'helvetica'; // Default font
+
+    if (fontBase64) {
+      try {
+        doc.addFileToVFS('NotoSansCJK-Regular.ttf', fontBase64);
+        doc.addFont('NotoSansCJK-Regular.ttf', 'NotoSansCJK', 'normal');
+        doc.setFont('NotoSansCJK');
+        fontName = 'NotoSansCJK';
+      } catch (error) {
+        console.warn('Error adding CJK font to PDF:', error);
+      }
+    }
+
     const pageWidth = doc.internal.pageSize.getWidth();
 
     // Title
     doc.setFontSize(20);
-    doc.text(report.title, pageWidth / 2, 20, { align: 'center' });
+    doc.text(this.pdfT('title'), pageWidth / 2, 20, { align: 'center' });
 
     // Period
     doc.setFontSize(12);
@@ -135,19 +216,20 @@ export class ExportService {
 
     // Summary section
     doc.setFontSize(14);
-    doc.text('Summary', 14, 45);
+    doc.text(this.pdfT('summary'), 14, 45);
 
     doc.setFontSize(11);
     const summaryY = 55;
-    doc.text(`Total Income: ${this.currencyService.formatCurrency(report.summary.income, 'USD')}`, 14, summaryY);
-    doc.text(`Total Expenses: ${this.currencyService.formatCurrency(report.summary.expense, 'USD')}`, 14, summaryY + 7);
-    doc.text(`Balance: ${this.currencyService.formatCurrency(report.summary.balance, 'USD')}`, 14, summaryY + 14);
-    doc.text(`Total Transactions: ${report.summary.transactionCount}`, 14, summaryY + 21);
+    const baseCurrency = report.currency;
+    doc.text(`${this.pdfT('totalIncome')}: ${this.currencyService.formatCurrency(report.summary.income, baseCurrency)}`, 14, summaryY);
+    doc.text(`${this.pdfT('totalExpenses')}: ${this.currencyService.formatCurrency(report.summary.expense, baseCurrency)}`, 14, summaryY + 7);
+    doc.text(`${this.pdfT('balance')}: ${this.currencyService.formatCurrency(report.summary.balance, baseCurrency)}`, 14, summaryY + 14);
+    doc.text(`${this.pdfT('totalTransactions')}: ${report.summary.transactionCount}`, 14, summaryY + 21);
 
     // Category breakdown table
     if (report.summary.byCategory.length > 0) {
       doc.setFontSize(14);
-      doc.text('Spending by Category', 14, summaryY + 35);
+      doc.text(this.pdfT('spendingByCategory'), 14, summaryY + 35);
 
       const categoryData = report.summary.byCategory
         .sort((a, b) => b.total - a.total)
@@ -156,17 +238,18 @@ export class ExportService {
           const category = report.categories.find(cat => cat.id === c.categoryId);
           return [
             this.getCategoryName(category),
-            this.currencyService.formatCurrency(c.total, 'USD'),
+            this.currencyService.formatCurrency(c.total, baseCurrency),
             `${((c.total / report.summary.expense) * 100).toFixed(1)}%`
           ];
         });
 
       autoTable(doc, {
         startY: summaryY + 40,
-        head: [['Category', 'Amount', '% of Total']],
+        head: [[this.pdfT('category'), this.pdfT('amount'), this.pdfT('percentOfTotal')]],
         body: categoryData,
         theme: 'striped',
-        headStyles: { fillColor: [63, 81, 181] },
+        styles: { font: fontName, fontStyle: 'normal' },
+        headStyles: { fillColor: [63, 81, 181], font: fontName, fontStyle: 'normal' },
         margin: { left: 14 }
       });
     }
@@ -176,7 +259,7 @@ export class ExportService {
       const finalY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 100;
 
       doc.setFontSize(14);
-      doc.text('Transactions', 14, finalY + 15);
+      doc.text(this.pdfT('transactions'), 14, finalY + 15);
 
       const transactionData = report.transactions.map(t => {
         const category = report.categories.find(c => c.id === t.categoryId);
@@ -191,10 +274,11 @@ export class ExportService {
 
       autoTable(doc, {
         startY: finalY + 20,
-        head: [['Date', 'Type', 'Category', 'Description', 'Amount']],
+        head: [[this.pdfT('date'), this.pdfT('type'), this.pdfT('category'), this.pdfT('description'), this.pdfT('amount')]],
         body: transactionData,
         theme: 'striped',
-        headStyles: { fillColor: [63, 81, 181] },
+        styles: { font: fontName, fontStyle: 'normal' },
+        headStyles: { fillColor: [63, 81, 181], font: fontName, fontStyle: 'normal' },
         margin: { left: 14 },
         columnStyles: {
           3: { cellWidth: 50 }
@@ -204,11 +288,14 @@ export class ExportService {
 
     // Footer
     const pageCount = doc.getNumberOfPages();
+    const generatedDate = new Date().toLocaleDateString();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
       doc.setFontSize(8);
+      const pageText = this.translationService.t('reports.pdf.pageOf', { current: i, total: pageCount });
+      const generatedText = this.translationService.t('reports.pdf.generatedOn', { date: generatedDate });
       doc.text(
-        `Page ${i} of ${pageCount} | Generated on ${new Date().toLocaleDateString()}`,
+        `${pageText} | ${generatedText}`,
         pageWidth / 2,
         doc.internal.pageSize.getHeight() - 10,
         { align: 'center' }

@@ -11,6 +11,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { ExportService, ReportData } from '../../../core/services/export.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -45,6 +46,7 @@ export class ExportDialogComponent {
   private data = inject<ExportDialogData>(MAT_DIALOG_DATA);
   private exportService = inject(ExportService);
   private translationService = inject(TranslationService);
+  private currencyService = inject(CurrencyService);
 
   selectedFormat: ExportFormat = 'csv';
   includeDetails = true;
@@ -107,8 +109,9 @@ export class ExportDialogComponent {
         this.dialogRef.close(true);
       }
       // If user cancelled, don't close dialog
-    } catch {
-      // Export failed - dialog stays open
+    } catch (error) {
+      // Export failed - log error for debugging
+      console.error('Export failed:', error);
     } finally {
       this.isExporting = false;
     }
@@ -129,19 +132,24 @@ export class ExportDialogComponent {
     );
   }
 
+  // Convert transaction amount to user's base currency dynamically
+  private toBaseCurrency(t: Transaction): number {
+    return this.currencyService.convert(t.amount, t.currency, this.data.currency);
+  }
+
   private async exportPDF(dateStr: string): Promise<boolean> {
     const totalIncome = this.data.transactions
       .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+      .reduce((sum, t) => sum + this.toBaseCurrency(t), 0);
 
     const totalExpense = this.data.transactions
       .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+      .reduce((sum, t) => sum + this.toBaseCurrency(t), 0);
 
     const categoryTotals = new Map<string, number>();
     for (const t of this.data.transactions.filter(t => t.type === 'expense')) {
       const current = categoryTotals.get(t.categoryId) || 0;
-      categoryTotals.set(t.categoryId, current + t.amountInBaseCurrency);
+      categoryTotals.set(t.categoryId, current + this.toBaseCurrency(t));
     }
 
     const reportData: ReportData = {
@@ -159,6 +167,7 @@ export class ExportDialogComponent {
         })),
       },
       categories: this.data.categories,
+      currency: this.data.currency,
     };
 
     const blob = await this.exportService.exportToPDF(reportData);

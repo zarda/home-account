@@ -12,6 +12,10 @@
   background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
   position: relative;
   overflow: hidden;
+
+  :host-context(.dark-theme) & {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
+  }
 }
 
 // Floating decorative shapes
@@ -20,6 +24,10 @@
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.1);
   animation: float 6s ease-in-out infinite;
+
+  :host-context(.dark-theme) & {
+    background: rgba(255, 255, 255, 0.05);
+  }
 }
 
 .bg-shape-1 {
@@ -70,6 +78,14 @@
   position: relative;
   z-index: 1;
   animation: slideUp 0.5s ease-out;
+
+  :host-context(.dark-theme) & {
+    background: rgba(30, 30, 30, 0.9) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  }
 }
 
 @keyframes slideUp {
@@ -88,6 +104,14 @@ mat-card-header {
   flex-direction: column;
   align-items: center;
   padding: 2rem 1.5rem 1rem !important;
+
+  .mat-mdc-card-title {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+
+  .mat-mdc-card-subtitle {
+    @apply text-gray-600 dark:text-gray-400;
+  }
 }
 
 // Icon with gradient background
@@ -189,4 +213,8 @@ mat-spinner {
 
 mat-card-footer {
   border-top: 1px solid rgba(0, 0, 0, 0.05) !important;
+
+  :host-context(.dark-theme) & {
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
 }
