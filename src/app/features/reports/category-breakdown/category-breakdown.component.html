@@ -40,16 +40,13 @@
                 <div class="category-icon" [style.background-color]="category.color + '20'">
                   <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
                 </div>
-                <div class="category-info">
-                  <span class="category-name">{{ category.name | translate }}</span>
-                  <span class="category-count">{{ category.transactionCount }} {{ 'reports.transactionsCount' | translate }}</span>
-                </div>
+                <span class="category-name">{{ category.name | translate }} <span class="category-count">({{ category.transactionCount }})</span></span>
               </div>
             </mat-panel-title>
             <mat-panel-description>
               <div class="category-stats">
-                <span class="category-amount">{{ category.total | currency:currencyCode:'symbol':'1.2-2' }}</span>
-                <span class="category-percentage">{{ category.percentage | number:'1.1-1' }}%</span>
+                <span class="category-amount desktop-only">{{ category.total | currency:currencyCode:'symbol':'1.2-2' }}</span>
+                <span class="category-percentage">{{ category.percentage | number:'1.0-0' }}%</span>
               </div>
             </mat-panel-description>
           </mat-expansion-panel-header>

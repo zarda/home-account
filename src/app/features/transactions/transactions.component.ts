@@ -56,8 +56,15 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private categoriesSub?: Subscription;
 
   initialDate = signal<Date | undefined>(undefined);
+  showAll = signal<boolean>(false);
 
   ngOnInit(): void {
+    // Check for showAll query param (from "View All" link)
+    const showAllParam = this.route.snapshot.queryParamMap.get('showAll');
+    if (showAllParam === 'true') {
+      this.showAll.set(true);
+    }
+
     // Check for date query param to pre-filter
     const dateParam = this.route.snapshot.queryParamMap.get('date');
     if (dateParam) {

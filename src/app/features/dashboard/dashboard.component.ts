@@ -18,6 +18,7 @@ import { FinancialSummaryComponent } from './financial-summary/financial-summary
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
+import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 
@@ -44,6 +45,7 @@ interface CustomPeriod {
     SpendingChartComponent,
     RecentTransactionsComponent,
     BudgetProgressComponent,
+    AiSummaryComponent,
     LoadingSpinnerComponent,
     TranslatePipe
   ],
@@ -91,6 +93,7 @@ export class DashboardComponent implements OnInit {
   // Transaction data
   transactions = this.transactionService.transactions;
   recentTransactions = signal<Transaction[]>([]);
+  previousPeriodData = signal<{ income: number; expense: number } | null>(null);
 
   // Compute totals with real-time currency conversion to user's base currency
   totalIncome = computed(() => {
@@ -114,15 +117,15 @@ export class DashboardComponent implements OnInit {
     const transactions = this.transactions();
     const expenseTransactions = transactions.filter(t => t.type === 'expense');
 
-    const totals = new Map<string, number>();
+    const totals = new Map<string, { total: number; count: number }>();
     for (const t of expenseTransactions) {
-      const current = totals.get(t.categoryId) || 0;
+      const current = totals.get(t.categoryId) || { total: 0, count: 0 };
       const convertedAmount = this.currencyService.convert(t.amount, t.currency, baseCurrency);
-      totals.set(t.categoryId, current + convertedAmount);
+      totals.set(t.categoryId, { total: current.total + convertedAmount, count: current.count + 1 });
     }
 
     return Array.from(totals.entries())
-      .map(([categoryId, total]) => ({ categoryId, total }))
+      .map(([categoryId, data]) => ({ categoryId, total: data.total, count: data.count }))
       .sort((a, b) => b.total - a.total);
   });
 
@@ -218,11 +221,92 @@ export class DashboardComponent implements OnInit {
       }
     });
 
+    // Load previous period data for AI comparison
+    this.loadPreviousPeriodData();
+
     // Load budgets
     this.budgetService.getBudgets().subscribe();
 
     // Load categories
     this.categoryService.loadCategories().subscribe();
+  }
+
+  private loadPreviousPeriodData(): void {
+    const prevDates = this.getPreviousPeriodDates();
+    if (!prevDates) {
+      this.previousPeriodData.set(null);
+      return;
+    }
+
+    // Use getPeriodTotals which doesn't update the main transactions signal
+    this.transactionService.getPeriodTotals(prevDates.start, prevDates.end).subscribe({
+      next: (totals) => {
+        this.previousPeriodData.set(totals);
+      },
+      error: () => {
+        this.previousPeriodData.set(null);
+      }
+    });
+  }
+
+  private getPreviousPeriodDates(): { start: Date; end: Date } | null {
+    const now = new Date();
+
+    // Handle custom period
+    if (this.selectedPeriod === 'custom') {
+      const cp = this.customPeriod();
+      if (cp) {
+        if (cp.type === 'month') {
+          // Previous month
+          const month = cp.month!;
+          const prevMonth = month === 0 ? 11 : month - 1;
+          const prevYear = month === 0 ? cp.year - 1 : cp.year;
+          return {
+            start: new Date(prevYear, prevMonth, 1),
+            end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59)
+          };
+        } else {
+          // Previous year
+          return {
+            start: new Date(cp.year - 1, 0, 1),
+            end: new Date(cp.year - 1, 11, 31, 23, 59, 59)
+          };
+        }
+      }
+    }
+
+    switch (this.selectedPeriod) {
+      case 'thisMonth':
+        // Compare with last month
+        return {
+          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
+        };
+
+      case 'lastMonth':
+        // Compare with 2 months ago
+        return {
+          start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
+          end: new Date(now.getFullYear(), now.getMonth() - 1, 0, 23, 59, 59)
+        };
+
+      case 'last3Months':
+        // Compare with previous 3 months (months -5 to -3)
+        return {
+          start: new Date(now.getFullYear(), now.getMonth() - 5, 1),
+          end: new Date(now.getFullYear(), now.getMonth() - 2, 0, 23, 59, 59)
+        };
+
+      case 'thisYear':
+        // Compare with last year
+        return {
+          start: new Date(now.getFullYear() - 1, 0, 1),
+          end: new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59)
+        };
+
+      default:
+        return null;
+    }
   }
 
   private getPeriodDates(): { start: Date; end: Date } {
@@ -247,11 +331,14 @@ export class DashboardComponent implements OnInit {
       }
     }
 
+    // End of today for current periods
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
     switch (this.selectedPeriod) {
       case 'thisMonth':
         return {
           start: new Date(now.getFullYear(), now.getMonth(), 1),
-          end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+          end: endOfToday
         };
 
       case 'lastMonth':
@@ -263,14 +350,14 @@ export class DashboardComponent implements OnInit {
       case 'last3Months':
         return {
           start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
-          end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+          end: endOfToday
         };
 
       case 'thisYear':
       default:
         return {
           start: new Date(now.getFullYear(), 0, 1),
-          end: new Date(now.getFullYear(), 11, 31, 23, 59, 59)
+          end: endOfToday
         };
     }
   }

@@ -328,7 +328,14 @@
     "everyMonthOn": "每月 {{day}} 號",
     "everyNMonthsOn": "每 {{n}} 個月的 {{day}} 號",
     "everyYear": "每年",
-    "everyNYears": "每 {{n}} 年"
+    "everyNYears": "每 {{n}} 年",
+    "geminiApiKey": "AI 功能 (Gemini)",
+    "geminiApiKeyHint": "提供您自己的 Google Gemini API 金鑰以啟用 AI 功能，例如收據掃描和支出分析。",
+    "apiKey": "API 金鑰",
+    "testApiKey": "測試金鑰",
+    "apiKeyValid": "API 金鑰有效",
+    "apiKeyInvalid": "API 金鑰無效",
+    "getApiKey": "從 Google AI Studio 取得 API 金鑰"
   },
   "days": {
     "sunday": "週日",
@@ -522,10 +529,21 @@
   },
   "ai": {
     "scanReceipt": "掃描收據",
+    "scanning": "正在分析收據...",
+    "scanSuccess": "收據掃描成功",
+    "scanError": "無法讀取收據，請重試。",
+    "invalidFileType": "請選擇圖片檔案",
+    "readError": "讀取檔案失敗",
+    "suggesting": "建議中...",
+    "suggestedCategory": "建議類別",
+    "confidence": "信心度",
     "importData": "匯入資料",
     "processing": "AI 處理中...",
-    "suggestedCategory": "建議類別",
-    "confidence": "信心度"
+    "insights": "AI 洞察",
+    "financialAdvice": "理財建議",
+    "refresh": "重新整理洞察",
+    "generating": "正在產生洞察...",
+    "noInsights": "新增更多交易以獲得 AI 洞察"
   },
   "errors": {
     "generic": "發生錯誤，請重試。",

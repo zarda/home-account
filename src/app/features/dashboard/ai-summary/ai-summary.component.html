@@ -1,0 +1,58 @@
+@if (isAvailable()) {
+  <mat-card class="ai-summary-card">
+    <mat-card-header>
+      <div class="header-content">
+        <div class="title-row">
+          <mat-icon class="ai-icon">auto_awesome</mat-icon>
+          <span class="title">{{ 'ai.insights' | translate }}</span>
+        </div>
+        <button
+          mat-icon-button
+          class="refresh-btn"
+          (click)="refresh()"
+          [disabled]="isLoading() || !hasEnoughData()"
+          [title]="'ai.refresh' | translate"
+        >
+          <mat-icon [class.spinning]="isLoading()">refresh</mat-icon>
+        </button>
+      </div>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (isLoading()) {
+        <div class="loading-state">
+          <mat-spinner diameter="24"></mat-spinner>
+          <span>{{ 'ai.generating' | translate }}</span>
+        </div>
+      } @else if (!hasEnoughData()) {
+        <div class="empty-state">
+          <mat-icon>insights</mat-icon>
+          <span>{{ 'ai.noInsights' | translate }}</span>
+        </div>
+      } @else if (hasError()) {
+        <div class="error-state">
+          <mat-icon>error_outline</mat-icon>
+          <span>{{ 'errors.generic' | translate }}</span>
+        </div>
+      } @else {
+        <!-- Spending Summary -->
+        @if (summary()) {
+          <div class="insight-section">
+            <p class="summary-text">{{ summary() }}</p>
+          </div>
+        }
+
+        <!-- Financial Advice -->
+        @if (advice()) {
+          <div class="advice-section">
+            <div class="advice-header">
+              <mat-icon>lightbulb</mat-icon>
+              <span>{{ 'ai.financialAdvice' | translate }}</span>
+            </div>
+            <p class="advice-text">{{ advice() }}</p>
+          </div>
+        }
+      }
+    </mat-card-content>
+  </mat-card>
+}

@@ -26,19 +26,23 @@ describe('DataManagementComponent', () => {
       'exportToJSON',
       'exportToCSV',
       'downloadBlob',
+      'downloadBlobWithPicker',
       'importFromCSV',
-      'parseImportedData'
+      'parseImportedData',
+      'getAllTransactions'
     ]);
     mockExportService.exportToJSON.and.returnValue(new Blob(['{}'], { type: 'application/json' }));
     mockExportService.exportToCSV.and.returnValue(new Blob(['csv'], { type: 'text/csv' }));
+    mockExportService.downloadBlobWithPicker.and.returnValue(Promise.resolve(true));
     mockExportService.importFromCSV.and.returnValue(Promise.resolve([]));
     mockExportService.parseImportedData.and.returnValue([]);
 
-    mockTransactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'deleteAllTransactions'], {
+    mockTransactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'deleteAllTransactions', 'getAllTransactions'], {
       transactions: signal([])
     });
     mockTransactionService.addTransaction.and.returnValue(Promise.resolve('new-id'));
     mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve());
+    mockTransactionService.getAllTransactions.and.returnValue(of([]));
 
     mockCategoryService = jasmine.createSpyObj('CategoryService', [], {
       categories: signal([])
@@ -105,14 +109,14 @@ describe('DataManagementComponent', () => {
       tick();
 
       expect(mockExportService.exportToJSON).toHaveBeenCalled();
-      expect(mockExportService.downloadBlob).toHaveBeenCalled();
+      expect(mockExportService.downloadBlobWithPicker).toHaveBeenCalled();
     }));
 
     it('should show success snackbar', fakeAsync(() => {
       component.exportFullBackup();
       tick();
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Backup exported successfully', 'Close', { duration: 3000 });
+      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.backupExported', 'common.close', { duration: 3000 });
     }));
 
     it('should set isExporting to false after completion', fakeAsync(() => {
@@ -129,14 +133,14 @@ describe('DataManagementComponent', () => {
       tick();
 
       expect(mockExportService.exportToCSV).toHaveBeenCalled();
-      expect(mockExportService.downloadBlob).toHaveBeenCalled();
+      expect(mockExportService.downloadBlobWithPicker).toHaveBeenCalled();
     }));
 
     it('should show success snackbar', fakeAsync(() => {
       component.exportTransactionsCSV();
       tick();
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Transactions exported successfully', 'Close', { duration: 3000 });
+      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.transactionsExported', 'common.close', { duration: 3000 });
     }));
   });
 
@@ -151,7 +155,7 @@ describe('DataManagementComponent', () => {
 
       component.onFileSelected(event);
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Please select a CSV or JSON file', 'Close', { duration: 3000 });
+      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.invalidFileType', 'common.close', { duration: 3000 });
     });
 
     it('should handle no file selected', () => {

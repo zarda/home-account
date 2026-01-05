@@ -94,6 +94,15 @@
       [currency]="baseCurrency()"
     />
 
+    <!-- AI Insights -->
+    <app-ai-summary
+      [transactions]="transactions()"
+      [period]="selectedPeriod"
+      [baseCurrency]="baseCurrency()"
+      [previousPeriodData]="previousPeriodData()"
+      [budgets]="activeBudgets()"
+    />
+
     <!-- Mobile Layout -->
     <div class="mobile-view">
       <!-- Recent Transactions First on Mobile -->

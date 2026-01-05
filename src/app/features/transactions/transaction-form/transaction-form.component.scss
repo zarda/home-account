@@ -1,3 +1,132 @@
+// Hidden file input for receipt scanner
+.hidden-input {
+  display: none;
+}
+
+// Receipt Scanner Section
+.receipt-scanner-section {
+  margin-bottom: 20px;
+}
+
+.scan-receipt-btn {
+  width: 100%;
+  height: 56px;
+  @apply border-2 border-dashed border-gray-300 dark:border-gray-600;
+  @apply bg-gray-50 dark:bg-gray-800;
+  @apply hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+
+  mat-icon {
+    margin-right: 8px;
+    @apply text-gray-500 dark:text-gray-400;
+  }
+
+  span {
+    @apply text-gray-600 dark:text-gray-300;
+    font-weight: 500;
+  }
+
+  &:hover mat-icon,
+  &:hover span {
+    @apply text-primary-600 dark:text-primary-400;
+  }
+}
+
+.receipt-preview {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  @apply bg-gray-100 dark:bg-gray-800;
+  @apply border border-gray-200 dark:border-gray-700;
+
+  img {
+    width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    display: block;
+  }
+
+  .clear-receipt-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    @apply bg-white dark:bg-gray-800;
+    @apply shadow-md;
+
+    &:hover {
+      @apply bg-gray-100 dark:bg-gray-700;
+    }
+  }
+
+  .scanning-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    @apply bg-black/60;
+
+    span {
+      @apply text-white;
+      font-weight: 500;
+    }
+  }
+}
+
+// AI Category Suggestion
+.ai-suggestion-container {
+  margin-top: -8px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.suggestion-chip {
+  cursor: pointer;
+  @apply bg-primary-50 dark:bg-primary-900/30;
+  @apply border border-primary-200 dark:border-primary-700;
+  transition: all 0.2s ease;
+
+  &:hover {
+    @apply bg-primary-100 dark:bg-primary-900/50;
+    transform: scale(1.02);
+  }
+
+  &.loading {
+    cursor: default;
+    @apply bg-gray-100 dark:bg-gray-800;
+    @apply border-gray-200 dark:border-gray-700;
+
+    mat-spinner {
+      margin-right: 8px;
+    }
+  }
+
+  .ai-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+    @apply text-primary-500;
+  }
+
+  mat-icon:not(.ai-icon) {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    margin-right: 6px;
+  }
+
+  span {
+    @apply text-gray-700 dark:text-gray-300;
+    font-weight: 500;
+  }
+}
+
 .dialog-container {
   display: flex;
   flex-direction: column;

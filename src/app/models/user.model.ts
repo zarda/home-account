@@ -16,6 +16,7 @@ export interface UserPreferences {
   dateFormat: string;            // 'MM/DD/YYYY', 'DD/MM/YYYY'
   theme: 'light' | 'dark' | 'system';
   defaultCategories: string[];   // Category IDs to show first
+  geminiApiKey?: string;         // Optional user-provided Gemini API key
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {

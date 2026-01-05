@@ -45,6 +45,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   @Input() categories: Category[] = [];
   @Input() incomeCategories: Category[] = [];
   @Input() initialDate?: Date;
+  @Input() showAll = false;
   @Output() filtersChanged = new EventEmitter<TransactionFilters>();
   @Output() addTransaction = new EventEmitter<void>();
 
@@ -64,7 +65,12 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     // Default filter will be applied in ngOnChanges or after a tick if no initialDate
     setTimeout(() => {
       if (!this.initialFilterApplied) {
-        this.setQuickFilter('today');
+        if (this.showAll) {
+          // Show all transactions without any date filter
+          this.clearFilters();
+        } else {
+          this.setQuickFilter('today');
+        }
         this.initialFilterApplied = true;
       }
     });

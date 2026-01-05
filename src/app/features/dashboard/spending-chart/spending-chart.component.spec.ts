@@ -45,9 +45,9 @@ describe('SpendingChartComponent', () => {
   ];
 
   const mockCategoryTotals = [
-    { categoryId: 'cat1', total: 500 },
-    { categoryId: 'cat2', total: 300 },
-    { categoryId: 'cat3', total: 200 }
+    { categoryId: 'cat1', total: 500, count: 10 },
+    { categoryId: 'cat2', total: 300, count: 5 },
+    { categoryId: 'cat3', total: 200, count: 3 }
   ];
 
   beforeEach(async () => {
@@ -91,13 +91,13 @@ describe('SpendingChartComponent', () => {
   describe('topCategories', () => {
     it('should return first 6 categories', () => {
       const manyTotals = [
-        { categoryId: 'cat1', total: 100 },
-        { categoryId: 'cat2', total: 90 },
-        { categoryId: 'cat3', total: 80 },
-        { categoryId: 'cat4', total: 70 },
-        { categoryId: 'cat5', total: 60 },
-        { categoryId: 'cat6', total: 50 },
-        { categoryId: 'cat7', total: 40 }
+        { categoryId: 'cat1', total: 100, count: 1 },
+        { categoryId: 'cat2', total: 90, count: 1 },
+        { categoryId: 'cat3', total: 80, count: 1 },
+        { categoryId: 'cat4', total: 70, count: 1 },
+        { categoryId: 'cat5', total: 60, count: 1 },
+        { categoryId: 'cat6', total: 50, count: 1 },
+        { categoryId: 'cat7', total: 40, count: 1 }
       ];
       component.categoryTotals = manyTotals;
 
@@ -146,13 +146,13 @@ describe('SpendingChartComponent', () => {
     });
 
     it('should use Unknown for missing category', () => {
-      component.categoryTotals = [{ categoryId: 'unknown', total: 100 }];
+      component.categoryTotals = [{ categoryId: 'unknown', total: 100, count: 1 }];
       const data = component.chartData();
       expect(data.labels).toContain('Unknown');
     });
 
     it('should use default color for missing category', () => {
-      component.categoryTotals = [{ categoryId: 'unknown', total: 100 }];
+      component.categoryTotals = [{ categoryId: 'unknown', total: 100, count: 1 }];
       const data = component.chartData();
       expect(data.datasets[0].backgroundColor).toContain('#9E9E9E');
     });

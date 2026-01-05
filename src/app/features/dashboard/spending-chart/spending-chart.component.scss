@@ -46,36 +46,103 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .legend-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  font-size: 0.875rem;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+  @apply bg-gray-50 dark:bg-gray-800/50;
+
+  &:hover {
+    @apply bg-gray-100 dark:bg-gray-700/50;
+  }
 }
 
-.legend-label {
+.legend-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: white;
+  }
+}
+
+.legend-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.legend-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  @apply text-gray-800 dark:text-gray-200;
+}
+
+.legend-count {
+  font-weight: 400;
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+.legend-amount {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  @apply text-gray-900 dark:text-gray-100;
+}
+
+.legend-progress-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.legend-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  flex-shrink: 0;
+.legend-progress {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  @apply bg-gray-200 dark:bg-gray-700;
 }
 
-.legend-name {
-  @apply text-gray-700 dark:text-gray-300;
+.legend-progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
 }
 
-.legend-value {
+.legend-percentage {
+  font-size: 0.6875rem;
   font-weight: 500;
-  @apply text-gray-900 dark:text-gray-100;
+  white-space: nowrap;
+  min-width: 28px;
+  text-align: right;
+  @apply text-gray-500 dark:text-gray-400;
 }
 
 @media (min-width: 768px) {

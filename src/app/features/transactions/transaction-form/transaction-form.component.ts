@@ -7,18 +7,21 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
-import { Subscription } from 'rxjs';
+import { Subscription, debounceTime, distinctUntilChanged, filter } from 'rxjs';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { Transaction, CreateTransactionDTO, BudgetPeriod } from '../../../models';
+import { GeminiService } from '../../../core/services/gemini.service';
+import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 interface DialogData {
@@ -42,6 +45,8 @@ interface DialogData {
     MatButtonToggleModule,
     MatIconModule,
     MatProgressSpinnerModule,
+    MatChipsModule,
+    MatSnackBarModule,
     TranslatePipe
   ],
   templateUrl: './transaction-form.component.html',
@@ -56,6 +61,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
+  private geminiService = inject(GeminiService);
+  private snackBar = inject(MatSnackBar);
   private cdr = inject(ChangeDetectorRef);
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
@@ -64,6 +71,18 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   isSubmitting = signal(false);
   transactionType = signal<'expense' | 'income'>('expense');
   private categoryIdSignal = signal<string>('');
+
+  // AI Receipt Scanner signals
+  receiptPreview = signal<string | null>(null);
+  isScanning = signal(false);
+  scanError = signal<string | null>(null);
+
+  // AI Category Suggestion signals
+  suggestedCategory = signal<Category | null>(null);
+  isSuggesting = signal(false);
+
+  // Check if AI features are available
+  isAiAvailable = computed(() => this.geminiService.isAvailable());
 
   currencies = this.currencyService.getSupportedCurrencies();
   expenseCategories = this.categoryService.expenseCategories;
@@ -218,7 +237,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.categoryIdSignal.set(transaction?.categoryId || '');
     this.form.get('categoryId')?.valueChanges.subscribe((categoryId) => {
       this.categoryIdSignal.set(categoryId || '');
+      // Clear suggestion when category is manually selected
+      if (categoryId) {
+        this.suggestedCategory.set(null);
+      }
     });
+
+    // Setup AI category suggestion
+    this.setupCategorySuggestion();
   }
 
   async onSubmit(): Promise<void> {
@@ -259,5 +285,143 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   onCancel(): void {
     this.dialogRef.close(false);
+  }
+
+  // === AI Receipt Scanner Methods ===
+
+  onReceiptSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      this.snackBar.open(
+        this.translationService.t('ai.invalidFileType'),
+        this.translationService.t('common.close'),
+        { duration: 3000 }
+      );
+      return;
+    }
+
+    // Read file and convert to base64
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      this.receiptPreview.set(base64);
+      this.scanReceipt(base64);
+    };
+    reader.onerror = () => {
+      this.snackBar.open(
+        this.translationService.t('ai.readError'),
+        this.translationService.t('common.close'),
+        { duration: 3000 }
+      );
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input so the same file can be selected again
+    input.value = '';
+  }
+
+  private async scanReceipt(base64Image: string): Promise<void> {
+    this.isScanning.set(true);
+    this.scanError.set(null);
+
+    try {
+      const result = await this.geminiService.parseReceipt(base64Image);
+
+      // Auto-fill form with extracted data
+      this.form.patchValue({
+        amount: result.amount > 0 ? result.amount : '',
+        currency: result.currency || this.form.get('currency')?.value,
+        description: result.merchant || '',
+        date: result.date || new Date(),
+      });
+
+      // Set category if suggested
+      if (result.suggestedCategory) {
+        const category = this.filteredCategories().find(c => c.id === result.suggestedCategory);
+        if (category) {
+          this.form.patchValue({ categoryId: result.suggestedCategory });
+          this.categoryIdSignal.set(result.suggestedCategory);
+        }
+      }
+
+      // Show success message
+      this.snackBar.open(
+        this.translationService.t('ai.scanSuccess'),
+        this.translationService.t('common.close'),
+        { duration: 3000 }
+      );
+    } catch (error) {
+      console.error('Receipt scan error:', error);
+      this.scanError.set(this.translationService.t('ai.scanError'));
+      this.snackBar.open(
+        this.translationService.t('ai.scanError'),
+        this.translationService.t('common.close'),
+        { duration: 4000 }
+      );
+    } finally {
+      this.isScanning.set(false);
+    }
+  }
+
+  clearReceipt(): void {
+    this.receiptPreview.set(null);
+    this.scanError.set(null);
+  }
+
+  // === AI Category Suggestion Methods ===
+
+  private setupCategorySuggestion(): void {
+    if (!this.geminiService.isAvailable()) return;
+
+    const descriptionControl = this.form.get('description');
+    if (!descriptionControl) return;
+
+    const sub = descriptionControl.valueChanges.pipe(
+      debounceTime(500),
+      distinctUntilChanged(),
+      filter((value: string): value is string => !!value && value.length >= 3)
+    ).subscribe((description: string) => {
+      // Only suggest if no category is selected yet
+      if (!this.form.get('categoryId')?.value) {
+        this.fetchCategorySuggestion(description);
+      }
+    });
+
+    this.datesSubs.push(sub);
+  }
+
+  private async fetchCategorySuggestion(description: string): Promise<void> {
+    this.isSuggesting.set(true);
+    this.suggestedCategory.set(null);
+
+    try {
+      const categories = this.filteredCategories();
+      const suggestedId = await this.geminiService.suggestCategory(description, categories);
+
+      if (suggestedId) {
+        const category = categories.find(c => c.id === suggestedId);
+        if (category) {
+          this.suggestedCategory.set(category);
+        }
+      }
+    } catch (error) {
+      console.error('Category suggestion error:', error);
+      // Silently fail - don't show error to user
+    } finally {
+      this.isSuggesting.set(false);
+    }
+  }
+
+  acceptSuggestion(): void {
+    const category = this.suggestedCategory();
+    if (category) {
+      this.form.patchValue({ categoryId: category.id });
+      this.categoryIdSignal.set(category.id);
+      this.suggestedCategory.set(null);
+    }
   }
 }

@@ -304,6 +304,39 @@ export class TransactionService {
     });
   }
 
+  // Get period totals without updating the main transactions signal
+  // Used for comparing with previous periods
+  getPeriodTotals(start: Date, end: Date): Observable<{ income: number; expense: number }> {
+    const userId = this.authService.userId();
+    if (!userId) return of({ income: 0, expense: 0 });
+
+    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
+      orderBy: [{ field: 'date', direction: 'desc' }],
+      where: [
+        { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
+        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+      ]
+    };
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      options
+    ).pipe(
+      map(transactions => {
+        const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+        const toBase = (t: Transaction) => this.currencyService.convert(t.amount, t.currency, baseCurrency);
+
+        const income = transactions
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => sum + toBase(t), 0);
+        const expense = transactions
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + toBase(t), 0);
+        return { income, expense };
+      })
+    );
+  }
+
   // Get transactions by category
   getByCategory(categoryId: string): Observable<Transaction[]> {
     return this.getTransactions({ categoryId });

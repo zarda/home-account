@@ -9,10 +9,10 @@ import { Transaction, Category, MonthlyTotal } from '../../models';
 // File System Access API type declarations
 interface SaveFilePickerOptions {
   suggestedName?: string;
-  types?: Array<{
+  types?: {
     description: string;
     accept: Record<string, string[]>;
-  }>;
+  }[];
 }
 
 interface FileSystemFileHandle {
@@ -540,14 +540,13 @@ export class ExportService {
    */
   async downloadBlobWithPicker(
     blob: Blob,
-    filename: string,
-    mimeType: string
+    filename: string
   ): Promise<boolean> {
     // Try modern File System Access API first (Chrome, Edge)
     if (this.isFileSystemAccessSupported()) {
       try {
         const extension = filename.split('.').pop() || '';
-        const fileTypes = this.getFileTypeOptions(extension, mimeType);
+        const fileTypes = this.getFileTypeOptions(extension);
 
         const handle = await window.showSaveFilePicker!({
           suggestedName: filename,
@@ -572,7 +571,7 @@ export class ExportService {
     return true;
   }
 
-  private getFileTypeOptions(extension: string, mimeType: string): SaveFilePickerOptions['types'] {
+  private getFileTypeOptions(extension: string): SaveFilePickerOptions['types'] {
     const types: Record<string, { description: string; accept: Record<string, string[]> }> = {
       csv: {
         description: 'CSV Files',

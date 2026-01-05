@@ -328,7 +328,14 @@
     "everyMonthOn": "Every month on the {{day}}{{suffix}}",
     "everyNMonthsOn": "Every {{n}} months on the {{day}}{{suffix}}",
     "everyYear": "Every year",
-    "everyNYears": "Every {{n}} years"
+    "everyNYears": "Every {{n}} years",
+    "geminiApiKey": "AI Features (Gemini)",
+    "geminiApiKeyHint": "Provide your own Google Gemini API key to enable AI-powered features like receipt scanning and spending insights.",
+    "apiKey": "API Key",
+    "testApiKey": "Test Key",
+    "apiKeyValid": "API key is valid",
+    "apiKeyInvalid": "Invalid API key",
+    "getApiKey": "Get API Key from Google AI Studio"
   },
   "days": {
     "sunday": "Sunday",
@@ -522,10 +529,21 @@
   },
   "ai": {
     "scanReceipt": "Scan Receipt",
+    "scanning": "Analyzing receipt...",
+    "scanSuccess": "Receipt scanned successfully",
+    "scanError": "Could not read receipt. Please try again.",
+    "invalidFileType": "Please select an image file",
+    "readError": "Failed to read file",
+    "suggesting": "Suggesting...",
+    "suggestedCategory": "Suggested Category",
+    "confidence": "Confidence",
     "importData": "Import Data",
     "processing": "AI is processing...",
-    "suggestedCategory": "Suggested Category",
-    "confidence": "Confidence"
+    "insights": "AI Insights",
+    "financialAdvice": "Financial Tip",
+    "refresh": "Refresh insights",
+    "generating": "Generating insights...",
+    "noInsights": "Add more transactions to get AI insights"
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

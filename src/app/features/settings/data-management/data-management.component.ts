@@ -70,8 +70,7 @@ export class DataManagementComponent {
       const date = new Date().toISOString().split('T')[0];
       const success = await this.exportService.downloadBlobWithPicker(
         blob,
-        `home-account-backup-${date}.json`,
-        'application/json'
+        `home-account-backup-${date}.json`
       );
 
       if (success) {
@@ -94,8 +93,7 @@ export class DataManagementComponent {
       const date = new Date().toISOString().split('T')[0];
       const success = await this.exportService.downloadBlobWithPicker(
         blob,
-        `transactions-${date}.csv`,
-        'text/csv'
+        `transactions-${date}.csv`
       );
 
       if (success) {

@@ -6,12 +6,15 @@ import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
 import { Category } from '../../../models';
 import { TranslationService } from '../../../core/services/translation.service';
+import { CurrencyService } from '../../../core/services/currency.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 interface CategoryTotal {
   categoryId: string;
   total: number;
+  count: number;
 }
 
 @Component({
@@ -23,6 +26,8 @@ interface CategoryTotal {
 })
 export class SpendingChartComponent {
   private translationService = inject(TranslationService);
+  private currencyService = inject(CurrencyService);
+  private authService = inject(AuthService);
 
   @Input() set categoryTotals(value: CategoryTotal[]) {
     this._categoryTotals.set(value);
@@ -112,5 +117,20 @@ export class SpendingChartComponent {
   getCategoryColor(categoryId: string): string {
     const category = this._categories().find(c => c.id === categoryId);
     return category?.color || '#9E9E9E';
+  }
+
+  getCategoryIcon(categoryId: string): string {
+    const category = this._categories().find(c => c.id === categoryId);
+    return category?.icon || 'category';
+  }
+
+  getPercentage(total: number): number {
+    const totalSpending = this.totalSpending();
+    return totalSpending > 0 ? (total / totalSpending) * 100 : 0;
+  }
+
+  formatAmount(amount: number): string {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    return this.currencyService.formatCurrency(amount, baseCurrency);
   }
 }

@@ -27,16 +27,28 @@
           <ul class="legend-list">
             @for (item of topCategories(); track item.categoryId) {
               <li class="legend-item">
-                <div class="legend-label">
-                  <span
-                    class="legend-dot"
-                    [style.background-color]="getCategoryColor(item.categoryId)"
-                  ></span>
-                  <span class="legend-name">{{ getCategoryName(item.categoryId) }}</span>
-                </div>
-                <span class="legend-value">
-                  {{ (item.total / totalSpending() * 100).toFixed(1) }}%
+                <span
+                  class="legend-icon"
+                  [style.background-color]="getCategoryColor(item.categoryId)"
+                >
+                  <mat-icon>{{ getCategoryIcon(item.categoryId) }}</mat-icon>
                 </span>
+                <div class="legend-content">
+                  <div class="legend-row">
+                    <span class="legend-name">{{ getCategoryName(item.categoryId) }}</span>
+                    <span class="legend-amount">{{ formatAmount(item.total) }}</span>
+                  </div>
+                  <div class="legend-progress-row">
+                    <div class="legend-progress">
+                      <div
+                        class="legend-progress-bar"
+                        [style.width.%]="getPercentage(item.total)"
+                        [style.background-color]="getCategoryColor(item.categoryId)"
+                      ></div>
+                    </div>
+                    <span class="legend-percentage">{{ getPercentage(item.total).toFixed(0) }}%</span>
+                  </div>
+                </div>
               </li>
             }
           </ul>

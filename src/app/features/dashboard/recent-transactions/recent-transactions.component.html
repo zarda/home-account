@@ -2,7 +2,7 @@
   <!-- Header -->
   <div class="card-header">
     <h3 class="card-title">{{ 'dashboard.recentTransactions' | translate }}</h3>
-    <a routerLink="/transactions" class="view-all-link">
+    <a routerLink="/transactions" [queryParams]="{showAll: true}" class="view-all-link">
       {{ 'dashboard.viewAll' | translate }}
       <mat-icon class="view-all-icon">chevron_right</mat-icon>
     </a>
@@ -24,7 +24,12 @@
     } @else {
       <div class="transaction-list">
         @for (transaction of transactions; track transaction.id; let last = $last) {
-          <div class="transaction-item" (click)="onTransactionClick(transaction)">
+          <div class="transaction-item"
+               tabindex="0"
+               role="button"
+               (click)="onTransactionClick(transaction)"
+               (keydown.enter)="onTransactionClick(transaction)"
+               (keydown.space)="onTransactionClick(transaction)">
             <!-- Category Icon -->
             <div
               class="category-icon"

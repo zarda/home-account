@@ -127,8 +127,7 @@ export class ExportDialogComponent {
     );
     return this.exportService.downloadBlobWithPicker(
       blob,
-      `transactions-${dateStr}.csv`,
-      'text/csv'
+      `transactions-${dateStr}.csv`
     );
   }
 
@@ -173,8 +172,7 @@ export class ExportDialogComponent {
     const blob = await this.exportService.exportToPDF(reportData);
     return this.exportService.downloadBlobWithPicker(
       blob,
-      `report-${dateStr}.pdf`,
-      'application/pdf'
+      `report-${dateStr}.pdf`
     );
   }
 
@@ -187,8 +185,7 @@ export class ExportDialogComponent {
     });
     return this.exportService.downloadBlobWithPicker(
       blob,
-      `backup-${dateStr}.json`,
-      'application/json'
+      `backup-${dateStr}.json`
     );
   }
 

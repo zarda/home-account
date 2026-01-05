@@ -1,7 +1,9 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
 import { CategoryService } from './category.service';
-import { Category, Transaction, MonthlyTotal } from '../../models';
+import { CurrencyService } from './currency.service';
+import { TranslationService, SupportedLocale } from './translation.service';
+import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -30,37 +32,75 @@ export interface CategorizedTransaction extends RawTransaction {
   confidence: number;
 }
 
+export interface PreviousPeriodData {
+  income: number;
+  expense: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class GeminiService {
   private categoryService = inject(CategoryService);
+  private currencyService = inject(CurrencyService);
+  private translationService = inject(TranslationService);
 
   private genAI: GoogleGenerativeAI | null = null;
   private textModel: GenerativeModel | null = null;
   private visionModel: GenerativeModel | null = null;
+  private currentApiKey: string | null = null;
 
   // Signals
   isProcessing = signal<boolean>(false);
   lastError = signal<string | null>(null);
+  private _isAvailable = signal<boolean>(false);
+
+  // Computed signal for availability
+  isAvailableSignal = computed(() => this._isAvailable());
 
   constructor() {
     this.initializeGemini();
   }
 
-  private initializeGemini(): void {
-    const apiKey = environment.geminiApiKey;
+  private initializeGemini(customApiKey?: string): void {
+    // Priority: custom key > environment key
+    const apiKey = customApiKey || environment.geminiApiKey;
 
     if (!apiKey || apiKey.startsWith('${')) {
       console.warn('Gemini API key not configured');
+      this.genAI = null;
+      this.textModel = null;
+      this.visionModel = null;
+      this.currentApiKey = null;
+      this._isAvailable.set(false);
+      return;
+    }
+
+    // Skip if already initialized with the same key
+    if (apiKey === this.currentApiKey && this.genAI) {
       return;
     }
 
     try {
       this.genAI = new GoogleGenerativeAI(apiKey);
-      this.textModel = this.genAI.getGenerativeModel({ model: 'gemini-pro' });
-      this.visionModel = this.genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+      this.textModel = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      this.visionModel = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      this.currentApiKey = apiKey;
+      this._isAvailable.set(true);
     } catch (error) {
       console.error('Failed to initialize Gemini:', error);
+      this.genAI = null;
+      this.textModel = null;
+      this.visionModel = null;
+      this.currentApiKey = null;
+      this._isAvailable.set(false);
     }
+  }
+
+  /**
+   * Reinitialize Gemini with a new API key.
+   * Used when user provides their own API key in settings.
+   */
+  reinitialize(apiKey?: string): void {
+    this.initializeGemini(apiKey);
   }
 
   // Check if Gemini is available
@@ -233,7 +273,10 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
   // Generate spending summary
   async generateSpendingSummary(
     transactions: Transaction[],
-    period: string
+    period: string,
+    baseCurrency = 'USD',
+    previousPeriodData?: PreviousPeriodData | null,
+    budgets?: Budget[]
   ): Promise<string> {
     if (!this.textModel) {
       throw new Error('Gemini text model not available');
@@ -244,6 +287,10 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     try {
       const categories = this.categoryService.categories();
 
+      // Helper to convert amount to base currency (real-time conversion)
+      const toBaseCurrency = (amount: number, currency: string) =>
+        this.currencyService.convert(amount, currency, baseCurrency);
+
       // Group transactions by category
       const byCategory = new Map<string, { name: string; total: number; count: number }>();
       for (const t of transactions) {
@@ -253,42 +300,94 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         const categoryName = category?.name ?? 'Other';
 
         const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
-        existing.total += t.amountInBaseCurrency;
+        existing.total += toBaseCurrency(t.amount, t.currency);
         existing.count += 1;
         byCategory.set(t.categoryId, existing);
       }
 
       const totalIncome = transactions
         .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
 
       const totalExpense = transactions
         .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
 
       const categoryBreakdown = Array.from(byCategory.values())
         .sort((a, b) => b.total - a.total)
         .slice(0, 5)
-        .map(c => `${c.name}: $${c.total.toFixed(2)} (${c.count} transactions)`)
+        .map(c => `${c.name}: ${c.total.toFixed(2)} ${baseCurrency} (${c.count} transactions)`)
         .join('\n');
+
+      // Build individual transactions list (recent + largest)
+      const expenseTransactions = transactions.filter(t => t.type === 'expense');
+      const largestExpenses = [...expenseTransactions]
+        .sort((a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency))
+        .slice(0, 5)
+        .map(t => {
+          const cat = categories.find(c => c.id === t.categoryId);
+          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${cat?.name ?? 'Other'})`;
+        })
+        .join('\n');
+
+      // Build historical comparison section
+      let historicalSection = '';
+      if (previousPeriodData && (previousPeriodData.income > 0 || previousPeriodData.expense > 0)) {
+        const expenseChange = previousPeriodData.expense > 0
+          ? ((totalExpense - previousPeriodData.expense) / previousPeriodData.expense * 100).toFixed(1)
+          : 'N/A';
+        const incomeChange = previousPeriodData.income > 0
+          ? ((totalIncome - previousPeriodData.income) / previousPeriodData.income * 100).toFixed(1)
+          : 'N/A';
+        historicalSection = `
+Previous period comparison:
+- Previous income: ${previousPeriodData.income.toFixed(2)} ${baseCurrency}
+- Previous expenses: ${previousPeriodData.expense.toFixed(2)} ${baseCurrency}
+- Income change: ${incomeChange}%
+- Expense change: ${expenseChange}%
+`;
+      }
+
+      // Build budget section
+      let budgetSection = '';
+      if (budgets && budgets.length > 0) {
+        const budgetLines = budgets.map(b => {
+          const categorySpent = byCategory.get(b.categoryId)?.total ?? 0;
+          // Convert budget amount to base currency for comparison
+          const budgetAmountInBaseCurrency = this.currencyService.convert(b.amount, b.currency, baseCurrency);
+          const percentUsed = budgetAmountInBaseCurrency > 0 ? (categorySpent / budgetAmountInBaseCurrency * 100) : 0;
+          const status = percentUsed >= 100 ? '⚠️ EXCEEDED' : percentUsed >= 80 ? '⚠️ Near limit' : '✓';
+          return `- ${b.name}: ${categorySpent.toFixed(2)}/${budgetAmountInBaseCurrency.toFixed(2)} ${baseCurrency} (${percentUsed.toFixed(0)}%) ${status}`;
+        }).join('\n');
+        budgetSection = `
+Active budgets status:
+${budgetLines}
+`;
+      }
 
       const prompt = `Generate a brief, helpful spending summary for ${period}.
 
-Financial data:
-- Total Income: $${totalIncome.toFixed(2)}
-- Total Expenses: $${totalExpense.toFixed(2)}
-- Net: $${(totalIncome - totalExpense).toFixed(2)}
+Financial data (all amounts in ${baseCurrency}):
+- Total Income: ${totalIncome.toFixed(2)} ${baseCurrency}
+- Total Expenses: ${totalExpense.toFixed(2)} ${baseCurrency}
+- Net: ${(totalIncome - totalExpense).toFixed(2)} ${baseCurrency}
 - Transaction count: ${transactions.length}
 
 Top spending categories:
 ${categoryBreakdown}
 
+Largest individual expenses:
+${largestExpenses || 'No expenses recorded'}
+${historicalSection}${budgetSection}
 Write a 2-3 sentence summary that:
-1. Highlights the main spending pattern
-2. Notes if spending is high in any category
-3. Provides one actionable insight
+1. Highlights the main spending pattern with specific amounts
+2. Notes any significant changes from previous period (if data available)
+3. Warns about any budgets near or over limit (if applicable)
+4. Provides one actionable insight
 
-Keep it concise and encouraging. Use plain language, no bullet points.`;
+Keep it concise and encouraging. Use plain language, no bullet points. Use ${baseCurrency} for currency amounts.
+
+${this.getLanguageInstruction()}`;
 
       const result = await this.textModel.generateContent(prompt);
       return result.response.text().trim();
@@ -300,8 +399,12 @@ Keep it concise and encouraging. Use plain language, no bullet points.`;
     }
   }
 
-  // Get financial advice based on monthly totals
-  async getFinancialAdvice(summary: MonthlyTotal): Promise<string> {
+  // Get financial advice based on period totals
+  async getFinancialAdvice(
+    summary: MonthlyTotal,
+    baseCurrency = 'USD',
+    period = 'this month'
+  ): Promise<string> {
     if (!this.textModel) {
       throw new Error('Gemini text model not available');
     }
@@ -313,19 +416,21 @@ Keep it concise and encouraging. Use plain language, no bullet points.`;
         ? ((summary.income - summary.expense) / summary.income * 100)
         : 0;
 
-      const prompt = `Provide brief financial advice based on this monthly summary:
+      const prompt = `Provide brief financial advice based on this summary for ${period} (amounts in ${baseCurrency}):
 
-- Income: $${summary.income.toFixed(2)}
-- Expenses: $${summary.expense.toFixed(2)}
-- Balance: $${summary.balance.toFixed(2)}
+- Income: ${summary.income.toFixed(2)} ${baseCurrency}
+- Expenses: ${summary.expense.toFixed(2)} ${baseCurrency}
+- Balance: ${summary.balance.toFixed(2)} ${baseCurrency}
 - Savings Rate: ${savingsRate.toFixed(1)}%
 - Transaction Count: ${summary.transactionCount}
 
-Give 1-2 sentences of personalized, actionable advice. Be encouraging but honest.
+Give 1-2 sentences of personalized, actionable advice. Be encouraging but honest. Use ${baseCurrency} for currency amounts.
 Consider:
 - If savings rate is <20%, suggest ways to save more
 - If balance is negative, acknowledge the situation kindly
-- If doing well (>30% savings), congratulate and suggest next steps`;
+- If doing well (>30% savings), congratulate and suggest next steps
+
+${this.getLanguageInstruction()}`;
 
       const result = await this.textModel.generateContent(prompt);
       return result.response.text().trim();
@@ -335,6 +440,17 @@ Consider:
     } finally {
       this.isProcessing.set(false);
     }
+  }
+
+  // Helper: Get language instruction for AI prompts based on user's locale
+  private getLanguageInstruction(): string {
+    const locale = this.translationService.currentLocale();
+    const languageMap: Record<SupportedLocale, string> = {
+      'en': 'Respond in English.',
+      'tc': 'Respond in Traditional Chinese (繁體中文).',
+      'ja': 'Respond in Japanese (日本語).'
+    };
+    return languageMap[locale] || 'Respond in English.';
   }
 
   // Helper: Extract JSON from response that might have markdown formatting

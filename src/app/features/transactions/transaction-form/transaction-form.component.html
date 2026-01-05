@@ -11,6 +11,54 @@
 
   <form [formGroup]="form" (ngSubmit)="onSubmit()">
     <mat-dialog-content class="dialog-content">
+      <!-- AI Receipt Scanner (only show for add mode) -->
+      @if (data.mode === 'add' && isAiAvailable()) {
+        <div class="receipt-scanner-section">
+          <!-- Hidden file input -->
+          <input
+            type="file"
+            #receiptInput
+            accept="image/*"
+            capture="environment"
+            (change)="onReceiptSelected($event)"
+            class="hidden-input"
+          />
+
+          <!-- Receipt preview -->
+          @if (receiptPreview()) {
+            <div class="receipt-preview">
+              <img [src]="receiptPreview()" alt="Receipt preview" />
+              <button
+                mat-icon-button
+                type="button"
+                class="clear-receipt-btn"
+                (click)="clearReceipt()"
+              >
+                <mat-icon>close</mat-icon>
+              </button>
+              @if (isScanning()) {
+                <div class="scanning-overlay">
+                  <mat-spinner diameter="32"></mat-spinner>
+                  <span>{{ 'ai.scanning' | translate }}</span>
+                </div>
+              }
+            </div>
+          } @else {
+            <!-- Scan Receipt Button -->
+            <button
+              mat-stroked-button
+              type="button"
+              class="scan-receipt-btn"
+              (click)="receiptInput.click()"
+              [disabled]="isScanning()"
+            >
+              <mat-icon>photo_camera</mat-icon>
+              <span>{{ 'ai.scanReceipt' | translate }}</span>
+            </button>
+          }
+        </div>
+      }
+
       <!-- Type Toggle -->
       <div class="type-toggle-container">
         <mat-button-toggle-group formControlName="type" class="type-toggle">
@@ -84,6 +132,27 @@
           <mat-error>{{ 'transactions.descriptionRequired' | translate }}</mat-error>
         }
       </mat-form-field>
+
+      <!-- AI Category Suggestion -->
+      @if (isAiAvailable() && (suggestedCategory() || isSuggesting()) && !form.get('categoryId')?.value) {
+        <div class="ai-suggestion-container">
+          @if (isSuggesting()) {
+            <mat-chip class="suggestion-chip loading">
+              <mat-spinner diameter="16"></mat-spinner>
+              <span>{{ 'ai.suggesting' | translate }}</span>
+            </mat-chip>
+          } @else if (suggestedCategory(); as category) {
+            <mat-chip
+              class="suggestion-chip"
+              (click)="acceptSuggestion()"
+            >
+              <mat-icon class="ai-icon">auto_awesome</mat-icon>
+              <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
+              <span>{{ category.name | translate }}</span>
+            </mat-chip>
+          }
+        </div>
+      }
 
       <!-- Date -->
       <mat-form-field appearance="outline" class="full-width">

@@ -328,7 +328,14 @@
     "duration": "有効期間",
     "addEndDate": "終了日を追加",
     "removeEndDate": "終了日を削除",
-    "create": "作成"
+    "create": "作成",
+    "geminiApiKey": "AI機能 (Gemini)",
+    "geminiApiKeyHint": "Google Gemini APIキーを入力すると、レシートスキャンや支出分析などのAI機能が利用できます。",
+    "apiKey": "APIキー",
+    "testApiKey": "キーをテスト",
+    "apiKeyValid": "APIキーは有効です",
+    "apiKeyInvalid": "APIキーが無効です",
+    "getApiKey": "Google AI StudioでAPIキーを取得"
   },
   "days": {
     "sunday": "日曜日",
@@ -522,10 +529,21 @@
   },
   "ai": {
     "scanReceipt": "レシートをスキャン",
+    "scanning": "レシートを分析中...",
+    "scanSuccess": "レシートのスキャンに成功しました",
+    "scanError": "レシートを読み取れませんでした。もう一度お試しください。",
+    "invalidFileType": "画像ファイルを選択してください",
+    "readError": "ファイルの読み取りに失敗しました",
+    "suggesting": "提案中...",
+    "suggestedCategory": "おすすめカテゴリ",
+    "confidence": "確信度",
     "importData": "データをインポート",
     "processing": "AI処理中...",
-    "suggestedCategory": "おすすめカテゴリ",
-    "confidence": "確信度"
+    "insights": "AIインサイト",
+    "financialAdvice": "ファイナンシャルヒント",
+    "refresh": "インサイトを更新",
+    "generating": "インサイトを生成中...",
+    "noInsights": "AIインサイトを得るには、取引を追加してください"
   },
   "errors": {
     "generic": "エラーが発生しました。もう一度お試しください。",

@@ -1,6 +1,6 @@
 import { Component, inject, Input } from '@angular/core';
 
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,6 +16,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   selector: 'app-recent-transactions',
   standalone: true,
   imports: [
+    RouterLink,
     MatCardModule,
     MatIconModule,
     MatButtonModule,
