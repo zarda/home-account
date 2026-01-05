@@ -1,0 +1,99 @@
+<div
+  class="dropzone"
+  [class.dragover]="isDragOver()"
+  [class.has-files]="selectedFiles().length > 0"
+  [class.error]="hasError()"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave($event)"
+  (drop)="onDrop($event)"
+  (click)="fileInput.click()"
+  (keydown.enter)="fileInput.click()"
+  (keydown.space)="fileInput.click(); $event.preventDefault()"
+  tabindex="0"
+  role="button"
+  [attr.aria-label]="'import.dropzoneTitle' | translate"
+>
+  <input
+    #fileInput
+    type="file"
+    [accept]="acceptedTypes"
+    [multiple]="multiple"
+    (change)="onFileSelect($event)"
+    hidden
+  />
+
+  @if (selectedFiles().length === 0) {
+    <div class="dropzone-content">
+      <div class="icon-container">
+        <div class="icon-bg"></div>
+        <mat-icon class="upload-icon">cloud_upload</mat-icon>
+      </div>
+      <h3 class="title">{{ 'import.dropzoneTitle' | translate }}</h3>
+      <p class="hint">{{ 'import.dropzoneHint' | translate }}</p>
+      <div class="file-types">
+        <span class="file-type">
+          <mat-icon>image</mat-icon>
+          PNG, JPG
+        </span>
+        <span class="file-type">
+          <mat-icon>picture_as_pdf</mat-icon>
+          PDF
+        </span>
+        <span class="file-type">
+          <mat-icon>table_chart</mat-icon>
+          CSV
+        </span>
+      </div>
+      <button mat-stroked-button color="primary" class="browse-btn" (click)="$event.stopPropagation(); fileInput.click()">
+        <mat-icon>folder_open</mat-icon>
+        {{ 'import.browseFiles' | translate }}
+      </button>
+    </div>
+  } @else {
+    <div class="selected-files">
+      @for (file of selectedFiles(); track file.name) {
+        <div class="file-item" [class.image-file]="isImageFile(file)">
+          @if (isImageFile(file)) {
+            <div class="file-thumbnail">
+              <img [src]="getFilePreview(file)" [alt]="file.name" />
+            </div>
+          } @else {
+            <div class="file-icon-wrapper">
+              <mat-icon [class]="getFileTypeClass(file)">{{ getFileIcon(file) }}</mat-icon>
+            </div>
+          }
+          <div class="file-info">
+            <span class="file-name">{{ file.name }}</span>
+            <span class="file-meta">
+              <span class="file-size">{{ formatFileSize(file.size) }}</span>
+              <span class="file-type-label">{{ getFileTypeLabel(file) }}</span>
+            </span>
+          </div>
+          <button
+            mat-icon-button
+            (click)="removeFile(file, $event)"
+            class="remove-btn"
+            aria-label="Remove file"
+          >
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+      }
+      <button
+        mat-stroked-button
+        class="add-more-btn"
+        (click)="$event.stopPropagation(); fileInput.click()"
+      >
+        <mat-icon>add</mat-icon>
+        {{ 'import.addMoreFiles' | translate }}
+      </button>
+    </div>
+  }
+
+  @if (hasError()) {
+    <div class="error-banner">
+      <mat-icon>error</mat-icon>
+      <p class="error-message">{{ errorMessage() }}</p>
+    </div>
+  }
+</div>

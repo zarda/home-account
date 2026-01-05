@@ -88,6 +88,53 @@
   }
 }
 
+// Smart Import Section
+.smart-import-section {
+  @apply bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950 dark:to-purple-950;
+  border-radius: 12px;
+  padding: 20px;
+  @apply border border-indigo-200 dark:border-indigo-800;
+
+  .section-icon.ai-icon {
+    color: #8b5cf6;
+  }
+}
+
+.smart-import-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  @apply bg-white/80 dark:bg-gray-800/80;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  @apply text-gray-700 dark:text-gray-300;
+
+  mat-icon {
+    color: #8b5cf6;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.smart-import-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+
+  button mat-icon {
+    margin-right: 8px;
+  }
+}
+
 // Import Dropzone
 .import-dropzone {
   display: flex;

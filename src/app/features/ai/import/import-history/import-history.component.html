@@ -1,0 +1,95 @@
+<div class="import-history">
+  <div class="header">
+    <button mat-icon-button (click)="goBack()">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <h1>{{ 'import.history' | translate }}</h1>
+  </div>
+
+  @if (isLoading()) {
+    <div class="loading">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (importHistory().length === 0) {
+    <mat-card class="empty-state">
+      <mat-card-content>
+        <mat-icon>history</mat-icon>
+        <p>{{ 'import.noHistory' | translate }}</p>
+        <button mat-flat-button color="primary" (click)="goToImport()">
+          <mat-icon>upload</mat-icon>
+          {{ 'import.startImport' | translate }}
+        </button>
+      </mat-card-content>
+    </mat-card>
+  } @else {
+    <div class="history-list">
+      @for (item of importHistory(); track item.id) {
+        <mat-card class="history-item">
+          <mat-card-header>
+            <mat-icon mat-card-avatar [class]="getStatusClass(item.status)">
+              {{ getStatusIcon(item.status) }}
+            </mat-icon>
+            <mat-card-title>{{ item.fileName }}</mat-card-title>
+            <mat-card-subtitle>
+              {{ formatDate(item.importedAt) }}
+            </mat-card-subtitle>
+          </mat-card-header>
+
+          <mat-card-content>
+            <div class="stats-grid">
+              <div class="stat">
+                <span class="label">{{ 'common.transactions' | translate }}</span>
+                <span class="value">{{ item.successCount }}</span>
+              </div>
+              <div class="stat income">
+                <span class="label">{{ 'common.income' | translate }}</span>
+                <span class="value">+{{ item.totalIncome | currency }}</span>
+              </div>
+              <div class="stat expense">
+                <span class="label">{{ 'common.expense' | translate }}</span>
+                <span class="value">-{{ item.totalExpenses | currency }}</span>
+              </div>
+              @if (item.duplicatesSkipped > 0) {
+                <div class="stat skipped">
+                  <span class="label">{{ 'import.skipped' | translate }}</span>
+                  <span class="value">{{ item.duplicatesSkipped }}</span>
+                </div>
+              }
+            </div>
+
+            <div class="chips">
+              <mat-chip-set>
+                <mat-chip [class]="getStatusClass(item.status)">
+                  {{ getStatusLabel(item.status) }}
+                </mat-chip>
+                <mat-chip>{{ getSourceLabel(item.source) }}</mat-chip>
+                <mat-chip>{{ formatFileSize(item.fileSize) }}</mat-chip>
+              </mat-chip-set>
+            </div>
+
+            @if (item.errors && item.errors.length > 0) {
+              <div class="errors">
+                <p class="error-title">{{ 'import.errors' | translate }}:</p>
+                <ul>
+                  @for (error of item.errors.slice(0, 3); track $index) {
+                    <li>{{ error.message }}</li>
+                  }
+                  @if (item.errors.length > 3) {
+                    <li class="more">+{{ item.errors.length - 3 }} more</li>
+                  }
+                </ul>
+              </div>
+            }
+          </mat-card-content>
+
+          <mat-card-actions align="end">
+            <button mat-button color="warn" (click)="deleteHistory(item)">
+              <mat-icon>delete</mat-icon>
+              {{ 'common.delete' | translate }}
+            </button>
+          </mat-card-actions>
+        </mat-card>
+      }
+    </div>
+  }
+</div>

@@ -1,10 +1,8 @@
 <!-- Header -->
-<div class="header-container">
-  <app-header
-    [isSidebarOpen]="sidebarOpen()"
-    (toggleSidebar)="toggleSidebar()"
-  />
-</div>
+<app-header
+  [isSidebarOpen]="sidebarOpen()"
+  (toggleSidebar)="toggleSidebar()"
+/>
 
 <!-- Sidebar Overlay (all screen sizes) -->
 @if (sidebarOpen()) {

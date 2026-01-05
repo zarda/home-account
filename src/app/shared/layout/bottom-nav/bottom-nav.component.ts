@@ -27,7 +27,7 @@ export class BottomNavComponent {
     { label: 'Transactions', icon: 'receipt_long', route: '/transactions' },
     { label: 'Add', icon: 'add', route: '', isAction: true },
     { label: 'Budgets', icon: 'savings', route: '/budgets' },
-    { label: 'More', icon: 'more_horiz', route: '/settings' },
+    { label: 'Reports', icon: 'bar_chart', route: '/reports' },
   ];
 
   openAddTransaction(): void {

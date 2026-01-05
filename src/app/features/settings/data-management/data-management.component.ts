@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { MatIconModule } from '@angular/material/icon';
@@ -22,6 +23,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   standalone: true,
   imports: [
     CommonModule,
+    RouterLink,
     MatIconModule,
     MatButtonModule,
     MatProgressSpinnerModule,

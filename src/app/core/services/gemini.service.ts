@@ -37,6 +37,26 @@ export interface PreviousPeriodData {
   expense: number;
 }
 
+export interface ExtractedTransaction {
+  date: string;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  currency: string;
+}
+
+export interface CSVColumnMapping {
+  dateColumn: string;
+  descriptionColumn: string;
+  amountColumn: string;
+  debitColumn?: string;
+  creditColumn?: string;
+  typeColumn?: string;
+  categoryColumn?: string;
+  dateFormat: string;
+  hasHeader: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class GeminiService {
   private categoryService = inject(CategoryService);
@@ -61,8 +81,8 @@ export class GeminiService {
   }
 
   private initializeGemini(customApiKey?: string): void {
-    // Priority: custom key > environment key
-    const apiKey = customApiKey || environment.geminiApiKey;
+    // Priority: custom key > environment key (if available)
+    const apiKey = customApiKey || (environment as { geminiApiKey?: string }).geminiApiKey;
 
     if (!apiKey || apiKey.startsWith('${')) {
       console.warn('Gemini API key not configured');
@@ -437,6 +457,196 @@ ${this.getLanguageInstruction()}`;
     } catch (error) {
       console.error('Financial advice error:', error);
       return 'Keep tracking your expenses to better understand your spending patterns.';
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  // Extract transactions from an image (receipt, bank statement screenshot)
+  async extractTransactionsFromImage(imageBase64: string): Promise<RawTransaction[]> {
+    if (!this.visionModel) {
+      throw new Error('Gemini Vision model not available');
+    }
+
+    this.isProcessing.set(true);
+    this.lastError.set(null);
+
+    try {
+      const prompt = `Analyze this image (bank statement, receipt, or financial document) and extract ALL transactions.
+
+For each transaction found, extract:
+- date: in YYYY-MM-DD format
+- description: merchant/payee name or transaction description
+- amount: as a positive number
+- type: "income" for credits/deposits, "expense" for debits/withdrawals
+- currency: detected currency code (default to USD if unclear)
+
+Return ONLY a valid JSON array with this structure (no markdown, no explanation):
+[
+  {
+    "date": "2024-01-15",
+    "description": "AMAZON.COM",
+    "amount": 45.99,
+    "type": "expense",
+    "currency": "USD"
+  }
+]
+
+If no transactions can be extracted, return an empty array: []
+Only include confirmed transactions, not pending ones.`;
+
+      const result = await this.visionModel.generateContent([
+        prompt,
+        {
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+          }
+        }
+      ]);
+
+      const responseText = result.response.text();
+      const cleanedJson = this.extractJson(responseText);
+      const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
+
+      // Convert to RawTransaction format
+      return extracted.map(t => ({
+        description: t.description || 'Unknown',
+        amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
+        date: t.date ? new Date(t.date) : new Date()
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.lastError.set(errorMessage);
+      console.error('Image extraction error:', error);
+      return [];
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  // Extract transactions from a PDF document (bank statement)
+  async extractTransactionsFromPDF(pdfBase64: string): Promise<RawTransaction[]> {
+    if (!this.visionModel) {
+      throw new Error('Gemini Vision model not available');
+    }
+
+    this.isProcessing.set(true);
+    this.lastError.set(null);
+
+    try {
+      const prompt = `Analyze this PDF bank statement and extract ALL transactions.
+
+For each transaction found, extract:
+- date: in YYYY-MM-DD format
+- description: merchant/payee name or transaction description
+- amount: as a positive number
+- type: "income" for credits/deposits, "expense" for debits/withdrawals
+- currency: detected currency code (default to USD if unclear)
+
+Return ONLY a valid JSON array with this structure (no markdown, no explanation):
+[
+  {
+    "date": "2024-01-15",
+    "description": "DIRECT DEPOSIT - EMPLOYER",
+    "amount": 3500.00,
+    "type": "income",
+    "currency": "USD"
+  },
+  {
+    "date": "2024-01-16",
+    "description": "WALMART",
+    "amount": 125.43,
+    "type": "expense",
+    "currency": "USD"
+  }
+]
+
+If no transactions can be extracted, return an empty array: []
+Only include posted/confirmed transactions.`;
+
+      const result = await this.visionModel.generateContent([
+        prompt,
+        {
+          inlineData: {
+            mimeType: 'application/pdf',
+            data: pdfBase64.replace(/^data:application\/pdf;base64,/, '')
+          }
+        }
+      ]);
+
+      const responseText = result.response.text();
+      const cleanedJson = this.extractJson(responseText);
+      const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
+
+      // Convert to RawTransaction format
+      return extracted.map(t => ({
+        description: t.description || 'Unknown',
+        amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
+        date: t.date ? new Date(t.date) : new Date()
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.lastError.set(errorMessage);
+      console.error('PDF extraction error:', error);
+      return [];
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  // Detect CSV column mapping using AI
+  async detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping> {
+    if (!this.textModel) {
+      throw new Error('Gemini text model not available');
+    }
+
+    this.isProcessing.set(true);
+
+    try {
+      const prompt = `Analyze these CSV headers and sample data to determine the best column mapping for financial transaction data.
+
+Headers: ${JSON.stringify(headers)}
+Sample rows (first 3): ${JSON.stringify(sampleRows.slice(0, 3))}
+
+Identify which columns contain:
+- dateColumn: column name containing transaction dates
+- descriptionColumn: column name containing merchant/payee description
+- amountColumn: column name for single amount field (or null if separate debit/credit)
+- debitColumn: column name for debit/expense amounts (or null)
+- creditColumn: column name for credit/income amounts (or null)
+- typeColumn: column name indicating transaction type (or null)
+- categoryColumn: column name for category (or null)
+- dateFormat: detected date format (e.g., "MM/DD/YYYY", "YYYY-MM-DD")
+- hasHeader: true if first row is headers
+
+Return ONLY valid JSON with this structure:
+{
+  "dateColumn": "Date",
+  "descriptionColumn": "Description",
+  "amountColumn": "Amount",
+  "debitColumn": null,
+  "creditColumn": null,
+  "typeColumn": null,
+  "categoryColumn": null,
+  "dateFormat": "MM/DD/YYYY",
+  "hasHeader": true
+}`;
+
+      const result = await this.textModel.generateContent(prompt);
+      const responseText = result.response.text();
+      const cleanedJson = this.extractJson(responseText);
+      return JSON.parse(cleanedJson);
+    } catch (error) {
+      console.error('CSV mapping detection error:', error);
+      // Return default mapping
+      return {
+        dateColumn: headers[0] || 'date',
+        descriptionColumn: headers[1] || 'description',
+        amountColumn: headers[2] || 'amount',
+        dateFormat: 'MM/DD/YYYY',
+        hasHeader: true
+      };
     } finally {
       this.isProcessing.set(false);
     }

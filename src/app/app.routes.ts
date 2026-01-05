@@ -25,6 +25,18 @@ export const routes: Routes = [
       { path: 'budgets', component: BudgetsComponent },
       { path: 'reports', component: ReportsComponent },
       { path: 'settings', component: SettingsComponent },
+      {
+        path: 'settings/import',
+        loadComponent: () =>
+          import('./features/ai/import/import-wizard/import-wizard.component')
+            .then(m => m.ImportWizardComponent)
+      },
+      {
+        path: 'settings/import/history',
+        loadComponent: () =>
+          import('./features/ai/import/import-history/import-history.component')
+            .then(m => m.ImportHistoryComponent)
+      },
     ],
   },
   { path: '**', redirectTo: '' },

@@ -4,16 +4,6 @@
   background-color: var(--surface-background);
 }
 
-.header-container {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 64px;
-  z-index: 1000;
-  background: var(--surface-card);
-}
-
 // Sidebar backdrop (visible on all screen sizes when sidebar open)
 .sidebar-backdrop {
   position: fixed;
@@ -55,14 +45,15 @@
   }
 }
 
-// Main content - no longer offset by sidebar
+// Main content - starts from top with padding for header
 .main-container {
   position: fixed;
-  top: 64px;
+  top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   overflow-y: auto;
+  padding-top: 64px;
 }
 
 .main-container.with-bottom-nav {

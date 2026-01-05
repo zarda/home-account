@@ -1,0 +1,53 @@
+@if (duplicates.length > 0) {
+  <div class="duplicate-warning">
+    <mat-expansion-panel class="warning-panel">
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <mat-icon class="warning-icon">warning</mat-icon>
+          <span>
+            {{ 'import.duplicatesFound' | translate:{ count: duplicates.length } }}
+          </span>
+        </mat-panel-title>
+      </mat-expansion-panel-header>
+
+      <div class="warning-content">
+        <p class="description">
+          {{ 'import.duplicatesDescription' | translate }}
+        </p>
+
+        <div class="duplicate-list">
+          @for (dup of duplicates; track dup.transaction.id) {
+            <div class="duplicate-item" [class.exact]="dup.check.matchType === 'exact'">
+              <div class="item-header">
+                <mat-icon [class]="'match-' + dup.check.matchType">
+                  {{ getMatchIcon(dup.check.matchType) }}
+                </mat-icon>
+                <span class="match-type">{{ getMatchLabel(dup.check.matchType) }}</span>
+                <span class="confidence">({{ (dup.check.confidence * 100).toFixed(0) }}%)</span>
+              </div>
+              <div class="item-details">
+                <span class="description">{{ dup.transaction.description }}</span>
+                <span class="amount" [class.income]="dup.transaction.type === 'income'">
+                  {{ dup.transaction.type === 'income' ? '+' : '-' }}
+                  {{ dup.transaction.amount | currency:dup.transaction.currency }}
+                </span>
+                <span class="date">{{ dup.transaction.date | date:'shortDate' }}</span>
+              </div>
+            </div>
+          }
+        </div>
+
+        <div class="actions">
+          <button mat-stroked-button color="primary" (click)="onExcludeAll()">
+            <mat-icon>block</mat-icon>
+            {{ 'import.excludeDuplicates' | translate }}
+          </button>
+          <button mat-stroked-button (click)="onIncludeAll()">
+            <mat-icon>add_circle_outline</mat-icon>
+            {{ 'import.includeDuplicates' | translate }}
+          </button>
+        </div>
+      </div>
+    </mat-expansion-panel>
+  </div>
+}

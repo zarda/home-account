@@ -1,0 +1,264 @@
+<div class="import-wizard">
+  <!-- Header -->
+  <header class="wizard-header">
+    <button mat-icon-button (click)="goBack()" class="back-button">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <div class="header-content">
+      <h1>{{ 'import.title' | translate }}</h1>
+      <p class="subtitle">{{ 'import.smartImportDescription' | translate }}</p>
+    </div>
+  </header>
+
+  <!-- Features chips -->
+  <div class="features-row">
+    <mat-chip-set>
+      <mat-chip>
+        <mat-icon matChipAvatar>receipt_long</mat-icon>
+        {{ 'import.featureReceipts' | translate }}
+      </mat-chip>
+      <mat-chip>
+        <mat-icon matChipAvatar>description</mat-icon>
+        {{ 'import.featureBankStatements' | translate }}
+      </mat-chip>
+      <mat-chip>
+        <mat-icon matChipAvatar>auto_awesome</mat-icon>
+        {{ 'import.featureAutoCategory' | translate }}
+      </mat-chip>
+      <mat-chip>
+        <mat-icon matChipAvatar>content_copy</mat-icon>
+        {{ 'import.featureDuplicateDetection' | translate }}
+      </mat-chip>
+    </mat-chip-set>
+  </div>
+
+  <!-- Stepper -->
+  <mat-stepper [linear]="true" #stepper class="modern-stepper">
+    <!-- Step 1: Upload -->
+    <mat-step [completed]="uploadComplete()">
+      <ng-template matStepLabel>{{ 'import.uploadStep' | translate }}</ng-template>
+
+      <div class="step-content upload-step">
+        <app-file-dropzone
+          [acceptedTypes]="acceptedFileTypes"
+          (filesSelected)="onFilesSelected($event)"
+        ></app-file-dropzone>
+
+        <!-- Image Preview Section -->
+        @if (imagePreviewUrls().length > 0) {
+          <div class="image-previews">
+            <h3>{{ 'import.preview' | translate }}</h3>
+            <div class="preview-grid">
+              @for (preview of imagePreviewUrls(); track preview.name) {
+                <div class="preview-item">
+                  <img [src]="preview.url" [alt]="preview.name" />
+                  <span class="preview-name">{{ preview.name }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        }
+
+        <div class="step-actions">
+          <button
+            mat-flat-button
+            color="primary"
+            class="action-button"
+            [disabled]="!selectedFiles().length || isProcessing()"
+            (click)="processFiles(); stepper.next()"
+          >
+            <mat-icon>auto_awesome</mat-icon>
+            {{ 'import.processWithAI' | translate }}
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 2: Processing -->
+    <mat-step [completed]="processingComplete()">
+      <ng-template matStepLabel>{{ 'import.processingStep' | translate }}</ng-template>
+
+      <div class="step-content processing-step">
+        @if (isProcessing()) {
+          <div class="processing-card">
+            <div class="ai-animation">
+              <div class="pulse-ring"></div>
+              <div class="pulse-ring delay-1"></div>
+              <div class="pulse-ring delay-2"></div>
+              <mat-icon class="ai-icon">auto_awesome</mat-icon>
+            </div>
+            <h2 class="processing-title">{{ 'ai.processing' | translate }}</h2>
+            <p class="processing-status">{{ processingStatus() }}</p>
+            <div class="progress-container">
+              <mat-progress-bar
+                mode="determinate"
+                [value]="processingProgress()"
+                class="custom-progress"
+              ></mat-progress-bar>
+              <span class="progress-text">{{ processingProgress() }}%</span>
+            </div>
+            <div class="processing-steps">
+              <div class="step-indicator" [class.active]="processingProgress() >= 10" [class.complete]="processingProgress() >= 30">
+                <mat-icon>image</mat-icon>
+                <span>{{ 'import.extractingData' | translate }}</span>
+              </div>
+              <div class="step-indicator" [class.active]="processingProgress() >= 30" [class.complete]="processingProgress() >= 60">
+                <mat-icon>category</mat-icon>
+                <span>{{ 'import.categorizingTransactions' | translate }}</span>
+              </div>
+              <div class="step-indicator" [class.active]="processingProgress() >= 60" [class.complete]="processingProgress() >= 100">
+                <mat-icon>content_copy</mat-icon>
+                <span>{{ 'import.checkingDuplicates' | translate }}</span>
+              </div>
+            </div>
+          </div>
+        } @else if (processingComplete()) {
+          <div class="success-card">
+            <div class="success-animation">
+              <mat-icon class="success-icon">check_circle</mat-icon>
+            </div>
+            <h2 class="success-title">
+              {{ 'import.foundTransactions' | translate:{ count: extractedTransactions().length } }}
+            </h2>
+            <p class="success-subtitle">{{ 'import.reviewDescription' | translate }}</p>
+            <button mat-flat-button color="primary" class="action-button" (click)="stepper.next()">
+              {{ 'common.continue' | translate }}
+              <mat-icon>arrow_forward</mat-icon>
+            </button>
+          </div>
+        } @else if (processingError()) {
+          <div class="error-card">
+            <mat-icon class="error-icon">error_outline</mat-icon>
+            <h2 class="error-title">{{ 'import.importFailed' | translate }}</h2>
+            <p class="error-message">{{ processingError() }}</p>
+            <button mat-stroked-button color="primary" (click)="stepper.previous()">
+              <mat-icon>refresh</mat-icon>
+              {{ 'common.tryAgain' | translate }}
+            </button>
+          </div>
+        }
+      </div>
+    </mat-step>
+
+    <!-- Step 3: Review -->
+    <mat-step [completed]="reviewComplete()">
+      <ng-template matStepLabel>{{ 'import.reviewStep' | translate }}</ng-template>
+
+      <div class="step-content review-step">
+        <div class="review-header">
+          <h2>{{ 'import.reviewTitle' | translate:{ count: extractedTransactions().length } }}</h2>
+          <p>{{ 'import.reviewDescription' | translate }}</p>
+        </div>
+
+        @if (duplicateInfos().length > 0) {
+          <app-duplicate-warning
+            [duplicates]="duplicateInfos()"
+            (excludeAll)="excludeAllDuplicates()"
+            (includeAll)="includeAllDuplicates()"
+          ></app-duplicate-warning>
+        }
+
+        <app-transaction-preview-table
+          [transactions]="extractedTransactions()"
+          [categories]="categories()"
+          (transactionsUpdated)="onTransactionsUpdated($event)"
+          (selectionChanged)="onSelectionChanged($event)"
+        ></app-transaction-preview-table>
+
+        <div class="step-actions">
+          <button mat-stroked-button (click)="stepper.previous()">
+            <mat-icon>arrow_back</mat-icon>
+            {{ 'common.back' | translate }}
+          </button>
+          <button
+            mat-flat-button
+            color="primary"
+            class="action-button"
+            [disabled]="selectedCount() === 0"
+            (click)="stepper.next()"
+          >
+            {{ 'common.continue' | translate }}
+            <span class="count-badge">{{ selectedCount() }}</span>
+          </button>
+        </div>
+      </div>
+    </mat-step>
+
+    <!-- Step 4: Confirm -->
+    <mat-step>
+      <ng-template matStepLabel>{{ 'import.confirmStep' | translate }}</ng-template>
+
+      <div class="step-content confirm-step">
+        <div class="summary-header">
+          <mat-icon class="summary-icon">summarize</mat-icon>
+          <h2>{{ 'import.importSummary' | translate }}</h2>
+        </div>
+
+        <div class="summary-cards">
+          <div class="summary-card transactions-card">
+            <mat-icon>receipt_long</mat-icon>
+            <div class="card-content">
+              <span class="card-value">{{ selectedCount() }}</span>
+              <span class="card-label">{{ 'common.transactions' | translate }}</span>
+            </div>
+          </div>
+          <div class="summary-card income-card">
+            <mat-icon>trending_up</mat-icon>
+            <div class="card-content">
+              <span class="card-value">+{{ selectedIncome() | currency }}</span>
+              <span class="card-label">{{ 'common.income' | translate }}</span>
+            </div>
+          </div>
+          <div class="summary-card expense-card">
+            <mat-icon>trending_down</mat-icon>
+            <div class="card-content">
+              <span class="card-value">-{{ selectedExpenses() | currency }}</span>
+              <span class="card-label">{{ 'common.expense' | translate }}</span>
+            </div>
+          </div>
+          @if (duplicatesSkipped() > 0) {
+            <div class="summary-card skipped-card">
+              <mat-icon>content_copy</mat-icon>
+              <div class="card-content">
+                <span class="card-value">{{ duplicatesSkipped() }}</span>
+                <span class="card-label">{{ 'import.duplicatesSkipped' | translate }}</span>
+              </div>
+            </div>
+          }
+        </div>
+
+        @if (isImporting()) {
+          <div class="importing-section">
+            <mat-progress-bar
+              mode="determinate"
+              [value]="importProgress()"
+              class="custom-progress"
+            ></mat-progress-bar>
+            <p class="importing-status">{{ importStatus() }}</p>
+          </div>
+        }
+
+        <div class="step-actions">
+          <button mat-stroked-button (click)="stepper.previous()" [disabled]="isImporting()">
+            <mat-icon>arrow_back</mat-icon>
+            {{ 'common.back' | translate }}
+          </button>
+          <button
+            mat-flat-button
+            color="primary"
+            class="action-button import-button"
+            [disabled]="isImporting() || selectedCount() === 0"
+            (click)="confirmImport()"
+          >
+            @if (isImporting()) {
+              <mat-spinner diameter="20"></mat-spinner>
+            } @else {
+              <mat-icon>file_download</mat-icon>
+            }
+            {{ 'import.confirmImport' | translate:{ count: selectedCount() } }}
+          </button>
+        </div>
+      </div>
+    </mat-step>
+  </mat-stepper>
+</div>

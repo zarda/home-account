@@ -38,7 +38,48 @@
     </div>
   </div>
 
-  <!-- Import Section -->
+  <!-- Smart Import Section -->
+  <div class="section smart-import-section">
+    <div class="section-header">
+      <mat-icon class="section-icon ai-icon">auto_awesome</mat-icon>
+      <div>
+        <h3>{{ 'import.smartImport' | translate }}</h3>
+        <p class="section-description">{{ 'import.smartImportDescription' | translate }}</p>
+      </div>
+    </div>
+
+    <div class="smart-import-features">
+      <div class="feature-item">
+        <mat-icon>image</mat-icon>
+        <span>{{ 'import.featureReceipts' | translate }}</span>
+      </div>
+      <div class="feature-item">
+        <mat-icon>picture_as_pdf</mat-icon>
+        <span>{{ 'import.featureBankStatements' | translate }}</span>
+      </div>
+      <div class="feature-item">
+        <mat-icon>category</mat-icon>
+        <span>{{ 'import.featureAutoCategory' | translate }}</span>
+      </div>
+      <div class="feature-item">
+        <mat-icon>content_copy</mat-icon>
+        <span>{{ 'import.featureDuplicateDetection' | translate }}</span>
+      </div>
+    </div>
+
+    <div class="smart-import-actions">
+      <button mat-flat-button color="primary" routerLink="/settings/import">
+        <mat-icon>upload</mat-icon>
+        {{ 'import.startSmartImport' | translate }}
+      </button>
+      <button mat-stroked-button routerLink="/settings/import/history">
+        <mat-icon>history</mat-icon>
+        {{ 'import.viewHistory' | translate }}
+      </button>
+    </div>
+  </div>
+
+  <!-- Simple Import Section -->
   <div class="section">
     <div class="section-header">
       <mat-icon class="section-icon">upload</mat-icon>

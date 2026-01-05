@@ -1,0 +1,87 @@
+<div class="table-container">
+  <div class="table-header">
+    <div class="header-left">
+      <mat-checkbox
+        [checked]="allSelected()"
+        [indeterminate]="someSelected() && !allSelected()"
+        (change)="toggleSelectAll($event.checked)"
+      >
+        {{ 'import.selectAll' | translate }}
+      </mat-checkbox>
+    </div>
+    <div class="header-right">
+      <span class="selected-badge" [class.has-selection]="selectedCount() > 0">
+        {{ selectedCount() }} / {{ transactions.length }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Card-based layout for transactions -->
+  <div class="transactions-list">
+    @for (row of transactions; track row.id) {
+      <div
+        class="transaction-card"
+        [class.duplicate]="row.isDuplicate"
+        [class.selected]="row.selected"
+      >
+        <div class="card-select">
+          <mat-checkbox
+            [checked]="row.selected"
+            (change)="toggleSelection(row, $event.checked)"
+          ></mat-checkbox>
+        </div>
+
+        <div class="card-main">
+          <div class="card-top-row">
+            <div class="description-section">
+              @if (row.isDuplicate) {
+                <span class="duplicate-badge">
+                  <mat-icon>content_copy</mat-icon>
+                  {{ 'import.duplicate' | translate }}
+                </span>
+              }
+              <span class="description-text">{{ row.description }}</span>
+            </div>
+            <div class="amount-section" [class.income]="row.type === 'income'" [class.expense]="row.type === 'expense'">
+              {{ row.type === 'income' ? '+' : '-' }}{{ row.amount | currency:row.currency:'symbol':'1.2-2' }}
+            </div>
+          </div>
+
+          <div class="card-bottom-row">
+            <div class="meta-info">
+              <span class="date-chip">
+                <mat-icon>calendar_today</mat-icon>
+                {{ row.date | date:'mediumDate' }}
+              </span>
+              <button
+                mat-stroked-button
+                class="type-toggle"
+                [class.income]="row.type === 'income'"
+                [class.expense]="row.type === 'expense'"
+                (click)="toggleType(row)"
+              >
+                <mat-icon>{{ row.type === 'income' ? 'trending_up' : 'trending_down' }}</mat-icon>
+                {{ row.type === 'income' ? ('common.income' | translate) : ('common.expense' | translate) }}
+              </button>
+            </div>
+            <div class="category-section">
+              <app-category-suggestion
+                [suggestedCategoryId]="row.suggestedCategoryId"
+                [confidence]="row.categoryConfidence"
+                [categories]="categories"
+                (categoryChanged)="updateCategory(row, $event)"
+              ></app-category-suggestion>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  @if (transactions.length === 0) {
+    <div class="empty-state">
+      <mat-icon>inbox</mat-icon>
+      <p>{{ 'import.noTransactions' | translate }}</p>
+    </div>
+  }
+</div>

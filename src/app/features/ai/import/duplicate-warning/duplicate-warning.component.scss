@@ -1,0 +1,151 @@
+.duplicate-warning {
+  margin: 16px 0;
+}
+
+.warning-panel {
+  background: #fff3e0;
+  border: 1px solid #ffb74d;
+}
+
+:host-context(.dark) .warning-panel {
+  background: #3d2c00;
+  border-color: #f57c00;
+}
+
+.warning-icon {
+  color: #f57c00;
+  margin-right: 8px;
+}
+
+mat-panel-title {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+
+.warning-content {
+  padding-top: 8px;
+}
+
+.description {
+  margin: 0 0 16px;
+  color: #666;
+  font-size: 14px;
+}
+
+:host-context(.dark) .description {
+  color: #aaa;
+}
+
+.duplicate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.duplicate-item {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  border-left: 3px solid #ff9800;
+}
+
+:host-context(.dark) .duplicate-item {
+  background: #2a2a2a;
+}
+
+.duplicate-item.exact {
+  border-left-color: #f44336;
+}
+
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.item-header mat-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.match-exact {
+  color: #f44336;
+}
+
+.match-likely {
+  color: #ff9800;
+}
+
+.match-possible {
+  color: #ffc107;
+}
+
+.match-type {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.confidence {
+  font-size: 12px;
+  color: #666;
+}
+
+:host-context(.dark) .confidence {
+  color: #aaa;
+}
+
+.item-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.item-details .description {
+  flex: 1;
+  min-width: 150px;
+  margin: 0;
+  font-weight: 500;
+  color: #333;
+}
+
+:host-context(.dark) .item-details .description {
+  color: #eee;
+}
+
+.item-details .amount {
+  font-weight: 600;
+  color: #f44336;
+}
+
+.item-details .amount.income {
+  color: #4CAF50;
+}
+
+.item-details .date {
+  font-size: 13px;
+  color: #666;
+}
+
+:host-context(.dark) .item-details .date {
+  color: #aaa;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.actions button mat-icon {
+  margin-right: 4px;
+}

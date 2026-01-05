@@ -1,0 +1,90 @@
+.category-suggestion {
+  display: inline-flex;
+}
+
+.category-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  min-width: auto;
+  height: 32px;
+}
+
+.category-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+}
+
+.category-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confidence-indicator {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.confidence-indicator.high-confidence {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+:host-context(.dark) .confidence-indicator.high-confidence {
+  background: #1b5e20;
+  color: #a5d6a7;
+}
+
+.confidence-indicator.medium-confidence {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+:host-context(.dark) .confidence-indicator.medium-confidence {
+  background: #e65100;
+  color: #ffcc80;
+}
+
+.confidence-indicator.low-confidence {
+  background: #ffebee;
+  color: #c62828;
+}
+
+:host-context(.dark) .confidence-indicator.low-confidence {
+  background: #b71c1c;
+  color: #ef9a9a;
+}
+
+.dropdown-icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  margin-left: -2px;
+  opacity: 0.7;
+}
+
+.category-button ::ng-deep .mat-icon {
+  vertical-align: middle;
+}
+
+::ng-deep .category-menu {
+  max-height: 300px;
+}
+
+::ng-deep .category-menu .mat-mdc-menu-item.selected {
+  background: rgba(63, 81, 181, 0.1);
+}
+
+::ng-deep .category-menu .mat-mdc-menu-item mat-icon {
+  margin-right: 8px;
+}
