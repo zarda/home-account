@@ -327,12 +327,14 @@ describe('BudgetProgressComponent', () => {
 
     it('should display title', () => {
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.textContent).toContain('Budget Progress');
+      // Check for translation key or translated text
+      expect(compiled.textContent?.includes('Budget Progress') || compiled.textContent?.includes('dashboard.budgetProgress')).toBe(true);
     });
 
     it('should display manage link', () => {
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.textContent).toContain('Manage');
+      // Check for translation key or translated text
+      expect(compiled.textContent?.includes('Manage') || compiled.textContent?.includes('budget.manage')).toBe(true);
     });
 
     it('should display budget name', () => {

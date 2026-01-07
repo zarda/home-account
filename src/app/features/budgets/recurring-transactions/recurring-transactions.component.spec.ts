@@ -9,6 +9,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { RecurringTransactionsComponent } from './recurring-transactions.component';
 import { RecurringService } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { RecurringTransaction, Category } from '../../../models';
 
 describe('RecurringTransactionsComponent', () => {
@@ -18,6 +19,7 @@ describe('RecurringTransactionsComponent', () => {
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
 
   const mockCategories: Category[] = [
     {
@@ -75,13 +77,30 @@ describe('RecurringTransactionsComponent', () => {
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
 
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    mockTranslationService.t.and.callFake((key: string) => {
+      const translations: Record<string, string> = {
+        'settings.recurringPaused': 'Recurring transaction paused',
+        'settings.recurringResumed': 'Recurring transaction resumed',
+        'settings.recurringCreated': 'Recurring transaction created',
+        'settings.recurringDeleted': 'Recurring transaction deleted',
+        'settings.deleteRecurringTitle': 'Delete Recurring Transaction',
+        'settings.deleteRecurringMessage': 'Are you sure?',
+        'common.close': 'Close',
+        'common.delete': 'Delete',
+        'Food & Drinks': 'Food & Drinks'
+      };
+      return translations[key] || key;
+    });
+
     await TestBed.configureTestingModule({
       imports: [RecurringTransactionsComponent, NoopAnimationsModule],
       providers: [
         { provide: RecurringService, useValue: mockRecurringService },
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: MatDialog, useValue: mockDialog },
-        { provide: MatSnackBar, useValue: mockSnackBar }
+        { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: TranslationService, useValue: mockTranslationService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -90,7 +109,8 @@ describe('RecurringTransactionsComponent', () => {
           template: '<div></div>',
           providers: [
             { provide: MatDialog, useValue: mockDialog },
-            { provide: MatSnackBar, useValue: mockSnackBar }
+            { provide: MatSnackBar, useValue: mockSnackBar },
+            { provide: TranslationService, useValue: mockTranslationService }
           ]
         }
       })

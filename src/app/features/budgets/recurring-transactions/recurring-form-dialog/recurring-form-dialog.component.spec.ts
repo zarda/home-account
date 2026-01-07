@@ -6,16 +6,20 @@ import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { RecurringFormDialogComponent } from './recurring-form-dialog.component';
+import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { TranslationService } from '../../../../core/services/translation.service';
 import { Category, RecurringTransaction } from '../../../../models';
 
 describe('RecurringFormDialogComponent', () => {
   let component: RecurringFormDialogComponent;
   let fixture: ComponentFixture<RecurringFormDialogComponent>;
   let mockDialogRef: jasmine.SpyObj<MatDialogRef<RecurringFormDialogComponent>>;
+  let mockAuthService: jasmine.SpyObj<AuthService>;
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
   let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
 
   const mockCategories: Category[] = [
     {
@@ -49,6 +53,13 @@ describe('RecurringFormDialogComponent', () => {
 
   beforeEach(async () => {
     mockDialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+
+    mockAuthService = jasmine.createSpyObj('AuthService', [], {
+      currentUser: signal({
+        preferences: { baseCurrency: 'USD', theme: 'light', language: 'en', dateFormat: 'MM/DD/YYYY' }
+      })
+    });
+
     mockCategoryService = jasmine.createSpyObj('CategoryService', ['loadCategories']);
     mockCategoryService.loadCategories.and.returnValue(of(mockCategories));
 
@@ -56,13 +67,39 @@ describe('RecurringFormDialogComponent', () => {
       currencies: signal(mockCurrencies)
     });
 
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    mockTranslationService.t.and.callFake((key: string, params?: Record<string, unknown>) => {
+      const translations: Record<string, string> = {
+        'frequency.daily': 'Daily',
+        'frequency.weekly': 'Weekly',
+        'frequency.monthly': 'Monthly',
+        'frequency.yearly': 'Yearly',
+        'settings.everyDay': 'Every day',
+        'settings.everyNDays': `Every ${params?.['n']} days`,
+        'settings.everyMonthOn': `Every month on the ${params?.['day']}${params?.['suffix']}`,
+        'settings.everyYear': 'Every year',
+        'settings.addRecurring': 'Add Recurring Transaction',
+        'settings.editRecurring': 'Edit Recurring Transaction',
+        'days.sunday': 'Sunday',
+        'days.monday': 'Monday',
+        'days.tuesday': 'Tuesday',
+        'days.wednesday': 'Wednesday',
+        'days.thursday': 'Thursday',
+        'days.friday': 'Friday',
+        'days.saturday': 'Saturday'
+      };
+      return translations[key] || key;
+    });
+
     await TestBed.configureTestingModule({
       imports: [RecurringFormDialogComponent, NoopAnimationsModule],
       providers: [
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: {} },
+        { provide: AuthService, useValue: mockAuthService },
         { provide: CategoryService, useValue: mockCategoryService },
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        { provide: TranslationService, useValue: mockTranslationService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -127,8 +164,10 @@ describe('RecurringFormDialogComponent', () => {
               isActive: true
             } as RecurringTransaction
           }},
+          { provide: AuthService, useValue: mockAuthService },
           { provide: CategoryService, useValue: mockCategoryService },
-          { provide: CurrencyService, useValue: mockCurrencyService }
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
         ],
         schemas: [NO_ERRORS_SCHEMA]
       })

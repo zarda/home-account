@@ -25,18 +25,22 @@ export const routes: Routes = [
       { path: 'budgets', component: BudgetsComponent },
       { path: 'reports', component: ReportsComponent },
       { path: 'settings', component: SettingsComponent },
+      // New import routes (accessed from Transaction page FAB)
       {
-        path: 'settings/import',
+        path: 'import/file',
         loadComponent: () =>
           import('./features/ai/import/import-wizard/import-wizard.component')
             .then(m => m.ImportWizardComponent)
       },
       {
-        path: 'settings/import/history',
+        path: 'import/history',
         loadComponent: () =>
           import('./features/ai/import/import-history/import-history.component')
             .then(m => m.ImportHistoryComponent)
       },
+      // Redirects from old settings/import paths
+      { path: 'settings/import', redirectTo: '/import/file', pathMatch: 'full' },
+      { path: 'settings/import/history', redirectTo: '/import/history', pathMatch: 'full' },
     ],
   },
   { path: '**', redirectTo: '' },

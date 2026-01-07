@@ -128,6 +128,8 @@
   },
   "budget": {
     "title": "預算",
+    "budgets": "預算",
+    "budgetsDescription": "為類別設定支出上限以追蹤預算目標",
     "createBudget": "建立預算",
     "editBudget": "編輯預算",
     "deleteBudget": "刪除預算",
@@ -621,6 +623,7 @@
     "cancel": "取消",
     "retry": "重試",
     "noTransactionsFound": "未找到交易",
+    "noTransactionsFoundDescription": "無法從此檔案擷取任何交易。請嘗試使用其他檔案或確保圖片清晰可讀。",
     "noTransactionsDescription": "無法從此檔案擷取任何交易",
     "tryDifferentFile": "請嘗試使用其他檔案",
     "statusCompleted": "已完成",
@@ -632,7 +635,13 @@
     "deleteHistory": "刪除歷史",
     "deleteHistoryConfirm": "確定要刪除這筆匯入歷史嗎？",
     "historyDeleted": "匯入歷史已刪除",
-    "deleteHistoryFailed": "刪除匯入歷史失敗"
+    "deleteHistoryFailed": "刪除匯入歷史失敗",
+    "importFromFile": "從檔案匯入",
+    "importFromCamera": "從相機匯入",
+    "takePhoto": "拍照",
+    "retake": "重拍",
+    "cameraHint": "將收據放在畫面中",
+    "cameraNotAvailable": "相機功能僅適用於行動裝置"
   },
   "errors": {
     "generic": "發生錯誤，請重試。",

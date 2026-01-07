@@ -33,7 +33,7 @@
   </div>
 
   <!-- Stepper -->
-  <mat-stepper [linear]="true" #stepper class="modern-stepper">
+  <mat-stepper [linear]="!fromCamera" #stepper class="modern-stepper">
     <!-- Step 1: Upload -->
     <mat-step [completed]="uploadComplete()">
       <ng-template matStepLabel>{{ 'import.uploadStep' | translate }}</ng-template>
@@ -131,6 +131,16 @@
             <mat-icon class="error-icon">error_outline</mat-icon>
             <h2 class="error-title">{{ 'import.importFailed' | translate }}</h2>
             <p class="error-message">{{ processingError() }}</p>
+            <button mat-stroked-button color="primary" (click)="stepper.previous()">
+              <mat-icon>refresh</mat-icon>
+              {{ 'common.tryAgain' | translate }}
+            </button>
+          </div>
+        } @else if (processingFinishedEmpty()) {
+          <div class="error-card">
+            <mat-icon class="error-icon">search_off</mat-icon>
+            <h2 class="error-title">{{ 'import.noTransactionsFound' | translate }}</h2>
+            <p class="error-message">{{ 'import.noTransactionsFoundDescription' | translate }}</p>
             <button mat-stroked-button color="primary" (click)="stepper.previous()">
               <mat-icon>refresh</mat-icon>
               {{ 'common.tryAgain' | translate }}

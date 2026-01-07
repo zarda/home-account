@@ -1,12 +1,15 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetProgressCardComponent } from './budget-progress-card.component';
+import { TranslationService } from '../../../core/services/translation.service';
 import { Budget, Category } from '../../../models';
 
 describe('BudgetProgressCardComponent', () => {
   let component: BudgetProgressCardComponent;
   let fixture: ComponentFixture<BudgetProgressCardComponent>;
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
 
   const mockTimestamp = {
     seconds: Math.floor(Date.now() / 1000),
@@ -47,8 +50,28 @@ describe('BudgetProgressCardComponent', () => {
   });
 
   beforeEach(async () => {
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
+    mockTranslationService.t.and.callFake((key: string, params?: Record<string, unknown>) => {
+      const translations: Record<string, string> = {
+        'budget.budgetExceeded': 'Budget exceeded!',
+        'budget.almostAtLimit': 'Almost at limit',
+        'budget.approachingLimit': 'Approaching limit',
+        'budget.amountLeft': `${params?.['amount']} left`,
+        'budget.amountOver': `${params?.['amount']} over`,
+        'transactions.weekly': 'Weekly',
+        'transactions.monthly': 'Monthly',
+        'transactions.yearly': 'Yearly'
+      };
+      return translations[key] || key;
+    });
+    mockTranslationService.getIntlLocale.and.returnValue('en-US');
+
     await TestBed.configureTestingModule({
-      imports: [BudgetProgressCardComponent, NoopAnimationsModule]
+      imports: [BudgetProgressCardComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TranslationService, useValue: mockTranslationService }
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
 
     fixture = TestBed.createComponent(BudgetProgressCardComponent);

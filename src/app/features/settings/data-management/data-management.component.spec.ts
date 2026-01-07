@@ -10,6 +10,7 @@ import { ExportService } from '../../../core/services/export.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService } from '../../../core/services/translation.service';
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;
@@ -20,6 +21,7 @@ describe('DataManagementComponent', () => {
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
 
   beforeEach(async () => {
     mockExportService = jasmine.createSpyObj('ExportService', [
@@ -53,6 +55,9 @@ describe('DataManagementComponent', () => {
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
 
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    mockTranslationService.t.and.callFake((key: string) => key);
+
     await TestBed.configureTestingModule({
       imports: [DataManagementComponent, NoopAnimationsModule],
       providers: [
@@ -61,7 +66,8 @@ describe('DataManagementComponent', () => {
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: AuthService, useValue: mockAuthService },
         { provide: MatDialog, useValue: mockDialog },
-        { provide: MatSnackBar, useValue: mockSnackBar }
+        { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: TranslationService, useValue: mockTranslationService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -70,7 +76,8 @@ describe('DataManagementComponent', () => {
           template: '<div></div>',
           providers: [
             { provide: MatDialog, useValue: mockDialog },
-            { provide: MatSnackBar, useValue: mockSnackBar }
+            { provide: MatSnackBar, useValue: mockSnackBar },
+            { provide: TranslationService, useValue: mockTranslationService }
           ]
         }
       })
@@ -155,7 +162,7 @@ describe('DataManagementComponent', () => {
 
       component.onFileSelected(event);
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.invalidFileType', 'common.close', { duration: 3000 });
+      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.selectCsvOrJson', 'common.close', { duration: 3000 });
     });
 
     it('should handle no file selected', () => {

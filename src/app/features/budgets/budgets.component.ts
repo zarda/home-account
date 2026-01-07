@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTabsModule } from '@angular/material/tabs';
 import { MatDialog } from '@angular/material/dialog';
 import { Subscription } from 'rxjs';
 
@@ -12,6 +13,7 @@ import { TranslationService } from '../../core/services/translation.service';
 import { Budget, Category } from '../../models';
 import { BudgetOverviewComponent } from './budget-overview/budget-overview.component';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form/budget-form.component';
+import { RecurringTransactionsComponent } from './recurring-transactions/recurring-transactions.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -24,7 +26,9 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
     CommonModule,
     MatButtonModule,
     MatIconModule,
+    MatTabsModule,
     BudgetOverviewComponent,
+    RecurringTransactionsComponent,
     LoadingSpinnerComponent,
     EmptyStateComponent,
     TranslatePipe

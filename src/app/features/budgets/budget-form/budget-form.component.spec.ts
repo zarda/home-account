@@ -1,13 +1,14 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
-import { signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form.component';
 import { BudgetService } from '../../../core/services/budget.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { Budget, Category, User } from '../../../models';
 import { of } from 'rxjs';
 
@@ -25,6 +26,7 @@ describe('BudgetFormComponent', () => {
   let mockAuthService: {
     currentUser: ReturnType<typeof signal>;
   };
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
 
   const mockCategories: Category[] = [
     {
@@ -119,6 +121,27 @@ describe('BudgetFormComponent', () => {
       currentUser: signal(mockUser)
     };
 
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    mockTranslationService.t.and.callFake((key: string) => {
+      const translations: Record<string, string> = {
+        'budgets.createBudget': 'Create Budget',
+        'budgets.editBudget': 'Edit Budget',
+        'budgets.name': 'Name',
+        'budgets.category': 'Category',
+        'budgets.amount': 'Amount',
+        'budgets.currency': 'Currency',
+        'budgets.period': 'Period',
+        'budgets.alertThreshold': 'Alert Threshold',
+        'budgets.startDate': 'Start Date',
+        'transactions.weekly': 'Weekly',
+        'transactions.monthly': 'Monthly',
+        'transactions.yearly': 'Yearly',
+        'common.cancel': 'Cancel',
+        'common.save': 'Save'
+      };
+      return translations[key] || key;
+    });
+
     return TestBed.configureTestingModule({
       imports: [BudgetFormComponent, NoopAnimationsModule],
       providers: [
@@ -127,8 +150,10 @@ describe('BudgetFormComponent', () => {
         { provide: BudgetService, useValue: mockBudgetService },
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: CurrencyService, useValue: mockCurrencyService },
-        { provide: AuthService, useValue: mockAuthService }
-      ]
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: TranslationService, useValue: mockTranslationService }
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
   };
 
@@ -477,7 +502,8 @@ describe('BudgetFormComponent', () => {
 
     it('should display dialog title for add mode', () => {
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.textContent).toContain('Create Budget');
+      // Check for translation key or translated text
+      expect(compiled.textContent?.includes('Create Budget') || compiled.textContent?.includes('budget.createBudget')).toBe(true);
     });
 
     it('should display form fields', () => {
@@ -491,8 +517,9 @@ describe('BudgetFormComponent', () => {
 
     it('should display cancel and create buttons', () => {
       const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.textContent).toContain('Cancel');
-      expect(compiled.textContent).toContain('Create Budget');
+      // Check for translation key or translated text
+      expect(compiled.textContent?.includes('Cancel') || compiled.textContent?.includes('common.cancel')).toBe(true);
+      expect(compiled.textContent?.includes('Create Budget') || compiled.textContent?.includes('budget.createBudget')).toBe(true);
     });
   });
 });

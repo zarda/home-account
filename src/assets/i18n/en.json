@@ -128,6 +128,8 @@
   },
   "budget": {
     "title": "Budget",
+    "budgets": "Budgets",
+    "budgetsDescription": "Set spending limits for categories to track your budget goals",
     "createBudget": "Create Budget",
     "editBudget": "Edit Budget",
     "deleteBudget": "Delete Budget",
@@ -607,7 +609,15 @@
     "statusFailed": "Failed",
     "statusProcessing": "Processing",
     "skipped": "Skipped",
-    "errors": "Errors"
+    "errors": "Errors",
+    "noTransactionsFound": "No Transactions Found",
+    "noTransactionsFoundDescription": "Could not extract any transactions from this file. Please try a different file or ensure the image is clear and readable.",
+    "importFromFile": "Import from File",
+    "importFromCamera": "Import from Camera",
+    "takePhoto": "Take Photo",
+    "retake": "Retake",
+    "cameraHint": "Position the receipt within the frame",
+    "cameraNotAvailable": "Camera is only available on mobile devices"
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

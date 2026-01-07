@@ -1,0 +1,45 @@
+<!-- Backdrop -->
+@if (isOpen()) {
+  <div
+    class="speed-dial-backdrop"
+    (click)="close()"
+    (keydown.escape)="close()"
+    tabindex="0"
+    role="button"
+    aria-label="Close menu"
+  ></div>
+}
+
+<div class="speed-dial-container">
+  <!-- Main FAB button (at top) -->
+  <button
+    mat-fab
+    [color]="mainColor"
+    (click)="toggle()"
+    class="speed-dial-main"
+    [class.open]="isOpen()"
+  >
+    <mat-icon class="main-icon">{{ isOpen() ? mainIconOpen : mainIcon }}</mat-icon>
+  </button>
+
+  <!-- Action buttons (expand downward when open) -->
+  <div class="speed-dial-actions" [class.open]="isOpen()">
+    @for (action of visibleActions; track action.id; let i = $index) {
+      <div
+        class="speed-dial-action"
+        [style.transition-delay]="isOpen() ? (i * 50) + 'ms' : '0ms'"
+      >
+        <span class="action-label">{{ action.label }}</span>
+        <button
+          mat-mini-fab
+          [color]="action.color || 'primary'"
+          (click)="onActionClick(action.id)"
+          [matTooltip]="action.label"
+          matTooltipPosition="left"
+        >
+          <mat-icon>{{ action.icon }}</mat-icon>
+        </button>
+      </div>
+    }
+  </div>
+</div>

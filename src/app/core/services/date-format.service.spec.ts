@@ -1,12 +1,46 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { DateFormatService } from './date-format.service';
+import { AuthService } from './auth.service';
+import { TranslationService } from './translation.service';
 
 describe('DateFormatService', () => {
   let service: DateFormatService;
+  let mockAuthService: jasmine.SpyObj<AuthService>;
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    mockAuthService = jasmine.createSpyObj('AuthService', [], {
+      currentUser: signal({
+        preferences: { baseCurrency: 'USD', theme: 'light', language: 'en', dateFormat: 'MM/DD/YYYY' }
+      })
+    });
+
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
+    mockTranslationService.t.and.callFake((key: string) => {
+      const translations: Record<string, string> = {
+        'dates.today': 'Today',
+        'dates.yesterday': 'Yesterday',
+        'days.sunday': 'Sun',
+        'days.monday': 'Mon',
+        'days.tuesday': 'Tue',
+        'days.wednesday': 'Wed',
+        'days.thursday': 'Thu',
+        'days.friday': 'Fri',
+        'days.saturday': 'Sat'
+      };
+      return translations[key] || key;
+    });
+    mockTranslationService.getIntlLocale.and.returnValue('en-US');
+
+    TestBed.configureTestingModule({
+      providers: [
+        DateFormatService,
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: TranslationService, useValue: mockTranslationService }
+      ]
+    });
     service = TestBed.inject(DateFormatService);
   });
 

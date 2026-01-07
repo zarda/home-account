@@ -17,9 +17,11 @@ This project demonstrates modern Angular development practices with a focus on:
 
 - **Dashboard** - Financial overview with income/expense summary and spending charts
 - **Transactions** - Multi-currency support with filtering, tags, and location tracking
-- **Budgets** - Period-based budget limits with customizable alert thresholds
+- **Budgets** - Period-based budget limits with recurring transactions management
 - **Reports** - Financial analytics with CSV and PDF export
-- **AI Receipt Parsing** - Automatic transaction creation from receipt images (Gemini API)
+- **AI Import** - Import transactions from receipt images with intelligent category suggestions (Gemini API)
+- **Camera Capture** - Take photos directly from the app for receipt scanning
+- **Dark Mode** - Light/dark/system theme support
 - **Multi-language** - English, Traditional Chinese, Japanese
 
 ## Tech Stack
@@ -50,17 +52,20 @@ src/
 │   │   │   ├── theme.service.ts         # Light/dark/system theme
 │   │   │   ├── translation.service.ts   # i18n with locale detection
 │   │   │   ├── export.service.ts        # CSV & PDF generation
-│   │   │   └── gemini.service.ts        # AI receipt parsing
+│   │   │   ├── gemini.service.ts        # AI receipt parsing
+│   │   │   ├── ai-import.service.ts     # AI import workflow orchestration
+│   │   │   └── device.service.ts        # Device capabilities detection
 │   │   └── guards/              # Route protection
 │   │       ├── auth.guard.ts            # Protect authenticated routes
 │   │       └── public.guard.ts          # Redirect logged-in users
 │   ├── features/                # Feature modules
 │   │   ├── auth/                # Google OAuth login
 │   │   ├── dashboard/           # Financial overview, charts
-│   │   ├── transactions/        # CRUD, filtering, multi-currency
-│   │   ├── budgets/             # Budget limits & alerts
+│   │   ├── transactions/        # CRUD, filtering, multi-currency, camera capture
+│   │   ├── budgets/             # Budget limits, alerts, recurring transactions
 │   │   ├── reports/             # Analytics, CSV/PDF export
-│   │   └── settings/            # User preferences, categories
+│   │   ├── ai/                  # AI-powered import wizard, category suggestions
+│   │   └── settings/            # User preferences, categories, data management
 │   ├── shared/
 │   │   ├── components/          # Reusable UI (dialogs, chips, spinners)
 │   │   ├── layout/              # Main layout, header, sidebar, bottom nav
@@ -129,96 +134,6 @@ src/
 
 ## Low-Level Design
 
-### State Management with Signals
-
-```typescript
-// Writable signals for state
-transactions = signal<Transaction[]>([]);
-isLoading = signal<boolean>(false);
-
-// Computed signals for derived values (auto-update)
-totalExpense = computed(() =>
-  this.transactions()
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amountInBaseCurrency, 0)
-);
-
-// Effects for side effects
-effect(() => {
-  const user = this.currentUser();
-  if (user?.preferences) {
-    this.themeService.init(user.preferences.theme);
-  }
-});
-```
-
-### Multi-Currency Conversion
-
-```typescript
-// On transaction creation:
-async addTransaction(data: CreateTransactionDTO) {
-  const baseCurrency = user.preferences.baseCurrency;  // e.g., "USD"
-  const exchangeRate = currencyService.getExchangeRate(data.currency, baseCurrency);
-
-  // Store both original and converted amounts
-  const transaction = {
-    amount: data.amount,              // Original: 1000
-    currency: data.currency,          // Original: "THB"
-    amountInBaseCurrency: data.amount * exchangeRate,  // Converted: 28.50
-    exchangeRate: exchangeRate,       // Historical: 0.0285
-  };
-}
-
-// Exchange rates cached in Firestore (12-hour TTL)
-// Fetched from ExchangeRate-API, converted through USD base
-```
-
-### Budget Spending Calculation
-
-```typescript
-// Denormalized "spent" field updated when transactions change
-async recalculateBudgetSpent(budgetId: string) {
-  const budget = await getDocument(budgetId);
-  const { start, end } = getBudgetPeriodDates(budget);  // Weekly/Monthly/Yearly
-
-  const transactions = await getTransactions({
-    categoryId: budget.categoryId,
-    startDate: start,
-    endDate: end,
-    type: 'expense'
-  });
-
-  // Convert each transaction to budget's currency
-  const totalSpent = transactions.reduce((sum, t) =>
-    sum + currencyService.convert(t.amount, t.currency, budget.currency), 0
-  );
-
-  await updateDocument(budgetId, { spent: totalSpent });
-}
-
-// Alert severity levels:
-// - Warning (yellow): >= alertThreshold (default 80%)
-// - Critical (orange): >= 90%
-// - Exceeded (red): >= 100%
-```
-
-### Real-Time Subscriptions
-
-```typescript
-// FirestoreService wraps onSnapshot in RxJS Observable
-subscribeToCollection<T>(path: string, options?: QueryOptions): Observable<T[]> {
-  return new Observable(subscriber => {
-    const unsubscribe = onSnapshot(query, snapshot => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      subscriber.next(data);  // Emit on ANY change
-    });
-    return () => unsubscribe();  // Cleanup on unsubscribe
-  });
-}
-
-// Components subscribe and update signals automatically
-// No manual refresh needed - changes sync across all open tabs
-```
 
 ### Design Patterns
 
@@ -248,6 +163,8 @@ subscribeToCollection<T>(path: string, options?: QueryOptions): Observable<T[]> 
 | TranslationService | i18n with browser locale detection |
 | ExportService | CSV & PDF generation |
 | GeminiService | AI receipt parsing & category suggestion |
+| AIImportService | AI import workflow orchestration |
+| DeviceService | Device capabilities (camera, mobile) detection |
 
 ### Component Types
 
@@ -363,35 +280,6 @@ match /{document=**} {
 | **Default Deny** | Unmatched paths return 403 Forbidden |
 | **No Admin Bypass** | No special admin roles - all users equal |
 
-### Client-Side Guards (Defense in Depth)
-
-In addition to Firestore rules, the Angular app uses route guards:
-
-```typescript
-// auth.guard.ts - Protect routes requiring login
-export const authGuard: CanActivateFn = () => {
-  const authService = inject(AuthService);
-  const router = inject(Router);
-
-  if (authService.isAuthenticated()) {
-    return true;
-  }
-  router.navigate(['/login']);
-  return false;
-};
-
-// public.guard.ts - Redirect logged-in users from login page
-export const publicGuard: CanActivateFn = () => {
-  const authService = inject(AuthService);
-  const router = inject(Router);
-
-  if (authService.isAuthenticated()) {
-    router.navigate(['/dashboard']);
-    return false;
-  }
-  return true;
-};
-```
 
 ### Why This Design?
 

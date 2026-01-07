@@ -349,7 +349,9 @@ describe('ImportWizardComponent', () => {
       component.confirmImport();
       tick();
 
-      expect(mockRouter.navigate).toHaveBeenCalledWith(['/transactions']);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/transactions'], {
+        queryParams: { showAll: 'true' }
+      });
     }));
 
     it('should set isImporting to false after completion', fakeAsync(() => {
@@ -373,10 +375,10 @@ describe('ImportWizardComponent', () => {
   });
 
   describe('goBack', () => {
-    it('should navigate to settings', () => {
+    it('should navigate to transactions', () => {
       component.goBack();
 
-      expect(mockRouter.navigate).toHaveBeenCalledWith(['/settings']);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/transactions']);
     });
   });
 

@@ -1,11 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ProfileSettingsComponent } from './profile-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { ThemeService } from '../../../core/services/theme.service';
+import { GeminiService } from '../../../core/services/gemini.service';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
@@ -13,6 +15,8 @@ describe('ProfileSettingsComponent', () => {
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
+  let mockThemeService: jasmine.SpyObj<ThemeService>;
+  let mockGeminiService: jasmine.SpyObj<GeminiService>;
 
   const mockUser = {
     preferences: {
@@ -42,13 +46,23 @@ describe('ProfileSettingsComponent', () => {
     mockTranslationService.setLocale.and.returnValue(Promise.resolve());
     mockTranslationService.t.and.callFake((key: string) => key);
 
+    mockThemeService = jasmine.createSpyObj('ThemeService', ['setTheme'], {
+      currentTheme: signal('light')
+    });
+
+    mockGeminiService = jasmine.createSpyObj('GeminiService', ['reinitialize', 'isAvailable']);
+    mockGeminiService.isAvailable.and.returnValue(true);
+
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: MatSnackBar, useValue: mockSnackBar },
-        { provide: TranslationService, useValue: mockTranslationService }
-      ]
+        { provide: TranslationService, useValue: mockTranslationService },
+        { provide: ThemeService, useValue: mockThemeService },
+        { provide: GeminiService, useValue: mockGeminiService }
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
 
     fixture = TestBed.createComponent(ProfileSettingsComponent);

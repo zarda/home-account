@@ -8,7 +8,6 @@ import { AuthService } from '../../core/services/auth.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { ProfileSettingsComponent } from './profile-settings/profile-settings.component';
 import { CategoryManagerComponent } from './category-manager/category-manager.component';
-import { RecurringTransactionsComponent } from './recurring-transactions/recurring-transactions.component';
 import { DataManagementComponent } from './data-management/data-management.component';
 
 @Component({
@@ -20,7 +19,6 @@ import { DataManagementComponent } from './data-management/data-management.compo
     MatExpansionModule,
     ProfileSettingsComponent,
     CategoryManagerComponent,
-    RecurringTransactionsComponent,
     DataManagementComponent,
     TranslatePipe,
   ],

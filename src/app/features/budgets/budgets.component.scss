@@ -1,3 +1,52 @@
 .budgets-page {
   @apply max-w-7xl mx-auto;
 }
+
+// Tab styling
+.budget-tabs {
+  ::ng-deep .mat-mdc-tab-header {
+    @apply border-b border-gray-200 dark:border-gray-700 mb-0;
+  }
+
+  ::ng-deep .mat-mdc-tab {
+    @apply min-w-0 px-4;
+  }
+
+  ::ng-deep .mat-mdc-tab-labels {
+    @apply gap-2;
+  }
+
+  ::ng-deep .mdc-tab__text-label {
+    @apply flex items-center gap-2;
+  }
+
+  .tab-icon {
+    @apply text-lg;
+    width: 20px;
+    height: 20px;
+  }
+
+  .tab-badge {
+    @apply ml-1 px-1.5 py-0.5 text-xs font-medium rounded-full;
+    @apply bg-indigo-100 text-indigo-700;
+    min-width: 20px;
+    text-align: center;
+
+    :host-context(.dark) & {
+      @apply bg-indigo-900 text-indigo-300;
+    }
+  }
+}
+
+// Tab content
+.tab-content {
+  @apply pt-6;
+}
+
+.tab-header {
+  @apply flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6;
+
+  .tab-description {
+    @apply text-sm text-gray-500 dark:text-gray-400 m-0;
+  }
+}

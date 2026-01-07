@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, computed } from '@angular/core';
+import { Component, Input, Output, EventEmitter, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
@@ -6,6 +6,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
 import { Category } from '../../../../models';
+import { TranslationService } from '../../../../core/services/translation.service';
 
 @Component({
   selector: 'app-category-suggestion',
@@ -22,6 +23,8 @@ import { Category } from '../../../../models';
   styleUrl: './category-suggestion.component.scss'
 })
 export class CategorySuggestionComponent {
+  private translationService = inject(TranslationService);
+
   @Input() suggestedCategoryId!: string;
   @Input() confidence = 0;
   @Input() categories: Category[] = [];
@@ -30,13 +33,17 @@ export class CategorySuggestionComponent {
   sortedCategories = computed(() => {
     return [...this.categories]
       .filter(c => c.isActive && !c.parentId)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => this.translateName(a.name).localeCompare(this.translateName(b.name)));
   });
 
   categoryName = computed(() => {
     const category = this.categories.find(c => c.id === this.suggestedCategoryId);
-    return category?.name || 'Unknown';
+    return category?.name ? this.translateName(category.name) : 'Unknown';
   });
+
+  translateName(name: string): string {
+    return this.translationService.t(name);
+  }
 
   categoryIcon = computed(() => {
     const category = this.categories.find(c => c.id === this.suggestedCategoryId);

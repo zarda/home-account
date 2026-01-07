@@ -1,10 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { ExportDialogComponent } from './export-dialog.component';
 import { ExportService } from '../../../core/services/export.service';
+import { TranslationService } from '../../../core/services/translation.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
 
 describe('ExportDialogComponent', () => {
@@ -12,6 +15,8 @@ describe('ExportDialogComponent', () => {
   let fixture: ComponentFixture<ExportDialogComponent>;
   let mockDialogRef: jasmine.SpyObj<MatDialogRef<ExportDialogComponent>>;
   let mockExportService: jasmine.SpyObj<ExportService>;
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
+  let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
 
   const mockCategories: Category[] = [
     {
@@ -64,14 +69,31 @@ describe('ExportDialogComponent', () => {
     mockExportService.exportToCSV.and.returnValue(new Blob(['test'], { type: 'text/csv' }));
     mockExportService.exportToJSON.and.returnValue(new Blob(['{}'], { type: 'application/json' }));
     mockExportService.exportToPDF.and.returnValue(Promise.resolve(new Blob(['pdf'], { type: 'application/pdf' })));
+    mockExportService.downloadBlobWithPicker = jasmine.createSpy('downloadBlobWithPicker').and.returnValue(Promise.resolve(true));
+
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    mockTranslationService.t.and.callFake((key: string) => {
+      const translations: Record<string, string> = {
+        'reports.csvDescription': 'Export as spreadsheet',
+        'reports.pdfDescription': 'PDF Report',
+        'reports.jsonDescription': 'JSON Backup'
+      };
+      return translations[key] || key;
+    });
+
+    mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['convert']);
+    mockCurrencyService.convert.and.callFake((amount: number) => amount);
 
     await TestBed.configureTestingModule({
       imports: [ExportDialogComponent, NoopAnimationsModule],
       providers: [
         { provide: MatDialogRef, useValue: mockDialogRef },
         { provide: MAT_DIALOG_DATA, useValue: mockDialogData },
-        { provide: ExportService, useValue: mockExportService }
-      ]
+        { provide: ExportService, useValue: mockExportService },
+        { provide: TranslationService, useValue: mockTranslationService },
+        { provide: CurrencyService, useValue: mockCurrencyService }
+      ],
+      schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
 
     fixture = TestBed.createComponent(ExportDialogComponent);
@@ -123,13 +145,13 @@ describe('ExportDialogComponent', () => {
     it('should include PDF option', () => {
       const pdf = component.formatOptions.find(o => o.value === 'pdf');
       expect(pdf).toBeDefined();
-      expect(pdf?.label).toBe('PDF Report');
+      expect(pdf?.label).toBe('PDF');
     });
 
     it('should include JSON option', () => {
       const json = component.formatOptions.find(o => o.value === 'json');
       expect(json).toBeDefined();
-      expect(json?.label).toBe('JSON Backup');
+      expect(json?.label).toBe('JSON');
     });
   });
 
@@ -139,7 +161,7 @@ describe('ExportDialogComponent', () => {
       await component.export();
 
       expect(mockExportService.exportToCSV).toHaveBeenCalled();
-      expect(mockExportService.downloadBlob).toHaveBeenCalled();
+      expect(mockExportService.downloadBlobWithPicker).toHaveBeenCalled();
       expect(mockDialogRef.close).toHaveBeenCalledWith(true);
     });
 
@@ -148,7 +170,7 @@ describe('ExportDialogComponent', () => {
       await component.export();
 
       expect(mockExportService.exportToJSON).toHaveBeenCalled();
-      expect(mockExportService.downloadBlob).toHaveBeenCalled();
+      expect(mockExportService.downloadBlobWithPicker).toHaveBeenCalled();
       expect(mockDialogRef.close).toHaveBeenCalledWith(true);
     });
 
@@ -157,7 +179,7 @@ describe('ExportDialogComponent', () => {
       await component.export();
 
       expect(mockExportService.exportToPDF).toHaveBeenCalled();
-      expect(mockExportService.downloadBlob).toHaveBeenCalled();
+      expect(mockExportService.downloadBlobWithPicker).toHaveBeenCalled();
       expect(mockDialogRef.close).toHaveBeenCalledWith(true);
     });
 

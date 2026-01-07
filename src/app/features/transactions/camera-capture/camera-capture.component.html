@@ -1,0 +1,78 @@
+<h2 mat-dialog-title>{{ 'import.importFromCamera' | translate }}</h2>
+
+<mat-dialog-content>
+  <div class="camera-capture-container">
+    @if (!capturedImage()) {
+      <!-- Camera capture trigger -->
+      <div class="capture-area">
+        <input
+          #cameraInput
+          type="file"
+          accept="image/*"
+          capture="environment"
+          (change)="onImageCaptured($event)"
+          hidden
+        />
+
+        <button
+          mat-flat-button
+          color="primary"
+          class="capture-button"
+          (click)="cameraInput.click()"
+        >
+          <mat-icon>photo_camera</mat-icon>
+          <span>{{ 'import.takePhoto' | translate }}</span>
+        </button>
+
+        <p class="capture-hint">{{ 'import.cameraHint' | translate }}</p>
+      </div>
+    } @else {
+      <!-- Image preview -->
+      <div class="preview-area">
+        @if (isProcessing()) {
+          <div class="processing-overlay">
+            <mat-spinner diameter="48"></mat-spinner>
+            <p>{{ processingStatus() }}</p>
+          </div>
+        }
+
+        <img
+          [src]="previewUrl()"
+          alt="Captured receipt"
+          class="preview-image"
+        />
+
+        @if (error()) {
+          <div class="error-message">
+            <mat-icon>error</mat-icon>
+            <span>{{ error() }}</span>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  @if (!capturedImage()) {
+    <button mat-button (click)="cancel()">
+      {{ 'common.cancel' | translate }}
+    </button>
+  } @else {
+    <button mat-button (click)="retake()" [disabled]="isProcessing()">
+      {{ 'import.retake' | translate }}
+    </button>
+    <button
+      mat-flat-button
+      color="primary"
+      (click)="processImage()"
+      [disabled]="isProcessing()"
+    >
+      @if (isProcessing()) {
+        <mat-spinner diameter="20"></mat-spinner>
+      } @else {
+        {{ 'import.processWithAI' | translate }}
+      }
+    </button>
+  }
+</mat-dialog-actions>

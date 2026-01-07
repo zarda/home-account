@@ -47,7 +47,6 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   @Input() initialDate?: Date;
   @Input() showAll = false;
   @Output() filtersChanged = new EventEmitter<TransactionFilters>();
-  @Output() addTransaction = new EventEmitter<void>();
 
   expanded = signal(false);
   activeQuickFilter = signal<string | null>(null);

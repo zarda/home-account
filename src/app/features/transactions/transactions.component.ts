@@ -1,16 +1,19 @@
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatDialog } from '@angular/material/dialog';
 import { Subscription } from 'rxjs';
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
+import { DeviceService } from '../../core/services/device.service';
 import { Transaction, TransactionFilters, Category } from '../../models';
 import { TransactionListComponent } from './transaction-list/transaction-list.component';
 import { TransactionFiltersComponent } from './transaction-filters/transaction-filters.component';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
+import { CameraCaptureComponent } from './camera-capture/camera-capture.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 
@@ -20,6 +23,7 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
   imports: [
     MatButtonModule,
     MatIconModule,
+    MatMenuModule,
     TransactionListComponent,
     TransactionFiltersComponent,
     LoadingSpinnerComponent,
@@ -31,7 +35,9 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 export class TransactionsComponent implements OnInit, OnDestroy {
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
+  readonly deviceService = inject(DeviceService);
   private dialog = inject(MatDialog);
+  private router = inject(Router);
   private route = inject(ActivatedRoute);
 
   transactions = this.transactionService.transactions;
@@ -135,5 +141,16 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     } catch {
       // Error handled silently - snackbar could be added here
     }
+  }
+
+  navigateToImportFile(): void {
+    this.router.navigate(['/import/file']);
+  }
+
+  openCameraDialog(): void {
+    this.dialog.open(CameraCaptureComponent, {
+      width: '500px',
+      maxWidth: '95vw',
+    });
   }
 }

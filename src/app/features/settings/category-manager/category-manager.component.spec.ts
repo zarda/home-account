@@ -7,6 +7,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { CategoryManagerComponent } from './category-manager.component';
 import { CategoryService } from '../../../core/services/category.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { Category } from '../../../models';
 
 describe('CategoryManagerComponent', () => {
@@ -15,6 +16,7 @@ describe('CategoryManagerComponent', () => {
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
+  let mockTranslationService: jasmine.SpyObj<TranslationService>;
 
   const mockCategories: Category[] = [
     {
@@ -80,12 +82,28 @@ describe('CategoryManagerComponent', () => {
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
 
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    mockTranslationService.t.and.callFake((key: string) => {
+      const translations: Record<string, string> = {
+        'settings.categoryCreated': 'Category created',
+        'settings.categoryUpdated': 'Category updated',
+        'settings.categoryDeleted': 'Category deleted',
+        'settings.categoriesReordered': 'Categories reordered',
+        'settings.deleteCategory': 'Delete Category',
+        'settings.deleteCategoryConfirm': 'Are you sure you want to delete this category?',
+        'common.close': 'Close',
+        'common.delete': 'Delete'
+      };
+      return translations[key] || key;
+    });
+
     await TestBed.configureTestingModule({
       imports: [CategoryManagerComponent, NoopAnimationsModule],
       providers: [
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: MatDialog, useValue: mockDialog },
-        { provide: MatSnackBar, useValue: mockSnackBar }
+        { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: TranslationService, useValue: mockTranslationService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -94,7 +112,8 @@ describe('CategoryManagerComponent', () => {
           template: '<div></div>',
           providers: [
             { provide: MatDialog, useValue: mockDialog },
-            { provide: MatSnackBar, useValue: mockSnackBar }
+            { provide: MatSnackBar, useValue: mockSnackBar },
+            { provide: TranslationService, useValue: mockTranslationService }
           ]
         }
       })

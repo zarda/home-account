@@ -128,6 +128,8 @@
   },
   "budget": {
     "title": "予算",
+    "budgets": "予算",
+    "budgetsDescription": "カテゴリに支出上限を設定して予算目標を追跡する",
     "createBudget": "予算を作成",
     "editBudget": "予算を編集",
     "deleteBudget": "予算を削除",
@@ -621,6 +623,7 @@
     "cancel": "キャンセル",
     "retry": "再試行",
     "noTransactionsFound": "取引が見つかりません",
+    "noTransactionsFoundDescription": "このファイルから取引を抽出できませんでした。別のファイルを試すか、画像が鮮明であることを確認してください。",
     "noTransactionsDescription": "このファイルから取引を抽出できませんでした",
     "tryDifferentFile": "別のファイルでお試しください",
     "statusCompleted": "完了",
@@ -632,7 +635,13 @@
     "deleteHistory": "履歴を削除",
     "deleteHistoryConfirm": "このインポート履歴を削除してもよろしいですか？",
     "historyDeleted": "インポート履歴を削除しました",
-    "deleteHistoryFailed": "インポート履歴の削除に失敗しました"
+    "deleteHistoryFailed": "インポート履歴の削除に失敗しました",
+    "importFromFile": "ファイルからインポート",
+    "importFromCamera": "カメラからインポート",
+    "takePhoto": "写真を撮る",
+    "retake": "撮り直す",
+    "cameraHint": "レシートをフレーム内に配置してください",
+    "cameraNotAvailable": "カメラ機能はモバイルデバイスでのみ利用可能です"
   },
   "errors": {
     "generic": "エラーが発生しました。もう一度お試しください。",

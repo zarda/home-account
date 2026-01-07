@@ -12,6 +12,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 
+import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -45,6 +46,7 @@ interface DialogData {
 export class RecurringFormDialogComponent implements OnInit {
   private dialogRef = inject(MatDialogRef<RecurringFormDialogComponent>);
   private data = inject<DialogData>(MAT_DIALOG_DATA);
+  private authService = inject(AuthService);
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
@@ -53,7 +55,7 @@ export class RecurringFormDialogComponent implements OnInit {
   name = '';
   type: 'income' | 'expense' = 'expense';
   amount: number | null = null;
-  currency = 'USD';
+  currency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
   categoryId = '';
   description = '';
   frequencyType: FrequencyType = 'monthly';

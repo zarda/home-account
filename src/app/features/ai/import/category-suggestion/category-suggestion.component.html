@@ -1,17 +1,13 @@
-<div class="category-suggestion" [class]="confidenceClass()">
+<div class="category-suggestion">
   <button
     mat-stroked-button
     [matMenuTriggerFor]="categoryMenu"
     class="category-button"
-    [matTooltip]="confidenceTooltip()"
   >
     <mat-icon class="category-icon" [style.color]="categoryColor()">
       {{ categoryIcon() }}
     </mat-icon>
     <span class="category-name">{{ categoryName() }}</span>
-    <div class="confidence-indicator" [class]="confidenceClass()">
-      {{ confidencePercent() }}%
-    </div>
     <mat-icon class="dropdown-icon">arrow_drop_down</mat-icon>
   </button>
 
@@ -23,7 +19,7 @@
         [class.selected]="category.id === suggestedCategoryId"
       >
         <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
-        <span>{{ category.name }}</span>
+        <span>{{ translateName(category.name) }}</span>
       </button>
     }
   </mat-menu>

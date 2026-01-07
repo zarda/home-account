@@ -54,6 +54,10 @@ export class AIImportService {
    * Import transactions from an image (receipt, screenshot, bank statement)
    */
   async importFromImage(file: File): Promise<ImportResult> {
+    if (!this.geminiService.isAvailable()) {
+      throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
+    }
+
     this.isProcessing.set(true);
     this.processingStatus.set('Reading image...');
     this.processingProgress.set(10);
@@ -64,7 +68,11 @@ export class AIImportService {
       this.processingStatus.set('Extracting transactions with AI...');
       this.processingProgress.set(30);
 
-      const extractedTransactions = await this.geminiService.extractTransactionsFromImage(imageBase64);
+      const extractedTransactions = await this.withTimeout(
+        this.geminiService.extractTransactionsFromImage(imageBase64),
+        60000, // 60 second timeout
+        'AI extraction timed out. Please try again.'
+      );
 
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
@@ -89,6 +97,10 @@ export class AIImportService {
    * Import transactions from a PDF (bank statement)
    */
   async importFromPDF(file: File): Promise<ImportResult> {
+    if (!this.geminiService.isAvailable()) {
+      throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
+    }
+
     this.isProcessing.set(true);
     this.processingStatus.set('Reading PDF...');
     this.processingProgress.set(10);
@@ -99,7 +111,11 @@ export class AIImportService {
       this.processingStatus.set('Extracting transactions with AI...');
       this.processingProgress.set(30);
 
-      const extractedTransactions = await this.geminiService.extractTransactionsFromPDF(pdfBase64);
+      const extractedTransactions = await this.withTimeout(
+        this.geminiService.extractTransactionsFromPDF(pdfBase64),
+        60000, // 60 second timeout
+        'AI extraction timed out. Please try again.'
+      );
 
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
@@ -492,5 +508,15 @@ export class AIImportService {
       warnings,
       duplicates
     };
+  }
+
+  /**
+   * Wrap a promise with a timeout
+   */
+  private withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(timeoutMessage)), ms);
+    });
+    return Promise.race([promise, timeout]);
   }
 }
