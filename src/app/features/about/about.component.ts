@@ -7,6 +7,7 @@ import { MatCardModule } from '@angular/material/card';
 
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { environment } from '../../../environments/environment';
+import packageJson from '../../../../package.json';
 
 @Component({
   selector: 'app-about',
@@ -23,6 +24,7 @@ import { environment } from '../../../environments/environment';
 })
 export class AboutComponent {
   currentYear = new Date().getFullYear();
+  appVersion = packageJson.version;
   donationUrl = (environment as { donationUrlPaypal?: string }).donationUrlPaypal || '';
 
   openDonateLink(): void {
