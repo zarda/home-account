@@ -1,4 +1,4 @@
-import { Component, inject, Input } from '@angular/core';
+import { Component, inject, input } from '@angular/core';
 
 import { Router, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -27,8 +27,9 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   styleUrl: './recent-transactions.component.scss',
 })
 export class RecentTransactionsComponent {
-  @Input() transactions: Transaction[] = [];
-  @Input() categories: Map<string, Category> = new Map<string, Category>();
+  // Modern Angular 21: signal-based inputs
+  transactions = input<Transaction[]>([]);
+  categories = input<Map<string, Category>>(new Map());
 
   private router = inject(Router);
   private currencyService = inject(CurrencyService);
@@ -36,15 +37,15 @@ export class RecentTransactionsComponent {
   private categoryHelperService = inject(CategoryHelperService);
 
   getCategoryName(categoryId: string): string {
-    return this.categoryHelperService.getCategoryName(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryName(categoryId, this.categories());
   }
 
   getCategoryIcon(categoryId: string): string {
-    return this.categoryHelperService.getCategoryIcon(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryIcon(categoryId, this.categories());
   }
 
   getCategoryColor(categoryId: string): string {
-    return this.categoryHelperService.getCategoryColor(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryColor(categoryId, this.categories());
   }
 
   formatAmount(amount: number, currency: string): string {

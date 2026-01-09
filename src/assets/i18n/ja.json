@@ -54,6 +54,7 @@
     "budgets": "予算",
     "reports": "レポート",
     "settings": "設定",
+    "about": "について",
     "add": "追加",
     "more": "その他"
   },
@@ -649,5 +650,17 @@
     "auth": "認証に失敗しました。再度ログインしてください。",
     "notFound": "見つかりません",
     "invalidInput": "入力が無効です"
+  },
+  "about": {
+    "title": "について",
+    "subtitle": "家計簿について詳しく知る",
+    "version": "バージョン",
+    "description": "最新のWeb技術で構築された個人財務管理アプリケーション。収入、支出、予算を追跡し、財務習慣の洞察を得ることができます。",
+    "copyright": "著作権",
+    "allRightsReserved": "全著作権所有。",
+    "donateTitle": "家計簿をサポート",
+    "donateDescription": "このアプリが役に立つと思われる場合は、寄付で開発をサポートすることをご検討ください。ご寄付は、アプリケーションの維持と改善に役立ちます。",
+    "donateButton": "寄付する",
+    "techStack": "使用技術"
   }
 }

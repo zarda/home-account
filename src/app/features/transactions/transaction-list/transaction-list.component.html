@@ -1,4 +1,4 @@
-@if (transactions.length === 0) {
+@if (transactions().length === 0) {
   <app-empty-state
     icon="receipt_long"
     [title]="'transactions.noTransactions' | translate"
@@ -8,7 +8,7 @@
   <!-- Mobile View -->
   <div class="mobile-view">
     <div class="mobile-list">
-      @for (transaction of sortedTransactions; track transaction.id; let last = $last) {
+      @for (transaction of sortedTransactions(); track transaction.id; let last = $last) {
         <div
           class="mobile-item"
           role="button"
@@ -72,7 +72,7 @@
 
   <!-- Desktop Table View -->
   <div class="desktop-view">
-    <table mat-table [dataSource]="sortedTransactions" matSort (matSortChange)="onSortChange($event)" class="desktop-table">
+    <table mat-table [dataSource]="sortedTransactions()" matSort (matSortChange)="onSortChange($event)" class="desktop-table">
       <!-- Date Column -->
       <ng-container matColumnDef="date">
         <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-date">{{ 'transactions.date' | translate }}</th>

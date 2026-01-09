@@ -1,0 +1,85 @@
+<div class="about-container">
+  <!-- Header -->
+  <div class="header-section">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ 'about.title' | translate }}</h1>
+    <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ 'about.subtitle' | translate }}</p>
+  </div>
+
+  <!-- App Info Card -->
+  <mat-card class="info-card">
+    <mat-card-content>
+      <div class="app-info">
+        <div class="app-icon">
+          <mat-icon>account_balance_wallet</mat-icon>
+        </div>
+        <div class="app-details">
+          <h2 class="app-name">{{ 'app.title' | translate }}</h2>
+          <p class="app-version">{{ 'about.version' | translate }}: 0.12.42</p>
+          <p class="app-description">{{ 'about.description' | translate }}</p>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Copyright Card -->
+  <mat-card class="copyright-card">
+    <mat-card-content>
+      <div class="copyright-content">
+        <mat-icon class="copyright-icon">copyright</mat-icon>
+        <div class="copyright-text">
+          <p class="copyright-year">{{ 'about.copyright' | translate }} {{ currentYear }}</p>
+          <p class="copyright-owner">{{ 'about.allRightsReserved' | translate }}</p>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Donate Card -->
+  <mat-card class="donate-card">
+    <mat-card-content>
+      <div class="donate-content">
+        <div class="donate-icon">
+          <mat-icon>favorite</mat-icon>
+        </div>
+        <div class="donate-text">
+          <h3 class="donate-title">{{ 'about.donateTitle' | translate }}</h3>
+          <p class="donate-description">{{ 'about.donateDescription' | translate }}</p>
+        </div>
+        <button
+          mat-raised-button
+          color="primary"
+          class="donate-button"
+          (click)="openDonateLink()"
+        >
+          <mat-icon>favorite</mat-icon>
+          {{ 'about.donateButton' | translate }}
+        </button>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+  <!-- Additional Info -->
+  <mat-card class="tech-card">
+    <mat-card-content>
+      <h3 class="tech-title">{{ 'about.techStack' | translate }}</h3>
+      <div class="tech-list">
+        <div class="tech-item">
+          <mat-icon>code</mat-icon>
+          <span>Angular 21</span>
+        </div>
+        <div class="tech-item">
+          <mat-icon>cloud</mat-icon>
+          <span>Firebase</span>
+        </div>
+        <div class="tech-item">
+          <mat-icon>palette</mat-icon>
+          <span>Angular Material</span>
+        </div>
+        <div class="tech-item">
+          <mat-icon>psychology</mat-icon>
+          <span>Google Gemini AI</span>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+</div>

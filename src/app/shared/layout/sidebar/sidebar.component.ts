@@ -32,6 +32,7 @@ export class SidebarComponent {
     { labelKey: 'nav.budget', icon: 'savings', route: '/budgets' },
     { labelKey: 'nav.reports', icon: 'bar_chart', route: '/reports' },
     { labelKey: 'nav.settings', icon: 'settings', route: '/settings' },
+    { labelKey: 'nav.about', icon: 'info', route: '/about' },
   ];
 
   navItems = computed(() =>

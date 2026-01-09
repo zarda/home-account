@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 import { Budget, Category } from '../../../models';
@@ -12,13 +12,14 @@ import { BudgetProgressCardComponent } from '../budget-progress-card/budget-prog
   styleUrl: './budget-overview.component.scss'
 })
 export class BudgetOverviewComponent {
-  @Input({ required: true }) budgets: Budget[] = [];
-  @Input({ required: true }) categories = new Map<string, Category>();
+  // Modern Angular 21: signal-based inputs/outputs
+  budgets = input.required<Budget[]>();
+  categories = input.required<Map<string, Category>>();
 
-  @Output() edit = new EventEmitter<Budget>();
-  @Output() delete = new EventEmitter<Budget>();
+  edit = output<Budget>();
+  delete = output<Budget>();
 
   getCategory(categoryId: string): Category | undefined {
-    return this.categories.get(categoryId);
+    return this.categories().get(categoryId);
   }
 }

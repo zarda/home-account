@@ -57,6 +57,10 @@ describe('SpendingChartComponent', () => {
     { categoryId: 'cat3', total: 200, count: 3 }
   ];
 
+  const setCategoryTotals = (value: typeof mockCategoryTotals) =>
+    fixture.componentRef.setInput('categoryTotals', value);
+  const setCategories = (value: Category[]) => fixture.componentRef.setInput('categories', value);
+
   beforeEach(async () => {
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslationService.t.and.callFake((key: string) => key);
@@ -95,25 +99,25 @@ describe('SpendingChartComponent', () => {
 
   describe('categoryTotals input', () => {
     it('should set category totals via setter', () => {
-      component.categoryTotals = mockCategoryTotals;
-      expect(component.categoryTotals).toEqual(mockCategoryTotals);
+      setCategoryTotals(mockCategoryTotals);
+      expect(component.categoryTotals()).toEqual(mockCategoryTotals);
     });
 
     it('should handle empty array', () => {
-      component.categoryTotals = [];
-      expect(component.categoryTotals).toEqual([]);
+      setCategoryTotals([]);
+      expect(component.categoryTotals()).toEqual([]);
     });
   });
 
   describe('categories input', () => {
     it('should set categories via setter', () => {
-      component.categories = mockCategories;
-      expect(component.categories).toEqual(mockCategories);
+      setCategories(mockCategories);
+      expect(component.categories()).toEqual(mockCategories);
     });
 
     it('should handle empty array', () => {
-      component.categories = [];
-      expect(component.categories).toEqual([]);
+      setCategories([]);
+      expect(component.categories()).toEqual([]);
     });
   });
 
@@ -128,7 +132,7 @@ describe('SpendingChartComponent', () => {
         { categoryId: 'cat6', total: 50, count: 1 },
         { categoryId: 'cat7', total: 40, count: 1 }
       ];
-      component.categoryTotals = manyTotals;
+      setCategoryTotals(manyTotals);
 
       expect(component.topCategories().length).toBe(6);
       expect(component.topCategories()[0].categoryId).toBe('cat1');
@@ -136,27 +140,27 @@ describe('SpendingChartComponent', () => {
     });
 
     it('should return all if less than 6', () => {
-      component.categoryTotals = mockCategoryTotals;
+      setCategoryTotals(mockCategoryTotals);
       expect(component.topCategories().length).toBe(3);
     });
   });
 
   describe('totalSpending', () => {
     it('should calculate total spending', () => {
-      component.categoryTotals = mockCategoryTotals;
+      setCategoryTotals(mockCategoryTotals);
       expect(component.totalSpending()).toBe(1000);
     });
 
     it('should return 0 for empty array', () => {
-      component.categoryTotals = [];
+      setCategoryTotals([]);
       expect(component.totalSpending()).toBe(0);
     });
   });
 
   describe('chartData', () => {
     beforeEach(() => {
-      component.categoryTotals = mockCategoryTotals;
-      component.categories = mockCategories;
+      setCategoryTotals(mockCategoryTotals);
+      setCategories(mockCategories);
     });
 
     it('should generate correct labels', () => {
@@ -175,13 +179,13 @@ describe('SpendingChartComponent', () => {
     });
 
     it('should use Unknown for missing category', () => {
-      component.categoryTotals = [{ categoryId: 'unknown', total: 100, count: 1 }];
+      setCategoryTotals([{ categoryId: 'unknown', total: 100, count: 1 }]);
       const data = component.chartData();
       expect(data.labels).toContain('Unknown');
     });
 
     it('should use default color for missing category', () => {
-      component.categoryTotals = [{ categoryId: 'unknown', total: 100, count: 1 }];
+      setCategoryTotals([{ categoryId: 'unknown', total: 100, count: 1 }]);
       const data = component.chartData();
       expect(data.datasets[0].backgroundColor).toContain('#9E9E9E');
     });
@@ -189,34 +193,34 @@ describe('SpendingChartComponent', () => {
 
   describe('getCategoryName', () => {
     it('should return category name for valid id', () => {
-      component.categories = mockCategories;
+      setCategories(mockCategories);
       expect(component.getCategoryName('cat1')).toBe('Food & Drinks');
     });
 
     it('should return Unknown for invalid id', () => {
-      component.categories = mockCategories;
+      setCategories(mockCategories);
       expect(component.getCategoryName('invalid')).toBe('Unknown');
     });
 
     it('should return Unknown for empty categories', () => {
-      component.categories = [];
+      setCategories([]);
       expect(component.getCategoryName('cat1')).toBe('Unknown');
     });
   });
 
   describe('getCategoryColor', () => {
     it('should return category color for valid id', () => {
-      component.categories = mockCategories;
+      setCategories(mockCategories);
       expect(component.getCategoryColor('cat1')).toBe('#FF5722');
     });
 
     it('should return default gray for invalid id', () => {
-      component.categories = mockCategories;
+      setCategories(mockCategories);
       expect(component.getCategoryColor('invalid')).toBe('#9E9E9E');
     });
 
     it('should return default gray for empty categories', () => {
-      component.categories = [];
+      setCategories([]);
       expect(component.getCategoryColor('cat1')).toBe('#9E9E9E');
     });
   });
@@ -241,24 +245,24 @@ describe('SpendingChartComponent', () => {
 
   describe('UI rendering', () => {
     it('should show empty state when no data', () => {
-      component.categoryTotals = [];
+      setCategoryTotals([]);
       fixture.detectChanges();
 
       // With template override, verify component state
-      expect(component.categoryTotals.length).toBe(0);
+      expect(component.categoryTotals().length).toBe(0);
     });
 
     it('should show chart when data exists', () => {
-      component.categoryTotals = mockCategoryTotals;
-      component.categories = mockCategories;
+      setCategoryTotals(mockCategoryTotals);
+      setCategories(mockCategories);
       fixture.detectChanges();
 
-      expect(component.categoryTotals.length).toBeGreaterThan(0);
+      expect(component.categoryTotals().length).toBeGreaterThan(0);
     });
 
     it('should display title', () => {
-      component.categoryTotals = mockCategoryTotals;
-      component.categories = mockCategories;
+      setCategoryTotals(mockCategoryTotals);
+      setCategories(mockCategories);
       fixture.detectChanges();
 
       // Verify component has data
@@ -266,8 +270,8 @@ describe('SpendingChartComponent', () => {
     });
 
     it('should display legend items', () => {
-      component.categoryTotals = mockCategoryTotals;
-      component.categories = mockCategories;
+      setCategoryTotals(mockCategoryTotals);
+      setCategories(mockCategories);
       fixture.detectChanges();
 
       // Verify chartData contains expected labels
@@ -278,8 +282,8 @@ describe('SpendingChartComponent', () => {
     });
 
     it('should display percentage in legend', () => {
-      component.categoryTotals = mockCategoryTotals;
-      component.categories = mockCategories;
+      setCategoryTotals(mockCategoryTotals);
+      setCategories(mockCategories);
       fixture.detectChanges();
 
       // Verify percentage calculation

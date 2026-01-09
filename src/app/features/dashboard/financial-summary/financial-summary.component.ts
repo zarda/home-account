@@ -1,4 +1,4 @@
-import { Component, inject, Input } from '@angular/core';
+import { Component, inject, input } from '@angular/core';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -13,14 +13,15 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   styleUrl: './financial-summary.component.scss',
 })
 export class FinancialSummaryComponent {
-  @Input() income = 0;
-  @Input() expenses = 0;
-  @Input() balance = 0;
-  @Input() currency = 'USD';
+  // Modern Angular 21: signal-based inputs
+  income = input<number>(0);
+  expenses = input<number>(0);
+  balance = input<number>(0);
+  currency = input<string>('USD');
 
   private currencyService = inject(CurrencyService);
 
   formatAmount(amount: number): string {
-    return this.currencyService.formatCurrency(amount, this.currency);
+    return this.currencyService.formatCurrency(amount, this.currency());
   }
 }

@@ -2,14 +2,14 @@
   <!-- Header: icon, name, menu -->
   <div class="card-header">
     <div class="category-icon"
-         [style.backgroundColor]="category?.color + '20'"
-         [style.color]="category?.color || '#666'">
-      <mat-icon>{{ category?.icon || 'category' }}</mat-icon>
+         [style.backgroundColor]="(category()?.color || '#666') + '20'"
+         [style.color]="category()?.color || '#666'">
+      <mat-icon>{{ category()?.icon || 'category' }}</mat-icon>
     </div>
 
     <div class="header-content">
-      <h3 class="budget-name">{{ budget.name }}</h3>
-      <span class="budget-meta">{{ getPeriodLabel(budget.period) }}</span>
+      <h3 class="budget-name">{{ budget().name }}</h3>
+      <span class="budget-meta">{{ getPeriodLabel(budget().period) }}</span>
     </div>
 
     <button mat-icon-button [matMenuTriggerFor]="menu" class="menu-btn">
@@ -31,18 +31,18 @@
   <div class="progress-section">
     <div class="amount-row">
       <span class="amount-text">
-        <span class="spent" [class.over-budget]="isOverBudget">{{ formatCurrency(budget.spent) }}</span>
-        <span class="limit">/ {{ formatCurrency(budget.amount) }}</span>
+        <span class="spent" [class.over-budget]="isOverBudget()">{{ formatCurrency(budget().spent) }}</span>
+        <span class="limit">/ {{ formatCurrency(budget().amount) }}</span>
       </span>
-      <span class="percentage" [class]="statusClass">{{ percentage.toFixed(0) }}%</span>
+      <span class="percentage" [class]="statusClass()">{{ percentage().toFixed(0) }}%</span>
     </div>
-    <mat-progress-bar [value]="percentage" [color]="progressColor"></mat-progress-bar>
+    <mat-progress-bar [value]="percentage()" [color]="progressColor()"></mat-progress-bar>
     <div class="status-row">
-      <span class="remaining" [class.over-budget]="isOverBudget">{{ getRemainingText() }}</span>
-      @if (showAlert) {
-        <span class="alert" [class]="'alert-' + alertSeverity">
-          <mat-icon>{{ alertSeverity === 'exceeded' ? 'error' : 'warning' }}</mat-icon>
-          <span class="alert-text">{{ alertText }}</span>
+      <span class="remaining" [class.over-budget]="isOverBudget()">{{ getRemainingText() }}</span>
+      @if (showAlert()) {
+        <span class="alert" [class]="'alert-' + alertSeverity()">
+          <mat-icon>{{ alertSeverity() === 'exceeded' ? 'error' : 'warning' }}</mat-icon>
+          <span class="alert-text">{{ alertText() }}</span>
         </span>
       }
     </div>

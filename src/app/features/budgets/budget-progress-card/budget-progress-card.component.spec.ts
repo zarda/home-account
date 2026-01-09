@@ -79,188 +79,188 @@ describe('BudgetProgressCardComponent', () => {
   });
 
   it('should create', () => {
-    component.budget = createMockBudget();
+    fixture.componentRef.setInput('budget', createMockBudget());
     fixture.detectChanges();
     expect(component).toBeTruthy();
   });
 
   describe('percentage', () => {
     it('should calculate correct percentage', () => {
-      component.budget = createMockBudget({ amount: 1000, spent: 500 });
-      expect(component.percentage).toBe(50);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 1000, spent: 500 }));
+      expect(component.percentage()).toBe(50);
     });
 
     it('should return 0 when amount is 0', () => {
-      component.budget = createMockBudget({ amount: 0, spent: 100 });
-      expect(component.percentage).toBe(0);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 0, spent: 100 }));
+      expect(component.percentage()).toBe(0);
     });
 
     it('should cap percentage at 100', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 200 });
-      expect(component.percentage).toBe(100);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 200 }));
+      expect(component.percentage()).toBe(100);
     });
 
     it('should handle decimal percentages', () => {
-      component.budget = createMockBudget({ amount: 300, spent: 100 });
-      expect(component.percentage).toBeCloseTo(33.33, 1);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 300, spent: 100 }));
+      expect(component.percentage()).toBeCloseTo(33.33, 1);
     });
   });
 
   describe('remaining', () => {
     it('should calculate remaining amount', () => {
-      component.budget = createMockBudget({ amount: 1000, spent: 300 });
-      expect(component.remaining).toBe(700);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 1000, spent: 300 }));
+      expect(component.remaining()).toBe(700);
     });
 
     it('should return 0 when over budget', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 200 });
-      expect(component.remaining).toBe(0);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 200 }));
+      expect(component.remaining()).toBe(0);
     });
 
     it('should return full amount when nothing spent', () => {
-      component.budget = createMockBudget({ amount: 500, spent: 0 });
-      expect(component.remaining).toBe(500);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 500, spent: 0 }));
+      expect(component.remaining()).toBe(500);
     });
   });
 
   describe('isOverBudget', () => {
     it('should return true when spent exceeds amount', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 150 });
-      expect(component.isOverBudget).toBe(true);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 150 }));
+      expect(component.isOverBudget()).toBe(true);
     });
 
     it('should return false when under budget', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 50 });
-      expect(component.isOverBudget).toBe(false);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 50 }));
+      expect(component.isOverBudget()).toBe(false);
     });
 
     it('should return false when exactly at budget', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 100 });
-      expect(component.isOverBudget).toBe(false);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 100 }));
+      expect(component.isOverBudget()).toBe(false);
     });
   });
 
   describe('progressColor', () => {
     it('should return primary for under 50%', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 40 });
-      expect(component.progressColor).toBe('primary');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 40 }));
+      expect(component.progressColor()).toBe('primary');
     });
 
     it('should return accent for 50-79%', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 60 });
-      expect(component.progressColor).toBe('accent');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 60 }));
+      expect(component.progressColor()).toBe('accent');
     });
 
     it('should return warn for 80% and above', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 85 });
-      expect(component.progressColor).toBe('warn');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
+      expect(component.progressColor()).toBe('warn');
     });
 
     it('should return warn for over budget', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 150 });
-      expect(component.progressColor).toBe('warn');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 150 }));
+      expect(component.progressColor()).toBe('warn');
     });
   });
 
   describe('statusClass', () => {
     it('should return green class for under 50%', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 40 });
-      expect(component.statusClass).toBe('text-green-600');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 40 }));
+      expect(component.statusClass()).toBe('text-green-600');
     });
 
     it('should return yellow class for 50-79%', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 60 });
-      expect(component.statusClass).toBe('text-yellow-600');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 60 }));
+      expect(component.statusClass()).toBe('text-yellow-600');
     });
 
     it('should return orange class for 80-99%', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 85 });
-      expect(component.statusClass).toBe('text-orange-500');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
+      expect(component.statusClass()).toBe('text-orange-500');
     });
 
     it('should return red class with semibold for 100% and over', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 110 });
-      expect(component.statusClass).toBe('text-red-600 font-semibold');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 110 }));
+      expect(component.statusClass()).toBe('text-red-600 font-semibold');
     });
   });
 
   describe('showAlert', () => {
     it('should show alert when percentage reaches threshold', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 80, alertThreshold: 80 });
-      expect(component.showAlert).toBe(true);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 80, alertThreshold: 80 }));
+      expect(component.showAlert()).toBe(true);
     });
 
     it('should not show alert when under threshold', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 70, alertThreshold: 80 });
-      expect(component.showAlert).toBe(false);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 70, alertThreshold: 80 }));
+      expect(component.showAlert()).toBe(false);
     });
 
     it('should show alert when over budget', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 150, alertThreshold: 80 });
-      expect(component.showAlert).toBe(true);
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 150, alertThreshold: 80 }));
+      expect(component.showAlert()).toBe(true);
     });
   });
 
   describe('alertSeverity', () => {
     it('should return warning for 80-89%', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 85, alertThreshold: 80 });
-      expect(component.alertSeverity).toBe('warning');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85, alertThreshold: 80 }));
+      expect(component.alertSeverity()).toBe('warning');
     });
 
     it('should return critical for 90-99%', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 95, alertThreshold: 80 });
-      expect(component.alertSeverity).toBe('critical');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 95, alertThreshold: 80 }));
+      expect(component.alertSeverity()).toBe('critical');
     });
 
     it('should return exceeded for 100% and over', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 110, alertThreshold: 80 });
-      expect(component.alertSeverity).toBe('exceeded');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 110, alertThreshold: 80 }));
+      expect(component.alertSeverity()).toBe('exceeded');
     });
   });
 
   describe('alertText', () => {
     it('should return appropriate text for warning', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 85, alertThreshold: 80 });
-      expect(component.alertText).toBe('Approaching limit');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85, alertThreshold: 80 }));
+      expect(component.alertText()).toBe('Approaching limit');
     });
 
     it('should return appropriate text for critical', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 95, alertThreshold: 80 });
-      expect(component.alertText).toBe('Almost at limit');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 95, alertThreshold: 80 }));
+      expect(component.alertText()).toBe('Almost at limit');
     });
 
     it('should return appropriate text for exceeded', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 110, alertThreshold: 80 });
-      expect(component.alertText).toBe('Budget exceeded!');
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 110, alertThreshold: 80 }));
+      expect(component.alertText()).toBe('Budget exceeded!');
     });
   });
 
   describe('getPeriodLabel', () => {
     it('should return Weekly for weekly period', () => {
-      component.budget = createMockBudget();
+      fixture.componentRef.setInput('budget', createMockBudget());
       expect(component.getPeriodLabel('weekly')).toBe('Weekly');
     });
 
     it('should return Monthly for monthly period', () => {
-      component.budget = createMockBudget();
+      fixture.componentRef.setInput('budget', createMockBudget());
       expect(component.getPeriodLabel('monthly')).toBe('Monthly');
     });
 
     it('should return Yearly for yearly period', () => {
-      component.budget = createMockBudget();
+      fixture.componentRef.setInput('budget', createMockBudget());
       expect(component.getPeriodLabel('yearly')).toBe('Yearly');
     });
   });
 
   describe('formatCurrency', () => {
     it('should format USD currency correctly', () => {
-      component.budget = createMockBudget({ currency: 'USD' });
+      fixture.componentRef.setInput('budget', createMockBudget({ currency: 'USD' }));
       const formatted = component.formatCurrency(1234.56);
       expect(formatted).toContain('1,234');
     });
 
     it('should format EUR currency correctly', () => {
-      component.budget = createMockBudget({ currency: 'EUR' });
+      fixture.componentRef.setInput('budget', createMockBudget({ currency: 'EUR' }));
       const formatted = component.formatCurrency(1234.56);
       expect(formatted).toContain('1,234');
     });
@@ -268,14 +268,14 @@ describe('BudgetProgressCardComponent', () => {
 
   describe('getRemainingText', () => {
     it('should show remaining amount when under budget', () => {
-      component.budget = createMockBudget({ amount: 1000, spent: 300, currency: 'USD' });
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 1000, spent: 300, currency: 'USD' }));
       const text = component.getRemainingText();
       expect(text).toContain('700');
       expect(text).toContain('left');
     });
 
     it('should show over amount when over budget', () => {
-      component.budget = createMockBudget({ amount: 100, spent: 150, currency: 'USD' });
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 150, currency: 'USD' }));
       const text = component.getRemainingText();
       expect(text).toContain('50');
       expect(text).toContain('over');
@@ -284,8 +284,8 @@ describe('BudgetProgressCardComponent', () => {
 
   describe('event emitters', () => {
     beforeEach(() => {
-      component.budget = createMockBudget();
-      component.category = mockCategory;
+      fixture.componentRef.setInput('budget', createMockBudget());
+      fixture.componentRef.setInput('category', mockCategory);
       fixture.detectChanges();
     });
 
@@ -304,8 +304,8 @@ describe('BudgetProgressCardComponent', () => {
 
   describe('UI rendering', () => {
     beforeEach(() => {
-      component.budget = createMockBudget();
-      component.category = mockCategory;
+      fixture.componentRef.setInput('budget', createMockBudget());
+      fixture.componentRef.setInput('category', mockCategory);
       fixture.detectChanges();
     });
 

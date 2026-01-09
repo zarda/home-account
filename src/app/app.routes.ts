@@ -7,6 +7,7 @@ import { TransactionsComponent } from './features/transactions/transactions.comp
 import { BudgetsComponent } from './features/budgets/budgets.component';
 import { ReportsComponent } from './features/reports/reports.component';
 import { SettingsComponent } from './features/settings/settings.component';
+import { AboutComponent } from './features/about/about.component';
 
 export const routes: Routes = [
   {
@@ -25,6 +26,7 @@ export const routes: Routes = [
       { path: 'budgets', component: BudgetsComponent },
       { path: 'reports', component: ReportsComponent },
       { path: 'settings', component: SettingsComponent },
+      { path: 'about', component: AboutComponent },
       // New import routes (accessed from Transaction page FAB)
       {
         path: 'import/file',

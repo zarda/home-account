@@ -125,6 +125,7 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --surface-card: #ffffff;
   --surface-elevated: #ffffff;
   --surface-hover: #f9fafb;
+  --surface-hover-active: #f3f4f6;
   --surface-active: #eef2ff;
 
   // Border colors
@@ -182,6 +183,7 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --surface-card: #1e1e1e;
   --surface-elevated: #2d2d2d;
   --surface-hover: #3d3d3d;
+  --surface-hover-active: #2a2a2a;
   --surface-active: #303F9F;
 
   --border-primary: #3d3d3d;

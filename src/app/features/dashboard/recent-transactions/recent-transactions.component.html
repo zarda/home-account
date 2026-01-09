@@ -10,7 +10,7 @@
 
   <!-- Content -->
   <div class="card-content">
-    @if (transactions.length === 0) {
+    @if (transactions().length === 0) {
       <div class="empty-container">
         <app-empty-state
           icon="receipt_long"
@@ -23,7 +23,7 @@
       </div>
     } @else {
       <div class="transaction-list">
-        @for (transaction of transactions; track transaction.id; let last = $last) {
+        @for (transaction of transactions(); track transaction.id; let last = $last) {
           <div class="transaction-item"
                tabindex="0"
                role="button"

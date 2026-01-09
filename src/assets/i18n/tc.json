@@ -54,6 +54,7 @@
     "budgets": "預算",
     "reports": "報表",
     "settings": "設定",
+    "about": "關於",
     "add": "新增",
     "more": "更多"
   },
@@ -649,5 +650,17 @@
     "auth": "認證失敗，請重新登入。",
     "notFound": "找不到",
     "invalidInput": "輸入無效"
+  },
+  "about": {
+    "title": "關於",
+    "subtitle": "了解更多關於家庭記帳",
+    "version": "版本",
+    "description": "使用現代網頁技術建構的個人財務管理應用程式。追蹤您的收入、支出、預算，並深入了解您的財務習慣。",
+    "copyright": "版權所有",
+    "allRightsReserved": "保留所有權利。",
+    "donateTitle": "支持家庭記帳",
+    "donateDescription": "如果您覺得這個應用程式很有幫助，請考慮透過捐款支持其開發。您的貢獻有助於維護和改進應用程式。",
+    "donateButton": "捐款",
+    "techStack": "技術架構"
   }
 }

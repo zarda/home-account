@@ -1,4 +1,4 @@
-import { Component, computed, inject, Input, signal } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -29,22 +29,9 @@ export class SpendingChartComponent {
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
 
-  @Input() set categoryTotals(value: CategoryTotal[]) {
-    this._categoryTotals.set(value);
-  }
-  get categoryTotals(): CategoryTotal[] {
-    return this._categoryTotals();
-  }
-
-  @Input() set categories(value: Category[]) {
-    this._categories.set(value);
-  }
-  get categories(): Category[] {
-    return this._categories();
-  }
-
-  private _categoryTotals = signal<CategoryTotal[]>([]);
-  private _categories = signal<Category[]>([]);
+  // Modern Angular 21: signal-based inputs
+  categoryTotals = input<CategoryTotal[]>([]);
+  categories = input<Category[]>([]);
 
   chartType = 'doughnut' as const;
 
@@ -71,16 +58,16 @@ export class SpendingChartComponent {
   };
 
   topCategories = computed(() => {
-    return this._categoryTotals().slice(0, 6);
+    return this.categoryTotals().slice(0, 6);
   });
 
   totalSpending = computed(() => {
-    return this._categoryTotals().reduce((sum, ct) => sum + ct.total, 0);
+    return this.categoryTotals().reduce((sum, ct) => sum + ct.total, 0);
   });
 
   chartData = computed((): ChartData<'doughnut'> => {
     const top = this.topCategories();
-    const categories = this._categories();
+    const categories = this.categories();
 
     const getCategoryName = (categoryId: string): string => {
       const category = categories.find(c => c.id === categoryId);
@@ -110,17 +97,17 @@ export class SpendingChartComponent {
   });
 
   getCategoryName(categoryId: string): string {
-    const category = this._categories().find(c => c.id === categoryId);
+    const category = this.categories().find(c => c.id === categoryId);
     return category?.name ? this.translationService.t(category.name) : 'Unknown';
   }
 
   getCategoryColor(categoryId: string): string {
-    const category = this._categories().find(c => c.id === categoryId);
+    const category = this.categories().find(c => c.id === categoryId);
     return category?.color || '#9E9E9E';
   }
 
   getCategoryIcon(categoryId: string): string {
-    const category = this._categories().find(c => c.id === categoryId);
+    const category = this.categories().find(c => c.id === categoryId);
     return category?.icon || 'category';
   }
 

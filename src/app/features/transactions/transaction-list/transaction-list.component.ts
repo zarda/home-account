@@ -1,4 +1,4 @@
-import { Component, EventEmitter, inject, Input, Output } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 
 import { MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
@@ -34,10 +34,11 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   styleUrl: './transaction-list.component.scss',
 })
 export class TransactionListComponent {
-  @Input() transactions: Transaction[] = [];
-  @Input() categories: Map<string, Category> = new Map<string, Category>();
-  @Output() edit = new EventEmitter<Transaction>();
-  @Output() delete = new EventEmitter<Transaction>();
+  // Modern Angular 21: signal-based inputs/outputs
+  transactions = input<Transaction[]>([]);
+  categories = input<Map<string, Category>>(new Map());
+  edit = output<Transaction>();
+  delete = output<Transaction>();
 
   private currencyService = inject(CurrencyService);
   private dateFormatService = inject(DateFormatService);
@@ -47,47 +48,50 @@ export class TransactionListComponent {
 
   displayedColumns = ['date', 'category', 'description', 'amount', 'actions'];
 
-  private sortActive = 'date';
-  private sortDirection: 'asc' | 'desc' = 'desc';
+  // Use signals for sort state
+  private sortActive = signal<string>('date');
+  private sortDirection = signal<'asc' | 'desc'>('desc');
 
-  get sortedTransactions(): Transaction[] {
-    return [...this.transactions].sort((a, b) => {
-      const direction = this.sortDirection === 'asc' ? 1 : -1;
+  // Convert getter to computed signal for better performance
+  sortedTransactions = computed(() => {
+    const transactions = this.transactions();
+    const active = this.sortActive();
+    const direction = this.sortDirection();
+    const dir = direction === 'asc' ? 1 : -1;
 
-      switch (this.sortActive) {
+    return [...transactions].sort((a, b) => {
+      switch (active) {
         case 'date': {
           const dateA = a.date?.toDate?.() || new Date();
           const dateB = b.date?.toDate?.() || new Date();
-          return (dateA.getTime() - dateB.getTime()) * direction;
+          return (dateA.getTime() - dateB.getTime()) * dir;
         }
-
         case 'amount':
-          return (a.amount - b.amount) * direction;
-
+          return (a.amount - b.amount) * dir;
         case 'description':
-          return a.description.localeCompare(b.description) * direction;
-
+          return a.description.localeCompare(b.description) * dir;
         default:
           return 0;
       }
     });
-  }
+  });
 
   onSortChange(sort: Sort): void {
-    this.sortActive = sort.active;
-    this.sortDirection = sort.direction as 'asc' | 'desc' || 'desc';
+    this.sortActive.set(sort.active);
+    this.sortDirection.set((sort.direction as 'asc' | 'desc') || 'desc');
   }
 
+  // Helper methods - these are called from template, so they're fine as methods
   getCategoryName(categoryId: string): string {
-    return this.categoryHelperService.getCategoryName(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryName(categoryId, this.categories());
   }
 
   getCategoryIcon(categoryId: string): string {
-    return this.categoryHelperService.getCategoryIcon(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryIcon(categoryId, this.categories());
   }
 
   getCategoryColor(categoryId: string): string {
-    return this.categoryHelperService.getCategoryColor(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryColor(categoryId, this.categories());
   }
 
   formatAmount(amount: number, currency: string): string {

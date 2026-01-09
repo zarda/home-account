@@ -4,7 +4,7 @@
   </div>
 
   <div class="card-content">
-    @if (categoryTotals.length === 0) {
+    @if (categoryTotals().length === 0) {
       <div class="empty-container">
         <app-empty-state
           icon="pie_chart"

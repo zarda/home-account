@@ -1,4 +1,4 @@
-import { Component, inject, Input } from '@angular/core';
+import { Component, inject, input } from '@angular/core';
 
 import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -25,10 +25,11 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   styleUrl: './budget-progress.component.scss',
 })
 export class BudgetProgressComponent {
-  @Input() budgets: Budget[] = [];
-  @Input() categories: Map<string, Category> = new Map<string, Category>();
-  @Input() transactions: Transaction[] = [];
-  @Input() baseCurrency = 'USD';
+  // Modern Angular 21: signal-based inputs
+  budgets = input<Budget[]>([]);
+  categories = input<Map<string, Category>>(new Map());
+  transactions = input<Transaction[]>([]);
+  baseCurrency = input<string>('USD');
 
   private currencyService = inject(CurrencyService);
   private categoryHelperService = inject(CategoryHelperService);
@@ -37,21 +38,21 @@ export class BudgetProgressComponent {
   // Returns the spent amount in the BUDGET's currency for proper comparison
   getBudgetSpent(budget: Budget): number {
     // Convert each transaction directly to budget's currency
-    return this.transactions
+    return this.transactions()
       .filter(t => t.categoryId === budget.categoryId && t.type === 'expense')
       .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, budget.currency), 0);
   }
 
   getCategoryName(categoryId: string): string {
-    return this.categoryHelperService.getCategoryName(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryName(categoryId, this.categories());
   }
 
   getCategoryIcon(categoryId: string): string {
-    return this.categoryHelperService.getCategoryIcon(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryIcon(categoryId, this.categories());
   }
 
   getCategoryColor(categoryId: string): string {
-    return this.categoryHelperService.getCategoryColor(categoryId, this.categories);
+    return this.categoryHelperService.getCategoryColor(categoryId, this.categories());
   }
 
   formatAmount(amount: number, currency: string): string {

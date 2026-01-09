@@ -74,8 +74,8 @@ describe('BudgetOverviewComponent', () => {
   });
 
   it('should create', () => {
-    component.budgets = [];
-    component.categories = categoriesMap;
+    fixture.componentRef.setInput('budgets', []);
+    fixture.componentRef.setInput('categories', categoriesMap);
     fixture.detectChanges();
     expect(component).toBeTruthy();
   });
@@ -83,19 +83,19 @@ describe('BudgetOverviewComponent', () => {
   describe('inputs', () => {
     it('should accept budgets input', () => {
       const budgets = [createMockBudget()];
-      component.budgets = budgets;
-      expect(component.budgets).toEqual(budgets);
+      fixture.componentRef.setInput('budgets', budgets);
+      expect(component.budgets()).toEqual(budgets);
     });
 
     it('should accept categories input', () => {
-      component.categories = categoriesMap;
-      expect(component.categories).toEqual(categoriesMap);
+      fixture.componentRef.setInput('categories', categoriesMap);
+      expect(component.categories()).toEqual(categoriesMap);
     });
   });
 
   describe('getCategory', () => {
     beforeEach(() => {
-      component.categories = categoriesMap;
+      fixture.componentRef.setInput('categories', categoriesMap);
     });
 
     it('should return category for valid id', () => {
@@ -118,8 +118,8 @@ describe('BudgetOverviewComponent', () => {
     const mockBudget = createMockBudget();
 
     beforeEach(() => {
-      component.budgets = [mockBudget];
-      component.categories = categoriesMap;
+      fixture.componentRef.setInput('budgets', [mockBudget]);
+      fixture.componentRef.setInput('categories', categoriesMap);
       fixture.detectChanges();
     });
 
@@ -138,12 +138,12 @@ describe('BudgetOverviewComponent', () => {
 
   describe('UI rendering', () => {
     it('should render budget progress cards for each budget', () => {
-      component.budgets = [
+      fixture.componentRef.setInput('budgets', [
         createMockBudget({ id: '1', name: 'Budget 1' }),
         createMockBudget({ id: '2', name: 'Budget 2' }),
         createMockBudget({ id: '3', name: 'Budget 3' })
-      ];
-      component.categories = categoriesMap;
+      ]);
+      fixture.componentRef.setInput('categories', categoriesMap);
       fixture.detectChanges();
 
       const cards = fixture.nativeElement.querySelectorAll('app-budget-progress-card');
@@ -151,8 +151,8 @@ describe('BudgetOverviewComponent', () => {
     });
 
     it('should render no cards when budgets is empty', () => {
-      component.budgets = [];
-      component.categories = categoriesMap;
+      fixture.componentRef.setInput('budgets', []);
+      fixture.componentRef.setInput('categories', categoriesMap);
       fixture.detectChanges();
 
       const cards = fixture.nativeElement.querySelectorAll('app-budget-progress-card');
@@ -161,8 +161,8 @@ describe('BudgetOverviewComponent', () => {
 
     it('should pass budget to each card', () => {
       const budget = createMockBudget();
-      component.budgets = [budget];
-      component.categories = categoriesMap;
+      fixture.componentRef.setInput('budgets', [budget]);
+      fixture.componentRef.setInput('categories', categoriesMap);
       fixture.detectChanges();
 
       const card = fixture.nativeElement.querySelector('app-budget-progress-card');
@@ -173,8 +173,8 @@ describe('BudgetOverviewComponent', () => {
   describe('integration with budget progress card', () => {
     it('should pass correct category to child component', () => {
       const budget = createMockBudget({ categoryId: 'cat1' });
-      component.budgets = [budget];
-      component.categories = categoriesMap;
+      fixture.componentRef.setInput('budgets', [budget]);
+      fixture.componentRef.setInput('categories', categoriesMap);
 
       const category = component.getCategory(budget.categoryId);
       expect(category).toEqual(mockCategories[0]);
@@ -182,8 +182,8 @@ describe('BudgetOverviewComponent', () => {
 
     it('should handle missing category gracefully', () => {
       const budget = createMockBudget({ categoryId: 'unknown' });
-      component.budgets = [budget];
-      component.categories = categoriesMap;
+      fixture.componentRef.setInput('budgets', [budget]);
+      fixture.componentRef.setInput('categories', categoriesMap);
 
       const category = component.getCategory(budget.categoryId);
       expect(category).toBeUndefined();

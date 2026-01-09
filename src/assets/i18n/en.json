@@ -54,6 +54,7 @@
     "budgets": "Budgets",
     "reports": "Reports",
     "settings": "Settings",
+    "about": "About",
     "add": "Add",
     "more": "More"
   },
@@ -625,5 +626,17 @@
     "auth": "Authentication failed. Please sign in again.",
     "notFound": "Not found",
     "invalidInput": "Invalid input"
+  },
+  "about": {
+    "title": "About",
+    "subtitle": "Learn more about Home Account",
+    "version": "Version",
+    "description": "A personal finance management application built with modern web technologies. Track your income, expenses, budgets, and gain insights into your financial habits.",
+    "copyright": "Copyright",
+    "allRightsReserved": "All rights reserved.",
+    "donateTitle": "Support Home Account",
+    "donateDescription": "If you find this app helpful, consider supporting its development with a donation. Your contribution helps maintain and improve the application.",
+    "donateButton": "Donate",
+    "techStack": "Built With"
   }
 }

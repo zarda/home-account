@@ -1,4 +1,4 @@
-import { Component, inject, Input, Output, EventEmitter } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 import { MatCardModule } from '@angular/material/card';
@@ -32,82 +32,94 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 export class BudgetProgressCardComponent {
   private translationService = inject(TranslationService);
 
-  @Input({ required: true }) budget!: Budget;
-  @Input() category: Category | undefined;
+  // Modern Angular 21: signal-based inputs/outputs
+  budget = input.required<Budget>();
+  category = input<Category | undefined>();
 
-  @Output() edit = new EventEmitter<void>();
-  @Output() delete = new EventEmitter<void>();
+  edit = output<void>();
+  delete = output<void>();
 
-  get percentage(): number {
-    if (!this.budget || this.budget.amount === 0) return 0;
-    return Math.min((this.budget.spent / this.budget.amount) * 100, 100);
-  }
+  // Convert getters to computed signals for better performance
+  percentage = computed(() => {
+    const budget = this.budget();
+    if (!budget || budget.amount === 0) return 0;
+    return Math.min((budget.spent / budget.amount) * 100, 100);
+  });
 
-  get remaining(): number {
-    return Math.max(this.budget.amount - this.budget.spent, 0);
-  }
+  remaining = computed(() => {
+    const budget = this.budget();
+    return Math.max(budget.amount - budget.spent, 0);
+  });
 
-  get isOverBudget(): boolean {
-    return this.budget.spent > this.budget.amount;
-  }
+  isOverBudget = computed(() => {
+    const budget = this.budget();
+    return budget.spent > budget.amount;
+  });
 
-  get progressColor(): 'primary' | 'accent' | 'warn' {
-    const pct = this.percentage;
+  progressColor = computed((): 'primary' | 'accent' | 'warn' => {
+    const pct = this.percentage();
     if (pct >= 80) return 'warn';
     if (pct >= 50) return 'accent';
     return 'primary';
-  }
+  });
 
-  get statusClass(): string {
-    const pct = this.percentage;
+  statusClass = computed(() => {
+    const pct = this.percentage();
     if (pct >= 100) return 'text-red-600 font-semibold';
     if (pct >= 80) return 'text-orange-500';
     if (pct >= 50) return 'text-yellow-600';
     return 'text-green-600';
-  }
+  });
 
-  get showAlert(): boolean {
-    return this.percentage >= this.budget.alertThreshold;
-  }
+  showAlert = computed(() => {
+    return this.percentage() >= this.budget().alertThreshold;
+  });
 
-  get alertSeverity(): 'exceeded' | 'critical' | 'warning' {
-    if (this.percentage >= 100) return 'exceeded';
-    if (this.percentage >= 90) return 'critical';
+  alertSeverity = computed((): 'exceeded' | 'critical' | 'warning' => {
+    const pct = this.percentage();
+    if (pct >= 100) return 'exceeded';
+    if (pct >= 90) return 'critical';
     return 'warning';
-  }
+  });
 
-  get alertText(): string {
-    switch (this.alertSeverity) {
+  alertText = computed(() => {
+    switch (this.alertSeverity()) {
       case 'exceeded':
         return this.translationService.t('budget.budgetExceeded');
       case 'critical':
         return this.translationService.t('budget.almostAtLimit');
       case 'warning':
         return this.translationService.t('budget.approachingLimit');
+      default:
+        return this.translationService.t('budget.approachingLimit');
     }
-  }
+  });
 
-  get alertChipClass(): string {
-    switch (this.alertSeverity) {
+  alertChipClass = computed(() => {
+    switch (this.alertSeverity()) {
       case 'exceeded':
         return 'bg-red-100 text-red-700';
       case 'critical':
         return 'bg-orange-100 text-orange-700';
       case 'warning':
         return 'bg-yellow-100 text-yellow-700';
+      default:
+        return 'bg-yellow-100 text-yellow-700';
     }
-  }
+  });
 
-  get alertTextClass(): string {
-    switch (this.alertSeverity) {
+  alertTextClass = computed(() => {
+    switch (this.alertSeverity()) {
       case 'exceeded':
         return 'text-red-600';
       case 'critical':
         return 'text-orange-500';
       case 'warning':
         return 'text-yellow-600';
+      default:
+        return 'text-yellow-600';
     }
-  }
+  });
 
   getPeriodLabel(period: BudgetPeriod): string {
     switch (period) {
@@ -117,24 +129,28 @@ export class BudgetProgressCardComponent {
         return this.translationService.t('transactions.monthly');
       case 'yearly':
         return this.translationService.t('transactions.yearly');
+      default:
+        return this.translationService.t('transactions.monthly');
     }
   }
 
   formatCurrency(amount: number): string {
     const locale = this.translationService.getIntlLocale();
+    const budget = this.budget();
     return new Intl.NumberFormat(locale, {
       style: 'currency',
-      currency: this.budget.currency,
+      currency: budget.currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 2
     }).format(amount);
   }
 
   getRemainingText(): string {
-    if (this.isOverBudget) {
-      const over = this.budget.spent - this.budget.amount;
+    const budget = this.budget();
+    if (this.isOverBudget()) {
+      const over = budget.spent - budget.amount;
       return this.translationService.t('budget.amountOver', { amount: this.formatCurrency(over) });
     }
-    return this.translationService.t('budget.amountLeft', { amount: this.formatCurrency(this.remaining) });
+    return this.translationService.t('budget.amountLeft', { amount: this.formatCurrency(this.remaining()) });
   }
 }
