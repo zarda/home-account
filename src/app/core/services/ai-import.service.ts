@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { GeminiService, RawTransaction } from './gemini.service';
+import { GeminiService, RawTransaction, MultiImageExtractedTransaction } from './gemini.service';
 import { ExportService, ImportedTransaction } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
@@ -12,7 +12,8 @@ import {
   ImportHistory,
   ImportSource,
   ImportFileType,
-  CreateTransactionDTO
+  CreateTransactionDTO,
+  DuplicateCheck
 } from '../../models';
 
 @Injectable({ providedIn: 'root' })
@@ -91,6 +92,207 @@ export class AIImportService {
     } finally {
       this.isProcessing.set(false);
     }
+  }
+
+  /**
+   * Import transactions from multiple images of a single receipt.
+   * Images should be ordered top-to-bottom as they appear on the receipt.
+   * Uses AI-powered position-aware deduplication to handle overlapping photos.
+   */
+  async importFromMultipleImages(files: File[]): Promise<ImportResult> {
+    if (files.length === 0) {
+      throw new Error('No image files provided');
+    }
+
+    // If only one file, use regular single-image import
+    if (files.length === 1) {
+      return this.importFromImage(files[0]);
+    }
+
+    if (!this.geminiService.isAvailable()) {
+      throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
+    }
+
+    this.isProcessing.set(true);
+    this.processingStatus.set('Reading images...');
+    this.processingProgress.set(5);
+
+    try {
+      // Convert all files to base64
+      const imageBase64Array: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        this.processingStatus.set(`Reading image ${i + 1} of ${files.length}...`);
+        this.processingProgress.set(5 + Math.round((i / files.length) * 20));
+        const base64 = await this.fileToBase64(files[i]);
+        // Extract just the base64 data part
+        imageBase64Array.push(base64);
+      }
+
+      this.processingStatus.set('Extracting items from all images with AI...');
+      this.processingProgress.set(30);
+
+      // Use multi-image extraction with position-aware deduplication
+      const extractedTransactions = await this.withTimeout(
+        this.geminiService.extractTransactionsFromMultipleImages(imageBase64Array),
+        90000, // 90 second timeout for multiple images
+        'AI extraction timed out. Please try again with fewer images.'
+      );
+
+      this.processingStatus.set('Categorizing transactions...');
+      this.processingProgress.set(60);
+
+      // Convert to CategorizedImportTransaction format with image metadata
+      const categorized = await this.categorizeMultiImageTransactions(extractedTransactions);
+
+      this.processingStatus.set('Checking for duplicates...');
+      this.processingProgress.set(80);
+
+      const duplicates = await this.duplicateService.checkDuplicates(categorized);
+      const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
+
+      this.processingProgress.set(100);
+
+      // Build result with multi-image metadata
+      return this.buildMultiImageImportResult(
+        files,
+        markedTransactions,
+        duplicates,
+        extractedTransactions
+      );
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  /**
+   * Categorize multi-image extracted transactions, preserving image metadata.
+   */
+  private async categorizeMultiImageTransactions(
+    transactions: MultiImageExtractedTransaction[]
+  ): Promise<CategorizedImportTransaction[]> {
+    if (transactions.length === 0) return [];
+
+    // Get user's base currency from settings
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+
+    // Convert to RawTransaction format for categorization
+    const rawTransactions: RawTransaction[] = transactions.map(t => ({
+      description: t.description,
+      amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
+      date: new Date(t.date)
+    }));
+
+    // Use Gemini for categorization if available
+    let categorizedByAI = rawTransactions.map((t) => ({
+      ...t,
+      suggestedCategoryId: 'other_expense',
+      confidence: 0.1
+    }));
+
+    if (this.geminiService.isAvailable()) {
+      try {
+        categorizedByAI = await this.geminiService.categorizeTransactions(rawTransactions);
+      } catch (error) {
+        console.warn('AI categorization failed, using defaults:', error);
+      }
+    }
+
+    // Convert to CategorizedImportTransaction with image metadata
+    return categorizedByAI.map((t, index) => {
+      const original = transactions[index];
+      return {
+        id: `multi_img_${index}_${Date.now()}`,
+        description: t.description,
+        amount: Math.abs(t.amount),
+        currency: original.currency || baseCurrency,
+        date: t.date,
+        type: original.type,
+        suggestedCategoryId: t.suggestedCategoryId,
+        categoryConfidence: t.confidence,
+        isDuplicate: false,
+        selected: true,
+        imageMetadata: {
+          imageIndex: original.imageIndex,
+          imageId: `image_${original.imageIndex}`,
+          positionInImage: original.positionInImage,
+          confidenceScore: original.confidence,
+          wasMerged: original.wasMerged,
+          mergedFromImages: original.mergedFromImages
+        },
+        taxMetadata: original.taxInfo ? {
+          taxRate: original.taxInfo.taxRate,
+          taxAmount: original.taxInfo.taxAmount,
+          taxCategory: original.taxInfo.taxCategory,
+          preTaxAmount: original.taxInfo.preTaxAmount,
+          discountApplied: original.taxInfo.discountApplied,
+          originalAmount: original.taxInfo.originalAmount
+        } : undefined
+      };
+    });
+  }
+
+  /**
+   * Build import result for multi-image imports with additional metadata.
+   */
+  private buildMultiImageImportResult(
+    files: File[],
+    transactions: CategorizedImportTransaction[],
+    duplicates: DuplicateCheck[],
+    extractedTransactions: MultiImageExtractedTransaction[]
+  ): ImportResult {
+    const warnings: ImportWarning[] = [];
+
+    // Add warnings for duplicates
+    const duplicateCount = duplicates.filter(d => d.isDuplicate).length;
+    if (duplicateCount > 0) {
+      warnings.push({
+        type: 'duplicate',
+        message: `${duplicateCount} potential duplicate transaction(s) detected`
+      });
+    }
+
+    // Add warnings for low confidence categorizations
+    const lowConfidenceCount = transactions.filter(t => t.categoryConfidence < 0.5).length;
+    if (lowConfidenceCount > 0) {
+      warnings.push({
+        type: 'low_confidence',
+        message: `${lowConfidenceCount} transaction(s) have low categorization confidence`
+      });
+    }
+
+    // Calculate overall confidence
+    const avgConfidence = transactions.length > 0
+      ? transactions.reduce((sum, t) => sum + t.categoryConfidence, 0) / transactions.length
+      : 0;
+
+    // Count merged items
+    const mergedCount = extractedTransactions.filter(t => t.wasMerged).length;
+
+    // Calculate total file size
+    const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
+
+    // Generate combined filename
+    const combinedFileName = files.length === 1
+      ? files[0].name
+      : `${files.length} images (${files[0].name}, ...)`;
+
+    return {
+      source: 'image',
+      fileType: 'receipt_image',
+      fileName: combinedFileName,
+      fileSize: totalFileSize,
+      transactions,
+      confidence: avgConfidence,
+      warnings,
+      duplicates,
+      sourceFiles: files,
+      multiImageMetadata: {
+        totalImages: files.length,
+        itemsMerged: mergedCount,
+        deduplicationMethod: 'ai',
+        imageIds: files.map((_, i) => `image_${i}`)
+      }
+    };
   }
 
   /**

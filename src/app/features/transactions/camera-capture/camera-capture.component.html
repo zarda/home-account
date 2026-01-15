@@ -2,8 +2,8 @@
 
 <mat-dialog-content>
   <div class="camera-capture-container">
-    @if (!capturedImage()) {
-      <!-- Camera capture trigger -->
+    @if (!hasImages()) {
+      <!-- Initial capture area -->
       <div class="capture-area">
         <input
           #cameraInput
@@ -27,8 +27,8 @@
         <p class="capture-hint">{{ 'import.cameraHint' | translate }}</p>
       </div>
     } @else {
-      <!-- Image preview -->
-      <div class="preview-area">
+      <!-- Multi-image preview area -->
+      <div class="multi-image-preview">
         @if (isProcessing()) {
           <div class="processing-overlay">
             <mat-spinner diameter="48"></mat-spinner>
@@ -36,11 +36,83 @@
           </div>
         }
 
-        <img
-          [src]="previewUrl()"
-          alt="Captured receipt"
-          class="preview-image"
-        />
+        <!-- Image thumbnails with reordering -->
+        <div class="image-grid" cdkDropList (cdkDropListDropped)="onImageDrop($event)">
+          @for (image of capturedImages(); track image.id; let i = $index) {
+            <div class="image-item" cdkDrag>
+              <div class="image-number">{{ i + 1 }}</div>
+              <img
+                [src]="image.previewUrl"
+                alt="Captured photo {{ i + 1 }}"
+                class="thumbnail"
+              />
+              <div class="image-actions">
+                <button
+                  mat-icon-button
+                  type="button"
+                  (click)="moveImageUp(i)"
+                  [disabled]="i === 0 || isProcessing()"
+                  title="Move up"
+                >
+                  <mat-icon>arrow_upward</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  type="button"
+                  (click)="moveImageDown(i)"
+                  [disabled]="i === imageCount() - 1 || isProcessing()"
+                  title="Move down"
+                >
+                  <mat-icon>arrow_downward</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  color="warn"
+                  type="button"
+                  (click)="removeImage(image.id)"
+                  [disabled]="isProcessing()"
+                  title="Remove"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
+              </div>
+              <div class="drag-handle" cdkDragHandle>
+                <mat-icon>drag_indicator</mat-icon>
+              </div>
+            </div>
+          }
+        </div>
+
+        <!-- Add more photos button -->
+        @if (canAddMore()) {
+          <div class="add-more-area">
+            <input
+              #addMoreInput
+              type="file"
+              accept="image/*"
+              capture="environment"
+              (change)="onImageCaptured($event)"
+              hidden
+            />
+            <button
+              mat-stroked-button
+              color="primary"
+              (click)="addMoreInput.click()"
+              [disabled]="isProcessing()"
+            >
+              <mat-icon>add_a_photo</mat-icon>
+              <span>{{ 'import.addAnotherPhoto' | translate }}</span>
+            </button>
+          </div>
+        }
+
+        <!-- Hint for multiple images -->
+        @if (imageCount() > 1) {
+          <p class="sequence-hint">
+            <mat-icon>info</mat-icon>
+            <span>{{ 'import.photoSequenceHint' | translate }}</span>
+          </p>
+        }
 
         @if (error()) {
           <div class="error-message">
@@ -54,7 +126,7 @@
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
-  @if (!capturedImage()) {
+  @if (!hasImages()) {
     <button mat-button (click)="cancel()">
       {{ 'common.cancel' | translate }}
     </button>
@@ -71,7 +143,11 @@
       @if (isProcessing()) {
         <mat-spinner diameter="20"></mat-spinner>
       } @else {
-        {{ 'import.processWithAI' | translate }}
+        @if (imageCount() > 1) {
+          {{ 'import.processMultipleWithAI' | translate }}
+        } @else {
+          {{ 'import.processWithAI' | translate }}
+        }
       }
     </button>
   }

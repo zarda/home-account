@@ -642,7 +642,17 @@
     "takePhoto": "写真を撮る",
     "retake": "撮り直す",
     "cameraHint": "レシートをフレーム内に配置してください",
-    "cameraNotAvailable": "カメラ機能はモバイルデバイスでのみ利用可能です"
+    "cameraNotAvailable": "カメラ機能はモバイルデバイスでのみ利用可能です",
+    "addAnotherPhoto": "写真を追加",
+    "photoSequenceHint": "ドラッグして写真を並び替え（レシートの上から下の順序）",
+    "processMultipleWithAI": "すべてをAIで処理",
+    "processingMultipleImages": "{{count}}枚の画像を処理中...",
+    "processedMultipleImages": "{{count}}枚の画像を処理しました",
+    "itemsMerged": "{{count}}件の項目を統合",
+    "itemsMergedLabel": "統合された項目",
+    "sourceImages": "元の画像",
+    "multiImageHint": "ドラッグして画像を並び替えてください。レシートの上から下の順序に合わせてください。",
+    "multiImageSuccess": "{{count}}枚の画像から重複を除去して項目を抽出しました"
   },
   "errors": {
     "generic": "エラーが発生しました。もう一度お試しください。",

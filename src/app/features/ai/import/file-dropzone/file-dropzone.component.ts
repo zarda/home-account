@@ -1,8 +1,9 @@
-import { Component, Input, Output, EventEmitter, signal } from '@angular/core';
+import { Component, Input, Output, EventEmitter, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -13,6 +14,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
     MatIconModule,
     MatButtonModule,
     MatProgressBarModule,
+    DragDropModule,
     TranslatePipe
   ],
   templateUrl: './file-dropzone.component.html',
@@ -30,6 +32,15 @@ export class FileDropzoneComponent {
   errorMessage = signal('');
 
   private filePreviews = new Map<string, string>();
+
+  // Computed signals for multi-image handling
+  hasMultipleImages = computed(() => {
+    return this.selectedFiles().filter(f => this.isImageFile(f)).length > 1;
+  });
+
+  imageFilesCount = computed(() => {
+    return this.selectedFiles().filter(f => this.isImageFile(f)).length;
+  });
 
   onDragOver(event: DragEvent): void {
     event.preventDefault();
@@ -146,6 +157,44 @@ export class FileDropzoneComponent {
 
     this.selectedFiles.update(files => files.filter(f => f !== file));
     this.filesSelected.emit(this.selectedFiles());
+  }
+
+  moveFileUp(index: number, event: Event): void {
+    event.stopPropagation();
+    if (index <= 0) return;
+
+    this.selectedFiles.update(files => {
+      const newFiles = [...files];
+      [newFiles[index - 1], newFiles[index]] = [newFiles[index], newFiles[index - 1]];
+      return newFiles;
+    });
+    this.filesSelected.emit(this.selectedFiles());
+  }
+
+  moveFileDown(index: number, event: Event): void {
+    event.stopPropagation();
+    const files = this.selectedFiles();
+    if (index >= files.length - 1) return;
+
+    this.selectedFiles.update(fs => {
+      const newFiles = [...fs];
+      [newFiles[index], newFiles[index + 1]] = [newFiles[index + 1], newFiles[index]];
+      return newFiles;
+    });
+    this.filesSelected.emit(this.selectedFiles());
+  }
+
+  onFileDrop(event: CdkDragDrop<File[]>): void {
+    this.selectedFiles.update(files => {
+      const newFiles = [...files];
+      moveItemInArray(newFiles, event.previousIndex, event.currentIndex);
+      return newFiles;
+    });
+    this.filesSelected.emit(this.selectedFiles());
+  }
+
+  getFileIndex(file: File): number {
+    return this.selectedFiles().indexOf(file);
   }
 
   isImageFile(file: File): boolean {

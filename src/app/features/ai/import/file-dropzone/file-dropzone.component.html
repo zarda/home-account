@@ -51,34 +51,81 @@
     </div>
   } @else {
     <div class="selected-files">
-      @for (file of selectedFiles(); track file.name) {
-        <div class="file-item" [class.image-file]="isImageFile(file)">
-          @if (isImageFile(file)) {
-            <div class="file-thumbnail">
-              <img [src]="getFilePreview(file)" [alt]="file.name" />
-            </div>
-          } @else {
-            <div class="file-icon-wrapper">
-              <mat-icon [class]="getFileTypeClass(file)">{{ getFileIcon(file) }}</mat-icon>
-            </div>
-          }
-          <div class="file-info">
-            <span class="file-name">{{ file.name }}</span>
-            <span class="file-meta">
-              <span class="file-size">{{ formatFileSize(file.size) }}</span>
-              <span class="file-type-label">{{ getFileTypeLabel(file) }}</span>
-            </span>
-          </div>
-          <button
-            mat-icon-button
-            (click)="removeFile(file, $event)"
-            class="remove-btn"
-            aria-label="Remove file"
-          >
-            <mat-icon>close</mat-icon>
-          </button>
+      <!-- Multi-image hint -->
+      @if (hasMultipleImages()) {
+        <div class="multi-image-hint">
+          <mat-icon>info</mat-icon>
+          <span>{{ 'import.multiImageHint' | translate }}</span>
         </div>
       }
+
+      <div class="file-list" cdkDropList (cdkDropListDropped)="onFileDrop($event)">
+        @for (file of selectedFiles(); track file.name; let i = $index) {
+          <div class="file-item" [class.image-file]="isImageFile(file)" cdkDrag>
+            <!-- Image number badge for multi-image -->
+            @if (isImageFile(file) && hasMultipleImages()) {
+              <div class="image-number">{{ i + 1 }}</div>
+            }
+
+            @if (isImageFile(file)) {
+              <div class="file-thumbnail">
+                <img [src]="getFilePreview(file)" [alt]="file.name" />
+              </div>
+            } @else {
+              <div class="file-icon-wrapper">
+                <mat-icon [class]="getFileTypeClass(file)">{{ getFileIcon(file) }}</mat-icon>
+              </div>
+            }
+            <div class="file-info">
+              <span class="file-name">{{ file.name }}</span>
+              <span class="file-meta">
+                <span class="file-size">{{ formatFileSize(file.size) }}</span>
+                <span class="file-type-label">{{ getFileTypeLabel(file) }}</span>
+              </span>
+            </div>
+
+            <!-- Reorder controls for images -->
+            @if (isImageFile(file) && hasMultipleImages()) {
+              <div class="reorder-controls">
+                <button
+                  mat-icon-button
+                  (click)="moveFileUp(i, $event)"
+                  [disabled]="i === 0"
+                  class="reorder-btn"
+                  aria-label="Move up"
+                >
+                  <mat-icon>arrow_upward</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  (click)="moveFileDown(i, $event)"
+                  [disabled]="i === selectedFiles().length - 1"
+                  class="reorder-btn"
+                  aria-label="Move down"
+                >
+                  <mat-icon>arrow_downward</mat-icon>
+                </button>
+              </div>
+            }
+
+            <button
+              mat-icon-button
+              (click)="removeFile(file, $event)"
+              class="remove-btn"
+              aria-label="Remove file"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+
+            <!-- Drag handle for images -->
+            @if (isImageFile(file) && hasMultipleImages()) {
+              <div class="drag-handle" cdkDragHandle>
+                <mat-icon>drag_indicator</mat-icon>
+              </div>
+            }
+          </div>
+        }
+      </div>
       <button
         mat-stroked-button
         class="add-more-btn"

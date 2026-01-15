@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionService } from './transaction.service';
-import { Transaction, CategorizedImportTransaction, DuplicateCheck } from '../../models';
+import { Transaction, CategorizedImportTransaction, DuplicateCheck, ImagePositionMetadata } from '../../models';
 
 @Injectable({ providedIn: 'root' })
 export class DuplicateDetectionService {
@@ -228,4 +228,139 @@ export class DuplicateDetectionService {
       return txn;
     });
   }
+
+  /**
+   * Check for duplicates within a multi-image import batch using position awareness.
+   * This is a secondary check after AI-based deduplication to catch any remaining duplicates.
+   */
+  checkMultiImageDuplicates(
+    transactions: CategorizedImportTransaction[]
+  ): MultiImageDuplicateCheck[] {
+    const results: MultiImageDuplicateCheck[] = [];
+    const transactionsWithMetadata = transactions.filter(t => t.imageMetadata);
+
+    // Group transactions by consecutive image pairs
+    for (let i = 0; i < transactionsWithMetadata.length; i++) {
+      const txn = transactionsWithMetadata[i];
+      const metadata = txn.imageMetadata!;
+
+      // Check against other transactions for potential duplicates
+      for (let j = i + 1; j < transactionsWithMetadata.length; j++) {
+        const other = transactionsWithMetadata[j];
+        const otherMetadata = other.imageMetadata!;
+
+        // Only check items from consecutive images
+        if (Math.abs(metadata.imageIndex - otherMetadata.imageIndex) !== 1) {
+          continue;
+        }
+
+        // Check for overlap zone duplicates
+        const isInOverlapZone = this.isInOverlapZone(metadata, otherMetadata);
+        if (!isInOverlapZone) continue;
+
+        // Check if descriptions and amounts match
+        const isSimilar = this.isSimilarDescription(txn.description, other.description);
+        const sameAmount = this.isSameAmountWithTolerance(txn.amount, other.amount, 0.01);
+
+        if (isSimilar && sameAmount) {
+          // Found a duplicate - prefer the one with higher confidence
+          const keepId = metadata.confidenceScore >= otherMetadata.confidenceScore ? txn.id : other.id;
+          const removeId = keepId === txn.id ? other.id : txn.id;
+
+          results.push({
+            transactionId: removeId,
+            isDuplicate: true,
+            keepTransactionId: keepId,
+            confidence: Math.min(metadata.confidenceScore, otherMetadata.confidenceScore),
+            reason: 'position_overlap',
+            imageIndices: [metadata.imageIndex, otherMetadata.imageIndex]
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Check if two items are in the overlap zone between consecutive images.
+   * The bottom 30% of image N overlaps with the top 30% of image N+1.
+   */
+  private isInOverlapZone(
+    metadata1: ImagePositionMetadata,
+    metadata2: ImagePositionMetadata
+  ): boolean {
+    // Determine which is the earlier image
+    const [earlier, later] = metadata1.imageIndex < metadata2.imageIndex
+      ? [metadata1, metadata2]
+      : [metadata2, metadata1];
+
+    // Earlier image item should be at the bottom
+    const earlierInOverlapZone = earlier.positionInImage === 'bottom';
+
+    // Later image item should be at the top
+    const laterInOverlapZone = later.positionInImage === 'top';
+
+    return earlierInOverlapZone && laterInOverlapZone;
+  }
+
+  /**
+   * Check if two amounts are the same within a percentage tolerance.
+   */
+  private isSameAmountWithTolerance(amount1: number, amount2: number, tolerancePercent: number): boolean {
+    if (amount1 === 0 && amount2 === 0) return true;
+    if (amount1 === 0 || amount2 === 0) return false;
+
+    const percentDiff = Math.abs(amount1 - amount2) / Math.max(amount1, amount2);
+    return percentDiff <= tolerancePercent;
+  }
+
+  /**
+   * Apply multi-image duplicate detection and merge results.
+   * Returns transactions with duplicates removed and merge info updated.
+   */
+  applyMultiImageDeduplication(
+    transactions: CategorizedImportTransaction[]
+  ): CategorizedImportTransaction[] {
+    const duplicateChecks = this.checkMultiImageDuplicates(transactions);
+    const duplicateIds = new Set(duplicateChecks.map(c => c.transactionId));
+
+    // Build a map of kept transaction IDs to their merged source images
+    const mergeMap = new Map<string, number[]>();
+    for (const check of duplicateChecks) {
+      if (check.keepTransactionId) {
+        const existing = mergeMap.get(check.keepTransactionId) || [];
+        mergeMap.set(check.keepTransactionId, [...existing, ...check.imageIndices]);
+      }
+    }
+
+    return transactions
+      .filter(t => !duplicateIds.has(t.id))
+      .map(t => {
+        const mergedImages = mergeMap.get(t.id);
+        if (mergedImages && t.imageMetadata) {
+          return {
+            ...t,
+            imageMetadata: {
+              ...t.imageMetadata,
+              wasMerged: true,
+              mergedFromImages: [...new Set(mergedImages)]
+            }
+          };
+        }
+        return t;
+      });
+  }
+}
+
+/**
+ * Extended duplicate check result for multi-image deduplication
+ */
+export interface MultiImageDuplicateCheck {
+  transactionId: string;
+  isDuplicate: boolean;
+  keepTransactionId?: string;
+  confidence: number;
+  reason: 'position_overlap' | 'exact_match' | 'amount_match';
+  imageIndices: number[];
 }

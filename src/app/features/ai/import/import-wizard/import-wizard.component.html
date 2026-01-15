@@ -121,6 +121,22 @@
               {{ 'import.foundTransactions' | translate:{ count: extractedTransactions().length } }}
             </h2>
             <p class="success-subtitle">{{ 'import.reviewDescription' | translate }}</p>
+
+            <!-- Multi-image info banner -->
+            @if (hasMultiImageData()) {
+              <div class="multi-image-info">
+                <mat-icon>photo_library</mat-icon>
+                <span>
+                  {{ 'import.processedMultipleImages' | translate:{ count: sourceImagesCount() } }}
+                </span>
+                @if (mergedItemsCount() > 0) {
+                  <span class="merged-badge">
+                    {{ 'import.itemsMerged' | translate:{ count: mergedItemsCount() } }}
+                  </span>
+                }
+              </div>
+            }
+
             <button mat-flat-button color="primary" class="action-button" (click)="stepper.next()">
               {{ 'common.continue' | translate }}
               <mat-icon>arrow_forward</mat-icon>
@@ -232,6 +248,24 @@
               <div class="card-content">
                 <span class="card-value">{{ duplicatesSkipped() }}</span>
                 <span class="card-label">{{ 'import.duplicatesSkipped' | translate }}</span>
+              </div>
+            </div>
+          }
+          @if (hasMultiImageData()) {
+            <div class="summary-card multi-image-card">
+              <mat-icon>photo_library</mat-icon>
+              <div class="card-content">
+                <span class="card-value">{{ sourceImagesCount() }}</span>
+                <span class="card-label">{{ 'import.sourceImages' | translate }}</span>
+              </div>
+            </div>
+          }
+          @if (mergedItemsCount() > 0) {
+            <div class="summary-card merged-card">
+              <mat-icon>merge</mat-icon>
+              <div class="card-content">
+                <span class="card-value">{{ mergedItemsCount() }}</span>
+                <span class="card-label">{{ 'import.itemsMergedLabel' | translate }}</span>
               </div>
             </div>
           }

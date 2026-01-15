@@ -37,12 +37,31 @@ export interface PreviousPeriodData {
   expense: number;
 }
 
+export interface ExtractedTaxInfo {
+  taxRate?: number;               // Tax rate as percentage (e.g., 7 for 7%)
+  taxAmount?: number;             // Calculated tax amount for this item
+  taxCategory?: string;           // Tax category (e.g., 'VAT', 'GST', 'Sales Tax')
+  preTaxAmount?: number;          // Original amount before tax
+  discountApplied?: number;       // Discount amount that was applied to this item
+  originalAmount?: number;        // Amount before discount was applied
+}
+
 export interface ExtractedTransaction {
   date: string;
   description: string;
   amount: number;
   type: 'income' | 'expense';
   currency: string;
+  taxInfo?: ExtractedTaxInfo;     // Tax and discount information
+}
+
+export interface MultiImageExtractedTransaction extends ExtractedTransaction {
+  imageIndex: number;             // Which image this item came from (0-based)
+  positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position
+  confidence: number;             // OCR/extraction confidence (0-1)
+  wasMerged?: boolean;            // True if deduplicated from multiple images
+  mergedFromImages?: number[];    // Indices of images where this appeared
+  taxInfo?: ExtractedTaxInfo;     // Tax and discount information (inherited but redeclared for clarity)
 }
 
 export interface CSVColumnMapping {
@@ -589,6 +608,313 @@ Only include posted/confirmed transactions.`;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.lastError.set(errorMessage);
       console.error('PDF extraction error:', error);
+      return [];
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  /**
+   * Extract transactions from multiple images of a single receipt with position-aware deduplication.
+   * Images should be ordered top-to-bottom as they appear on the receipt.
+   */
+  async extractTransactionsFromMultipleImages(
+    imageBase64Array: string[]
+  ): Promise<MultiImageExtractedTransaction[]> {
+    if (!this.visionModel) {
+      throw new Error('Gemini Vision model not available');
+    }
+
+    if (imageBase64Array.length === 0) {
+      return [];
+    }
+
+    // For single image, use simpler extraction with position metadata
+    if (imageBase64Array.length === 1) {
+      return this.extractWithPositionMetadata(imageBase64Array[0], 0);
+    }
+
+    this.isProcessing.set(true);
+    this.lastError.set(null);
+
+    try {
+      const prompt = `You are analyzing ${imageBase64Array.length} sequential photos of a SINGLE receipt or financial document.
+The images are ordered from TOP to BOTTOM of the receipt.
+
+IMPORTANT: These photos likely have OVERLAPPING content at the edges.
+- The BOTTOM portion of Image N likely overlaps with the TOP portion of Image N+1
+- You MUST identify and DEDUPLICATE overlapping items
+- Return each unique item ONLY ONCE, preferring the clearer/more complete instance
+
+DISCOUNT HANDLING:
+- If a discount applies to a SINGLE item (e.g., "-¥100 off", "10% off this item"), apply it to that item
+- If a discount applies to MULTIPLE items bought together (bundle/set discount, "まとめ買い割引"), 
+  distribute the discount proportionally across those items based on their original prices
+- Return the discounted final amount as "amount", and include the original amount and discount in "taxInfo"
+- Do NOT create separate line items for discounts
+
+TAX HANDLING (especially for Japanese receipts):
+- Japan uses 8% reduced tax (軽減税率) for takeout food and 10% standard tax (標準税率) for dine-in
+- Look for markers like "軽", "*", or "外" indicating reduced tax rate (takeout) items
+- "外" means takeout (外 from 持ち帰り), these items have 8% tax
+- Use taxCategory to indicate: "takeout_8%" or "dine_in_10%" for Japanese receipts
+- For other countries, use appropriate tax categories (VAT, GST, Sales Tax, etc.)
+- Do NOT include separate tax total lines - attach tax to individual items
+- Do NOT include subtotals or grand totals as line items
+
+For each UNIQUE transaction/line item found, extract:
+- date: in YYYY-MM-DD format (use the receipt date if individual items don't have dates)
+- description: item name or transaction description
+- amount: FINAL amount after any discounts applied (as a positive number)
+- type: "income" for credits/refunds, "expense" for purchases/debits
+- currency: detected currency code (default to USD if unclear)
+- imageIndex: which image this item appears in (0-based, use the BEST image if it appears in multiple)
+- positionInImage: "top", "middle", or "bottom" based on vertical position in that image
+- confidence: your confidence in the extraction accuracy (0.0 to 1.0)
+- wasMerged: true if this item appeared in multiple images and was deduplicated
+- mergedFromImages: array of image indices where this item appeared (only if wasMerged is true)
+- taxInfo: (optional) object with tax/discount details:
+  - taxRate: tax percentage applied to this item (e.g., 8 or 10 for Japan)
+  - taxAmount: tax amount for this item
+  - taxCategory: type of tax (e.g., "takeout_8%", "dine_in_10%", "VAT", "GST")
+  - preTaxAmount: amount before tax (税抜価格)
+  - discountApplied: discount amount applied to this item (if any)
+  - originalAmount: price before discount (if discount was applied)
+
+Return ONLY a valid JSON array with this structure (no markdown, no explanation):
+[
+  {
+    "date": "2024-01-15",
+    "description": "おにぎり",
+    "amount": 151,
+    "type": "expense",
+    "currency": "JPY",
+    "imageIndex": 0,
+    "positionInImage": "middle",
+    "confidence": 0.95,
+    "wasMerged": false,
+    "taxInfo": {
+      "taxRate": 8,
+      "taxAmount": 11,
+      "taxCategory": "takeout_8%",
+      "preTaxAmount": 140
+    }
+  },
+  {
+    "date": "2024-01-15",
+    "description": "コーヒー (店内)",
+    "amount": 330,
+    "type": "expense",
+    "currency": "JPY",
+    "imageIndex": 0,
+    "positionInImage": "middle",
+    "confidence": 0.90,
+    "wasMerged": false,
+    "taxInfo": {
+      "taxRate": 10,
+      "taxAmount": 30,
+      "taxCategory": "dine_in_10%",
+      "preTaxAmount": 300
+    }
+  },
+  {
+    "date": "2024-01-15",
+    "description": "パン (セット割引)",
+    "amount": 180,
+    "type": "expense",
+    "currency": "JPY",
+    "imageIndex": 1,
+    "positionInImage": "top",
+    "confidence": 0.90,
+    "wasMerged": false,
+    "taxInfo": {
+      "taxRate": 8,
+      "taxAmount": 13,
+      "taxCategory": "takeout_8%",
+      "preTaxAmount": 167,
+      "discountApplied": 20,
+      "originalAmount": 200
+    }
+  }
+]
+
+If no transactions can be extracted, return an empty array: []`;
+
+      // Build the content array with all images
+      const contentParts: (string | { inlineData: { mimeType: string; data: string } })[] = [prompt];
+
+      for (const imageBase64 of imageBase64Array) {
+        contentParts.push({
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+          }
+        });
+      }
+
+      const result = await this.visionModel.generateContent(contentParts);
+      const responseText = result.response.text();
+      const cleanedJson = this.extractJson(responseText);
+      const extracted: (MultiImageExtractedTransaction & { taxInfo?: ExtractedTaxInfo })[] = JSON.parse(cleanedJson);
+
+      // Validate and normalize the extracted data
+      return extracted.map(t => ({
+        date: t.date || new Date().toISOString().split('T')[0],
+        description: t.description || 'Unknown',
+        amount: Math.abs(t.amount || 0),
+        type: t.type || 'expense',
+        currency: t.currency || 'USD',
+        imageIndex: t.imageIndex ?? 0,
+        positionInImage: t.positionInImage || 'middle',
+        confidence: t.confidence ?? 0.7,
+        wasMerged: t.wasMerged || false,
+        mergedFromImages: t.mergedFromImages,
+        taxInfo: t.taxInfo
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.lastError.set(errorMessage);
+      console.error('Multi-image extraction error:', error);
+      return [];
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  /**
+   * Extract transactions from a single image with position metadata.
+   * Used internally for single-image multi-image flow.
+   */
+  private async extractWithPositionMetadata(
+    imageBase64: string,
+    imageIndex: number
+  ): Promise<MultiImageExtractedTransaction[]> {
+    if (!this.visionModel) {
+      throw new Error('Gemini Vision model not available');
+    }
+
+    this.isProcessing.set(true);
+    this.lastError.set(null);
+
+    try {
+      const prompt = `Analyze this receipt or financial document image and extract ALL line items/transactions.
+
+DISCOUNT HANDLING:
+- If a discount applies to a SINGLE item (e.g., "-¥100 off", "10% off this item"), apply it to that item
+- If a discount applies to MULTIPLE items bought together (bundle/set discount, "まとめ買い割引"), 
+  distribute the discount proportionally across those items based on their original prices
+- Return the discounted final amount as "amount", and include the original amount and discount in "taxInfo"
+- Do NOT create separate line items for discounts
+
+TAX HANDLING (especially for Japanese receipts):
+- Japan uses 8% reduced tax (軽減税率) for takeout food and 10% standard tax (標準税率) for dine-in
+- Look for markers like "軽", "*", or "外" indicating reduced tax rate (takeout) items
+- "外" means takeout (外 from 持ち帰り), these items have 8% tax
+- Use taxCategory to indicate: "takeout_8%" or "dine_in_10%" for Japanese receipts
+- For other countries, use appropriate tax categories (VAT, GST, Sales Tax, etc.)
+- Do NOT include separate tax total lines - attach tax to individual items
+- Do NOT include subtotals or grand totals as line items
+
+For each transaction/line item found, extract:
+- date: in YYYY-MM-DD format (use the receipt date if individual items don't have dates)
+- description: item name or transaction description
+- amount: FINAL amount after any discounts applied (as a positive number)
+- type: "income" for credits/refunds, "expense" for purchases/debits
+- currency: detected currency code (default to USD if unclear)
+- positionInImage: "top", "middle", or "bottom" based on vertical position
+- confidence: your confidence in the extraction accuracy (0.0 to 1.0)
+- taxInfo: (optional) object with tax/discount details:
+  - taxRate: tax percentage applied to this item (e.g., 8 or 10 for Japan)
+  - taxAmount: tax amount for this item
+  - taxCategory: type of tax (e.g., "takeout_8%", "dine_in_10%", "VAT", "GST")
+  - preTaxAmount: amount before tax (税抜価格)
+  - discountApplied: discount amount applied to this item (if any)
+  - originalAmount: price before discount (if discount was applied)
+
+Return ONLY a valid JSON array with this structure (no markdown, no explanation):
+[
+  {
+    "date": "2024-01-15",
+    "description": "おにぎり",
+    "amount": 151,
+    "type": "expense",
+    "currency": "JPY",
+    "positionInImage": "top",
+    "confidence": 0.95,
+    "taxInfo": {
+      "taxRate": 8,
+      "taxAmount": 11,
+      "taxCategory": "takeout_8%",
+      "preTaxAmount": 140
+    }
+  },
+  {
+    "date": "2024-01-15",
+    "description": "コーヒー (店内)",
+    "amount": 330,
+    "type": "expense",
+    "currency": "JPY",
+    "positionInImage": "middle",
+    "confidence": 0.90,
+    "taxInfo": {
+      "taxRate": 10,
+      "taxAmount": 30,
+      "taxCategory": "dine_in_10%",
+      "preTaxAmount": 300
+    }
+  },
+  {
+    "date": "2024-01-15",
+    "description": "パン (セット割引)",
+    "amount": 180,
+    "type": "expense",
+    "currency": "JPY",
+    "positionInImage": "bottom",
+    "confidence": 0.90,
+    "taxInfo": {
+      "taxRate": 8,
+      "taxAmount": 13,
+      "taxCategory": "takeout_8%",
+      "preTaxAmount": 167,
+      "discountApplied": 20,
+      "originalAmount": 200
+    }
+  }
+]
+
+If no transactions can be extracted, return an empty array: []`;
+
+      const result = await this.visionModel.generateContent([
+        prompt,
+        {
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+          }
+        }
+      ]);
+
+      const responseText = result.response.text();
+      const cleanedJson = this.extractJson(responseText);
+      const extracted = JSON.parse(cleanedJson);
+
+      // Add imageIndex and normalize data
+      return extracted.map((t: Partial<MultiImageExtractedTransaction> & { taxInfo?: ExtractedTaxInfo }) => ({
+        date: t.date || new Date().toISOString().split('T')[0],
+        description: t.description || 'Unknown',
+        amount: Math.abs(t.amount || 0),
+        type: t.type || 'expense',
+        currency: t.currency || 'USD',
+        imageIndex: imageIndex,
+        positionInImage: t.positionInImage || 'middle',
+        confidence: t.confidence ?? 0.7,
+        wasMerged: false,
+        taxInfo: t.taxInfo
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.lastError.set(errorMessage);
+      console.error('Single image position extraction error:', error);
       return [];
     } finally {
       this.isProcessing.set(false);

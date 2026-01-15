@@ -16,7 +16,8 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import {
   CategorizedImportTransaction,
   ImportResult,
-  DuplicateCheck
+  DuplicateCheck,
+  MultiImageMetadata
 } from '../../../../models';
 
 import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
@@ -58,6 +59,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Flag to track if we came from camera
   fromCamera = false;
+  isMultiImage = false;
   private cameraImportResult: ImportResult | null = null;
 
   // State signals
@@ -69,6 +71,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   isImporting = signal(false);
   importProgress = signal(0);
   importStatus = signal('');
+
+  // Multi-image metadata
+  multiImageMetadata = signal<MultiImageMetadata | null>(null);
 
   // Service bindings
   isProcessing = this.importService.isProcessing;
@@ -119,6 +124,19 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.extractedTransactions().filter(t => t.isDuplicate && !t.selected).length;
   });
 
+  // Multi-image computed properties
+  mergedItemsCount = computed(() => {
+    return this.extractedTransactions().filter(t => t.imageMetadata?.wasMerged).length;
+  });
+
+  hasMultiImageData = computed(() => {
+    return this.multiImageMetadata() !== null && (this.multiImageMetadata()?.totalImages ?? 0) > 1;
+  });
+
+  sourceImagesCount = computed(() => {
+    return this.multiImageMetadata()?.totalImages ?? 0;
+  });
+
   duplicateInfos = computed((): DuplicateInfo[] => {
     const txns = this.extractedTransactions();
     const checks = this.duplicateChecks();
@@ -138,11 +156,21 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnInit(): void {
     // Check if we received import result from camera capture via router state
-    const state = history.state as { importResult?: ImportResult; fromCamera?: boolean } | undefined;
+    const state = history.state as {
+      importResult?: ImportResult;
+      fromCamera?: boolean;
+      multiImage?: boolean;
+    } | undefined;
 
     if (state?.importResult && state?.fromCamera) {
       this.fromCamera = true;
+      this.isMultiImage = state.multiImage ?? false;
       this.cameraImportResult = state.importResult;
+
+      // Set multi-image metadata if available
+      if (state.importResult.multiImageMetadata) {
+        this.multiImageMetadata.set(state.importResult.multiImageMetadata);
+      }
     }
   }
 

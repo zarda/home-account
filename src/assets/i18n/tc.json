@@ -642,7 +642,17 @@
     "takePhoto": "拍照",
     "retake": "重拍",
     "cameraHint": "將收據放在畫面中",
-    "cameraNotAvailable": "相機功能僅適用於行動裝置"
+    "cameraNotAvailable": "相機功能僅適用於行動裝置",
+    "addAnotherPhoto": "新增另一張照片",
+    "photoSequenceHint": "拖曳重新排序照片（依收據由上到下順序）",
+    "processMultipleWithAI": "以AI處理全部",
+    "processingMultipleImages": "正在處理{{count}}張圖片...",
+    "processedMultipleImages": "已處理{{count}}張圖片",
+    "itemsMerged": "{{count}}個項目已合併",
+    "itemsMergedLabel": "已合併項目",
+    "sourceImages": "來源圖片",
+    "multiImageHint": "拖曳以重新排序圖片。順序應與收據由上到下的順序相符。",
+    "multiImageSuccess": "成功從{{count}}張圖片中提取項目並去除重複"
   },
   "errors": {
     "generic": "發生錯誤，請重試。",

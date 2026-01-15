@@ -618,7 +618,17 @@
     "takePhoto": "Take Photo",
     "retake": "Retake",
     "cameraHint": "Position the receipt within the frame",
-    "cameraNotAvailable": "Camera is only available on mobile devices"
+    "cameraNotAvailable": "Camera is only available on mobile devices",
+    "addAnotherPhoto": "Add Another Photo",
+    "photoSequenceHint": "Drag to reorder photos from top to bottom of receipt",
+    "processMultipleWithAI": "Process All with AI",
+    "processingMultipleImages": "Processing {{count}} images...",
+    "processedMultipleImages": "Processed {{count}} images",
+    "itemsMerged": "{{count}} items merged",
+    "itemsMergedLabel": "Items merged",
+    "sourceImages": "Source images",
+    "multiImageHint": "Drag to reorder images. Order should match top-to-bottom of receipt.",
+    "multiImageSuccess": "Successfully extracted items from {{count}} images with deduplication"
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

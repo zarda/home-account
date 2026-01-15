@@ -30,6 +30,24 @@ export interface ImportError {
   originalValue?: string;
 }
 
+export interface ImagePositionMetadata {
+  imageIndex: number;              // Which image this item came from (0-based)
+  imageId: string;                 // Unique identifier for the source image
+  positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position within image
+  confidenceScore: number;         // OCR/extraction confidence (0-1)
+  wasMerged?: boolean;             // True if this item was deduplicated from multiple images
+  mergedFromImages?: number[];     // Indices of images where this item appeared
+}
+
+export interface TaxMetadata {
+  taxRate?: number;                // Tax rate as percentage (e.g., 7 for 7%)
+  taxAmount?: number;              // Calculated tax amount for this item
+  taxCategory?: string;            // Tax category (e.g., 'VAT', 'GST', 'Sales Tax')
+  preTaxAmount?: number;           // Original amount before tax
+  discountApplied?: number;        // Discount amount that was applied to this item
+  originalAmount?: number;         // Amount before discount was applied
+}
+
 export interface CategorizedImportTransaction {
   id: string;                      // Temporary ID for UI selection
   description: string;
@@ -44,6 +62,8 @@ export interface CategorizedImportTransaction {
   isDuplicate: boolean;
   duplicateOf?: string;            // Existing transaction ID
   selected: boolean;               // For UI checkbox
+  imageMetadata?: ImagePositionMetadata;  // Multi-image position data
+  taxMetadata?: TaxMetadata;       // Tax and discount information
 }
 
 export interface DuplicateCheck {
@@ -66,6 +86,13 @@ export interface CSVColumnMapping {
   hasHeader: boolean;
 }
 
+export interface MultiImageMetadata {
+  totalImages: number;             // Total number of images processed
+  itemsMerged: number;             // Count of items that were deduplicated
+  deduplicationMethod: 'ai' | 'position' | 'manual';  // How deduplication was performed
+  imageIds: string[];              // Ordered list of image identifiers
+}
+
 export interface ImportResult {
   source: ImportSource;
   fileType: ImportFileType;
@@ -76,6 +103,8 @@ export interface ImportResult {
   confidence: number;
   warnings: ImportWarning[];
   duplicates: DuplicateCheck[];
+  sourceFiles?: File[];            // Support multiple source files
+  multiImageMetadata?: MultiImageMetadata;  // Multi-image processing info
 }
 
 export interface ImportWarning {

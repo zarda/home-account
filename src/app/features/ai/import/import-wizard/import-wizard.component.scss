@@ -453,6 +453,52 @@
   color: #ff9800;
 }
 
+.multi-image-card mat-icon {
+  background: rgba(156, 39, 176, 0.1);
+  color: #9c27b0;
+}
+
+.merged-card mat-icon {
+  background: rgba(0, 150, 136, 0.1);
+  color: #009688;
+}
+
+.merged-card .card-value {
+  color: #009688;
+}
+
+/* Multi-image info banner */
+.multi-image-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  background: rgba(156, 39, 176, 0.08);
+  border: 1px solid rgba(156, 39, 176, 0.2);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+
+  mat-icon {
+    color: #9c27b0;
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+
+  .merged-badge {
+    background: #009688;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-left: 8px;
+  }
+}
+
 .card-content {
   display: flex;
   flex-direction: column;
