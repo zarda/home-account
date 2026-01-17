@@ -31,6 +31,7 @@ export class SidebarComponent {
     { labelKey: 'nav.transactions', icon: 'receipt_long', route: '/transactions' },
     { labelKey: 'nav.budget', icon: 'savings', route: '/budgets' },
     { labelKey: 'nav.reports', icon: 'bar_chart', route: '/reports' },
+    { labelKey: 'nav.ai', icon: 'psychology', route: '/ai' },
     { labelKey: 'nav.settings', icon: 'settings', route: '/settings' },
     { labelKey: 'nav.about', icon: 'info', route: '/about' },
   ];

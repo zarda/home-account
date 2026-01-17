@@ -26,6 +26,12 @@ export const routes: Routes = [
       { path: 'budgets', component: BudgetsComponent },
       { path: 'reports', component: ReportsComponent },
       { path: 'settings', component: SettingsComponent },
+      { 
+        path: 'ai', 
+        loadComponent: () => 
+          import('./features/settings/ai-settings-page/ai-settings-page.component')
+            .then(m => m.AiSettingsPageComponent)
+      },
       { path: 'about', component: AboutComponent },
       // New import routes (accessed from Transaction page FAB)
       {

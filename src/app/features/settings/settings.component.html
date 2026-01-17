@@ -36,6 +36,18 @@
       <app-profile-settings />
     </mat-expansion-panel>
 
+    <!-- AI Settings Link Card -->
+    <div class="settings-link-card" routerLink="/ai">
+      <div class="link-card-icon ai-icon">
+        <mat-icon>psychology</mat-icon>
+      </div>
+      <div class="link-card-content">
+        <span class="link-card-title">{{ 'settings.aiSettings' | translate }}</span>
+        <span class="link-card-description">{{ 'settings.aiSettingsDescription' | translate }}</span>
+      </div>
+      <mat-icon class="link-card-arrow">chevron_right</mat-icon>
+    </div>
+
     <!-- Category Manager -->
     <mat-expansion-panel>
       <mat-expansion-panel-header>

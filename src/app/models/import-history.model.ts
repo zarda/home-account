@@ -105,10 +105,12 @@ export interface ImportResult {
   duplicates: DuplicateCheck[];
   sourceFiles?: File[];            // Support multiple source files
   multiImageMetadata?: MultiImageMetadata;  // Multi-image processing info
+  processingSource?: 'local' | 'cloud' | 'hybrid';  // Which AI processed the import
+  usedFallback?: boolean;          // Whether fallback to cloud was needed
 }
 
 export interface ImportWarning {
-  type: 'duplicate' | 'low_confidence' | 'missing_data' | 'currency_mismatch' | 'parse_error';
+  type: 'duplicate' | 'low_confidence' | 'missing_data' | 'currency_mismatch' | 'parse_error' | 'info';
   message: string;
   transactionId?: string;
   row?: number;

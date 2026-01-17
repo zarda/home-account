@@ -1,10 +1,13 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import { GeminiService, RawTransaction, MultiImageExtractedTransaction } from './gemini.service';
 import { ExportService, ImportedTransaction } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
 import { TransactionService } from './transaction.service';
 import { AuthService } from './auth.service';
+import { AIStrategyService, ProcessingResult } from './ai-strategy.service';
+import { OfflineQueueService } from './offline-queue.service';
+import { PwaService } from './pwa.service';
 import {
   ImportResult,
   ImportWarning,
@@ -24,11 +27,18 @@ export class AIImportService {
   private importHistoryService = inject(ImportHistoryService);
   private transactionService = inject(TransactionService);
   private authService = inject(AuthService);
+  private strategyService = inject(AIStrategyService);
+  private offlineQueue = inject(OfflineQueueService);
+  private pwaService = inject(PwaService);
 
   // Processing state signals
   isProcessing = signal<boolean>(false);
   processingStatus = signal<string>('');
   processingProgress = signal<number>(0);
+  
+  // New signals for hybrid processing
+  processingSource = signal<'local' | 'cloud' | 'hybrid' | null>(null);
+  isOfflineMode = computed(() => !this.pwaService.isOnline());
 
   /**
    * Main entry point: detect file type and route to appropriate handler
@@ -53,21 +63,77 @@ export class AIImportService {
 
   /**
    * Import transactions from an image (receipt, screenshot, bank statement)
+   * Uses hybrid AI strategy: local processing with cloud fallback
    */
   async importFromImage(file: File): Promise<ImportResult> {
-    if (!this.geminiService.isAvailable()) {
-      throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
+    const prefs = this.strategyService.preferences();
+    const isOnline = this.pwaService.isOnline();
+    const canUseLocal = this.strategyService.canUseLocal();
+    const canUseCloud = this.strategyService.canUseCloud();
+
+    // Check if we can process at all
+    if (!canUseLocal && !canUseCloud) {
+      // Queue for later if we can't process now
+      if (!isOnline) {
+        await this.offlineQueue.queueImage(file);
+        throw new Error('Offline and local AI not available. Image queued for later processing.');
+      }
+      throw new Error('AI service is not available. Please configure your Gemini API key in Settings or download local models.');
     }
 
     this.isProcessing.set(true);
     this.processingStatus.set('Reading image...');
     this.processingProgress.set(10);
+    this.processingSource.set(null);
 
     try {
+      // Try using strategy service for hybrid processing
+      if (prefs.mode !== 'cloud_only' && (canUseLocal || !isOnline)) {
+        try {
+          this.processingStatus.set('Processing with AI...');
+          this.processingProgress.set(30);
+
+          const strategyResult = await this.strategyService.processReceipt(file);
+          this.processingSource.set(strategyResult.source);
+
+          if (strategyResult.transactions.length > 0) {
+            this.processingStatus.set('Categorizing transactions...');
+            this.processingProgress.set(60);
+
+            const categorized = this.convertStrategyResultToCategories(strategyResult);
+
+            this.processingStatus.set('Checking for duplicates...');
+            this.processingProgress.set(80);
+
+            const duplicates = await this.duplicateService.checkDuplicates(categorized);
+            const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
+
+            this.processingProgress.set(100);
+
+            const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
+            
+            // Add processing source to result
+            result.processingSource = strategyResult.source;
+            result.usedFallback = strategyResult.usedFallback;
+            
+            return result;
+          }
+        } catch (strategyError) {
+          console.warn('[AIImport] Strategy processing failed:', strategyError);
+          // Fall through to legacy processing
+        }
+      }
+
+      // Fall back to legacy Gemini-only processing
+      if (!this.geminiService.isAvailable()) {
+        throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
+      }
+
       const imageBase64 = await this.fileToBase64(file);
 
-      this.processingStatus.set('Extracting transactions with AI...');
+      this.processingStatus.set('Extracting transactions with cloud AI...');
       this.processingProgress.set(30);
+      this.processingSource.set('cloud');
 
       const extractedTransactions = await this.withTimeout(
         this.geminiService.extractTransactionsFromImage(imageBase64),
@@ -88,10 +154,35 @@ export class AIImportService {
 
       this.processingProgress.set(100);
 
-      return this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
+      const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
+      result.processingSource = 'cloud';
+      
+      return result;
     } finally {
       this.isProcessing.set(false);
+      this.processingSource.set(null);
     }
+  }
+
+  /**
+   * Convert strategy service result to categorized import transactions
+   */
+  private convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+
+    return result.transactions.map((tx, index) => ({
+      id: `strategy_${index}_${Date.now()}`,
+      description: tx.description,
+      amount: tx.amount,
+      currency: tx.currency || baseCurrency,
+      date: tx.date,
+      type: tx.type,
+      suggestedCategoryId: 'other_expense', // Will be categorized by Gemini if needed
+      categoryConfidence: tx.confidence,
+      isDuplicate: false,
+      selected: true,
+      processingSource: tx.source,
+    }));
   }
 
   /**

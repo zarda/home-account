@@ -2,6 +2,30 @@
 
 <mat-dialog-content>
   <div class="camera-capture-container">
+    <!-- Offline/Processing mode indicator -->
+    @if (!isOnline() || processingMode() !== 'accuracy') {
+      <div class="mode-indicator" [class.offline]="!isOnline()" [class.privacy]="processingMode() === 'privacy'">
+        <mat-icon>
+          @if (!isOnline()) {
+            cloud_off
+          } @else if (processingMode() === 'privacy') {
+            security
+          } @else {
+            smartphone
+          }
+        </mat-icon>
+        <span>
+          @if (!isOnline()) {
+            {{ 'import.offlineMode' | translate }}
+          } @else if (processingMode() === 'privacy') {
+            {{ 'import.privacyMode' | translate }}
+          } @else {
+            {{ 'import.localProcessing' | translate }}
+          }
+        </span>
+      </div>
+    }
+
     @if (!hasImages()) {
       <!-- Initial capture area -->
       <div class="capture-area">
@@ -25,6 +49,14 @@
         </button>
 
         <p class="capture-hint">{{ 'import.cameraHint' | translate }}</p>
+
+        <!-- iOS-specific hint for better camera access -->
+        @if (isIOS() && !isStandalone()) {
+          <div class="ios-hint">
+            <mat-icon>info</mat-icon>
+            <span>{{ 'import.iosInstallHint' | translate }}</span>
+          </div>
+        }
       </div>
     } @else {
       <!-- Multi-image preview area -->

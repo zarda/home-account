@@ -19,10 +19,13 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Transactions** - Multi-currency support with filtering, tags, and location tracking
 - **Budgets** - Period-based budget limits with recurring transactions management
 - **Reports** - Financial analytics with CSV and PDF export
-- **AI Import** - Import transactions from receipt images with intelligent category suggestions (Gemini API)
+- **AI Import** - Import transactions from receipt images with intelligent category suggestions
 - **Camera Capture** - Take photos directly from the app for receipt scanning
 - **Dark Mode** - Light/dark/system theme support
 - **Multi-language** - English, Traditional Chinese, Japanese
+- **PWA Support** - Install as a native app on iOS/Android, works offline
+- **Local AI** - On-device OCR with Tesseract.js for privacy-first receipt scanning
+- **ML Enhancement** - Optional Transformers.js model for improved accuracy
 
 ## Tech Stack
 
@@ -32,9 +35,11 @@ This project demonstrates modern Angular development practices with a focus on:
 | UI | Angular Material 21, Tailwind CSS 3.4 |
 | State | Angular Signals |
 | Backend | Firebase (Auth, Firestore) |
-| AI | Google Generative AI (Gemini) |
+| AI (Cloud) | Google Generative AI (Gemini) |
+| AI (Local) | Tesseract.js (OCR), @huggingface/transformers (ML) |
 | Charts | Chart.js + ng2-charts |
 | Export | jspdf, date-fns |
+| PWA | Service Worker, IndexedDB |
 
 ## Project Structure
 
@@ -52,7 +57,13 @@ src/
 │   │   │   ├── theme.service.ts         # Light/dark/system theme
 │   │   │   ├── translation.service.ts   # i18n with locale detection
 │   │   │   ├── export.service.ts        # CSV & PDF generation
-│   │   │   ├── gemini.service.ts        # AI receipt parsing
+│   │   │   ├── gemini.service.ts        # Cloud AI receipt parsing (Gemini)
+│   │   │   ├── local-ai.service.ts      # On-device OCR (Tesseract.js)
+│   │   │   ├── transformers-ai.service.ts # ML parsing (Transformers.js)
+│   │   │   ├── ml-worker.service.ts     # Web Worker for ML processing
+│   │   │   ├── ai-strategy.service.ts   # Hybrid AI decision logic
+│   │   │   ├── offline-queue.service.ts # Queue for offline processing
+│   │   │   ├── pwa.service.ts           # PWA state & caching
 │   │   │   ├── ai-import.service.ts     # AI import workflow orchestration
 │   │   │   └── device.service.ts        # Device capabilities detection
 │   │   └── guards/              # Route protection
@@ -65,7 +76,10 @@ src/
 │   │   ├── budgets/             # Budget limits, alerts, recurring transactions
 │   │   ├── reports/             # Analytics, CSV/PDF export
 │   │   ├── ai/                  # AI-powered import wizard, category suggestions
-│   │   └── settings/            # User preferences, categories, data management
+│   │   └── settings/            # User preferences, categories, AI settings
+│   │       └── ai-settings-page/ # Dedicated AI configuration page
+│   ├── workers/                 # Web Workers
+│   │   └── ml.worker.ts         # Transformers.js ML processing
 │   ├── shared/
 │   │   ├── components/          # Reusable UI (dialogs, chips, spinners)
 │   │   ├── layout/              # Main layout, header, sidebar, bottom nav
@@ -77,6 +91,7 @@ src/
 │       ├── category.model.ts
 │       └── currency.model.ts
 ├── assets/i18n/                 # Translation files (en, tc, ja)
+├── service-worker.ts            # Custom service worker for PWA
 └── environments/                # Firebase configs
 ```
 
@@ -162,9 +177,70 @@ src/
 | ThemeService | Light/dark/system theme with OS detection |
 | TranslationService | i18n with browser locale detection |
 | ExportService | CSV & PDF generation |
-| GeminiService | AI receipt parsing & category suggestion |
+| GeminiService | AI receipt parsing & category suggestion (cloud) |
+| LocalAIService | On-device OCR with Tesseract.js |
+| TransformersAIService | ML-powered parsing with Transformers.js |
+| MLWorkerService | Web Worker for Transformers.js processing |
+| AIStrategyService | Hybrid AI strategy (auto/local/cloud) |
+| OfflineQueueService | Queue for offline image processing |
+| PwaService | PWA state, installation, caching |
 | AIImportService | AI import workflow orchestration |
 | DeviceService | Device capabilities (camera, mobile) detection |
+
+### AI Architecture
+
+The app supports three AI processing modes:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           AI PROCESSING MODES                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   AUTOMATIC (Recommended)                                                    │
+│   ├── Online + Cloud available → Use Gemini AI (highest accuracy)          │
+│   ├── Offline → Use Local AI (Tesseract.js + rule-based parsing)           │
+│   └── Low confidence → Fallback to cloud if available                      │
+│                                                                              │
+│   LOCAL ONLY (Privacy First)                                                 │
+│   ├── Tesseract.js OCR (English, Japanese, Traditional Chinese)            │
+│   ├── Rule-based parsing (region detection, date formats)                  │
+│   └── Optional: Transformers.js ML model (~65MB) for better accuracy       │
+│                                                                              │
+│   CLOUD ONLY                                                                 │
+│   └── Always use Gemini AI (requires internet)                             │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Local AI Processing Pipeline
+
+```
+┌─────────────┐    ┌──────────────┐    ┌────────────────┐    ┌────────────────┐
+│   Image     │───▶│ Preprocessing │───▶│  Tesseract.js  │───▶│   Parsing      │
+│   Capture   │    │ (contrast,    │    │  OCR Engine    │    │   (rule-based  │
+│             │    │  sharpening)  │    │  (WASM)        │    │   or ML)       │
+└─────────────┘    └──────────────┘    └────────────────┘    └────────────────┘
+                                                                     │
+                                              ┌──────────────────────┘
+                                              ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            PARSING MODES                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   Rule-Based (Built-in, ~0MB)                                               │
+│   ├── Region detection (Taiwan, Hong Kong, Japan, International)           │
+│   ├── Date parsing (ROC calendar, Reiwa era, ISO, US/EU formats)           │
+│   ├── Merchant extraction (scoring algorithm)                               │
+│   └── Item detection with quantity support                                  │
+│                                                                              │
+│   ML-Enhanced (Optional, ~65MB download)                                    │
+│   ├── Transformers.js with DistilBERT Q&A model                            │
+│   ├── Runs in Web Worker (non-blocking UI)                                 │
+│   ├── Question-answering for semantic extraction                           │
+│   └── Cached in IndexedDB for offline use                                  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ### Component Types
 
@@ -349,6 +425,31 @@ npm install
 npm start
 ```
 
+## PWA Support
+
+The app is a fully-featured Progressive Web App:
+
+- **Installable** - Add to home screen on iOS, Android, and desktop
+- **Offline-first** - Core app works without internet
+- **Background sync** - Queued images processed when online
+- **Model caching** - AI models cached in IndexedDB for offline use
+
+### iOS Installation
+
+1. Open in Safari
+2. Tap Share button
+3. Select "Add to Home Screen"
+4. App opens in standalone mode (no browser UI)
+
+### AI Models for Offline Use
+
+| Model | Size | Purpose |
+|-------|------|---------|
+| OCR (Tesseract.js) | ~15MB | Text recognition (EN, JA, TC) |
+| ML (Transformers.js) | ~65MB | Semantic parsing (optional) |
+
+Models are downloaded on-demand and cached for offline use.
+
 ## Scripts
 
 | Command | Description |
@@ -357,3 +458,8 @@ npm start
 | `npm run build` | Production build |
 | `npm test` | Run unit tests |
 | `npm run lint` | ESLint |
+| `firebase deploy` | Deploy to Firebase Hosting |
+
+## Live Demo
+
+https://home-accounter.web.app

@@ -1,0 +1,439 @@
+<div class="ai-settings-page">
+  <!-- Header -->
+  <div class="page-header">
+    <button mat-icon-button (click)="goBack()" class="back-button">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <div class="header-content">
+      <h1>{{ 'aiPage.title' | translate }}</h1>
+      <p class="subtitle">{{ 'aiPage.subtitle' | translate }}</p>
+    </div>
+  </div>
+
+  <!-- Hero Section - Quick Status -->
+  <div class="hero-section">
+    <div class="status-cards">
+      <!-- OCR Status -->
+      <div class="status-card" [class.ready]="isLocalReady()" [class.not-ready]="!isLocalReady()">
+        <div class="status-icon">
+          <mat-icon>{{ isLocalReady() ? 'check_circle' : 'cloud_download' }}</mat-icon>
+        </div>
+        <div class="status-info">
+          <span class="status-label">{{ 'aiPage.ocrStatus' | translate }}</span>
+          <span class="status-value">{{ isLocalReady() ? ('aiPage.ready' | translate) : ('aiPage.notDownloaded' | translate) }}</span>
+        </div>
+      </div>
+
+      <!-- ML Model Status -->
+      <div class="status-card" [class.ready]="isMLModelReady()" [class.not-ready]="!isMLModelReady()">
+        <div class="status-icon">
+          <mat-icon>{{ isMLModelReady() ? 'psychology' : 'model_training' }}</mat-icon>
+        </div>
+        <div class="status-info">
+          <span class="status-label">{{ 'aiPage.mlStatus' | translate }}</span>
+          <span class="status-value">{{ isMLModelReady() ? ('aiPage.ready' | translate) : ('aiPage.optional' | translate) }}</span>
+        </div>
+      </div>
+
+      <!-- Connection Status -->
+      <div class="status-card" [class.ready]="isOnline()" [class.not-ready]="!isOnline()">
+        <div class="status-icon">
+          <mat-icon>{{ isOnline() ? 'wifi' : 'wifi_off' }}</mat-icon>
+        </div>
+        <div class="status-info">
+          <span class="status-label">{{ 'aiPage.connectionStatus' | translate }}</span>
+          <span class="status-value">{{ isOnline() ? ('aiPage.online' | translate) : ('aiPage.offline' | translate) }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Section 1: How It Works -->
+    <section class="settings-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">info</mat-icon>
+        <div>
+          <h2>{{ 'aiPage.howItWorks' | translate }}</h2>
+          <p class="section-description">{{ 'aiPage.howItWorksDescription' | translate }}</p>
+        </div>
+      </div>
+
+      <div class="info-cards">
+        <div class="info-card">
+          <div class="info-icon cloud">
+            <mat-icon>cloud</mat-icon>
+          </div>
+          <h3>{{ 'aiPage.cloudAI' | translate }}</h3>
+          <p>{{ 'aiPage.cloudAIDescription' | translate }}</p>
+          <div class="info-tag">
+            <mat-icon>bolt</mat-icon>
+            {{ 'aiPage.highestAccuracy' | translate }}
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-icon local">
+            <mat-icon>smartphone</mat-icon>
+          </div>
+          <h3>{{ 'aiPage.localAI' | translate }}</h3>
+          <p>{{ 'aiPage.localAIDescription' | translate }}</p>
+          <div class="info-tag">
+            <mat-icon>lock</mat-icon>
+            {{ 'aiPage.privateOffline' | translate }}
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-icon ml">
+            <mat-icon>psychology</mat-icon>
+          </div>
+          <h3>{{ 'aiPage.mlModel' | translate }}</h3>
+          <p>{{ 'aiPage.mlModelDescription' | translate }}</p>
+          <div class="info-tag">
+            <mat-icon>auto_awesome</mat-icon>
+            {{ 'aiPage.smartParsing' | translate }}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <mat-divider></mat-divider>
+
+    <!-- Section 2: Processing Mode -->
+    <section class="settings-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">tune</mat-icon>
+        <div>
+          <h2>{{ 'aiPage.processingMode' | translate }}</h2>
+          <p class="section-description">{{ 'aiPage.processingModeDescription' | translate }}</p>
+        </div>
+      </div>
+
+      <div class="mode-options">
+        <mat-radio-group [value]="processingMode()" (change)="onModeChange($event.value)">
+          <div class="mode-option" [class.selected]="processingMode() === 'auto'">
+            <mat-radio-button value="auto">
+              <div class="mode-content">
+                <div class="mode-header">
+                  <mat-icon>auto_mode</mat-icon>
+                  <span class="mode-title">{{ 'aiPage.modeAuto' | translate }}</span>
+                  <span class="mode-badge recommended">{{ 'aiPage.recommended' | translate }}</span>
+                </div>
+                <p class="mode-description">{{ 'aiPage.modeAutoDescription' | translate }}</p>
+              </div>
+            </mat-radio-button>
+          </div>
+
+          <div class="mode-option" [class.selected]="processingMode() === 'local_only'">
+            <mat-radio-button value="local_only">
+              <div class="mode-content">
+                <div class="mode-header">
+                  <mat-icon>smartphone</mat-icon>
+                  <span class="mode-title">{{ 'aiPage.modeLocal' | translate }}</span>
+                  <span class="mode-badge privacy">{{ 'aiPage.privacyFirst' | translate }}</span>
+                </div>
+                <p class="mode-description">{{ 'aiPage.modeLocalDescription' | translate }}</p>
+              </div>
+            </mat-radio-button>
+          </div>
+
+          <div class="mode-option" [class.selected]="processingMode() === 'cloud_only'">
+            <mat-radio-button value="cloud_only">
+              <div class="mode-content">
+                <div class="mode-header">
+                  <mat-icon>cloud</mat-icon>
+                  <span class="mode-title">{{ 'aiPage.modeCloud' | translate }}</span>
+                </div>
+                <p class="mode-description">{{ 'aiPage.modeCloudDescription' | translate }}</p>
+              </div>
+            </mat-radio-button>
+          </div>
+        </mat-radio-group>
+      </div>
+
+      <!-- Privacy Toggle -->
+      <div class="privacy-toggle">
+        <div class="toggle-info">
+          <mat-icon>security</mat-icon>
+          <div>
+            <span class="toggle-title">{{ 'aiPage.privacyMode' | translate }}</span>
+            <p class="toggle-description">{{ 'aiPage.privacyModeDescription' | translate }}</p>
+          </div>
+        </div>
+        <mat-slide-toggle 
+          [checked]="privacyMode()"
+          (change)="onPrivacyModeChange($event.checked)"
+          color="primary">
+        </mat-slide-toggle>
+      </div>
+    </section>
+
+    <mat-divider></mat-divider>
+
+    <!-- Section 3: AI Models -->
+    <section class="settings-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">download</mat-icon>
+        <div>
+          <h2>{{ 'aiPage.aiModels' | translate }}</h2>
+          <p class="section-description">{{ 'aiPage.aiModelsDescription' | translate }}</p>
+        </div>
+      </div>
+
+      <!-- OCR Model Card -->
+      <div class="model-card">
+        <div class="model-header">
+          <div class="model-icon ocr">
+            <mat-icon>document_scanner</mat-icon>
+          </div>
+          <div class="model-info">
+            <h3>{{ 'aiPage.ocrModelTitle' | translate }}</h3>
+            <p>{{ 'aiPage.ocrModelDescription' | translate }}</p>
+          </div>
+          <div class="model-status" [class.ready]="isLocalReady()">
+            @if (isLocalReady()) {
+              <mat-icon>check_circle</mat-icon>
+              <span>{{ 'aiPage.downloaded' | translate }}</span>
+            } @else {
+              <span class="size">~15 MB</span>
+            }
+          </div>
+        </div>
+
+        @if (isDownloading()) {
+          <mat-progress-bar mode="determinate" [value]="downloadProgress()"></mat-progress-bar>
+        }
+
+        <div class="model-features">
+          <div class="feature">
+            <mat-icon>translate</mat-icon>
+            <span>{{ 'aiPage.ocrFeature1' | translate }}</span>
+          </div>
+          <div class="feature">
+            <mat-icon>wifi_off</mat-icon>
+            <span>{{ 'aiPage.ocrFeature2' | translate }}</span>
+          </div>
+          <div class="feature">
+            <mat-icon>receipt_long</mat-icon>
+            <span>{{ 'aiPage.ocrFeature3' | translate }}</span>
+          </div>
+        </div>
+
+        @if (!isLocalReady()) {
+          <button 
+            mat-flat-button 
+            color="primary"
+            class="download-button"
+            (click)="downloadOCRModels()"
+            [disabled]="isDownloading() || !isOnline()">
+            <mat-icon>download</mat-icon>
+            {{ 'aiPage.downloadOCR' | translate }}
+          </button>
+        }
+      </div>
+
+      <!-- ML Model Card -->
+      @if (isMLModelSupported()) {
+        <div class="model-card ml-card">
+          <div class="model-header">
+            <div class="model-icon ml">
+              <mat-icon>psychology</mat-icon>
+            </div>
+            <div class="model-info">
+              <h3>{{ 'aiPage.mlModelTitle' | translate }}</h3>
+              <p>{{ 'aiPage.mlModelTitleDescription' | translate }}</p>
+            </div>
+            <div class="model-status" [class.ready]="isMLModelReady()">
+              @if (isMLModelReady()) {
+                <mat-icon>check_circle</mat-icon>
+                <span>{{ 'aiPage.downloaded' | translate }}</span>
+              } @else {
+                <span class="size">~65 MB</span>
+                <span class="optional-badge">{{ 'aiPage.optional' | translate }}</span>
+              }
+            </div>
+          </div>
+
+          @if (isSemanticLoading()) {
+            <div class="download-status">
+              <span>{{ semanticStatus() }}</span>
+              <mat-progress-bar mode="determinate" [value]="semanticProgress()"></mat-progress-bar>
+            </div>
+          }
+
+          <div class="model-features">
+            <div class="feature">
+              <mat-icon>auto_awesome</mat-icon>
+              <span>{{ 'aiPage.mlFeature1' | translate }}</span>
+            </div>
+            <div class="feature">
+              <mat-icon>question_answer</mat-icon>
+              <span>{{ 'aiPage.mlFeature2' | translate }}</span>
+            </div>
+            <div class="feature">
+              <mat-icon>speed</mat-icon>
+              <span>{{ 'aiPage.mlFeature3' | translate }}</span>
+            </div>
+          </div>
+
+          @if (!isMLModelReady() && !isSemanticLoading()) {
+            <button 
+              mat-flat-button 
+              color="accent"
+              class="download-button"
+              (click)="downloadMLModel()"
+              [disabled]="isDownloadingEnhanced() || !isOnline()">
+              <mat-icon>psychology</mat-icon>
+              {{ 'aiPage.downloadML' | translate }}
+            </button>
+          }
+        </div>
+      }
+
+      <!-- Download All / Clear -->
+      <div class="model-actions">
+        @if (!isLocalReady() || !isMLModelReady()) {
+          <button 
+            mat-stroked-button 
+            (click)="downloadAllModels()"
+            [disabled]="isDownloading() || isSemanticLoading() || !isOnline()">
+            <mat-icon>download_for_offline</mat-icon>
+            {{ 'aiPage.downloadAll' | translate }}
+          </button>
+        }
+
+        @if (isLocalReady() || isMLModelReady()) {
+          <button 
+            mat-stroked-button 
+            color="warn"
+            (click)="clearModels()">
+            <mat-icon>delete_outline</mat-icon>
+            {{ 'aiPage.clearModels' | translate }}
+          </button>
+        }
+      </div>
+    </section>
+
+    <mat-divider></mat-divider>
+
+    <!-- Section 4: Enhanced Mode -->
+    <section class="settings-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">auto_awesome</mat-icon>
+        <div>
+          <h2>{{ 'aiPage.enhancedMode' | translate }}</h2>
+          <p class="section-description">{{ 'aiPage.enhancedModeDescription' | translate }}</p>
+        </div>
+      </div>
+
+      <div class="enhanced-toggle">
+        <div class="toggle-content">
+          <div class="toggle-info">
+            <span class="toggle-title">{{ 'aiPage.enableEnhanced' | translate }}</span>
+            <p class="toggle-description">{{ 'aiPage.enableEnhancedDescription' | translate }}</p>
+          </div>
+          <mat-slide-toggle 
+            [checked]="enhancedMode()"
+            (change)="onEnhancedModeChange($event.checked)"
+            color="accent">
+          </mat-slide-toggle>
+        </div>
+
+        @if (enhancedMode()) {
+          <div class="enhanced-features">
+            <h4>{{ 'aiPage.activeFeatures' | translate }}</h4>
+            <div class="feature-grid">
+              <div class="feature-item">
+                <mat-icon>translate</mat-icon>
+                <span>{{ 'aiPage.featureRegion' | translate }}</span>
+              </div>
+              <div class="feature-item">
+                <mat-icon>date_range</mat-icon>
+                <span>{{ 'aiPage.featureDate' | translate }}</span>
+              </div>
+              <div class="feature-item">
+                <mat-icon>storefront</mat-icon>
+                <span>{{ 'aiPage.featureMerchant' | translate }}</span>
+              </div>
+              <div class="feature-item">
+                <mat-icon>receipt_long</mat-icon>
+                <span>{{ 'aiPage.featureItems' | translate }}</span>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <mat-divider></mat-divider>
+
+    <!-- Section 5: Offline Queue -->
+    <section class="settings-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">cloud_sync</mat-icon>
+        <div>
+          <h2>{{ 'aiPage.offlineQueue' | translate }}</h2>
+          <p class="section-description">{{ 'aiPage.offlineQueueDescription' | translate }}</p>
+        </div>
+      </div>
+
+      <div class="queue-status">
+        <div class="queue-info">
+          <div class="queue-count">
+            <span class="count">{{ pendingQueueCount() }}</span>
+            <span class="label">{{ 'aiPage.pendingItems' | translate }}</span>
+          </div>
+          <div class="auto-sync-toggle">
+            <span>{{ 'aiPage.autoSync' | translate }}</span>
+            <mat-slide-toggle 
+              [checked]="autoSync()"
+              (change)="onAutoSyncChange($event.checked)"
+              color="primary">
+            </mat-slide-toggle>
+          </div>
+        </div>
+
+        <div class="queue-actions">
+          <button 
+            mat-stroked-button 
+            (click)="syncQueue()"
+            [disabled]="pendingQueueCount() === 0 || !isOnline()">
+            <mat-icon>sync</mat-icon>
+            {{ 'aiPage.syncNow' | translate }}
+          </button>
+          <button 
+            mat-stroked-button 
+            color="warn"
+            (click)="clearQueue()"
+            [disabled]="pendingQueueCount() === 0">
+            <mat-icon>delete_sweep</mat-icon>
+            {{ 'aiPage.clearQueue' | translate }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 6: Storage Info -->
+    <section class="settings-section storage-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">storage</mat-icon>
+        <div>
+          <h2>{{ 'aiPage.storageInfo' | translate }}</h2>
+        </div>
+      </div>
+
+      <div class="storage-info">
+        <div class="storage-item">
+          <span class="storage-label">{{ 'aiPage.totalCache' | translate }}</span>
+          <span class="storage-value">{{ formatBytes(cacheSize()) }}</span>
+        </div>
+        <div class="storage-item">
+          <span class="storage-label">{{ 'aiPage.modelStorage' | translate }}</span>
+          <span class="storage-value">{{ formatBytes(totalModelSize()) }}</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>

@@ -112,12 +112,91 @@
   height: 22px;
 }
 
+// Settings Link Card
+.settings-link-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: var(--surface-card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 8px;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    background: var(--surface-hover);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  .link-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    mat-icon {
+      font-size: 28px;
+      width: 28px;
+      height: 28px;
+      color: white;
+    }
+
+    &.ai-icon {
+      background: linear-gradient(135deg, #9c27b0, #673ab7);
+    }
+  }
+
+  .link-card-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+    .link-card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .link-card-description {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+  }
+
+  .link-card-arrow {
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+  }
+
+  &:hover .link-card-arrow {
+    transform: translateX(4px);
+    color: var(--color-accent);
+  }
+}
+
 @media (max-width: 768px) {
   .settings-accordion {
     ::ng-deep {
       .mat-expansion-panel-header-description {
         display: none;
       }
+    }
+  }
+
+  .settings-link-card {
+    .link-card-description {
+      display: none;
     }
   }
 }

@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatExpansionModule } from '@angular/material/expansion';
@@ -15,6 +16,7 @@ import { DataManagementComponent } from './data-management/data-management.compo
   standalone: true,
   imports: [
     CommonModule,
+    RouterLink,
     MatIconModule,
     MatExpansionModule,
     ProfileSettingsComponent,
