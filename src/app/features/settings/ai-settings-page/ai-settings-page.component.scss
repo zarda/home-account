@@ -433,6 +433,179 @@
     }
   }
 
+  .model-type-selection {
+    margin-bottom: 20px;
+    padding: 16px;
+    background: var(--mat-sys-surface);
+    border-radius: 12px;
+
+    h4 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--mat-sys-on-surface);
+    }
+
+    .model-type-options {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .model-type-option {
+      padding: 12px;
+      border: 2px solid var(--mat-sys-outline-variant);
+      border-radius: 12px;
+      transition: all 0.2s ease;
+
+      &.selected {
+        border-color: var(--mat-sys-primary);
+        background: var(--mat-sys-primary-container);
+      }
+
+      &:hover:not(.selected) {
+        border-color: var(--mat-sys-outline);
+        background: var(--mat-sys-surface-variant);
+      }
+
+      .model-type-content {
+        margin-left: 8px;
+      }
+
+      .model-type-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+
+      .model-type-name {
+        font-weight: 600;
+        color: var(--mat-sys-on-surface);
+      }
+
+      .model-type-size {
+        font-size: 12px;
+        padding: 2px 8px;
+        background: var(--mat-sys-surface-variant);
+        border-radius: 8px;
+        color: var(--mat-sys-on-surface-variant);
+      }
+
+      .model-type-description {
+        margin: 0;
+        font-size: 13px;
+        color: var(--mat-sys-on-surface-variant);
+      }
+
+      .recommended-badge {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 4px 10px;
+        background: linear-gradient(135deg, #4caf50, #81c784);
+        color: white;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+    }
+  }
+
+  // OCR Engine Selection (similar to model-type-selection)
+  .ocr-engine-selection {
+    margin-bottom: 20px;
+    padding: 16px;
+    background: var(--mat-sys-surface);
+    border-radius: 12px;
+
+    h4 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--mat-sys-on-surface);
+    }
+
+    .ocr-engine-options {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ocr-engine-option {
+      padding: 12px;
+      border: 2px solid var(--mat-sys-outline-variant);
+      border-radius: 12px;
+      transition: all 0.2s ease;
+
+      &.selected {
+        border-color: var(--mat-sys-primary);
+        background: var(--mat-sys-primary-container);
+      }
+
+      &:hover:not(.selected) {
+        border-color: var(--mat-sys-outline);
+        background: var(--mat-sys-surface-variant);
+      }
+
+      .ocr-engine-content {
+        margin-left: 8px;
+      }
+
+      .ocr-engine-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+
+      .ocr-engine-name {
+        font-weight: 600;
+        color: var(--mat-sys-on-surface);
+      }
+
+      .ocr-engine-description {
+        margin: 0;
+        font-size: 13px;
+        color: var(--mat-sys-on-surface-variant);
+      }
+
+      .ready-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+        color: var(--mat-sys-primary);
+      }
+
+      .recommended-badge {
+        padding: 2px 8px;
+        background: linear-gradient(135deg, #4caf50, #81c784);
+        color: white;
+        border-radius: 8px;
+        font-size: 10px;
+        font-weight: 600;
+      }
+    }
+  }
+
+  .current-model-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--mat-sys-primary-container);
+    border-radius: 8px;
+    color: var(--mat-sys-on-primary-container);
+    font-size: 13px;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: var(--mat-sys-primary);
+    }
+  }
+
   .model-features {
     display: flex;
     flex-wrap: wrap;

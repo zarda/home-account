@@ -206,6 +206,34 @@
           <mat-progress-bar mode="determinate" [value]="downloadProgress()"></mat-progress-bar>
         }
 
+        <!-- OCR Engine Selection -->
+        <div class="ocr-engine-selection">
+          <h4>{{ 'aiPage.selectOCREngine' | translate }}</h4>
+          <mat-radio-group 
+            [value]="ocrEngine()"
+            (change)="onOCREngineChange($event.value)"
+            class="ocr-engine-options">
+            @for (engine of availableOCREngines; track engine.value) {
+              <div class="ocr-engine-option" [class.selected]="ocrEngine() === engine.value">
+                <mat-radio-button [value]="engine.value">
+                  <div class="ocr-engine-content">
+                    <div class="ocr-engine-header">
+                      <span class="ocr-engine-name">{{ engine.name }}</span>
+                      @if (engine.value === 'auto') {
+                        <span class="recommended-badge">{{ 'aiPage.recommended' | translate }}</span>
+                      }
+                      @if (engine.value === 'paddleocr' && isPaddleOCRReady()) {
+                        <mat-icon class="ready-icon">check_circle</mat-icon>
+                      }
+                    </div>
+                    <p class="ocr-engine-description">{{ engine.description }}</p>
+                  </div>
+                </mat-radio-button>
+              </div>
+            }
+          </mat-radio-group>
+        </div>
+
         <div class="model-features">
           <div class="feature">
             <mat-icon>translate</mat-icon>
@@ -250,7 +278,6 @@
                 <mat-icon>check_circle</mat-icon>
                 <span>{{ 'aiPage.downloaded' | translate }}</span>
               } @else {
-                <span class="size">~65 MB</span>
                 <span class="optional-badge">{{ 'aiPage.optional' | translate }}</span>
               }
             </div>
@@ -263,19 +290,60 @@
             </div>
           }
 
+          <!-- Model Type Selection -->
+          <div class="model-type-selection">
+            <h4>{{ 'aiPage.selectModelType' | translate }}</h4>
+            <mat-radio-group 
+              [value]="selectedMLModelType()"
+              (change)="onMLModelTypeChange($event.value)"
+              class="model-type-options">
+              @for (model of availableMLModels; track model.type) {
+                <div class="model-type-option" [class.selected]="selectedMLModelType() === model.type">
+                  <mat-radio-button [value]="model.type">
+                    <div class="model-type-content">
+                      <div class="model-type-header">
+                        <span class="model-type-name">{{ model.name }}</span>
+                        <span class="model-type-size">~{{ model.sizeMB }} MB</span>
+                      </div>
+                      <p class="model-type-description">{{ model.description }}</p>
+                      @if (model.type === 'embeddings') {
+                        <span class="recommended-badge">{{ 'aiPage.recommendedMultilingual' | translate }}</span>
+                      }
+                    </div>
+                  </mat-radio-button>
+                </div>
+              }
+            </mat-radio-group>
+          </div>
+
           <div class="model-features">
-            <div class="feature">
-              <mat-icon>auto_awesome</mat-icon>
-              <span>{{ 'aiPage.mlFeature1' | translate }}</span>
-            </div>
-            <div class="feature">
-              <mat-icon>question_answer</mat-icon>
-              <span>{{ 'aiPage.mlFeature2' | translate }}</span>
-            </div>
-            <div class="feature">
-              <mat-icon>speed</mat-icon>
-              <span>{{ 'aiPage.mlFeature3' | translate }}</span>
-            </div>
+            @if (selectedMLModelType() === 'qa') {
+              <div class="feature">
+                <mat-icon>question_answer</mat-icon>
+                <span>{{ 'aiPage.mlFeature2' | translate }}</span>
+              </div>
+              <div class="feature">
+                <mat-icon>speed</mat-icon>
+                <span>{{ 'aiPage.mlFeature3' | translate }}</span>
+              </div>
+              <div class="feature">
+                <mat-icon>translate</mat-icon>
+                <span>{{ 'aiPage.englishOptimized' | translate }}</span>
+              </div>
+            } @else {
+              <div class="feature">
+                <mat-icon>language</mat-icon>
+                <span>{{ 'aiPage.multilingualSupport' | translate }}</span>
+              </div>
+              <div class="feature">
+                <mat-icon>auto_awesome</mat-icon>
+                <span>{{ 'aiPage.semanticMatching' | translate }}</span>
+              </div>
+              <div class="feature">
+                <mat-icon>verified</mat-icon>
+                <span>{{ 'aiPage.bestForTCJP' | translate }}</span>
+              </div>
+            }
           </div>
 
           @if (!isMLModelReady() && !isSemanticLoading()) {
@@ -286,8 +354,15 @@
               (click)="downloadMLModel()"
               [disabled]="isDownloadingEnhanced() || !isOnline()">
               <mat-icon>psychology</mat-icon>
-              {{ 'aiPage.downloadML' | translate }}
+              {{ 'aiPage.downloadML' | translate }} (~{{ getMLModelSize(selectedMLModelType()) }})
             </button>
+          }
+
+          @if (isMLModelReady()) {
+            <div class="current-model-info">
+              <mat-icon>check_circle</mat-icon>
+              <span>{{ 'aiPage.currentModel' | translate }}: {{ currentMLModelType() === 'qa' ? 'Question-Answering' : 'Multilingual Embeddings' }}</span>
+            </div>
           }
         </div>
       }

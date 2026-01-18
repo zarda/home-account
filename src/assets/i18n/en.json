@@ -739,6 +739,8 @@
     "ocrFeature1": "Multi-language support",
     "ocrFeature2": "Works completely offline",
     "ocrFeature3": "Receipt text extraction",
+    "selectOCREngine": "OCR Engine",
+    "ocrEngineChanged": "OCR engine changed",
     "downloadOCR": "Download OCR Model",
     "mlModelTitle": "ML Model (Transformers.js)",
     "mlModelTitleDescription": "Semantic understanding for better accuracy with merchant names and totals",
@@ -765,7 +767,14 @@
     "clearQueue": "Clear Queue",
     "storageInfo": "Storage",
     "totalCache": "Total Cache",
-    "modelStorage": "Model Storage"
+    "modelStorage": "Model Storage",
+    "selectModelType": "Select Model Type",
+    "recommendedMultilingual": "Recommended for TC/JP",
+    "englishOptimized": "English optimized",
+    "multilingualSupport": "100+ languages supported",
+    "semanticMatching": "Semantic pattern matching",
+    "bestForTCJP": "Best for TC/JP receipts",
+    "currentModel": "Current model"
   },
   "about": {
     "title": "About",

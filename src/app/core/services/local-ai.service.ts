@@ -1,6 +1,7 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
-import { createWorker, Worker, RecognizeResult } from 'tesseract.js';
+import { createWorker, Worker, RecognizeResult, PSM, OEM } from 'tesseract.js';
 import { TransformersAIService } from './transformers-ai.service';
+import { PaddleOCRService } from './paddle-ocr.service';
 
 export interface LocalOCRResult {
   text: string;
@@ -72,15 +73,62 @@ const CURRENCY_SYMBOL_MAP: Record<string, string> = {
 // Processing mode for local AI
 export type LocalProcessingMode = 'basic' | 'enhanced';
 
+// OCR engine type for hybrid approach
+export type OCREngine = 'tesseract' | 'paddleocr' | 'auto';
+
 @Injectable({ providedIn: 'root' })
 export class LocalAIService {
   // Inject TransformersAI for semantic understanding
   private transformersAI = inject(TransformersAIService);
   
-  // Worker instance for OCR
+  // Inject PaddleOCR for Traditional Chinese (93% accuracy vs 70% Tesseract)
+  private paddleOCR = inject(PaddleOCRService);
+  
+  // Worker instance for Tesseract OCR
   private worker: Worker | null = null;
   private workerInitializing = false;
   
+  // OCR engine preference (auto = detect language and choose best engine)
+  private _ocrEngine = signal<OCREngine>('auto');
+  
+  // Shared preferences storage key
+  private readonly PREFERENCES_KEY = 'homeaccount_ai_preferences';
+
+  // OCR configuration for different receipt types
+  // PSM (Page Segmentation Mode): https://tesseract-ocr.github.io/tessdoc/ImproveQuality.html
+  // OEM (OCR Engine Mode): 0=Legacy, 1=LSTM only, 2=Legacy+LSTM, 3=Default
+  private readonly OCR_CONFIG = {
+    // Primary config for receipts - single block of text
+    receipt: {
+      tessedit_pageseg_mode: PSM.SINGLE_BLOCK,  // PSM 6: Assume single uniform block of text
+      tessedit_ocr_engine_mode: OEM.LSTM_ONLY,  // OEM 1: LSTM only (better for CJK)
+      preserve_interword_spaces: '1',  // Keep spaces for Japanese text
+    },
+    // Fallback for multi-section receipts
+    singleColumn: {
+      tessedit_pageseg_mode: PSM.SINGLE_COLUMN,  // PSM 4: Assume single column of variable-size text
+      tessedit_ocr_engine_mode: OEM.LSTM_ONLY,
+      preserve_interword_spaces: '1',
+    },
+    // For difficult/sparse layouts
+    sparse: {
+      tessedit_pageseg_mode: PSM.SPARSE_TEXT,  // PSM 11: Sparse text, find as much as possible
+      tessedit_ocr_engine_mode: OEM.LSTM_ONLY,
+      preserve_interword_spaces: '1',
+    },
+    // For orientation detection
+    osd: {
+      tessedit_pageseg_mode: PSM.OSD_ONLY,  // PSM 0: Orientation and script detection only
+    },
+  };
+
+  // Confidence thresholds for multi-pass OCR
+  private readonly CONFIDENCE_THRESHOLDS = {
+    excellent: 85,  // No need for additional passes
+    good: 70,       // Acceptable, but try fallback if available
+    poor: 50,       // Definitely try additional passes
+  };
+
   // Processing mode
   private _processingMode = signal<LocalProcessingMode>('basic');
 
@@ -102,16 +150,43 @@ export class LocalAIService {
   lastError = computed(() => this._lastError());
   processingMode = computed(() => this._processingMode());
   semanticModelReady = computed(() => this._semanticModelReady());
+  ocrEngine = computed(() => this._ocrEngine());
   
-  // Combined model size (OCR + Semantic)
+  // PaddleOCR ready state (for Traditional Chinese)
+  paddleOCRReady = computed(() => this.paddleOCR.isReady());
+  
+  // Combined model size (OCR + Semantic + PaddleOCR)
   totalModelSize = computed(() => {
-    const ocrSize = this._modelSize();
+    const tesseractSize = this._modelSize();
     const semanticSize = this.transformersAI.modelSize();
-    return ocrSize + semanticSize;
+    const paddleSize = this.paddleOCR.modelSize();
+    return tesseractSize + semanticSize + paddleSize;
   });
 
   constructor() {
-    // Don't initialize on construction - lazy load when needed
+    // Load persisted processing mode from localStorage
+    this.loadProcessingMode();
+  }
+
+  /**
+   * Load persisted processing mode and OCR engine from shared preferences.
+   */
+  private loadProcessingMode(): void {
+    try {
+      const stored = localStorage.getItem(this.PREFERENCES_KEY);
+      if (stored) {
+        const prefs = JSON.parse(stored);
+        if (prefs.localProcessingMode === 'basic' || prefs.localProcessingMode === 'enhanced') {
+          this._processingMode.set(prefs.localProcessingMode);
+        }
+        // Also load OCR engine preference
+        if (prefs.ocrEngine === 'auto' || prefs.ocrEngine === 'tesseract' || prefs.ocrEngine === 'paddleocr') {
+          this._ocrEngine.set(prefs.ocrEngine);
+        }
+      }
+    } catch {
+      // localStorage may not be available or invalid JSON
+    }
   }
   
   /**
@@ -119,6 +194,47 @@ export class LocalAIService {
    */
   setProcessingMode(mode: LocalProcessingMode): void {
     this._processingMode.set(mode);
+    
+    // Persist to shared preferences
+    try {
+      const stored = localStorage.getItem(this.PREFERENCES_KEY);
+      const prefs = stored ? JSON.parse(stored) : {};
+      prefs.localProcessingMode = mode;
+      localStorage.setItem(this.PREFERENCES_KEY, JSON.stringify(prefs));
+    } catch {
+      // localStorage may not be available
+    }
+  }
+
+  /**
+   * Set the OCR engine preference.
+   * - 'auto': Automatically select best engine based on detected language
+   *   - Traditional Chinese → PaddleOCR (93% accuracy)
+   *   - English/Japanese → Tesseract (better for these languages)
+   * - 'tesseract': Always use Tesseract.js
+   * - 'paddleocr': Always use PaddleOCR (best for TC, good for all)
+   */
+  setOCREngine(engine: OCREngine): void {
+    this._ocrEngine.set(engine);
+    
+    try {
+      const stored = localStorage.getItem(this.PREFERENCES_KEY);
+      const prefs = stored ? JSON.parse(stored) : {};
+      prefs.ocrEngine = engine;
+      localStorage.setItem(this.PREFERENCES_KEY, JSON.stringify(prefs));
+    } catch {
+      // localStorage may not be available
+    }
+  }
+
+  /**
+   * Pre-load PaddleOCR models for Traditional Chinese.
+   * Call this if you expect to process TC receipts.
+   */
+  async initializePaddleOCR(): Promise<void> {
+    if (!this.paddleOCR.isReady()) {
+      await this.paddleOCR.initialize();
+    }
   }
 
   /**
@@ -176,6 +292,9 @@ export class LocalAIService {
 
   /**
    * Process a receipt image and extract transactions.
+   * Uses hybrid OCR approach:
+   * - PaddleOCR for Traditional Chinese (~93% accuracy)
+   * - Tesseract for English/Japanese (better for these languages)
    */
   async processReceipt(imageFile: File): Promise<LocalProcessingResult> {
     const startTime = performance.now();
@@ -184,19 +303,26 @@ export class LocalAIService {
     this._lastError.set(null);
 
     try {
-      // Initialize OCR if not ready
-      if (!this.worker) {
-        await this.initialize(['eng', 'jpn', 'chi_tra']);
-      }
-
-      // Preprocess image
+      // Preprocess image first (needed for both OCR engines)
       this._status.set('Preprocessing image...');
       const processedImage = await this.preprocessImage(imageFile);
+      this._progress.set(15);
 
-      // Run OCR
-      this._status.set('Extracting text...');
-      this._progress.set(20);
-      const ocrResult = await this.performOCR(processedImage);
+      // Determine which OCR engine to use
+      const engine = this._ocrEngine();
+      let ocrResult: LocalOCRResult;
+
+      if (engine === 'paddleocr') {
+        // Force PaddleOCR
+        ocrResult = await this.runPaddleOCR(imageFile);
+      } else if (engine === 'tesseract') {
+        // Force Tesseract
+        ocrResult = await this.runTesseractOCR(processedImage);
+      } else {
+        // Auto mode: quick language detection then route
+        ocrResult = await this.runHybridOCR(imageFile, processedImage);
+      }
+      
       this._progress.set(50);
 
       let receiptData: ExtractedReceiptData;
@@ -255,6 +381,132 @@ export class LocalAIService {
   }
 
   /**
+   * Run PaddleOCR (best for Chinese text - Simplified & Traditional).
+   * Loads from CDN on first use.
+   */
+  private async runPaddleOCR(imageFile: File): Promise<LocalOCRResult> {
+    this._status.set('Running PaddleOCR (optimized for Chinese)...');
+    this._progress.set(25);
+
+    try {
+      const result = await this.paddleOCR.recognize(imageFile);
+
+      console.log('[LocalAI] PaddleOCR result:', {
+        textLength: result.text.length,
+        confidence: result.confidence,
+      });
+
+      // Convert to LocalOCRResult format
+      const lines: OCRLine[] = [];
+      const textLines = result.text.split('\n');
+
+      for (let i = 0; i < textLines.length; i++) {
+        const points = result.points?.[i];
+        lines.push({
+          text: textLines[i],
+          confidence: result.confidence * 100,
+          bbox: points
+            ? {
+                x0: points[0]?.[0] || 0,
+                y0: points[0]?.[1] || 0,
+                x1: points[2]?.[0] || 0,
+                y1: points[2]?.[1] || 0,
+              }
+            : { x0: 0, y0: 0, x1: 0, y1: 0 },
+        });
+      }
+
+      return {
+        text: result.text,
+        confidence: result.confidence * 100, // Convert to 0-100 scale
+        lines,
+      };
+    } catch (error) {
+      console.warn('[LocalAI] PaddleOCR failed, falling back to Tesseract:', error);
+      // Fallback to Tesseract on error
+      const processedImage = await this.preprocessImage(imageFile);
+      return this.runTesseractOCR(processedImage);
+    }
+  }
+
+  /**
+   * Run Tesseract OCR (best for English/Japanese).
+   */
+  private async runTesseractOCR(processedImage: string): Promise<LocalOCRResult> {
+    this._status.set('Running Tesseract OCR...');
+    this._progress.set(25);
+
+    // Initialize OCR if not ready
+    if (!this.worker) {
+      await this.initialize(['eng', 'jpn', 'chi_tra']);
+    }
+
+    // Run multi-pass OCR for better accuracy
+    return this.multiPassOCR(processedImage);
+  }
+
+  /**
+   * Hybrid OCR: detect language and route to best engine.
+   * - Chinese (Simplified/Traditional) → PaddleOCR (93% accuracy)
+   * - English/Japanese → Tesseract (better for these languages)
+   */
+  private async runHybridOCR(imageFile: File, processedImage: string): Promise<LocalOCRResult> {
+    this._status.set('Detecting language...');
+    this._progress.set(20);
+
+    // First, do a quick Tesseract pass to detect language
+    if (!this.worker) {
+      await this.initialize(['eng', 'jpn', 'chi_tra']);
+    }
+
+    // Quick single-pass OCR for language detection
+    const quickResult = await this.performOCR(processedImage, 'receipt');
+    const sampleText = quickResult.text.substring(0, 500);
+
+    // Check if Chinese is dominant (Simplified or Traditional)
+    const isChinese =
+      PaddleOCRService.containsChineseCharacters(sampleText) ||
+      this.detectTaiwanHKIndicators(sampleText);
+
+    if (isChinese) {
+      console.log('[LocalAI] Detected Chinese text - using PaddleOCR');
+      this._status.set('Chinese detected - using PaddleOCR...');
+
+      try {
+        return await this.runPaddleOCR(imageFile);
+      } catch (error) {
+        console.warn('[LocalAI] PaddleOCR failed, using Tesseract result:', error);
+        // Return the quick result enhanced with multi-pass
+        return this.multiPassOCR(processedImage);
+      }
+    }
+
+    // For English/Japanese, use Tesseract with multi-pass
+    console.log('[LocalAI] Using Tesseract for English/Japanese');
+    return this.multiPassOCR(processedImage);
+  }
+
+  /**
+   * Detect Taiwan/Hong Kong specific indicators.
+   */
+  private detectTaiwanHKIndicators(text: string): boolean {
+    const indicators = [
+      /民國\d{1,3}年/,  // Taiwan ROC date
+      /統一編號/,       // Taiwan invoice number
+      /發票/,           // Invoice (common in TW/HK)
+      /NT\$/i,          // New Taiwan Dollar
+      /HK\$/i,          // Hong Kong Dollar
+      /港幣/,           // HK currency
+      /台幣/,           // Taiwan currency
+      /收據/,           // Receipt (TC)
+      /臺灣|臺北/,      // Taiwan/Taipei (Traditional)
+      /香港/,           // Hong Kong
+    ];
+    
+    return indicators.some(pattern => pattern.test(text));
+  }
+
+  /**
    * Process multiple images of a single receipt.
    */
   async processMultipleImages(imageFiles: File[]): Promise<LocalProcessingResult> {
@@ -277,12 +529,26 @@ export class LocalAIService {
         this._progress.set(Math.round((i / imageFiles.length) * 100));
 
         const processedImage = await this.preprocessImage(imageFiles[i]);
-        const ocrResult = await this.performOCR(processedImage);
+        const ocrResult = await this.multiPassOCR(processedImage);
         
         combinedText += ocrResult.text + '\n---\n';
         totalConfidence += ocrResult.confidence;
 
-        const receiptData = this.parseReceiptText(ocrResult);
+        let receiptData: ExtractedReceiptData;
+        
+        // Use enhanced mode if enabled
+        if (this._processingMode() === 'enhanced') {
+          try {
+            const semanticResult = await this.transformersAI.parseReceiptText(ocrResult.text);
+            const basicData = this.parseReceiptText(ocrResult);
+            receiptData = this.mergeResults(basicData, semanticResult, ocrResult.confidence);
+          } catch {
+            receiptData = this.parseReceiptText(ocrResult);
+          }
+        } else {
+          receiptData = this.parseReceiptText(ocrResult);
+        }
+        
         const transactions = this.convertToTransactions(receiptData);
         allTransactions.push(...transactions);
       }
@@ -309,6 +575,94 @@ export class LocalAIService {
   }
 
   /**
+   * Detect image orientation and return rotation angle needed.
+   * Uses Tesseract's detect() API for orientation/script detection.
+   */
+  private async detectOrientation(imageData: string): Promise<number> {
+    if (!this.worker) {
+      return 0;
+    }
+
+    try {
+      // Use worker.detect() for orientation detection (lighter than full recognize)
+      const result = await this.worker.detect(imageData);
+      
+      // Tesseract returns orientation in degrees (0, 90, 180, 270)
+      const data = result.data as {
+        orientation_degrees?: number;
+        orientation_confidence?: number;
+      };
+      
+      if (data.orientation_degrees !== undefined && 
+          data.orientation_confidence !== undefined &&
+          data.orientation_confidence > 0.5) {
+        const degrees = data.orientation_degrees;
+        console.log('[LocalAI] Detected orientation:', degrees, 'degrees, confidence:', data.orientation_confidence);
+        return degrees;
+      }
+    } catch (error) {
+      console.warn('[LocalAI] Orientation detection failed:', error);
+    }
+    
+    return 0;
+  }
+
+  /**
+   * Rotate an image by the specified degrees.
+   * Returns the new context since resizing canvas invalidates the old one.
+   */
+  private rotateImage(
+    canvas: HTMLCanvasElement, 
+    ctx: CanvasRenderingContext2D, 
+    img: HTMLImageElement,
+    degrees: number
+  ): CanvasRenderingContext2D {
+    if (degrees === 0) return ctx;
+    
+    const radians = (degrees * Math.PI) / 180;
+    const sin = Math.abs(Math.sin(radians));
+    const cos = Math.abs(Math.cos(radians));
+    
+    const originalWidth = canvas.width;
+    const originalHeight = canvas.height;
+    
+    // Calculate new dimensions to fit rotated image
+    const newWidth = Math.round(originalWidth * cos + originalHeight * sin);
+    const newHeight = Math.round(originalWidth * sin + originalHeight * cos);
+    
+    // Create a temporary canvas for the rotated image
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = newWidth;
+    tempCanvas.height = newHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    if (!tempCtx) return ctx;
+    
+    // Translate to center, rotate, then draw
+    tempCtx.translate(newWidth / 2, newHeight / 2);
+    tempCtx.rotate(radians);
+    tempCtx.drawImage(img, -originalWidth / 2, -originalHeight / 2, originalWidth, originalHeight);
+    
+    // Resize canvas - this invalidates the old context
+    canvas.width = newWidth;
+    canvas.height = newHeight;
+    
+    // Get fresh context after resize - must succeed since old ctx is now invalid
+    const newCtx = canvas.getContext('2d');
+    if (!newCtx) {
+      // Cannot return old ctx as it's invalidated by resize
+      // Throw error so caller knows rotation failed
+      throw new Error('Failed to get canvas context after rotation');
+    }
+    
+    // Copy rotated image to the resized canvas
+    newCtx.drawImage(tempCanvas, 0, 0);
+    
+    console.log('[LocalAI] Rotated image by', degrees, 'degrees');
+    return newCtx;
+  }
+
+  /**
    * Preprocess image for better OCR results.
    * Applies multiple enhancement techniques for receipt images.
    */
@@ -321,10 +675,11 @@ export class LocalAIService {
           
           // Create image element
           const img = new Image();
-          img.onload = () => {
+          img.onload = async () => {
             // Create canvas for preprocessing
             const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            // Use let since rotateImage may return a fresh context after canvas resize
+            let ctx = canvas.getContext('2d', { willReadFrequently: true });
             
             if (!ctx) {
               resolve(base64);
@@ -363,6 +718,23 @@ export class LocalAIService {
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
 
+            // Step 0: Detect and correct orientation (for rotated photos)
+            try {
+              if (this.worker) {
+                const quickPreview = canvas.toDataURL('image/jpeg', 0.5);
+                const rotationNeeded = await this.detectOrientation(quickPreview);
+                if (rotationNeeded !== 0 && Math.abs(rotationNeeded) <= 180) {
+                  // rotateImage returns fresh context since canvas resize invalidates the old one
+                  ctx = this.rotateImage(canvas, ctx, img, -rotationNeeded);
+                  // Update dimensions after rotation
+                  width = canvas.width;
+                  height = canvas.height;
+                }
+              }
+            } catch (orientationError) {
+              console.warn('[LocalAI] Orientation detection skipped:', orientationError);
+            }
+
             // Get image data for processing
             let imageData = ctx.getImageData(0, 0, width, height);
             
@@ -375,11 +747,23 @@ export class LocalAIService {
             // Step 3: Enhance contrast using adaptive histogram equalization
             imageData = this.enhanceContrast(imageData, width, height);
             
-            // Step 4: Apply unsharp mask for edge enhancement
-            imageData = this.sharpen(imageData, width, height);
+            // Step 4: Detect if likely CJK content (affects further processing)
+            const isCJK = this.detectCJKContent(imageData, width, height);
             
-            // Step 5: Apply adaptive thresholding for text binarization
-            imageData = this.adaptiveThreshold(imageData, width, height);
+            // Step 5: Apply unsharp mask for edge enhancement
+            // Use gentler sharpening for CJK to preserve fine strokes
+            if (!isCJK) {
+              imageData = this.sharpen(imageData, width, height);
+            }
+            
+            // Step 6: Apply adaptive thresholding for text binarization
+            // Skip for CJK content as it can destroy fine strokes
+            // Tesseract's LSTM engine handles grayscale well
+            if (!isCJK) {
+              imageData = this.adaptiveThreshold(imageData, width, height);
+            } else {
+              console.log('[LocalAI] CJK content detected - using gentle preprocessing');
+            }
 
             ctx.putImageData(imageData, 0, 0);
 
@@ -543,11 +927,16 @@ export class LocalAIService {
   /**
    * Apply adaptive thresholding for text binarization.
    * This helps separate text from background on receipts.
+   * Uses gentler parameters to preserve fine Japanese character strokes.
    */
   private adaptiveThreshold(imageData: ImageData, width: number, height: number): ImageData {
     const data = imageData.data;
-    const blockSize = 15; // Size of local region
-    const C = 10; // Constant subtracted from mean
+    // Reduced block size (11 instead of 15) for finer detail preservation
+    // Important for Japanese kanji with thin strokes
+    const blockSize = 11;
+    // Reduced constant (5 instead of 10) for less aggressive thresholding
+    // This helps preserve fine strokes in CJK characters
+    const C = 5;
     
     // Create integral image for fast mean calculation
     const integral = new Float64Array((width + 1) * (height + 1));
@@ -586,17 +975,19 @@ export class LocalAIService {
         const idx = (y * width + x) * 4;
         const pixel = data[idx];
         
-        // Apply threshold: text should be dark on light background
-        // We keep grayscale values but enhance contrast near threshold
+        // Gentler contrast enhancement to preserve fine strokes
+        // Instead of hard binarization, use soft contrast adjustment
         if (pixel < threshold) {
-          // Dark pixel (likely text) - make darker
-          const newVal = Math.max(0, pixel * 0.5);
+          // Dark pixel (likely text) - enhance but preserve gradients
+          // Use 0.7 multiplier instead of 0.5 to keep more detail
+          const newVal = Math.max(0, pixel * 0.7);
           data[idx] = newVal;
           data[idx + 1] = newVal;
           data[idx + 2] = newVal;
         } else {
-          // Light pixel (likely background) - make lighter
-          const newVal = Math.min(255, 200 + (pixel - threshold) * 0.3);
+          // Light pixel (likely background) - lighten gently
+          // Use smaller boost to avoid washing out thin strokes
+          const newVal = Math.min(255, 180 + (pixel - threshold) * 0.4);
           data[idx] = newVal;
           data[idx + 1] = newVal;
           data[idx + 2] = newVal;
@@ -608,12 +999,61 @@ export class LocalAIService {
   }
 
   /**
-   * Perform OCR on preprocessed image.
+   * Detect if image likely contains CJK (Chinese/Japanese/Korean) text.
+   * Used to adjust preprocessing intensity.
    */
-  private async performOCR(imageData: string): Promise<LocalOCRResult> {
+  private detectCJKContent(imageData: ImageData, width: number, height: number): boolean {
+    // Simple heuristic: CJK receipts typically have higher character density
+    // and more complex stroke patterns (higher local variance)
+    const data = imageData.data;
+    let highVarianceRegions = 0;
+    const sampleSize = 20;
+    const samples = 50;
+    
+    for (let s = 0; s < samples; s++) {
+      const sx = Math.floor(Math.random() * (width - sampleSize));
+      const sy = Math.floor(Math.random() * (height - sampleSize));
+      
+      let sum = 0;
+      let sumSq = 0;
+      const count = sampleSize * sampleSize;
+      
+      for (let y = sy; y < sy + sampleSize; y++) {
+        for (let x = sx; x < sx + sampleSize; x++) {
+          const idx = (y * width + x) * 4;
+          const val = data[idx];
+          sum += val;
+          sumSq += val * val;
+        }
+      }
+      
+      const mean = sum / count;
+      const variance = (sumSq / count) - (mean * mean);
+      
+      // High variance suggests complex characters
+      if (variance > 2000) {
+        highVarianceRegions++;
+      }
+    }
+    
+    // If more than 30% of sampled regions have high variance, likely CJK
+    return highVarianceRegions / samples > 0.3;
+  }
+
+  /**
+   * Perform OCR on preprocessed image with optimized parameters for receipts.
+   */
+  private async performOCR(
+    imageData: string, 
+    config: 'receipt' | 'singleColumn' | 'sparse' = 'receipt'
+  ): Promise<LocalOCRResult> {
     if (!this.worker) {
       throw new Error('OCR worker not initialized');
     }
+
+    // Apply optimized parameters for the selected configuration
+    const params = this.OCR_CONFIG[config];
+    await this.worker.setParameters(params);
 
     const result: RecognizeResult = await this.worker.recognize(imageData);
     
@@ -627,6 +1067,105 @@ export class LocalAIService {
       text: result.data.text,
       confidence: result.data.confidence,
       lines,
+    };
+  }
+
+  /**
+   * Perform multi-pass OCR with confidence-based fallback.
+   * Tries different PSM modes and returns the best result.
+   */
+  private async multiPassOCR(imageData: string): Promise<LocalOCRResult> {
+    // Pass 1: Try receipt configuration (PSM 6 - single block)
+    this._status.set('OCR pass 1: analyzing receipt layout...');
+    const pass1Result = await this.performOCR(imageData, 'receipt');
+    
+    if (pass1Result.confidence >= this.CONFIDENCE_THRESHOLDS.excellent) {
+      console.log('[LocalAI] Pass 1 excellent confidence:', pass1Result.confidence);
+      return pass1Result;
+    }
+
+    // Pass 2 & 3: Try alternative configurations when pass 1 is below threshold
+    if (pass1Result.confidence < this.CONFIDENCE_THRESHOLDS.good) {
+      this._status.set('OCR pass 2: trying column layout...');
+      const pass2Result = await this.performOCR(imageData, 'singleColumn');
+      console.log('[LocalAI] Pass 2 confidence:', pass2Result.confidence);
+      
+      // If pass 2 is good enough, return it
+      if (pass2Result.confidence >= this.CONFIDENCE_THRESHOLDS.good) {
+        return pass2Result;
+      }
+      
+      // Pass 3: Always try sparse text mode when below threshold
+      // (regardless of whether pass 2 was better than pass 1)
+      this._status.set('OCR pass 3: sparse text analysis...');
+      const pass3Result = await this.performOCR(imageData, 'sparse');
+      console.log('[LocalAI] Pass 3 confidence:', pass3Result.confidence);
+      
+      // Return the best result among all passes
+      const results = [pass1Result, pass2Result, pass3Result];
+      const best = results.reduce((a, b) => a.confidence > b.confidence ? a : b);
+      console.log('[LocalAI] Best result from pass:', results.indexOf(best) + 1, 'confidence:', best.confidence);
+      return this.mergeOCRResults(results);
+    }
+
+    // Pass 1 was good enough
+    console.log('[LocalAI] Using pass 1 result, confidence:', pass1Result.confidence);
+    return pass1Result;
+  }
+
+  /**
+   * Merge OCR results from multiple passes.
+   * Takes the best confidence result but supplements with unique lines from other passes.
+   */
+  private mergeOCRResults(results: LocalOCRResult[]): LocalOCRResult {
+    // Handle edge cases
+    if (results.length === 0) {
+      return { text: '', confidence: 0, lines: [] };
+    }
+    if (results.length === 1) {
+      return results[0];
+    }
+
+    // Sort by confidence descending
+    const sorted = [...results].sort((a, b) => b.confidence - a.confidence);
+    const best = sorted[0];
+    
+    // If the best result is significantly better, just use it
+    if (best.confidence > sorted[1].confidence + 10) {
+      return best;
+    }
+
+    // Otherwise, try to merge unique lines from other results
+    const seenLines = new Set<string>();
+    const mergedLines: OCRLine[] = [];
+    
+    // Add lines from best result first
+    for (const line of best.lines) {
+      const normalized = line.text.toLowerCase().replace(/\s+/g, '');
+      if (normalized.length > 2 && !seenLines.has(normalized)) {
+        seenLines.add(normalized);
+        mergedLines.push(line);
+      }
+    }
+    
+    // Add unique high-confidence lines from other results
+    for (const result of sorted.slice(1)) {
+      for (const line of result.lines) {
+        const normalized = line.text.toLowerCase().replace(/\s+/g, '');
+        if (normalized.length > 2 && !seenLines.has(normalized) && line.confidence > 60) {
+          seenLines.add(normalized);
+          mergedLines.push(line);
+        }
+      }
+    }
+    
+    // Sort lines by their vertical position (y coordinate)
+    mergedLines.sort((a, b) => a.bbox.y0 - b.bbox.y0);
+    
+    return {
+      text: mergedLines.map(l => l.text).join('\n'),
+      confidence: best.confidence,
+      lines: mergedLines,
     };
   }
 
@@ -672,11 +1211,11 @@ export class LocalAIService {
   }
 
   /**
-   * Clean common OCR errors in text.
+   * Clean common OCR errors in text, including Japanese-specific corrections.
    */
   private cleanOCRText(text: string): string {
-    return text
-      // Fix common character substitutions
+    let cleaned = text
+      // Fix common character substitutions (Latin)
       .replace(/[oO](?=\d)/g, '0')  // O before digit -> 0
       .replace(/(?<=\d)[oO]/g, '0') // O after digit -> 0
       .replace(/[lI](?=\d)/g, '1')  // l/I before digit -> 1
@@ -684,6 +1223,75 @@ export class LocalAIService {
       .replace(/[Ss](?=\d{2,})/g, '$') // S before 2+ digits -> $
       .replace(/\s{2,}/g, ' ')     // Multiple spaces -> single
       .trim();
+    
+    // Apply Japanese OCR corrections
+    cleaned = this.correctJapaneseOCRErrors(cleaned);
+    
+    return cleaned;
+  }
+
+  /**
+   * Correct common Japanese OCR errors.
+   * These are frequent misrecognitions in thermal receipt text.
+   */
+  private correctJapaneseOCRErrors(text: string): string {
+    // Common Japanese OCR error patterns
+    const corrections: [RegExp, string][] = [
+      // Yen symbol variants
+      [/\\$/g, '¥'],           // Backslash often misread as yen
+      [/Y(?=\d{2,})/g, '¥'],   // Y before numbers -> yen
+      
+      // Common kanji misreadings in receipt context
+      [/円円/g, '円'],         // Duplicate yen character
+      [/合言十/g, '合計'],      // Common 合計 misread
+      [/含計/g, '合計'],       // 含 misread as 合
+      [/令計/g, '合計'],       // 令 misread as 合
+      [/合討/g, '合計'],       // 討 misread as 計
+      [/イ言十/g, '合計'],      // Fragmented kanji
+      
+      // Tax related
+      [/税込み/g, '税込'],     // Normalize tax inclusive
+      [/税込リ/g, '税込'],     // リ misread
+      [/秘込/g, '税込'],       // 秘 misread as 税
+      [/税i込/g, '税込'],      // Latin i misread
+      
+      // Payment related
+      [/お支払し/g, 'お支払い'],  // Missing い
+      [/おつり/g, 'お釣り'],     // Normalize change
+      [/釣り銭/g, 'お釣り'],     // Alternate form
+      [/つり/g, 'お釣り'],       // Short form
+      
+      // Common receipt words
+      [/レジ[ー一]/g, 'レジー'],  // Register (ー and 一 often confused)
+      [/レシ一ト/g, 'レシート'], // Receipt with ー vs 一 (kanji one vs katakana dash)
+      [/領収証/g, '領収書'],    // Alternate receipt word
+      [/頒収書/g, '領収書'],    // 頒 misread as 領
+      
+      // Store types
+      [/株式全社/g, '株式会社'],  // Company type
+      [/株式合社/g, '株式会社'],  // Common misread
+      [/株式公社/g, '株式会社'],  // Another misread
+      [/有限全社/g, '有限会社'],  // Limited company
+      
+      // Date/time patterns
+      [/令和(?=\d)/g, '令和 '],  // Add space after era
+      [/平成(?=\d)/g, '平成 '],
+      
+      // Numbers in Japanese context
+      [/(?<=\d),(?=\d{3})/g, ','],  // Ensure proper comma in numbers
+      [/(?<=¥\s*\d+)[,.。](?=\d{3})/g, ','], // Fix decimal/comma confusion after yen
+      
+      // Common noise removal
+      [/[★☆◎○●◆◇■□▲△▼▽]/g, ''],  // Remove decorative symbols
+      [/[─━═┃┄┅┆┇┈┉]/g, '-'],      // Normalize line characters
+    ];
+    
+    let result = text;
+    for (const [pattern, replacement] of corrections) {
+      result = result.replace(pattern, replacement);
+    }
+    
+    return result;
   }
 
   /**

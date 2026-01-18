@@ -763,6 +763,8 @@
     "ocrFeature1": "多言語対応",
     "ocrFeature2": "完全オフライン動作",
     "ocrFeature3": "レシートテキスト抽出",
+    "selectOCREngine": "OCRエンジン",
+    "ocrEngineChanged": "OCRエンジンが変更されました",
     "downloadOCR": "OCRモデルをダウンロード",
     "mlModelTitle": "MLモデル (Transformers.js)",
     "mlModelTitleDescription": "店舗名や合計金額の精度向上のための意味理解",
@@ -789,7 +791,14 @@
     "clearQueue": "キューをクリア",
     "storageInfo": "ストレージ",
     "totalCache": "合計キャッシュ",
-    "modelStorage": "モデルストレージ"
+    "modelStorage": "モデルストレージ",
+    "selectModelType": "モデルタイプを選択",
+    "recommendedMultilingual": "繁中/日本語に推奨",
+    "englishOptimized": "英語最適化",
+    "multilingualSupport": "100+言語対応",
+    "semanticMatching": "セマンティックパターンマッチング",
+    "bestForTCJP": "繁中/日本語のレシートに最適",
+    "currentModel": "現在のモデル"
   },
   "about": {
     "title": "について",

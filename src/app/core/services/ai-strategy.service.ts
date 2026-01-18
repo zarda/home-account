@@ -1,11 +1,16 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { GeminiService, ParsedReceipt } from './gemini.service';
-import { LocalAIService, LocalTransaction } from './local-ai.service';
+import { LocalAIService, LocalTransaction, LocalProcessingMode } from './local-ai.service';
+import { MLModelType } from './ml-worker.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
 
 export type AIProcessingMode = 'auto' | 'local_only' | 'cloud_only';
 export type AIProcessingStrategy = 'speed' | 'accuracy' | 'privacy';
+
+// Re-export types for convenience
+export type { LocalProcessingMode } from './local-ai.service';
+export type { MLModelType } from './ml-worker.service';
 
 export interface AIPreferences {
   mode: AIProcessingMode;
@@ -14,6 +19,11 @@ export interface AIPreferences {
   autoSync: boolean;
   preferredLanguages: string[];
   confidenceThreshold: number;
+  // Local AI processing mode (basic OCR vs enhanced with Transformers)
+  localProcessingMode: LocalProcessingMode;
+  // ML model preferences
+  mlModelType: MLModelType;
+  mlModelDownloaded: boolean;
 }
 
 export interface ProcessingResult {
@@ -42,6 +52,9 @@ const DEFAULT_PREFERENCES: AIPreferences = {
   autoSync: true,
   preferredLanguages: ['eng', 'jpn'],
   confidenceThreshold: 0.7,
+  localProcessingMode: 'basic',
+  mlModelType: 'embeddings',
+  mlModelDownloaded: false,
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
@@ -463,9 +476,15 @@ export class AIStrategyService {
         };
       }
 
-      // Low confidence, try cloud
+      // Low confidence, try cloud as fallback
       if (this.canUseCloud()) {
-        return await this.processMultipleWithCloud(imageFiles);
+        const cloudResult = await this.processMultipleWithCloud(imageFiles);
+        // Mark as hybrid fallback (consistent with single-image behavior)
+        return {
+          ...cloudResult,
+          source: 'hybrid',
+          usedFallback: true,
+        };
       }
 
       return {
@@ -478,7 +497,13 @@ export class AIStrategyService {
       };
     } catch (localError) {
       if (this.canUseCloud()) {
-        return await this.processMultipleWithCloud(imageFiles);
+        const cloudResult = await this.processMultipleWithCloud(imageFiles);
+        // Mark as hybrid fallback due to local error
+        return {
+          ...cloudResult,
+          source: 'hybrid',
+          usedFallback: true,
+        };
       }
       throw localError;
     }

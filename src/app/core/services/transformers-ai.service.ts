@@ -1,11 +1,14 @@
 import { Injectable, signal, computed, inject } from '@angular/core';
-import { MLWorkerService } from './ml-worker.service';
+import { MLWorkerService, MLModelType } from './ml-worker.service';
 
 /**
- * Enhanced receipt parsing with two modes:
+ * Enhanced receipt parsing with three modes:
  * 1. Rule-based: Fast, no download required, good for common receipts
- * 2. ML-powered: Uses Transformers.js for semantic understanding (~65MB download)
+ * 2. ML QA-powered: Uses Transformers.js question-answering (~65MB download, English-optimized)
+ * 3. ML Embeddings: Uses multilingual embeddings (~120MB download, best for TC/JP)
  */
+
+export type { MLModelType } from './ml-worker.service';
 
 export interface ExtractedField {
   field: string;
@@ -59,9 +62,24 @@ const REGIONAL_PATTERNS = {
   },
   // Japan patterns
   japan: {
-    total: [/合計[:\s]*[¥￥]?[\s]*([\d,]+)/, /お支払い[:\s]*[¥￥]?[\s]*([\d,]+)/, /ご請求額[:\s]*([\d,]+)/],
-    merchant: [/レシート/, /領収書/],
-    date: [/(\d{4})年(\d{1,2})月(\d{1,2})日/, /令和\s*(\d{1,2})年(\d{1,2})月(\d{1,2})日/],
+    total: [
+      // Tax-inclusive totals (prioritized)
+      /税込合計[:\s]*[¥￥]?[\s]*([\d,]+)/,
+      /合計[（(]税込[)）][:\s]*[¥￥]?[\s]*([\d,]+)/,
+      /お会計[:\s]*[¥￥]?[\s]*([\d,]+)/,
+      /お支払い[:\s]*[¥￥]?[\s]*([\d,]+)/,
+      /ご請求額[:\s]*[¥￥]?[\s]*([\d,]+)/,
+      /領収金額[:\s]*[¥￥]?[\s]*([\d,]+)/,
+      /合計[:\s]*[¥￥]?[\s]*([\d,]+)/,
+      /計[:\s]*[¥￥]?[\s]*([\d,]+)/,
+    ],
+    merchant: [/株式会社/, /有限会社/, /合同会社/, /レシート/, /領収書/],
+    date: [
+      /(\d{4})年(\d{1,2})月(\d{1,2})日/,
+      /令和\s*(\d{1,2})年(\d{1,2})月(\d{1,2})日/,
+      /平成\s*(\d{1,2})年(\d{1,2})月(\d{1,2})日/,
+      /R\s*(\d{1,2})[./-](\d{1,2})[./-](\d{1,2})/i, // R6.01.15 format
+    ],
     currency: 'JPY',
   },
   // US/International patterns
@@ -96,6 +114,15 @@ export class TransformersAIService {
   mlModelReady = computed(() => this.mlWorker.isReady());
   mlModelSupported = computed(() => this.mlWorker.isSupported());
   modelSize = computed(() => this.mlWorker.modelSize());
+  currentMLModelType = computed(() => this.mlWorker.currentModelType());
+  mlModelWasDownloaded = computed(() => this.mlWorker.wasDownloaded());
+
+  /**
+   * Get the saved model type preference.
+   */
+  getSavedModelType(): MLModelType {
+    return this.mlWorker.getSavedModelType();
+  }
 
   constructor() {
     // Rule-based processing is always ready
@@ -111,17 +138,38 @@ export class TransformersAIService {
   }
 
   /**
-   * Download and initialize the ML model (~65MB).
-   * This enables ML-powered parsing with better accuracy.
+   * Download and initialize the ML model.
+   * @param modelType - 'qa' for English QA (~65MB), 'embeddings' for multilingual (~120MB)
    */
-  async downloadMLModel(): Promise<void> {
+  async downloadMLModel(modelType: MLModelType = 'qa'): Promise<void> {
     if (!this.mlWorker.isSupported()) {
       throw new Error('Web Workers not supported in this browser');
     }
 
-    this._status.set('Downloading ML model...');
-    await this.mlWorker.initialize();
-    this._status.set('ML model ready');
+    const modelInfo = this.mlWorker.getModelInfo(modelType);
+    this._status.set(`Downloading ${modelInfo.name}...`);
+    await this.mlWorker.initialize(modelType);
+    this._status.set(`${modelInfo.name} ready`);
+  }
+
+  /**
+   * Get info about available ML models.
+   */
+  getMLModels(): { type: MLModelType; name: string; sizeMB: number; description: string }[] {
+    return [
+      { 
+        type: 'qa', 
+        name: 'Question-Answering', 
+        sizeMB: 65,
+        description: 'English-optimized QA model for extracting receipt fields',
+      },
+      { 
+        type: 'embeddings', 
+        name: 'Multilingual Embeddings', 
+        sizeMB: 120,
+        description: 'Best for Traditional Chinese, Japanese, and multilingual receipts',
+      },
+    ];
   }
 
   /**
@@ -159,8 +207,8 @@ export class TransformersAIService {
           overallConfidence: (mlResult.merchantConfidence + mlResult.dateConfidence + mlResult.totalConfidence) / 3,
           rawAnswers: Object.entries(mlResult.rawAnswers || {}).map(([field, data]) => ({
             field,
-            value: data.answer,
-            confidence: data.score,
+            value: (data as { answer?: string; value?: string }).answer || (data as { value?: string }).value || '',
+            confidence: (data as { score?: number; confidence?: number }).score || (data as { confidence?: number }).confidence || 0,
           })),
         };
         
@@ -239,7 +287,13 @@ export class TransformersAIService {
     }
     
     // Check for Japanese indicators
-    if (/[¥￥]|円|レシート|領収書|令和|平成/.test(text)) {
+    // Check for Japanese indicators
+    if (/[¥￥]|円|レシート|領収書|令和|平成|税込|税抜|お会計|お支払い|株式会社|有限会社/.test(text)) {
+      return 'japan';
+    }
+    
+    // Check for Japanese text patterns (hiragana/katakana)
+    if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) {
       return 'japan';
     }
     
@@ -256,11 +310,18 @@ export class TransformersAIService {
     
     // Skip patterns
     const skipPatterns = [
-      /^tel/i, /^phone/i, /^fax/i, /^電話/, /^傳真/, /^地址/,
+      /^tel/i, /^phone/i, /^fax/i, /^電話/, /^傳真/, /^地址/, /^℡/,
       /^\d{2}[/-]\d{2}/, /^\d{2}:\d{2}/, // Date/time
       /^http/i, /^www\./i, /^@/,
       /統一編號/, /發票號碼/, /載具/, /期數/,
       /^receipt/i, /^invoice/i, /^order/i,
+      // Japanese-specific skip patterns
+      /^〒?\d{3}-?\d{4}/, // Japanese postal code
+      /^レシート$|^領収書$|^領収証$/i, // Just "receipt"
+      /^登録番号|^インボイス|^適格請求書/i, // Invoice registration
+      /^(営業時間|open|close)/i, // Business hours
+      /^(店舗|店番|レジ|担当)/i, // Store/register info
+      /^(東京都|大阪府|京都府|北海道|.{2,3}県)/, // Japanese prefecture (address)
     ];
     
     // Score candidates
@@ -278,6 +339,12 @@ export class TransformersAIService {
       if (/store|shop|mart|market|cafe|restaurant/i.test(line)) score += 5;
       if (line === line.toUpperCase() && /[A-Z]/.test(line)) score += 3; // All caps
       if (line.length >= 4 && line.length <= 30) score += 2; // Reasonable length
+      
+      // Japanese-specific patterns
+      if (/株式会社|有限会社|合同会社|㈱|㈲/.test(line)) score += 7; // Company types
+      if (/コンビニ|ストア|マート|スーパー|モール/.test(line)) score += 5; // Store types
+      if (/ファミリーマート|セブン|ローソン|マクドナルド|スターバックス/.test(line)) score += 8; // Known chains
+      if (/店$|屋$|堂$|亭$/.test(line)) score += 4; // Common store name endings
       
       candidates.push({ line, score });
     }
@@ -313,6 +380,17 @@ export class TransformersAIService {
             month = parseInt(match[2], 10);
             day = parseInt(match[3], 10);
           } else if (region === 'japan' && match[0].includes('令和')) {
+            // Reiwa era (令和 started 2019)
+            year = 2018 + parseInt(match[1], 10);
+            month = parseInt(match[2], 10);
+            day = parseInt(match[3], 10);
+          } else if (region === 'japan' && match[0].includes('平成')) {
+            // Heisei era (平成 1989-2019)
+            year = 1988 + parseInt(match[1], 10);
+            month = parseInt(match[2], 10);
+            day = parseInt(match[3], 10);
+          } else if (region === 'japan' && /^R\s*\d/i.test(match[0])) {
+            // Reiwa shorthand (R6.01.15)
             year = 2018 + parseInt(match[1], 10);
             month = parseInt(match[2], 10);
             day = parseInt(match[3], 10);
@@ -526,12 +604,13 @@ export class TransformersAIService {
 
   /**
    * Download only the ML model (without rule-based, which is always ready).
+   * @param modelType - 'qa' for English QA, 'embeddings' for multilingual
    */
-  async downloadMLModelOnly(): Promise<void> {
+  async downloadMLModelOnly(modelType: MLModelType = 'qa'): Promise<void> {
     if (!this.mlWorker.isSupported()) {
       throw new Error('Web Workers not supported');
     }
-    await this.mlWorker.initialize();
+    await this.mlWorker.initialize(modelType);
   }
 
   /**
@@ -543,16 +622,25 @@ export class TransformersAIService {
   }
 
   /**
-   * Get the ML model download size in bytes.
+   * Get the ML model download size in bytes for a specific model type.
    */
-  getMLModelSize(): number {
-    return this.mlWorker.MODEL_SIZE_MB * 1024 * 1024;
+  getMLModelSize(modelType?: MLModelType): number {
+    const type = modelType || this.mlWorker.currentModelType();
+    return this.mlWorker.getModelInfo(type).sizeMB * 1024 * 1024;
   }
 
   /**
    * Get formatted ML model size.
    */
-  getMLModelSizeFormatted(): string {
-    return `${this.mlWorker.MODEL_SIZE_MB} MB`;
+  getMLModelSizeFormatted(modelType?: MLModelType): string {
+    const type = modelType || this.mlWorker.currentModelType();
+    return `${this.mlWorker.getModelInfo(type).sizeMB} MB`;
+  }
+
+  /**
+   * Get the current ML model type name.
+   */
+  getCurrentMLModelName(): string {
+    return this.mlWorker.getModelInfo(this.mlWorker.currentModelType()).name;
   }
 }

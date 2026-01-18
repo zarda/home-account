@@ -35,6 +35,9 @@ describe('AiSettingsPageComponent', () => {
       autoSync: true,
       preferredLanguages: ['en'],
       confidenceThreshold: 0.7,
+      localProcessingMode: 'basic',
+      mlModelType: 'embeddings',
+      mlModelDownloaded: false,
     });
 
     localAIServiceMock = jasmine.createSpyObj('LocalAIService', [
@@ -43,12 +46,17 @@ describe('AiSettingsPageComponent', () => {
       'totalModelSize',
       'processingMode',
       'setProcessingMode',
+      'ocrEngine',
+      'setOCREngine',
+      'paddleOCRReady',
       'terminate',
     ]);
     localAIServiceMock.isReady.and.returnValue(false);
     localAIServiceMock.modelSize.and.returnValue(0);
     localAIServiceMock.totalModelSize.and.returnValue(0);
     localAIServiceMock.processingMode.and.returnValue('basic' as const);
+    localAIServiceMock.ocrEngine.and.returnValue('auto' as const);
+    localAIServiceMock.paddleOCRReady.and.returnValue(false);
 
     transformersAIServiceMock = jasmine.createSpyObj('TransformersAIService', [
       'isReady',
@@ -59,6 +67,10 @@ describe('AiSettingsPageComponent', () => {
       'mlModelSupported',
       'modelSize',
       'getMLModelSizeFormatted',
+      'getSavedModelType',
+      'getMLModels',
+      'currentMLModelType',
+      'mlModelWasDownloaded',
       'downloadMLModel',
       'terminate',
     ]);
@@ -70,6 +82,13 @@ describe('AiSettingsPageComponent', () => {
     transformersAIServiceMock.mlModelSupported.and.returnValue(true);
     transformersAIServiceMock.modelSize.and.returnValue(0);
     transformersAIServiceMock.getMLModelSizeFormatted.and.returnValue('65 MB');
+    transformersAIServiceMock.getSavedModelType.and.returnValue('embeddings');
+    transformersAIServiceMock.getMLModels.and.returnValue([
+      { type: 'qa', name: 'QA Model', sizeMB: 65, description: 'Test' },
+      { type: 'embeddings', name: 'Embeddings', sizeMB: 120, description: 'Test' },
+    ]);
+    transformersAIServiceMock.currentMLModelType.and.returnValue('embeddings');
+    transformersAIServiceMock.mlModelWasDownloaded.and.returnValue(false);
 
     pwaServiceMock = jasmine.createSpyObj('PwaService', ['isOnline', 'cacheSize']);
     pwaServiceMock.isOnline.and.returnValue(true);
@@ -189,6 +208,39 @@ describe('AiSettingsPageComponent', () => {
   describe('navigation', () => {
     it('should have goBack method', () => {
       expect(component.goBack).toBeDefined();
+    });
+  });
+
+  describe('OCR engine selection', () => {
+    it('should have default OCR engine as auto', () => {
+      expect(component.ocrEngine()).toBe('auto');
+    });
+
+    it('should have available OCR engines', () => {
+      expect(component.availableOCREngines.length).toBe(3);
+      expect(component.availableOCREngines.map(e => e.value)).toEqual(['auto', 'tesseract', 'paddleocr']);
+    });
+
+    it('should update OCR engine when changed', () => {
+      component.onOCREngineChange('tesseract');
+
+      expect(component.ocrEngine()).toBe('tesseract');
+      expect(localAIServiceMock.setOCREngine).toHaveBeenCalledWith('tesseract');
+    });
+
+    it('should update OCR engine to paddleocr', () => {
+      component.onOCREngineChange('paddleocr');
+
+      expect(component.ocrEngine()).toBe('paddleocr');
+      expect(localAIServiceMock.setOCREngine).toHaveBeenCalledWith('paddleocr');
+    });
+
+    it('should update OCR engine back to auto', () => {
+      component.onOCREngineChange('tesseract');
+      component.onOCREngineChange('auto');
+
+      expect(component.ocrEngine()).toBe('auto');
+      expect(localAIServiceMock.setOCREngine).toHaveBeenCalledWith('auto');
     });
   });
 });

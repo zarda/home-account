@@ -763,6 +763,8 @@
     "ocrFeature1": "多語言支援",
     "ocrFeature2": "完全離線運作",
     "ocrFeature3": "收據文字擷取",
+    "selectOCREngine": "OCR 引擎",
+    "ocrEngineChanged": "OCR 引擎已變更",
     "downloadOCR": "下載 OCR 模型",
     "mlModelTitle": "ML 模型 (Transformers.js)",
     "mlModelTitleDescription": "語意理解，提高商家名稱和金額的準確度",
@@ -789,7 +791,14 @@
     "clearQueue": "清除佇列",
     "storageInfo": "儲存空間",
     "totalCache": "快取總量",
-    "modelStorage": "模型儲存空間"
+    "modelStorage": "模型儲存空間",
+    "selectModelType": "選擇模型類型",
+    "recommendedMultilingual": "推薦用於繁中/日文",
+    "englishOptimized": "英文最佳化",
+    "multilingualSupport": "支援100+語言",
+    "semanticMatching": "語意模式匹配",
+    "bestForTCJP": "最適合繁中/日文收據",
+    "currentModel": "目前模型"
   },
   "about": {
     "title": "關於",

@@ -18,8 +18,8 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { MatTabsModule } from '@angular/material/tabs';
 
 import { AIStrategyService, AIProcessingMode, AIProcessingStrategy } from '../../../core/services/ai-strategy.service';
-import { LocalAIService } from '../../../core/services/local-ai.service';
-import { TransformersAIService } from '../../../core/services/transformers-ai.service';
+import { LocalAIService, OCREngine } from '../../../core/services/local-ai.service';
+import { TransformersAIService, MLModelType } from '../../../core/services/transformers-ai.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { GeminiService } from '../../../core/services/gemini.service';
@@ -67,6 +67,7 @@ export class AiSettingsPageComponent implements OnInit {
   autoSync = signal<boolean>(true);
   confidenceThreshold = signal<number>(0.7);
   enhancedMode = signal<boolean>(false);
+  ocrEngine = signal<OCREngine>('auto');
 
   // Status signals
   isDownloading = signal<boolean>(false);
@@ -92,9 +93,39 @@ export class AiSettingsPageComponent implements OnInit {
   isMLModelReady = computed(() => this.transformersAI.mlModelReady());
   isMLModelSupported = computed(() => this.transformersAI.mlModelSupported());
   mlModelSizeFormatted = computed(() => this.transformersAI.getMLModelSizeFormatted());
+  currentMLModelType = computed(() => this.transformersAI.currentMLModelType());
+  
+  // ML model selection - default to saved type or embeddings
+  selectedMLModelType = signal<MLModelType>(this.transformersAI.getSavedModelType());
+  availableMLModels = this.transformersAI.getMLModels();
+  wasMLModelDownloaded = computed(() => this.transformersAI.mlModelWasDownloaded());
+
+  // OCR engine status
+  currentOCREngine = computed(() => this.localAIService.ocrEngine());
+  isPaddleOCRReady = computed(() => this.localAIService.paddleOCRReady());
+
+  // Available OCR engines for UI
+  availableOCREngines: { value: OCREngine; name: string; description: string }[] = [
+    {
+      value: 'auto',
+      name: 'Auto (Recommended)',
+      description: 'Automatically selects the best OCR engine based on detected language',
+    },
+    {
+      value: 'tesseract',
+      name: 'Tesseract.js',
+      description: 'Best for English and Japanese text. Works offline.',
+    },
+    {
+      value: 'paddleocr',
+      name: 'PaddleOCR',
+      description: 'Best for Chinese text (Simplified & Traditional). Loads from CDN.',
+    },
+  ];
 
   ngOnInit(): void {
     this.loadPreferences();
+    this.restoreMLModelIfNeeded();
   }
 
   goBack(): void {
@@ -109,6 +140,26 @@ export class AiSettingsPageComponent implements OnInit {
     this.autoSync.set(prefs.autoSync);
     this.confidenceThreshold.set(prefs.confidenceThreshold);
     this.enhancedMode.set(this.localAIService.processingMode() === 'enhanced');
+    this.ocrEngine.set(this.localAIService.ocrEngine());
+  }
+
+  /**
+   * Auto-restore ML model if it was previously downloaded.
+   * The model data is cached in IndexedDB by Transformers.js,
+   * so this just re-initializes the worker (no re-download needed).
+   */
+  private async restoreMLModelIfNeeded(): Promise<void> {
+    if (this.wasMLModelDownloaded() && !this.isMLModelReady() && this.isMLModelSupported()) {
+      try {
+        const savedType = this.transformersAI.getSavedModelType();
+        this.selectedMLModelType.set(savedType);
+        // Auto-restore in background - model data is cached, so this is fast
+        await this.transformersAI.downloadMLModel(savedType);
+      } catch (error) {
+        console.warn('[AI Settings] Failed to auto-restore ML model:', error);
+        // Silent fail - user can manually re-download if needed
+      }
+    }
   }
 
   onModeChange(mode: AIProcessingMode): void {
@@ -120,6 +171,12 @@ export class AiSettingsPageComponent implements OnInit {
   onStrategyChange(strategy: AIProcessingStrategy): void {
     this.processingStrategy.set(strategy);
     this.strategyService.updatePreferences({ strategy });
+  }
+
+  onOCREngineChange(engine: OCREngine): void {
+    this.ocrEngine.set(engine);
+    this.localAIService.setOCREngine(engine);
+    this.showToast('aiPage.ocrEngineChanged');
   }
 
   onPrivacyModeChange(enabled: boolean): void {
@@ -171,7 +228,9 @@ export class AiSettingsPageComponent implements OnInit {
     }
   }
 
-  async downloadMLModel(): Promise<void> {
+  async downloadMLModel(modelType?: MLModelType): Promise<void> {
+    const type = modelType || this.selectedMLModelType();
+    
     if (!this.isMLModelSupported()) {
       this.snackBar.open('Web Workers not supported in this browser', 'OK', {
         duration: 3000,
@@ -182,18 +241,31 @@ export class AiSettingsPageComponent implements OnInit {
     this.isDownloadingEnhanced.set(true);
     
     try {
-      await this.transformersAI.downloadMLModel();
+      await this.transformersAI.downloadMLModel(type);
       this.showToast('aiPage.mlDownloaded');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Download failed';
       this.snackBar.open(`Failed: ${message}`, 'Retry', {
         duration: 5000,
       }).onAction().subscribe(() => {
-        this.downloadMLModel();
+        this.downloadMLModel(type);
       });
     } finally {
       this.isDownloadingEnhanced.set(false);
     }
+  }
+
+  async onMLModelTypeChange(type: MLModelType): Promise<void> {
+    this.selectedMLModelType.set(type);
+    
+    // If a model is already ready and user selected a different type, switch immediately
+    if (this.isMLModelReady() && this.currentMLModelType() !== type) {
+      await this.downloadMLModel(type);
+    }
+  }
+
+  getMLModelSize(type: MLModelType): string {
+    return this.transformersAI.getMLModelSizeFormatted(type);
   }
 
   async downloadAllModels(): Promise<void> {

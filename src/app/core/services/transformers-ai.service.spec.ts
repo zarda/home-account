@@ -18,6 +18,8 @@ describe('TransformersAIService', () => {
       'initialize',
       'parseReceipt',
       'terminate',
+      'currentModelType',
+      'getModelInfo',
     ], {
       MODEL_SIZE_MB: 65,
     });
@@ -28,6 +30,8 @@ describe('TransformersAIService', () => {
     mlWorkerServiceMock.progress.and.returnValue(0);
     mlWorkerServiceMock.status.and.returnValue('');
     mlWorkerServiceMock.error.and.returnValue(null);
+    mlWorkerServiceMock.currentModelType.and.returnValue('embeddings');
+    mlWorkerServiceMock.getModelInfo.and.returnValue({ sizeMB: 120, name: 'Multilingual Embeddings' });
     mlWorkerServiceMock.isSupported.and.returnValue(true);
     mlWorkerServiceMock.modelSize.and.returnValue(65 * 1024 * 1024);
 
@@ -59,7 +63,8 @@ describe('TransformersAIService', () => {
     });
 
     it('should return ML model size', () => {
-      expect(service.getMLModelSizeFormatted()).toBe('65 MB');
+      // Default model is embeddings (120 MB)
+      expect(service.getMLModelSizeFormatted()).toBe('120 MB');
     });
   });
 
