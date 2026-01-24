@@ -36,8 +36,8 @@ export class AIImportService {
   processingStatus = signal<string>('');
   processingProgress = signal<number>(0);
   
-  // New signals for hybrid processing
-  processingSource = signal<'local' | 'cloud' | 'hybrid' | null>(null);
+  // New signals for processing
+  processingSource = signal<'cloud' | 'native' | null>(null);
   isOfflineMode = computed(() => !this.pwaService.isOnline());
 
   /**
@@ -63,22 +63,21 @@ export class AIImportService {
 
   /**
    * Import transactions from an image (receipt, screenshot, bank statement)
-   * Uses hybrid AI strategy: local processing with cloud fallback
+   * Uses cloud AI or native OCR (iOS)
    */
   async importFromImage(file: File): Promise<ImportResult> {
-    const prefs = this.strategyService.preferences();
     const isOnline = this.pwaService.isOnline();
-    const canUseLocal = this.strategyService.canUseLocal();
     const canUseCloud = this.strategyService.canUseCloud();
+    const canUseNative = this.strategyService.canUseNative();
 
     // Check if we can process at all
-    if (!canUseLocal && !canUseCloud) {
-      // Queue for later if we can't process now
+    if (!canUseCloud && !canUseNative) {
+      // Queue for later if offline
       if (!isOnline) {
         await this.offlineQueue.queueImage(file);
-        throw new Error('Offline and local AI not available. Image queued for later processing.');
+        throw new Error('Offline. Image queued for later processing.');
       }
-      throw new Error('AI service is not available. Please configure your Gemini API key in Settings or download local models.');
+      throw new Error('AI service is not available. Please configure your API key in Profile Settings.');
     }
 
     this.isProcessing.set(true);
@@ -87,46 +86,41 @@ export class AIImportService {
     this.processingSource.set(null);
 
     try {
-      // Try using strategy service for hybrid processing
-      if (prefs.mode !== 'cloud_only' && (canUseLocal || !isOnline)) {
-        try {
-          this.processingStatus.set('Processing with AI...');
-          this.processingProgress.set(30);
+      // Try using strategy service
+      try {
+        this.processingStatus.set('Processing with AI...');
+        this.processingProgress.set(30);
 
-          const strategyResult = await this.strategyService.processReceipt(file);
-          this.processingSource.set(strategyResult.source);
+        const strategyResult = await this.strategyService.processReceipt(file);
+        this.processingSource.set(strategyResult.source);
 
-          if (strategyResult.transactions.length > 0) {
-            this.processingStatus.set('Categorizing transactions...');
-            this.processingProgress.set(60);
+        if (strategyResult.transactions.length > 0) {
+          this.processingStatus.set('Categorizing transactions...');
+          this.processingProgress.set(60);
 
-            const categorized = this.convertStrategyResultToCategories(strategyResult);
+          const categorized = this.convertStrategyResultToCategories(strategyResult);
 
-            this.processingStatus.set('Checking for duplicates...');
-            this.processingProgress.set(80);
+          this.processingStatus.set('Checking for duplicates...');
+          this.processingProgress.set(80);
 
-            const duplicates = await this.duplicateService.checkDuplicates(categorized);
-            const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
+          const duplicates = await this.duplicateService.checkDuplicates(categorized);
+          const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
 
-            this.processingProgress.set(100);
+          this.processingProgress.set(100);
 
-            const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
-            
-            // Add processing source to result
-            result.processingSource = strategyResult.source;
-            result.usedFallback = strategyResult.usedFallback;
-            
-            return result;
-          }
-        } catch (strategyError) {
-          console.warn('[AIImport] Strategy processing failed:', strategyError);
-          // Fall through to legacy processing
+          const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
+          result.processingSource = strategyResult.source;
+          
+          return result;
         }
+      } catch (strategyError) {
+        console.warn('[AIImport] Strategy processing failed:', strategyError);
+        // Fall through to legacy processing
       }
 
       // Fall back to legacy Gemini-only processing
       if (!this.geminiService.isAvailable()) {
-        throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
+        throw new Error('AI service is not available. Please configure your API key in Profile Settings.');
       }
 
       const imageBase64 = await this.fileToBase64(file);

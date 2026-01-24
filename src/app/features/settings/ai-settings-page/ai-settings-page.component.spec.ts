@@ -5,90 +5,36 @@ import { HttpClientTestingModule } from '@angular/common/http/testing';
 
 import { AiSettingsPageComponent } from './ai-settings-page.component';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
-import { LocalAIService } from '../../../core/services/local-ai.service';
-import { TransformersAIService } from '../../../core/services/transformers-ai.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { GeminiService } from '../../../core/services/gemini.service';
+import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
+import { AuthService } from '../../../core/services/auth.service';
 
 describe('AiSettingsPageComponent', () => {
   let component: AiSettingsPageComponent;
   let fixture: ComponentFixture<AiSettingsPageComponent>;
   let strategyServiceMock: jasmine.SpyObj<AIStrategyService>;
-  let localAIServiceMock: jasmine.SpyObj<LocalAIService>;
-  let transformersAIServiceMock: jasmine.SpyObj<TransformersAIService>;
   let pwaServiceMock: jasmine.SpyObj<PwaService>;
   let offlineQueueServiceMock: jasmine.SpyObj<OfflineQueueService>;
   let geminiServiceMock: jasmine.SpyObj<GeminiService>;
+  let cloudLLMProviderMock: jasmine.SpyObj<CloudLLMProviderService>;
+  let authServiceMock: jasmine.SpyObj<AuthService>;
 
   beforeEach(async () => {
-    // Create mock services
     strategyServiceMock = jasmine.createSpyObj('AIStrategyService', [
       'preferences',
       'updatePreferences',
-      'preloadLocalModels',
+      'canUseCloud',
+      'canUseNative',
+      'platform',
     ]);
     strategyServiceMock.preferences.and.returnValue({
-      mode: 'auto',
-      strategy: 'accuracy',
-      privacyMode: false,
       autoSync: true,
-      preferredLanguages: ['en'],
-      confidenceThreshold: 0.7,
-      localProcessingMode: 'basic',
-      mlModelType: 'embeddings',
-      mlModelDownloaded: false,
     });
-
-    localAIServiceMock = jasmine.createSpyObj('LocalAIService', [
-      'isReady',
-      'modelSize',
-      'totalModelSize',
-      'processingMode',
-      'setProcessingMode',
-      'ocrEngine',
-      'setOCREngine',
-      'paddleOCRReady',
-      'terminate',
-    ]);
-    localAIServiceMock.isReady.and.returnValue(false);
-    localAIServiceMock.modelSize.and.returnValue(0);
-    localAIServiceMock.totalModelSize.and.returnValue(0);
-    localAIServiceMock.processingMode.and.returnValue('basic' as const);
-    localAIServiceMock.ocrEngine.and.returnValue('auto' as const);
-    localAIServiceMock.paddleOCRReady.and.returnValue(false);
-
-    transformersAIServiceMock = jasmine.createSpyObj('TransformersAIService', [
-      'isReady',
-      'isLoading',
-      'progress',
-      'status',
-      'mlModelReady',
-      'mlModelSupported',
-      'modelSize',
-      'getMLModelSizeFormatted',
-      'getSavedModelType',
-      'getMLModels',
-      'currentMLModelType',
-      'mlModelWasDownloaded',
-      'downloadMLModel',
-      'terminate',
-    ]);
-    transformersAIServiceMock.isReady.and.returnValue(true);
-    transformersAIServiceMock.isLoading.and.returnValue(false);
-    transformersAIServiceMock.progress.and.returnValue(0);
-    transformersAIServiceMock.status.and.returnValue('');
-    transformersAIServiceMock.mlModelReady.and.returnValue(false);
-    transformersAIServiceMock.mlModelSupported.and.returnValue(true);
-    transformersAIServiceMock.modelSize.and.returnValue(0);
-    transformersAIServiceMock.getMLModelSizeFormatted.and.returnValue('65 MB');
-    transformersAIServiceMock.getSavedModelType.and.returnValue('embeddings');
-    transformersAIServiceMock.getMLModels.and.returnValue([
-      { type: 'qa', name: 'QA Model', sizeMB: 65, description: 'Test' },
-      { type: 'embeddings', name: 'Embeddings', sizeMB: 120, description: 'Test' },
-    ]);
-    transformersAIServiceMock.currentMLModelType.and.returnValue('embeddings');
-    transformersAIServiceMock.mlModelWasDownloaded.and.returnValue(false);
+    strategyServiceMock.canUseCloud.and.returnValue(true);
+    strategyServiceMock.canUseNative.and.returnValue(false);
+    strategyServiceMock.platform.and.returnValue('web');
 
     pwaServiceMock = jasmine.createSpyObj('PwaService', ['isOnline', 'cacheSize']);
     pwaServiceMock.isOnline.and.returnValue(true);
@@ -97,12 +43,33 @@ describe('AiSettingsPageComponent', () => {
     offlineQueueServiceMock = jasmine.createSpyObj('OfflineQueueService', [
       'pendingCount',
       'syncQueue',
+      'clearAll',
     ]);
     offlineQueueServiceMock.pendingCount.and.returnValue(0);
     offlineQueueServiceMock.syncQueue.and.returnValue(Promise.resolve({ success: 0, failed: 0 }));
+    offlineQueueServiceMock.clearAll.and.returnValue(Promise.resolve());
 
     geminiServiceMock = jasmine.createSpyObj('GeminiService', ['isAvailable']);
     geminiServiceMock.isAvailable.and.returnValue(true);
+
+    cloudLLMProviderMock = jasmine.createSpyObj('CloudLLMProviderService', [
+      'isProviderAvailable',
+      'updateProviderApiKey',
+    ]);
+    cloudLLMProviderMock.isProviderAvailable.and.returnValue(false);
+
+    authServiceMock = jasmine.createSpyObj('AuthService', ['currentUser', 'updateUserPreferences']);
+    authServiceMock.currentUser.and.returnValue({
+      preferences: {
+        baseCurrency: 'USD',
+        language: 'en',
+        dateFormat: 'MM/DD/YYYY',
+        theme: 'system',
+        defaultCategories: [],
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    authServiceMock.updateUserPreferences.and.returnValue(Promise.resolve());
 
     await TestBed.configureTestingModule({
       imports: [
@@ -113,11 +80,11 @@ describe('AiSettingsPageComponent', () => {
       ],
       providers: [
         { provide: AIStrategyService, useValue: strategyServiceMock },
-        { provide: LocalAIService, useValue: localAIServiceMock },
-        { provide: TransformersAIService, useValue: transformersAIServiceMock },
         { provide: PwaService, useValue: pwaServiceMock },
         { provide: OfflineQueueService, useValue: offlineQueueServiceMock },
         { provide: GeminiService, useValue: geminiServiceMock },
+        { provide: CloudLLMProviderService, useValue: cloudLLMProviderMock },
+        { provide: AuthService, useValue: authServiceMock },
       ],
     }).compileComponents();
 
@@ -135,51 +102,17 @@ describe('AiSettingsPageComponent', () => {
       expect(strategyServiceMock.preferences).toHaveBeenCalled();
     });
 
-    it('should have default processing mode', () => {
-      expect(component.processingMode()).toBe('auto');
-    });
-
-    it('should have default confidence threshold', () => {
-      expect(component.confidenceThreshold()).toBe(0.7);
+    it('should have default autoSync enabled', () => {
+      expect(component.autoSync()).toBeTrue();
     });
   });
 
-  describe('mode changes', () => {
-    it('should update mode when changed', () => {
-      component.onModeChange('local_only');
+  describe('auto sync toggle', () => {
+    it('should update autoSync when toggled', () => {
+      component.onAutoSyncChange(false);
 
-      expect(component.processingMode()).toBe('local_only');
-      expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ mode: 'local_only' });
-    });
-
-    it('should update strategy when changed', () => {
-      component.onStrategyChange('privacy');
-
-      expect(component.processingStrategy()).toBe('privacy');
-      expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ strategy: 'privacy' });
-    });
-
-    it('should update privacy mode when toggled', () => {
-      component.onPrivacyModeChange(true);
-
-      expect(component.privacyMode()).toBeTrue();
-      expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ privacyMode: true });
-    });
-  });
-
-  describe('enhanced mode', () => {
-    it('should toggle enhanced mode', async () => {
-      await component.onEnhancedModeChange(true);
-
-      expect(component.enhancedMode()).toBeTrue();
-      expect(localAIServiceMock.setProcessingMode).toHaveBeenCalledWith('enhanced');
-    });
-
-    it('should set basic mode when disabled', async () => {
-      await component.onEnhancedModeChange(false);
-
-      expect(component.enhancedMode()).toBeFalse();
-      expect(localAIServiceMock.setProcessingMode).toHaveBeenCalledWith('basic');
+      expect(component.autoSync()).toBeFalse();
+      expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ autoSync: false });
     });
   });
 
@@ -211,36 +144,29 @@ describe('AiSettingsPageComponent', () => {
     });
   });
 
-  describe('OCR engine selection', () => {
-    it('should have default OCR engine as auto', () => {
-      expect(component.ocrEngine()).toBe('auto');
+  describe('queue operations', () => {
+    it('should sync queue', async () => {
+      await component.syncQueue();
+      expect(offlineQueueServiceMock.syncQueue).toHaveBeenCalled();
     });
 
-    it('should have available OCR engines', () => {
-      expect(component.availableOCREngines.length).toBe(3);
-      expect(component.availableOCREngines.map(e => e.value)).toEqual(['auto', 'tesseract', 'paddleocr']);
+    it('should clear queue', async () => {
+      await component.clearQueue();
+      expect(offlineQueueServiceMock.clearAll).toHaveBeenCalled();
+    });
+  });
+
+  describe('platform detection', () => {
+    it('should detect web platform', () => {
+      expect(component.platform()).toBe('web');
     });
 
-    it('should update OCR engine when changed', () => {
-      component.onOCREngineChange('tesseract');
-
-      expect(component.ocrEngine()).toBe('tesseract');
-      expect(localAIServiceMock.setOCREngine).toHaveBeenCalledWith('tesseract');
+    it('should show cloud AI available', () => {
+      expect(component.canUseCloud()).toBeTrue();
     });
 
-    it('should update OCR engine to paddleocr', () => {
-      component.onOCREngineChange('paddleocr');
-
-      expect(component.ocrEngine()).toBe('paddleocr');
-      expect(localAIServiceMock.setOCREngine).toHaveBeenCalledWith('paddleocr');
-    });
-
-    it('should update OCR engine back to auto', () => {
-      component.onOCREngineChange('tesseract');
-      component.onOCREngineChange('auto');
-
-      expect(component.ocrEngine()).toBe('auto');
-      expect(localAIServiceMock.setOCREngine).toHaveBeenCalledWith('auto');
+    it('should not show native AI on web', () => {
+      expect(component.canUseNative()).toBeFalse();
     });
   });
 });

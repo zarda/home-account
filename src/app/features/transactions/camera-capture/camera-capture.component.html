@@ -2,29 +2,34 @@
 
 <mat-dialog-content>
   <div class="camera-capture-container">
-    <!-- Offline/Processing mode indicator -->
-    @if (!isOnline() || processingMode() !== 'accuracy') {
-      <div class="mode-indicator" [class.offline]="!isOnline()" [class.privacy]="processingMode() === 'privacy'">
-        <mat-icon>
-          @if (!isOnline()) {
-            cloud_off
-          } @else if (processingMode() === 'privacy') {
-            security
-          } @else {
-            smartphone
-          }
-        </mat-icon>
-        <span>
-          @if (!isOnline()) {
-            {{ 'import.offlineMode' | translate }}
-          } @else if (processingMode() === 'privacy') {
-            {{ 'import.privacyMode' | translate }}
-          } @else {
-            {{ 'import.localProcessing' | translate }}
-          }
-        </span>
-      </div>
-    }
+    <!-- AI Processing mode indicator -->
+    <div class="mode-indicator" 
+         [class.offline]="!isOnline()" 
+         [class.native]="willUseNativeAI()"
+         [class.cloud]="willUseCloudAI() && !willUseNativeAI()">
+      <mat-icon>
+        @if (!isOnline()) {
+          cloud_off
+        } @else if (willUseNativeAI()) {
+          smartphone
+        } @else if (willUseCloudAI()) {
+          cloud
+        } @else {
+          warning
+        }
+      </mat-icon>
+      <span>
+        @if (!isOnline()) {
+          {{ 'import.offlineMode' | translate }}
+        } @else if (willUseNativeAI()) {
+          {{ 'import.nativeOCR' | translate }}
+        } @else if (willUseCloudAI()) {
+          {{ 'import.cloudAI' | translate }}
+        } @else {
+          {{ 'import.configureAI' | translate }}
+        }
+      </span>
+    </div>
 
     @if (!hasImages()) {
       <!-- Initial capture area -->

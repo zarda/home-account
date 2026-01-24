@@ -10,504 +10,372 @@
     </div>
   </div>
 
-  <!-- Hero Section - Quick Status -->
-  <div class="hero-section">
-    <div class="status-cards">
-      <!-- OCR Status -->
-      <div class="status-card" [class.ready]="isLocalReady()" [class.not-ready]="!isLocalReady()">
-        <div class="status-icon">
-          <mat-icon>{{ isLocalReady() ? 'check_circle' : 'cloud_download' }}</mat-icon>
-        </div>
-        <div class="status-info">
-          <span class="status-label">{{ 'aiPage.ocrStatus' | translate }}</span>
-          <span class="status-value">{{ isLocalReady() ? ('aiPage.ready' | translate) : ('aiPage.notDownloaded' | translate) }}</span>
-        </div>
-      </div>
-
-      <!-- ML Model Status -->
-      <div class="status-card" [class.ready]="isMLModelReady()" [class.not-ready]="!isMLModelReady()">
-        <div class="status-icon">
-          <mat-icon>{{ isMLModelReady() ? 'psychology' : 'model_training' }}</mat-icon>
-        </div>
-        <div class="status-info">
-          <span class="status-label">{{ 'aiPage.mlStatus' | translate }}</span>
-          <span class="status-value">{{ isMLModelReady() ? ('aiPage.ready' | translate) : ('aiPage.optional' | translate) }}</span>
-        </div>
-      </div>
-
-      <!-- Connection Status -->
-      <div class="status-card" [class.ready]="isOnline()" [class.not-ready]="!isOnline()">
-        <div class="status-icon">
-          <mat-icon>{{ isOnline() ? 'wifi' : 'wifi_off' }}</mat-icon>
-        </div>
-        <div class="status-info">
-          <span class="status-label">{{ 'aiPage.connectionStatus' | translate }}</span>
-          <span class="status-value">{{ isOnline() ? ('aiPage.online' | translate) : ('aiPage.offline' | translate) }}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Main Content -->
   <div class="main-content">
-    <!-- Section 1: How It Works -->
-    <section class="settings-section">
-      <div class="section-header">
-        <mat-icon class="section-icon">info</mat-icon>
-        <div>
-          <h2>{{ 'aiPage.howItWorks' | translate }}</h2>
-          <p class="section-description">{{ 'aiPage.howItWorksDescription' | translate }}</p>
-        </div>
-      </div>
-
-      <div class="info-cards">
-        <div class="info-card">
-          <div class="info-icon cloud">
-            <mat-icon>cloud</mat-icon>
-          </div>
-          <h3>{{ 'aiPage.cloudAI' | translate }}</h3>
-          <p>{{ 'aiPage.cloudAIDescription' | translate }}</p>
-          <div class="info-tag">
-            <mat-icon>bolt</mat-icon>
-            {{ 'aiPage.highestAccuracy' | translate }}
-          </div>
-        </div>
-
-        <div class="info-card">
-          <div class="info-icon local">
-            <mat-icon>smartphone</mat-icon>
-          </div>
-          <h3>{{ 'aiPage.localAI' | translate }}</h3>
-          <p>{{ 'aiPage.localAIDescription' | translate }}</p>
-          <div class="info-tag">
-            <mat-icon>lock</mat-icon>
-            {{ 'aiPage.privateOffline' | translate }}
-          </div>
-        </div>
-
-        <div class="info-card">
-          <div class="info-icon ml">
-            <mat-icon>psychology</mat-icon>
-          </div>
-          <h3>{{ 'aiPage.mlModel' | translate }}</h3>
-          <p>{{ 'aiPage.mlModelDescription' | translate }}</p>
-          <div class="info-tag">
-            <mat-icon>auto_awesome</mat-icon>
-            {{ 'aiPage.smartParsing' | translate }}
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <mat-divider></mat-divider>
-
-    <!-- Section 2: Processing Mode -->
-    <section class="settings-section">
-      <div class="section-header">
-        <mat-icon class="section-icon">tune</mat-icon>
-        <div>
-          <h2>{{ 'aiPage.processingMode' | translate }}</h2>
-          <p class="section-description">{{ 'aiPage.processingModeDescription' | translate }}</p>
-        </div>
-      </div>
-
-      <div class="mode-options">
-        <mat-radio-group [value]="processingMode()" (change)="onModeChange($event.value)">
-          <div class="mode-option" [class.selected]="processingMode() === 'auto'">
-            <mat-radio-button value="auto">
-              <div class="mode-content">
-                <div class="mode-header">
-                  <mat-icon>auto_mode</mat-icon>
-                  <span class="mode-title">{{ 'aiPage.modeAuto' | translate }}</span>
-                  <span class="mode-badge recommended">{{ 'aiPage.recommended' | translate }}</span>
-                </div>
-                <p class="mode-description">{{ 'aiPage.modeAutoDescription' | translate }}</p>
-              </div>
-            </mat-radio-button>
-          </div>
-
-          <div class="mode-option" [class.selected]="processingMode() === 'local_only'">
-            <mat-radio-button value="local_only">
-              <div class="mode-content">
-                <div class="mode-header">
-                  <mat-icon>smartphone</mat-icon>
-                  <span class="mode-title">{{ 'aiPage.modeLocal' | translate }}</span>
-                  <span class="mode-badge privacy">{{ 'aiPage.privacyFirst' | translate }}</span>
-                </div>
-                <p class="mode-description">{{ 'aiPage.modeLocalDescription' | translate }}</p>
-              </div>
-            </mat-radio-button>
-          </div>
-
-          <div class="mode-option" [class.selected]="processingMode() === 'cloud_only'">
-            <mat-radio-button value="cloud_only">
-              <div class="mode-content">
-                <div class="mode-header">
-                  <mat-icon>cloud</mat-icon>
-                  <span class="mode-title">{{ 'aiPage.modeCloud' | translate }}</span>
-                </div>
-                <p class="mode-description">{{ 'aiPage.modeCloudDescription' | translate }}</p>
-              </div>
-            </mat-radio-button>
-          </div>
-        </mat-radio-group>
-      </div>
-
-      <!-- Privacy Toggle -->
-      <div class="privacy-toggle">
-        <div class="toggle-info">
-          <mat-icon>security</mat-icon>
-          <div>
-            <span class="toggle-title">{{ 'aiPage.privacyMode' | translate }}</span>
-            <p class="toggle-description">{{ 'aiPage.privacyModeDescription' | translate }}</p>
-          </div>
-        </div>
-        <mat-slide-toggle 
-          [checked]="privacyMode()"
-          (change)="onPrivacyModeChange($event.checked)"
-          color="primary">
-        </mat-slide-toggle>
-      </div>
-    </section>
-
-    <mat-divider></mat-divider>
-
-    <!-- Section 3: AI Models -->
-    <section class="settings-section">
-      <div class="section-header">
-        <mat-icon class="section-icon">download</mat-icon>
-        <div>
-          <h2>{{ 'aiPage.aiModels' | translate }}</h2>
-          <p class="section-description">{{ 'aiPage.aiModelsDescription' | translate }}</p>
-        </div>
-      </div>
-
-      <!-- OCR Model Card -->
-      <div class="model-card">
-        <div class="model-header">
-          <div class="model-icon ocr">
-            <mat-icon>document_scanner</mat-icon>
-          </div>
-          <div class="model-info">
-            <h3>{{ 'aiPage.ocrModelTitle' | translate }}</h3>
-            <p>{{ 'aiPage.ocrModelDescription' | translate }}</p>
-          </div>
-          <div class="model-status" [class.ready]="isLocalReady()">
-            @if (isLocalReady()) {
+    <!-- Status Card -->
+    <mat-card class="status-card" [class.ready]="canUseCloud() || canUseNative()" [class.not-ready]="!canUseCloud() && !canUseNative()" appearance="outlined">
+      <mat-card-content>
+        <div class="status-content">
+          <div class="status-icon-container" [class.ready]="canUseCloud() || canUseNative()">
+            @if (canUseNative()) {
+              <mat-icon>smartphone</mat-icon>
+            } @else if (canUseCloud()) {
               <mat-icon>check_circle</mat-icon>
-              <span>{{ 'aiPage.downloaded' | translate }}</span>
             } @else {
-              <span class="size">~15 MB</span>
+              <mat-icon>info</mat-icon>
             }
           </div>
-        </div>
-
-        @if (isDownloading()) {
-          <mat-progress-bar mode="determinate" [value]="downloadProgress()"></mat-progress-bar>
-        }
-
-        <!-- OCR Engine Selection -->
-        <div class="ocr-engine-selection">
-          <h4>{{ 'aiPage.selectOCREngine' | translate }}</h4>
-          <mat-radio-group 
-            [value]="ocrEngine()"
-            (change)="onOCREngineChange($event.value)"
-            class="ocr-engine-options">
-            @for (engine of availableOCREngines; track engine.value) {
-              <div class="ocr-engine-option" [class.selected]="ocrEngine() === engine.value">
-                <mat-radio-button [value]="engine.value">
-                  <div class="ocr-engine-content">
-                    <div class="ocr-engine-header">
-                      <span class="ocr-engine-name">{{ engine.name }}</span>
-                      @if (engine.value === 'auto') {
-                        <span class="recommended-badge">{{ 'aiPage.recommended' | translate }}</span>
-                      }
-                      @if (engine.value === 'paddleocr' && isPaddleOCRReady()) {
-                        <mat-icon class="ready-icon">check_circle</mat-icon>
-                      }
-                    </div>
-                    <p class="ocr-engine-description">{{ engine.description }}</p>
-                  </div>
-                </mat-radio-button>
-              </div>
+          <div class="status-text">
+            <span class="status-title">{{ aiStatusText() }}</span>
+            @if (!canUseCloud() && !canUseNative()) {
+              <span class="status-hint">{{ 'aiPage.addApiKeyHint' | translate }}</span>
             }
-          </mat-radio-group>
+          </div>
+          @if (!isOnline()) {
+            <div class="connection-badge offline">
+              <mat-icon>wifi_off</mat-icon>
+              {{ 'aiPage.offline' | translate }}
+            </div>
+          }
         </div>
+      </mat-card-content>
+    </mat-card>
 
-        <div class="model-features">
-          <div class="feature">
-            <mat-icon>translate</mat-icon>
-            <span>{{ 'aiPage.ocrFeature1' | translate }}</span>
-          </div>
-          <div class="feature">
-            <mat-icon>wifi_off</mat-icon>
-            <span>{{ 'aiPage.ocrFeature2' | translate }}</span>
-          </div>
-          <div class="feature">
-            <mat-icon>receipt_long</mat-icon>
-            <span>{{ 'aiPage.ocrFeature3' | translate }}</span>
-          </div>
+    <!-- Cloud AI Providers Section -->
+    <section class="settings-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">cloud</mat-icon>
+        <div>
+          <h2>{{ 'settings.cloudAiProviders' | translate }}</h2>
+          <p class="section-description">{{ 'settings.cloudAiProvidersHint' | translate }}</p>
         </div>
-
-        @if (!isLocalReady()) {
-          <button 
-            mat-flat-button 
-            color="primary"
-            class="download-button"
-            (click)="downloadOCRModels()"
-            [disabled]="isDownloading() || !isOnline()">
-            <mat-icon>download</mat-icon>
-            {{ 'aiPage.downloadOCR' | translate }}
-          </button>
-        }
       </div>
 
-      <!-- ML Model Card -->
-      @if (isMLModelSupported()) {
-        <div class="model-card ml-card">
-          <div class="model-header">
-            <div class="model-icon ml">
-              <mat-icon>psychology</mat-icon>
+      <div class="provider-cards">
+        <!-- Gemini Provider Card -->
+        <mat-card class="provider-card" [class.configured]="isProviderAvailable('gemini')" appearance="outlined">
+          <mat-card-header>
+            <div mat-card-avatar class="provider-avatar gemini">
+              <mat-icon>auto_awesome</mat-icon>
             </div>
-            <div class="model-info">
-              <h3>{{ 'aiPage.mlModelTitle' | translate }}</h3>
-              <p>{{ 'aiPage.mlModelTitleDescription' | translate }}</p>
-            </div>
-            <div class="model-status" [class.ready]="isMLModelReady()">
-              @if (isMLModelReady()) {
-                <mat-icon>check_circle</mat-icon>
-                <span>{{ 'aiPage.downloaded' | translate }}</span>
+            <mat-card-title>Google Gemini</mat-card-title>
+            <mat-card-subtitle>
+              @if (isProviderAvailable('gemini')) {
+                <span class="status-configured">
+                  <mat-icon>check_circle</mat-icon>
+                  {{ 'settings.configured' | translate }}
+                </span>
               } @else {
-                <span class="optional-badge">{{ 'aiPage.optional' | translate }}</span>
+                {{ 'settings.notConfigured' | translate }}
               }
-            </div>
-          </div>
+            </mat-card-subtitle>
+            @if (!isProviderAvailable('gemini')) {
+              <span class="recommended-chip">{{ 'aiPage.recommended' | translate }}</span>
+            }
+          </mat-card-header>
 
-          @if (isSemanticLoading()) {
-            <div class="download-status">
-              <span>{{ semanticStatus() }}</span>
-              <mat-progress-bar mode="determinate" [value]="semanticProgress()"></mat-progress-bar>
-            </div>
-          }
-
-          <!-- Model Type Selection -->
-          <div class="model-type-selection">
-            <h4>{{ 'aiPage.selectModelType' | translate }}</h4>
-            <mat-radio-group 
-              [value]="selectedMLModelType()"
-              (change)="onMLModelTypeChange($event.value)"
-              class="model-type-options">
-              @for (model of availableMLModels; track model.type) {
-                <div class="model-type-option" [class.selected]="selectedMLModelType() === model.type">
-                  <mat-radio-button [value]="model.type">
-                    <div class="model-type-content">
-                      <div class="model-type-header">
-                        <span class="model-type-name">{{ model.name }}</span>
-                        <span class="model-type-size">~{{ model.sizeMB }} MB</span>
-                      </div>
-                      <p class="model-type-description">{{ model.description }}</p>
-                      @if (model.type === 'embeddings') {
-                        <span class="recommended-badge">{{ 'aiPage.recommendedMultilingual' | translate }}</span>
-                      }
-                    </div>
-                  </mat-radio-button>
-                </div>
+          <mat-card-content>
+            <mat-form-field appearance="outline" class="api-key-field">
+              <mat-label>{{ 'settings.apiKey' | translate }}</mat-label>
+              <input matInput
+                     type="password"
+                     [(ngModel)]="geminiApiKey"
+                     (blur)="onGeminiApiKeyChange()"
+                     placeholder="AIza...">
+              @if (geminiApiKey) {
+                <button mat-icon-button matSuffix (click)="clearGeminiApiKey()" type="button">
+                  <mat-icon>close</mat-icon>
+                </button>
               }
-            </mat-radio-group>
-          </div>
+            </mat-form-field>
 
-          <div class="model-features">
-            @if (selectedMLModelType() === 'qa') {
-              <div class="feature">
-                <mat-icon>question_answer</mat-icon>
-                <span>{{ 'aiPage.mlFeature2' | translate }}</span>
-              </div>
-              <div class="feature">
-                <mat-icon>speed</mat-icon>
-                <span>{{ 'aiPage.mlFeature3' | translate }}</span>
-              </div>
-              <div class="feature">
-                <mat-icon>translate</mat-icon>
-                <span>{{ 'aiPage.englishOptimized' | translate }}</span>
-              </div>
-            } @else {
-              <div class="feature">
-                <mat-icon>language</mat-icon>
-                <span>{{ 'aiPage.multilingualSupport' | translate }}</span>
-              </div>
-              <div class="feature">
-                <mat-icon>auto_awesome</mat-icon>
-                <span>{{ 'aiPage.semanticMatching' | translate }}</span>
-              </div>
-              <div class="feature">
-                <mat-icon>verified</mat-icon>
-                <span>{{ 'aiPage.bestForTCJP' | translate }}</span>
+            @if (geminiTestResult) {
+              <div class="test-result" [class.success]="geminiTestResult === 'success'" [class.error]="geminiTestResult === 'error'">
+                <mat-icon>{{ geminiTestResult === 'success' ? 'check_circle' : 'error' }}</mat-icon>
+                {{ geminiTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
               </div>
             }
-          </div>
+          </mat-card-content>
 
-          @if (!isMLModelReady() && !isSemanticLoading()) {
-            <button 
-              mat-flat-button 
-              color="accent"
-              class="download-button"
-              (click)="downloadMLModel()"
-              [disabled]="isDownloadingEnhanced() || !isOnline()">
-              <mat-icon>psychology</mat-icon>
-              {{ 'aiPage.downloadML' | translate }} (~{{ getMLModelSize(selectedMLModelType()) }})
+          <mat-card-actions align="end">
+            <a mat-button
+               href="https://aistudio.google.com/app/apikey"
+               target="_blank"
+               rel="noopener">
+              <mat-icon>open_in_new</mat-icon>
+              {{ 'settings.getApiKey' | translate }}
+            </a>
+            <button mat-flat-button
+                    color="primary"
+                    [disabled]="!geminiApiKey || isTestingGemini"
+                    (click)="testGeminiApiKey()"
+                    type="button">
+              @if (isTestingGemini) {
+                <mat-spinner diameter="18"></mat-spinner>
+              } @else {
+                {{ 'settings.testApiKey' | translate }}
+              }
             </button>
-          }
+          </mat-card-actions>
+        </mat-card>
 
-          @if (isMLModelReady()) {
-            <div class="current-model-info">
-              <mat-icon>check_circle</mat-icon>
-              <span>{{ 'aiPage.currentModel' | translate }}: {{ currentMLModelType() === 'qa' ? 'Question-Answering' : 'Multilingual Embeddings' }}</span>
+        <!-- OpenAI Provider Card -->
+        <mat-card class="provider-card" [class.configured]="isProviderAvailable('openai')" appearance="outlined">
+          <mat-card-header>
+            <div mat-card-avatar class="provider-avatar openai">
+              <mat-icon>smart_toy</mat-icon>
             </div>
-          }
+            <mat-card-title>OpenAI (ChatGPT)</mat-card-title>
+            <mat-card-subtitle>
+              @if (isProviderAvailable('openai')) {
+                <span class="status-configured">
+                  <mat-icon>check_circle</mat-icon>
+                  {{ 'settings.configured' | translate }}
+                </span>
+              } @else {
+                {{ 'settings.notConfigured' | translate }}
+              }
+            </mat-card-subtitle>
+          </mat-card-header>
+
+          <mat-card-content>
+            <mat-form-field appearance="outline" class="api-key-field">
+              <mat-label>{{ 'settings.apiKey' | translate }}</mat-label>
+              <input matInput
+                     type="password"
+                     [(ngModel)]="openaiApiKey"
+                     (blur)="onOpenaiApiKeyChange()"
+                     placeholder="sk-...">
+              @if (openaiApiKey) {
+                <button mat-icon-button matSuffix (click)="clearOpenaiApiKey()" type="button">
+                  <mat-icon>close</mat-icon>
+                </button>
+              }
+            </mat-form-field>
+
+            @if (openaiTestResult) {
+              <div class="test-result" [class.success]="openaiTestResult === 'success'" [class.error]="openaiTestResult === 'error'">
+                <mat-icon>{{ openaiTestResult === 'success' ? 'check_circle' : 'error' }}</mat-icon>
+                {{ openaiTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
+              </div>
+            }
+          </mat-card-content>
+
+          <mat-card-actions align="end">
+            <a mat-button
+               href="https://platform.openai.com/api-keys"
+               target="_blank"
+               rel="noopener">
+              <mat-icon>open_in_new</mat-icon>
+              {{ 'settings.getApiKey' | translate }}
+            </a>
+            <button mat-flat-button
+                    color="primary"
+                    [disabled]="!openaiApiKey || isTestingOpenai"
+                    (click)="testOpenaiApiKey()"
+                    type="button">
+              @if (isTestingOpenai) {
+                <mat-spinner diameter="18"></mat-spinner>
+              } @else {
+                {{ 'settings.testApiKey' | translate }}
+              }
+            </button>
+          </mat-card-actions>
+        </mat-card>
+
+        <!-- Claude Provider Card -->
+        <mat-card class="provider-card" [class.configured]="isProviderAvailable('claude')" appearance="outlined">
+          <mat-card-header>
+            <div mat-card-avatar class="provider-avatar claude">
+              <mat-icon>psychology</mat-icon>
+            </div>
+            <mat-card-title>Anthropic Claude</mat-card-title>
+            <mat-card-subtitle>
+              @if (isProviderAvailable('claude')) {
+                <span class="status-configured">
+                  <mat-icon>check_circle</mat-icon>
+                  {{ 'settings.configured' | translate }}
+                </span>
+              } @else {
+                {{ 'settings.notConfigured' | translate }}
+              }
+            </mat-card-subtitle>
+          </mat-card-header>
+
+          <mat-card-content>
+            <mat-form-field appearance="outline" class="api-key-field">
+              <mat-label>{{ 'settings.apiKey' | translate }}</mat-label>
+              <input matInput
+                     type="password"
+                     [(ngModel)]="claudeApiKey"
+                     (blur)="onClaudeApiKeyChange()"
+                     placeholder="sk-ant-...">
+              @if (claudeApiKey) {
+                <button mat-icon-button matSuffix (click)="clearClaudeApiKey()" type="button">
+                  <mat-icon>close</mat-icon>
+                </button>
+              }
+            </mat-form-field>
+
+            @if (claudeTestResult) {
+              <div class="test-result" [class.success]="claudeTestResult === 'success'" [class.error]="claudeTestResult === 'error'">
+                <mat-icon>{{ claudeTestResult === 'success' ? 'check_circle' : 'error' }}</mat-icon>
+                {{ claudeTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
+              </div>
+            }
+          </mat-card-content>
+
+          <mat-card-actions align="end">
+            <a mat-button
+               href="https://console.anthropic.com/settings/keys"
+               target="_blank"
+               rel="noopener">
+              <mat-icon>open_in_new</mat-icon>
+              {{ 'settings.getApiKey' | translate }}
+            </a>
+            <button mat-flat-button
+                    color="primary"
+                    [disabled]="!claudeApiKey || isTestingClaude"
+                    (click)="testClaudeApiKey()"
+                    type="button">
+              @if (isTestingClaude) {
+                <mat-spinner diameter="18"></mat-spinner>
+              } @else {
+                {{ 'settings.testApiKey' | translate }}
+              }
+            </button>
+          </mat-card-actions>
+        </mat-card>
+      </div>
+
+      @if (!isOnline()) {
+        <div class="offline-warning">
+          <mat-icon>wifi_off</mat-icon>
+          <span>{{ 'aiPage.offlineWarning' | translate }}</span>
         </div>
       }
-
-      <!-- Download All / Clear -->
-      <div class="model-actions">
-        @if (!isLocalReady() || !isMLModelReady()) {
-          <button 
-            mat-stroked-button 
-            (click)="downloadAllModels()"
-            [disabled]="isDownloading() || isSemanticLoading() || !isOnline()">
-            <mat-icon>download_for_offline</mat-icon>
-            {{ 'aiPage.downloadAll' | translate }}
-          </button>
-        }
-
-        @if (isLocalReady() || isMLModelReady()) {
-          <button 
-            mat-stroked-button 
-            color="warn"
-            (click)="clearModels()">
-            <mat-icon>delete_outline</mat-icon>
-            {{ 'aiPage.clearModels' | translate }}
-          </button>
-        }
-      </div>
     </section>
 
-    <mat-divider></mat-divider>
+    <!-- Provider Preferences - Only show when multiple providers configured -->
+    @if (configuredProviderCount() > 1) {
+      <section class="settings-section">
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-icon mat-card-avatar class="preferences-icon">tune</mat-icon>
+            <mat-card-title>{{ 'settings.providerPreferences' | translate }}</mat-card-title>
+            <mat-card-subtitle>{{ 'settings.providerPreferencesHint' | translate }}</mat-card-subtitle>
+          </mat-card-header>
 
-    <!-- Section 4: Enhanced Mode -->
-    <section class="settings-section">
-      <div class="section-header">
-        <mat-icon class="section-icon">auto_awesome</mat-icon>
-        <div>
-          <h2>{{ 'aiPage.enhancedMode' | translate }}</h2>
-          <p class="section-description">{{ 'aiPage.enhancedModeDescription' | translate }}</p>
-        </div>
-      </div>
+          <mat-card-content>
+            <div class="provider-preferences-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>{{ 'settings.receiptScanningProvider' | translate }}</mat-label>
+                <mat-select [(ngModel)]="llmProviderPreferences.receiptScanning" (selectionChange)="onProviderPreferenceChange()">
+                  @for (provider of allProviders; track provider.value) {
+                    <mat-option [value]="provider.value" [disabled]="!isProviderAvailable(provider.value)">
+                      {{ provider.label }}
+                      @if (isProviderAvailable(provider.value)) {
+                        <mat-icon class="option-status">check_circle</mat-icon>
+                      }
+                    </mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
 
-      <div class="enhanced-toggle">
-        <div class="toggle-content">
-          <div class="toggle-info">
-            <span class="toggle-title">{{ 'aiPage.enableEnhanced' | translate }}</span>
-            <p class="toggle-description">{{ 'aiPage.enableEnhancedDescription' | translate }}</p>
-          </div>
-          <mat-slide-toggle 
-            [checked]="enhancedMode()"
-            (change)="onEnhancedModeChange($event.checked)"
-            color="accent">
-          </mat-slide-toggle>
-        </div>
+              <mat-form-field appearance="outline">
+                <mat-label>{{ 'settings.categorizationProvider' | translate }}</mat-label>
+                <mat-select [(ngModel)]="llmProviderPreferences.categorization" (selectionChange)="onProviderPreferenceChange()">
+                  @for (provider of allProviders; track provider.value) {
+                    <mat-option [value]="provider.value" [disabled]="!isProviderAvailable(provider.value)">
+                      {{ provider.label }}
+                      @if (isProviderAvailable(provider.value)) {
+                        <mat-icon class="option-status">check_circle</mat-icon>
+                      }
+                    </mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
 
-        @if (enhancedMode()) {
-          <div class="enhanced-features">
-            <h4>{{ 'aiPage.activeFeatures' | translate }}</h4>
-            <div class="feature-grid">
-              <div class="feature-item">
-                <mat-icon>translate</mat-icon>
-                <span>{{ 'aiPage.featureRegion' | translate }}</span>
-              </div>
-              <div class="feature-item">
-                <mat-icon>date_range</mat-icon>
-                <span>{{ 'aiPage.featureDate' | translate }}</span>
-              </div>
-              <div class="feature-item">
-                <mat-icon>storefront</mat-icon>
-                <span>{{ 'aiPage.featureMerchant' | translate }}</span>
-              </div>
-              <div class="feature-item">
-                <mat-icon>receipt_long</mat-icon>
-                <span>{{ 'aiPage.featureItems' | translate }}</span>
-              </div>
+              <mat-form-field appearance="outline">
+                <mat-label>{{ 'settings.insightsProvider' | translate }}</mat-label>
+                <mat-select [(ngModel)]="llmProviderPreferences.insights" (selectionChange)="onProviderPreferenceChange()">
+                  @for (provider of allProviders; track provider.value) {
+                    <mat-option [value]="provider.value" [disabled]="!isProviderAvailable(provider.value)">
+                      {{ provider.label }}
+                      @if (isProviderAvailable(provider.value)) {
+                        <mat-icon class="option-status">check_circle</mat-icon>
+                      }
+                    </mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
             </div>
-          </div>
-        }
-      </div>
-    </section>
+          </mat-card-content>
+        </mat-card>
+      </section>
+    }
 
-    <mat-divider></mat-divider>
-
-    <!-- Section 5: Offline Queue -->
+    <!-- Sync & Storage Section -->
     <section class="settings-section">
-      <div class="section-header">
-        <mat-icon class="section-icon">cloud_sync</mat-icon>
-        <div>
-          <h2>{{ 'aiPage.offlineQueue' | translate }}</h2>
-          <p class="section-description">{{ 'aiPage.offlineQueueDescription' | translate }}</p>
-        </div>
-      </div>
+      <div class="info-cards-grid">
+        <!-- Offline Queue Card -->
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-icon mat-card-avatar class="queue-icon">cloud_sync</mat-icon>
+            <mat-card-title>{{ 'aiPage.offlineQueue' | translate }}</mat-card-title>
+          </mat-card-header>
 
-      <div class="queue-status">
-        <div class="queue-info">
-          <div class="queue-count">
-            <span class="count">{{ pendingQueueCount() }}</span>
-            <span class="label">{{ 'aiPage.pendingItems' | translate }}</span>
-          </div>
-          <div class="auto-sync-toggle">
-            <span>{{ 'aiPage.autoSync' | translate }}</span>
-            <mat-slide-toggle 
-              [checked]="autoSync()"
-              (change)="onAutoSyncChange($event.checked)"
-              color="primary">
-            </mat-slide-toggle>
-          </div>
-        </div>
+          <mat-card-content>
+            <div class="queue-display">
+              <span class="queue-count">{{ pendingQueueCount() }}</span>
+              <span class="queue-label">{{ 'aiPage.pendingItems' | translate }}</span>
+            </div>
 
-        <div class="queue-actions">
-          <button 
-            mat-stroked-button 
-            (click)="syncQueue()"
-            [disabled]="pendingQueueCount() === 0 || !isOnline()">
-            <mat-icon>sync</mat-icon>
-            {{ 'aiPage.syncNow' | translate }}
-          </button>
-          <button 
-            mat-stroked-button 
-            color="warn"
-            (click)="clearQueue()"
-            [disabled]="pendingQueueCount() === 0">
-            <mat-icon>delete_sweep</mat-icon>
-            {{ 'aiPage.clearQueue' | translate }}
-          </button>
-        </div>
-      </div>
-    </section>
+            <div class="auto-sync-row">
+              <span>{{ 'aiPage.autoSync' | translate }}</span>
+              <mat-slide-toggle
+                [checked]="autoSync()"
+                (change)="onAutoSyncChange($event.checked)"
+                color="primary">
+              </mat-slide-toggle>
+            </div>
+          </mat-card-content>
 
-    <!-- Section 6: Storage Info -->
-    <section class="settings-section storage-section">
-      <div class="section-header">
-        <mat-icon class="section-icon">storage</mat-icon>
-        <div>
-          <h2>{{ 'aiPage.storageInfo' | translate }}</h2>
-        </div>
-      </div>
+          <mat-card-actions>
+            <button mat-button
+                    (click)="syncQueue()"
+                    [disabled]="pendingQueueCount() === 0 || !isOnline()">
+              <mat-icon>sync</mat-icon>
+              {{ 'aiPage.syncNow' | translate }}
+            </button>
+            <button mat-button
+                    color="warn"
+                    (click)="clearQueue()"
+                    [disabled]="pendingQueueCount() === 0">
+              <mat-icon>delete_sweep</mat-icon>
+              {{ 'aiPage.clearQueue' | translate }}
+            </button>
+          </mat-card-actions>
+        </mat-card>
 
-      <div class="storage-info">
-        <div class="storage-item">
-          <span class="storage-label">{{ 'aiPage.totalCache' | translate }}</span>
-          <span class="storage-value">{{ formatBytes(cacheSize()) }}</span>
-        </div>
-        <div class="storage-item">
-          <span class="storage-label">{{ 'aiPage.modelStorage' | translate }}</span>
-          <span class="storage-value">{{ formatBytes(totalModelSize()) }}</span>
-        </div>
+        <!-- Storage Info Card -->
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-icon mat-card-avatar class="storage-icon">storage</mat-icon>
+            <mat-card-title>{{ 'aiPage.storageInfo' | translate }}</mat-card-title>
+          </mat-card-header>
+
+          <mat-card-content>
+            <div class="info-row">
+              <span class="info-label">{{ 'aiPage.totalCache' | translate }}</span>
+              <span class="info-value">{{ formatBytes(cacheSize()) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">{{ 'aiPage.platform' | translate }}</span>
+              <span class="info-value platform-badge">{{ platform() }}</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
       </div>
     </section>
   </div>

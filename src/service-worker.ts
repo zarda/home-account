@@ -25,11 +25,9 @@ const API_ROUTES = [
   'identitytoolkit.googleapis.com',
 ];
 
-// ML Model files to cache for offline use
+// Model files to cache for offline use (reserved for future native caching)
 const MODEL_ROUTES = [
   '/models/',
-  'cdn.jsdelivr.net/npm/tesseract',
-  'unpkg.com/tesseract',
 ];
 
 // Install event - cache static assets

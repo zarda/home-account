@@ -105,8 +105,7 @@ export interface ImportResult {
   duplicates: DuplicateCheck[];
   sourceFiles?: File[];            // Support multiple source files
   multiImageMetadata?: MultiImageMetadata;  // Multi-image processing info
-  processingSource?: 'local' | 'cloud' | 'hybrid';  // Which AI processed the import
-  usedFallback?: boolean;          // Whether fallback to cloud was needed
+  processingSource?: 'cloud' | 'native';  // Which AI processed the import
 }
 
 export interface ImportWarning {

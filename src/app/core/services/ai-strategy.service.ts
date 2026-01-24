@@ -1,38 +1,20 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { GeminiService, ParsedReceipt } from './gemini.service';
-import { LocalAIService, LocalTransaction, LocalProcessingMode } from './local-ai.service';
-import { MLModelType } from './ml-worker.service';
+import { Capacitor } from '@capacitor/core';
+import { ParsedReceipt } from './gemini.service';
+import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { PwaService } from './pwa.service';
-import { AuthService } from './auth.service';
-
-export type AIProcessingMode = 'auto' | 'local_only' | 'cloud_only';
-export type AIProcessingStrategy = 'speed' | 'accuracy' | 'privacy';
-
-// Re-export types for convenience
-export type { LocalProcessingMode } from './local-ai.service';
-export type { MLModelType } from './ml-worker.service';
+import { LLMProvider } from '../../models';
+import VisionOCR, { VisionOCRResult } from '../plugins/vision-ocr.plugin';
 
 export interface AIPreferences {
-  mode: AIProcessingMode;
-  strategy: AIProcessingStrategy;
-  privacyMode: boolean;
   autoSync: boolean;
-  preferredLanguages: string[];
-  confidenceThreshold: number;
-  // Local AI processing mode (basic OCR vs enhanced with Transformers)
-  localProcessingMode: LocalProcessingMode;
-  // ML model preferences
-  mlModelType: MLModelType;
-  mlModelDownloaded: boolean;
 }
 
 export interface ProcessingResult {
   transactions: ProcessedTransaction[];
-  source: 'local' | 'cloud' | 'hybrid';
+  source: 'cloud' | 'native';
   confidence: number;
   processingTimeMs: number;
-  usedFallback: boolean;
-  rawText?: string;
 }
 
 export interface ProcessedTransaction {
@@ -42,96 +24,48 @@ export interface ProcessedTransaction {
   type: 'income' | 'expense';
   currency: string;
   confidence: number;
-  source: 'local' | 'cloud';
+  source: 'cloud' | 'native';
 }
 
 const DEFAULT_PREFERENCES: AIPreferences = {
-  mode: 'auto',
-  strategy: 'accuracy',
-  privacyMode: false,
   autoSync: true,
-  preferredLanguages: ['eng', 'jpn'],
-  confidenceThreshold: 0.7,
-  localProcessingMode: 'basic',
-  mlModelType: 'embeddings',
-  mlModelDownloaded: false,
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
 
 @Injectable({ providedIn: 'root' })
 export class AIStrategyService {
-  private geminiService = inject(GeminiService);
-  private localAIService = inject(LocalAIService);
+  private cloudLLMProvider = inject(CloudLLMProviderService);
   private pwaService = inject(PwaService);
-  private authService = inject(AuthService);
 
   // State signals
   private _preferences = signal<AIPreferences>(this.loadPreferences());
   private _isProcessing = signal<boolean>(false);
-  private _currentSource = signal<'local' | 'cloud' | null>(null);
   private _lastProcessingTime = signal<number>(0);
 
   // Public computed signals
   preferences = computed(() => this._preferences());
   isProcessing = computed(() => this._isProcessing());
-  currentSource = computed(() => this._currentSource());
   lastProcessingTime = computed(() => this._lastProcessingTime());
 
-  // Computed: Can use cloud AI
+  // Platform detection
+  isNativePlatform = computed(() => Capacitor.isNativePlatform());
+  platform = computed(() => Capacitor.getPlatform());
+
+  // Computed: Can use cloud AI (any provider)
   canUseCloud = computed(() => 
-    this.pwaService.isOnline() && this.geminiService.isAvailable()
+    this.pwaService.isOnline() && this.cloudLLMProvider.hasAnyCloudProvider()
   );
 
-  // Computed: Can use local AI
-  canUseLocal = computed(() => this.localAIService.isReady());
+  // Computed: Can use native AI (iOS only)
+  canUseNative = computed(() => this.platform() === 'ios');
 
-  // Computed: Recommended mode based on conditions
-  recommendedMode = computed((): 'local' | 'cloud' => {
-    const prefs = this._preferences();
-    const isOnline = this.pwaService.isOnline();
-    const geminiAvailable = this.geminiService.isAvailable();
-    const localReady = this.localAIService.isReady();
-
-    // Privacy mode forces local
-    if (prefs.privacyMode) {
-      return 'local';
-    }
-
-    // Offline forces local
-    if (!isOnline) {
-      return 'local';
-    }
-
-    // Strategy-based decision
-    switch (prefs.strategy) {
-      case 'privacy':
-        return 'local';
-      case 'speed':
-        return localReady ? 'local' : 'cloud';
-      case 'accuracy':
-        return geminiAvailable ? 'cloud' : 'local';
-      default:
-        return geminiAvailable ? 'cloud' : 'local';
-    }
-  });
+  // Computed: Available cloud providers
+  availableCloudProviders = computed(() => this.cloudLLMProvider.availableProviders());
 
   constructor() {
-    // Initialize local AI in background if models should be preloaded
-    this.initializeLocalAI();
-  }
-
-  private async initializeLocalAI(): Promise<void> {
-    const prefs = this._preferences();
-    
-    // Preload models if privacy mode or local-only mode
-    if (prefs.mode === 'local_only' || prefs.privacyMode) {
-      try {
-        await this.localAIService.initialize(prefs.preferredLanguages);
-      } catch (error) {
-        console.warn('[AIStrategy] Failed to preload local AI:', error);
-      }
-    }
+    // Initialize cloud providers from user preferences
+    this.cloudLLMProvider.initializeFromUserPreferences();
   }
 
   /**
@@ -142,13 +76,6 @@ export class AIStrategyService {
     const updated = { ...current, ...updates };
     this._preferences.set(updated);
     this.savePreferences(updated);
-
-    // Reinitialize local AI if languages changed
-    if (updates.preferredLanguages) {
-      this.localAIService.terminate().then(() => {
-        this.localAIService.initialize(updated.preferredLanguages);
-      });
-    }
   }
 
   /**
@@ -161,29 +88,22 @@ export class AIStrategyService {
 
   /**
    * Process a receipt image using the appropriate AI strategy.
+   * - On iOS: Uses native Vision OCR
+   * - On Web: Uses cloud AI (Gemini/OpenAI/Claude)
    */
   async processReceipt(imageFile: File): Promise<ProcessingResult> {
     const startTime = performance.now();
     this._isProcessing.set(true);
 
     try {
-      const prefs = this._preferences();
-      const mode = this.determineProcessingMode(prefs);
-
       let result: ProcessingResult;
 
-      switch (mode) {
-        case 'local':
-          result = await this.processWithLocal(imageFile);
-          break;
-        case 'cloud':
-          result = await this.processWithCloud(imageFile);
-          break;
-        case 'hybrid':
-          result = await this.processWithHybrid(imageFile, prefs);
-          break;
-        default:
-          result = await this.processWithHybrid(imageFile, prefs);
+      if (this.canUseNative()) {
+        // iOS: Use native Vision OCR
+        result = await this.processWithNative(imageFile);
+      } else {
+        // Web: Use cloud AI
+        result = await this.processWithCloud(imageFile);
       }
 
       const processingTimeMs = performance.now() - startTime;
@@ -195,7 +115,6 @@ export class AIStrategyService {
       };
     } finally {
       this._isProcessing.set(false);
-      this._currentSource.set(null);
     }
   }
 
@@ -207,23 +126,14 @@ export class AIStrategyService {
     this._isProcessing.set(true);
 
     try {
-      const prefs = this._preferences();
-      const mode = this.determineProcessingMode(prefs);
-
       let result: ProcessingResult;
 
-      switch (mode) {
-        case 'local':
-          result = await this.processMultipleWithLocal(imageFiles);
-          break;
-        case 'cloud':
-          result = await this.processMultipleWithCloud(imageFiles);
-          break;
-        case 'hybrid':
-          result = await this.processMultipleWithHybrid(imageFiles, prefs);
-          break;
-        default:
-          result = await this.processMultipleWithHybrid(imageFiles, prefs);
+      if (this.canUseNative()) {
+        // iOS: Process each image with native OCR and combine
+        result = await this.processMultipleWithNative(imageFiles);
+      } else {
+        // Web: Use cloud AI
+        result = await this.processMultipleWithCloud(imageFiles);
       }
 
       const processingTimeMs = performance.now() - startTime;
@@ -235,182 +145,199 @@ export class AIStrategyService {
       };
     } finally {
       this._isProcessing.set(false);
-      this._currentSource.set(null);
     }
   }
 
   /**
-   * Determine which processing mode to use.
+   * Process with native iOS Vision OCR.
    */
-  private determineProcessingMode(prefs: AIPreferences): 'local' | 'cloud' | 'hybrid' {
-    const isOnline = this.pwaService.isOnline();
-    const geminiAvailable = this.geminiService.isAvailable();
-
-    // Forced modes
-    if (prefs.mode === 'local_only' || prefs.privacyMode) {
-      return 'local';
-    }
-
-    if (prefs.mode === 'cloud_only') {
-      if (!isOnline || !geminiAvailable) {
-        throw new Error('Cloud AI is not available. Please check your internet connection or enable local processing.');
+  private async processWithNative(imageFile: File): Promise<ProcessingResult> {
+    console.log('[AIStrategy] Processing with native Vision OCR');
+    
+    try {
+      // Check if Vision OCR is available
+      const { available } = await VisionOCR.isAvailable();
+      if (!available) {
+        console.warn('[AIStrategy] Vision OCR not available, falling back to cloud');
+        if (this.canUseCloud()) {
+          return this.processWithCloud(imageFile);
+        }
+        throw new Error('Vision OCR is not available on this device.');
       }
-      return 'cloud';
-    }
 
-    // Auto mode
-    if (!isOnline) {
-      return 'local';
-    }
+      // Convert file to base64
+      const imageBase64 = await this.fileToBase64(imageFile);
+      
+      // Perform OCR
+      const ocrResult = await VisionOCR.recognizeText({
+        image: imageBase64,
+        languages: ['en-US', 'ja-JP', 'zh-Hant'],
+      });
 
-    if (prefs.strategy === 'privacy') {
-      return 'local';
-    }
+      // Parse the OCR result into a transaction
+      const transaction = this.parseOCRResult(ocrResult);
 
-    if (prefs.strategy === 'accuracy' && geminiAvailable) {
-      return 'cloud';
+      return {
+        transactions: [transaction],
+        source: 'native',
+        confidence: ocrResult.confidence,
+        processingTimeMs: 0,
+      };
+    } catch (error) {
+      console.error('[AIStrategy] Native OCR failed:', error);
+      
+      // Fall back to cloud if available
+      if (this.canUseCloud()) {
+        console.log('[AIStrategy] Falling back to cloud AI');
+        return this.processWithCloud(imageFile);
+      }
+      
+      throw error;
     }
-
-    // Default: use hybrid (try local, fallback to cloud)
-    return 'hybrid';
   }
 
   /**
-   * Process with local AI only.
+   * Process multiple images with native iOS Vision OCR.
    */
-  private async processWithLocal(imageFile: File): Promise<ProcessingResult> {
-    this._currentSource.set('local');
+  private async processMultipleWithNative(imageFiles: File[]): Promise<ProcessingResult> {
+    console.log('[AIStrategy] Processing multiple images with native Vision OCR');
+    
+    try {
+      const { available } = await VisionOCR.isAvailable();
+      if (!available) {
+        console.warn('[AIStrategy] Vision OCR not available, falling back to cloud');
+        if (this.canUseCloud()) {
+          return this.processMultipleWithCloud(imageFiles);
+        }
+        throw new Error('Vision OCR is not available on this device.');
+      }
 
-    // Initialize if needed
-    if (!this.localAIService.isReady()) {
-      const prefs = this._preferences();
-      await this.localAIService.initialize(prefs.preferredLanguages);
+      const transactions: ProcessedTransaction[] = [];
+      let totalConfidence = 0;
+
+      for (const file of imageFiles) {
+        const imageBase64 = await this.fileToBase64(file);
+        
+        const ocrResult = await VisionOCR.recognizeText({
+          image: imageBase64,
+          languages: ['en-US', 'ja-JP', 'zh-Hant'],
+        });
+
+        const transaction = this.parseOCRResult(ocrResult);
+        transactions.push(transaction);
+        totalConfidence += ocrResult.confidence;
+      }
+
+      const avgConfidence = transactions.length > 0 
+        ? totalConfidence / transactions.length 
+        : 0;
+
+      return {
+        transactions,
+        source: 'native',
+        confidence: avgConfidence,
+        processingTimeMs: 0,
+      };
+    } catch (error) {
+      console.error('[AIStrategy] Native OCR failed for multiple images:', error);
+      
+      if (this.canUseCloud()) {
+        console.log('[AIStrategy] Falling back to cloud AI');
+        return this.processMultipleWithCloud(imageFiles);
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Parse OCR result text to extract transaction data.
+   * This is a basic parser that extracts date, amount, and merchant from OCR text.
+   */
+  private parseOCRResult(ocrResult: VisionOCRResult): ProcessedTransaction {
+    const text = ocrResult.text;
+    const lines = text.split('\n').filter(line => line.trim());
+    
+    // Try to extract date
+    const datePatterns = [
+      /(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/,  // MM/DD/YYYY or DD/MM/YYYY
+      /(\d{4})[/-](\d{1,2})[/-](\d{1,2})/,     // YYYY/MM/DD
+      /(\w{3,})\s+(\d{1,2}),?\s+(\d{4})/i,     // Month DD, YYYY
+    ];
+    
+    let extractedDate = new Date();
+    for (const pattern of datePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const parsed = new Date(match[0]);
+        if (!isNaN(parsed.getTime())) {
+          extractedDate = parsed;
+          break;
+        }
+      }
     }
 
-    const localResult = await this.localAIService.processReceipt(imageFile);
+    // Try to extract amount (look for currency patterns)
+    const amountPatterns = [
+      /(?:total|amount|due|pay|sum|charge)[:\s]*[¥$€£]?\s*([\d,]+\.?\d*)/i,
+      /[¥$€£]\s*([\d,]+\.?\d*)/,
+      /([\d,]+\.?\d*)\s*(?:円|yen|usd|thb)/i,
+    ];
+    
+    let extractedAmount = 0;
+    for (const pattern of amountPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const amount = parseFloat(match[1].replace(/,/g, ''));
+        if (!isNaN(amount) && amount > 0) {
+          extractedAmount = amount;
+          break;
+        }
+      }
+    }
+
+    // Try to extract currency
+    let extractedCurrency = 'USD';
+    if (text.includes('¥') || text.includes('円') || /yen/i.test(text)) {
+      extractedCurrency = 'JPY';
+    } else if (text.includes('€')) {
+      extractedCurrency = 'EUR';
+    } else if (text.includes('£')) {
+      extractedCurrency = 'GBP';
+    } else if (/THB|฿|baht/i.test(text)) {
+      extractedCurrency = 'THB';
+    }
+
+    // Use first non-empty line as merchant name (typically at top of receipt)
+    const merchant = lines[0] || 'Unknown Merchant';
 
     return {
-      transactions: localResult.transactions.map(t => this.convertLocalTransaction(t)),
-      source: 'local',
-      confidence: localResult.confidence,
-      processingTimeMs: localResult.processingTimeMs,
-      usedFallback: false,
-      rawText: localResult.rawText,
+      date: extractedDate,
+      description: merchant,
+      amount: extractedAmount,
+      type: 'expense',
+      currency: extractedCurrency,
+      confidence: ocrResult.confidence,
+      source: 'native',
     };
   }
 
   /**
-   * Process with cloud AI only.
+   * Process with cloud AI.
    */
   private async processWithCloud(imageFile: File): Promise<ProcessingResult> {
-    this._currentSource.set('cloud');
+    if (!this.canUseCloud()) {
+      throw new Error('Cloud AI is not available. Please check your internet connection and configure an API key in Profile Settings.');
+    }
 
     const imageBase64 = await this.fileToBase64(imageFile);
-    const receipt = await this.geminiService.parseReceipt(imageBase64);
+    const receipt = await this.cloudLLMProvider.parseReceipt(imageBase64);
 
     return {
       transactions: [this.convertParsedReceipt(receipt)],
       source: 'cloud',
       confidence: receipt.confidence,
-      processingTimeMs: 0, // Will be filled by caller
-      usedFallback: false,
-    };
-  }
-
-  /**
-   * Process with hybrid strategy: try local first, fallback to cloud if needed.
-   */
-  private async processWithHybrid(imageFile: File, prefs: AIPreferences): Promise<ProcessingResult> {
-    // Try local first
-    this._currentSource.set('local');
-    
-    try {
-      if (!this.localAIService.isReady()) {
-        await this.localAIService.initialize(prefs.preferredLanguages);
-      }
-
-      const localResult = await this.localAIService.processReceipt(imageFile);
-
-      // Check if confidence is good enough
-      if (localResult.confidence >= prefs.confidenceThreshold) {
-        return {
-          transactions: localResult.transactions.map(t => this.convertLocalTransaction(t)),
-          source: 'local',
-          confidence: localResult.confidence,
-          processingTimeMs: localResult.processingTimeMs,
-          usedFallback: false,
-          rawText: localResult.rawText,
-        };
-      }
-
-      // Low confidence, try cloud if available
-      if (this.canUseCloud()) {
-        console.log('[AIStrategy] Low local confidence, falling back to cloud');
-        this._currentSource.set('cloud');
-
-        const imageBase64 = await this.fileToBase64(imageFile);
-        const receipt = await this.geminiService.parseReceipt(imageBase64);
-
-        return {
-          transactions: [this.convertParsedReceipt(receipt)],
-          source: 'hybrid',
-          confidence: receipt.confidence,
-          processingTimeMs: localResult.processingTimeMs,
-          usedFallback: true,
-        };
-      }
-
-      // Can't use cloud, return local result even with low confidence
-      return {
-        transactions: localResult.transactions.map(t => this.convertLocalTransaction(t)),
-        source: 'local',
-        confidence: localResult.confidence,
-        processingTimeMs: localResult.processingTimeMs,
-        usedFallback: false,
-        rawText: localResult.rawText,
-      };
-    } catch (localError) {
-      console.warn('[AIStrategy] Local processing failed:', localError);
-
-      // Try cloud as fallback
-      if (this.canUseCloud()) {
-        this._currentSource.set('cloud');
-        const imageBase64 = await this.fileToBase64(imageFile);
-        const receipt = await this.geminiService.parseReceipt(imageBase64);
-
-        return {
-          transactions: [this.convertParsedReceipt(receipt)],
-          source: 'cloud',
-          confidence: receipt.confidence,
-          processingTimeMs: 0,
-          usedFallback: true,
-        };
-      }
-
-      throw localError;
-    }
-  }
-
-  /**
-   * Process multiple images with local AI.
-   */
-  private async processMultipleWithLocal(imageFiles: File[]): Promise<ProcessingResult> {
-    this._currentSource.set('local');
-
-    if (!this.localAIService.isReady()) {
-      const prefs = this._preferences();
-      await this.localAIService.initialize(prefs.preferredLanguages);
-    }
-
-    const localResult = await this.localAIService.processMultipleImages(imageFiles);
-
-    return {
-      transactions: localResult.transactions.map(t => this.convertLocalTransaction(t)),
-      source: 'local',
-      confidence: localResult.confidence,
-      processingTimeMs: localResult.processingTimeMs,
-      usedFallback: false,
-      rawText: localResult.rawText,
+      processingTimeMs: 0,
     };
   }
 
@@ -418,7 +345,9 @@ export class AIStrategyService {
    * Process multiple images with cloud AI.
    */
   private async processMultipleWithCloud(imageFiles: File[]): Promise<ProcessingResult> {
-    this._currentSource.set('cloud');
+    if (!this.canUseCloud()) {
+      throw new Error('Cloud AI is not available. Please check your internet connection and configure an API key in Profile Settings.');
+    }
 
     const imageBase64Array: string[] = [];
     for (const file of imageFiles) {
@@ -426,7 +355,7 @@ export class AIStrategyService {
       imageBase64Array.push(base64);
     }
 
-    const extracted = await this.geminiService.extractTransactionsFromMultipleImages(imageBase64Array);
+    const extracted = await this.cloudLLMProvider.extractTransactionsFromMultipleImages(imageBase64Array);
 
     const transactions: ProcessedTransaction[] = extracted.map(t => ({
       date: new Date(t.date),
@@ -447,80 +376,6 @@ export class AIStrategyService {
       source: 'cloud',
       confidence: avgConfidence,
       processingTimeMs: 0,
-      usedFallback: false,
-    };
-  }
-
-  /**
-   * Process multiple images with hybrid strategy.
-   */
-  private async processMultipleWithHybrid(imageFiles: File[], prefs: AIPreferences): Promise<ProcessingResult> {
-    // Try local first
-    this._currentSource.set('local');
-
-    try {
-      if (!this.localAIService.isReady()) {
-        await this.localAIService.initialize(prefs.preferredLanguages);
-      }
-
-      const localResult = await this.localAIService.processMultipleImages(imageFiles);
-
-      if (localResult.confidence >= prefs.confidenceThreshold) {
-        return {
-          transactions: localResult.transactions.map(t => this.convertLocalTransaction(t)),
-          source: 'local',
-          confidence: localResult.confidence,
-          processingTimeMs: localResult.processingTimeMs,
-          usedFallback: false,
-          rawText: localResult.rawText,
-        };
-      }
-
-      // Low confidence, try cloud as fallback
-      if (this.canUseCloud()) {
-        const cloudResult = await this.processMultipleWithCloud(imageFiles);
-        // Mark as hybrid fallback (consistent with single-image behavior)
-        return {
-          ...cloudResult,
-          source: 'hybrid',
-          usedFallback: true,
-        };
-      }
-
-      return {
-        transactions: localResult.transactions.map(t => this.convertLocalTransaction(t)),
-        source: 'local',
-        confidence: localResult.confidence,
-        processingTimeMs: localResult.processingTimeMs,
-        usedFallback: false,
-        rawText: localResult.rawText,
-      };
-    } catch (localError) {
-      if (this.canUseCloud()) {
-        const cloudResult = await this.processMultipleWithCloud(imageFiles);
-        // Mark as hybrid fallback due to local error
-        return {
-          ...cloudResult,
-          source: 'hybrid',
-          usedFallback: true,
-        };
-      }
-      throw localError;
-    }
-  }
-
-  /**
-   * Convert local transaction to processed transaction.
-   */
-  private convertLocalTransaction(tx: LocalTransaction): ProcessedTransaction {
-    return {
-      date: new Date(tx.date),
-      description: tx.description,
-      amount: tx.amount,
-      type: tx.type,
-      currency: tx.currency,
-      confidence: tx.confidence,
-      source: 'local',
     };
   }
 
@@ -581,34 +436,34 @@ export class AIStrategyService {
    * Get status information for UI.
    */
   getStatusInfo(): {
-    localReady: boolean;
     cloudAvailable: boolean;
+    nativeAvailable: boolean;
     isOnline: boolean;
-    currentMode: string;
-    modelSize: number;
+    platform: string;
+    availableProviders: LLMProvider[];
+    providerStatus: { gemini: boolean; openai: boolean; claude: boolean };
   } {
     return {
-      localReady: this.localAIService.isReady(),
-      cloudAvailable: this.geminiService.isAvailable(),
+      cloudAvailable: this.cloudLLMProvider.hasAnyCloudProvider(),
+      nativeAvailable: this.canUseNative(),
       isOnline: this.pwaService.isOnline(),
-      currentMode: this.recommendedMode(),
-      modelSize: this.localAIService.modelSize(),
+      platform: this.platform(),
+      availableProviders: this.cloudLLMProvider.availableProviders(),
+      providerStatus: this.cloudLLMProvider.providerStatus(),
     };
   }
 
   /**
-   * Preload local AI models for offline use.
+   * Update a cloud provider's API key.
    */
-  async preloadLocalModels(): Promise<void> {
-    const prefs = this._preferences();
-    await this.localAIService.preloadModels(prefs.preferredLanguages);
+  updateCloudProviderApiKey(provider: LLMProvider, apiKey: string | undefined): void {
+    this.cloudLLMProvider.updateProviderApiKey(provider, apiKey);
   }
 
   /**
-   * Clear local AI models.
+   * Get the cloud LLM provider service for advanced configuration.
    */
-  async clearLocalModels(): Promise<void> {
-    await this.localAIService.terminate();
-    await this.pwaService.clearModelCache();
+  getCloudLLMProvider(): CloudLLMProviderService {
+    return this.cloudLLMProvider;
   }
 }

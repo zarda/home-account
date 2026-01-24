@@ -62,9 +62,14 @@
     color: var(--mat-sys-on-error-container);
   }
 
-  &.privacy {
-    background: var(--mat-sys-secondary-container);
-    color: var(--mat-sys-on-secondary-container);
+  &.native {
+    background: linear-gradient(135deg, #34c759, #30d158);
+    color: white;
+  }
+
+  &.cloud {
+    background: linear-gradient(135deg, #4285f4, #34a853);
+    color: white;
   }
 }
 

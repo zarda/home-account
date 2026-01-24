@@ -1,12 +1,12 @@
 <div class="ai-settings-container">
   <!-- Status Banner -->
-  <div class="status-banner" [class.offline]="!isOnline()" [class.privacy]="privacyMode()">
+  <div class="status-banner" [class.offline]="!isOnline()" [class.ready]="canUseCloud() || canUseNative()">
     <mat-icon>
       @if (!isOnline()) {
         cloud_off
-      } @else if (privacyMode()) {
-        security
-      } @else if (isLocalReady() && isGeminiAvailable()) {
+      } @else if (canUseNative()) {
+        smartphone
+      } @else if (canUseCloud()) {
         check_circle
       } @else {
         info
@@ -15,251 +15,22 @@
     <span>{{ statusText() }}</span>
   </div>
 
-  <!-- Processing Mode -->
+  <!-- Cloud AI Status -->
   <div class="setting-section">
-    <h3>{{ 'settings.aiMode' | translate }}</h3>
-    <p class="section-description">{{ 'settings.aiModeDescription' | translate }}</p>
+    <h3>{{ 'settings.cloudAI' | translate }}</h3>
+    <p class="section-description">{{ 'settings.cloudAIDescription' | translate }}</p>
     
-    <mat-radio-group 
-      [value]="processingMode()" 
-      (change)="onModeChange($event.value)"
-      class="mode-radio-group">
-      
-      <mat-radio-button value="auto" class="mode-option">
-        <div class="mode-content">
-          <span class="mode-title">{{ 'settings.aiModeAuto' | translate }}</span>
-          <span class="mode-description">{{ 'settings.aiModeAutoDescription' | translate }}</span>
-        </div>
-      </mat-radio-button>
-      
-      <mat-radio-button value="local_only" class="mode-option">
-        <div class="mode-content">
-          <span class="mode-title">{{ 'settings.aiModeLocal' | translate }}</span>
-          <span class="mode-description">{{ 'settings.aiModeLocalDescription' | translate }}</span>
-        </div>
-      </mat-radio-button>
-      
-      <mat-radio-button value="cloud_only" class="mode-option" [disabled]="!isGeminiAvailable()">
-        <div class="mode-content">
-          <span class="mode-title">{{ 'settings.aiModeCloud' | translate }}</span>
-          <span class="mode-description">{{ 'settings.aiModeCloudDescription' | translate }}</span>
-        </div>
-      </mat-radio-button>
-    </mat-radio-group>
-  </div>
-
-  <mat-divider></mat-divider>
-
-  <!-- Processing Strategy -->
-  <div class="setting-section">
-    <h3>{{ 'settings.aiStrategy' | translate }}</h3>
-    <p class="section-description">{{ 'settings.aiStrategyDescription' | translate }}</p>
-    
-    <mat-radio-group 
-      [value]="processingStrategy()" 
-      (change)="onStrategyChange($event.value)"
-      class="strategy-radio-group">
-      
-      <mat-radio-button value="accuracy" class="strategy-option">
-        <div class="strategy-content">
-          <mat-icon>verified</mat-icon>
-          <div>
-            <span class="strategy-title">{{ 'settings.strategyAccuracy' | translate }}</span>
-            <span class="strategy-description">{{ 'settings.strategyAccuracyDescription' | translate }}</span>
-          </div>
-        </div>
-      </mat-radio-button>
-      
-      <mat-radio-button value="speed" class="strategy-option">
-        <div class="strategy-content">
-          <mat-icon>speed</mat-icon>
-          <div>
-            <span class="strategy-title">{{ 'settings.strategySpeed' | translate }}</span>
-            <span class="strategy-description">{{ 'settings.strategySpeedDescription' | translate }}</span>
-          </div>
-        </div>
-      </mat-radio-button>
-      
-      <mat-radio-button value="privacy" class="strategy-option">
-        <div class="strategy-content">
-          <mat-icon>security</mat-icon>
-          <div>
-            <span class="strategy-title">{{ 'settings.strategyPrivacy' | translate }}</span>
-            <span class="strategy-description">{{ 'settings.strategyPrivacyDescription' | translate }}</span>
-          </div>
-        </div>
-      </mat-radio-button>
-    </mat-radio-group>
-  </div>
-
-  <mat-divider></mat-divider>
-
-  <!-- Privacy Mode Toggle -->
-  <div class="setting-section toggle-section">
-    <div class="toggle-header">
-      <div class="toggle-info">
-        <h3>{{ 'settings.privacyMode' | translate }}</h3>
-        <p class="section-description">{{ 'settings.privacyModeDescription' | translate }}</p>
-      </div>
-      <mat-slide-toggle 
-        [checked]="privacyMode()"
-        (change)="onPrivacyModeChange($event.checked)"
-        color="primary">
-      </mat-slide-toggle>
-    </div>
-  </div>
-
-  <mat-divider></mat-divider>
-
-  <!-- Confidence Threshold -->
-  <div class="setting-section">
-    <h3>{{ 'settings.confidenceThreshold' | translate }}</h3>
-    <p class="section-description">{{ 'settings.confidenceThresholdDescription' | translate }}</p>
-    
-    <div class="slider-container">
-      <mat-slider min="0.5" max="0.95" step="0.05" discrete [displayWith]="getConfidenceLabel">
-        <input 
-          matSliderThumb 
-          [value]="confidenceThreshold()" 
-          (valueChange)="onConfidenceChange($event)">
-      </mat-slider>
-      <span class="slider-value">{{ (confidenceThreshold() * 100).toFixed(0) }}%</span>
-    </div>
-  </div>
-
-  <mat-divider></mat-divider>
-
-  <!-- Enhanced AI Mode -->
-  <div class="setting-section toggle-section">
-    <div class="toggle-header">
-      <div class="toggle-info">
-        <h3>
-          <mat-icon class="enhanced-icon">auto_awesome</mat-icon>
-          {{ 'settings.enhancedMode' | translate }}
-        </h3>
-        <p class="section-description">{{ 'settings.enhancedModeDescription' | translate }}</p>
-      </div>
-      <mat-slide-toggle 
-        [checked]="enhancedMode()"
-        (change)="onEnhancedModeChange($event.checked)"
-        color="accent">
-      </mat-slide-toggle>
-    </div>
-    
-    @if (enhancedMode()) {
-      <div class="enhanced-details">
-        <!-- Rule-based features (always available) -->
-        <div class="section-label">{{ 'settings.ruleBasedFeatures' | translate }}</div>
-        <div class="enhanced-features">
-          <div class="feature-item">
-            <mat-icon class="feature-icon">translate</mat-icon>
-            <span>{{ 'settings.enhancedFeatureRegion' | translate }}</span>
-          </div>
-          <div class="feature-item">
-            <mat-icon class="feature-icon">date_range</mat-icon>
-            <span>{{ 'settings.enhancedFeatureDate' | translate }}</span>
-          </div>
-          <div class="feature-item">
-            <mat-icon class="feature-icon">storefront</mat-icon>
-            <span>{{ 'settings.enhancedFeatureMerchant' | translate }}</span>
-          </div>
-          <div class="feature-item">
-            <mat-icon class="feature-icon">receipt_long</mat-icon>
-            <span>{{ 'settings.enhancedFeatureItems' | translate }}</span>
-          </div>
-        </div>
-
-        <!-- ML Model (optional download for better accuracy) -->
-        @if (isMLModelSupported()) {
-          <div class="ml-model-section">
-            <div class="section-label">{{ 'settings.mlModelSection' | translate }}</div>
-            <div class="ml-model-status">
-              @if (isMLModelReady()) {
-                <div class="status-chip ready">
-                  <mat-icon>check_circle</mat-icon>
-                  <span>{{ 'settings.mlModelReady' | translate }}</span>
-                </div>
-              } @else if (isSemanticLoading()) {
-                <div class="status-chip loading">
-                  <mat-icon class="spinning">hourglass_empty</mat-icon>
-                  <span>{{ semanticStatus() || 'Loading...' }}</span>
-                </div>
-                <mat-progress-bar mode="determinate" [value]="semanticProgress()"></mat-progress-bar>
-              } @else {
-                <div class="status-chip not-ready">
-                  <mat-icon>cloud_download</mat-icon>
-                  <span>{{ 'settings.mlModelNotDownloaded' | translate }}</span>
-                  <span class="model-size">({{ mlModelSizeFormatted() }})</span>
-                </div>
-                <button 
-                  mat-flat-button 
-                  color="accent" 
-                  (click)="downloadSemanticModel()"
-                  [disabled]="!isOnline() || isDownloadingEnhanced()">
-                  <mat-icon>psychology</mat-icon>
-                  {{ 'settings.downloadMLModel' | translate }}
-                </button>
-              }
-            </div>
-            <div class="ml-note">
-              <mat-icon>info</mat-icon>
-              <span>{{ 'settings.mlModelNote' | translate }}</span>
-            </div>
-          </div>
-        }
-
-        <div class="enhanced-note">
-          <mat-icon>info</mat-icon>
-          <span>{{ 'settings.enhancedNote' | translate }}</span>
-        </div>
-      </div>
-    }
-  </div>
-
-  <mat-divider></mat-divider>
-
-  <!-- Local AI Models -->
-  <div class="setting-section">
-    <h3>{{ 'settings.localModels' | translate }}</h3>
-    <p class="section-description">{{ 'settings.localModelsDescription' | translate }}</p>
-    
-    <div class="models-status">
-      @if (isLocalReady()) {
+    <div class="cloud-status">
+      @if (isGeminiAvailable()) {
         <div class="status-chip ready">
           <mat-icon>check_circle</mat-icon>
-          <span>{{ 'settings.modelsReady' | translate }}</span>
+          <span>{{ 'settings.geminiConfigured' | translate }}</span>
         </div>
-        <span class="model-size">{{ formattedModelSize() }}</span>
       } @else {
         <div class="status-chip not-ready">
-          <mat-icon>cloud_download</mat-icon>
-          <span>{{ 'settings.modelsNotDownloaded' | translate }}</span>
+          <mat-icon>warning</mat-icon>
+          <span>{{ 'settings.geminiNotConfigured' | translate }}</span>
         </div>
-      }
-    </div>
-
-    @if (isDownloading()) {
-      <mat-progress-bar mode="determinate" [value]="downloadProgress()"></mat-progress-bar>
-    }
-
-    <div class="model-actions">
-      @if (!isLocalReady() || (enhancedMode() && !isSemanticReady())) {
-        <button 
-          mat-flat-button 
-          color="primary" 
-          (click)="downloadAllModels()"
-          [disabled]="isDownloading() || !isOnline()">
-          <mat-icon>download</mat-icon>
-          {{ 'settings.downloadAllModels' | translate }}
-        </button>
-      } @else {
-        <button 
-          mat-stroked-button 
-          color="warn" 
-          (click)="clearModels()">
-          <mat-icon>delete</mat-icon>
-          {{ 'settings.clearModels' | translate }}
-        </button>
       }
     </div>
   </div>

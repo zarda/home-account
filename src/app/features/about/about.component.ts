@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Capacitor } from '@capacitor/core';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -26,6 +27,9 @@ export class AboutComponent {
   currentYear = new Date().getFullYear();
   appVersion = packageJson.version;
   donationUrl = (environment as { donationUrlPaypal?: string }).donationUrlPaypal || '';
+
+  // Hide donate link on native apps (iOS/Android) - only show on web
+  showDonateSection = computed(() => !Capacitor.isNativePlatform());
 
   openDonateLink(): void {
     if (!this.donationUrl) {

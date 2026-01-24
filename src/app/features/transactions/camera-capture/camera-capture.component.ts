@@ -52,11 +52,10 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   processingStatus = signal('');
   error = signal<string | null>(null);
 
-  // iOS-specific state
+  // Platform state
   isIOS = signal(false);
   isStandalone = signal(false);
   isOnline = signal(true);
-  useLocalAI = signal(false);
 
   // Computed signals
   hasImages = computed(() => this.capturedImages().length > 0);
@@ -66,10 +65,19 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   // AI processing mode indicator
   processingMode = computed(() => {
     if (!this.isOnline()) return 'offline';
-    const prefs = this.strategyService.preferences();
-    if (prefs.privacyMode) return 'privacy';
-    return prefs.strategy;
+    if (this.strategyService.canUseNative()) return 'native';
+    if (this.strategyService.canUseCloud()) return 'cloud';
+    return 'unavailable';
   });
+
+  // Show if cloud AI (Gemini) is available and will be used
+  willUseCloudAI = computed(() => {
+    if (!this.isOnline()) return false;
+    return this.strategyService.canUseCloud();
+  });
+
+  // Show if native OCR is available (iOS)
+  willUseNativeAI = computed(() => this.strategyService.canUseNative());
 
   // Legacy single image support for backward compatibility
   capturedImage = computed(() => {
@@ -280,11 +288,16 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     try {
       const files = images.map(img => img.compressedFile || img.file);
       const isOffline = !this.pwaService.isOnline();
-      const prefs = this.strategyService.preferences();
 
-      // Check if we should queue for later (offline and no local AI available)
-      if (isOffline && !this.strategyService.canUseLocal()) {
+      // Queue for later if offline
+      if (isOffline) {
         await this.queueForLaterProcessing(files);
+        return;
+      }
+
+      // Check if AI is available
+      if (!this.strategyService.canUseCloud() && !this.strategyService.canUseNative()) {
+        this.error.set('AI service is not available. Please configure your API key in Profile Settings.');
         return;
       }
 
@@ -295,57 +308,47 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         // Single image processing
         this.processingStatus.set(`Analyzing image (${modeLabel})...`);
         
-        // Try using strategy service for hybrid processing
-        if (prefs.mode !== 'cloud_only' || isOffline) {
-          try {
-            const strategyResult = await this.strategyService.processReceipt(files[0]);
-            
-            if (strategyResult.transactions.length === 0) {
-              // Fall back to import service
-              const result = await this.importService.importFromImage(files[0]);
-              this.handleImportResult(result, false);
-              return;
-            }
-
-            // Convert strategy result to import result format
-            const importResult = this.convertStrategyResult(strategyResult, files);
-            this.handleImportResult(importResult, false);
+        try {
+          const strategyResult = await this.strategyService.processReceipt(files[0]);
+          
+          if (strategyResult.transactions.length === 0) {
+            // Fall back to import service
+            const result = await this.importService.importFromImage(files[0]);
+            this.handleImportResult(result, false);
             return;
-          } catch (strategyErr) {
-            console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
           }
-        }
 
-        // Fall back to original import service
-        const result = await this.importService.importFromImage(files[0]);
-        this.handleImportResult(result, false);
+          // Convert strategy result to import result format
+          const importResult = this.convertStrategyResult(strategyResult, files);
+          this.handleImportResult(importResult, false);
+        } catch (strategyErr) {
+          console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
+          // Fall back to original import service
+          const result = await this.importService.importFromImage(files[0]);
+          this.handleImportResult(result, false);
+        }
       } else {
         // Multiple images processing
         this.processingStatus.set(`Processing ${files.length} images (${modeLabel})...`);
 
-        // Try using strategy service for hybrid processing
-        if (prefs.mode !== 'cloud_only' || isOffline) {
-          try {
-            const strategyResult = await this.strategyService.processMultipleImages(files);
-            
-            if (strategyResult.transactions.length === 0) {
-              // Fall back to import service
-              const result = await this.importService.importFromMultipleImages(files);
-              this.handleImportResult(result, true);
-              return;
-            }
-
-            const importResult = this.convertStrategyResult(strategyResult, files);
-            this.handleImportResult(importResult, true);
+        try {
+          const strategyResult = await this.strategyService.processMultipleImages(files);
+          
+          if (strategyResult.transactions.length === 0) {
+            // Fall back to import service
+            const result = await this.importService.importFromMultipleImages(files);
+            this.handleImportResult(result, true);
             return;
-          } catch (strategyErr) {
-            console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
           }
-        }
 
-        // Fall back to original import service
-        const result = await this.importService.importFromMultipleImages(files);
-        this.handleImportResult(result, true);
+          const importResult = this.convertStrategyResult(strategyResult, files);
+          this.handleImportResult(importResult, true);
+        } catch (strategyErr) {
+          console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
+          // Fall back to original import service
+          const result = await this.importService.importFromMultipleImages(files);
+          this.handleImportResult(result, true);
+        }
       }
     } catch (err) {
       this.error.set(
@@ -391,12 +394,12 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     switch (mode) {
       case 'offline':
         return 'offline mode';
-      case 'privacy':
-        return 'privacy mode';
-      case 'speed':
-        return 'local AI';
-      case 'accuracy':
+      case 'native':
+        return 'native OCR';
+      case 'cloud':
         return 'cloud AI';
+      case 'unavailable':
+        return 'AI unavailable';
       default:
         return 'AI';
     }
@@ -427,9 +430,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         selected: true,
       })),
       confidence: strategyResult.confidence,
-      warnings: strategyResult.usedFallback 
-        ? [{ type: 'info' as const, message: 'Used cloud AI for better accuracy' }]
-        : [],
+      warnings: [],
       duplicates: [],
     };
   }
@@ -450,12 +451,9 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Show processing source if available
-    const source = this.strategyService.currentSource();
-    if (source) {
-      const sourceLabel = source === 'local' ? 'local AI' : 'cloud AI';
-      console.log(`[Camera] Processed with ${sourceLabel}`);
-    }
+    // Log processing completion
+    const platform = this.strategyService.platform();
+    console.log(`[Camera] Processed on ${platform}`);
 
     this.dialogRef.close({ success: true, result });
     this.router.navigate(['/import/file'], {
@@ -463,7 +461,6 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         importResult: result, 
         fromCamera: true, 
         multiImage: isMultiImage,
-        processedLocally: source === 'local',
       }
     });
   }

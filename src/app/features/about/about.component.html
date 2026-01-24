@@ -34,29 +34,31 @@
     </mat-card-content>
   </mat-card>
 
-  <!-- Donate Card -->
-  <mat-card class="donate-card">
-    <mat-card-content>
-      <div class="donate-content">
-        <div class="donate-icon">
-          <mat-icon>favorite</mat-icon>
+  <!-- Donate Card (web only - hidden in native apps per App Store guidelines) -->
+  @if (showDonateSection()) {
+    <mat-card class="donate-card">
+      <mat-card-content>
+        <div class="donate-content">
+          <div class="donate-icon">
+            <mat-icon>favorite</mat-icon>
+          </div>
+          <div class="donate-text">
+            <h3 class="donate-title">{{ 'about.donateTitle' | translate }}</h3>
+            <p class="donate-description">{{ 'about.donateDescription' | translate }}</p>
+          </div>
+          <button
+            mat-raised-button
+            color="primary"
+            class="donate-button"
+            (click)="openDonateLink()"
+          >
+            <mat-icon>favorite</mat-icon>
+            {{ 'about.donateButton' | translate }}
+          </button>
         </div>
-        <div class="donate-text">
-          <h3 class="donate-title">{{ 'about.donateTitle' | translate }}</h3>
-          <p class="donate-description">{{ 'about.donateDescription' | translate }}</p>
-        </div>
-        <button
-          mat-raised-button
-          color="primary"
-          class="donate-button"
-          (click)="openDonateLink()"
-        >
-          <mat-icon>favorite</mat-icon>
-          {{ 'about.donateButton' | translate }}
-        </button>
-      </div>
-    </mat-card-content>
-  </mat-card>
+      </mat-card-content>
+    </mat-card>
+  }
 
   <!-- Additional Info -->
   <mat-card class="tech-card">
