@@ -2,6 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { Auth } from '@angular/fire/auth';
 import { Firestore, Timestamp } from '@angular/fire/firestore';
 import { AuthService } from './auth.service';
+import { TranslationService } from './translation.service';
+import { ThemeService } from './theme.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -18,7 +20,15 @@ describe('AuthService', () => {
       providers: [
         AuthService,
         { provide: Auth, useValue: mockAuth },
-        { provide: Firestore, useValue: mockFirestore }
+        { provide: Firestore, useValue: mockFirestore },
+        {
+          provide: TranslationService,
+          useValue: { syncFromDatabase: jasmine.createSpy('syncFromDatabase') }
+        },
+        {
+          provide: ThemeService,
+          useValue: { init: jasmine.createSpy('init') }
+        }
       ]
     });
 
@@ -127,6 +137,14 @@ describe('AuthService', () => {
 
       service.isLoading.set(false);
       expect(service.isLoading()).toBeFalse();
+    });
+  });
+
+  describe('updateUserPreferences', () => {
+    it('should throw when no authenticated user', async () => {
+      await expectAsync(
+        service.updateUserPreferences({ theme: 'dark' })
+      ).toBeRejectedWithError('No authenticated user');
     });
   });
 });

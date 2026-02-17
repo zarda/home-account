@@ -47,5 +47,9 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera is used to scan receipts for transaction import</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Photo library access is used to import receipt images</string>
 </dict>
 </plist>

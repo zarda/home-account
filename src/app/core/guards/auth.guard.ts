@@ -3,18 +3,25 @@ import { CanActivateFn, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 
 const LOADING_CHECK_INTERVAL_MS = 50;
+const AUTH_LOADING_TIMEOUT_MS = 10000;
 
 /**
- * Waits for auth loading state to complete, then executes callback
+ * Waits for auth loading state to complete, then executes callback.
+ * Times out after AUTH_LOADING_TIMEOUT_MS to prevent infinite white screen.
  */
 function waitForAuthLoading(
   authService: AuthService,
   onComplete: () => boolean
 ): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
+    const startTime = Date.now();
     const checkAuth = setInterval(() => {
       if (!authService.isLoading()) {
         clearInterval(checkAuth);
+        resolve(onComplete());
+      } else if (Date.now() - startTime > AUTH_LOADING_TIMEOUT_MS) {
+        clearInterval(checkAuth);
+        console.warn('[AuthGuard] Auth loading timed out after', AUTH_LOADING_TIMEOUT_MS, 'ms');
         resolve(onComplete());
       }
     }, LOADING_CHECK_INTERVAL_MS);

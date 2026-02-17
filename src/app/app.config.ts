@@ -2,11 +2,13 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZoneChang
 import { provideRouter } from '@angular/router';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideNativeDateAdapter } from '@angular/material/core';
-import { provideFirebaseApp, initializeApp } from '@angular/fire/app';
-import { provideAuth, getAuth } from '@angular/fire/auth';
+import { provideFirebaseApp, initializeApp, getApp } from '@angular/fire/app';
+import { provideAuth } from '@angular/fire/auth';
+import { initializeAuth, browserLocalPersistence, getAuth } from 'firebase/auth';
 import { provideFirestore, getFirestore } from '@angular/fire/firestore';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { provideHttpClient } from '@angular/common/http';
+import { Capacitor } from '@capacitor/core';
 
 import { routes } from './app.routes';
 import { environment } from '../environments/environment';
@@ -22,7 +24,17 @@ export const appConfig: ApplicationConfig = {
     provideNativeDateAdapter(),
     provideHttpClient(),
     provideFirebaseApp(() => initializeApp(environment.firebase)),
-    provideAuth(() => getAuth()),
+    provideAuth(() => {
+      if (Capacitor.isNativePlatform()) {
+        // Use browserLocalPersistence for Capacitor to avoid IndexedDB issues
+        // with the capacitor:// scheme that cause onAuthStateChanged to hang
+        return initializeAuth(getApp(), {
+          persistence: browserLocalPersistence,
+        });
+      }
+      // Use default (IndexedDB) persistence for web
+      return getAuth();
+    }),
     provideFirestore(() => getFirestore()),
     provideCharts(withDefaultRegisterables()),
     provideAppInitializer(() => inject(TranslationService).init()),

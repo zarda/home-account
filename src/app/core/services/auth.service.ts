@@ -3,6 +3,7 @@ import {
   Auth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithCredential,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User as FirebaseUser
@@ -16,6 +17,8 @@ import {
   Timestamp
 } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService, ThemePreference } from './theme.service';
@@ -115,20 +118,43 @@ export class AuthService {
   }
 
   /**
-   * Initiates Google sign-in using popup flow.
-   * Returns the authenticated user on success.
+   * Initiates Google sign-in.
+   * Uses native sign-in on iOS/Android, popup on web.
    */
   async signInWithGoogle(): Promise<User> {
+    if (Capacitor.isNativePlatform()) {
+      return this.signInWithGoogleNative();
+    }
+    return this.signInWithGoogleWeb();
+  }
+
+  private async signInWithGoogleWeb(): Promise<User> {
     const provider = new GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
 
     const result = await signInWithPopup(this.auth, provider);
-
-    // Get or create user document
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
+    return user;
+  }
 
+  private async signInWithGoogleNative(): Promise<User> {
+    // Use Capacitor Firebase Auth plugin for native Google Sign-In
+    const nativeResult = await FirebaseAuthentication.signInWithGoogle();
+
+    // Get the ID token from the native sign-in result
+    const idToken = nativeResult.credential?.idToken;
+    if (!idToken) {
+      throw new Error('No ID token received from Google Sign-In');
+    }
+
+    // Create Firebase credential and sign in
+    const credential = GoogleAuthProvider.credential(idToken);
+    const result = await signInWithCredential(this.auth, credential);
+
+    const user = await this.getOrCreateUser(result.user);
+    this.currentUser.set(user);
     return user;
   }
 

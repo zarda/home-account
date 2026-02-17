@@ -130,6 +130,19 @@ npm run cap:ios            # Open Xcode project
 # Then build/archive in Xcode for App Store
 ```
 
+### iOS: Firebase / Google Sign-In setup
+
+The Xcode project expects `ios/App/App/GoogleService-Info.plist` (this file is not committed because it contains API keys). To build the iOS app:
+
+1. **Option A:** In [Firebase Console](https://console.firebase.google.com/) → your project → Project settings → General, add an iOS app or download **GoogleService-Info.plist**, then copy it to `ios/App/App/GoogleService-Info.plist`.
+2. **Option B:** Copy the template and fill in your values:
+   ```bash
+   cp ios/App/App/GoogleService-Info.plist.example ios/App/App/GoogleService-Info.plist
+   ```
+   Then replace the placeholders in `GoogleService-Info.plist` with your Firebase project values (same Firebase Console page).
+
+Without this file, the Xcode build will fail with a missing resource error. The **Google Sign-In URL scheme** (CFBundleURLTypes) is injected into Info.plist at build time from your `GoogleService-Info.plist`’s `REVERSED_CLIENT_ID`, so it always matches your Firebase project—no need to add it manually in Xcode.
+
 ## AI Configuration
 
 ### Web (Cloud AI)
@@ -166,6 +179,8 @@ The web app is a fully-featured Progressive Web App:
 | `npm test` | Run unit tests |
 | `npm run lint` | ESLint |
 | `firebase deploy` | Deploy web to Firebase Hosting |
+
+**Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 
 ## Live Demo
 

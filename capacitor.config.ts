@@ -5,7 +5,8 @@ const config: CapacitorConfig = {
   appName: 'HomeAccount',
   webDir: 'dist/home-account/browser',
   server: {
-    androidScheme: 'https'
+    androidScheme: 'https',
+    iosScheme: 'https'
   },
   ios: {
     contentInset: 'automatic',
@@ -16,6 +17,10 @@ const config: CapacitorConfig = {
       launchShowDuration: 2000,
       backgroundColor: '#ffffff',
       showSpinner: false
+    },
+    FirebaseAuthentication: {
+      skipNativeAuth: false,
+      providers: ['google.com']
     }
   }
 };

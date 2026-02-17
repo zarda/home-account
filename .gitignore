@@ -44,3 +44,7 @@ PLAN.md
 # Local production environment (contains secrets)
 src/environments/environment.prod-local.ts
 .firebase/
+
+# Firebase / Google config (API keys, OAuth client IDs – do not commit)
+ios/App/App/GoogleService-Info.plist
+**/GoogleService-Info.plist
