@@ -10,7 +10,7 @@ export interface User {
   preferences: UserPreferences;
 }
 
-export type LLMProvider = 'gemini' | 'openai' | 'claude';
+export type LLMProvider = 'gemini' | 'openai' | 'claude' | 'gemma';
 
 export interface LLMProviderPreferences {
   receiptScanning: LLMProvider;
@@ -34,6 +34,9 @@ export interface UserPreferences {
   openaiApiKey?: string;         // Optional user-provided OpenAI API key
   claudeApiKey?: string;         // Optional user-provided Claude/Anthropic API key
   llmProviderPreferences?: LLMProviderPreferences; // Per-feature LLM provider selection
+  gemmaModelVariant?: 'E2B' | 'E4B';
+  gemmaThinkingEnabled?: boolean;
+  gemmaActiveVariant?: 'E2B' | 'E4B' | null;
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {

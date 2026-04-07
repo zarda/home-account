@@ -14,7 +14,17 @@ import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { GeminiService } from '../../../core/services/gemini.service';
+import { GemmaService, GemmaVariant } from '../../../core/services/gemma.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+
+type GemmaRowState = 'not-downloaded' | 'downloading' | 'ready' | 'active' | 'evicted';
+
+interface GemmaRow {
+  variant: GemmaVariant;
+  sizeLabel: string;
+  state: GemmaRowState;
+  progress: number;
+}
 
 @Component({
   selector: 'app-ai-settings',
@@ -39,10 +49,36 @@ export class AiSettingsComponent implements OnInit {
   private pwaService = inject(PwaService);
   private offlineQueue = inject(OfflineQueueService);
   private geminiService = inject(GeminiService);
+  private gemmaService = inject(GemmaService);
   private snackBar = inject(MatSnackBar);
 
   // Form state
   autoSync = signal<boolean>(true);
+  gemmaThinkingEnabled = signal<boolean>(false);
+  activeVariant = signal<GemmaVariant | null>(null);
+  storageUsedBytes = signal<number>(0);
+  storageQuotaBytes = signal<number>(0);
+  storagePersisted = signal<boolean>(false);
+
+  gemmaRows = signal<GemmaRow[]>([
+    { variant: 'E2B', sizeLabel: '~1.5 GB', state: 'not-downloaded', progress: 0 },
+    { variant: 'E4B', sizeLabel: '~3 GB', state: 'not-downloaded', progress: 0 },
+  ]);
+
+  isIos = computed(() => this.strategyService.platform() === 'ios');
+  webGpuAvailable = computed(() => this.strategyService.isGemmaAvailable());
+  gemmaActive = computed(() => this.activeVariant() !== null);
+  storageUsedLabel = computed(() => this.formatBytes(this.storageUsedBytes()));
+  storageQuotaLabel = computed(() => this.formatBytes(this.storageQuotaBytes()));
+  storagePercent = computed(() => {
+    const q = this.storageQuotaBytes();
+    return q > 0 ? Math.min(100, (this.storageUsedBytes() / q) * 100) : 0;
+  });
+  storageWarning = computed(() => {
+    const remaining = this.storageQuotaBytes() - this.storageUsedBytes();
+    const required = this.activeVariant() === 'E4B' ? 3 * 1024 * 1024 * 1024 : 1.5 * 1024 * 1024 * 1024;
+    return remaining > 0 && remaining < required;
+  });
 
   // Computed from services
   isOnline = computed(() => this.pwaService.isOnline());
@@ -77,6 +113,68 @@ export class AiSettingsComponent implements OnInit {
   ngOnInit(): void {
     const prefs = this.strategyService.preferences();
     this.autoSync.set(prefs.autoSync);
+    void this.refreshStorage();
+  }
+
+  async refreshStorage(): Promise<void> {
+    if (typeof navigator === 'undefined' || !navigator.storage?.estimate) return;
+    try {
+      const estimate = await navigator.storage.estimate();
+      this.storageUsedBytes.set(estimate.usage ?? 0);
+      this.storageQuotaBytes.set(estimate.quota ?? 0);
+      if (navigator.storage.persisted) {
+        this.storagePersisted.set(await navigator.storage.persisted());
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async downloadGemma(variant: GemmaVariant): Promise<void> {
+    if (!this.webGpuAvailable()) return;
+    if (typeof navigator !== 'undefined' && navigator.storage?.persist && !this.storagePersisted()) {
+      try { await navigator.storage.persist(); } catch { /* ignore */ }
+    }
+    this.gemmaService.setVariant(variant);
+    this.updateRowState(variant, 'downloading', 0);
+    try {
+      await this.gemmaService.download(p => this.updateRowState(variant, 'downloading', Math.round(p)));
+      this.activeVariant.set(variant);
+      this.updateRowState(variant, 'active', 100);
+      void this.refreshStorage();
+    } catch (e) {
+      this.updateRowState(variant, 'not-downloaded', 0);
+      this.snackBar.open('Download failed: ' + (e instanceof Error ? e.message : 'unknown'), 'OK', { duration: 3000 });
+    }
+  }
+
+  setActiveVariant(variant: GemmaVariant): void {
+    this.gemmaService.unload();
+    this.gemmaService.setVariant(variant);
+    void this.downloadGemma(variant);
+  }
+
+  deleteVariant(variant: GemmaVariant): void {
+    if (this.activeVariant() === variant) {
+      this.gemmaService.unload();
+      this.activeVariant.set(null);
+    }
+    this.updateRowState(variant, 'not-downloaded', 0);
+  }
+
+  onThinkingToggle(enabled: boolean): void {
+    this.gemmaThinkingEnabled.set(enabled);
+  }
+
+  private updateRowState(variant: GemmaVariant, state: GemmaRowState, progress: number): void {
+    this.gemmaRows.update(rows => rows.map(r => r.variant === variant ? { ...r, state, progress } : r));
+  }
+
+  private formatBytes(bytes: number): string {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
   }
 
   onAutoSyncChange(enabled: boolean): void {

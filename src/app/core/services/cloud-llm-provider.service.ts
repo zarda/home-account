@@ -2,6 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { GeminiService, ParsedReceipt, RawTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
+import { GemmaService } from './gemma.service';
 import { AuthService } from './auth.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, MonthlyTotal } from '../../models';
 
@@ -11,6 +12,7 @@ interface ProviderStatus {
   gemini: boolean;
   openai: boolean;
   claude: boolean;
+  gemma: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -18,6 +20,7 @@ export class CloudLLMProviderService {
   private geminiService = inject(GeminiService);
   private openaiService = inject(OpenAIService);
   private claudeService = inject(ClaudeService);
+  private gemmaService = inject(GemmaService);
   private authService = inject(AuthService);
 
   // Signals for provider availability
@@ -25,6 +28,7 @@ export class CloudLLMProviderService {
     gemini: false,
     openai: false,
     claude: false,
+    gemma: false,
   });
 
   // Computed signals
@@ -41,6 +45,7 @@ export class CloudLLMProviderService {
     if (status.gemini) providers.push('gemini');
     if (status.openai) providers.push('openai');
     if (status.claude) providers.push('claude');
+    if (status.gemma) providers.push('gemma');
     return providers;
   });
 
@@ -84,6 +89,9 @@ export class CloudLLMProviderService {
       case 'claude':
         this.claudeService.reinitialize(apiKey);
         break;
+      case 'gemma':
+        this.gemmaService.reinitialize(apiKey);
+        break;
     }
     this.updateProviderStatus();
   }
@@ -96,6 +104,7 @@ export class CloudLLMProviderService {
       gemini: this.geminiService.isAvailable(),
       openai: this.openaiService.isAvailable(),
       claude: this.claudeService.isAvailable(),
+      gemma: this.gemmaService.isAvailable(),
     });
   }
 
@@ -156,6 +165,8 @@ export class CloudLLMProviderService {
         return this.openaiService.isAvailable();
       case 'claude':
         return this.claudeService.isAvailable();
+      case 'gemma':
+        return this.gemmaService.isAvailable();
       default:
         return false;
     }
@@ -182,6 +193,8 @@ export class CloudLLMProviderService {
         return this.openaiService.parseReceipt(imageBase64);
       case 'claude':
         return this.claudeService.parseReceipt(imageBase64);
+      case 'gemma':
+        return this.gemmaService.parseReceipt(imageBase64);
     }
   }
 
@@ -202,6 +215,8 @@ export class CloudLLMProviderService {
         return this.openaiService.extractTransactionsFromImage(imageBase64);
       case 'claude':
         return this.claudeService.extractTransactionsFromImage(imageBase64);
+      case 'gemma':
+        return this.gemmaService.extractTransactionsFromImage(imageBase64);
     }
   }
 
@@ -224,6 +239,8 @@ export class CloudLLMProviderService {
         return this.openaiService.extractTransactionsFromMultipleImages(imageBase64Array);
       case 'claude':
         return this.claudeService.extractTransactionsFromMultipleImages(imageBase64Array);
+      case 'gemma':
+        return this.gemmaService.extractTransactionsFromMultipleImages(imageBase64Array);
     }
   }
 
@@ -240,6 +257,10 @@ export class CloudLLMProviderService {
     // Only Gemini supports PDF extraction currently
     if (provider === 'gemini') {
       return this.geminiService.extractTransactionsFromPDF(pdfBase64);
+    }
+
+    if (provider === 'gemma') {
+      return this.gemmaService.extractTransactionsFromPDF(pdfBase64);
     }
 
     // For other providers, we'd need to convert PDF to images first
@@ -272,6 +293,8 @@ export class CloudLLMProviderService {
         return this.openaiService.suggestCategory(description, categories);
       case 'claude':
         return this.claudeService.suggestCategory(description, categories);
+      case 'gemma':
+        return this.gemmaService.suggestCategory(description, categories);
     }
   }
 
@@ -292,6 +315,8 @@ export class CloudLLMProviderService {
         return this.openaiService.categorizeTransactions(transactions);
       case 'claude':
         return this.claudeService.categorizeTransactions(transactions);
+      case 'gemma':
+        return this.gemmaService.categorizeTransactions(transactions);
     }
   }
 
@@ -312,6 +337,8 @@ export class CloudLLMProviderService {
         return this.openaiService.detectCSVMapping(headers, sampleRows);
       case 'claude':
         return this.claudeService.detectCSVMapping(headers, sampleRows);
+      case 'gemma':
+        return this.gemmaService.detectCSVMapping(headers, sampleRows);
     }
   }
 
@@ -348,6 +375,10 @@ export class CloudLLMProviderService {
         return this.claudeService.generateSpendingSummary(
           transactions, period, baseCurrency, previousPeriodData, budgets
         );
+      case 'gemma':
+        return this.gemmaService.generateSpendingSummary(
+          transactions, period, baseCurrency, previousPeriodData, budgets
+        );
     }
   }
 
@@ -372,6 +403,8 @@ export class CloudLLMProviderService {
         return this.openaiService.getFinancialAdvice(summary, baseCurrency, period);
       case 'claude':
         return this.claudeService.getFinancialAdvice(summary, baseCurrency, period);
+      case 'gemma':
+        return this.gemmaService.getFinancialAdvice(summary, baseCurrency, period);
     }
   }
 
@@ -386,7 +419,8 @@ export class CloudLLMProviderService {
     return (
       this.geminiService.isProcessing() ||
       this.openaiService.isProcessing() ||
-      this.claudeService.isProcessing()
+      this.claudeService.isProcessing() ||
+      this.gemmaService.isProcessing()
     );
   }
 
@@ -397,7 +431,8 @@ export class CloudLLMProviderService {
     return (
       this.geminiService.lastError() ||
       this.openaiService.lastError() ||
-      this.claudeService.lastError()
+      this.claudeService.lastError() ||
+      this.gemmaService.lastError()
     );
   }
 
@@ -412,6 +447,8 @@ export class CloudLLMProviderService {
         return 'OpenAI (ChatGPT)';
       case 'claude':
         return 'Anthropic Claude';
+      case 'gemma':
+        return 'Google Gemma (Local)';
     }
   }
 
@@ -426,6 +463,8 @@ export class CloudLLMProviderService {
         return 'https://platform.openai.com/api-keys';
       case 'claude':
         return 'https://console.anthropic.com/settings/keys';
+      case 'gemma':
+        return '';
     }
   }
 }

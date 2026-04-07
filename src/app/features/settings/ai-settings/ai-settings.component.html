@@ -35,6 +35,104 @@
     </div>
   </div>
 
+  @if (!isIos()) {
+    <mat-divider></mat-divider>
+
+    <!-- Local Models (Gemma) -->
+    <div class="setting-section">
+      <h3>Local Models</h3>
+      <p class="section-description">Run Google Gemma 4 entirely on-device using WebGPU.</p>
+
+      <div class="cloud-status">
+        @if (webGpuAvailable()) {
+          <div class="status-chip ready">
+            <mat-icon>check_circle</mat-icon>
+            <span>WebGPU: available</span>
+          </div>
+        } @else {
+          <div class="status-chip not-ready">
+            <mat-icon>warning</mat-icon>
+            <span>WebGPU not supported in this browser</span>
+          </div>
+        }
+      </div>
+
+      <div class="gemma-storage">
+        <div>Storage used: {{ storageUsedLabel() }} / {{ storageQuotaLabel() }}</div>
+        <mat-progress-bar mode="determinate" [value]="storagePercent()"></mat-progress-bar>
+        @if (storageWarning()) {
+          <div class="warn">Warning: remaining quota may be insufficient for the selected variant.</div>
+        }
+      </div>
+
+      <table class="gemma-table">
+        <thead>
+          <tr>
+            <th>Variant</th>
+            <th>Size</th>
+            <th>State</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of gemmaRows(); track row.variant) {
+            <tr>
+              <td>Gemma 4 {{ row.variant }}</td>
+              <td>{{ row.sizeLabel }}</td>
+              <td>
+                @switch (row.state) {
+                  @case ('not-downloaded') { Not downloaded }
+                  @case ('downloading') { Downloading {{ row.progress }}% }
+                  @case ('ready') { Ready }
+                  @case ('active') { Active }
+                  @case ('evicted') { Evicted }
+                }
+              </td>
+              <td>
+                <button mat-stroked-button
+                  [disabled]="!webGpuAvailable() || row.state === 'downloading'"
+                  (click)="downloadGemma(row.variant)">
+                  Download
+                </button>
+                <button mat-stroked-button
+                  [disabled]="row.state === 'not-downloaded' || row.state === 'active'"
+                  (click)="setActiveVariant(row.variant)">
+                  Set Active
+                </button>
+                <button mat-stroked-button color="warn"
+                  [disabled]="row.state === 'not-downloaded'"
+                  (click)="deleteVariant(row.variant)">
+                  Delete
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <div class="toggle-header">
+        <div class="toggle-info">
+          <h3>Thinking mode</h3>
+          <p class="section-description">Enables Gemma's reasoning steps. Slower but more accurate.</p>
+        </div>
+        <mat-slide-toggle
+          [checked]="gemmaThinkingEnabled()"
+          (change)="onThinkingToggle($event.checked)"
+          color="primary">
+        </mat-slide-toggle>
+      </div>
+
+      <div class="gemma-feature-providers">
+        <p class="section-description">
+          Gemma can be selected as the provider for receipt scanning, categorization, and insights once a variant is Active.
+          @if (!gemmaActive()) {
+            <em>(currently disabled — no active variant)</em>
+          }
+        </p>
+      </div>
+    </div>
+  }
+
   <mat-divider></mat-divider>
 
   <!-- Offline Queue -->

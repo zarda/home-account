@@ -435,13 +435,26 @@ export class AIStrategyService {
   /**
    * Get status information for UI.
    */
+  // Computed: Whether Gemma is available (web + WebGPU, never iOS)
+  isGemmaAvailable = computed(() => {
+    if (this.platform() === 'ios') return false;
+    return typeof navigator !== 'undefined' &&
+      (navigator as unknown as { gpu?: unknown }).gpu != null;
+  });
+
+  gemmaUnavailableReason = computed<string | null>(() => {
+    if (this.platform() === 'ios') return 'Not available on iOS';
+    if (!this.isGemmaAvailable()) return 'WebGPU not supported';
+    return null;
+  });
+
   getStatusInfo(): {
     cloudAvailable: boolean;
     nativeAvailable: boolean;
     isOnline: boolean;
     platform: string;
     availableProviders: LLMProvider[];
-    providerStatus: { gemini: boolean; openai: boolean; claude: boolean };
+    providerStatus: { gemini: boolean; openai: boolean; claude: boolean; gemma: boolean };
   } {
     return {
       cloudAvailable: this.cloudLLMProvider.hasAnyCloudProvider(),

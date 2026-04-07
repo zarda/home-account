@@ -46,6 +46,8 @@
     "@capacitor/core": "^8.0.1",
     "@capacitor/ios": "^8.0.1",
     "@google/generative-ai": "^0.24.1",
+    "@huggingface/transformers": "^3.7.6",
+    "pdfjs-dist": "^4.10.38",
     "chart.js": "^4.5.1",
     "date-fns": "^4.1.0",
     "firebase": "^11.10.0",
