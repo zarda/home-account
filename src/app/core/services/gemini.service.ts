@@ -120,8 +120,8 @@ export class GeminiService {
 
     try {
       this.genAI = new GoogleGenerativeAI(apiKey);
-      this.textModel = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-      this.visionModel = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      this.textModel = this.genAI.getGenerativeModel({ model: 'gemma-4-31b' });
+      this.visionModel = this.genAI.getGenerativeModel({ model: 'gemma-4-26b' });
       this.currentApiKey = apiKey;
       this._isAvailable.set(true);
     } catch (error) {
