@@ -4,6 +4,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { GeminiService, PreviousPeriodData } from '../../../core/services/gemini.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -28,6 +29,7 @@ export class AiSummaryComponent {
   private geminiService = inject(GeminiService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private sanitizer = inject(DomSanitizer);
 
   // Inputs
   transactions = input<Transaction[]>([]);
@@ -39,8 +41,10 @@ export class AiSummaryComponent {
   // State
   summary = signal<string>('');
   advice = signal<string>('');
+  rawAdvice = signal<string>('');  // Debug: raw unfiltered advice
   isLoading = signal(false);
   hasError = signal(false);
+  showDebug = signal(false);  // Debug toggle
 
   // Cache key for sessionStorage (includes locale for language-specific caching)
   private cacheKey = computed(() => {
@@ -114,6 +118,12 @@ export class AiSummaryComponent {
 
       this.summary.set(summaryResult);
       this.advice.set(adviceResult);
+      this.rawAdvice.set(adviceResult);  // Store raw for debug
+
+      // Debug log
+      console.log('=== FINANCIAL ADVICE RAW OUTPUT ===');
+      console.log(adviceResult);
+      console.log('====================================');
 
       // Cache the results
       this.cacheInsights(summaryResult, adviceResult);
@@ -207,5 +217,52 @@ export class AiSummaryComponent {
 
     // If it's a custom period (already formatted like "Jan 2024" or "2024"), return as-is
     return period;
+  }
+
+  // Format markdown to HTML for display
+  formatMarkdown(markdown: string): SafeHtml {
+    let html = markdown;
+
+    // Convert markdown headers (## Title) to HTML
+    html = html.replace(/^### (.*?)$/gm, '<h3 class="markdown-h3">$1</h3>');
+    html = html.replace(/^## (.*?)$/gm, '<h2 class="markdown-h2">$1</h2>');
+    html = html.replace(/^# (.*?)$/gm, '<h1 class="markdown-h1">$1</h1>');
+
+    // Convert bold text (**text**)
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+    // Convert italic text (*text*)
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+    // Convert bullet points (- item) to HTML lists
+    const lines = html.split('\n');
+    let inList = false;
+    const processedLines: string[] = [];
+
+    for (const line of lines) {
+      if (line.trim().startsWith('- ')) {
+        if (!inList) {
+          processedLines.push('<ul class="markdown-list">');
+          inList = true;
+        }
+        processedLines.push(`<li>${line.trim().substring(2)}</li>`);
+      } else {
+        if (inList) {
+          processedLines.push('</ul>');
+          inList = false;
+        }
+        if (line.trim()) {
+          processedLines.push(`<p>${line}</p>`);
+        }
+      }
+    }
+
+    if (inList) {
+      processedLines.push('</ul>');
+    }
+
+    html = processedLines.join('');
+
+    return this.sanitizer.bypassSecurityTrustHtml(html);
   }
 }

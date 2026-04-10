@@ -163,6 +163,7 @@ mat-card-content {
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
+  justify-content: space-between;
 
   mat-icon {
     font-size: 18px;
@@ -177,6 +178,18 @@ mat-card-content {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     @apply text-amber-700 dark:text-amber-400;
+    flex-grow: 1;
+  }
+
+  .debug-toggle {
+    width: 24px;
+    height: 24px;
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
   }
 }
 
@@ -185,4 +198,104 @@ mat-card-content {
   line-height: 1.5;
   @apply text-amber-800 dark:text-amber-200;
   margin: 0;
+}
+
+// Debug section
+.debug-section {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  @apply bg-gray-100 dark:bg-gray-800;
+  border: 1px solid;
+  @apply border-gray-300 dark:border-gray-700;
+
+  strong {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    @apply text-gray-700 dark:text-gray-300;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .debug-output {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    @apply bg-gray-900 dark:bg-black;
+    @apply text-gray-100 dark:text-gray-200;
+    padding: 8px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+}
+
+// Markdown structured content styles
+.structured-content {
+  h1, h2, h3 {
+    @apply text-gray-900 dark:text-gray-100;
+    font-weight: 600;
+    margin: 16px 0 8px 0;
+
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  .markdown-h1 {
+    font-size: 1.25rem;
+    border-bottom: 2px solid;
+    @apply border-primary-300 dark:border-primary-700;
+    padding-bottom: 8px;
+  }
+
+  .markdown-h2 {
+    font-size: 1.1rem;
+    border-bottom: 1px solid;
+    @apply border-primary-200 dark:border-primary-800;
+    padding-bottom: 6px;
+  }
+
+  .markdown-h3 {
+    font-size: 1rem;
+  }
+
+  p {
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    @apply text-gray-700 dark:text-gray-300;
+    margin: 8px 0;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  strong {
+    @apply font-semibold text-gray-900 dark:text-gray-100;
+  }
+
+  em {
+    @apply italic;
+  }
+
+  .markdown-list {
+    @apply list-disc pl-5;
+    margin: 8px 0;
+
+    li {
+      font-size: 0.9375rem;
+      line-height: 1.6;
+      @apply text-gray-700 dark:text-gray-300;
+      margin-bottom: 6px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
 }

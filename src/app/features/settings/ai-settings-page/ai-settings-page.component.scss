@@ -477,3 +477,14 @@
     box-shadow: 0 0 0 1px var(--mat-sys-primary), 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 }
+
+// Model Selection
+.model-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.model-field {
+  width: 100%;
+}

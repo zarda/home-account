@@ -48,3 +48,4 @@ src/environments/environment.prod-local.ts
 # Firebase / Google config (API keys, OAuth client IDs – do not commit)
 ios/App/App/GoogleService-Info.plist
 **/GoogleService-Info.plist
+firebase-debug.log

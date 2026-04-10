@@ -199,6 +199,18 @@ mat-progress-bar {
   border-radius: 4px;
 }
 
+// Model selection
+.model-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.model-field {
+  width: 100%;
+  max-width: 400px;
+}
+
 // Queue section
 .queue-status {
   display: flex;

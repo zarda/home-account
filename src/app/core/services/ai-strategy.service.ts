@@ -8,6 +8,8 @@ import VisionOCR, { VisionOCRResult } from '../plugins/vision-ocr.plugin';
 
 export interface AIPreferences {
   autoSync: boolean;
+  textModel?: string;      // Model ID for text tasks
+  visionModel?: string;    // Model ID for vision tasks
 }
 
 export interface ProcessingResult {
@@ -29,6 +31,8 @@ export interface ProcessedTransaction {
 
 const DEFAULT_PREFERENCES: AIPreferences = {
   autoSync: true,
+  textModel: 'gemma-4-26b-a4b-it',
+  visionModel: 'gemma-4-31b-it',
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
@@ -76,6 +80,11 @@ export class AIStrategyService {
     const updated = { ...current, ...updates };
     this._preferences.set(updated);
     this.savePreferences(updated);
+
+    // If models changed, reinitialize Gemini service
+    if (updates.textModel || updates.visionModel) {
+      this.cloudLLMProvider.reinitializeGemini(updated.textModel, updated.visionModel);
+    }
   }
 
   /**

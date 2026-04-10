@@ -315,6 +315,41 @@
       </section>
     }
 
+    <!-- Model Selection Section -->
+    <section class="settings-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">model_training</mat-icon>
+        <div>
+          <h2>{{ 'settings.aiModels' | translate }}</h2>
+          <p class="section-description">Select which AI models to use for different tasks</p>
+        </div>
+      </div>
+
+      <mat-card appearance="outlined">
+        <mat-card-content>
+          <div class="model-selection">
+            <mat-form-field appearance="outline" class="model-field">
+              <mat-label>Text Model (Summarization, Advice)</mat-label>
+              <mat-select [value]="selectedTextModel()" (selectionChange)="onTextModelChange($event.value)">
+                @for (model of textModels; track model.id) {
+                  <mat-option [value]="model.id">{{ model.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="model-field">
+              <mat-label>Vision Model (Receipt Scanning, Image Analysis)</mat-label>
+              <mat-select [value]="selectedVisionModel()" (selectionChange)="onVisionModelChange($event.value)">
+                @for (model of visionModels; track model.id) {
+                  <mat-option [value]="model.id">{{ model.name }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </section>
+
     <!-- Sync & Storage Section -->
     <section class="settings-section">
       <div class="info-cards-grid">

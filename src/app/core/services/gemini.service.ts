@@ -99,7 +99,7 @@ export class GeminiService {
     this.initializeGemini();
   }
 
-  private initializeGemini(customApiKey?: string): void {
+  private initializeGemini(customApiKey?: string, textModelId?: string, visionModelId?: string): void {
     // Priority: custom key > environment key (if available)
     const apiKey = customApiKey || (environment as { geminiApiKey?: string }).geminiApiKey;
 
@@ -120,10 +120,15 @@ export class GeminiService {
 
     try {
       this.genAI = new GoogleGenerativeAI(apiKey);
-      this.textModel = this.genAI.getGenerativeModel({ model: 'gemma-4-31b' });
-      this.visionModel = this.genAI.getGenerativeModel({ model: 'gemma-4-26b' });
+      const finalTextModel = textModelId || 'gemma-4-26b-a4b-it';
+      const finalVisionModel = visionModelId || 'gemma-4-31b-it';
+
+      this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
+      this.visionModel = this.genAI.getGenerativeModel({ model: finalVisionModel });
       this.currentApiKey = apiKey;
       this._isAvailable.set(true);
+
+      console.log(`[Gemini] Initialized with text model: ${finalTextModel}, vision model: ${finalVisionModel}`);
     } catch (error) {
       console.error('Failed to initialize Gemini:', error);
       this.genAI = null;
@@ -135,11 +140,11 @@ export class GeminiService {
   }
 
   /**
-   * Reinitialize Gemini with a new API key.
-   * Used when user provides their own API key in settings.
+   * Reinitialize Gemini with a new API key and/or models.
+   * Used when user provides their own API key or changes model selection in settings.
    */
-  reinitialize(apiKey?: string): void {
-    this.initializeGemini(apiKey);
+  reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): void {
+    this.initializeGemini(apiKey, textModelId, visionModelId);
   }
 
   // Check if Gemini is available
@@ -157,8 +162,9 @@ export class GeminiService {
     this.lastError.set(null);
 
     try {
-      const prompt = `Analyze this receipt image and extract the following information.
-Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
+      const prompt = `Do NOT include any thinking, reasoning, or analysis in your response. Output ONLY valid JSON.
+
+Analyze this receipt image and extract information into this JSON structure (no markdown, no code blocks):
 {
   "merchant": "store/restaurant name",
   "amount": total amount as number,
@@ -168,24 +174,28 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no code 
   "suggestedCategory": "one of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other"
 }
 
-If you cannot extract certain fields, use reasonable defaults:
-- merchant: "Unknown"
-- currency: "USD"
-- date: today's date
-- items: empty array
-- amount: 0 if not readable
+If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.
+Return ONLY the JSON, nothing else.`;
 
-Ensure the JSON is valid and parseable.`;
-
-      const result = await this.visionModel.generateContent([
-        prompt,
-        {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
-          }
+      const result = await this.visionModel.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          maxOutputTokens: 800,
+          temperature: 0.05,
+          topP: 0.6,
         }
-      ]);
+      });
 
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
@@ -237,8 +247,16 @@ ${categoryList}
 
 Return ONLY the category ID that best matches this transaction. Just the ID, nothing else.`;
 
-      const result = await this.textModel.generateContent(prompt);
-      const suggestedId = result.response.text().trim();
+      const result = await this.textModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 50,
+          temperature: 0.05,
+          topP: 0.5,
+        }
+      });
+      const responseText = result.response.text().trim();
+      const suggestedId = this.filterReasoningContext(responseText);
 
       // Validate the suggested ID exists
       const validCategory = categories.find(c => c.id === suggestedId);
@@ -283,7 +301,14 @@ ${transactionList}
 Return ONLY a valid JSON array with objects containing "index" and "categoryId":
 [{"index": 0, "categoryId": "food"}, {"index": 1, "categoryId": "transport"}]`;
 
-      const result = await this.textModel.generateContent(prompt);
+      const result = await this.textModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 500,
+          temperature: 0.05,
+          topP: 0.6,
+        }
+      });
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
       const categorizations = JSON.parse(cleanedJson);
@@ -404,7 +429,7 @@ ${budgetLines}
 `;
       }
 
-      const prompt = `Generate a brief, helpful spending summary for ${period}.
+      const prompt = `Generate structured AI Insights for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
 - Total Income: ${totalIncome.toFixed(2)} ${baseCurrency}
@@ -418,18 +443,36 @@ ${categoryBreakdown}
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
 ${historicalSection}${budgetSection}
-Write a 2-3 sentence summary that:
-1. Highlights the main spending pattern with specific amounts
-2. Notes any significant changes from previous period (if data available)
-3. Warns about any budgets near or over limit (if applicable)
-4. Provides one actionable insight
+Return AI Insights in this exact format (use markdown):
 
-Keep it concise and encouraging. Use plain language, no bullet points. Use ${baseCurrency} for currency amounts.
+## Spending Pattern
+[1-2 sentences about main spending categories with specific amounts and percentages]
+
+## Changes & Trends
+[1-2 sentences about significant changes from previous period with impact assessment]
+
+## Budget Status
+[1-2 sentences about budget limits - warnings if any are near limit, or confirmation if all good]
+
+## Actionable Insights
+- [Specific, practical insight #1]
+- [Specific, practical insight #2]
+- [Specific, practical insight #3]
+
+Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
 
 ${this.getLanguageInstruction()}`;
 
-      const result = await this.textModel.generateContent(prompt);
-      return result.response.text().trim();
+      const result = await this.textModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 600,
+          temperature: 0.3,
+          topP: 0.7,
+        }
+      });
+      const responseText = result.response.text().trim();
+      return this.filterReasoningContext(responseText);
     } catch (error) {
       console.error('Summary generation error:', error);
       return 'Unable to generate spending summary at this time.';
@@ -455,24 +498,32 @@ ${this.getLanguageInstruction()}`;
         ? ((summary.income - summary.expense) / summary.income * 100)
         : 0;
 
-      const prompt = `Provide brief financial advice based on this summary for ${period} (amounts in ${baseCurrency}):
+      const prompt = `You are a financial advisor giving brief, specific financial advice.
 
+FACTS:
 - Income: ${summary.income.toFixed(2)} ${baseCurrency}
 - Expenses: ${summary.expense.toFixed(2)} ${baseCurrency}
 - Balance: ${summary.balance.toFixed(2)} ${baseCurrency}
-- Savings Rate: ${savingsRate.toFixed(1)}%
-- Transaction Count: ${summary.transactionCount}
+- Period: ${period}
 
-Give 1-2 sentences of personalized, actionable advice. Be encouraging but honest. Use ${baseCurrency} for currency amounts.
-Consider:
-- If savings rate is <20%, suggest ways to save more
-- If balance is negative, acknowledge the situation kindly
-- If doing well (>30% savings), congratulate and suggest next steps
+INSTRUCTION: Write ONLY 2-3 sentences of financial advice. No introduction, no reasoning, no metadata.
 
-${this.getLanguageInstruction()}`;
+${savingsRate < 20 ? '- Address the low savings rate with concrete, actionable steps.' : '- Acknowledge positive progress and suggest next steps.'}
+${summary.balance < 0 ? '- Prioritize: stop deficit spending and find income.' : '- Prioritize: maintain momentum and increase savings.'}
 
-      const result = await this.textModel.generateContent(prompt);
-      return result.response.text().trim();
+TONE: Practical, specific, supportive. Use exact numbers from above.
+OUTPUT: Only the financial advice (2-3 sentences).`;
+
+      const result = await this.textModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 200,
+          temperature: 0.2,
+          topP: 0.7,
+        }
+      });
+      const responseText = result.response.text().trim();
+      return this.filterReasoningContextForAdvice(responseText);
     } catch (error) {
       console.error('Financial advice error:', error);
       return 'Keep tracking your expenses to better understand your spending patterns.';
@@ -491,16 +542,13 @@ ${this.getLanguageInstruction()}`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Analyze this image (bank statement, receipt, or financial document) and extract ALL transactions.
+      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
 
-For each transaction found, extract:
-- date: in YYYY-MM-DD format
-- description: merchant/payee name or transaction description
-- amount: as a positive number
-- type: "income" for credits/deposits, "expense" for debits/withdrawals
-- currency: detected currency code (default to USD if unclear)
+Extract ALL transactions from this financial document image.
 
-Return ONLY a valid JSON array with this structure (no markdown, no explanation):
+For each transaction, extract: date (YYYY-MM-DD), description, amount (positive number), type (income/expense), currency.
+
+Return ONLY valid JSON array (no markdown, no explanation, no thinking):
 [
   {
     "date": "2024-01-15",
@@ -511,18 +559,27 @@ Return ONLY a valid JSON array with this structure (no markdown, no explanation)
   }
 ]
 
-If no transactions can be extracted, return an empty array: []
-Only include confirmed transactions, not pending ones.`;
+Empty array [] if no transactions found. Only confirmed transactions, not pending.`;
 
-      const result = await this.visionModel.generateContent([
-        prompt,
-        {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
-          }
+      const result = await this.visionModel.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          maxOutputTokens: 1000,
+          temperature: 0.05,
+          topP: 0.65,
         }
-      ]);
+      });
 
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
@@ -554,16 +611,13 @@ Only include confirmed transactions, not pending ones.`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Analyze this PDF bank statement and extract ALL transactions.
+      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
 
-For each transaction found, extract:
-- date: in YYYY-MM-DD format
-- description: merchant/payee name or transaction description
-- amount: as a positive number
-- type: "income" for credits/deposits, "expense" for debits/withdrawals
-- currency: detected currency code (default to USD if unclear)
+Extract ALL transactions from this PDF bank statement.
 
-Return ONLY a valid JSON array with this structure (no markdown, no explanation):
+For each transaction: date (YYYY-MM-DD), description, amount (positive number), type (income/expense), currency.
+
+Return ONLY valid JSON array (no markdown, no explanation, no thinking):
 [
   {
     "date": "2024-01-15",
@@ -581,18 +635,27 @@ Return ONLY a valid JSON array with this structure (no markdown, no explanation)
   }
 ]
 
-If no transactions can be extracted, return an empty array: []
-Only include posted/confirmed transactions.`;
+Empty array [] if no transactions found. Only posted/confirmed transactions.`;
 
-      const result = await this.visionModel.generateContent([
-        prompt,
-        {
-          inlineData: {
-            mimeType: 'application/pdf',
-            data: pdfBase64.replace(/^data:application\/pdf;base64,/, '')
-          }
+      const result = await this.visionModel.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: 'application/pdf',
+                data: pdfBase64.replace(/^data:application\/pdf;base64,/, '')
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          maxOutputTokens: 1000,
+          temperature: 0.05,
+          topP: 0.65,
         }
-      ]);
+      });
 
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
@@ -638,50 +701,16 @@ Only include posted/confirmed transactions.`;
     this.lastError.set(null);
 
     try {
-      const prompt = `You are analyzing ${imageBase64Array.length} sequential photos of a SINGLE receipt or financial document.
-The images are ordered from TOP to BOTTOM of the receipt.
+      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
 
-IMPORTANT: These photos likely have OVERLAPPING content at the edges.
-- The BOTTOM portion of Image N likely overlaps with the TOP portion of Image N+1
-- You MUST identify and DEDUPLICATE overlapping items
-- Return each unique item ONLY ONCE, preferring the clearer/more complete instance
+You are analyzing ${imageBase64Array.length} sequential photos of a SINGLE receipt or financial document (TOP to BOTTOM order).
+These photos likely have overlapping content. DEDUPLICATE overlapping items, return each unique item ONLY ONCE.
 
-DISCOUNT HANDLING:
-- If a discount applies to a SINGLE item (e.g., "-¥100 off", "10% off this item"), apply it to that item
-- If a discount applies to MULTIPLE items bought together (bundle/set discount, "まとめ買い割引"), 
-  distribute the discount proportionally across those items based on their original prices
-- Return the discounted final amount as "amount", and include the original amount and discount in "taxInfo"
-- Do NOT create separate line items for discounts
+DISCOUNT HANDLING: Single-item discounts apply to that item. Multi-item discounts distribute proportionally. Include original amount and discount in "taxInfo".
 
-TAX HANDLING (especially for Japanese receipts):
-- Japan uses 8% reduced tax (軽減税率) for takeout food and 10% standard tax (標準税率) for dine-in
-- Look for markers like "軽", "*", or "外" indicating reduced tax rate (takeout) items
-- "外" means takeout (外 from 持ち帰り), these items have 8% tax
-- Use taxCategory to indicate: "takeout_8%" or "dine_in_10%" for Japanese receipts
-- For other countries, use appropriate tax categories (VAT, GST, Sales Tax, etc.)
-- Do NOT include separate tax total lines - attach tax to individual items
-- Do NOT include subtotals or grand totals as line items
+TAX HANDLING: Use appropriate tax categories (takeout_8%, dine_in_10%, VAT, GST, etc.). Attach tax to individual items, not as separate line items.
 
-For each UNIQUE transaction/line item found, extract:
-- date: in YYYY-MM-DD format (use the receipt date if individual items don't have dates)
-- description: item name or transaction description
-- amount: FINAL amount after any discounts applied (as a positive number)
-- type: "income" for credits/refunds, "expense" for purchases/debits
-- currency: detected currency code (default to USD if unclear)
-- imageIndex: which image this item appears in (0-based, use the BEST image if it appears in multiple)
-- positionInImage: "top", "middle", or "bottom" based on vertical position in that image
-- confidence: your confidence in the extraction accuracy (0.0 to 1.0)
-- wasMerged: true if this item appeared in multiple images and was deduplicated
-- mergedFromImages: array of image indices where this item appeared (only if wasMerged is true)
-- taxInfo: (optional) object with tax/discount details:
-  - taxRate: tax percentage applied to this item (e.g., 8 or 10 for Japan)
-  - taxAmount: tax amount for this item
-  - taxCategory: type of tax (e.g., "takeout_8%", "dine_in_10%", "VAT", "GST")
-  - preTaxAmount: amount before tax (税抜価格)
-  - discountApplied: discount amount applied to this item (if any)
-  - originalAmount: price before discount (if discount was applied)
-
-Return ONLY a valid JSON array with this structure (no markdown, no explanation):
+Extract each UNIQUE transaction/line item. Return ONLY valid JSON array (no markdown, no thinking, no explanation):
 [
   {
     "date": "2024-01-15",
@@ -752,7 +781,17 @@ If no transactions can be extracted, return an empty array: []`;
         });
       }
 
-      const result = await this.visionModel.generateContent(contentParts);
+      const result = await this.visionModel.generateContent({
+        contents: [{
+          role: 'user',
+          parts: contentParts.map(part => typeof part === 'string' ? { text: part } : part)
+        }],
+        generationConfig: {
+          maxOutputTokens: 2000,
+          temperature: 0.05,
+          topP: 0.7,
+        }
+      });
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
       const extracted: (MultiImageExtractedTransaction & { taxInfo?: ExtractedTaxInfo })[] = JSON.parse(cleanedJson);
@@ -797,41 +836,17 @@ If no transactions can be extracted, return an empty array: []`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Analyze this receipt or financial document image and extract ALL line items/transactions.
+      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
 
-DISCOUNT HANDLING:
-- If a discount applies to a SINGLE item (e.g., "-¥100 off", "10% off this item"), apply it to that item
-- If a discount applies to MULTIPLE items bought together (bundle/set discount, "まとめ買い割引"), 
-  distribute the discount proportionally across those items based on their original prices
-- Return the discounted final amount as "amount", and include the original amount and discount in "taxInfo"
-- Do NOT create separate line items for discounts
+Extract ALL line items/transactions from this receipt or financial document image.
 
-TAX HANDLING (especially for Japanese receipts):
-- Japan uses 8% reduced tax (軽減税率) for takeout food and 10% standard tax (標準税率) for dine-in
-- Look for markers like "軽", "*", or "外" indicating reduced tax rate (takeout) items
-- "外" means takeout (外 from 持ち帰り), these items have 8% tax
-- Use taxCategory to indicate: "takeout_8%" or "dine_in_10%" for Japanese receipts
-- For other countries, use appropriate tax categories (VAT, GST, Sales Tax, etc.)
-- Do NOT include separate tax total lines - attach tax to individual items
-- Do NOT include subtotals or grand totals as line items
+DISCOUNT: Single-item discounts apply to that item. Multi-item discounts distribute proportionally. Include original amount and discount in "taxInfo".
 
-For each transaction/line item found, extract:
-- date: in YYYY-MM-DD format (use the receipt date if individual items don't have dates)
-- description: item name or transaction description
-- amount: FINAL amount after any discounts applied (as a positive number)
-- type: "income" for credits/refunds, "expense" for purchases/debits
-- currency: detected currency code (default to USD if unclear)
-- positionInImage: "top", "middle", or "bottom" based on vertical position
-- confidence: your confidence in the extraction accuracy (0.0 to 1.0)
-- taxInfo: (optional) object with tax/discount details:
-  - taxRate: tax percentage applied to this item (e.g., 8 or 10 for Japan)
-  - taxAmount: tax amount for this item
-  - taxCategory: type of tax (e.g., "takeout_8%", "dine_in_10%", "VAT", "GST")
-  - preTaxAmount: amount before tax (税抜価格)
-  - discountApplied: discount amount applied to this item (if any)
-  - originalAmount: price before discount (if discount was applied)
+TAX: Use appropriate tax categories (takeout_8%, dine_in_10%, VAT, GST, etc.). Attach tax to individual items, not as separate line items.
 
-Return ONLY a valid JSON array with this structure (no markdown, no explanation):
+For each transaction/line item, extract: date (YYYY-MM-DD), description, amount (positive, final with discounts), type (income/expense), currency, positionInImage (top/middle/bottom), confidence (0-1.0), taxInfo (optional).
+
+Return ONLY valid JSON array (no markdown, no thinking, no explanation):
 [
   {
     "date": "2024-01-15",
@@ -884,15 +899,25 @@ Return ONLY a valid JSON array with this structure (no markdown, no explanation)
 
 If no transactions can be extracted, return an empty array: []`;
 
-      const result = await this.visionModel.generateContent([
-        prompt,
-        {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
-          }
+      const result = await this.visionModel.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          maxOutputTokens: 1000,
+          temperature: 0.05,
+          topP: 0.65,
         }
-      ]);
+      });
 
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
@@ -930,23 +955,16 @@ If no transactions can be extracted, return an empty array: []`;
     this.isProcessing.set(true);
 
     try {
-      const prompt = `Analyze these CSV headers and sample data to determine the best column mapping for financial transaction data.
+      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
+
+Analyze CSV headers and sample data to map columns for financial transaction data.
 
 Headers: ${JSON.stringify(headers)}
-Sample rows (first 3): ${JSON.stringify(sampleRows.slice(0, 3))}
+Sample (first 3 rows): ${JSON.stringify(sampleRows.slice(0, 3))}
 
-Identify which columns contain:
-- dateColumn: column name containing transaction dates
-- descriptionColumn: column name containing merchant/payee description
-- amountColumn: column name for single amount field (or null if separate debit/credit)
-- debitColumn: column name for debit/expense amounts (or null)
-- creditColumn: column name for credit/income amounts (or null)
-- typeColumn: column name indicating transaction type (or null)
-- categoryColumn: column name for category (or null)
-- dateFormat: detected date format (e.g., "MM/DD/YYYY", "YYYY-MM-DD")
-- hasHeader: true if first row is headers
+Identify columns for: dateColumn, descriptionColumn, amountColumn, debitColumn, creditColumn, typeColumn, categoryColumn, dateFormat, hasHeader.
 
-Return ONLY valid JSON with this structure:
+Return ONLY valid JSON (no thinking, no explanation):
 {
   "dateColumn": "Date",
   "descriptionColumn": "Description",
@@ -959,7 +977,14 @@ Return ONLY valid JSON with this structure:
   "hasHeader": true
 }`;
 
-      const result = await this.textModel.generateContent(prompt);
+      const result = await this.textModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 500,
+          temperature: 0.05,
+          topP: 0.6,
+        }
+      });
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
       return JSON.parse(cleanedJson);
@@ -989,10 +1014,13 @@ Return ONLY valid JSON with this structure:
     return languageMap[locale] || 'Respond in English.';
   }
 
-  // Helper: Extract JSON from response that might have markdown formatting
+  // Helper: Extract JSON from response that might have markdown formatting or reasoning
   private extractJson(text: string): string {
+    // First, filter out any reasoning context
+    let cleaned = this.filterReasoningContext(text);
+
     // Remove markdown code blocks if present
-    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+    cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '');
 
     // Find JSON array or object
     const jsonMatch = cleaned.match(/[[{][\s\S]*[\]}]/);
@@ -1001,6 +1029,142 @@ Return ONLY valid JSON with this structure:
     }
 
     return cleaned.trim();
+  }
+
+  // Helper: Filter reasoning context specifically for financial advice
+  // Aggressively removes all metadata, drafts, and reasoning to extract ONLY final advice
+  private filterReasoningContextForAdvice(text: string): string {
+    let cleaned = text
+      // Remove thinking tokens
+      .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
+      .replace(/<\|channel[\s\S]*?channel\|>/g, '')
+      .replace(/<thought>[\s\S]*?<\/thought>/g, '');
+
+    // Strategy: Find the LAST occurrence of advice that starts with "To address", "To cover", "To resolve", etc.
+    // Everything before the last "To X" is reasoning/drafts that should be removed
+
+    // Find the last sentence that looks like advice (starts with typical financial advice phrases)
+    const adviceMarkers = ['To address', 'To cover', 'To resolve', 'To bridge', 'Since you', 'You can', 'Focus on', 'Prioritize', 'Your priority'];
+    let lastAdviceIndex = -1;
+
+    for (const marker of adviceMarkers) {
+      const index = cleaned.lastIndexOf(marker);
+      if (index > lastAdviceIndex) {
+        lastAdviceIndex = index;
+      }
+    }
+
+    // If we found an advice marker, extract from there to the end
+    if (lastAdviceIndex >= 0) {
+      cleaned = cleaned.substring(lastAdviceIndex);
+    }
+
+    // Remove any remaining metadata at the start
+    cleaned = cleaned
+      .replace(/^[\s\S]*?(?:To address|To cover|To resolve|Since you|Focus on|Prioritize)/i, (match) => {
+        // Keep only the matched part
+        return match.substring(match.lastIndexOf('To') >= 0 ? match.lastIndexOf('To') :
+                               match.lastIndexOf('Since') >= 0 ? match.lastIndexOf('Since') :
+                               match.lastIndexOf('Focus') >= 0 ? match.lastIndexOf('Focus') :
+                               match.lastIndexOf('Prioritize') >= 0 ? match.lastIndexOf('Prioritize') : 0);
+      });
+
+    // Remove asterisks and formatting
+    cleaned = cleaned.replace(/\*\*?/g, '');
+
+    // Normalize whitespace
+    cleaned = cleaned.replace(/\n{2,}/g, ' ');  // Replace double newlines with space
+    cleaned = cleaned.replace(/\s{2,}/g, ' ');  // Collapse multiple spaces
+
+    // Deduplicate: if the text repeats itself, keep only first occurrence
+    const trimmed = cleaned.trim();
+    const sentences = trimmed.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+
+    if (sentences.length === 0) {
+      return trimmed.length > 20 ? trimmed : text.trim();
+    }
+
+    // If we have repeated sentences, keep unique ones
+    const uniqueSentences: string[] = [];
+    const seen = new Set<string>();
+
+    for (const sent of sentences) {
+      const normalized = sent.trim().toLowerCase();
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        uniqueSentences.push(sent.trim());
+      }
+    }
+
+    let result = uniqueSentences.join(' ').trim();
+
+    // Ensure 2-3 sentences max (typical financial advice length)
+    // Split on sentence boundaries without using lookbehind
+    const sentenceMatch = result.match(/[^.!?]+[.!?]/g) || [];
+    if (sentenceMatch.length > 3) {
+      result = sentenceMatch.slice(0, 3).join(' ').trim();
+    }
+
+    return result.length > 20 ? result : text.trim();
+  }
+
+  // Helper: Filter out reasoning context and thinking tokens from model responses
+  // Gemma 4 includes thinking/reasoning blocks that should be stripped
+  private filterReasoningContext(text: string): string {
+    // Remove Gemma 4 thinking/channel tokens
+    let cleaned = text
+      .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')  // Remove think tokens
+      .replace(/<\|channel[\s\S]*?channel\|>/g, '')       // Remove channel tokens
+      .replace(/<thought>[\s\S]*?<\/thought>/g, '');      // Remove thought tags
+
+    // Remove all common reasoning/drafting markers and numbered items
+    // This aggressively removes: numbered lists, bullet points with reasoning keywords, all emphasis with drafting terms
+    cleaned = cleaned
+      .replace(/^[\s\n]*\d+\.\s+(?:Sentence|Pattern|Input|Constraint|Check|Final|Analysis|Wait|Let's|Actually)[\s\S]*?(?=\n\d+\.|^[A-Z][a-z]|\n\n[A-Z]|$)/gim, '')
+      .replace(/^[\s\n]*(?:\*+\s*)?(?:Reasoning|Analysis|Thought process|Thinking|Drafting|Self-Correction|Wait,|Let's|Actually|Final|Done):[\s\S]*?(?=\n\*{2,}|^[A-Z][a-z]|\n\n[A-Z]|$)/gim, '')
+      .replace(/\n\*?(?:Draft|Attempt|Step|Option|Version|Sentence)\s+\d+[\s\S]*?(?=\n(?:Draft|Attempt|Step|Option|Version|Sentence|\*|\d+\.)|$)/gi, '')
+      .replace(/\n[•\-*—]\s+(?:Sentence|Input|Constraint|Reason|Why|How|Check|Note|Wait|Actually|Let|This|One|Content|Tone|Format|Hints|Examples|Final|Polish|refinement)\s*.*?:?[\s\S]*?(?=\n[•\-*—]|\n\n|$)/gi, '')
+      .replace(/\*+(?:Draft|Wait|Actually|One|Check|Final|Self-Correction|This|Let|OK|Final Polish|Self-Check|FinalCorrection|Hold on|Hmm|Hmm wait|Check|But|Actually let me|Let me try|Now let me)\s*[^*]*\*+[\s\S]*?(?=\n\n|$)/gi, '')
+      .replace(/(?:Constraint|Requirement|Rule|Note|Important|Tip|Reminder)\s+\d+[\s\S]*?(?=\n(?:Constraint|Requirement|Rule|Note|Important|Tip|Reminder)|\n\n|$)/gi, '')
+      .replace(/(?:Let me check|Let's try|Actually|Wait,|Hmm|OK so|OK, so)\s+[\s\S]*?(?=\n\n[A-Z]|$)/gi, '')
+      .replace(/\n*(?:\*Sentence count\*|Total:)\s*.*?(?=\n\n|$)/gi, '')  // Remove meta-commentary about sentence counts
+      .replace(/\n*(?:Sentence \d+:)[\s\S]*?(?=\n(?:Sentence|Total:|\*|$))/gi, '')  // Remove numbered sentence items
+      .replace(/^\*\s+(?:Expenses|Income|Balance|Savings Rate|Requirements|Length|Content|Tone|Format|Hints|Input|Constraint|Check|Role)[\s\S]*?(?=\n\*|\n\n|$)/gim, '')  // Remove metadata bullet points
+      .replace(/^\*\s+(?:Sentence \d+|Check|Wait|Actually|Let's|Finally|Here|Now)[\s\S]*?(?=\n\*|\n\n|$)/gim, '')  // Remove more metadata patterns
+      .replace(/\n\n+(?:\*|—|-).*?$(?:\n.*?)*$/gm, '')  // Remove trailing metadata sections
+      .replace(/\*\s+(?:Expenses|Income|Balance|Savings Rate|Requirements|Length|Content|Tone|Input|Constraint|Sentence \d+|Role):[\s\S]*?(?=\*\s+|$)/gi, '')  // Remove inline bullet metadata
+      .replace(/^\*\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?:\s*[\s\S]*?(?=\n\*|^[A-Z](?!\s*:)|$)/gim, '');  // Remove any metadata with keyword: pattern
+
+    // Take only the last clean paragraph(s) with actual content
+    const paragraphs = cleaned.split(/\n{2,}/).filter(p => p.trim().length > 10);
+    let result = cleaned;
+
+    // If we have multiple paragraphs, take the last 1-2 (where actual answer usually is)
+    if (paragraphs.length > 1) {
+      result = paragraphs.slice(-2).join('\n\n').trim();
+    } else if (cleaned.trim().length > 20) {
+      result = cleaned.trim();
+    }
+
+    // Remove duplicate/repeated content
+    const allText = result.replace(/\n/g, ' ');
+    const midpoint = Math.floor(allText.length / 2);
+    const firstHalf = allText.substring(0, midpoint);
+    const secondHalf = allText.substring(midpoint);
+
+    // Check if content repeats (similar substrings at start of both halves)
+    if (firstHalf.length > 20 && secondHalf.length > 20) {
+      const firstStart = firstHalf.substring(0, 50);
+      if (secondHalf.includes(firstStart.substring(0, 30))) {
+        // Content is duplicated, return only first half
+        return firstHalf.trim();
+      }
+    }
+
+    // Final cleanup: remove excess whitespace
+    result = result.replace(/\n{3,}/g, '\n\n').trim();
+
+    return result.length > 5 ? result : text.trim();
   }
 
   // Helper: Map category name to ID

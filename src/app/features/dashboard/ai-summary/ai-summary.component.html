@@ -38,7 +38,7 @@
         <!-- Spending Summary -->
         @if (summary()) {
           <div class="insight-section">
-            <p class="summary-text">{{ summary() }}</p>
+            <div class="structured-content" [innerHTML]="formatMarkdown(summary())"></div>
           </div>
         }
 
@@ -48,7 +48,19 @@
             <div class="advice-header">
               <mat-icon>lightbulb</mat-icon>
               <span>{{ 'ai.financialAdvice' | translate }}</span>
+              <button mat-icon-button (click)="showDebug.set(!showDebug())" class="debug-toggle" title="Toggle debug view">
+                <mat-icon>{{ showDebug() ? 'visibility_off' : 'visibility' }}</mat-icon>
+              </button>
             </div>
+
+            @if (showDebug()) {
+              <!-- Debug: Raw unfiltered output -->
+              <div class="debug-section">
+                <strong>Raw Output (Unfiltered):</strong>
+                <pre class="debug-output">{{ rawAdvice() }}</pre>
+              </div>
+            }
+
             <p class="advice-text">{{ advice() }}</p>
           </div>
         }

@@ -59,6 +59,23 @@ export class AiSettingsPageComponent implements OnInit {
 
   // Form state
   autoSync = signal<boolean>(true);
+  selectedTextModel = signal<string>('gemma-4-26b-a4b-it');
+  selectedVisionModel = signal<string>('gemma-4-31b-it');
+
+  // Available models
+  textModels = [
+    { id: 'gemma-4-26b-a4b-it', name: 'Gemma 4 26B (Text)' },
+    { id: 'gemini-3.1-flash', name: 'Gemini 3.1 Flash' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { id: 'gemma-2-27b-it', name: 'Gemma 2 27B' },
+  ];
+
+  visionModels = [
+    { id: 'gemma-4-31b-it', name: 'Gemma 4 31B (Vision)' },
+    { id: 'gemini-3.1-flash', name: 'Gemini 3.1 Flash' },
+    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    { id: 'gemma-2-27b-it', name: 'Gemma 2 27B' },
+  ];
 
   // API Keys for all providers
   geminiApiKey = '';
@@ -116,6 +133,7 @@ export class AiSettingsPageComponent implements OnInit {
   ngOnInit(): void {
     this.loadPreferences();
     this.loadApiKeys();
+    this.loadModelSelection();
   }
 
   goBack(): void {
@@ -125,6 +143,12 @@ export class AiSettingsPageComponent implements OnInit {
   private loadPreferences(): void {
     const prefs = this.strategyService.preferences();
     this.autoSync.set(prefs.autoSync);
+  }
+
+  private loadModelSelection(): void {
+    const prefs = this.strategyService.preferences();
+    this.selectedTextModel.set(prefs.textModel || 'gemma-4-26b-a4b-it');
+    this.selectedVisionModel.set(prefs.visionModel || 'gemma-4-31b-it');
   }
 
   private loadApiKeys(): void {
@@ -138,6 +162,19 @@ export class AiSettingsPageComponent implements OnInit {
   // Check if provider is available
   isProviderAvailable(provider: LLMProvider): boolean {
     return this.cloudLLMProvider.isProviderAvailable(provider);
+  }
+
+  // Model selection handlers
+  onTextModelChange(modelId: string): void {
+    this.selectedTextModel.set(modelId);
+    this.strategyService.updatePreferences({ textModel: modelId });
+    this.snackBar.open(`Text model updated to ${modelId}`, 'OK', { duration: 2000 });
+  }
+
+  onVisionModelChange(modelId: string): void {
+    this.selectedVisionModel.set(modelId);
+    this.strategyService.updatePreferences({ visionModel: modelId });
+    this.snackBar.open(`Vision model updated to ${modelId}`, 'OK', { duration: 2000 });
   }
 
   // Gemini API Key handling

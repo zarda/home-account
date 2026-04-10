@@ -89,6 +89,16 @@ export class CloudLLMProviderService {
   }
 
   /**
+   * Reinitialize Gemini with new models.
+   */
+  reinitializeGemini(textModelId?: string, visionModelId?: string): void {
+    const user = this.authService.currentUser();
+    const apiKey = user?.preferences?.geminiApiKey;
+    this.geminiService.reinitialize(apiKey, textModelId, visionModelId);
+    this.updateProviderStatus();
+  }
+
+  /**
    * Update provider status based on current availability.
    */
   private updateProviderStatus(): void {
