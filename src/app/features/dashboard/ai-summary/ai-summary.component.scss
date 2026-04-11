@@ -163,7 +163,6 @@ mat-card-content {
   align-items: center;
   gap: 6px;
   margin-bottom: 8px;
-  justify-content: space-between;
 
   mat-icon {
     font-size: 18px;
@@ -180,17 +179,6 @@ mat-card-content {
     @apply text-amber-700 dark:text-amber-400;
     flex-grow: 1;
   }
-
-  .debug-toggle {
-    width: 24px;
-    height: 24px;
-
-    mat-icon {
-      font-size: 16px;
-      width: 16px;
-      height: 16px;
-    }
-  }
 }
 
 .advice-text {
@@ -198,40 +186,6 @@ mat-card-content {
   line-height: 1.5;
   @apply text-amber-800 dark:text-amber-200;
   margin: 0;
-}
-
-// Debug section
-.debug-section {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 8px;
-  @apply bg-gray-100 dark:bg-gray-800;
-  border: 1px solid;
-  @apply border-gray-300 dark:border-gray-700;
-
-  strong {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    @apply text-gray-700 dark:text-gray-300;
-    display: block;
-    margin-bottom: 8px;
-  }
-
-  .debug-output {
-    font-size: 0.75rem;
-    line-height: 1.4;
-    @apply bg-gray-900 dark:bg-black;
-    @apply text-gray-100 dark:text-gray-200;
-    padding: 8px;
-    border-radius: 4px;
-    overflow-x: auto;
-    margin: 0;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    max-height: 300px;
-    overflow-y: auto;
-  }
 }
 
 // Markdown structured content styles

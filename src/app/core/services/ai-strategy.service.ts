@@ -1,8 +1,9 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed, effect } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { ParsedReceipt } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { PwaService } from './pwa.service';
+import { AuthService } from './auth.service';
 import { LLMProvider } from '../../models';
 import VisionOCR, { VisionOCRResult } from '../plugins/vision-ocr.plugin';
 
@@ -31,8 +32,8 @@ export interface ProcessedTransaction {
 
 const DEFAULT_PREFERENCES: AIPreferences = {
   autoSync: true,
-  textModel: 'gemma-4-26b-a4b-it',
-  visionModel: 'gemma-4-31b-it',
+  textModel: 'gemini-2.5-flash',
+  visionModel: 'gemini-3.1-flash-lite-preview',
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
@@ -41,6 +42,7 @@ const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
 export class AIStrategyService {
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private pwaService = inject(PwaService);
+  private authService = inject(AuthService);
 
   // State signals
   private _preferences = signal<AIPreferences>(this.loadPreferences());
@@ -57,7 +59,7 @@ export class AIStrategyService {
   platform = computed(() => Capacitor.getPlatform());
 
   // Computed: Can use cloud AI (any provider)
-  canUseCloud = computed(() => 
+  canUseCloud = computed(() =>
     this.pwaService.isOnline() && this.cloudLLMProvider.hasAnyCloudProvider()
   );
 
@@ -69,7 +71,30 @@ export class AIStrategyService {
 
   constructor() {
     // Initialize cloud providers from user preferences
+    console.log('[AIStrategy] Initializing from user preferences on app start');
     this.cloudLLMProvider.initializeFromUserPreferences();
+
+    // Reinitialize cloud providers when user data changes (e.g., API key updated)
+    effect(() => {
+      const user = this.authService.currentUser();
+      if (user) {
+        console.log('[AIStrategy] User loaded, checking for API keys');
+        if (user.preferences?.geminiApiKey) {
+          console.log('[AIStrategy] Found Gemini API key, reinitializing');
+          this.cloudLLMProvider.initializeFromUserPreferences();
+        }
+        if (user.preferences?.openaiApiKey) {
+          console.log('[AIStrategy] Found OpenAI API key, reinitializing');
+          this.cloudLLMProvider.initializeFromUserPreferences();
+        }
+        if (user.preferences?.claudeApiKey) {
+          console.log('[AIStrategy] Found Claude API key, reinitializing');
+          this.cloudLLMProvider.initializeFromUserPreferences();
+        }
+      } else {
+        console.log('[AIStrategy] No user loaded yet');
+      }
+    });
   }
 
   /**
@@ -81,9 +106,21 @@ export class AIStrategyService {
     this._preferences.set(updated);
     this.savePreferences(updated);
 
-    // If models changed, reinitialize Gemini service
+    // If models changed, reinitialize Gemini service with error handling
     if (updates.textModel || updates.visionModel) {
-      this.cloudLLMProvider.reinitializeGemini(updated.textModel, updated.visionModel);
+      try {
+        this.cloudLLMProvider.reinitializeGemini(updated.textModel, updated.visionModel);
+        console.log('[AIStrategy] Models updated successfully:', {
+          textModel: updated.textModel,
+          visionModel: updated.visionModel
+        });
+      } catch (error) {
+        console.error('[AIStrategy] Failed to reinitialize Gemini with new models:', error);
+        // Revert to previous preferences on error
+        this._preferences.set(current);
+        this.savePreferences(current);
+        throw new Error('Failed to switch AI models. Please try again.');
+      }
     }
   }
 

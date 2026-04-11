@@ -466,7 +466,7 @@ ${this.getLanguageInstruction()}`;
   }
 
   // Extract transactions from an image
-  async extractTransactionsFromImage(imageBase64: string): Promise<RawTransaction[]> {
+  async extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]> {
     if (!this.client) {
       throw new Error('OpenAI client not available');
     }
@@ -521,9 +521,15 @@ Only include confirmed transactions, not pending ones.`;
       const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
 
       return extracted.map((t) => ({
+        date: t.date || new Date().toISOString().split('T')[0],
         description: t.description || 'Unknown',
-        amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-        date: t.date ? new Date(t.date) : new Date(),
+        amount: Math.abs(t.amount || 0),
+        type: t.type || 'expense',
+        currency: t.currency || 'USD',
+        category: t.category,
+        merchant: t.merchant,
+        details: t.details,
+        taxInfo: t.taxInfo
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

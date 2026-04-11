@@ -52,6 +52,9 @@ export interface ExtractedTransaction {
   amount: number;
   type: 'income' | 'expense';
   currency: string;
+  category?: string;               // Transaction category (e.g., Groceries, Gas, etc.)
+  merchant?: string;               // Specific merchant/business name
+  details?: string;                // Additional details (card last 4 digits, reference number, etc.)
   taxInfo?: ExtractedTaxInfo;     // Tax and discount information
 }
 
@@ -86,6 +89,7 @@ export class GeminiService {
   private textModel: GenerativeModel | null = null;
   private visionModel: GenerativeModel | null = null;
   private currentApiKey: string | null = null;
+  private currentTextModelId = 'gemini-3.1-flash-lite';  // Track current model for filtering
 
   // Signals
   isProcessing = signal<boolean>(false);
@@ -104,7 +108,7 @@ export class GeminiService {
     const apiKey = customApiKey || (environment as { geminiApiKey?: string }).geminiApiKey;
 
     if (!apiKey || apiKey.startsWith('${')) {
-      console.warn('Gemini API key not configured');
+      console.warn('[GeminiService] No valid API key found. Custom:', !!customApiKey, 'Environment:', !!(environment as { geminiApiKey?: string }).geminiApiKey);
       this.genAI = null;
       this.textModel = null;
       this.visionModel = null;
@@ -115,22 +119,25 @@ export class GeminiService {
 
     // Skip if already initialized with the same key
     if (apiKey === this.currentApiKey && this.genAI) {
+      console.log('[GeminiService] Already initialized with this API key, skipping reinitialization');
       return;
     }
 
     try {
+      console.log('[GeminiService] Initializing with new API key (length:', apiKey.length, ')');
       this.genAI = new GoogleGenerativeAI(apiKey);
-      const finalTextModel = textModelId || 'gemma-4-26b-a4b-it';
-      const finalVisionModel = visionModelId || 'gemma-4-31b-it';
+      const finalTextModel = textModelId || 'gemini-2.5-flash';
+      const finalVisionModel = visionModelId || 'gemini-3.1-flash-lite-preview';
 
       this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
       this.visionModel = this.genAI.getGenerativeModel({ model: finalVisionModel });
       this.currentApiKey = apiKey;
+      this.currentTextModelId = finalTextModel;  // Track the current model for filtering
       this._isAvailable.set(true);
 
-      console.log(`[Gemini] Initialized with text model: ${finalTextModel}, vision model: ${finalVisionModel}`);
+      console.log(`[GeminiService] ✓ Initialized successfully with text model: ${finalTextModel}, vision model: ${finalVisionModel}`);
     } catch (error) {
-      console.error('Failed to initialize Gemini:', error);
+      console.error('[GeminiService] ✗ Failed to initialize:', error);
       this.genAI = null;
       this.textModel = null;
       this.visionModel = null;
@@ -343,9 +350,11 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     budgets?: Budget[]
   ): Promise<string> {
     if (!this.textModel) {
+      console.error('[GeminiService] ✗ Text model not available for spending summary');
       throw new Error('Gemini text model not available');
     }
 
+    console.log(`[GeminiService] Generating spending summary for ${transactions.length} transactions in period: ${period}`);
     this.isProcessing.set(true);
 
     try {
@@ -466,15 +475,22 @@ ${this.getLanguageInstruction()}`;
       const result = await this.textModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 600,
+          maxOutputTokens: 1200,
           temperature: 0.3,
           topP: 0.7,
         }
       });
       const responseText = result.response.text().trim();
-      return this.filterReasoningContext(responseText);
+      console.log('[GeminiService] ✓ Spending summary generated successfully (length:', responseText.length, ')');
+      return responseText;
     } catch (error) {
-      console.error('Summary generation error:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[GeminiService] ✗ Summary generation error:', errorMsg);
+
+      if (errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID')) {
+        return 'AI Insights unavailable: Invalid API key. Please check Settings → AI Settings.';
+      }
+
       return 'Unable to generate spending summary at this time.';
     } finally {
       this.isProcessing.set(false);
@@ -488,9 +504,11 @@ ${this.getLanguageInstruction()}`;
     period = 'this month'
   ): Promise<string> {
     if (!this.textModel) {
+      console.error('[GeminiService] ✗ Text model not available for financial advice');
       throw new Error('Gemini text model not available');
     }
 
+    console.log(`[GeminiService] Generating financial advice for period: ${period}`);
     this.isProcessing.set(true);
 
     try {
@@ -517,15 +535,22 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
       const result = await this.textModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 200,
+          maxOutputTokens: 500,
           temperature: 0.2,
           topP: 0.7,
         }
       });
       const responseText = result.response.text().trim();
-      return this.filterReasoningContextForAdvice(responseText);
+      console.log('[GeminiService] ✓ Financial advice generated successfully (length:', responseText.length, ')');
+      return responseText;
     } catch (error) {
-      console.error('Financial advice error:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[GeminiService] ✗ Financial advice error:', errorMsg);
+
+      if (errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID')) {
+        return 'Financial advice unavailable: Invalid API key. Please check Settings → AI Settings.';
+      }
+
       return 'Keep tracking your expenses to better understand your spending patterns.';
     } finally {
       this.isProcessing.set(false);
@@ -533,7 +558,7 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
   }
 
   // Extract transactions from an image (receipt, bank statement screenshot)
-  async extractTransactionsFromImage(imageBase64: string): Promise<RawTransaction[]> {
+  async extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]> {
     if (!this.visionModel) {
       throw new Error('Gemini Vision model not available');
     }
@@ -542,26 +567,24 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
+      // Simple direct extraction - just ask for all items as JSON
+      const prompt = `Extract all product line items from this receipt image.
 
-Extract ALL transactions from this financial document image.
-
-For each transaction, extract: date (YYYY-MM-DD), description, amount (positive number), type (income/expense), currency.
-
-Return ONLY valid JSON array (no markdown, no explanation, no thinking):
+Output ONLY a JSON array (one object per product):
 [
-  {
-    "date": "2024-01-15",
-    "description": "AMAZON.COM",
-    "amount": 45.99,
-    "type": "expense",
-    "currency": "USD"
-  }
+  {"date":"YYYY-MM-DD","description":"product name","amount":123.45,"type":"expense","currency":"JPY"},
+  {"date":"YYYY-MM-DD","description":"product name 2","amount":67.89,"type":"expense","currency":"JPY"}
 ]
 
-Empty array [] if no transactions found. Only confirmed transactions, not pending.`;
+Rules:
+- Each product is ONE separate object
+- Extract EVERY product item
+- Exclude: total, subtotal, tax, service charge
+- Use receipt date if visible, else today
+- Amount is individual item price (NOT total)`;
 
-      const result = await this.visionModel.generateContent({
+      console.log('[GeminiService] Extracting all items from receipt');
+      const extractResult = await this.visionModel.generateContent({
         contents: [{
           role: 'user',
           parts: [
@@ -575,26 +598,42 @@ Empty array [] if no transactions found. Only confirmed transactions, not pendin
           ]
         }],
         generationConfig: {
-          maxOutputTokens: 1000,
-          temperature: 0.05,
-          topP: 0.65,
+          maxOutputTokens: 4000,
+          temperature: 0.2,
+          topP: 0.9,
         }
       });
 
-      const responseText = result.response.text();
-      const cleanedJson = this.extractJson(responseText);
+      const responseText = extractResult.response.text();
+      console.log('[GeminiService] Raw API response:', responseText.substring(0, 1500));
+
+      // Extract JSON from response
+      const cleanedJson = this.extractJsonStrict(responseText);
+      console.log('[GeminiService] Cleaned JSON length:', cleanedJson.length);
+
       const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
 
-      // Convert to RawTransaction format
+      console.log(`[GeminiService] ✓ Extracted ${extracted.length} line items from receipt image`);
+      extracted.forEach((item, i) => {
+        console.log(`  [${i+1}] ${item.description} - ¥${item.amount} ${item.currency}`);
+      });
+
+      // Return full ExtractedTransaction objects with all details
       return extracted.map(t => ({
+        date: t.date || new Date().toISOString().split('T')[0],
         description: t.description || 'Unknown',
-        amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-        date: t.date ? new Date(t.date) : new Date()
+        amount: Math.abs(t.amount || 0),
+        type: t.type || 'expense',
+        currency: t.currency || 'JPY',
+        category: t.category,
+        merchant: t.merchant,
+        details: t.details,
+        taxInfo: t.taxInfo
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.lastError.set(errorMessage);
-      console.error('Image extraction error:', error);
+      console.error('[GeminiService] ✗ Image extraction error:', error);
       return [];
     } finally {
       this.isProcessing.set(false);
@@ -701,16 +740,31 @@ Empty array [] if no transactions found. Only posted/confirmed transactions.`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
+      const prompt = `CRITICAL: You are analyzing ${imageBase64Array.length} photos of ONE RECEIPT (ordered TOP to BOTTOM).
+Photos overlap - extract EACH UNIQUE ITEM ONLY ONCE (no duplicates).
+Extract EVERY line item visible, NOT just the total.
 
-You are analyzing ${imageBase64Array.length} sequential photos of a SINGLE receipt or financial document (TOP to BOTTOM order).
-These photos likely have overlapping content. DEDUPLICATE overlapping items, return each unique item ONLY ONCE.
+Output ONLY valid JSON array. NO explanation, NO thinking.
 
-DISCOUNT HANDLING: Single-item discounts apply to that item. Multi-item discounts distribute proportionally. Include original amount and discount in "taxInfo".
+FIELD MAPPING:
+- date: YYYY-MM-DD (receipt date)
+- description: Product name ONLY (not merchant name)
+- amount: Individual item price (not subtotal/total)
+- type: 'expense' or 'income'
+- currency: JPY, USD, TWD, etc
+- imageIndex: Which photo (0 = first, 1 = second, etc)
+- positionInImage: 'top', 'middle', 'bottom'
+- confidence: 0.0-1.0
+- category: Food, Beverage, etc (optional)
+- merchant: Store name (optional)
+- details: Size, flavor, quantity (optional)
+- wasMerged: true if deduplicated across images (optional)
+- mergedFromImages: [0,1] if from multiple images (optional)
+- taxInfo: Tax details (optional)
 
-TAX HANDLING: Use appropriate tax categories (takeout_8%, dine_in_10%, VAT, GST, etc.). Attach tax to individual items, not as separate line items.
+REQUIREMENT: If receipt has 8 items across 2 photos, return 8 unique items total (deduplicated).
 
-Extract each UNIQUE transaction/line item. Return ONLY valid JSON array (no markdown, no thinking, no explanation):
+Return ONLY valid JSON array (no markdown, no thinking, no explanation):
 [
   {
     "date": "2024-01-15",
@@ -796,6 +850,11 @@ If no transactions can be extracted, return an empty array: []`;
       const cleanedJson = this.extractJson(responseText);
       const extracted: (MultiImageExtractedTransaction & { taxInfo?: ExtractedTaxInfo })[] = JSON.parse(cleanedJson);
 
+      console.log(`[GeminiService] ✓ Extracted ${extracted.length} unique items from ${imageBase64Array.length} receipt images (deduplicated)`);
+      extracted.forEach((item, i) => {
+        console.log(`  [${i+1}] ${item.description} - ${item.amount} ${item.currency} (image ${item.imageIndex}, ${item.positionInImage})`);
+      });
+
       // Validate and normalize the extracted data
       return extracted.map(t => ({
         date: t.date || new Date().toISOString().split('T')[0],
@@ -836,68 +895,37 @@ If no transactions can be extracted, return an empty array: []`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
+      const prompt = `RECEIPT LINE ITEM EXTRACTION TASK
 
-Extract ALL line items/transactions from this receipt or financial document image.
+Extract EVERY individual product/item from this receipt image.
 
-DISCOUNT: Single-item discounts apply to that item. Multi-item discounts distribute proportionally. Include original amount and discount in "taxInfo".
+CRITICAL:
+- Return each item as a SEPARATE JSON object
+- Do NOT include total, subtotal, tax, or service charge
+- If receipt has 10 items, return 10 objects (not 1)
+- If receipt has 1 item, return 1 object
+- Return NOTHING except valid JSON array
 
-TAX: Use appropriate tax categories (takeout_8%, dine_in_10%, VAT, GST, etc.). Attach tax to individual items, not as separate line items.
+REQUIRED FIELDS PER ITEM:
+- date: YYYY-MM-DD
+- description: product name
+- amount: individual item price
+- type: "expense"
+- currency: JPY, USD, etc
+- positionInImage: "top", "middle", "bottom"
+- confidence: 0.0-1.0
 
-For each transaction/line item, extract: date (YYYY-MM-DD), description, amount (positive, final with discounts), type (income/expense), currency, positionInImage (top/middle/bottom), confidence (0-1.0), taxInfo (optional).
-
-Return ONLY valid JSON array (no markdown, no thinking, no explanation):
+CORRECT EXAMPLE (3-item receipt):
 [
-  {
-    "date": "2024-01-15",
-    "description": "おにぎり",
-    "amount": 151,
-    "type": "expense",
-    "currency": "JPY",
-    "positionInImage": "top",
-    "confidence": 0.95,
-    "taxInfo": {
-      "taxRate": 8,
-      "taxAmount": 11,
-      "taxCategory": "takeout_8%",
-      "preTaxAmount": 140
-    }
-  },
-  {
-    "date": "2024-01-15",
-    "description": "コーヒー (店内)",
-    "amount": 330,
-    "type": "expense",
-    "currency": "JPY",
-    "positionInImage": "middle",
-    "confidence": 0.90,
-    "taxInfo": {
-      "taxRate": 10,
-      "taxAmount": 30,
-      "taxCategory": "dine_in_10%",
-      "preTaxAmount": 300
-    }
-  },
-  {
-    "date": "2024-01-15",
-    "description": "パン (セット割引)",
-    "amount": 180,
-    "type": "expense",
-    "currency": "JPY",
-    "positionInImage": "bottom",
-    "confidence": 0.90,
-    "taxInfo": {
-      "taxRate": 8,
-      "taxAmount": 13,
-      "taxCategory": "takeout_8%",
-      "preTaxAmount": 167,
-      "discountApplied": 20,
-      "originalAmount": 200
-    }
-  }
+  {"date":"2024-04-11","description":"Himekui-ichi","amount":680,"type":"expense","currency":"JPY","positionInImage":"middle","confidence":0.95},
+  {"date":"2024-04-11","description":"Shimbayashi juice","amount":498,"type":"expense","currency":"JPY","positionInImage":"middle","confidence":0.92},
+  {"date":"2024-04-11","description":"Kumamo Tomaki baggi","amount":228,"type":"expense","currency":"JPY","positionInImage":"middle","confidence":0.90}
 ]
 
-If no transactions can be extracted, return an empty array: []`;
+WRONG (do not do):
+[{"date":"2024-04-11","description":"Total","amount":1406,"type":"expense","currency":"JPY","positionInImage":"bottom","confidence":0.99}]
+
+Output ONLY JSON array. Nothing else.`;
 
       const result = await this.visionModel.generateContent({
         contents: [{
@@ -1015,6 +1043,50 @@ Return ONLY valid JSON (no thinking, no explanation):
   }
 
   // Helper: Extract JSON from response that might have markdown formatting or reasoning
+  private extractJsonStrict(text: string): string {
+    // For receipt extraction, we need to extract a complete JSON array
+
+    // Remove markdown code blocks if present
+    let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+
+    // Remove any thinking tags or tokens
+    cleaned = cleaned
+      .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
+      .replace(/<\|channel[\s\S]*?channel\|>/g, '')
+      .replace(/<thought>[\s\S]*?<\/thought>/g, '');
+
+    // Find the opening bracket
+    const startIdx = cleaned.indexOf('[');
+    if (startIdx === -1) {
+      console.error('[GeminiService] No JSON array found in response:', cleaned.substring(0, 200));
+      throw new Error('No JSON array found in response');
+    }
+
+    // Find the matching closing bracket by counting brackets
+    let bracketCount = 0;
+    let endIdx = -1;
+    for (let i = startIdx; i < cleaned.length; i++) {
+      if (cleaned[i] === '[') {
+        bracketCount++;
+      } else if (cleaned[i] === ']') {
+        bracketCount--;
+        if (bracketCount === 0) {
+          endIdx = i;
+          break;
+        }
+      }
+    }
+
+    if (endIdx === -1) {
+      console.error('[GeminiService] Malformed JSON - bracket count:', bracketCount);
+      throw new Error('Malformed JSON array - no closing bracket found');
+    }
+
+    const result = cleaned.substring(startIdx, endIdx + 1);
+    console.log('[GeminiService] Extracted JSON length:', result.length, 'First 200 chars:', result.substring(0, 200));
+    return result;
+  }
+
   private extractJson(text: string): string {
     // First, filter out any reasoning context
     let cleaned = this.filterReasoningContext(text);
@@ -1040,36 +1112,44 @@ Return ONLY valid JSON (no thinking, no explanation):
       .replace(/<\|channel[\s\S]*?channel\|>/g, '')
       .replace(/<thought>[\s\S]*?<\/thought>/g, '');
 
-    // Strategy: Find the LAST occurrence of advice that starts with "To address", "To cover", "To resolve", etc.
-    // Everything before the last "To X" is reasoning/drafts that should be removed
+    // Check if we're using Gemma 4 (verbose model that needs heavy filtering)
+    const isGemma4 = this.currentTextModelId.includes('gemma-4');
 
-    // Find the last sentence that looks like advice (starts with typical financial advice phrases)
-    const adviceMarkers = ['To address', 'To cover', 'To resolve', 'To bridge', 'Since you', 'You can', 'Focus on', 'Prioritize', 'Your priority'];
-    let lastAdviceIndex = -1;
+    if (isGemma4) {
+      // AGGRESSIVE filtering for Gemma 4 (verbose model with multiple drafts)
+      // Strategy: Find the FINAL/LAST occurrence of advice that starts with key markers
+      const adviceMarkers = ['Immediately halt', 'To address', 'To cover', 'To resolve', 'To bridge', 'Since you', 'You can', 'Focus on', 'Prioritize', 'Your priority', 'Halt all'];
+      let lastAdviceIndex = -1;
+      let adviceMarkerFound = '';
 
-    for (const marker of adviceMarkers) {
-      const index = cleaned.lastIndexOf(marker);
-      if (index > lastAdviceIndex) {
-        lastAdviceIndex = index;
+      // Find the LAST occurrence of any advice marker (most likely to be final advice)
+      for (const marker of adviceMarkers) {
+        const index = cleaned.lastIndexOf(marker);
+        if (index >= 0 && index > lastAdviceIndex) {
+          lastAdviceIndex = index;
+          adviceMarkerFound = marker;
+        }
       }
+
+      // If we found an advice marker, extract from there to the end
+      if (lastAdviceIndex >= 0) {
+        cleaned = cleaned.substring(lastAdviceIndex);
+        console.log(`[GeminiService] Gemma 4 detected - extracted advice from marker: "${adviceMarkerFound}"`);
+      }
+
+      // Remove draft markers and metadata patterns
+      cleaned = cleaned
+        .replace(/^[\s\S]*?(Draft\s+\d+:|Wait,|Let's|Actually,|One\s+more|Final\s+check|Final\s+selection|One\s+detail)/i, '')
+        .replace(/^[\s\S]*?(FACTS:|INSTRUCTION:|TONE:|OUTPUT:|Current\s+state:|Problem:|Action\s+\d+:)/i, '');
+
+      // Remove common draft/reasoning prefixes
+      cleaned = cleaned.replace(/^(Draft\s+\d+:|Wait,|Let's|Actually,|One\s+more|Final\s+check|Final\s+selection|Action\s+\d+:|\d+\.\s+)/gm, '');
+    } else {
+      // LIGHT filtering for Gemini models (cleaner output naturally)
+      console.log(`[GeminiService] Gemini model detected (${this.currentTextModelId}) - using light filtering`);
     }
 
-    // If we found an advice marker, extract from there to the end
-    if (lastAdviceIndex >= 0) {
-      cleaned = cleaned.substring(lastAdviceIndex);
-    }
-
-    // Remove any remaining metadata at the start
-    cleaned = cleaned
-      .replace(/^[\s\S]*?(?:To address|To cover|To resolve|Since you|Focus on|Prioritize)/i, (match) => {
-        // Keep only the matched part
-        return match.substring(match.lastIndexOf('To') >= 0 ? match.lastIndexOf('To') :
-                               match.lastIndexOf('Since') >= 0 ? match.lastIndexOf('Since') :
-                               match.lastIndexOf('Focus') >= 0 ? match.lastIndexOf('Focus') :
-                               match.lastIndexOf('Prioritize') >= 0 ? match.lastIndexOf('Prioritize') : 0);
-      });
-
-    // Remove asterisks and formatting
+    // Remove asterisks and formatting (all models)
     cleaned = cleaned.replace(/\*\*?/g, '');
 
     // Normalize whitespace
@@ -1078,20 +1158,46 @@ Return ONLY valid JSON (no thinking, no explanation):
 
     // Deduplicate: if the text repeats itself, keep only first occurrence
     const trimmed = cleaned.trim();
-    const sentences = trimmed.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+    // Match sentences including their punctuation
+    const sentenceMatches = trimmed.match(/[^.!?]*[.!?]+/g) || [];
+    const sentences = sentenceMatches.map(s => s.trim()).filter(s => s.length > 0);
 
     if (sentences.length === 0) {
       return trimmed.length > 20 ? trimmed : text.trim();
     }
 
     // If we have repeated sentences, keep unique ones
+    // Use fuzzy matching: if a sentence is 80%+ similar to a previous one, skip it
     const uniqueSentences: string[] = [];
-    const seen = new Set<string>();
+    const seen = new Map<string, string>();  // Map of normalized -> original
 
     for (const sent of sentences) {
-      const normalized = sent.trim().toLowerCase();
-      if (!seen.has(normalized)) {
-        seen.add(normalized);
+      // For comparison, remove punctuation and normalize
+      const normalized = sent.trim().replace(/[.!?]+$/, '').toLowerCase();
+
+      // Check for exact match or near-duplicate
+      let isDuplicate = false;
+      for (const prevNormalized of seen.keys()) {
+        // Exact match
+        if (normalized === prevNormalized) {
+          isDuplicate = true;
+          break;
+        }
+
+        // Fuzzy match: check if sentences share 80%+ of words
+        const currentWords = new Set(normalized.split(/\s+/));
+        const prevWords = new Set(prevNormalized.split(/\s+/));
+        const intersection = [...currentWords].filter(w => prevWords.has(w)).length;
+        const similarity = intersection / Math.max(currentWords.size, prevWords.size);
+
+        if (similarity > 0.8) {
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      if (!isDuplicate) {
+        seen.set(normalized, sent.trim());
         uniqueSentences.push(sent.trim());
       }
     }
@@ -1099,11 +1205,13 @@ Return ONLY valid JSON (no thinking, no explanation):
     let result = uniqueSentences.join(' ').trim();
 
     // Ensure 2-3 sentences max (typical financial advice length)
-    // Split on sentence boundaries without using lookbehind
-    const sentenceMatch = result.match(/[^.!?]+[.!?]/g) || [];
-    if (sentenceMatch.length > 3) {
-      result = sentenceMatch.slice(0, 3).join(' ').trim();
+    // Sentences already have punctuation, so we can count them directly
+    if (uniqueSentences.length > 3) {
+      result = uniqueSentences.slice(0, 3).join(' ').trim();
     }
+
+    // Log deduplication results
+    console.log(`[GeminiService] Deduplication: ${sentences.length} sentences → ${uniqueSentences.length} unique → ${Math.min(uniqueSentences.length, 3)} final`);
 
     return result.length > 20 ? result : text.trim();
   }
@@ -1117,36 +1225,33 @@ Return ONLY valid JSON (no thinking, no explanation):
       .replace(/<\|channel[\s\S]*?channel\|>/g, '')       // Remove channel tokens
       .replace(/<thought>[\s\S]*?<\/thought>/g, '');      // Remove thought tags
 
-    // Remove all common reasoning/drafting markers and numbered items
-    // This aggressively removes: numbered lists, bullet points with reasoning keywords, all emphasis with drafting terms
-    cleaned = cleaned
-      .replace(/^[\s\n]*\d+\.\s+(?:Sentence|Pattern|Input|Constraint|Check|Final|Analysis|Wait|Let's|Actually)[\s\S]*?(?=\n\d+\.|^[A-Z][a-z]|\n\n[A-Z]|$)/gim, '')
-      .replace(/^[\s\n]*(?:\*+\s*)?(?:Reasoning|Analysis|Thought process|Thinking|Drafting|Self-Correction|Wait,|Let's|Actually|Final|Done):[\s\S]*?(?=\n\*{2,}|^[A-Z][a-z]|\n\n[A-Z]|$)/gim, '')
-      .replace(/\n\*?(?:Draft|Attempt|Step|Option|Version|Sentence)\s+\d+[\s\S]*?(?=\n(?:Draft|Attempt|Step|Option|Version|Sentence|\*|\d+\.)|$)/gi, '')
-      .replace(/\n[•\-*—]\s+(?:Sentence|Input|Constraint|Reason|Why|How|Check|Note|Wait|Actually|Let|This|One|Content|Tone|Format|Hints|Examples|Final|Polish|refinement)\s*.*?:?[\s\S]*?(?=\n[•\-*—]|\n\n|$)/gi, '')
-      .replace(/\*+(?:Draft|Wait|Actually|One|Check|Final|Self-Correction|This|Let|OK|Final Polish|Self-Check|FinalCorrection|Hold on|Hmm|Hmm wait|Check|But|Actually let me|Let me try|Now let me)\s*[^*]*\*+[\s\S]*?(?=\n\n|$)/gi, '')
-      .replace(/(?:Constraint|Requirement|Rule|Note|Important|Tip|Reminder)\s+\d+[\s\S]*?(?=\n(?:Constraint|Requirement|Rule|Note|Important|Tip|Reminder)|\n\n|$)/gi, '')
-      .replace(/(?:Let me check|Let's try|Actually|Wait,|Hmm|OK so|OK, so)\s+[\s\S]*?(?=\n\n[A-Z]|$)/gi, '')
-      .replace(/\n*(?:\*Sentence count\*|Total:)\s*.*?(?=\n\n|$)/gi, '')  // Remove meta-commentary about sentence counts
-      .replace(/\n*(?:Sentence \d+:)[\s\S]*?(?=\n(?:Sentence|Total:|\*|$))/gi, '')  // Remove numbered sentence items
-      .replace(/^\*\s+(?:Expenses|Income|Balance|Savings Rate|Requirements|Length|Content|Tone|Format|Hints|Input|Constraint|Check|Role)[\s\S]*?(?=\n\*|\n\n|$)/gim, '')  // Remove metadata bullet points
-      .replace(/^\*\s+(?:Sentence \d+|Check|Wait|Actually|Let's|Finally|Here|Now)[\s\S]*?(?=\n\*|\n\n|$)/gim, '')  // Remove more metadata patterns
-      .replace(/\n\n+(?:\*|—|-).*?$(?:\n.*?)*$/gm, '')  // Remove trailing metadata sections
-      .replace(/\*\s+(?:Expenses|Income|Balance|Savings Rate|Requirements|Length|Content|Tone|Input|Constraint|Sentence \d+|Role):[\s\S]*?(?=\*\s+|$)/gi, '')  // Remove inline bullet metadata
-      .replace(/^\*\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?:\s*[\s\S]*?(?=\n\*|^[A-Z](?!\s*:)|$)/gim, '');  // Remove any metadata with keyword: pattern
+    // Check if this looks like AI Insights (has markdown headers like ## Spending Pattern)
+    const hasMarkdownHeaders = /^##\s+/m.test(cleaned);
 
-    // Take only the last clean paragraph(s) with actual content
-    const paragraphs = cleaned.split(/\n{2,}/).filter(p => p.trim().length > 10);
-    let result = cleaned;
-
-    // If we have multiple paragraphs, take the last 1-2 (where actual answer usually is)
-    if (paragraphs.length > 1) {
-      result = paragraphs.slice(-2).join('\n\n').trim();
-    } else if (cleaned.trim().length > 20) {
-      result = cleaned.trim();
+    if (!hasMarkdownHeaders) {
+      // Only apply aggressive filtering for non-markdown content (reasoning/drafts)
+      // This prevents removing valid markdown headers
+      cleaned = cleaned
+        .replace(/^[\s\n]*\d+\.\s+(?:Sentence|Pattern|Input|Constraint|Check|Final|Analysis|Wait|Let's|Actually)[\s\S]*?(?=\n\d+\.|^[A-Z][a-z]|\n\n[A-Z]|$)/gim, '')
+        .replace(/^[\s\n]*(?:\*+\s*)?(?:Reasoning|Analysis|Thought process|Thinking|Drafting|Self-Correction|Wait,|Let's|Actually|Final|Done):[\s\S]*?(?=\n\*{2,}|^[A-Z][a-z]|\n\n[A-Z]|$)/gim, '')
+        .replace(/\n\*?(?:Draft|Attempt|Step|Option|Version|Sentence)\s+\d+[\s\S]*?(?=\n(?:Draft|Attempt|Step|Option|Version|Sentence|\*|\d+\.)|$)/gi, '')
+        .replace(/\n[•\-*—]\s+(?:Sentence|Input|Constraint|Reason|Why|How|Check|Note|Wait|Actually|Let|This|One|Content|Tone|Format|Hints|Examples|Final|Polish|refinement)\s*.*?:?[\s\S]*?(?=\n[•\-*—]|\n\n|$)/gi, '')
+        .replace(/\*+(?:Draft|Wait|Actually|One|Check|Final|Self-Correction|This|Let|OK|Final Polish|Self-Check|FinalCorrection|Hold on|Hmm|Hmm wait|Check|But|Actually let me|Let me try|Now let me)\s*[^*]*\*+[\s\S]*?(?=\n\n|$)/gi, '')
+        .replace(/(?:Constraint|Requirement|Rule|Note|Important|Tip|Reminder)\s+\d+[\s\S]*?(?=\n(?:Constraint|Requirement|Rule|Note|Important|Tip|Reminder)|\n\n|$)/gi, '')
+        .replace(/(?:Let me check|Let's try|Actually|Wait,|Hmm|OK so|OK, so)\s+[\s\S]*?(?=\n\n[A-Z]|$)/gi, '')
+        .replace(/\n*(?:\*Sentence count\*|Total:)\s*.*?(?=\n\n|$)/gi, '')
+        .replace(/\n*(?:Sentence \d+:)[\s\S]*?(?=\n(?:Sentence|Total:|\*|$))/gi, '')
+        .replace(/^\*\s+(?:Expenses|Income|Balance|Savings Rate|Requirements|Length|Content|Tone|Format|Hints|Input|Constraint|Check|Role)[\s\S]*?(?=\n\*|\n\n|$)/gim, '')
+        .replace(/^\*\s+(?:Sentence \d+|Check|Wait|Actually|Let's|Finally|Here|Now)[\s\S]*?(?=\n\*|\n\n|$)/gim, '')
+        .replace(/\n\n+(?:\*|—|-).*?$(?:\n.*?)*$/gm, '')
+        .replace(/\*\s+(?:Expenses|Income|Balance|Savings Rate|Requirements|Length|Content|Tone|Input|Constraint|Sentence \d+|Role):[\s\S]*?(?=\*\s+|$)/gi, '')
+        .replace(/^\*\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?:\s*[\s\S]*?(?=\n\*|^[A-Z](?!\s*:)|$)/gim, '');
     }
 
-    // Remove duplicate/repeated content
+    // For markdown content, just clean up excess whitespace
+    let result = cleaned.trim();
+
+    // Remove duplicate/repeated content (but preserve markdown structure)
     const allText = result.replace(/\n/g, ' ');
     const midpoint = Math.floor(allText.length / 2);
     const firstHalf = allText.substring(0, midpoint);

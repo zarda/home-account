@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { GeminiService, RawTransaction, MultiImageExtractedTransaction } from './gemini.service';
-import { ExportService, ImportedTransaction } from './export.service';
+import { GeminiService, RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
+import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
 import { TransactionService } from './transaction.service';
@@ -407,7 +407,16 @@ export class AIImportService {
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
 
-      const categorized = await this.categorizeTransactions(extractedTransactions);
+      // Convert RawTransaction to ExtractedTransaction format
+      const extracted: ExtractedTransaction[] = extractedTransactions.map(t => ({
+        date: t.date ? t.date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        description: t.description,
+        amount: Math.abs(t.amount),
+        type: t.amount >= 0 ? 'income' : 'expense',
+        currency: 'USD'
+      }));
+
+      const categorized = await this.categorizeTransactions(extracted);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
@@ -447,7 +456,16 @@ export class AIImportService {
       this.processingStatus.set('Categorizing with AI...');
       this.processingProgress.set(50);
 
-      const categorized = await this.categorizeTransactions(rawTransactions, importedTransactions);
+      // Convert to ExtractedTransaction format
+      const extractedTransactions: ExtractedTransaction[] = rawTransactions.map(t => ({
+        date: t.date ? t.date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        description: t.description,
+        amount: Math.abs(t.amount),
+        type: t.amount >= 0 ? 'income' : 'expense',
+        currency: 'USD'
+      }));
+
+      const categorized = await this.categorizeTransactions(extractedTransactions);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
@@ -514,45 +532,42 @@ export class AIImportService {
   }
 
   /**
-   * Categorize raw transactions using AI
+   * Categorize extracted transactions
    */
   async categorizeTransactions(
-    transactions: RawTransaction[],
-    originalData?: ImportedTransaction[]
+    transactions: ExtractedTransaction[]
   ): Promise<CategorizedImportTransaction[]> {
     if (transactions.length === 0) return [];
-
-    // Use Gemini for categorization
-    let categorizedByAI = transactions.map((t) => ({
-      ...t,
-      suggestedCategoryId: 'other_expense',
-      confidence: 0.1
-    }));
-
-    if (this.geminiService.isAvailable()) {
-      try {
-        categorizedByAI = await this.geminiService.categorizeTransactions(transactions);
-      } catch (error) {
-        console.warn('AI categorization failed, using defaults:', error);
-      }
-    }
 
     // Get user's base currency from settings
     const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
 
-    // Convert to CategorizedImportTransaction format
-    return categorizedByAI.map((t, index) => {
-      const original = originalData?.[index];
+    // Convert ExtractedTransaction to CategorizedImportTransaction
+    // If transaction already has a category from extraction, use it; otherwise suggest 'other_expense'
+    return transactions.map((t, index) => {
+      let suggestedCategoryId = t.category || 'other_expense';
+
+      // Map common category names to category IDs
+      if (suggestedCategoryId === 'Food' || suggestedCategoryId === 'Groceries') {
+        suggestedCategoryId = 'food';
+      } else if (suggestedCategoryId === 'Beverages') {
+        suggestedCategoryId = 'food'; // Beverages often map to food
+      } else if (suggestedCategoryId === 'Shopping') {
+        suggestedCategoryId = 'shopping';
+      } else if (suggestedCategoryId === 'Transport' || suggestedCategoryId === 'Gas') {
+        suggestedCategoryId = 'transport';
+      }
+
       return {
         id: `import_${index}_${Date.now()}`,
         description: t.description,
         amount: Math.abs(t.amount),
-        currency: baseCurrency, // Use user's base currency as default
-        date: t.date,
-        type: original?.type || (t.amount >= 0 ? 'income' : 'expense'),
-        suggestedCategoryId: t.suggestedCategoryId,
-        categoryConfidence: t.confidence,
-        originalText: original?.description,
+        currency: t.currency || baseCurrency,
+        date: t.date ? new Date(t.date) : new Date(),
+        type: t.type || 'expense',
+        suggestedCategoryId: suggestedCategoryId,
+        categoryConfidence: 0.8, // AI extracted categories are fairly confident
+        originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         isDuplicate: false,
         selected: true
       };

@@ -59,22 +59,21 @@ export class AiSettingsPageComponent implements OnInit {
 
   // Form state
   autoSync = signal<boolean>(true);
-  selectedTextModel = signal<string>('gemma-4-26b-a4b-it');
-  selectedVisionModel = signal<string>('gemma-4-31b-it');
+  selectedTextModel = signal<string>('gemini-2.5-flash');
+  selectedVisionModel = signal<string>('gemini-3.1-flash-lite-preview');
 
-  // Available models
+  // Available models (verified from https://ai.google.dev/gemini-api/docs/models and https://ai.google.dev/gemma/docs/core)
   textModels = [
-    { id: 'gemma-4-26b-a4b-it', name: 'Gemma 4 26B (Text)' },
-    { id: 'gemini-3.1-flash', name: 'Gemini 3.1 Flash' },
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-    { id: 'gemma-2-27b-it', name: 'Gemma 2 27B' },
+    { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite (Recommended)' },
+    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' },
+    { id: 'gemma-4-26b-a4b-it', name: 'Gemma 4 26B MoE' },
   ];
 
   visionModels = [
-    { id: 'gemma-4-31b-it', name: 'Gemma 4 31B (Vision)' },
-    { id: 'gemini-3.1-flash', name: 'Gemini 3.1 Flash' },
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-    { id: 'gemma-2-27b-it', name: 'Gemma 2 27B' },
+    { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite (Recommended)' },
+    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
+    { id: 'gemma-4-31b-it', name: 'Gemma 4 31B' },  
   ];
 
   // API Keys for all providers
@@ -147,8 +146,8 @@ export class AiSettingsPageComponent implements OnInit {
 
   private loadModelSelection(): void {
     const prefs = this.strategyService.preferences();
-    this.selectedTextModel.set(prefs.textModel || 'gemma-4-26b-a4b-it');
-    this.selectedVisionModel.set(prefs.visionModel || 'gemma-4-31b-it');
+    this.selectedTextModel.set(prefs.textModel || 'gemini-3.1-flash-lite-preview');
+    this.selectedVisionModel.set(prefs.visionModel || 'gemini-2.5-flash');
   }
 
   private loadApiKeys(): void {
@@ -166,15 +165,55 @@ export class AiSettingsPageComponent implements OnInit {
 
   // Model selection handlers
   onTextModelChange(modelId: string): void {
-    this.selectedTextModel.set(modelId);
-    this.strategyService.updatePreferences({ textModel: modelId });
-    this.snackBar.open(`Text model updated to ${modelId}`, 'OK', { duration: 2000 });
+    // Validate model ID
+    if (!this.textModels.some(m => m.id === modelId)) {
+      this.snackBar.open('Invalid model selection', 'OK', { duration: 2000 });
+      return;
+    }
+
+    try {
+      this.selectedTextModel.set(modelId);
+      this.strategyService.updatePreferences({ textModel: modelId });
+      const modelName = this.textModels.find(m => m.id === modelId)?.name || modelId;
+      this.snackBar.open(`✓ Text model updated to ${modelName}`, 'OK', {
+        duration: 2000,
+        panelClass: 'success-snackbar'
+      });
+    } catch (error) {
+      console.error('[AI Settings] Failed to change text model:', error);
+      this.snackBar.open('Failed to update text model. Please try again.', 'Retry', {
+        duration: 4000,
+        panelClass: 'error-snackbar'
+      });
+      // Reload from preferences
+      this.loadModelSelection();
+    }
   }
 
   onVisionModelChange(modelId: string): void {
-    this.selectedVisionModel.set(modelId);
-    this.strategyService.updatePreferences({ visionModel: modelId });
-    this.snackBar.open(`Vision model updated to ${modelId}`, 'OK', { duration: 2000 });
+    // Validate model ID
+    if (!this.visionModels.some(m => m.id === modelId)) {
+      this.snackBar.open('Invalid model selection', 'OK', { duration: 2000 });
+      return;
+    }
+
+    try {
+      this.selectedVisionModel.set(modelId);
+      this.strategyService.updatePreferences({ visionModel: modelId });
+      const modelName = this.visionModels.find(m => m.id === modelId)?.name || modelId;
+      this.snackBar.open(`✓ Vision model updated to ${modelName}`, 'OK', {
+        duration: 2000,
+        panelClass: 'success-snackbar'
+      });
+    } catch (error) {
+      console.error('[AI Settings] Failed to change vision model:', error);
+      this.snackBar.open('Failed to update vision model. Please try again.', 'Retry', {
+        duration: 4000,
+        panelClass: 'error-snackbar'
+      });
+      // Reload from preferences
+      this.loadModelSelection();
+    }
   }
 
   // Gemini API Key handling

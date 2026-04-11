@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { GeminiService, ParsedReceipt, RawTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
+import { GeminiService, ParsedReceipt, RawTransaction, ExtractedTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
@@ -55,18 +55,24 @@ export class CloudLLMProviderService {
     const user = this.authService.currentUser();
     if (user?.preferences) {
       const { geminiApiKey, openaiApiKey, claudeApiKey } = user.preferences;
-      
+
       if (geminiApiKey) {
+        // Note: Models will use defaults from AI strategy preferences if not explicitly passed
         this.geminiService.reinitialize(geminiApiKey);
+        console.log('[CloudLLMProvider] Gemini initialized with API key');
       }
       if (openaiApiKey) {
         this.openaiService.reinitialize(openaiApiKey);
+        console.log('[CloudLLMProvider] OpenAI initialized with API key');
       }
       if (claudeApiKey) {
         this.claudeService.reinitialize(claudeApiKey);
+        console.log('[CloudLLMProvider] Claude initialized with API key');
       }
+    } else {
+      console.warn('[CloudLLMProvider] No user or preferences found');
     }
-    
+
     this.updateProviderStatus();
   }
 
@@ -198,7 +204,7 @@ export class CloudLLMProviderService {
   /**
    * Extract transactions from an image.
    */
-  async extractTransactionsFromImage(imageBase64: string): Promise<RawTransaction[]> {
+  async extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]> {
     const provider = this.getBestAvailableProvider('receiptScanning');
     
     if (!provider) {

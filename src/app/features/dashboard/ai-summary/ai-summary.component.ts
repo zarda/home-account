@@ -41,10 +41,8 @@ export class AiSummaryComponent {
   // State
   summary = signal<string>('');
   advice = signal<string>('');
-  rawAdvice = signal<string>('');  // Debug: raw unfiltered advice
   isLoading = signal(false);
   hasError = signal(false);
-  showDebug = signal(false);  // Debug toggle
 
   // Cache key for sessionStorage (includes locale for language-specific caching)
   private cacheKey = computed(() => {
@@ -67,8 +65,18 @@ export class AiSummaryComponent {
       // Track locale changes - when locale changes, cache key changes, triggering regeneration
       this.translationService.currentLocale();
 
+      console.log('[AiSummary] Effect triggered:', {
+        transactionCount: txns.length,
+        period,
+        isAvailable: this.isAvailable(),
+        hasEnoughData: txns.length >= 3
+      });
+
       if (txns.length >= 3 && this.isAvailable()) {
+        console.log('[AiSummary] Loading insights...');
         this.loadInsights(txns, period);
+      } else {
+        console.log('[AiSummary] Skipping - not enough data or AI unavailable');
       }
     });
   }
@@ -118,12 +126,6 @@ export class AiSummaryComponent {
 
       this.summary.set(summaryResult);
       this.advice.set(adviceResult);
-      this.rawAdvice.set(adviceResult);  // Store raw for debug
-
-      // Debug log
-      console.log('=== FINANCIAL ADVICE RAW OUTPUT ===');
-      console.log(adviceResult);
-      console.log('====================================');
 
       // Cache the results
       this.cacheInsights(summaryResult, adviceResult);
@@ -223,6 +225,12 @@ export class AiSummaryComponent {
   formatMarkdown(markdown: string): SafeHtml {
     let html = markdown;
 
+    // Security check: detect potential XSS attempts
+    if (this.containsPotentialXSS(html)) {
+      console.warn('[AI Summary] Potential XSS detected in markdown content');
+      return this.sanitizer.sanitize(1, html) || ''; // 1 = SecurityContext.HTML
+    }
+
     // Convert markdown headers (## Title) to HTML
     html = html.replace(/^### (.*?)$/gm, '<h3 class="markdown-h3">$1</h3>');
     html = html.replace(/^## (.*?)$/gm, '<h2 class="markdown-h2">$1</h2>');
@@ -264,5 +272,19 @@ export class AiSummaryComponent {
     html = processedLines.join('');
 
     return this.sanitizer.bypassSecurityTrustHtml(html);
+  }
+
+  // Check for potential XSS patterns
+  private containsPotentialXSS(text: string): boolean {
+    const xssPatterns = [
+      /<script/i,
+      /on\w+\s*=/i,  // onclick=, onerror=, etc.
+      /javascript:/i,
+      /<iframe/i,
+      /<embed/i,
+      /<object/i,
+    ];
+
+    return xssPatterns.some(pattern => pattern.test(text));
   }
 }

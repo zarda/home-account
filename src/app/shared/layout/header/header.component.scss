@@ -36,6 +36,19 @@
   flex: 1;
 }
 
+// User menu button - center icon in circle
+button[aria-label="User menu"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  mat-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
 .user-avatar {
   width: 32px;
   height: 32px;

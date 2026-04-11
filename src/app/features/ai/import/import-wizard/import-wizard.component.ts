@@ -155,6 +155,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Load categories for the category selector
+    this.categoryService.loadCategories().subscribe();
+
     // Check if we received import result from camera capture via router state
     const state = history.state as {
       importResult?: ImportResult;
