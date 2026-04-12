@@ -114,8 +114,13 @@ export class AIImportService {
           return result;
         }
       } catch (strategyError) {
-        console.warn('[AIImport] Strategy processing failed:', strategyError);
-        // Fall through to legacy processing
+        const parsed = this.parseAIError(strategyError);
+        console.warn('[AIImport] Strategy processing failed:', parsed.type, strategyError);
+        // If not retryable (auth/quota), throw immediately — don't try fallback
+        if (!parsed.retryable) {
+          throw new Error(parsed.message);
+        }
+        // Otherwise fall through to legacy processing
       }
 
       // Fall back to legacy Gemini-only processing
@@ -171,11 +176,12 @@ export class AIImportService {
       currency: tx.currency || baseCurrency,
       date: tx.date,
       type: tx.type,
-      suggestedCategoryId: 'other_expense', // Will be categorized by Gemini if needed
+      suggestedCategoryId: tx.suggestedCategoryId || 'other_expense',
       categoryConfidence: tx.confidence,
       isDuplicate: false,
       selected: true,
       processingSource: tx.source,
+      notes: tx.notes,
     }));
   }
 
@@ -226,8 +232,11 @@ export class AIImportService {
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
 
+      // Consolidate line items into a single receipt transaction
+      const consolidated = this.consolidateReceiptItems(extractedTransactions);
+
       // Convert to CategorizedImportTransaction format with image metadata
-      const categorized = await this.categorizeMultiImageTransactions(extractedTransactions);
+      const categorized = await this.categorizeMultiImageTransactions(consolidated);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
@@ -247,6 +256,68 @@ export class AIImportService {
     } finally {
       this.isProcessing.set(false);
     }
+  }
+
+  /**
+   * Consolidate line items by receipt group.
+   * Items sharing the same receiptId are merged into one transaction (items become notes).
+   * Items with unique receiptIds stay as standalone transactions.
+   */
+  private consolidateReceiptItems(
+    items: MultiImageExtractedTransaction[]
+  ): MultiImageExtractedTransaction[] {
+    if (items.length === 0) return [];
+
+    // Group items by receiptId (default to 1 if not set)
+    const groups = new Map<number, MultiImageExtractedTransaction[]>();
+    for (const item of items) {
+      const rid = item.receiptId ?? 1;
+      if (!groups.has(rid)) groups.set(rid, []);
+      groups.get(rid)!.push(item);
+    }
+
+    const result: MultiImageExtractedTransaction[] = [];
+
+    for (const [, groupItems] of groups) {
+      if (groupItems.length === 1) {
+        // Single item — keep as standalone transaction
+        result.push(groupItems[0]);
+      } else {
+        // Multiple items from same receipt — merge into one transaction
+        const first = groupItems[0];
+        const currency = first.currency || 'JPY';
+        const merchant = first.merchant || groupItems.find(i => i.merchant)?.merchant || 'Receipt';
+        const category = first.category || groupItems.find(i => i.category)?.category;
+        const totalAmount = groupItems.reduce((sum, item) => sum + item.amount, 0);
+
+        // Prefer full receipt details from AI, fall back to item list
+        const receiptDetailsFromAI = groupItems.find(i => i.receiptDetails)?.receiptDetails;
+        const fractionDigits = currency === 'JPY' ? 0 : 2;
+        const details = receiptDetailsFromAI
+          || groupItems
+            .map(item => `${item.description} — ${currency} ${item.amount.toLocaleString('en', { minimumFractionDigits: fractionDigits })}`)
+            .join('\n');
+
+        result.push({
+          date: first.date,
+          description: merchant,
+          amount: totalAmount,
+          type: 'expense',
+          currency,
+          category,
+          merchant,
+          details,
+          imageIndex: 0,
+          positionInImage: 'middle',
+          confidence: groupItems.reduce((sum, i) => sum + i.confidence, 0) / groupItems.length,
+          receiptId: first.receiptId,
+          wasMerged: true,
+          mergedFromImages: [...new Set(groupItems.map(i => i.imageIndex))],
+        });
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -292,8 +363,9 @@ export class AIImportService {
         currency: original.currency || baseCurrency,
         date: t.date,
         type: original.type,
-        suggestedCategoryId: t.suggestedCategoryId,
+        suggestedCategoryId: original.category || t.suggestedCategoryId,
         categoryConfidence: t.confidence,
+        notes: this.formatItemNotes(original.details),
         isDuplicate: false,
         selected: true,
         imageMetadata: {
@@ -302,16 +374,7 @@ export class AIImportService {
           positionInImage: original.positionInImage,
           confidenceScore: original.confidence,
           wasMerged: original.wasMerged,
-          mergedFromImages: original.mergedFromImages
-        },
-        taxMetadata: original.taxInfo ? {
-          taxRate: original.taxInfo.taxRate,
-          taxAmount: original.taxInfo.taxAmount,
-          taxCategory: original.taxInfo.taxCategory,
-          preTaxAmount: original.taxInfo.preTaxAmount,
-          discountApplied: original.taxInfo.discountApplied,
-          originalAmount: original.taxInfo.originalAmount
-        } : undefined
+        }
       };
     });
   }
@@ -545,18 +608,7 @@ export class AIImportService {
     // Convert ExtractedTransaction to CategorizedImportTransaction
     // If transaction already has a category from extraction, use it; otherwise suggest 'other_expense'
     return transactions.map((t, index) => {
-      let suggestedCategoryId = t.category || 'other_expense';
-
-      // Map common category names to category IDs
-      if (suggestedCategoryId === 'Food' || suggestedCategoryId === 'Groceries') {
-        suggestedCategoryId = 'food';
-      } else if (suggestedCategoryId === 'Beverages') {
-        suggestedCategoryId = 'food'; // Beverages often map to food
-      } else if (suggestedCategoryId === 'Shopping') {
-        suggestedCategoryId = 'shopping';
-      } else if (suggestedCategoryId === 'Transport' || suggestedCategoryId === 'Gas') {
-        suggestedCategoryId = 'transport';
-      }
+      const suggestedCategoryId = t.category || 'other_expense';
 
       return {
         id: `import_${index}_${Date.now()}`,
@@ -568,6 +620,7 @@ export class AIImportService {
         suggestedCategoryId: suggestedCategoryId,
         categoryConfidence: 0.8, // AI extracted categories are fairly confident
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
+        notes: this.formatItemNotes(t.details),
         isDuplicate: false,
         selected: true
       };
@@ -639,7 +692,8 @@ export class AIImportService {
             currency: txn.currency || baseCurrency,
             categoryId: txn.suggestedCategoryId || 'other_expense',
             description: txn.description || 'Imported transaction',
-            date: transactionDate
+            date: transactionDate,
+            note: txn.notes
           };
 
           await this.transactionService.addTransaction(dto);
@@ -813,6 +867,20 @@ export class AIImportService {
   }
 
   /**
+   * Format item details into readable notes with one item per line, each showing its amount.
+   */
+  private formatItemNotes(details?: string): string | undefined {
+    if (!details) return undefined;
+
+    // Already has newlines — return as-is
+    if (details.includes('\n')) return details;
+
+    // Split comma-separated items and put each on its own line
+    // Items may be "item name — amount" or just "item name amount" or "item name"
+    return details.split(/,\s*/).join('\n');
+  }
+
+  /**
    * Wrap a promise with a timeout
    */
   private withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
@@ -820,5 +888,83 @@ export class AIImportService {
       setTimeout(() => reject(new Error(timeoutMessage)), ms);
     });
     return Promise.race([promise, timeout]);
+  }
+
+  /**
+   * Parse raw AI API errors into user-friendly messages with error type classification.
+   */
+  parseAIError(error: unknown): { message: string; type: 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout' | 'unknown'; retryable: boolean } {
+    const raw = error instanceof Error ? error.message : String(error);
+    const lower = raw.toLowerCase();
+
+    // Rate limit (429)
+    if (lower.includes('429') || lower.includes('rate limit') || lower.includes('resource_exhausted') || lower.includes('too many requests') || lower.includes('quota exceeded')) {
+      return {
+        message: 'AI rate limit reached. Please wait a moment and try again.',
+        type: 'rate_limit',
+        retryable: true
+      };
+    }
+
+    // Authentication / invalid API key (401, 403)
+    if (lower.includes('401') || lower.includes('403') || lower.includes('unauthorized') || lower.includes('forbidden') || lower.includes('invalid api key') || lower.includes('api_key_invalid') || lower.includes('permission_denied')) {
+      return {
+        message: 'AI API key is invalid or expired. Please check your API key in Profile Settings.',
+        type: 'auth',
+        retryable: false
+      };
+    }
+
+    // Network / connection errors
+    if (lower.includes('network') || lower.includes('failed to fetch') || lower.includes('net::') || lower.includes('econnrefused') || lower.includes('enotfound') || lower.includes('cors') || lower.includes('dns')) {
+      return {
+        message: 'Network error. Please check your internet connection and try again.',
+        type: 'network',
+        retryable: true
+      };
+    }
+
+    // Quota / billing (402)
+    if (lower.includes('402') || lower.includes('billing') || lower.includes('insufficient_quota') || lower.includes('payment required') || lower.includes('credit')) {
+      return {
+        message: 'AI service quota exceeded or billing issue. Please check your API account.',
+        type: 'quota',
+        retryable: false
+      };
+    }
+
+    // Server errors (500, 502, 503)
+    if (lower.includes('500') || lower.includes('502') || lower.includes('503') || lower.includes('internal server error') || lower.includes('service unavailable') || lower.includes('bad gateway') || lower.includes('overloaded')) {
+      return {
+        message: 'AI service is temporarily unavailable. Please try again shortly.',
+        type: 'server',
+        retryable: true
+      };
+    }
+
+    // Timeout
+    if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('deadline_exceeded')) {
+      return {
+        message: 'AI processing timed out. Try with a clearer image or fewer files.',
+        type: 'timeout',
+        retryable: true
+      };
+    }
+
+    // Pass through already user-friendly messages (our own throws)
+    if (raw.includes('Please configure') || raw.includes('not available') || raw.includes('Offline')) {
+      return {
+        message: raw,
+        type: 'unknown',
+        retryable: false
+      };
+    }
+
+    // Unknown
+    return {
+      message: `AI processing failed: ${raw}`,
+      type: 'unknown',
+      retryable: true
+    };
   }
 }

@@ -11,7 +11,6 @@ import {
   PreviousPeriodData,
   ExtractedTransaction,
   MultiImageExtractedTransaction,
-  ExtractedTaxInfo,
   CSVColumnMapping,
 } from './gemini.service';
 
@@ -97,25 +96,23 @@ export class OpenAIService {
     this.lastError.set(null);
 
     try {
-      const prompt = `Analyze this receipt image and extract the following information.
+      const prompt = `Analyze this receipt image and extract ALL information.
 Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
 {
   "merchant": "store/restaurant name",
   "amount": total amount as number,
-  "currency": "detected currency code (USD, EUR, THB, etc.)",
+  "currency": "detected currency code (USD, EUR, JPY, CNY, TWD, THB, etc.)",
   "date": "YYYY-MM-DD format",
   "items": [{"name": "item name", "amount": item price as number}],
+  "receiptDetails": "full receipt content line by line",
   "suggestedCategory": "one of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other"
 }
 
-If you cannot extract certain fields, use reasonable defaults:
-- merchant: "Unknown"
-- currency: "USD"
-- date: today's date
-- items: empty array
-- amount: 0 if not readable
-
-Ensure the JSON is valid and parseable.`;
+IMPORTANT:
+- "items": Every purchased item with its price.
+- "amount" is the TOTAL amount paid.
+- "receiptDetails": Reproduce the FULL receipt content line by line. Include all items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep original language.
+- If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.`;
 
       const imageUrl = imageBase64.startsWith('data:')
         ? imageBase64
@@ -132,7 +129,7 @@ Ensure the JSON is valid and parseable.`;
             ],
           },
         ],
-        max_tokens: 1000,
+        max_tokens: 2000,
       });
 
       const responseText = response.choices[0]?.message?.content || '';
@@ -148,6 +145,7 @@ Ensure the JSON is valid and parseable.`;
         currency: parsed.currency || 'USD',
         date: parsed.date ? new Date(parsed.date) : new Date(),
         items: parsed.items || [],
+        receiptDetails: parsed.receiptDetails,
         suggestedCategory: categoryId,
         confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
       };
@@ -529,7 +527,6 @@ Only include confirmed transactions, not pending ones.`;
         category: t.category,
         merchant: t.merchant,
         details: t.details,
-        taxInfo: t.taxInfo
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -612,8 +609,7 @@ If no transactions can be extracted, return an empty array: []`;
 
       const responseText = response.choices[0]?.message?.content || '';
       const cleanedJson = this.extractJson(responseText);
-      const extracted: (MultiImageExtractedTransaction & { taxInfo?: ExtractedTaxInfo })[] =
-        JSON.parse(cleanedJson);
+      const extracted: MultiImageExtractedTransaction[] = JSON.parse(cleanedJson);
 
       return extracted.map((t) => ({
         date: t.date || new Date().toISOString().split('T')[0],
@@ -626,7 +622,6 @@ If no transactions can be extracted, return an empty array: []`;
         confidence: t.confidence ?? 0.7,
         wasMerged: t.wasMerged || false,
         mergedFromImages: t.mergedFromImages,
-        taxInfo: t.taxInfo,
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

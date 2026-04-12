@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { FormsModule } from '@angular/forms';
 import { Category, CategorizedImportTransaction } from '../../../../models';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -15,6 +16,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
     MatCheckboxModule,
     MatIconModule,
     MatButtonModule,
+    FormsModule,
     CategorySuggestionComponent,
     TranslatePipe
   ],
@@ -63,6 +65,21 @@ export class TransactionPreviewTableComponent {
     transaction.suggestedCategoryId = categoryId;
     transaction.categoryConfidence = 1.0; // User confirmed
     this.emitChanges();
+  }
+
+  updateNotes(): void {
+    this.emitChanges();
+  }
+
+  initNotes(transaction: CategorizedImportTransaction): void {
+    transaction.notes = '';
+    // Focus will happen naturally since the textarea appears via @if
+  }
+
+  getRowCount(notes: string): number {
+    if (!notes) return 1;
+    const lineCount = notes.split('\n').length;
+    return Math.min(Math.max(lineCount, 1), 20);
   }
 
   private emitChanges(): void {

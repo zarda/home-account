@@ -653,7 +653,20 @@
     "nativeOCR": "Native Vision OCR",
     "configureAI": "Configure API key in Settings",
     "iosInstallHint": "For the best camera experience, add this app to your Home Screen",
-    "queuedForLater": "{{count}} image(s) queued for processing when online"
+    "queuedForLater": "{{count}} image(s) queued for processing when online",
+    "notes": "Notes",
+    "errorTitleRateLimit": "Rate Limit Reached",
+    "errorTitleAuth": "API Key Issue",
+    "errorTitleNetwork": "Connection Error",
+    "errorTitleQuota": "Quota Exceeded",
+    "errorTitleServer": "Service Unavailable",
+    "errorTitleTimeout": "Processing Timeout",
+    "errorTitleGeneral": "Processing Failed",
+    "errorHintRateLimit": "The AI service has a request limit. Wait 30-60 seconds before retrying.",
+    "errorHintAuth": "Your API key may be invalid or expired. Update it in Profile Settings.",
+    "errorHintNetwork": "Check your internet connection and try again.",
+    "errorHintQuota": "Your AI API account may have run out of credits. Check your billing.",
+    "goToSettings": "Go to Settings"
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

@@ -12,6 +12,7 @@ export interface ParsedReceipt {
   currency: string;
   date: Date;
   items?: ReceiptItem[];
+  receiptDetails?: string;          // Full receipt content reproduced line by line
   suggestedCategory: string;
   confidence: number;
 }
@@ -37,15 +38,6 @@ export interface PreviousPeriodData {
   expense: number;
 }
 
-export interface ExtractedTaxInfo {
-  taxRate?: number;               // Tax rate as percentage (e.g., 7 for 7%)
-  taxAmount?: number;             // Calculated tax amount for this item
-  taxCategory?: string;           // Tax category (e.g., 'VAT', 'GST', 'Sales Tax')
-  preTaxAmount?: number;          // Original amount before tax
-  discountApplied?: number;       // Discount amount that was applied to this item
-  originalAmount?: number;        // Amount before discount was applied
-}
-
 export interface ExtractedTransaction {
   date: string;
   description: string;
@@ -55,16 +47,16 @@ export interface ExtractedTransaction {
   category?: string;               // Transaction category (e.g., Groceries, Gas, etc.)
   merchant?: string;               // Specific merchant/business name
   details?: string;                // Additional details (card last 4 digits, reference number, etc.)
-  taxInfo?: ExtractedTaxInfo;     // Tax and discount information
 }
 
 export interface MultiImageExtractedTransaction extends ExtractedTransaction {
   imageIndex: number;             // Which image this item came from (0-based)
   positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position
   confidence: number;             // OCR/extraction confidence (0-1)
+  receiptId?: number;             // AI-assigned receipt group (items from same receipt share same ID)
+  receiptDetails?: string;        // Full receipt content reproduced line by line
   wasMerged?: boolean;            // True if deduplicated from multiple images
   mergedFromImages?: number[];    // Indices of images where this appeared
-  taxInfo?: ExtractedTaxInfo;     // Tax and discount information (inherited but redeclared for clarity)
 }
 
 export interface CSVColumnMapping {
@@ -89,7 +81,8 @@ export class GeminiService {
   private textModel: GenerativeModel | null = null;
   private visionModel: GenerativeModel | null = null;
   private currentApiKey: string | null = null;
-  private currentTextModelId = 'gemini-3.1-flash-lite';  // Track current model for filtering
+  private currentTextModelId = 'gemini-2.5-flash';
+  private currentVisionModelId = 'gemini-3.1-flash-lite-preview';
 
   // Signals
   isProcessing = signal<boolean>(false);
@@ -117,22 +110,30 @@ export class GeminiService {
       return;
     }
 
-    // Skip if already initialized with the same key
+    const finalTextModel = textModelId || 'gemini-2.5-flash';
+    const finalVisionModel = visionModelId || 'gemini-3.1-flash-lite-preview';
+
+    // Same key — only update models if they changed
     if (apiKey === this.currentApiKey && this.genAI) {
-      console.log('[GeminiService] Already initialized with this API key, skipping reinitialization');
+      if (finalTextModel !== this.currentTextModelId || finalVisionModel !== this.currentVisionModelId) {
+        console.log(`[GeminiService] Same API key, switching models: text=${finalTextModel}, vision=${finalVisionModel}`);
+        this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
+        this.visionModel = this.genAI.getGenerativeModel({ model: finalVisionModel });
+        this.currentTextModelId = finalTextModel;
+        this.currentVisionModelId = finalVisionModel;
+      }
       return;
     }
 
     try {
       console.log('[GeminiService] Initializing with new API key (length:', apiKey.length, ')');
       this.genAI = new GoogleGenerativeAI(apiKey);
-      const finalTextModel = textModelId || 'gemini-2.5-flash';
-      const finalVisionModel = visionModelId || 'gemini-3.1-flash-lite-preview';
 
       this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
       this.visionModel = this.genAI.getGenerativeModel({ model: finalVisionModel });
       this.currentApiKey = apiKey;
-      this.currentTextModelId = finalTextModel;  // Track the current model for filtering
+      this.currentTextModelId = finalTextModel;
+      this.currentVisionModelId = finalVisionModel;
       this._isAvailable.set(true);
 
       console.log(`[GeminiService] ✓ Initialized successfully with text model: ${finalTextModel}, vision model: ${finalVisionModel}`);
@@ -161,73 +162,92 @@ export class GeminiService {
 
   // Parse receipt image
   async parseReceipt(imageBase64: string): Promise<ParsedReceipt> {
-    if (!this.visionModel) {
-      throw new Error('Gemini Vision model not available');
+    // Try textModel first (more capable), fall back to visionModel on rate limit
+    const models = [this.textModel, this.visionModel].filter(Boolean);
+    if (models.length === 0) {
+      throw new Error('Gemini model not available');
     }
 
     this.isProcessing.set(true);
     this.lastError.set(null);
 
-    try {
-      const prompt = `Do NOT include any thinking, reasoning, or analysis in your response. Output ONLY valid JSON.
+    const prompt = `Do NOT include any thinking, reasoning, or analysis in your response. Output ONLY valid JSON.
 
-Analyze this receipt image and extract information into this JSON structure (no markdown, no code blocks):
+Analyze this receipt image and extract into this JSON structure (no markdown, no code blocks):
 {
   "merchant": "store/restaurant name",
   "amount": total amount as number,
-  "currency": "detected currency code (USD, EUR, THB, etc.)",
+  "currency": "detected currency code (USD, EUR, JPY, CNY, TWD, THB, etc.)",
   "date": "YYYY-MM-DD format",
   "items": [{"name": "item name", "amount": item price as number}],
+  "receiptDetails": "full receipt content line by line",
   "suggestedCategory": "one of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other"
 }
 
-If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.
+IMPORTANT:
+- "amount" is the TOTAL amount paid (bottom of receipt).
+- "items" array: each purchased item with its individual price.
+- "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep original language.
+- If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.
 Return ONLY the JSON, nothing else.`;
 
-      const result = await this.visionModel.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+    let lastError: unknown;
+
+    for (const model of models) {
+      try {
+        const result = await model!.generateContent({
+          contents: [{
+            role: 'user',
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: 'image/jpeg',
+                  data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+                }
               }
-            }
-          ]
-        }],
-        generationConfig: {
-          maxOutputTokens: 800,
-          temperature: 0.05,
-          topP: 0.6,
+            ]
+          }],
+          generationConfig: {
+            maxOutputTokens: 2000,
+            temperature: 0.05,
+            topP: 0.6,
+          }
+        });
+
+        const responseText = result.response.text();
+        const cleanedJson = this.extractJson(responseText);
+        const parsed = JSON.parse(cleanedJson);
+
+        const categoryId = this.mapCategoryNameToId(parsed.suggestedCategory);
+
+        return {
+          merchant: parsed.merchant || 'Unknown',
+          amount: Number(parsed.amount) || 0,
+          currency: parsed.currency || 'USD',
+          date: parsed.date ? new Date(parsed.date) : new Date(),
+          items: parsed.items || [],
+          receiptDetails: parsed.receiptDetails,
+          suggestedCategory: categoryId,
+          confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5
+        };
+      } catch (error) {
+        lastError = error;
+        const msg = error instanceof Error ? error.message : String(error);
+        // Only fall back to next model on rate limit / quota errors
+        if (this.isRateLimitError(msg) && models.indexOf(model!) < models.length - 1) {
+          console.warn(`[GeminiService] Model rate-limited, trying fallback model`);
+          continue;
         }
-      });
-
-      const responseText = result.response.text();
-      const cleanedJson = this.extractJson(responseText);
-      const parsed = JSON.parse(cleanedJson);
-
-      // Map suggested category to category ID
-      const categoryId = this.mapCategoryNameToId(parsed.suggestedCategory);
-
-      return {
-        merchant: parsed.merchant || 'Unknown',
-        amount: Number(parsed.amount) || 0,
-        currency: parsed.currency || 'USD',
-        date: parsed.date ? new Date(parsed.date) : new Date(),
-        items: parsed.items || [],
-        suggestedCategory: categoryId,
-        confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('Receipt parsing error:', error);
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
+        break;
+      }
     }
+
+    const errorMessage = lastError instanceof Error ? lastError.message : 'Unknown error';
+    this.lastError.set(errorMessage);
+    console.error('Receipt parsing error:', lastError);
+    this.isProcessing.set(false);
+    throw lastError;
   }
 
   // Suggest category for a transaction description
@@ -480,8 +500,11 @@ ${this.getLanguageInstruction()}`;
           topP: 0.7,
         }
       });
-      const responseText = result.response.text().trim();
-      console.log('[GeminiService] ✓ Spending summary generated successfully (length:', responseText.length, ')');
+      const rawText = result.response.text().trim();
+      const responseText = this.currentTextModelId.includes('gemma-4')
+        ? this.filterReasoningContext(rawText)
+        : rawText;
+      console.log('[GeminiService] ✓ Spending summary generated successfully (length:', rawText.length, '→', responseText.length, ')');
       return responseText;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -540,8 +563,11 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
           topP: 0.7,
         }
       });
-      const responseText = result.response.text().trim();
-      console.log('[GeminiService] ✓ Financial advice generated successfully (length:', responseText.length, ')');
+      const rawText = result.response.text().trim();
+      const responseText = this.currentTextModelId.includes('gemma-4')
+        ? this.filterReasoningContextForAdvice(rawText)
+        : rawText;
+      console.log('[GeminiService] ✓ Financial advice generated successfully (length:', rawText.length, '→', responseText.length, ')');
       return responseText;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -567,28 +593,35 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
     this.lastError.set(null);
 
     try {
-      // Simple direct extraction - just ask for all items as JSON
-      const prompt = `Extract all product line items from this receipt image.
+      // Extract receipt summary with full receipt content as notes
+      const extractPrompt = `Extract key information from this receipt:
 
-Output ONLY a JSON array (one object per product):
-[
-  {"date":"YYYY-MM-DD","description":"product name","amount":123.45,"type":"expense","currency":"JPY"},
-  {"date":"YYYY-MM-DD","description":"product name 2","amount":67.89,"type":"expense","currency":"JPY"}
-]
+Return ONLY a JSON object (not an array):
+{
+  "date": "YYYY-MM-DD",
+  "merchant": "Store/Restaurant Name",
+  "totalAmount": 123.45,
+  "currency": "CNY",
+  "receiptDetails": "Full receipt content reproduced line by line",
+  "suggestedCategory": "category name"
+}
 
 Rules:
-- Each product is ONE separate object
-- Extract EVERY product item
-- Exclude: total, subtotal, tax, service charge
-- Use receipt date if visible, else today
-- Amount is individual item price (NOT total)`;
+- date: Receipt date (YYYY-MM-DD), use today if not visible
+- merchant: Store or restaurant name
+- totalAmount: Total amount paid (positive number only)
+- currency: Currency code (TWD for Taiwan, CNY for Chinese, JPY for Japanese, etc.)
+- receiptDetails: Reproduce the FULL receipt content line by line, preserving all information visible on the receipt: every item with its price, quantity if shown, discounts, subtotals, tax lines, service charges, payment method, change, etc. Use newline to separate each line. Keep the original language. Example: "コーヒー L ×1 — 480\nサンドイッチ ×2 — 760\n割引 -100\n小計 1,140\n内税(10%) 104\n合計 1,140\nVISA ****1234"
+- suggestedCategory: One of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other
 
-      console.log('[GeminiService] Extracting all items from receipt');
+Capture EVERYTHING on the receipt.`;
+
+      console.log('[GeminiService] Extracting receipt summary');
       const extractResult = await this.visionModel.generateContent({
         contents: [{
           role: 'user',
           parts: [
-            { text: prompt },
+            { text: extractPrompt },
             {
               inlineData: {
                 mimeType: 'image/jpeg',
@@ -598,25 +631,31 @@ Rules:
           ]
         }],
         generationConfig: {
-          maxOutputTokens: 4000,
-          temperature: 0.2,
-          topP: 0.9,
+          maxOutputTokens: 1000,
+          temperature: 0.1,
+          topP: 0.85,
         }
       });
 
       const responseText = extractResult.response.text();
-      console.log('[GeminiService] Raw API response:', responseText.substring(0, 1500));
-
-      // Extract JSON from response
       const cleanedJson = this.extractJsonStrict(responseText);
-      console.log('[GeminiService] Cleaned JSON length:', cleanedJson.length);
+      const receiptData = JSON.parse(cleanedJson);
 
-      const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
+      // Map category name to ID
+      const categoryId = receiptData.suggestedCategory
+        ? this.mapCategoryNameToId(receiptData.suggestedCategory)
+        : undefined;
 
-      console.log(`[GeminiService] ✓ Extracted ${extracted.length} line items from receipt image`);
-      extracted.forEach((item, i) => {
-        console.log(`  [${i+1}] ${item.description} - ¥${item.amount} ${item.currency}`);
-      });
+      const extracted: ExtractedTransaction[] = [{
+        date: receiptData.date || new Date().toISOString().split('T')[0],
+        description: receiptData.merchant || 'Receipt',
+        amount: Math.abs(receiptData.totalAmount || 0),
+        type: 'expense',
+        currency: receiptData.currency || 'CNY',
+        merchant: receiptData.merchant,
+        category: categoryId,
+        details: receiptData.receiptDetails || receiptData.itemsSummary || receiptData.items || receiptData.description || ''
+      }];
 
       // Return full ExtractedTransaction objects with all details
       return extracted.map(t => ({
@@ -628,13 +667,12 @@ Rules:
         category: t.category,
         merchant: t.merchant,
         details: t.details,
-        taxInfo: t.taxInfo
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.lastError.set(errorMessage);
       console.error('[GeminiService] ✗ Image extraction error:', error);
-      return [];
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -710,7 +748,7 @@ Empty array [] if no transactions found. Only posted/confirmed transactions.`;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.lastError.set(errorMessage);
       console.error('PDF extraction error:', error);
-      return [];
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -723,8 +761,9 @@ Empty array [] if no transactions found. Only posted/confirmed transactions.`;
   async extractTransactionsFromMultipleImages(
     imageBase64Array: string[]
   ): Promise<MultiImageExtractedTransaction[]> {
-    if (!this.visionModel) {
-      throw new Error('Gemini Vision model not available');
+    const models = [this.textModel, this.visionModel].filter(Boolean);
+    if (models.length === 0) {
+      throw new Error('Gemini model not available');
     }
 
     if (imageBase64Array.length === 0) {
@@ -739,144 +778,106 @@ Empty array [] if no transactions found. Only posted/confirmed transactions.`;
     this.isProcessing.set(true);
     this.lastError.set(null);
 
-    try {
-      const prompt = `CRITICAL: You are analyzing ${imageBase64Array.length} photos of ONE RECEIPT (ordered TOP to BOTTOM).
-Photos overlap - extract EACH UNIQUE ITEM ONLY ONCE (no duplicates).
-Extract EVERY line item visible, NOT just the total.
+    const prompt = `You are analyzing ${imageBase64Array.length} photos. They may be:
+- Multiple photos of ONE receipt (overlapping pages) → items share the same receiptId
+- Photos of DIFFERENT receipts → each receipt gets a different receiptId
+- A mix of both
+
+FIRST: Determine which photos belong to the same receipt (same merchant, date, style) vs different receipts.
+Then: Extract EVERY line item. Items from the same receipt share the same receiptId (starting from 1).
+If photos overlap, deduplicate — extract each unique item ONLY ONCE.
 
 Output ONLY valid JSON array. NO explanation, NO thinking.
 
-FIELD MAPPING:
-- date: YYYY-MM-DD (receipt date)
-- description: Product name ONLY (not merchant name)
-- amount: Individual item price (not subtotal/total)
+FIELDS:
+- date: YYYY-MM-DD
+- description: Product/item name (not merchant)
+- amount: Individual item price
 - type: 'expense' or 'income'
 - currency: JPY, USD, TWD, etc
-- imageIndex: Which photo (0 = first, 1 = second, etc)
+- receiptId: Integer grouping items from the same receipt (1, 2, 3...)
+- imageIndex: Which photo (0-based)
 - positionInImage: 'top', 'middle', 'bottom'
 - confidence: 0.0-1.0
-- category: Food, Beverage, etc (optional)
+- category: Food, Transport, etc (optional)
 - merchant: Store name (optional)
-- details: Size, flavor, quantity (optional)
+- details: Full context for this item — quantity, size, flavor, discount, tax info (optional)
 - wasMerged: true if deduplicated across images (optional)
 - mergedFromImages: [0,1] if from multiple images (optional)
-- taxInfo: Tax details (optional)
 
-REQUIREMENT: If receipt has 8 items across 2 photos, return 8 unique items total (deduplicated).
+For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items, discounts, subtotals, tax, service charges, payment method, change, etc.
 
-Return ONLY valid JSON array (no markdown, no thinking, no explanation):
+Example:
 [
-  {
-    "date": "2024-01-15",
-    "description": "おにぎり",
-    "amount": 151,
-    "type": "expense",
-    "currency": "JPY",
-    "imageIndex": 0,
-    "positionInImage": "middle",
-    "confidence": 0.95,
-    "wasMerged": false,
-    "taxInfo": {
-      "taxRate": 8,
-      "taxAmount": 11,
-      "taxCategory": "takeout_8%",
-      "preTaxAmount": 140
-    }
-  },
-  {
-    "date": "2024-01-15",
-    "description": "コーヒー (店内)",
-    "amount": 330,
-    "type": "expense",
-    "currency": "JPY",
-    "imageIndex": 0,
-    "positionInImage": "middle",
-    "confidence": 0.90,
-    "wasMerged": false,
-    "taxInfo": {
-      "taxRate": 10,
-      "taxAmount": 30,
-      "taxCategory": "dine_in_10%",
-      "preTaxAmount": 300
-    }
-  },
-  {
-    "date": "2024-01-15",
-    "description": "パン (セット割引)",
-    "amount": 180,
-    "type": "expense",
-    "currency": "JPY",
-    "imageIndex": 1,
-    "positionInImage": "top",
-    "confidence": 0.90,
-    "wasMerged": false,
-    "taxInfo": {
-      "taxRate": 8,
-      "taxAmount": 13,
-      "taxCategory": "takeout_8%",
-      "preTaxAmount": 167,
-      "discountApplied": 20,
-      "originalAmount": 200
-    }
-  }
+  {"date":"2024-01-15","description":"おにぎり","amount":151,"type":"expense","currency":"JPY","receiptId":1,"imageIndex":0,"positionInImage":"middle","confidence":0.95,"merchant":"セブンイレブン","details":"×1"},
+  {"date":"2024-01-15","description":"コーヒー L","amount":330,"type":"expense","currency":"JPY","receiptId":1,"imageIndex":1,"positionInImage":"top","confidence":0.90,"merchant":"セブンイレブン","details":"×1 店内","receiptDetails":"おにぎり ×1 — 151\nコーヒー L ×1 — 330\n小計 481\n内税(8%) 36\n内税(10%) 30\n合計 481\n現金 500\nお釣り 19"}
 ]
 
-If no transactions can be extracted, return an empty array: []`;
+Return ONLY valid JSON array:`;
 
-      // Build the content array with all images
-      const contentParts: (string | { inlineData: { mimeType: string; data: string } })[] = [prompt];
+    // Build the content parts with all images
+    const imageParts = imageBase64Array.map(imageBase64 => ({
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+      }
+    }));
 
-      for (const imageBase64 of imageBase64Array) {
-        contentParts.push({
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+    let lastError: unknown;
+
+    for (const model of models) {
+      try {
+        const result = await model!.generateContent({
+          contents: [{
+            role: 'user',
+            parts: [{ text: prompt }, ...imageParts]
+          }],
+          generationConfig: {
+            maxOutputTokens: 4000,
+            temperature: 0.05,
+            topP: 0.7,
           }
         });
-      }
+        const responseText = result.response.text();
+        const cleanedJson = this.extractJson(responseText);
+        const extracted: MultiImageExtractedTransaction[] = JSON.parse(cleanedJson);
 
-      const result = await this.visionModel.generateContent({
-        contents: [{
-          role: 'user',
-          parts: contentParts.map(part => typeof part === 'string' ? { text: part } : part)
-        }],
-        generationConfig: {
-          maxOutputTokens: 2000,
-          temperature: 0.05,
-          topP: 0.7,
+        console.log(`[GeminiService] ✓ Extracted ${extracted.length} unique items from ${imageBase64Array.length} receipt images`);
+
+        // Validate and normalize the extracted data
+        return extracted.map(t => ({
+          date: t.date || new Date().toISOString().split('T')[0],
+          description: t.description || 'Unknown',
+          amount: Math.abs(t.amount || 0),
+          type: t.type || 'expense',
+          currency: t.currency || 'USD',
+          category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+          merchant: t.merchant,
+          details: t.details,
+          imageIndex: t.imageIndex ?? 0,
+          positionInImage: t.positionInImage || 'middle',
+          confidence: t.confidence ?? 0.7,
+          receiptId: t.receiptId ?? 1,
+          receiptDetails: t.receiptDetails,
+          wasMerged: t.wasMerged || false,
+          mergedFromImages: t.mergedFromImages,
+        }));
+      } catch (error) {
+        lastError = error;
+        const msg = error instanceof Error ? error.message : String(error);
+        if (this.isRateLimitError(msg) && models.indexOf(model!) < models.length - 1) {
+          console.warn(`[GeminiService] Model rate-limited for multi-image, trying fallback`);
+          continue;
         }
-      });
-      const responseText = result.response.text();
-      const cleanedJson = this.extractJson(responseText);
-      const extracted: (MultiImageExtractedTransaction & { taxInfo?: ExtractedTaxInfo })[] = JSON.parse(cleanedJson);
-
-      console.log(`[GeminiService] ✓ Extracted ${extracted.length} unique items from ${imageBase64Array.length} receipt images (deduplicated)`);
-      extracted.forEach((item, i) => {
-        console.log(`  [${i+1}] ${item.description} - ${item.amount} ${item.currency} (image ${item.imageIndex}, ${item.positionInImage})`);
-      });
-
-      // Validate and normalize the extracted data
-      return extracted.map(t => ({
-        date: t.date || new Date().toISOString().split('T')[0],
-        description: t.description || 'Unknown',
-        amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
-        currency: t.currency || 'USD',
-        imageIndex: t.imageIndex ?? 0,
-        positionInImage: t.positionInImage || 'middle',
-        confidence: t.confidence ?? 0.7,
-        wasMerged: t.wasMerged || false,
-        mergedFromImages: t.mergedFromImages,
-        taxInfo: t.taxInfo
-      }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('Multi-image extraction error:', error);
-      return [];
-    } finally {
-      this.isProcessing.set(false);
+        break;
+      }
     }
+
+    const errorMessage = lastError instanceof Error ? lastError.message : 'Unknown error';
+    this.lastError.set(errorMessage);
+    console.error('Multi-image extraction error:', lastError);
+    this.isProcessing.set(false);
+    throw lastError;
   }
 
   /**
@@ -895,35 +896,30 @@ If no transactions can be extracted, return an empty array: []`;
     this.lastError.set(null);
 
     try {
-      const prompt = `RECEIPT LINE ITEM EXTRACTION TASK
+      const prompt = `Extract EVERY individual product/item from this receipt image.
 
-Extract EVERY individual product/item from this receipt image.
+Return each item as a SEPARATE JSON object in an array.
+Do NOT include total, subtotal, tax, or service charge as items.
 
-CRITICAL:
-- Return each item as a SEPARATE JSON object
-- Do NOT include total, subtotal, tax, or service charge
-- If receipt has 10 items, return 10 objects (not 1)
-- If receipt has 1 item, return 1 object
-- Return NOTHING except valid JSON array
-
-REQUIRED FIELDS PER ITEM:
+FIELDS PER ITEM:
 - date: YYYY-MM-DD
 - description: product name
 - amount: individual item price
 - type: "expense"
-- currency: JPY, USD, etc
+- currency: JPY, USD, TWD, CNY, etc
 - positionInImage: "top", "middle", "bottom"
 - confidence: 0.0-1.0
+- category: Restaurants, Groceries, Coffee & Drinks, Fast Food, Shopping, Other (optional)
+- merchant: store name (optional)
+- details: quantity, size, flavor, discount if any (optional)
 
-CORRECT EXAMPLE (3-item receipt):
+For the LAST item, include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep original language.
+
+Example:
 [
-  {"date":"2024-04-11","description":"Himekui-ichi","amount":680,"type":"expense","currency":"JPY","positionInImage":"middle","confidence":0.95},
-  {"date":"2024-04-11","description":"Shimbayashi juice","amount":498,"type":"expense","currency":"JPY","positionInImage":"middle","confidence":0.92},
-  {"date":"2024-04-11","description":"Kumamo Tomaki baggi","amount":228,"type":"expense","currency":"JPY","positionInImage":"middle","confidence":0.90}
+  {"date":"2024-04-11","description":"おにぎり","amount":151,"type":"expense","currency":"JPY","positionInImage":"middle","confidence":0.95,"merchant":"セブン"},
+  {"date":"2024-04-11","description":"コーヒー L","amount":330,"type":"expense","currency":"JPY","positionInImage":"bottom","confidence":0.90,"merchant":"セブン","receiptDetails":"おにぎり ×1 — 151\nコーヒー L ×1 — 330\n小計 481\n内税(8%) 36\n合計 481\n現金 500\nお釣り 19"}
 ]
-
-WRONG (do not do):
-[{"date":"2024-04-11","description":"Total","amount":1406,"type":"expense","currency":"JPY","positionInImage":"bottom","confidence":0.99}]
 
 Output ONLY JSON array. Nothing else.`;
 
@@ -941,7 +937,7 @@ Output ONLY JSON array. Nothing else.`;
           ]
         }],
         generationConfig: {
-          maxOutputTokens: 1000,
+          maxOutputTokens: 2000,
           temperature: 0.05,
           topP: 0.65,
         }
@@ -952,23 +948,26 @@ Output ONLY JSON array. Nothing else.`;
       const extracted = JSON.parse(cleanedJson);
 
       // Add imageIndex and normalize data
-      return extracted.map((t: Partial<MultiImageExtractedTransaction> & { taxInfo?: ExtractedTaxInfo }) => ({
+      return extracted.map((t: Partial<MultiImageExtractedTransaction>) => ({
         date: t.date || new Date().toISOString().split('T')[0],
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
         currency: t.currency || 'USD',
+        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+        merchant: t.merchant,
+        details: t.details,
         imageIndex: imageIndex,
         positionInImage: t.positionInImage || 'middle',
         confidence: t.confidence ?? 0.7,
+        receiptDetails: t.receiptDetails,
         wasMerged: false,
-        taxInfo: t.taxInfo
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.lastError.set(errorMessage);
       console.error('Single image position extraction error:', error);
-      return [];
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -1044,8 +1043,6 @@ Return ONLY valid JSON (no thinking, no explanation):
 
   // Helper: Extract JSON from response that might have markdown formatting or reasoning
   private extractJsonStrict(text: string): string {
-    // For receipt extraction, we need to extract a complete JSON array
-
     // Remove markdown code blocks if present
     let cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
 
@@ -1055,46 +1052,102 @@ Return ONLY valid JSON (no thinking, no explanation):
       .replace(/<\|channel[\s\S]*?channel\|>/g, '')
       .replace(/<thought>[\s\S]*?<\/thought>/g, '');
 
-    // Find the opening bracket
-    const startIdx = cleaned.indexOf('[');
+    // Find opening bracket (array or object)
+    const startIdx = cleaned.search(/[[{]/);
     if (startIdx === -1) {
-      console.error('[GeminiService] No JSON array found in response:', cleaned.substring(0, 200));
-      throw new Error('No JSON array found in response');
+      console.error('[GeminiService] No JSON found in response:', cleaned.substring(0, 200));
+      throw new Error('No JSON found in response');
     }
 
-    // Find the matching closing bracket by counting brackets
-    let bracketCount = 0;
-    let endIdx = -1;
+    // Use proper bracket matching (same as extractJson)
+    let curlyDepth = 0;
+    let squareDepth = 0;
+    let inString = false;
+    let escape = false;
+
     for (let i = startIdx; i < cleaned.length; i++) {
-      if (cleaned[i] === '[') {
-        bracketCount++;
-      } else if (cleaned[i] === ']') {
-        bracketCount--;
-        if (bracketCount === 0) {
-          endIdx = i;
-          break;
-        }
+      const ch = cleaned[i];
+
+      if (escape) { escape = false; continue; }
+      if (ch === '\\' && inString) { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+
+      if (ch === '{') curlyDepth++;
+      else if (ch === '}') curlyDepth--;
+      else if (ch === '[') squareDepth++;
+      else if (ch === ']') squareDepth--;
+
+      if (curlyDepth === 0 && squareDepth === 0) {
+        return cleaned.substring(startIdx, i + 1);
       }
     }
 
-    if (endIdx === -1) {
-      console.error('[GeminiService] Malformed JSON - bracket count:', bracketCount);
-      throw new Error('Malformed JSON array - no closing bracket found');
-    }
-
-    const result = cleaned.substring(startIdx, endIdx + 1);
-    console.log('[GeminiService] Extracted JSON length:', result.length, 'First 200 chars:', result.substring(0, 200));
-    return result;
+    console.error('[GeminiService] Malformed JSON - unclosed brackets');
+    throw new Error('Malformed JSON - no closing bracket found');
   }
 
   private extractJson(text: string): string {
-    // First, filter out any reasoning context
-    let cleaned = this.filterReasoningContext(text);
+    // Only apply aggressive reasoning filtering for Gemma 4 models
+    let cleaned: string;
+    if (this.currentTextModelId.includes('gemma-4')) {
+      cleaned = this.filterReasoningContext(text);
+    } else {
+      // For Gemini models, just strip thinking tokens
+      cleaned = text
+        .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
+        .replace(/<\|channel[\s\S]*?channel\|>/g, '')
+        .replace(/<thought>[\s\S]*?<\/thought>/g, '');
+    }
 
     // Remove markdown code blocks if present
     cleaned = cleaned.replace(/```json\n?/g, '').replace(/```\n?/g, '');
 
-    // Find JSON array or object
+    // Find JSON object or array using proper bracket matching
+    const startIdx = cleaned.search(/[[{]/);
+    if (startIdx === -1) {
+      return cleaned.trim();
+    }
+
+    // Track both bracket types to handle nested structures like {"items": [{...}]}
+    let curlyDepth = 0;
+    let squareDepth = 0;
+    let inString = false;
+    let escape = false;
+    const startChar = cleaned[startIdx];
+
+    for (let i = startIdx; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === '\\' && inString) {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+
+      if (ch === '{') curlyDepth++;
+      else if (ch === '}') curlyDepth--;
+      else if (ch === '[') squareDepth++;
+      else if (ch === ']') squareDepth--;
+
+      // Done when we're back to zero depth for the outer bracket type
+      if (startChar === '{' && curlyDepth === 0 && squareDepth === 0) {
+        return cleaned.substring(startIdx, i + 1);
+      }
+      if (startChar === '[' && squareDepth === 0 && curlyDepth === 0) {
+        return cleaned.substring(startIdx, i + 1);
+      }
+    }
+
+    // Fallback: greedy regex match
     const jsonMatch = cleaned.match(/[[{][\s\S]*[\]}]/);
     if (jsonMatch) {
       return jsonMatch[0];
@@ -1226,11 +1279,16 @@ Return ONLY valid JSON (no thinking, no explanation):
       .replace(/<thought>[\s\S]*?<\/thought>/g, '');      // Remove thought tags
 
     // Check if this looks like AI Insights (has markdown headers like ## Spending Pattern)
-    const hasMarkdownHeaders = /^##\s+/m.test(cleaned);
+    const firstHeaderIndex = cleaned.search(/^##\s+/m);
 
-    if (!hasMarkdownHeaders) {
-      // Only apply aggressive filtering for non-markdown content (reasoning/drafts)
-      // This prevents removing valid markdown headers
+    if (firstHeaderIndex > 0) {
+      // Strip everything before the first markdown header — that's Gemma 4 reasoning/drafting
+      console.log(`[GeminiService] Stripping ${firstHeaderIndex} chars of reasoning before first ## header`);
+      cleaned = cleaned.substring(firstHeaderIndex);
+    }
+
+    if (firstHeaderIndex < 0) {
+      // No markdown headers found — apply aggressive filtering for plain text reasoning/drafts
       cleaned = cleaned
         .replace(/^[\s\n]*\d+\.\s+(?:Sentence|Pattern|Input|Constraint|Check|Final|Analysis|Wait|Let's|Actually)[\s\S]*?(?=\n\d+\.|^[A-Z][a-z]|\n\n[A-Z]|$)/gim, '')
         .replace(/^[\s\n]*(?:\*+\s*)?(?:Reasoning|Analysis|Thought process|Thinking|Drafting|Self-Correction|Wait,|Let's|Actually|Final|Done):[\s\S]*?(?=\n\*{2,}|^[A-Z][a-z]|\n\n[A-Z]|$)/gim, '')
@@ -1248,28 +1306,23 @@ Return ONLY valid JSON (no thinking, no explanation):
         .replace(/^\*\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?:\s*[\s\S]*?(?=\n\*|^[A-Z](?!\s*:)|$)/gim, '');
     }
 
-    // For markdown content, just clean up excess whitespace
     let result = cleaned.trim();
 
-    // Remove duplicate/repeated content (but preserve markdown structure)
-    const allText = result.replace(/\n/g, ' ');
-    const midpoint = Math.floor(allText.length / 2);
-    const firstHalf = allText.substring(0, midpoint);
-    const secondHalf = allText.substring(midpoint);
-
-    // Check if content repeats (similar substrings at start of both halves)
-    if (firstHalf.length > 20 && secondHalf.length > 20) {
-      const firstStart = firstHalf.substring(0, 50);
-      if (secondHalf.includes(firstStart.substring(0, 30))) {
-        // Content is duplicated, return only first half
-        return firstHalf.trim();
-      }
-    }
+    // Strip trailing reasoning/checks after the main content (e.g., "Check:*", "Financial Tip")
+    result = result.replace(/\n+(?:Check:\*|Financial Tip\b)[\s\S]*$/i, '');
 
     // Final cleanup: remove excess whitespace
     result = result.replace(/\n{3,}/g, '\n\n').trim();
 
     return result.length > 5 ? result : text.trim();
+  }
+
+  // Helper: Check if an error is a rate limit / quota exhaustion error
+  private isRateLimitError(message: string): boolean {
+    const lower = message.toLowerCase();
+    return lower.includes('429') || lower.includes('resource_exhausted') ||
+      lower.includes('rate limit') || lower.includes('quota exceeded') ||
+      lower.includes('too many requests');
   }
 
   // Helper: Map category name to ID

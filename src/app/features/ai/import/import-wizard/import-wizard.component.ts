@@ -68,6 +68,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   selectedTransactionIds = signal<Set<string>>(new Set());
   duplicateChecks = signal<DuplicateCheck[]>([]);
   processingError = signal<string | null>(null);
+  processingErrorType = signal<string>('unknown');
+  processingErrorRetryable = signal<boolean>(true);
   isImporting = signal(false);
   importProgress = signal(0);
   importStatus = signal('');
@@ -221,9 +223,29 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.extractedTransactions.set([]);
 
     try {
-      for (const file of this.selectedFiles()) {
-        const result: ImportResult = await this.importService.importFromFile(file);
+      const files = this.selectedFiles();
 
+      // If multiple image files, treat as multi-photo receipt
+      const imageFiles = files.filter(f => f.type.startsWith('image/'));
+      const nonImageFiles = files.filter(f => !f.type.startsWith('image/'));
+
+      if (imageFiles.length > 1) {
+        // Process multiple images as a single receipt
+        const result = await this.importService.importFromMultipleImages(imageFiles);
+        this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
+        this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
+      } else {
+        // Process image files individually
+        for (const file of imageFiles) {
+          const result = await this.importService.importFromFile(file);
+          this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
+          this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
+        }
+      }
+
+      // Process non-image files individually
+      for (const file of nonImageFiles) {
+        const result: ImportResult = await this.importService.importFromFile(file);
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
       }
@@ -236,9 +258,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       );
       this.selectedTransactionIds.set(nonDuplicateIds);
     } catch (error) {
-      this.processingError.set(
-        error instanceof Error ? error.message : 'Failed to process files'
-      );
+      const parsed = this.importService.parseAIError(error);
+      this.processingError.set(parsed.message);
+      this.processingErrorType.set(parsed.type);
+      this.processingErrorRetryable.set(parsed.retryable);
     }
   }
 
@@ -318,5 +341,40 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   goBack(): void {
     this.router.navigate(['/transactions']);
+  }
+
+  getErrorIcon(): string {
+    switch (this.processingErrorType()) {
+      case 'rate_limit': return 'schedule';
+      case 'auth': return 'vpn_key_off';
+      case 'network': return 'wifi_off';
+      case 'quota': return 'account_balance_wallet';
+      case 'server': return 'cloud_off';
+      case 'timeout': return 'hourglass_empty';
+      default: return 'error_outline';
+    }
+  }
+
+  getErrorTitle(): string {
+    switch (this.processingErrorType()) {
+      case 'rate_limit': return this.t('import.errorTitleRateLimit');
+      case 'auth': return this.t('import.errorTitleAuth');
+      case 'network': return this.t('import.errorTitleNetwork');
+      case 'quota': return this.t('import.errorTitleQuota');
+      case 'server': return this.t('import.errorTitleServer');
+      case 'timeout': return this.t('import.errorTitleTimeout');
+      default: return this.t('import.errorTitleGeneral');
+    }
+  }
+
+  retryProcessing(): void {
+    this.processingError.set(null);
+    this.processingErrorType.set('unknown');
+    this.processingErrorRetryable.set(true);
+    this.processFiles();
+  }
+
+  goToSettings(): void {
+    this.router.navigate(['/profile']);
   }
 }

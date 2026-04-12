@@ -359,8 +359,32 @@
 .error-message {
   font-size: 14px;
   color: var(--text-muted);
-  margin: 0 0 24px;
+  margin: 0 0 8px;
 }
+
+.error-hint {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.error-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.error-rate_limit .error-icon { color: #ff9800; }
+.error-auth .error-icon { color: #f44336; }
+.error-network .error-icon { color: #2196f3; }
+.error-quota .error-icon { color: #e91e63; }
+.error-server .error-icon { color: #9c27b0; }
+.error-timeout .error-icon { color: #ff9800; }
 
 /* Review Step */
 .review-header {

@@ -677,7 +677,20 @@
     "nativeOCR": "原生 Vision OCR",
     "configureAI": "請在設定中配置 API 金鑰",
     "iosInstallHint": "如需最佳相機體驗，請將此應用程式加入主畫面",
-    "queuedForLater": "已將{{count}}張圖片加入佇列，待上線後處理"
+    "queuedForLater": "已將{{count}}張圖片加入佇列，待上線後處理",
+    "notes": "備註",
+    "errorTitleRateLimit": "已達速率限制",
+    "errorTitleAuth": "API 金鑰問題",
+    "errorTitleNetwork": "連線錯誤",
+    "errorTitleQuota": "配額已超過",
+    "errorTitleServer": "服務暫時無法使用",
+    "errorTitleTimeout": "處理逾時",
+    "errorTitleGeneral": "處理失敗",
+    "errorHintRateLimit": "AI 服務有請求限制，請等待 30-60 秒後重試。",
+    "errorHintAuth": "您的 API 金鑰可能無效或已過期，請在個人設定中更新。",
+    "errorHintNetwork": "請檢查您的網路連線，然後重試。",
+    "errorHintQuota": "您的 AI API 帳戶可能已用完額度，請檢查帳單。",
+    "goToSettings": "前往設定"
   },
   "errors": {
     "generic": "發生錯誤，請重試。",

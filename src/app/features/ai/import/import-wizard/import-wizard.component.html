@@ -143,14 +143,37 @@
             </button>
           </div>
         } @else if (processingError()) {
-          <div class="error-card">
-            <mat-icon class="error-icon">error_outline</mat-icon>
-            <h2 class="error-title">{{ 'import.importFailed' | translate }}</h2>
+          <div class="error-card" [class]="'error-card error-' + processingErrorType()">
+            <mat-icon class="error-icon">{{ getErrorIcon() }}</mat-icon>
+            <h2 class="error-title">{{ getErrorTitle() }}</h2>
             <p class="error-message">{{ processingError() }}</p>
-            <button mat-stroked-button color="primary" (click)="stepper.previous()">
-              <mat-icon>refresh</mat-icon>
-              {{ 'common.tryAgain' | translate }}
-            </button>
+            @if (processingErrorType() === 'rate_limit') {
+              <p class="error-hint">{{ 'import.errorHintRateLimit' | translate }}</p>
+            } @else if (processingErrorType() === 'auth') {
+              <p class="error-hint">{{ 'import.errorHintAuth' | translate }}</p>
+            } @else if (processingErrorType() === 'network') {
+              <p class="error-hint">{{ 'import.errorHintNetwork' | translate }}</p>
+            } @else if (processingErrorType() === 'quota') {
+              <p class="error-hint">{{ 'import.errorHintQuota' | translate }}</p>
+            }
+            <div class="error-actions">
+              @if (processingErrorRetryable()) {
+                <button mat-flat-button color="primary" (click)="retryProcessing()">
+                  <mat-icon>refresh</mat-icon>
+                  {{ 'common.tryAgain' | translate }}
+                </button>
+              }
+              @if (processingErrorType() === 'auth' || processingErrorType() === 'quota') {
+                <button mat-stroked-button (click)="goToSettings()">
+                  <mat-icon>settings</mat-icon>
+                  {{ 'import.goToSettings' | translate }}
+                </button>
+              }
+              <button mat-stroked-button (click)="stepper.previous()">
+                <mat-icon>arrow_back</mat-icon>
+                {{ 'common.back' | translate }}
+              </button>
+            </div>
           </div>
         } @else if (processingFinishedEmpty()) {
           <div class="error-card">

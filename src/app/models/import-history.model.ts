@@ -36,16 +36,6 @@ export interface ImagePositionMetadata {
   positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position within image
   confidenceScore: number;         // OCR/extraction confidence (0-1)
   wasMerged?: boolean;             // True if this item was deduplicated from multiple images
-  mergedFromImages?: number[];     // Indices of images where this item appeared
-}
-
-export interface TaxMetadata {
-  taxRate?: number;                // Tax rate as percentage (e.g., 7 for 7%)
-  taxAmount?: number;              // Calculated tax amount for this item
-  taxCategory?: string;            // Tax category (e.g., 'VAT', 'GST', 'Sales Tax')
-  preTaxAmount?: number;           // Original amount before tax
-  discountApplied?: number;        // Discount amount that was applied to this item
-  originalAmount?: number;         // Amount before discount was applied
 }
 
 export interface CategorizedImportTransaction {
@@ -59,11 +49,11 @@ export interface CategorizedImportTransaction {
   categoryConfidence: number;
   originalText?: string;           // Raw text from source
   merchant?: string;
+  notes?: string;                  // Optional notes/details (e.g., items list from receipt)
   isDuplicate: boolean;
   duplicateOf?: string;            // Existing transaction ID
   selected: boolean;               // For UI checkbox
   imageMetadata?: ImagePositionMetadata;  // Multi-image position data
-  taxMetadata?: TaxMetadata;       // Tax and discount information
 }
 
 export interface DuplicateCheck {

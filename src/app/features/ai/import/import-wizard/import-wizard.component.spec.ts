@@ -72,12 +72,18 @@ describe('ImportWizardComponent', () => {
   };
 
   beforeEach(async () => {
-    mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'confirmImport'], {
+    mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'confirmImport', 'parseAIError'], {
       isProcessing: signal(false),
       processingStatus: signal(''),
       processingProgress: signal(0)
     });
     mockImportService.importFromFile.and.returnValue(Promise.resolve(mockImportResult));
+    mockImportService.importFromMultipleImages.and.returnValue(Promise.resolve(mockImportResult));
+    mockImportService.parseAIError.and.callFake((error: unknown) => ({
+      message: error instanceof Error ? error.message : String(error),
+      type: 'unknown',
+      retryable: true
+    }));
     mockImportService.confirmImport.and.returnValue(Promise.resolve({
       id: 'history1',
       userId: 'user1',
@@ -96,9 +102,10 @@ describe('ImportWizardComponent', () => {
       status: 'completed' as const
     }));
 
-    mockCategoryService = jasmine.createSpyObj('CategoryService', [], {
+    mockCategoryService = jasmine.createSpyObj('CategoryService', ['loadCategories'], {
       categories: signal(mockCategories)
     });
+    mockCategoryService.loadCategories.and.returnValue({ subscribe: () => ({ unsubscribe: () => {} }) } as never);
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslationService.t.and.callFake((key: string) => key);

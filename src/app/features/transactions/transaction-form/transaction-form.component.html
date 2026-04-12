@@ -185,7 +185,7 @@
       <!-- Note (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.noteOptional' | translate }}</mat-label>
-        <textarea matInput formControlName="note" rows="2" [placeholder]="'transactions.notePlaceholder' | translate"></textarea>
+        <textarea matInput formControlName="note" cdkTextareaAutosize cdkAutosizeMinRows="2" cdkAutosizeMaxRows="12" [placeholder]="'transactions.notePlaceholder' | translate"></textarea>
       </mat-form-field>
     </mat-dialog-content>
 

@@ -1,4 +1,5 @@
 import { AfterViewInit, ChangeDetectorRef, Component, computed, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
+import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { CommonModule } from '@angular/common';
 
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -47,7 +48,8 @@ interface DialogData {
     MatProgressSpinnerModule,
     MatChipsModule,
     MatSnackBarModule,
-    TranslatePipe
+    TranslatePipe,
+    CdkTextareaAutosize
   ],
   templateUrl: './transaction-form.component.html',
   styleUrl: './transaction-form.component.scss',

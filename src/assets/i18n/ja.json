@@ -677,7 +677,20 @@
     "nativeOCR": "ネイティブ Vision OCR",
     "configureAI": "設定でAPIキーを設定してください",
     "iosInstallHint": "最適なカメラ体験のために、このアプリをホーム画面に追加してください",
-    "queuedForLater": "{{count}}枚の画像がオンライン時の処理待ちです"
+    "queuedForLater": "{{count}}枚の画像がオンライン時の処理待ちです",
+    "notes": "メモ",
+    "errorTitleRateLimit": "レート制限に達しました",
+    "errorTitleAuth": "APIキーの問題",
+    "errorTitleNetwork": "接続エラー",
+    "errorTitleQuota": "クォータ超過",
+    "errorTitleServer": "サービス利用不可",
+    "errorTitleTimeout": "処理タイムアウト",
+    "errorTitleGeneral": "処理に失敗しました",
+    "errorHintRateLimit": "AIサービスのリクエスト制限です。30〜60秒待ってから再試行してください。",
+    "errorHintAuth": "APIキーが無効または期限切れの可能性があります。プロフィール設定で更新してください。",
+    "errorHintNetwork": "インターネット接続を確認して、再試行してください。",
+    "errorHintQuota": "AI APIアカウントのクレジットが不足している可能性があります。請求を確認してください。",
+    "goToSettings": "設定へ"
   },
   "errors": {
     "generic": "エラーが発生しました。もう一度お試しください。",

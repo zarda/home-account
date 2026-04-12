@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
+import { firstValueFrom } from 'rxjs';
 import { TransactionService } from './transaction.service';
 import { Transaction, CategorizedImportTransaction, DuplicateCheck, ImagePositionMetadata } from '../../models';
 
@@ -8,14 +9,56 @@ export class DuplicateDetectionService {
   private transactionService = inject(TransactionService);
 
   /**
-   * Check a batch of import transactions for duplicates against existing transactions
+   * Check a batch of import transactions for duplicates against existing transactions.
+   * Uses date-scoped Firestore query and index-based lookups for performance.
    */
   async checkDuplicates(transactions: CategorizedImportTransaction[]): Promise<DuplicateCheck[]> {
-    const existingTxns = this.transactionService.transactions();
-    const results: DuplicateCheck[] = [];
+    if (transactions.length === 0) return [];
 
+    // Find the date range of import transactions (±2 days for possible match window)
+    const dates = transactions.map(t => t.date.getTime());
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    minDate.setDate(minDate.getDate() - 2);
+    maxDate.setDate(maxDate.getDate() + 2);
+
+    // Load only transactions within the relevant date range
+    console.log(`[DuplicateDetection] Loading existing transactions from ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`);
+    const existingTxns = await firstValueFrom(
+      this.transactionService.getTransactions({ startDate: minDate, endDate: maxDate })
+    );
+    console.log(`[DuplicateDetection] Loaded ${existingTxns.length} existing transactions in date range`);
+
+    if (existingTxns.length === 0) {
+      return transactions.map(txn => ({
+        transactionId: txn.id, isDuplicate: false, matchType: 'none' as const, confidence: 0
+      }));
+    }
+
+    // Build index: dateKey → transactions with that date, for O(1) date lookups
+    const dateIndex = new Map<string, Transaction[]>();
+    const descBigramCache = new Map<string, Set<string>>();
+
+    for (const existing of existingTxns) {
+      const d = existing.date instanceof Date ? existing.date : (existing.date as Timestamp).toDate();
+      // Index by date key and adjacent days (±1) for possible match
+      for (let offset = -1; offset <= 1; offset++) {
+        const keyDate = new Date(d);
+        keyDate.setDate(keyDate.getDate() + offset);
+        const key = `${keyDate.getFullYear()}-${keyDate.getMonth()}-${keyDate.getDate()}`;
+        if (!dateIndex.has(key)) dateIndex.set(key, []);
+        dateIndex.get(key)!.push(existing);
+      }
+      // Pre-compute bigrams for description
+      const norm = this.normalizeDescription(existing.description);
+      if (!descBigramCache.has(norm)) {
+        descBigramCache.set(norm, this.getBigrams(norm));
+      }
+    }
+
+    const results: DuplicateCheck[] = [];
     for (const txn of transactions) {
-      const result = this.checkSingleTransaction(txn, existingTxns);
+      const result = this.checkSingleTransactionIndexed(txn, dateIndex, descBigramCache);
       results.push(result);
     }
 
@@ -23,118 +66,83 @@ export class DuplicateDetectionService {
   }
 
   /**
-   * Check a single transaction for duplicates
+   * Check a single transaction using pre-built date index and bigram cache.
    */
-  checkSingleTransaction(
+  private checkSingleTransactionIndexed(
     txn: CategorizedImportTransaction,
-    existingTxns: Transaction[]
+    dateIndex: Map<string, Transaction[]>,
+    descBigramCache: Map<string, Set<string>>
   ): DuplicateCheck {
-    // Check for exact match first
-    const exactMatch = existingTxns.find(existing =>
-      this.isExactMatch(txn, existing)
-    );
+    const dateKey = `${txn.date.getFullYear()}-${txn.date.getMonth()}-${txn.date.getDate()}`;
+    const candidates = dateIndex.get(dateKey) || [];
 
-    if (exactMatch) {
-      return {
-        transactionId: txn.id,
-        isDuplicate: true,
-        matchType: 'exact',
-        existingTransactionId: exactMatch.id,
-        confidence: 1.0
-      };
+    // Single pass: check exact → likely → possible in one scan
+    let likelyMatch: Transaction | undefined;
+    let possibleMatch: Transaction | undefined;
+
+    for (const existing of candidates) {
+      if (!this.isSameAmount(txn.amount, existing.amount)) continue;
+
+      const d = existing.date instanceof Date ? existing.date : (existing.date as Timestamp).toDate();
+      const sameDay = d.getFullYear() === txn.date.getFullYear() &&
+        d.getMonth() === txn.date.getMonth() &&
+        d.getDate() === txn.date.getDate();
+
+      if (sameDay) {
+        // Check exact match (same day + same amount + similar description)
+        if (this.isSimilarDescriptionCached(txn.description, existing.description, descBigramCache)) {
+          return {
+            transactionId: txn.id, isDuplicate: true, matchType: 'exact',
+            existingTransactionId: existing.id, confidence: 1.0
+          };
+        }
+        // Track likely match (same day + same amount + same type)
+        if (!likelyMatch && txn.type === existing.type) {
+          likelyMatch = existing;
+        }
+      } else if (!possibleMatch && txn.type === existing.type) {
+        // Within ±1 day (from index) + same amount + same type
+        possibleMatch = existing;
+      }
     }
-
-    // Check for likely match (same date + amount, different description)
-    const likelyMatch = existingTxns.find(existing =>
-      this.isLikelyMatch(txn, existing)
-    );
 
     if (likelyMatch) {
       return {
-        transactionId: txn.id,
-        isDuplicate: true,
-        matchType: 'likely',
-        existingTransactionId: likelyMatch.id,
-        confidence: 0.8
+        transactionId: txn.id, isDuplicate: true, matchType: 'likely',
+        existingTransactionId: likelyMatch.id, confidence: 0.8
       };
     }
-
-    // Check for possible match (date within 1 day + same amount)
-    const possibleMatch = existingTxns.find(existing =>
-      this.isPossibleMatch(txn, existing)
-    );
 
     if (possibleMatch) {
       return {
-        transactionId: txn.id,
-        isDuplicate: true,
-        matchType: 'possible',
-        existingTransactionId: possibleMatch.id,
-        confidence: 0.5
+        transactionId: txn.id, isDuplicate: true, matchType: 'possible',
+        existingTransactionId: possibleMatch.id, confidence: 0.5
       };
     }
 
-    return {
-      transactionId: txn.id,
-      isDuplicate: false,
-      matchType: 'none',
-      confidence: 0
-    };
+    return { transactionId: txn.id, isDuplicate: false, matchType: 'none', confidence: 0 };
   }
 
   /**
-   * Exact match: same date + same amount + similar description
+   * Description similarity check using pre-computed bigram cache
    */
-  isExactMatch(txn: CategorizedImportTransaction, existing: Transaction): boolean {
-    const sameDate = this.isSameDay(existing.date, txn.date);
-    const sameAmount = this.isSameAmount(txn.amount, existing.amount);
-    const similarDesc = this.isSimilarDescription(txn.description, existing.description);
+  private isSimilarDescriptionCached(
+    desc1: string, desc2: string, cache: Map<string, Set<string>>
+  ): boolean {
+    const n1 = this.normalizeDescription(desc1);
+    const n2 = this.normalizeDescription(desc2);
+    if (n1 === n2) return true;
+    if (n1.includes(n2) || n2.includes(n1)) return true;
 
-    return sameDate && sameAmount && similarDesc;
-  }
+    const bigrams1 = this.getBigrams(n1);
+    const bigrams2 = cache.get(n2) || this.getBigrams(n2);
+    if (bigrams1.size === 0 || bigrams2.size === 0) return n1 === n2;
 
-  /**
-   * Likely match: same date + same amount, possibly different description
-   */
-  isLikelyMatch(txn: CategorizedImportTransaction, existing: Transaction): boolean {
-    const sameDate = this.isSameDay(existing.date, txn.date);
-    const sameAmount = this.isSameAmount(txn.amount, existing.amount);
-    const sameType = txn.type === existing.type;
-
-    return sameDate && sameAmount && sameType;
-  }
-
-  /**
-   * Possible match: date within 1 day + same amount
-   */
-  isPossibleMatch(txn: CategorizedImportTransaction, existing: Transaction): boolean {
-    const withinOneDay = this.isWithinDays(existing.date, txn.date, 1);
-    const sameAmount = this.isSameAmount(txn.amount, existing.amount);
-    const sameType = txn.type === existing.type;
-
-    return withinOneDay && sameAmount && sameType;
-  }
-
-  /**
-   * Check if two dates are on the same day
-   */
-  private isSameDay(date1: Date | Timestamp, date2: Date): boolean {
-    const d1 = date1 instanceof Date ? date1 : date1.toDate();
-    return (
-      d1.getFullYear() === date2.getFullYear() &&
-      d1.getMonth() === date2.getMonth() &&
-      d1.getDate() === date2.getDate()
-    );
-  }
-
-  /**
-   * Check if two dates are within N days of each other
-   */
-  private isWithinDays(date1: Date | Timestamp, date2: Date, days: number): boolean {
-    const d1 = date1 instanceof Date ? date1 : date1.toDate();
-    const diffTime = Math.abs(d1.getTime() - date2.getTime());
-    const diffDays = diffTime / (1000 * 60 * 60 * 24);
-    return diffDays <= days;
+    let intersection = 0;
+    for (const b of bigrams1) {
+      if (bigrams2.has(b)) intersection++;
+    }
+    return (2 * intersection) / (bigrams1.size + bigrams2.size) >= 0.7;
   }
 
   /**

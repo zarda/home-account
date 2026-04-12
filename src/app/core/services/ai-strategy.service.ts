@@ -28,6 +28,8 @@ export interface ProcessedTransaction {
   currency: string;
   confidence: number;
   source: 'cloud' | 'native';
+  notes?: string;
+  suggestedCategoryId?: string;
 }
 
 const DEFAULT_PREFERENCES: AIPreferences = {
@@ -411,6 +413,7 @@ export class AIStrategyService {
       currency: t.currency,
       confidence: t.confidence,
       source: 'cloud' as const,
+      notes: t.details,
     }));
 
     const avgConfidence = transactions.length > 0
@@ -437,6 +440,10 @@ export class AIStrategyService {
       currency: receipt.currency,
       confidence: receipt.confidence,
       source: 'cloud',
+      notes: receipt.receiptDetails
+        || receipt.items?.map(item => `${item.name} — ${receipt.currency} ${item.amount.toLocaleString('en', { minimumFractionDigits: receipt.currency === 'JPY' ? 0 : 2 })}`).join('\n')
+        || '',
+      suggestedCategoryId: receipt.suggestedCategory,
     };
   }
 

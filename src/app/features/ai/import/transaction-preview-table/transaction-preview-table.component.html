@@ -32,6 +32,7 @@
         </div>
 
         <div class="card-main">
+          <!-- Top: Description + Amount -->
           <div class="card-top-row">
             <div class="description-section">
               @if (row.isDuplicate) {
@@ -47,6 +48,7 @@
             </div>
           </div>
 
+          <!-- Middle: Date, Type, Category -->
           <div class="card-bottom-row">
             <div class="meta-info">
               <span class="date-chip">
@@ -73,6 +75,27 @@
               ></app-category-suggestion>
             </div>
           </div>
+
+          <!-- Notes Section - compact inline -->
+          @if (row.notes) {
+            <div class="notes-section">
+              <mat-icon class="notes-icon">sticky_note_2</mat-icon>
+              <textarea
+                class="notes-input"
+                [(ngModel)]="row.notes"
+                (blur)="updateNotes()"
+                placeholder="Items, details, or notes..."
+                [attr.rows]="getRowCount(row.notes)"
+              ></textarea>
+            </div>
+          } @else {
+            <div class="notes-section notes-empty">
+              <button class="add-notes-btn" (click)="initNotes(row)">
+                <mat-icon>add</mat-icon>
+                <span>{{ 'import.notes' | translate }}</span>
+              </button>
+            </div>
+          }
         </div>
       </div>
     }

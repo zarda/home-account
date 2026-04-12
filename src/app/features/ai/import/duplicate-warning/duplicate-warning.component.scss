@@ -1,87 +1,122 @@
 .duplicate-warning {
-  margin: 16px 0;
+  margin: 12px 0;
 }
 
+// Panel container
 .warning-panel {
-  background: #fff3e0;
-  border: 1px solid #ffb74d;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  border: 1px solid rgba(255, 152, 0, 0.25);
+  background: #fffbf5;
 }
 
-:host-context(.dark) .warning-panel {
-  background: #3d2c00;
-  border-color: #f57c00;
+:host-context(.dark-theme) .warning-panel {
+  background: #2a2418;
+  border-color: rgba(255, 152, 0, 0.2);
+}
+
+// Override Material internal panel background
+::ng-deep .warning-panel .mat-expansion-panel-body {
+  background: transparent;
+}
+
+::ng-deep .warning-panel .mat-expansion-panel-header {
+  background: transparent !important;
+}
+
+:host-context(.dark-theme) ::ng-deep .warning-panel {
+  background: #2a2418 !important;
+
+  .mat-expansion-panel-header,
+  .mat-expansion-panel-body {
+    background: transparent !important;
+    color: #ddd;
+  }
+
+  .mat-expansion-panel-header-title {
+    color: #ddd;
+  }
+
+  .mat-expansion-indicator::after {
+    color: #aaa;
+  }
 }
 
 .warning-icon {
-  color: #f57c00;
+  color: #fb8c00;
   margin-right: 8px;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
 }
 
 mat-panel-title {
   display: flex;
   align-items: center;
   font-weight: 500;
-}
-
-.warning-content {
-  padding-top: 8px;
-}
-
-.description {
-  margin: 0 0 16px;
-  color: #666;
   font-size: 14px;
 }
 
-:host-context(.dark) .description {
-  color: #aaa;
+.warning-content {
+  padding-top: 4px;
+}
+
+.description {
+  margin: 0 0 12px;
+  color: #777;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+:host-context(.dark-theme) .description {
+  color: #999;
 }
 
 .duplicate-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-  max-height: 200px;
+  gap: 6px;
+  margin-bottom: 14px;
+  max-height: 180px;
   overflow-y: auto;
 }
 
 .duplicate-item {
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: 10px 12px;
   background: white;
   border-radius: 8px;
-  border-left: 3px solid #ff9800;
+  border-left: 3px solid #ffb74d;
+  gap: 4px;
 }
 
-:host-context(.dark) .duplicate-item {
-  background: #2a2a2a;
+:host-context(.dark-theme) .duplicate-item {
+  background: #1e1e1e;
 }
 
 .duplicate-item.exact {
-  border-left-color: #f44336;
+  border-left-color: #ef5350;
 }
 
 .item-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
 }
 
 .item-header mat-icon {
-  font-size: 18px;
-  width: 18px;
-  height: 18px;
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
 }
 
 .match-exact {
-  color: #f44336;
+  color: #ef5350;
 }
 
 .match-likely {
-  color: #ff9800;
+  color: #fb8c00;
 }
 
 .match-possible {
@@ -89,18 +124,19 @@ mat-panel-title {
 }
 
 .match-type {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .confidence {
-  font-size: 12px;
-  color: #666;
+  font-size: 11px;
+  color: #999;
 }
 
-:host-context(.dark) .confidence {
-  color: #aaa;
+:host-context(.dark-theme) .confidence {
+  color: #888;
 }
 
 .item-details {
@@ -112,19 +148,22 @@ mat-panel-title {
 
 .item-details .description {
   flex: 1;
-  min-width: 150px;
+  min-width: 120px;
   margin: 0;
   font-weight: 500;
+  font-size: 13px;
   color: #333;
 }
 
-:host-context(.dark) .item-details .description {
+:host-context(.dark-theme) .item-details .description {
   color: #eee;
 }
 
 .item-details .amount {
   font-weight: 600;
-  color: #f44336;
+  font-size: 13px;
+  color: #ef5350;
+  font-variant-numeric: tabular-nums;
 }
 
 .item-details .amount.income {
@@ -132,20 +171,34 @@ mat-panel-title {
 }
 
 .item-details .date {
-  font-size: 13px;
-  color: #666;
+  font-size: 12px;
+  color: #999;
 }
 
-:host-context(.dark) .item-details .date {
-  color: #aaa;
+:host-context(.dark-theme) .item-details .date {
+  color: #888;
 }
 
 .actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
+.actions button {
+  font-size: 12px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+:host-context(.dark-theme) .actions button {
+  color: #ccc;
+  border-color: #555;
+}
+
 .actions button mat-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
   margin-right: 4px;
 }
