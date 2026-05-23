@@ -265,7 +265,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     period: string,
     baseCurrency = 'USD',
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     if (!this.client) {
       throw new Error('OpenAI client not available');
@@ -372,6 +373,13 @@ ${budgetLines}
 `;
       }
 
+      const ragSection = ragContext
+        ? `
+Notable activity (ground your summary in these specifics; cite exact amounts):
+${ragContext}
+`
+        : '';
+
       const prompt = `Generate a brief, helpful spending summary for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
@@ -385,7 +393,7 @@ ${categoryBreakdown}
 
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}
+${historicalSection}${budgetSection}${ragSection}
 Write a 2-3 sentence summary that:
 1. Highlights the main spending pattern with specific amounts
 2. Notes any significant changes from previous period (if data available)

@@ -8,7 +8,9 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { GeminiService, PreviousPeriodData } from '../../../core/services/gemini.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { Budget, Transaction, MonthlyTotal } from '../../../models';
+import { AuthService } from '../../../core/services/auth.service';
+import { RagContextService } from '../../../core/services/rag-context.service';
+import { Budget, Transaction, MonthlyTotal, CategoryTotal } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -29,6 +31,8 @@ export class AiSummaryComponent {
   private geminiService = inject(GeminiService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private authService = inject(AuthService);
+  private ragContextService = inject(RagContextService);
   private sanitizer = inject(DomSanitizer);
 
   // Inputs
@@ -36,7 +40,11 @@ export class AiSummaryComponent {
   period = input<string>('this month');
   baseCurrency = input<string>('USD');
   previousPeriodData = input<PreviousPeriodData | null>(null);
+  previousPeriodByCategory = input<CategoryTotal[] | null>(null);
   budgets = input<Budget[]>([]);
+
+  // Whether the user opted into RAG-grounded insights (master switch, default off)
+  private ragEnabled = computed(() => this.authService.currentUser()?.preferences?.enableRagInsights ?? false);
 
   // State
   summary = signal<string>('');
@@ -48,7 +56,8 @@ export class AiSummaryComponent {
   private cacheKey = computed(() => {
     const txIds = this.transactions().map(t => t.id).sort().join(',');
     const locale = this.translationService.currentLocale();
-    return `ai-summary-${this.period()}-${locale}-${txIds.slice(0, 100)}`;
+    const rag = this.ragEnabled() ? 'rag' : 'std';
+    return `ai-summary-${this.period()}-${locale}-${rag}-${txIds.slice(0, 100)}`;
   });
 
   // Check if AI is available
@@ -112,6 +121,15 @@ export class AiSummaryComponent {
       const periodTotal = this.calculatePeriodTotal(transactions);
       const readablePeriod = this.formatPeriod(period);
 
+      // When the user opted in, build RAG grounding context from notable activity
+      const ragContext = this.ragEnabled()
+        ? this.ragContextService.buildSummaryGrounding({
+            transactions,
+            previousByCategory: this.previousPeriodByCategory(),
+            baseCurrency: currency
+          })
+        : undefined;
+
       // Generate both summary and advice in parallel
       const [summaryResult, adviceResult] = await Promise.all([
         this.geminiService.generateSpendingSummary(
@@ -119,7 +137,8 @@ export class AiSummaryComponent {
           readablePeriod,
           currency,
           this.previousPeriodData(),
-          this.budgets()
+          this.budgets(),
+          ragContext
         ),
         this.geminiService.getFinancialAdvice(periodTotal, currency, readablePeriod)
       ]);

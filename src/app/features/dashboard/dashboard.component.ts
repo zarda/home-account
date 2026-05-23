@@ -13,7 +13,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
 import { TranslationService } from '../../core/services/translation.service';
-import { Transaction, Category } from '../../models';
+import { Transaction, Category, CategoryTotal } from '../../models';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
@@ -94,6 +94,7 @@ export class DashboardComponent implements OnInit {
   transactions = this.transactionService.transactions;
   recentTransactions = signal<Transaction[]>([]);
   previousPeriodData = signal<{ income: number; expense: number } | null>(null);
+  previousPeriodByCategory = signal<CategoryTotal[] | null>(null);
 
   // Compute totals with real-time currency conversion to user's base currency
   totalIncome = computed(() => {
@@ -235,16 +236,20 @@ export class DashboardComponent implements OnInit {
     const prevDates = this.getPreviousPeriodDates();
     if (!prevDates) {
       this.previousPeriodData.set(null);
+      this.previousPeriodByCategory.set(null);
       return;
     }
 
-    // Use getPeriodTotals which doesn't update the main transactions signal
-    this.transactionService.getPeriodTotals(prevDates.start, prevDates.end).subscribe({
+    // Non-mutating fetch (does not touch the main transactions signal); also
+    // provides the per-category breakdown used for RAG-grounded insights.
+    this.transactionService.getPeriodCategoryTotals(prevDates.start, prevDates.end).subscribe({
       next: (totals) => {
-        this.previousPeriodData.set(totals);
+        this.previousPeriodData.set({ income: totals.income, expense: totals.expense });
+        this.previousPeriodByCategory.set(totals.byCategory);
       },
       error: () => {
         this.previousPeriodData.set(null);
+        this.previousPeriodByCategory.set(null);
       }
     });
   }

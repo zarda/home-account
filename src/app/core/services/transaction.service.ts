@@ -337,6 +337,47 @@ export class TransactionService {
     );
   }
 
+  // Get period totals with per-category breakdown without updating the main transactions signal.
+  // Used to compute category deltas against a previous period for AI insights.
+  getPeriodCategoryTotals(start: Date, end: Date): Observable<{ income: number; expense: number; byCategory: CategoryTotal[] }> {
+    const userId = this.authService.userId();
+    if (!userId) return of({ income: 0, expense: 0, byCategory: [] });
+
+    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
+      orderBy: [{ field: 'date', direction: 'desc' }],
+      where: [
+        { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
+        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+      ]
+    };
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      options
+    ).pipe(
+      map(transactions => {
+        const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+        const toBase = (t: Transaction) => this.currencyService.convert(t.amount, t.currency, baseCurrency);
+
+        const income = transactions
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => sum + toBase(t), 0);
+        const expense = transactions
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + toBase(t), 0);
+
+        const categoryMap = new Map<string, number>();
+        for (const t of transactions.filter(t => t.type === 'expense')) {
+          categoryMap.set(t.categoryId, (categoryMap.get(t.categoryId) ?? 0) + toBase(t));
+        }
+        const byCategory: CategoryTotal[] = Array.from(categoryMap.entries())
+          .map(([categoryId, total]) => ({ categoryId, total }));
+
+        return { income, expense, byCategory };
+      })
+    );
+  }
+
   // Get transactions by category
   getByCategory(categoryId: string): Observable<Transaction[]> {
     return this.getTransactions({ categoryId });

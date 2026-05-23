@@ -84,6 +84,9 @@ export class AiSettingsPageComponent implements OnInit {
   // Provider preferences
   llmProviderPreferences: LLMProviderPreferences = DEFAULT_LLM_PROVIDER_PREFERENCES;
 
+  // Master RAG switch (persisted to Firestore, default off)
+  enableRagInsights = signal<boolean>(false);
+
   // Testing state for each provider
   isTestingGemini = false;
   isTestingOpenai = false;
@@ -156,6 +159,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.openaiApiKey = user?.preferences?.openaiApiKey || '';
     this.claudeApiKey = user?.preferences?.claudeApiKey || '';
     this.llmProviderPreferences = user?.preferences?.llmProviderPreferences || DEFAULT_LLM_PROVIDER_PREFERENCES;
+    this.enableRagInsights.set(user?.preferences?.enableRagInsights ?? false);
   }
 
   // Check if provider is available
@@ -337,6 +341,11 @@ export class AiSettingsPageComponent implements OnInit {
   onAutoSyncChange(enabled: boolean): void {
     this.autoSync.set(enabled);
     this.strategyService.updatePreferences({ autoSync: enabled });
+  }
+
+  async onRagInsightsChange(enabled: boolean): Promise<void> {
+    this.enableRagInsights.set(enabled);
+    await this.savePreference({ enableRagInsights: enabled });
   }
 
   async syncQueue(): Promise<void> {

@@ -343,10 +343,11 @@ export class CloudLLMProviderService {
     period: string,
     baseCurrency?: string,
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     const provider = this.getBestAvailableProvider('insights');
-    
+
     if (!provider) {
       throw new Error('No cloud AI provider available for insights');
     }
@@ -354,15 +355,15 @@ export class CloudLLMProviderService {
     switch (provider) {
       case 'gemini':
         return this.geminiService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets
+          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
         );
       case 'openai':
         return this.openaiService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets
+          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
         );
       case 'claude':
         return this.claudeService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets
+          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
         );
     }
   }

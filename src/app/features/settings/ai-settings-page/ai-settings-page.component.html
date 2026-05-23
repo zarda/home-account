@@ -350,6 +350,33 @@
       </mat-card>
     </section>
 
+    <!-- AI Insights Section -->
+    <section class="settings-section">
+      <div class="section-header">
+        <mat-icon class="section-icon">insights</mat-icon>
+        <div>
+          <h2>{{ 'settings.aiInsights' | translate }}</h2>
+          <p class="section-description">{{ 'settings.aiInsightsHint' | translate }}</p>
+        </div>
+      </div>
+
+      <mat-card appearance="outlined">
+        <mat-card-content>
+          <div class="auto-sync-row">
+            <div class="rag-toggle-label">
+              <span>{{ 'settings.ragInsights' | translate }}</span>
+              <p class="section-description">{{ 'settings.ragInsightsHint' | translate }}</p>
+            </div>
+            <mat-slide-toggle
+              [checked]="enableRagInsights()"
+              (change)="onRagInsightsChange($event.checked)"
+              color="primary">
+            </mat-slide-toggle>
+          </div>
+        </mat-card-content>
+      </mat-card>
+    </section>
+
     <!-- Sync & Storage Section -->
     <section class="settings-section">
       <div class="info-cards-grid">

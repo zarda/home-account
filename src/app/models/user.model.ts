@@ -34,6 +34,7 @@ export interface UserPreferences {
   openaiApiKey?: string;         // Optional user-provided OpenAI API key
   claudeApiKey?: string;         // Optional user-provided Claude/Anthropic API key
   llmProviderPreferences?: LLMProviderPreferences; // Per-feature LLM provider selection
+  enableRagInsights?: boolean;   // Master RAG switch: enrich AI insights with notable-transaction grounding (default off)
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {

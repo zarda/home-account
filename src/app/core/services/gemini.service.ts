@@ -367,7 +367,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     period: string,
     baseCurrency = 'USD',
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     if (!this.textModel) {
       console.error('[GeminiService] ✗ Text model not available for spending summary');
@@ -458,6 +459,13 @@ ${budgetLines}
 `;
       }
 
+      const ragSection = ragContext
+        ? `
+Notable activity (ground your insights in these specifics; cite exact amounts):
+${ragContext}
+`
+        : '';
+
       const prompt = `Generate structured AI Insights for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
@@ -471,7 +479,7 @@ ${categoryBreakdown}
 
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}
+${historicalSection}${budgetSection}${ragSection}
 Return AI Insights in this exact format (use markdown):
 
 ## Spending Pattern
