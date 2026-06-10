@@ -40,9 +40,16 @@ describe('AiSettingsPageComponent', () => {
     strategyServiceMock.useNativeOCR.and.returnValue(false);
     strategyServiceMock.platform.and.returnValue('web');
 
-    pwaServiceMock = jasmine.createSpyObj('PwaService', ['isOnline', 'cacheSize']);
+    pwaServiceMock = jasmine.createSpyObj('PwaService', ['isOnline', 'cacheSize', 'formatBytes']);
     pwaServiceMock.isOnline.and.returnValue(true);
     pwaServiceMock.cacheSize.and.returnValue({ total: 0, models: 0, static: 0, dynamic: 0 });
+    pwaServiceMock.formatBytes.and.callFake((bytes: number) => {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    });
 
     offlineQueueServiceMock = jasmine.createSpyObj('OfflineQueueService', [
       'pendingCount',

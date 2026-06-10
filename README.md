@@ -1,5 +1,7 @@
 # HomeAccount
 
+[![CI](https://github.com/zarda/home-account/actions/workflows/ci.yml/badge.svg)](https://github.com/zarda/home-account/actions/workflows/ci.yml)
+
 A personal finance management application built with Angular 21, supporting web (PWA), iOS native, and macOS (Apple Silicon) platforms.
 
 ## Why This Project?
@@ -109,15 +111,21 @@ home-account/
 ## Getting Started
 
 ```bash
-# Prerequisites: Node.js 18+, Angular CLI
+# Prerequisites: Node.js 20+, Angular CLI
 
 npm install
 
-# Configure Firebase (see src/environments/)
-# Configure Gemini API key in Profile Settings
+# Configure Firebase: copy the template and fill in your project values
+mkdir -p .vscode
+cp src/environments/environment.local.example.ts .vscode/environment.ts
+# Edit .vscode/environment.ts with your Firebase config
+
+# Configure Gemini API key in Profile Settings (after first run)
 
 npm start
 ```
+
+`src/environments/environment.ts` re-exports from the gitignored `.vscode/environment.ts`, so local Firebase keys never land in version control. Production builds use `environment.production.ts` with values injected from CI/CD secrets.
 
 ## Build Commands
 
@@ -179,8 +187,13 @@ The web app is a fully-featured Progressive Web App:
 | `npm run build:ios` | Build and sync to iOS |
 | `npm run cap:ios` | Open iOS project in Xcode |
 | `npm test` | Run unit tests |
+| `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run lint` | ESLint |
 | `firebase deploy` | Deploy web to Firebase Hosting |
+
+## Continuous Integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, headless unit tests with coverage, and a production build on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 

@@ -31,8 +31,9 @@ export class ClaudeService {
   // Computed signal for availability
   isAvailableSignal = computed(() => this._isAvailable());
 
-  // Model - Claude 3.5 Sonnet supports vision
-  private readonly MODEL = 'claude-sonnet-4-20250514';
+  // Claude Sonnet 4.6 — vision-capable; replaces claude-sonnet-4-20250514,
+  // which is deprecated and retires on June 15, 2026
+  private readonly MODEL = 'claude-sonnet-4-6';
 
   constructor() {
     // Claude is not initialized by default - requires user API key

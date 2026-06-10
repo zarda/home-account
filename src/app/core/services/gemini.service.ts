@@ -4,6 +4,7 @@ import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
+import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -81,8 +82,8 @@ export class GeminiService {
   private textModel: GenerativeModel | null = null;
   private visionModel: GenerativeModel | null = null;
   private currentApiKey: string | null = null;
-  private currentTextModelId = 'gemini-2.5-flash';
-  private currentVisionModelId = 'gemini-3.1-flash-lite-preview';
+  private currentTextModelId = DEFAULT_TEXT_MODEL;
+  private currentVisionModelId = DEFAULT_VISION_MODEL;
 
   // Signals
   isProcessing = signal<boolean>(false);
@@ -110,8 +111,8 @@ export class GeminiService {
       return;
     }
 
-    const finalTextModel = textModelId || 'gemini-2.5-flash';
-    const finalVisionModel = visionModelId || 'gemini-3.1-flash-lite-preview';
+    const finalTextModel = textModelId || DEFAULT_TEXT_MODEL;
+    const finalVisionModel = visionModelId || DEFAULT_VISION_MODEL;
 
     // Same key — only update models if they changed
     if (apiKey === this.currentApiKey && this.genAI) {
