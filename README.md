@@ -11,7 +11,7 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Standalone Components** - No NgModules - all 40+ components use the modern standalone pattern
 - **Multi-Currency Engine** - Transaction-level exchange rate tracking with 12-hour cached rates
 - **Multi-Platform** - Single codebase deploys to web (Firebase), iOS (App Store), and macOS (Apple Silicon) via Capacitor
-- **AI Integration** - Cloud AI (Gemini 3.1 / Gemma 4) for web and macOS, native Vision OCR for iOS
+- **AI Integration** - Apple's on-device foundation model (Apple Intelligence) on macOS 26 / iOS 26, cloud AI (Gemini 3.1 / Gemma 4) for web, native Vision OCR everywhere as fallback
 - **Type-Safe Throughout** - Full TypeScript with strict mode, DTOs, and well-defined interfaces
 
 ## Features
@@ -30,13 +30,13 @@ This project demonstrates modern Angular development practices with a focus on:
 
 | Feature | Web (PWA) | iOS (Native) | macOS (Apple Silicon) |
 |---------|-----------|--------------|-----------------------|
-| **Receipt OCR** | Cloud AI (Gemini) | Native Vision Framework | Cloud AI (Gemini 3.1 / Gemma 4), Vision fallback |
+| **Receipt OCR** | Cloud AI (Gemini) | Vision OCR + Apple Intelligence (iOS 26+) | Apple Intelligence (on-device) → Cloud AI → Vision OCR |
 | **Camera** | Browser API | Native Camera | File picker |
 | **Offline** | Service Worker | Native + SW | Native + SW |
 | **Donate Link** | Visible | Hidden (App Store guidelines) | Hidden (App Store guidelines) |
 | **Installation** | Add to Home Screen | App Store | App Store / runs the iOS app ("Designed for iPad") |
 
-On macOS the iOS build runs natively on Apple Silicon. Since desktops favor accuracy over offline OCR, receipt scanning prefers the configured cloud models (the same Gemini 3.1 / Gemma 4 selection as the web app) and falls back to native Vision OCR when no provider is configured or the cloud call fails.
+On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence is available (macOS 26+ / iOS 26+ with the Foundation Models framework), receipts are processed fully on device: Vision OCR recognizes the text and Apple's foundation model structures it into transactions — no API key or network needed. Browsers cannot access Apple's model, so the Mac app is the way to use it; without Apple Intelligence, Macs fall back to the configured cloud models (Gemini 3.1 / Gemma 4) and then to the basic Vision OCR parser. Building the Apple Intelligence plugin requires Xcode 26 (it compiles to an unavailable stub on older SDKs).
 
 ## Tech Stack
 
@@ -46,8 +46,8 @@ On macOS the iOS build runs natively on Apple Silicon. Since desktops favor accu
 | UI | Angular Material 21, Tailwind CSS 3.4 |
 | State | Angular Signals |
 | Backend | Firebase (Auth, Firestore) |
-| AI (Web/macOS) | Google Generative AI (Gemini 3.1 / Gemma 4) |
-| AI (iOS) | Apple Vision Framework |
+| AI (Web) | Google Generative AI (Gemini 3.1 / Gemma 4) |
+| AI (On-Device) | Apple Foundation Models (Apple Intelligence) + Vision Framework |
 | Multi-Platform | Capacitor 8 |
 | Charts | Chart.js + ng2-charts |
 | Export | jspdf, date-fns |

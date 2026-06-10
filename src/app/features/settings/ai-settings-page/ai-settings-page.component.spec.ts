@@ -27,6 +27,7 @@ describe('AiSettingsPageComponent', () => {
       'updatePreferences',
       'canUseCloud',
       'canUseNative',
+      'canUseAppleIntelligence',
       'useNativeOCR',
       'platform',
     ]);
@@ -35,6 +36,7 @@ describe('AiSettingsPageComponent', () => {
     });
     strategyServiceMock.canUseCloud.and.returnValue(true);
     strategyServiceMock.canUseNative.and.returnValue(false);
+    strategyServiceMock.canUseAppleIntelligence.and.returnValue(false);
     strategyServiceMock.useNativeOCR.and.returnValue(false);
     strategyServiceMock.platform.and.returnValue('web');
 

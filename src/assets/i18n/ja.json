@@ -719,6 +719,7 @@
     "nativeOCRDescription": "Apple Visionフレームワークを使用した高速でプライベートなデバイス上テキスト認識。",
     "onDevice": "デバイス上",
     "nativeOCRReady": "ネイティブOCR準備完了",
+    "appleIntelligenceReady": "Apple Intelligence 準備完了（オンデバイス）",
     "cloudAIReady": "クラウドAI準備完了",
     "configureRequired": "APIキーを設定",
     "addApiKeyHint": "AI機能を有効にするには、以下にAPIキーを追加してください",

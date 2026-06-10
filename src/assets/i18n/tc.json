@@ -719,6 +719,7 @@
     "nativeOCRDescription": "使用 Apple Vision 框架進行快速、私密的裝置端文字識別。",
     "onDevice": "裝置端",
     "nativeOCRReady": "原生 OCR 就緒",
+    "appleIntelligenceReady": "Apple Intelligence 就緒（裝置端）",
     "cloudAIReady": "雲端 AI 就緒",
     "configureRequired": "設定 API 金鑰",
     "addApiKeyHint": "請在下方新增至少一個 API 金鑰以啟用 AI 功能",

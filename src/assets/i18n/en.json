@@ -695,6 +695,7 @@
     "nativeOCRDescription": "Uses Apple Vision framework for fast, private on-device text recognition.",
     "onDevice": "On-Device",
     "nativeOCRReady": "Native OCR Ready",
+    "appleIntelligenceReady": "Apple Intelligence Ready (On-Device)",
     "cloudAIReady": "Cloud AI Ready",
     "configureRequired": "Configure API key",
     "addApiKeyHint": "Add at least one API key below to enable AI features",

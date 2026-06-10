@@ -4,8 +4,10 @@ import { ParsedReceipt } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
+import { CategoryService } from './category.service';
 import { LLMProvider } from '../../models';
 import VisionOCR, { VisionOCRResult } from '../plugins/vision-ocr.plugin';
+import AppleIntelligence from '../plugins/apple-intelligence.plugin';
 
 export interface AIPreferences {
   autoSync: boolean;
@@ -45,6 +47,7 @@ export class AIStrategyService {
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private pwaService = inject(PwaService);
   private authService = inject(AuthService);
+  private categoryService = inject(CategoryService);
 
   // State signals
   private _preferences = signal<AIPreferences>(this.loadPreferences());
@@ -65,6 +68,11 @@ export class AIStrategyService {
   private _isMacEnvironment = signal<boolean>(this.detectMacEnvironmentFromUserAgent());
   isMacEnvironment = computed(() => this._isMacEnvironment());
 
+  // True when Apple's on-device foundation model (Apple Intelligence) is
+  // usable — iOS 26 / macOS 26 with Apple Intelligence enabled.
+  private _appleIntelligenceAvailable = signal<boolean>(false);
+  canUseAppleIntelligence = computed(() => this._appleIntelligenceAvailable());
+
   // Computed: Can use cloud AI (any provider)
   canUseCloud = computed(() =>
     this.pwaService.isOnline() && this.cloudLLMProvider.hasAnyCloudProvider()
@@ -73,11 +81,13 @@ export class AIStrategyService {
   // Computed: Can use native AI (iOS and macOS via the Vision framework)
   canUseNative = computed(() => this.platform() === 'ios');
 
-  // Computed: Route receipts to native OCR. On Macs the newer cloud models
-  // (Gemini 3.1 / Gemma 4) extract far richer data than the OCR text parser,
-  // so cloud is preferred there whenever a provider is configured.
+  // Computed: Route receipts to the native pipeline. With Apple Intelligence
+  // the native pipeline (Vision OCR + on-device model) is preferred wherever
+  // it is available. Without it, Macs prefer the newer cloud models
+  // (Gemini 3.1 / Gemma 4) over the regex-based OCR parser.
   useNativeOCR = computed(() =>
-    this.canUseNative() && !(this.isMacEnvironment() && this.canUseCloud())
+    this.canUseNative() &&
+    (this.canUseAppleIntelligence() || !(this.isMacEnvironment() && this.canUseCloud()))
   );
 
   // Computed: Available cloud providers
@@ -89,6 +99,7 @@ export class AIStrategyService {
     this.cloudLLMProvider.initializeFromUserPreferences();
 
     // Refine Mac detection with the native API (the UA check is a heuristic)
+    // and probe for Apple's on-device foundation model
     if (Capacitor.getPlatform() === 'ios') {
       VisionOCR.isAvailable()
         .then(({ isMacEnvironment }) => {
@@ -97,6 +108,13 @@ export class AIStrategyService {
           }
         })
         .catch(() => console.warn('[AIStrategy] Unable to query Mac environment from native plugin'));
+
+      AppleIntelligence.isAvailable()
+        .then(({ available, reason }) => {
+          this._appleIntelligenceAvailable.set(available === true);
+          console.log(`[AIStrategy] Apple Intelligence available: ${available}${reason ? ` (${reason})` : ''}`);
+        })
+        .catch(() => console.log('[AIStrategy] Apple Intelligence plugin not present in this binary'));
     }
 
     // Reinitialize cloud providers when user data changes (e.g., API key updated)
@@ -261,8 +279,8 @@ export class AIStrategyService {
         languages: ['en-US', 'ja-JP', 'zh-Hant'],
       });
 
-      // Parse the OCR result into a transaction
-      const transaction = this.parseOCRResult(ocrResult);
+      // Structure the OCR result into a transaction
+      const transaction = await this.structureOCRResult(ocrResult);
 
       return {
         transactions: [transaction],
@@ -310,7 +328,7 @@ export class AIStrategyService {
           languages: ['en-US', 'ja-JP', 'zh-Hant'],
         });
 
-        const transaction = this.parseOCRResult(ocrResult);
+        const transaction = await this.structureOCRResult(ocrResult);
         transactions.push(transaction);
         totalConfidence += ocrResult.confidence;
       }
@@ -335,6 +353,50 @@ export class AIStrategyService {
       
       throw error;
     }
+  }
+
+  /**
+   * Structure an OCR result into a transaction. Uses Apple's on-device
+   * foundation model when available; falls back to the regex-based parser.
+   */
+  private async structureOCRResult(ocrResult: VisionOCRResult): Promise<ProcessedTransaction> {
+    if (this.canUseAppleIntelligence()) {
+      try {
+        return await this.parseOCRWithAppleIntelligence(ocrResult);
+      } catch (error) {
+        console.warn('[AIStrategy] Apple Intelligence parsing failed, using basic parser:', error);
+      }
+    }
+    return this.parseOCRResult(ocrResult);
+  }
+
+  /**
+   * Structure OCR text into a transaction with Apple's on-device foundation
+   * model (Apple Intelligence). Runs entirely on device.
+   */
+  private async parseOCRWithAppleIntelligence(ocrResult: VisionOCRResult): Promise<ProcessedTransaction> {
+    const categories = this.categoryService.categories();
+    const extraction = await AppleIntelligence.parseReceiptText({
+      text: ocrResult.text,
+      categories: categories.map(c => c.name),
+    });
+
+    const parsedDate = extraction.date ? new Date(extraction.date) : new Date();
+    const matchedCategory = extraction.category
+      ? categories.find(c => c.name.toLowerCase() === extraction.category.toLowerCase())
+      : undefined;
+
+    return {
+      date: isNaN(parsedDate.getTime()) ? new Date() : parsedDate,
+      description: extraction.merchant || 'Unknown Merchant',
+      amount: Math.abs(extraction.amount) || 0,
+      type: 'expense',
+      currency: extraction.currency || 'USD',
+      confidence: ocrResult.confidence,
+      source: 'native',
+      notes: extraction.details || undefined,
+      suggestedCategoryId: matchedCategory?.id,
+    };
   }
 
   /**
@@ -542,6 +604,7 @@ export class AIStrategyService {
   getStatusInfo(): {
     cloudAvailable: boolean;
     nativeAvailable: boolean;
+    appleIntelligenceAvailable: boolean;
     isMacEnvironment: boolean;
     isOnline: boolean;
     platform: string;
@@ -551,6 +614,7 @@ export class AIStrategyService {
     return {
       cloudAvailable: this.cloudLLMProvider.hasAnyCloudProvider(),
       nativeAvailable: this.canUseNative(),
+      appleIntelligenceAvailable: this.canUseAppleIntelligence(),
       isMacEnvironment: this.isMacEnvironment(),
       isOnline: this.pwaService.isOnline(),
       platform: this.platform(),
