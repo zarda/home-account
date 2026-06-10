@@ -4,7 +4,7 @@
     <mat-icon>
       @if (!isOnline()) {
         cloud_off
-      } @else if (canUseNative()) {
+      } @else if (useNativeOCR()) {
         smartphone
       } @else if (canUseCloud()) {
         check_circle

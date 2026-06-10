@@ -104,6 +104,7 @@ export class AiSettingsPageComponent implements OnInit {
   isGeminiAvailable = computed(() => this.geminiService.isAvailable());
   canUseCloud = computed(() => this.strategyService.canUseCloud());
   canUseNative = computed(() => this.strategyService.canUseNative());
+  useNativeOCR = computed(() => this.strategyService.useNativeOCR());
   platform = computed(() => this.strategyService.platform());
   pendingQueueCount = computed(() => this.offlineQueue.pendingCount());
   cacheSize = computed(() => this.pwaService.cacheSize().total);
@@ -115,9 +116,9 @@ export class AiSettingsPageComponent implements OnInit {
     return count;
   });
 
-  // AI status text
+  // AI status text (on Macs cloud AI is preferred over native OCR when configured)
   aiStatusText = computed(() => {
-    if (this.canUseNative()) {
+    if (this.useNativeOCR()) {
       return this.translationService.t('aiPage.nativeOCRReady');
     }
     if (this.canUseCloud()) {

@@ -27,6 +27,7 @@ describe('AiSettingsPageComponent', () => {
       'updatePreferences',
       'canUseCloud',
       'canUseNative',
+      'useNativeOCR',
       'platform',
     ]);
     strategyServiceMock.preferences.and.returnValue({
@@ -34,6 +35,7 @@ describe('AiSettingsPageComponent', () => {
     });
     strategyServiceMock.canUseCloud.and.returnValue(true);
     strategyServiceMock.canUseNative.and.returnValue(false);
+    strategyServiceMock.useNativeOCR.and.returnValue(false);
     strategyServiceMock.platform.and.returnValue('web');
 
     pwaServiceMock = jasmine.createSpyObj('PwaService', ['isOnline', 'cacheSize']);

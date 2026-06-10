@@ -1,6 +1,6 @@
 # HomeAccount
 
-A personal finance management application built with Angular 21, supporting both web (PWA) and iOS native platforms.
+A personal finance management application built with Angular 21, supporting web (PWA), iOS native, and macOS (Apple Silicon) platforms.
 
 ## Why This Project?
 
@@ -10,8 +10,8 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Real-Time Sync** - Firebase Firestore with `onSnapshot` subscriptions for instant UI updates across devices
 - **Standalone Components** - No NgModules - all 40+ components use the modern standalone pattern
 - **Multi-Currency Engine** - Transaction-level exchange rate tracking with 12-hour cached rates
-- **Multi-Platform** - Single codebase deploys to web (Firebase) and iOS (App Store) via Capacitor
-- **AI Integration** - Cloud AI (Gemini) for web, native Vision OCR for iOS
+- **Multi-Platform** - Single codebase deploys to web (Firebase), iOS (App Store), and macOS (Apple Silicon) via Capacitor
+- **AI Integration** - Cloud AI (Gemini 3.1 / Gemma 4) for web and macOS, native Vision OCR for iOS
 - **Type-Safe Throughout** - Full TypeScript with strict mode, DTOs, and well-defined interfaces
 
 ## Features
@@ -28,13 +28,15 @@ This project demonstrates modern Angular development practices with a focus on:
 
 ## Platform-Specific Features
 
-| Feature | Web (PWA) | iOS (Native) |
-|---------|-----------|--------------|
-| **Receipt OCR** | Cloud AI (Gemini) | Native Vision Framework |
-| **Camera** | Browser API | Native Camera |
-| **Offline** | Service Worker | Native + SW |
-| **Donate Link** | Visible | Hidden (App Store guidelines) |
-| **Installation** | Add to Home Screen | App Store |
+| Feature | Web (PWA) | iOS (Native) | macOS (Apple Silicon) |
+|---------|-----------|--------------|-----------------------|
+| **Receipt OCR** | Cloud AI (Gemini) | Native Vision Framework | Cloud AI (Gemini 3.1 / Gemma 4), Vision fallback |
+| **Camera** | Browser API | Native Camera | File picker |
+| **Offline** | Service Worker | Native + SW | Native + SW |
+| **Donate Link** | Visible | Hidden (App Store guidelines) | Hidden (App Store guidelines) |
+| **Installation** | Add to Home Screen | App Store | App Store / runs the iOS app ("Designed for iPad") |
+
+On macOS the iOS build runs natively on Apple Silicon. Since desktops favor accuracy over offline OCR, receipt scanning prefers the configured cloud models (the same Gemini 3.1 / Gemma 4 selection as the web app) and falls back to native Vision OCR when no provider is configured or the cloud call fails.
 
 ## Tech Stack
 
@@ -44,7 +46,7 @@ This project demonstrates modern Angular development practices with a focus on:
 | UI | Angular Material 21, Tailwind CSS 3.4 |
 | State | Angular Signals |
 | Backend | Firebase (Auth, Firestore) |
-| AI (Web) | Google Generative AI (Gemini) |
+| AI (Web/macOS) | Google Generative AI (Gemini 3.1 / Gemma 4) |
 | AI (iOS) | Apple Vision Framework |
 | Multi-Platform | Capacitor 8 |
 | Charts | Chart.js + ng2-charts |

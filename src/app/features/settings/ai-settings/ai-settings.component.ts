@@ -70,6 +70,7 @@ export class AiSettingsComponent implements OnInit {
   isGeminiAvailable = computed(() => this.geminiService.isAvailable());
   canUseCloud = computed(() => this.strategyService.canUseCloud());
   canUseNative = computed(() => this.strategyService.canUseNative());
+  useNativeOCR = computed(() => this.strategyService.useNativeOCR());
   pendingQueueCount = computed(() => this.offlineQueue.pendingCount());
   cacheSize = computed(() => this.pwaService.cacheSize());
 
@@ -84,12 +85,16 @@ export class AiSettingsComponent implements OnInit {
       return 'Offline - Cannot process receipts';
     }
 
-    if (status.nativeAvailable) {
+    if (this.useNativeOCR()) {
       return 'Ready - Native Vision OCR';
     }
 
     if (status.cloudAvailable) {
       return 'Ready - Cloud AI available';
+    }
+
+    if (status.nativeAvailable) {
+      return 'Ready - Native Vision OCR';
     }
 
     return 'Setup required - Configure API key';

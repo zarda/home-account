@@ -60,13 +60,25 @@ export class AIStrategyService {
   isNativePlatform = computed(() => Capacitor.isNativePlatform());
   platform = computed(() => Capacitor.getPlatform());
 
+  // True when the iOS build is running on macOS (Apple Silicon / Mac Catalyst).
+  // Seeded from a user-agent heuristic, refined by the native plugin on startup.
+  private _isMacEnvironment = signal<boolean>(this.detectMacEnvironmentFromUserAgent());
+  isMacEnvironment = computed(() => this._isMacEnvironment());
+
   // Computed: Can use cloud AI (any provider)
   canUseCloud = computed(() =>
     this.pwaService.isOnline() && this.cloudLLMProvider.hasAnyCloudProvider()
   );
 
-  // Computed: Can use native AI (iOS only)
+  // Computed: Can use native AI (iOS and macOS via the Vision framework)
   canUseNative = computed(() => this.platform() === 'ios');
+
+  // Computed: Route receipts to native OCR. On Macs the newer cloud models
+  // (Gemini 3.1 / Gemma 4) extract far richer data than the OCR text parser,
+  // so cloud is preferred there whenever a provider is configured.
+  useNativeOCR = computed(() =>
+    this.canUseNative() && !(this.isMacEnvironment() && this.canUseCloud())
+  );
 
   // Computed: Available cloud providers
   availableCloudProviders = computed(() => this.cloudLLMProvider.availableProviders());
@@ -75,6 +87,17 @@ export class AIStrategyService {
     // Initialize cloud providers from user preferences
     console.log('[AIStrategy] Initializing from user preferences on app start');
     this.cloudLLMProvider.initializeFromUserPreferences();
+
+    // Refine Mac detection with the native API (the UA check is a heuristic)
+    if (Capacitor.getPlatform() === 'ios') {
+      VisionOCR.isAvailable()
+        .then(({ isMacEnvironment }) => {
+          if (typeof isMacEnvironment === 'boolean') {
+            this._isMacEnvironment.set(isMacEnvironment);
+          }
+        })
+        .catch(() => console.warn('[AIStrategy] Unable to query Mac environment from native plugin'));
+    }
 
     // Reinitialize cloud providers when user data changes (e.g., API key updated)
     effect(() => {
@@ -136,8 +159,9 @@ export class AIStrategyService {
 
   /**
    * Process a receipt image using the appropriate AI strategy.
-   * - On iOS: Uses native Vision OCR
+   * - On iPhone/iPad: Uses native Vision OCR
    * - On Web: Uses cloud AI (Gemini/OpenAI/Claude)
+   * - On macOS (iOS app on Mac): Prefers cloud AI, falls back to native OCR
    */
   async processReceipt(imageFile: File): Promise<ProcessingResult> {
     const startTime = performance.now();
@@ -146,12 +170,19 @@ export class AIStrategyService {
     try {
       let result: ProcessingResult;
 
-      if (this.canUseNative()) {
-        // iOS: Use native Vision OCR
+      if (this.useNativeOCR()) {
         result = await this.processWithNative(imageFile);
       } else {
-        // Web: Use cloud AI
-        result = await this.processWithCloud(imageFile);
+        try {
+          result = await this.processWithCloud(imageFile);
+        } catch (error) {
+          // On Macs native OCR remains available as a fallback when cloud fails
+          if (!this.canUseNative()) {
+            throw error;
+          }
+          console.warn('[AIStrategy] Cloud AI failed, falling back to native OCR:', error);
+          result = await this.processWithNative(imageFile);
+        }
       }
 
       const processingTimeMs = performance.now() - startTime;
@@ -176,12 +207,20 @@ export class AIStrategyService {
     try {
       let result: ProcessingResult;
 
-      if (this.canUseNative()) {
-        // iOS: Process each image with native OCR and combine
+      if (this.useNativeOCR()) {
+        // iPhone/iPad: Process each image with native OCR and combine
         result = await this.processMultipleWithNative(imageFiles);
       } else {
-        // Web: Use cloud AI
-        result = await this.processMultipleWithCloud(imageFiles);
+        try {
+          result = await this.processMultipleWithCloud(imageFiles);
+        } catch (error) {
+          // On Macs native OCR remains available as a fallback when cloud fails
+          if (!this.canUseNative()) {
+            throw error;
+          }
+          console.warn('[AIStrategy] Cloud AI failed, falling back to native OCR:', error);
+          result = await this.processMultipleWithNative(imageFiles);
+        }
       }
 
       const processingTimeMs = performance.now() - startTime;
@@ -448,6 +487,18 @@ export class AIStrategyService {
   }
 
   /**
+   * Detect "iOS app running on macOS" from the user agent.
+   * On a Mac the WKWebView reports a Macintosh UA without touch support,
+   * while iPhones/iPads report touch points even with a desktop UA.
+   */
+  private detectMacEnvironmentFromUserAgent(): boolean {
+    if (Capacitor.getPlatform() !== 'ios') {
+      return false;
+    }
+    return /Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints === 0;
+  }
+
+  /**
    * Convert file to base64.
    */
   private fileToBase64(file: File): Promise<string> {
@@ -491,6 +542,7 @@ export class AIStrategyService {
   getStatusInfo(): {
     cloudAvailable: boolean;
     nativeAvailable: boolean;
+    isMacEnvironment: boolean;
     isOnline: boolean;
     platform: string;
     availableProviders: LLMProvider[];
@@ -499,6 +551,7 @@ export class AIStrategyService {
     return {
       cloudAvailable: this.cloudLLMProvider.hasAnyCloudProvider(),
       nativeAvailable: this.canUseNative(),
+      isMacEnvironment: this.isMacEnvironment(),
       isOnline: this.pwaService.isOnline(),
       platform: this.platform(),
       availableProviders: this.cloudLLMProvider.availableProviders(),

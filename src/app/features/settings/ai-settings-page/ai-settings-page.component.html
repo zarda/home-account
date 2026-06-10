@@ -17,7 +17,7 @@
       <mat-card-content>
         <div class="status-content">
           <div class="status-icon-container" [class.ready]="canUseCloud() || canUseNative()">
-            @if (canUseNative()) {
+            @if (useNativeOCR()) {
               <mat-icon>smartphone</mat-icon>
             } @else if (canUseCloud()) {
               <mat-icon>check_circle</mat-icon>
