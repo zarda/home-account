@@ -74,16 +74,18 @@ export class CloudLLMProviderService {
   /**
    * Update a specific provider's API key.
    */
-  updateProviderApiKey(provider: LLMProvider, apiKey: string | undefined): void {
+  async updateProviderApiKey(provider: LLMProvider, apiKey: string | undefined): Promise<void> {
+    // Awaiting matters: initialization lazy-loads the provider SDK, and
+    // availability checks made before it resolves would read a stale false
     switch (provider) {
       case 'gemini':
-        this.geminiService.reinitialize(apiKey);
+        await this.geminiService.reinitialize(apiKey);
         break;
       case 'openai':
-        this.openaiService.reinitialize(apiKey);
+        await this.openaiService.reinitialize(apiKey);
         break;
       case 'claude':
-        this.claudeService.reinitialize(apiKey);
+        await this.claudeService.reinitialize(apiKey);
         break;
     }
   }

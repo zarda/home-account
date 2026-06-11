@@ -258,7 +258,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.geminiTestResult = null;
 
     try {
-      this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey);
       if (this.cloudLLMProvider.isProviderAvailable('gemini')) {
         this.geminiTestResult = 'success';
       } else {
@@ -291,7 +291,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.openaiTestResult = null;
 
     try {
-      this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey);
       if (this.cloudLLMProvider.isProviderAvailable('openai')) {
         this.openaiTestResult = 'success';
       } else {
@@ -324,7 +324,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.claudeTestResult = null;
 
     try {
-      this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey);
       if (this.cloudLLMProvider.isProviderAvailable('claude')) {
         this.claudeTestResult = 'success';
       } else {

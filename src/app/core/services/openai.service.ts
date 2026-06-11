@@ -75,14 +75,14 @@ export class OpenAIService {
   /**
    * Reinitialize OpenAI with a new API key.
    */
-  reinitialize(apiKey?: string): void {
+  reinitialize(apiKey?: string): Promise<void> {
     if (apiKey) {
-      void this.initialize(apiKey);
-    } else {
-      this.client = null;
-      this.currentApiKey = null;
-      this._isAvailable.set(false);
+      return this.initialize(apiKey);
     }
+    this.client = null;
+    this.currentApiKey = null;
+    this._isAvailable.set(false);
+    return Promise.resolve();
   }
 
 

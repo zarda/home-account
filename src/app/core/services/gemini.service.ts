@@ -172,8 +172,8 @@ export class GeminiService {
    * Reinitialize Gemini with a new API key and/or models.
    * Used when user provides their own API key or changes model selection in settings.
    */
-  reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): void {
-    void this.initializeGemini(apiKey, textModelId, visionModelId);
+  reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): Promise<void> {
+    return this.initializeGemini(apiKey, textModelId, visionModelId);
   }
 
   // Check if Gemini is available
