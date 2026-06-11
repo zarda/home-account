@@ -32,8 +32,10 @@ export class OpenAIService {
   isAvailableSignal = computed(() => this._isAvailable());
 
   // Models
-  private readonly VISION_MODEL = 'gpt-4o';
-  private readonly TEXT_MODEL = 'gpt-4o-mini';
+  // GPT-5.4 Mini is multimodal — it serves both text and vision tasks
+  // via the Responses API
+  private readonly VISION_MODEL = 'gpt-5.4-mini';
+  private readonly TEXT_MODEL = 'gpt-5.4-mini';
 
   constructor() {
     // OpenAI is not initialized by default - requires user API key
@@ -118,21 +120,22 @@ IMPORTANT:
         ? imageBase64
         : `data:image/jpeg;base64,${imageBase64}`;
 
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.VISION_MODEL,
-        messages: [
+        input: [
           {
             role: 'user',
             content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: imageUrl } },
+              { type: 'input_text', text: prompt },
+              { type: 'input_image', image_url: imageUrl, detail: 'auto' },
             ],
           },
         ],
-        max_tokens: 2000,
+        max_output_tokens: 2000,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       const parsed = JSON.parse(cleanedJson);
 
@@ -180,13 +183,14 @@ ${categoryList}
 
 Return ONLY the category ID that best matches this transaction. Just the ID, nothing else.`;
 
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 50,
+        input: prompt,
+        max_output_tokens: 50,
+        store: false,
       });
 
-      const suggestedId = response.choices[0]?.message?.content?.trim() || '';
+      const suggestedId = response.output_text?.trim() || '';
 
       // Validate the suggested ID exists
       const validCategory = categories.find((c) => c.id === suggestedId);
@@ -229,13 +233,14 @@ ${transactionList}
 Return ONLY a valid JSON array with objects containing "index" and "categoryId":
 [{"index": 0, "categoryId": "food"}, {"index": 1, "categoryId": "transport"}]`;
 
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
+        input: prompt,
+        max_output_tokens: 500,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       const categorizations = JSON.parse(cleanedJson);
 
@@ -265,7 +270,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     period: string,
     baseCurrency = 'USD',
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     if (!this.client) {
       throw new Error('OpenAI client not available');
@@ -372,6 +378,11 @@ ${budgetLines}
 `;
       }
 
+    // Optional RAG grounding block (enableRagInsights preference)
+    const ragSection = ragContext?.trim()
+      ? `\nNotable activity (retrieved from your transactions):\n${ragContext.trim()}\n`
+      : '';
+
       const prompt = `Generate a brief, helpful spending summary for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
@@ -385,7 +396,7 @@ ${categoryBreakdown}
 
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}
+${historicalSection}${budgetSection}${ragSection}
 Write a 2-3 sentence summary that:
 1. Highlights the main spending pattern with specific amounts
 2. Notes any significant changes from previous period (if data available)
@@ -396,13 +407,14 @@ Keep it concise and encouraging. Use plain language, no bullet points. Use ${bas
 
 ${this.getLanguageInstruction()}`;
 
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 300,
+        input: prompt,
+        max_output_tokens: 300,
+        store: false,
       });
 
-      return response.choices[0]?.message?.content?.trim() || 'Unable to generate spending summary.';
+      return response.output_text?.trim() || 'Unable to generate spending summary.';
     } catch (error) {
       console.error('OpenAI summary generation error:', error);
       return 'Unable to generate spending summary at this time.';
@@ -445,14 +457,15 @@ Consider:
 
 ${this.getLanguageInstruction()}`;
 
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 150,
+        input: prompt,
+        max_output_tokens: 150,
+        store: false,
       });
 
       return (
-        response.choices[0]?.message?.content?.trim() ||
+        response.output_text?.trim() ||
         'Keep tracking your expenses to better understand your spending patterns.'
       );
     } catch (error) {
@@ -500,21 +513,22 @@ Only include confirmed transactions, not pending ones.`;
         ? imageBase64
         : `data:image/jpeg;base64,${imageBase64}`;
 
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.VISION_MODEL,
-        messages: [
+        input: [
           {
             role: 'user',
             content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: imageUrl } },
+              { type: 'input_text', text: prompt },
+              { type: 'input_image', image_url: imageUrl, detail: 'auto' },
             ],
           },
         ],
-        max_tokens: 2000,
+        max_output_tokens: 2000,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
 
@@ -590,24 +604,25 @@ Return ONLY a valid JSON array (no markdown):
 
 If no transactions can be extracted, return an empty array: []`;
 
-      const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
-        { type: 'text', text: prompt },
+      const content: OpenAI.Responses.ResponseInputContent[] = [
+        { type: 'input_text', text: prompt },
       ];
 
       for (const imageBase64 of imageBase64Array) {
         const imageUrl = imageBase64.startsWith('data:')
           ? imageBase64
           : `data:image/jpeg;base64,${imageBase64}`;
-        content.push({ type: 'image_url', image_url: { url: imageUrl } });
+        content.push({ type: 'input_image', image_url: imageUrl, detail: 'auto' });
       }
 
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.VISION_MODEL,
-        messages: [{ role: 'user', content }],
-        max_tokens: 4000,
+        input: [{ role: 'user', content }],
+        max_output_tokens: 4000,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       const extracted: MultiImageExtractedTransaction[] = JSON.parse(cleanedJson);
 
@@ -671,13 +686,14 @@ Return ONLY valid JSON with this structure:
   "hasHeader": true
 }`;
 
-      const response = await this.client.chat.completions.create({
+      const response = await this.client.responses.create({
         model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 300,
+        input: prompt,
+        max_output_tokens: 300,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       return JSON.parse(cleanedJson);
     } catch (error) {
