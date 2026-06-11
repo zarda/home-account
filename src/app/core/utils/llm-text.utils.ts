@@ -96,3 +96,24 @@ export function dropIncompleteTrailingLine(
   lines.pop();
   return lines.join('\n').trimEnd();
 }
+
+const CJK_CHARS = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+
+/**
+ * Drop sentences that contain no CJK characters from a response expected
+ * to be in Japanese or Chinese — verbose models occasionally leave English
+ * draft commentary (e.g. 'try to make it even tighter.') around the actual
+ * answer. Returns the text unchanged when nothing would remain.
+ */
+export function dropNonCjkSentences(text: string): string {
+  const protectedText = protectDecimalPoints(text.trim());
+  const sentences = protectedText.match(/[^.!?。！？]*[.!?。！？]+["”」』]?/g);
+  if (!sentences) {
+    return text.trim();
+  }
+  const kept = sentences.map(s => s.trim()).filter(s => CJK_CHARS.test(s));
+  if (kept.length === 0) {
+    return text.trim();
+  }
+  return restoreDecimalPoints(kept.join(' ').trim());
+}

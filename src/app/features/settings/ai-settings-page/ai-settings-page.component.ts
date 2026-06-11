@@ -22,7 +22,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
-import { TEXT_MODELS, VISION_MODELS, DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../../../core/config/ai-models';
+import { TEXT_MODELS, VISION_MODELS, OPENAI_MODELS, CLAUDE_MODELS, DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../../../core/config/ai-models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -63,10 +63,14 @@ export class AiSettingsPageComponent implements OnInit {
   enableRagInsights = signal<boolean>(false);
   selectedTextModel = signal<string>(DEFAULT_TEXT_MODEL);
   selectedVisionModel = signal<string>(DEFAULT_VISION_MODEL);
+  selectedOpenaiModel = signal<string>(DEFAULT_OPENAI_MODEL);
+  selectedClaudeModel = signal<string>(DEFAULT_CLAUDE_MODEL);
 
   // Available models (single source of truth in core/config/ai-models.ts)
   textModels = TEXT_MODELS;
   visionModels = VISION_MODELS;
+  openaiModels = OPENAI_MODELS;
+  claudeModels = CLAUDE_MODELS;
 
   // API Keys for all providers
   geminiApiKey = '';
@@ -144,6 +148,28 @@ export class AiSettingsPageComponent implements OnInit {
     const prefs = this.strategyService.preferences();
     this.selectedTextModel.set(prefs.textModel || DEFAULT_TEXT_MODEL);
     this.selectedVisionModel.set(prefs.visionModel || DEFAULT_VISION_MODEL);
+    this.selectedOpenaiModel.set(prefs.openaiModel || DEFAULT_OPENAI_MODEL);
+    this.selectedClaudeModel.set(prefs.claudeModel || DEFAULT_CLAUDE_MODEL);
+  }
+
+  onOpenaiModelChange(modelId: string): void {
+    if (!this.openaiModels.some(m => m.id === modelId)) {
+      return;
+    }
+    this.selectedOpenaiModel.set(modelId);
+    this.strategyService.updatePreferences({ openaiModel: modelId });
+    const modelName = this.openaiModels.find(m => m.id === modelId)?.name || modelId;
+    this.snackBar.open(`✓ OpenAI model updated to ${modelName}`, 'OK', { duration: 2000 });
+  }
+
+  onClaudeModelChange(modelId: string): void {
+    if (!this.claudeModels.some(m => m.id === modelId)) {
+      return;
+    }
+    this.selectedClaudeModel.set(modelId);
+    this.strategyService.updatePreferences({ claudeModel: modelId });
+    const modelName = this.claudeModels.find(m => m.id === modelId)?.name || modelId;
+    this.snackBar.open(`✓ Claude model updated to ${modelName}`, 'OK', { duration: 2000 });
   }
 
   private loadApiKeys(): void {

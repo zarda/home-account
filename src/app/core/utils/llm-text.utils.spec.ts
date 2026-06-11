@@ -5,6 +5,7 @@ import {
   protectDecimalPoints,
   restoreDecimalPoints,
   stripAdviceArtifacts,
+  dropNonCjkSentences,
 } from './llm-text.utils';
 
 describe('llm-text.utils', () => {
@@ -128,5 +129,22 @@ describe('stripAdviceArtifacts', () => {
   it('should not eat sentences that merely contain a colon', () => {
     expect(stripAdviceArtifacts('Remember: save first, spend later.'))
       .toBe('Remember: save first, spend later.');
+  });
+});
+
+describe('dropNonCjkSentences', () => {
+  it('should drop English draft commentary around Japanese advice', () => {
+    expect(dropNonCjkSentences('try to make it even tighter. 支出を抑えて貯蓄を増やしましょう。'))
+      .toBe('支出を抑えて貯蓄を増やしましょう。');
+  });
+
+  it('should keep CJK sentences containing numbers and currency codes', () => {
+    const text = '30,000.00 TWDの収入に対し、16,875.00 TWDを確保できています。';
+    expect(dropNonCjkSentences(text)).toBe(text);
+  });
+
+  it('should return the text unchanged when no CJK sentences exist', () => {
+    const text = 'Keep tracking your expenses.';
+    expect(dropNonCjkSentences(text)).toBe(text);
   });
 });

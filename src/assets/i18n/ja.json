@@ -366,7 +366,10 @@
     "aiMode": "処理モード",
     "aiModeDescription": "レシートや画像の処理方法を選択",
     "aiModeAuto": "自動",
-    "aiModeAutoDescription": "接続状況と精度に基づいて最適なオプションを自動選択"
+    "aiModeAutoDescription": "接続状況と精度に基づいて最適なオプションを自動選択",
+    "textModelLabel": "テキストモデル（サマリーとアドバイス）",
+    "visionModelLabel": "ビジョンモデル（レシートスキャン）",
+    "modelLabel": "モデル"
   },
   "days": {
     "sunday": "日曜日",
@@ -746,7 +749,9 @@
     "queueSynced": "キューの同期が完了しました",
     "queueCleared": "キューがクリアされました",
     "ragInsights": "明細に基づくインサイト（RAG）",
-    "ragInsightsDescription": "オンにすると、注目すべき取引の明細（高額支出、異常な金額、カテゴリの変化）がAIプロバイダーに送信され、より具体的な分析が得られます。"
+    "ragInsightsDescription": "オンにすると、注目すべき取引の明細（高額支出、異常な金額、カテゴリの変化）がAIプロバイダーに送信され、より具体的な分析が得られます。",
+    "insightsSettings": "AIインサイト",
+    "insightsSettingsHint": "支出インサイトの生成方法を設定します"
   },
   "about": {
     "title": "について",

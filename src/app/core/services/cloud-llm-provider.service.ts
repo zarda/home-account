@@ -88,6 +88,16 @@ export class CloudLLMProviderService {
     }
   }
 
+  /** Switch the OpenAI model used for all requests. */
+  setOpenAIModel(modelId: string): void {
+    this.openaiService.setModel(modelId);
+  }
+
+  /** Switch the Claude model used for all requests. */
+  setClaudeModel(modelId: string): void {
+    this.claudeService.setModel(modelId);
+  }
+
   /**
    * Reinitialize Gemini with new models.
    */

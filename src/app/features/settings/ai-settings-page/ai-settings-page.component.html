@@ -97,6 +97,28 @@
                 {{ geminiTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
               </div>
             }
+
+            @if (isProviderAvailable('gemini')) {
+              <div class="model-selection">
+                <mat-form-field appearance="outline" class="model-field">
+                  <mat-label>{{ 'settings.textModelLabel' | translate }}</mat-label>
+                  <mat-select [value]="selectedTextModel()" (selectionChange)="onTextModelChange($event.value)">
+                    @for (model of textModels; track model.id) {
+                      <mat-option [value]="model.id">{{ model.name }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+
+                <mat-form-field appearance="outline" class="model-field">
+                  <mat-label>{{ 'settings.visionModelLabel' | translate }}</mat-label>
+                  <mat-select [value]="selectedVisionModel()" (selectionChange)="onVisionModelChange($event.value)">
+                    @for (model of visionModels; track model.id) {
+                      <mat-option [value]="model.id">{{ model.name }}</mat-option>
+                    }
+                  </mat-select>
+                </mat-form-field>
+              </div>
+            }
           </mat-card-content>
 
           <mat-card-actions align="end">
@@ -161,6 +183,17 @@
                 {{ openaiTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
               </div>
             }
+
+            @if (isProviderAvailable('openai')) {
+              <mat-form-field appearance="outline" class="model-field">
+                <mat-label>{{ 'settings.modelLabel' | translate }}</mat-label>
+                <mat-select [value]="selectedOpenaiModel()" (selectionChange)="onOpenaiModelChange($event.value)">
+                  @for (model of openaiModels; track model.id) {
+                    <mat-option [value]="model.id">{{ model.name }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+            }
           </mat-card-content>
 
           <mat-card-actions align="end">
@@ -224,6 +257,17 @@
                 <mat-icon>{{ claudeTestResult === 'success' ? 'check_circle' : 'error' }}</mat-icon>
                 {{ claudeTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
               </div>
+            }
+
+            @if (isProviderAvailable('claude')) {
+              <mat-form-field appearance="outline" class="model-field">
+                <mat-label>{{ 'settings.modelLabel' | translate }}</mat-label>
+                <mat-select [value]="selectedClaudeModel()" (selectionChange)="onClaudeModelChange($event.value)">
+                  @for (model of claudeModels; track model.id) {
+                    <mat-option [value]="model.id">{{ model.name }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
             }
           </mat-card-content>
 
@@ -317,13 +361,13 @@
       </section>
     }
 
-    <!-- Model Selection Section -->
+    <!-- AI Insights Section -->
     <section class="settings-section">
       <div class="section-header">
-        <mat-icon class="section-icon">model_training</mat-icon>
+        <mat-icon class="section-icon">insights</mat-icon>
         <div>
-          <h2>{{ 'settings.aiModels' | translate }}</h2>
-          <p class="section-description">Select which AI models to use for different tasks</p>
+          <h2>{{ 'aiPage.insightsSettings' | translate }}</h2>
+          <p class="section-description">{{ 'aiPage.insightsSettingsHint' | translate }}</p>
         </div>
       </div>
 
@@ -339,26 +383,6 @@
               (change)="onRagInsightsChange($event.checked)"
               color="primary">
             </mat-slide-toggle>
-          </div>
-
-          <div class="model-selection">
-            <mat-form-field appearance="outline" class="model-field">
-              <mat-label>Text Model (Summarization, Advice)</mat-label>
-              <mat-select [value]="selectedTextModel()" (selectionChange)="onTextModelChange($event.value)">
-                @for (model of textModels; track model.id) {
-                  <mat-option [value]="model.id">{{ model.name }}</mat-option>
-                }
-              </mat-select>
-            </mat-form-field>
-
-            <mat-form-field appearance="outline" class="model-field">
-              <mat-label>Vision Model (Receipt Scanning, Image Analysis)</mat-label>
-              <mat-select [value]="selectedVisionModel()" (selectionChange)="onVisionModelChange($event.value)">
-                @for (model of visionModels; track model.id) {
-                  <mat-option [value]="model.id">{{ model.name }}</mat-option>
-                }
-              </mat-select>
-            </mat-form-field>
           </div>
         </mat-card-content>
       </mat-card>

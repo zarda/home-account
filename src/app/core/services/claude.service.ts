@@ -1,5 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import type Anthropic from '@anthropic-ai/sdk';
+import { DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
@@ -31,9 +32,8 @@ export class ClaudeService {
   // Computed signal for availability
   isAvailableSignal = computed(() => this._isAvailable());
 
-  // Claude Sonnet 4.6 — vision-capable; replaces claude-sonnet-4-20250514,
-  // which is deprecated and retires on June 15, 2026
-  private readonly MODEL = 'claude-sonnet-4-6';
+  // Selectable Claude model (all catalog entries are vision-capable)
+  private model = DEFAULT_CLAUDE_MODEL;
 
   constructor() {
     // Claude is not initialized by default - requires user API key
@@ -84,6 +84,15 @@ export class ClaudeService {
     }
   }
 
+
+  /** Switch the Claude model used for all requests. */
+  setModel(modelId: string): void {
+    if (modelId && modelId !== this.model) {
+      this.model = modelId;
+      console.log(`[ClaudeService] Model switched to ${modelId}`);
+    }
+  }
+
   // Check if Claude is available
   isAvailable(): boolean {
     return this.client !== null;
@@ -122,7 +131,7 @@ IMPORTANT:
       const mediaType = this.getMediaType(imageBase64);
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 2000,
         messages: [
           {
@@ -191,7 +200,7 @@ ${categoryList}
 Return ONLY the category ID that best matches this transaction. Just the ID, nothing else.`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 50,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -240,7 +249,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
 [{"index": 0, "categoryId": "food"}, {"index": 1, "categoryId": "transport"}]`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 500,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -425,7 +434,7 @@ ${this.getLanguageInstruction()}
 Write the "##" section headings in the same language as the response.`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 1500,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -475,7 +484,7 @@ Consider:
 ${this.getLanguageInstruction()}`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -530,7 +539,7 @@ Only include confirmed transactions, not pending ones.`;
       const mediaType = this.getMediaType(imageBase64);
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 2000,
         messages: [
           {
@@ -646,7 +655,7 @@ If no transactions can be extracted, return an empty array: []`;
       content.push({ type: 'text', text: prompt });
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 4000,
         messages: [{ role: 'user', content }],
       });
@@ -716,7 +725,7 @@ Return ONLY valid JSON with this structure:
 }`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 300,
         messages: [{ role: 'user', content: prompt }],
       });

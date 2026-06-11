@@ -61,6 +61,8 @@ describe('AIStrategyService', () => {
       'extractTransactionsFromMultipleImages',
       'reinitializeGemini',
       'updateProviderApiKey',
+      'setOpenAIModel',
+      'setClaudeModel',
     ]);
     cloudMock.hasAnyCloudProvider.and.returnValue(true);
     cloudMock.availableProviders.and.returnValue(['gemini']);

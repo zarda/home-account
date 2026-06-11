@@ -1,5 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import type OpenAI from 'openai';
+import { DEFAULT_OPENAI_MODEL } from '../config/ai-models';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
@@ -32,10 +33,9 @@ export class OpenAIService {
   isAvailableSignal = computed(() => this._isAvailable());
 
   // Models
-  // GPT-5.4 Mini is multimodal — it serves both text and vision tasks
-  // via the Responses API
-  private readonly VISION_MODEL = 'gpt-5.4-mini';
-  private readonly TEXT_MODEL = 'gpt-5.4-mini';
+  // OpenAI models are multimodal — one selectable model serves both text
+  // and vision tasks via the Responses API
+  private model = DEFAULT_OPENAI_MODEL;
 
   constructor() {
     // OpenAI is not initialized by default - requires user API key
@@ -85,6 +85,15 @@ export class OpenAIService {
     }
   }
 
+
+  /** Switch the OpenAI model used for all requests. */
+  setModel(modelId: string): void {
+    if (modelId && modelId !== this.model) {
+      this.model = modelId;
+      console.log(`[OpenAIService] Model switched to ${modelId}`);
+    }
+  }
+
   // Check if OpenAI is available
   isAvailable(): boolean {
     return this.client !== null;
@@ -123,7 +132,7 @@ IMPORTANT:
         : `data:image/jpeg;base64,${imageBase64}`;
 
       const response = await this.client.responses.create({
-        model: this.VISION_MODEL,
+        model: this.model,
         input: [
           {
             role: 'user',
@@ -186,7 +195,7 @@ ${categoryList}
 Return ONLY the category ID that best matches this transaction. Just the ID, nothing else.`;
 
       const response = await this.client.responses.create({
-        model: this.TEXT_MODEL,
+        model: this.model,
         input: prompt,
         max_output_tokens: 50,
         store: false,
@@ -236,7 +245,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
 [{"index": 0, "categoryId": "food"}, {"index": 1, "categoryId": "transport"}]`;
 
       const response = await this.client.responses.create({
-        model: this.TEXT_MODEL,
+        model: this.model,
         input: prompt,
         max_output_tokens: 500,
         store: false,
@@ -422,7 +431,7 @@ ${this.getLanguageInstruction()}
 Write the "##" section headings in the same language as the response.`;
 
       const response = await this.client.responses.create({
-        model: this.TEXT_MODEL,
+        model: this.model,
         input: prompt,
         max_output_tokens: 1500,
         store: false,
@@ -474,7 +483,7 @@ ${this.getLanguageInstruction()}
 Output only the advice sentences themselves — no preamble, no labels, no quotation marks.`;
 
       const response = await this.client.responses.create({
-        model: this.TEXT_MODEL,
+        model: this.model,
         input: prompt,
         max_output_tokens: 400,
         store: false,
@@ -531,7 +540,7 @@ Only include confirmed transactions, not pending ones.`;
         : `data:image/jpeg;base64,${imageBase64}`;
 
       const response = await this.client.responses.create({
-        model: this.VISION_MODEL,
+        model: this.model,
         input: [
           {
             role: 'user',
@@ -633,7 +642,7 @@ If no transactions can be extracted, return an empty array: []`;
       }
 
       const response = await this.client.responses.create({
-        model: this.VISION_MODEL,
+        model: this.model,
         input: [{ role: 'user', content }],
         max_output_tokens: 4000,
         store: false,
@@ -704,7 +713,7 @@ Return ONLY valid JSON with this structure:
 }`;
 
       const response = await this.client.responses.create({
-        model: this.TEXT_MODEL,
+        model: this.model,
         input: prompt,
         max_output_tokens: 1500,
         store: false,

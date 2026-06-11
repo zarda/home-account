@@ -366,7 +366,10 @@
     "aiMode": "Processing Mode",
     "aiModeDescription": "Choose how receipts and images are processed",
     "aiModeAuto": "Automatic",
-    "aiModeAutoDescription": "Automatically choose the best option based on connectivity and accuracy"
+    "aiModeAutoDescription": "Automatically choose the best option based on connectivity and accuracy",
+    "textModelLabel": "Text model (summaries & advice)",
+    "visionModelLabel": "Vision model (receipt scanning)",
+    "modelLabel": "Model"
   },
   "days": {
     "sunday": "Sunday",
@@ -722,7 +725,9 @@
     "queueSynced": "Queue synced successfully",
     "queueCleared": "Queue cleared",
     "ragInsights": "Detail-grounded insights (RAG)",
-    "ragInsightsDescription": "When on, your spending insights include details of notable transactions — largest expenses, unusual amounts, and category changes — sent to your AI provider for richer analysis."
+    "ragInsightsDescription": "When on, your spending insights include details of notable transactions — largest expenses, unusual amounts, and category changes — sent to your AI provider for richer analysis.",
+    "insightsSettings": "AI Insights",
+    "insightsSettingsHint": "Configure how your spending insights are generated"
   },
   "about": {
     "title": "About",

@@ -9,21 +9,25 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { NativeReceiptService } from './native-receipt.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
-import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { LLMProvider } from '../../models';
 
 export type { ProcessedTransaction, ProcessingResult } from './ai-types';
 
 export interface AIPreferences {
   autoSync: boolean;
-  textModel?: string;      // Model ID for text tasks
-  visionModel?: string;    // Model ID for vision tasks
+  textModel?: string;      // Gemini model ID for text tasks
+  visionModel?: string;    // Gemini model ID for vision tasks
+  openaiModel?: string;    // OpenAI model ID (multimodal)
+  claudeModel?: string;    // Claude model ID (multimodal)
 }
 
 const DEFAULT_PREFERENCES: AIPreferences = {
   autoSync: true,
   textModel: DEFAULT_TEXT_MODEL,
   visionModel: DEFAULT_VISION_MODEL,
+  openaiModel: DEFAULT_OPENAI_MODEL,
+  claudeModel: DEFAULT_CLAUDE_MODEL,
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
@@ -127,6 +131,8 @@ export class AIStrategyService {
   private initializeCloudProviders(): void {
     const prefs = this._preferences();
     this.cloudLLMProvider.initializeFromUserPreferences(prefs.textModel, prefs.visionModel);
+    this.cloudLLMProvider.setOpenAIModel(prefs.openaiModel ?? DEFAULT_OPENAI_MODEL);
+    this.cloudLLMProvider.setClaudeModel(prefs.claudeModel ?? DEFAULT_CLAUDE_MODEL);
   }
 
   /**
@@ -137,6 +143,13 @@ export class AIStrategyService {
     const updated = { ...current, ...updates };
     this._preferences.set(updated);
     this.savePreferences(updated);
+
+    if (updates.openaiModel) {
+      this.cloudLLMProvider.setOpenAIModel(updates.openaiModel);
+    }
+    if (updates.claudeModel) {
+      this.cloudLLMProvider.setClaudeModel(updates.claudeModel);
+    }
 
     // If models changed, reinitialize Gemini service with error handling
     if (updates.textModel || updates.visionModel) {
