@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { GeminiService, ParsedReceipt, RawTransaction, ExtractedTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
@@ -20,33 +20,28 @@ export class CloudLLMProviderService {
   private claudeService = inject(ClaudeService);
   private authService = inject(AuthService);
 
-  // Signals for provider availability
-  private _providerStatus = signal<ProviderStatus>({
-    gemini: false,
-    openai: false,
-    claude: false,
-  });
+  // Provider availability is fully reactive: it flips when a provider's
+  // lazily-loaded SDK finishes initializing, instead of relying on
+  // imperative refreshes that could go stale
+  providerStatus = computed<ProviderStatus>(() => ({
+    gemini: this.geminiService.isAvailableSignal(),
+    openai: this.openaiService.isAvailableSignal(),
+    claude: this.claudeService.isAvailableSignal(),
+  }));
 
-  // Computed signals
-  providerStatus = computed(() => this._providerStatus());
-  
   hasAnyCloudProvider = computed(() => {
-    const status = this._providerStatus();
+    const status = this.providerStatus();
     return status.gemini || status.openai || status.claude;
   });
 
   availableProviders = computed(() => {
-    const status = this._providerStatus();
+    const status = this.providerStatus();
     const providers: LLMProvider[] = [];
     if (status.gemini) providers.push('gemini');
     if (status.openai) providers.push('openai');
     if (status.claude) providers.push('claude');
     return providers;
   });
-
-  constructor() {
-    this.updateProviderStatus();
-  }
 
   /**
    * Initialize all providers with their respective API keys from user
@@ -74,7 +69,6 @@ export class CloudLLMProviderService {
       console.warn('[CloudLLMProvider] No user or preferences found');
     }
 
-    this.updateProviderStatus();
   }
 
   /**
@@ -92,7 +86,6 @@ export class CloudLLMProviderService {
         this.claudeService.reinitialize(apiKey);
         break;
     }
-    this.updateProviderStatus();
   }
 
   /**
@@ -102,19 +95,8 @@ export class CloudLLMProviderService {
     const user = this.authService.currentUser();
     const apiKey = user?.preferences?.geminiApiKey;
     this.geminiService.reinitialize(apiKey, textModelId, visionModelId);
-    this.updateProviderStatus();
   }
 
-  /**
-   * Update provider status based on current availability.
-   */
-  private updateProviderStatus(): void {
-    this._providerStatus.set({
-      gemini: this.geminiService.isAvailable(),
-      openai: this.openaiService.isAvailable(),
-      claude: this.claudeService.isAvailable(),
-    });
-  }
 
   /**
    * Get the provider preferences for the current user.
@@ -137,7 +119,7 @@ export class CloudLLMProviderService {
    */
   private getBestAvailableProvider(feature: AIFeatureType): LLMProvider | null {
     const preferred = this.getPreferredProvider(feature);
-    const status = this._providerStatus();
+    const status = this.providerStatus();
 
     // Try preferred provider first
     if (status[preferred]) {
@@ -159,7 +141,7 @@ export class CloudLLMProviderService {
    * Check if a specific provider is available.
    */
   isProviderAvailable(provider: LLMProvider): boolean {
-    return this._providerStatus()[provider];
+    return this.providerStatus()[provider];
   }
 
   /**

@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
@@ -39,7 +39,7 @@ export class ClaudeService {
     // Claude is not initialized by default - requires user API key
   }
 
-  private initialize(apiKey: string): void {
+  private async initialize(apiKey: string): Promise<void> {
     if (!apiKey || apiKey.trim() === '') {
       console.warn('Claude API key not provided');
       this.client = null;
@@ -54,6 +54,8 @@ export class ClaudeService {
     }
 
     try {
+      // The SDK is loaded on demand to keep it out of the initial bundle
+      const { default: Anthropic } = await import('@anthropic-ai/sdk');
       this.client = new Anthropic({
         apiKey: apiKey,
         // Note: Anthropic SDK requires CORS handling in browser
@@ -74,7 +76,7 @@ export class ClaudeService {
    */
   reinitialize(apiKey?: string): void {
     if (apiKey) {
-      this.initialize(apiKey);
+      void this.initialize(apiKey);
     } else {
       this.client = null;
       this.currentApiKey = null;

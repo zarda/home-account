@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
+import type { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
@@ -108,10 +108,10 @@ export class GeminiService {
   isAvailableSignal = computed(() => this._isAvailable());
 
   constructor() {
-    this.initializeGemini();
+    void this.initializeGemini();
   }
 
-  private initializeGemini(customApiKey?: string, textModelId?: string, visionModelId?: string): void {
+  private async initializeGemini(customApiKey?: string, textModelId?: string, visionModelId?: string): Promise<void> {
     // Priority: custom key > environment key (if available)
     const apiKey = customApiKey || (environment as { geminiApiKey?: string }).geminiApiKey;
 
@@ -145,6 +145,8 @@ export class GeminiService {
 
     try {
       console.log('[GeminiService] Initializing with new API key (length:', apiKey.length, ')');
+      // The SDK is loaded on demand to keep it out of the initial bundle
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
       this.genAI = new GoogleGenerativeAI(apiKey);
 
       this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
@@ -170,7 +172,7 @@ export class GeminiService {
    * Used when user provides their own API key or changes model selection in settings.
    */
   reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): void {
-    this.initializeGemini(apiKey, textModelId, visionModelId);
+    void this.initializeGemini(apiKey, textModelId, visionModelId);
   }
 
   // Check if Gemini is available

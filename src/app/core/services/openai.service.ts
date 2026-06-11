@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
@@ -41,7 +41,7 @@ export class OpenAIService {
     // OpenAI is not initialized by default - requires user API key
   }
 
-  private initialize(apiKey: string): void {
+  private async initialize(apiKey: string): Promise<void> {
     if (!apiKey || apiKey.trim() === '') {
       console.warn('OpenAI API key not provided');
       this.client = null;
@@ -56,6 +56,8 @@ export class OpenAIService {
     }
 
     try {
+      // The SDK is loaded on demand to keep it out of the initial bundle
+      const { default: OpenAI } = await import('openai');
       this.client = new OpenAI({
         apiKey: apiKey,
         dangerouslyAllowBrowser: true, // Required for browser usage
@@ -75,7 +77,7 @@ export class OpenAIService {
    */
   reinitialize(apiKey?: string): void {
     if (apiKey) {
-      this.initialize(apiKey);
+      void this.initialize(apiKey);
     } else {
       this.client = null;
       this.currentApiKey = null;
