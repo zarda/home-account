@@ -58,8 +58,11 @@ export class ClaudeService {
       const { default: Anthropic } = await import('@anthropic-ai/sdk');
       this.client = new Anthropic({
         apiKey: apiKey,
-        // Note: Anthropic SDK requires CORS handling in browser
-        // This may need a proxy in production
+        // Same bring-your-own-key trust model as the OpenAI provider: the
+        // user's own key, stored in their own account. Without this flag the
+        // SDK throws at construction in browsers, so Claude could never
+        // become available and its settings card stayed 'Not configured'.
+        dangerouslyAllowBrowser: true,
       });
       this.currentApiKey = apiKey;
       this._isAvailable.set(true);
