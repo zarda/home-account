@@ -170,7 +170,7 @@ IMPORTANT:
     try {
       const categoryList = categories
         .filter((c) => !c.parentId && c.isActive)
-        .map((c) => `${c.id}: ${c.name}`)
+        .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const prompt = `Given this transaction description: "${description}"
@@ -211,7 +211,7 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
       const categories = this.categoryService.categories();
       const categoryList = categories
         .filter((c) => !c.parentId && c.isActive)
-        .map((c) => `${c.id}: ${c.name}`)
+        .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const transactionList = transactions
@@ -284,7 +284,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         if (t.type !== 'expense') continue;
 
         const category = categories.find((c) => c.id === t.categoryId);
-        const categoryName = category?.name ?? 'Other';
+        const categoryName = this.translateCategoryName(category?.name);
 
         const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
         existing.total += toBaseCurrency(t.amount, t.currency);
@@ -314,7 +314,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         .slice(0, 5)
         .map((t) => {
           const cat = categories.find((c) => c.id === t.categoryId);
-          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${cat?.name ?? 'Other'})`;
+          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
         })
         .join('\n');
 
@@ -715,18 +715,31 @@ Return ONLY valid JSON with this structure:
     return cleaned.trim();
   }
 
+  /**
+   * Category names of default categories are stored as i18n keys
+   * (e.g. categoryNames.groceries) — translate them before they reach a
+   * prompt, otherwise the model echoes the raw key into the insights text.
+   */
+  private translateCategoryName(name?: string): string {
+    return name ? this.translationService.t(name) : 'Other';
+  }
+
   // Helper: Map category name to ID
   private mapCategoryNameToId(categoryName: string): string {
     const categories = this.categoryService.categories();
     const normalizedName = categoryName.toLowerCase().trim();
 
-    const exactMatch = categories.find((c) => c.name.toLowerCase() === normalizedName);
+    // Match against both the stored name (possibly an i18n key) and its translation
+    const namesOf = (c: Category) => [
+      c.name.toLowerCase(),
+      this.translateCategoryName(c.name).toLowerCase(),
+    ];
+
+    const exactMatch = categories.find((c) => namesOf(c).includes(normalizedName));
     if (exactMatch) return exactMatch.id;
 
     const partialMatch = categories.find(
-      (c) =>
-        c.name.toLowerCase().includes(normalizedName) ||
-        normalizedName.includes(c.name.toLowerCase())
+      (c) => namesOf(c).some((n) => n.includes(normalizedName) || normalizedName.includes(n))
     );
     if (partialMatch) return partialMatch.id;
 

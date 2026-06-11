@@ -1,10 +1,11 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import { trimToLastCompleteSentence, dropIncompleteTrailingLine } from '../utils/llm-text.utils';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -265,7 +266,7 @@ Return ONLY the JSON, nothing else.`;
     try {
       const categoryList = categories
         .filter(c => !c.parentId && c.isActive)
-        .map(c => `${c.id}: ${c.name}`)
+        .map(c => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const prompt = `Given this transaction description: "${description}"
@@ -311,7 +312,7 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
       const categories = this.categoryService.categories();
       const categoryList = categories
         .filter(c => !c.parentId && c.isActive)
-        .map(c => `${c.id}: ${c.name}`)
+        .map(c => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const transactionList = transactions
@@ -391,7 +392,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         if (t.type !== 'expense') continue;
 
         const category = categories.find(c => c.id === t.categoryId);
-        const categoryName = category?.name ?? 'Other';
+        const categoryName = this.translateCategoryName(category?.name);
 
         const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
         existing.total += toBaseCurrency(t.amount, t.currency);
@@ -420,7 +421,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         .slice(0, 5)
         .map(t => {
           const cat = categories.find(c => c.id === t.categoryId);
-          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${cat?.name ?? 'Other'})`;
+          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
         })
         .join('\n');
 
@@ -490,21 +491,25 @@ Return AI Insights in this exact format (use markdown):
 - [Specific, practical insight #3]
 
 Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
+Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
 
 ${this.getLanguageInstruction()}`;
 
       const result = await this.textModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 1200,
+          maxOutputTokens: 2048,
           temperature: 0.3,
           topP: 0.7,
         }
       });
       const rawText = result.response.text().trim();
-      const responseText = this.currentTextModelId.includes('gemma-4')
+      let responseText = this.currentTextModelId.includes('gemma-4')
         ? this.filterReasoningContext(rawText)
         : rawText;
+      if (this.hitTokenLimit(result)) {
+        responseText = dropIncompleteTrailingLine(responseText);
+      }
       console.log('[GeminiService] ✓ Spending summary generated successfully (length:', rawText.length, '→', responseText.length, ')');
       return responseText;
     } catch (error) {
@@ -559,15 +564,17 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
       const result = await this.textModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 500,
+          maxOutputTokens: 1024,
           temperature: 0.2,
           topP: 0.7,
         }
       });
       const rawText = result.response.text().trim();
-      const responseText = this.currentTextModelId.includes('gemma-4')
+      const filteredText = this.currentTextModelId.includes('gemma-4')
         ? this.filterReasoningContextForAdvice(rawText)
         : rawText;
+      // Never show advice that was cut off mid-sentence
+      const responseText = trimToLastCompleteSentence(filteredText);
       console.log('[GeminiService] ✓ Financial advice generated successfully (length:', rawText.length, '→', responseText.length, ')');
       return responseText;
     } catch (error) {
@@ -1212,8 +1219,8 @@ Return ONLY valid JSON (no thinking, no explanation):
 
     // Deduplicate: if the text repeats itself, keep only first occurrence
     const trimmed = cleaned.trim();
-    // Match sentences including their punctuation
-    const sentenceMatches = trimmed.match(/[^.!?]*[.!?]+/g) || [];
+    // Match sentences including their punctuation (Latin and CJK)
+    const sentenceMatches = trimmed.match(/[^.!?。！？]*[.!?。！？]+/g) || [];
     const sentences = sentenceMatches.map(s => s.trim()).filter(s => s.length > 0);
 
     if (sentences.length === 0) {
@@ -1227,7 +1234,7 @@ Return ONLY valid JSON (no thinking, no explanation):
 
     for (const sent of sentences) {
       // For comparison, remove punctuation and normalize
-      const normalized = sent.trim().replace(/[.!?]+$/, '').toLowerCase();
+      const normalized = sent.trim().replace(/[.!?。！？]+$/, '').toLowerCase();
 
       // Check for exact match or near-duplicate
       let isDuplicate = false;
@@ -1327,20 +1334,40 @@ Return ONLY valid JSON (no thinking, no explanation):
   }
 
   // Helper: Map category name to ID
+  /**
+   * Category names of default categories are stored as i18n keys
+   * (e.g. categoryNames.groceries) — translate them before they reach a
+   * prompt, otherwise the model echoes the raw key into the insights text.
+   */
+  private translateCategoryName(name?: string): string {
+    return name ? this.translationService.t(name) : 'Other';
+  }
+
+  /** True when generation stopped because the output token limit was reached. */
+  private hitTokenLimit(result: GenerateContentResult): boolean {
+    return String(result.response.candidates?.[0]?.finishReason) === 'MAX_TOKENS';
+  }
+
   private mapCategoryNameToId(categoryName: string): string {
     const categories = this.categoryService.categories();
     const normalizedName = categoryName.toLowerCase().trim();
 
+    // Category names may be stored as i18n keys (e.g. categoryNames.groceries),
+    // while the model sees and returns translated names — match against both
+    const namesOf = (c: Category) => [
+      c.name.toLowerCase(),
+      this.translateCategoryName(c.name).toLowerCase(),
+    ];
+
     // Try exact match first
     const exactMatch = categories.find(
-      c => c.name.toLowerCase() === normalizedName
+      c => namesOf(c).includes(normalizedName)
     );
     if (exactMatch) return exactMatch.id;
 
     // Try partial match
     const partialMatch = categories.find(
-      c => c.name.toLowerCase().includes(normalizedName) ||
-           normalizedName.includes(c.name.toLowerCase())
+      c => namesOf(c).some(n => n.includes(normalizedName) || normalizedName.includes(n))
     );
     if (partialMatch) return partialMatch.id;
 
