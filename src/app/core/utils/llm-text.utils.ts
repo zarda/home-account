@@ -29,16 +29,25 @@ export function trimToLastCompleteSentence(text: string): string {
 
 /**
  * Drop the final line of a (markdown) response when it was cut off
- * mid-sentence. Intended for responses that hit the output token limit,
- * where the last line is known to be truncated.
+ * mid-sentence. List items and headers often legitimately end without
+ * punctuation, so they are kept unless `dropListItems` is set — pass it
+ * when the response is known to be truncated (hit the output token limit).
  */
-export function dropIncompleteTrailingLine(text: string): string {
+export function dropIncompleteTrailingLine(
+  text: string,
+  options: { dropListItems?: boolean } = {},
+): string {
   const trimmed = text.trimEnd();
   if (!trimmed) {
     return trimmed;
   }
   const lines = trimmed.split('\n');
-  if (endsWithSentenceTerminator(lines[lines.length - 1])) {
+  const lastLine = lines[lines.length - 1].trim();
+  if (endsWithSentenceTerminator(lastLine) || /[:：]$/.test(lastLine)) {
+    return trimmed;
+  }
+  const isListOrHeader = /^([-*•#]|\d+[.)])/.test(lastLine);
+  if (isListOrHeader && !options.dropListItems) {
     return trimmed;
   }
   lines.pop();

@@ -5,7 +5,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { GeminiService, PreviousPeriodData } from '../../../core/services/gemini.service';
+import {
+  GeminiService,
+  PreviousPeriodData,
+  SPENDING_SUMMARY_FALLBACK,
+  FINANCIAL_ADVICE_FALLBACK,
+} from '../../../core/services/gemini.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { Budget, Transaction, MonthlyTotal } from '../../../models';
@@ -112,23 +117,27 @@ export class AiSummaryComponent {
       const periodTotal = this.calculatePeriodTotal(transactions);
       const readablePeriod = this.formatPeriod(period);
 
-      // Generate both summary and advice in parallel
-      const [summaryResult, adviceResult] = await Promise.all([
-        this.geminiService.generateSpendingSummary(
-          transactions,
-          readablePeriod,
-          currency,
-          this.previousPeriodData(),
-          this.budgets()
-        ),
-        this.geminiService.getFinancialAdvice(periodTotal, currency, readablePeriod)
-      ]);
+      // Generate sequentially — firing both at once trips free-tier
+      // per-minute rate limits, leaving the advice as the fallback text
+      const summaryResult = await this.geminiService.generateSpendingSummary(
+        transactions,
+        readablePeriod,
+        currency,
+        this.previousPeriodData(),
+        this.budgets()
+      );
+      const adviceResult = await this.geminiService.getFinancialAdvice(periodTotal, currency, readablePeriod);
 
       this.summary.set(summaryResult);
       this.advice.set(adviceResult);
 
-      // Cache the results
-      this.cacheInsights(summaryResult, adviceResult);
+      // Cache only real results — caching a fallback would pin the
+      // failure message for an hour even after the rate limit clears
+      const anyFallback = summaryResult === SPENDING_SUMMARY_FALLBACK
+        || adviceResult === FINANCIAL_ADVICE_FALLBACK;
+      if (!anyFallback) {
+        this.cacheInsights(summaryResult, adviceResult);
+      }
     } catch (error) {
       console.error('Failed to generate AI insights:', error);
       this.hasError.set(true);

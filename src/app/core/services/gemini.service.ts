@@ -73,6 +73,11 @@ export interface CSVColumnMapping {
   hasHeader: boolean;
 }
 
+// Fallback texts returned when insight generation fails — exported so
+// callers can recognize a failed result and avoid caching it
+export const SPENDING_SUMMARY_FALLBACK = 'Unable to generate spending summary at this time.';
+export const FINANCIAL_ADVICE_FALLBACK = 'Keep tracking your expenses to better understand your spending patterns.';
+
 @Injectable({ providedIn: 'root' })
 export class GeminiService {
   private categoryService = inject(CategoryService);
@@ -495,7 +500,7 @@ Output ONLY the final insights in the exact format above — no reasoning, no dr
 
 ${this.getLanguageInstruction()}`;
 
-      const result = await this.textModel.generateContent({
+      const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           maxOutputTokens: 2048,
@@ -504,12 +509,14 @@ ${this.getLanguageInstruction()}`;
         }
       });
       const rawText = result.response.text().trim();
-      let responseText = this.currentTextModelId.includes('gemma-4')
+      const filteredText = this.currentTextModelId.includes('gemma-4')
         ? this.filterReasoningContext(rawText)
         : rawText;
-      if (this.hitTokenLimit(result)) {
-        responseText = dropIncompleteTrailingLine(responseText);
-      }
+      // Never end on a line that was cut off mid-sentence; when the token
+      // limit was hit, even a trailing list item is known to be truncated
+      const responseText = dropIncompleteTrailingLine(filteredText, {
+        dropListItems: this.hitTokenLimit(result),
+      });
       console.log('[GeminiService] ✓ Spending summary generated successfully (length:', rawText.length, '→', responseText.length, ')');
       return responseText;
     } catch (error) {
@@ -520,7 +527,7 @@ ${this.getLanguageInstruction()}`;
         return 'AI Insights unavailable: Invalid API key. Please check Settings → AI Settings.';
       }
 
-      return 'Unable to generate spending summary at this time.';
+      return SPENDING_SUMMARY_FALLBACK;
     } finally {
       this.isProcessing.set(false);
     }
@@ -561,7 +568,7 @@ ${summary.balance < 0 ? '- Prioritize: stop deficit spending and find income.' :
 TONE: Practical, specific, supportive. Use exact numbers from above.
 OUTPUT: Only the financial advice (2-3 sentences).`;
 
-      const result = await this.textModel.generateContent({
+      const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           maxOutputTokens: 1024,
@@ -585,7 +592,7 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
         return 'Financial advice unavailable: Invalid API key. Please check Settings → AI Settings.';
       }
 
-      return 'Keep tracking your expenses to better understand your spending patterns.';
+      return FINANCIAL_ADVICE_FALLBACK;
     } finally {
       this.isProcessing.set(false);
     }
@@ -1333,7 +1340,6 @@ Return ONLY valid JSON (no thinking, no explanation):
       lower.includes('too many requests');
   }
 
-  // Helper: Map category name to ID
   /**
    * Category names of default categories are stored as i18n keys
    * (e.g. categoryNames.groceries) — translate them before they reach a
@@ -1346,6 +1352,30 @@ Return ONLY valid JSON (no thinking, no explanation):
   /** True when generation stopped because the output token limit was reached. */
   private hitTokenLimit(result: GenerateContentResult): boolean {
     return String(result.response.candidates?.[0]?.finishReason) === 'MAX_TOKENS';
+  }
+
+  /**
+   * Generate text, retrying once after a short delay on rate-limit errors.
+   * The dashboard requests summary and advice close together, which can
+   * trip free-tier per-minute limits.
+   */
+  private async generateTextWithRetry(
+    request: Parameters<GenerativeModel['generateContent']>[0]
+  ): Promise<GenerateContentResult> {
+    if (!this.textModel) {
+      throw new Error('Gemini text model not available');
+    }
+    try {
+      return await this.textModel.generateContent(request);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!this.isRateLimitError(message)) {
+        throw error;
+      }
+      console.warn('[GeminiService] Rate limited, retrying once in 2.5s');
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      return await this.textModel.generateContent(request);
+    }
   }
 
   private mapCategoryNameToId(categoryName: string): string {

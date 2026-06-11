@@ -50,7 +50,7 @@ describe('llm-text.utils', () => {
   });
 
   describe('dropIncompleteTrailingLine', () => {
-    it('should drop a truncated last line', () => {
+    it('should drop a truncated prose last line', () => {
       const text = '## Spending Pattern\nGroceries dominate at 46.3%.\nThis is followed by Home & Garden at 3800';
       expect(dropIncompleteTrailingLine(text))
         .toBe('## Spending Pattern\nGroceries dominate at 46.3%.');
@@ -58,6 +58,22 @@ describe('llm-text.utils', () => {
 
     it('should keep text whose last line ends a sentence', () => {
       const text = '## Spending Pattern\nGroceries dominate at 46.3%.';
+      expect(dropIncompleteTrailingLine(text)).toBe(text);
+    });
+
+    it('should keep an unpunctuated trailing list item by default', () => {
+      const text = '## Actionable Insights\n- Reduce entertainment spending by 20%';
+      expect(dropIncompleteTrailingLine(text)).toBe(text);
+    });
+
+    it('should drop a trailing list item when the response hit the token limit', () => {
+      const text = '## Actionable Insights\n- Set a monthly budget.\n- Reduce entertainment spending by';
+      expect(dropIncompleteTrailingLine(text, { dropListItems: true }))
+        .toBe('## Actionable Insights\n- Set a monthly budget.');
+    });
+
+    it('should keep a trailing section header ending with a colon', () => {
+      const text = 'Summary done.\nNext steps:';
       expect(dropIncompleteTrailingLine(text)).toBe(text);
     });
 
