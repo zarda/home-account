@@ -60,6 +60,7 @@ export class AiSettingsPageComponent implements OnInit {
 
   // Form state
   autoSync = signal<boolean>(true);
+  enableRagInsights = signal<boolean>(false);
   selectedTextModel = signal<string>(DEFAULT_TEXT_MODEL);
   selectedVisionModel = signal<string>(DEFAULT_VISION_MODEL);
 
@@ -151,6 +152,12 @@ export class AiSettingsPageComponent implements OnInit {
     this.openaiApiKey = user?.preferences?.openaiApiKey || '';
     this.claudeApiKey = user?.preferences?.claudeApiKey || '';
     this.llmProviderPreferences = user?.preferences?.llmProviderPreferences || DEFAULT_LLM_PROVIDER_PREFERENCES;
+    this.enableRagInsights.set(user?.preferences?.enableRagInsights ?? false);
+  }
+
+  async onRagInsightsChange(enabled: boolean): Promise<void> {
+    this.enableRagInsights.set(enabled);
+    await this.savePreference({ enableRagInsights: enabled });
   }
 
   // Check if provider is available

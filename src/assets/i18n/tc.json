@@ -744,7 +744,9 @@
     "storageInfo": "儲存空間",
     "totalCache": "快取總量",
     "queueSynced": "佇列同步成功",
-    "queueCleared": "佇列已清除"
+    "queueCleared": "佇列已清除",
+    "ragInsights": "以明細為依據的洞察（RAG）",
+    "ragInsightsDescription": "開啟後，消費洞察將包含值得注意的交易明細（最大支出、異常金額、類別變化），並傳送給您的 AI 服務以產生更深入的分析。"
   },
   "about": {
     "title": "關於",

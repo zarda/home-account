@@ -329,6 +329,18 @@
 
       <mat-card appearance="outlined">
         <mat-card-content>
+          <div class="auto-sync-row">
+            <div>
+              <span>{{ 'aiPage.ragInsights' | translate }}</span>
+              <p class="section-description">{{ 'aiPage.ragInsightsDescription' | translate }}</p>
+            </div>
+            <mat-slide-toggle
+              [checked]="enableRagInsights()"
+              (change)="onRagInsightsChange($event.checked)"
+              color="primary">
+            </mat-slide-toggle>
+          </div>
+
           <div class="model-selection">
             <mat-form-field appearance="outline" class="model-field">
               <mat-label>Text Model (Summarization, Advice)</mat-label>

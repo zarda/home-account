@@ -385,7 +385,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     period: string,
     baseCurrency = 'USD',
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     if (!this.textModel) {
       console.error('[GeminiService] ✗ Text model not available for spending summary');
@@ -476,6 +477,11 @@ ${budgetLines}
 `;
       }
 
+    // Optional RAG grounding block (enableRagInsights preference)
+    const ragSection = ragContext?.trim()
+      ? `\nNotable activity (retrieved from your transactions):\n${ragContext.trim()}\n`
+      : '';
+
       const prompt = `Generate structured AI Insights for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
@@ -489,7 +495,7 @@ ${categoryBreakdown}
 
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}
+${historicalSection}${budgetSection}${ragSection}
 Return AI Insights in this exact format (use markdown):
 
 ## Spending Pattern
@@ -507,7 +513,7 @@ Return AI Insights in this exact format (use markdown):
 - [Specific, practical insight #3]
 
 Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
-Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
+${ragSection ? 'Ground your insights in the Notable activity section — cite its specific transactions, amounts, and changes where relevant.\n' : ''}Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
 Begin your response directly with "## Spending Pattern".
 
 ${this.getLanguageInstruction()}`;

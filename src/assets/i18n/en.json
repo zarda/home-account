@@ -720,7 +720,9 @@
     "storageInfo": "Storage",
     "totalCache": "Total Cache",
     "queueSynced": "Queue synced successfully",
-    "queueCleared": "Queue cleared"
+    "queueCleared": "Queue cleared",
+    "ragInsights": "Detail-grounded insights (RAG)",
+    "ragInsightsDescription": "When on, your spending insights include details of notable transactions — largest expenses, unusual amounts, and category changes — sent to your AI provider for richer analysis."
   },
   "about": {
     "title": "About",

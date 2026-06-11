@@ -12,7 +12,9 @@ import {
 } from '../../../core/services/gemini.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { Budget, Transaction, MonthlyTotal } from '../../../models';
+import { AuthService } from '../../../core/services/auth.service';
+import { RagContextService } from '../../../core/services/rag-context.service';
+import { Budget, CategoryTotal, Transaction, MonthlyTotal } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -33,6 +35,8 @@ export class AiSummaryComponent {
   private geminiService = inject(GeminiService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private authService = inject(AuthService);
+  private ragContextService = inject(RagContextService);
   private sanitizer = inject(DomSanitizer);
 
   // Inputs
@@ -40,6 +44,7 @@ export class AiSummaryComponent {
   period = input<string>('this month');
   baseCurrency = input<string>('USD');
   previousPeriodData = input<PreviousPeriodData | null>(null);
+  previousPeriodByCategory = input<CategoryTotal[] | null>(null);
   budgets = input<Budget[]>([]);
 
   // State
@@ -48,11 +53,19 @@ export class AiSummaryComponent {
   isLoading = signal(false);
   hasError = signal(false);
 
-  // Cache key for sessionStorage (includes locale for language-specific caching)
+  // Whether the user opted into RAG-grounded insights (persisted in Firestore)
+  private ragEnabled = computed(() =>
+    this.authService.currentUser()?.preferences?.enableRagInsights ?? false
+  );
+
+  // Cache key for sessionStorage (includes locale for language-specific
+  // caching, and the RAG flag so toggling regenerates instead of serving
+  // a stale cached summary)
   private cacheKey = computed(() => {
     const txIds = this.transactions().map(t => t.id).sort().join(',');
     const locale = this.translationService.currentLocale();
-    return `ai-summary-${this.period()}-${locale}-${txIds.slice(0, 100)}`;
+    const grounding = this.ragEnabled() ? 'rag' : 'std';
+    return `ai-summary-${this.period()}-${locale}-${grounding}-${txIds.slice(0, 100)}`;
   });
 
   // Check if AI is available
@@ -122,6 +135,16 @@ export class AiSummaryComponent {
       let summaryFailed = false;
       let adviceFailed = false;
 
+      // When the user opted into RAG grounding, retrieve notable activity
+      // (top expenses, anomalies, category deltas) for the prompt
+      const ragContext = this.ragEnabled()
+        ? this.ragContextService.buildSummaryGrounding({
+            transactions,
+            previousByCategory: this.previousPeriodByCategory(),
+            baseCurrency: currency,
+          })
+        : undefined;
+
       let summaryResult: string;
       try {
         summaryResult = await this.geminiService.generateSpendingSummary(
@@ -129,7 +152,8 @@ export class AiSummaryComponent {
           readablePeriod,
           currency,
           this.previousPeriodData(),
-          this.budgets()
+          this.budgets(),
+          ragContext
         );
       } catch (error) {
         summaryFailed = true;

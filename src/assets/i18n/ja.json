@@ -744,7 +744,9 @@
     "storageInfo": "ストレージ",
     "totalCache": "合計キャッシュ",
     "queueSynced": "キューの同期が完了しました",
-    "queueCleared": "キューがクリアされました"
+    "queueCleared": "キューがクリアされました",
+    "ragInsights": "明細に基づくインサイト（RAG）",
+    "ragInsightsDescription": "オンにすると、注目すべき取引の明細（高額支出、異常な金額、カテゴリの変化）がAIプロバイダーに送信され、より具体的な分析が得られます。"
   },
   "about": {
     "title": "について",
