@@ -8,8 +8,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import {
   GeminiService,
   PreviousPeriodData,
-  SPENDING_SUMMARY_FALLBACK,
-  FINANCIAL_ADVICE_FALLBACK,
+  isRateLimitMessage,
 } from '../../../core/services/gemini.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -118,24 +117,39 @@ export class AiSummaryComponent {
       const readablePeriod = this.formatPeriod(period);
 
       // Generate sequentially — firing both at once trips free-tier
-      // per-minute rate limits, leaving the advice as the fallback text
-      const summaryResult = await this.geminiService.generateSpendingSummary(
-        transactions,
-        readablePeriod,
-        currency,
-        this.previousPeriodData(),
-        this.budgets()
-      );
-      const adviceResult = await this.geminiService.getFinancialAdvice(periodTotal, currency, readablePeriod);
+      // per-minute rate limits. Each call fails independently so a
+      // rate-limited summary still leaves usable advice (and vice versa).
+      let summaryFailed = false;
+      let adviceFailed = false;
+
+      let summaryResult: string;
+      try {
+        summaryResult = await this.geminiService.generateSpendingSummary(
+          transactions,
+          readablePeriod,
+          currency,
+          this.previousPeriodData(),
+          this.budgets()
+        );
+      } catch (error) {
+        summaryFailed = true;
+        summaryResult = this.describeFailure(error);
+      }
+
+      let adviceResult: string;
+      try {
+        adviceResult = await this.geminiService.getFinancialAdvice(periodTotal, currency, readablePeriod);
+      } catch (error) {
+        adviceFailed = true;
+        adviceResult = this.describeFailure(error, 'ai.adviceFallback');
+      }
 
       this.summary.set(summaryResult);
       this.advice.set(adviceResult);
 
-      // Cache only real results — caching a fallback would pin the
-      // failure message for an hour even after the rate limit clears
-      const anyFallback = summaryResult === SPENDING_SUMMARY_FALLBACK
-        || adviceResult === FINANCIAL_ADVICE_FALLBACK;
-      if (!anyFallback) {
+      // Cache only real results — caching a failure message would pin it
+      // for an hour even after a temporary rate limit clears
+      if (!summaryFailed && !adviceFailed) {
         this.cacheInsights(summaryResult, adviceResult);
       }
     } catch (error) {
@@ -144,6 +158,22 @@ export class AiSummaryComponent {
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  /**
+   * Translate a generation failure into a localized, actionable message.
+   * The default explains the failure; advice uses a generic tip fallback
+   * unless the cause is something the user can act on.
+   */
+  private describeFailure(error: unknown, fallbackKey = 'ai.summaryUnavailable'): string {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('API key not valid') || message.includes('API_KEY_INVALID')) {
+      return this.translationService.t('ai.invalidApiKey');
+    }
+    if (isRateLimitMessage(message)) {
+      return this.translationService.t('ai.rateLimited');
+    }
+    return this.translationService.t(fallbackKey);
   }
 
   private calculatePeriodTotal(transactions: Transaction[]): MonthlyTotal {

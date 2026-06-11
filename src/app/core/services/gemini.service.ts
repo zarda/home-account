@@ -78,10 +78,13 @@ export interface CSVColumnMapping {
   hasHeader: boolean;
 }
 
-// Fallback texts returned when insight generation fails — exported so
-// callers can recognize a failed result and avoid caching it
-export const SPENDING_SUMMARY_FALLBACK = 'Unable to generate spending summary at this time.';
-export const FINANCIAL_ADVICE_FALLBACK = 'Keep tracking your expenses to better understand your spending patterns.';
+/** True when an error message indicates a rate limit / quota exhaustion. */
+export function isRateLimitMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('429') || lower.includes('resource_exhausted') ||
+    lower.includes('rate limit') || lower.includes('quota exceeded') ||
+    lower.includes('too many requests');
+}
 
 @Injectable({ providedIn: 'root' })
 export class GeminiService {
@@ -530,12 +533,8 @@ ${this.getLanguageInstruction()}`;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('[GeminiService] ✗ Summary generation error:', errorMsg);
-
-      if (errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID')) {
-        return 'AI Insights unavailable: Invalid API key. Please check Settings → AI Settings.';
-      }
-
-      return SPENDING_SUMMARY_FALLBACK;
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -574,7 +573,8 @@ ${savingsRate < 20 ? '- Address the low savings rate with concrete, actionable s
 ${summary.balance < 0 ? '- Prioritize: stop deficit spending and find income.' : '- Prioritize: maintain momentum and increase savings.'}
 
 TONE: Practical, specific, supportive. Use exact numbers from above.
-OUTPUT: Only the financial advice (2-3 sentences).`;
+OUTPUT: Only the financial advice (2-3 sentences).
+${this.getLanguageInstruction()}`;
 
       const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -595,12 +595,8 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('[GeminiService] ✗ Financial advice error:', errorMsg);
-
-      if (errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID')) {
-        return 'Financial advice unavailable: Invalid API key. Please check Settings → AI Settings.';
-      }
-
-      return FINANCIAL_ADVICE_FALLBACK;
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -1345,10 +1341,7 @@ Return ONLY valid JSON (no thinking, no explanation):
 
   // Helper: Check if an error is a rate limit / quota exhaustion error
   private isRateLimitError(message: string): boolean {
-    const lower = message.toLowerCase();
-    return lower.includes('429') || lower.includes('resource_exhausted') ||
-      lower.includes('rate limit') || lower.includes('quota exceeded') ||
-      lower.includes('too many requests');
+    return isRateLimitMessage(message);
   }
 
   /**

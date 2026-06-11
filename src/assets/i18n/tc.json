@@ -574,7 +574,11 @@
     "financialAdvice": "理財建議",
     "refresh": "重新整理洞察",
     "generating": "正在產生洞察...",
-    "noInsights": "新增更多交易以獲得 AI 洞察"
+    "noInsights": "新增更多交易以獲得 AI 洞察",
+    "rateLimited": "AI 服務目前忙碌中（已達用量上限），請稍候一分鐘再試。",
+    "invalidApiKey": "無法使用 AI 洞察：API 金鑰無效。請前往「設定 → AI 設定」檢查。",
+    "summaryUnavailable": "目前無法產生消費摘要，請點擊重新整理再試一次。",
+    "adviceFallback": "持續記錄您的支出，以更深入了解您的消費模式。"
   },
   "import": {
     "title": "智慧匯入",

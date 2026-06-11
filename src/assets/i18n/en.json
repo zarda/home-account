@@ -574,7 +574,11 @@
     "financialAdvice": "Financial Tip",
     "refresh": "Refresh insights",
     "generating": "Generating insights...",
-    "noInsights": "Add more transactions to get AI insights"
+    "noInsights": "Add more transactions to get AI insights",
+    "rateLimited": "The AI service is busy right now (rate limit reached). Please try again in a minute.",
+    "invalidApiKey": "AI Insights unavailable: invalid API key. Please check Settings → AI Settings.",
+    "summaryUnavailable": "Unable to generate the spending summary right now. Tap refresh to try again.",
+    "adviceFallback": "Keep tracking your expenses to better understand your spending patterns."
   },
   "import": {
     "title": "Smart Import",
