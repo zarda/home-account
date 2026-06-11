@@ -14,6 +14,19 @@ export function endsWithSentenceTerminator(text: string): boolean {
 }
 
 /**
+ * True when the character at `index` terminates a sentence. A period
+ * between two digits is a decimal point (e.g. 16,875.00), not a sentence
+ * end — treating it as one would cut numbers in half.
+ */
+function isSentenceEndAt(text: string, index: number): boolean {
+  const char = text[index];
+  if (!SENTENCE_TERMINATORS.includes(char)) {
+    return false;
+  }
+  return !(char === '.' && /\d/.test(text[index - 1] ?? '') && /\d/.test(text[index + 1] ?? ''));
+}
+
+/**
  * Trim a response that was cut off mid-sentence (e.g. at the output token
  * limit) back to its last complete sentence. Returns the text unchanged
  * when it already ends a sentence or contains no complete sentence at all.
@@ -23,8 +36,26 @@ export function trimToLastCompleteSentence(text: string): string {
   if (!trimmed || endsWithSentenceTerminator(trimmed)) {
     return trimmed;
   }
-  const lastEnd = Math.max(...SENTENCE_TERMINATORS.map(p => trimmed.lastIndexOf(p)));
-  return lastEnd > 0 ? trimmed.slice(0, lastEnd + 1) : trimmed;
+  for (let i = trimmed.length - 1; i > 0; i--) {
+    if (isSentenceEndAt(trimmed, i)) {
+      return trimmed.slice(0, i + 1);
+    }
+  }
+  return trimmed;
+}
+
+/**
+ * Hide decimal points inside numbers so sentence-splitting regexes do not
+ * break values like 16,875.00 apart. Restore with restoreDecimalPoints().
+ */
+const DECIMAL_PLACEHOLDER = '\u0000';
+
+export function protectDecimalPoints(text: string): string {
+  return text.replace(/(\d)\.(?=\d)/g, `$1${DECIMAL_PLACEHOLDER}`);
+}
+
+export function restoreDecimalPoints(text: string): string {
+  return text.replaceAll(DECIMAL_PLACEHOLDER, '.');
 }
 
 /**

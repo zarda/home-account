@@ -5,7 +5,12 @@ import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
-import { trimToLastCompleteSentence, dropIncompleteTrailingLine } from '../utils/llm-text.utils';
+import {
+  trimToLastCompleteSentence,
+  dropIncompleteTrailingLine,
+  protectDecimalPoints,
+  restoreDecimalPoints,
+} from '../utils/llm-text.utils';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -497,13 +502,16 @@ Return AI Insights in this exact format (use markdown):
 
 Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
 Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
+Begin your response directly with "## Spending Pattern".
 
 ${this.getLanguageInstruction()}`;
 
       const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 2048,
+          // Gemma 4 drafts verbosely before its final answer and needs more
+          // room, or the visible sections arrive truncated
+          maxOutputTokens: this.currentTextModelId.includes('gemma') ? 4096 : 2048,
           temperature: 0.3,
           topP: 0.7,
         }
@@ -571,7 +579,7 @@ OUTPUT: Only the financial advice (2-3 sentences).`;
       const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 1024,
+          maxOutputTokens: this.currentTextModelId.includes('gemma') ? 2048 : 1024,
           temperature: 0.2,
           topP: 0.7,
         }
@@ -1224,14 +1232,17 @@ Return ONLY valid JSON (no thinking, no explanation):
     cleaned = cleaned.replace(/\n{2,}/g, ' ');  // Replace double newlines with space
     cleaned = cleaned.replace(/\s{2,}/g, ' ');  // Collapse multiple spaces
 
-    // Deduplicate: if the text repeats itself, keep only first occurrence
-    const trimmed = cleaned.trim();
+    // Deduplicate: if the text repeats itself, keep only first occurrence.
+    // Decimal points are protected so amounts like 16,875.00 are not split
+    // into separate "sentences" ("...16,875." + "00 TWD...").
+    const trimmed = protectDecimalPoints(cleaned.trim());
     // Match sentences including their punctuation (Latin and CJK)
     const sentenceMatches = trimmed.match(/[^.!?。！？]*[.!?。！？]+/g) || [];
     const sentences = sentenceMatches.map(s => s.trim()).filter(s => s.length > 0);
 
     if (sentences.length === 0) {
-      return trimmed.length > 20 ? trimmed : text.trim();
+      const restored = restoreDecimalPoints(trimmed);
+      return restored.length > 20 ? restored : text.trim();
     }
 
     // If we have repeated sentences, keep unique ones
@@ -1270,12 +1281,12 @@ Return ONLY valid JSON (no thinking, no explanation):
       }
     }
 
-    let result = uniqueSentences.join(' ').trim();
+    let result = restoreDecimalPoints(uniqueSentences.join(' ').trim());
 
     // Ensure 2-3 sentences max (typical financial advice length)
     // Sentences already have punctuation, so we can count them directly
     if (uniqueSentences.length > 3) {
-      result = uniqueSentences.slice(0, 3).join(' ').trim();
+      result = restoreDecimalPoints(uniqueSentences.slice(0, 3).join(' ').trim());
     }
 
     // Log deduplication results

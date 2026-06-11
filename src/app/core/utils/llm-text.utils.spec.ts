@@ -2,6 +2,8 @@ import {
   endsWithSentenceTerminator,
   trimToLastCompleteSentence,
   dropIncompleteTrailingLine,
+  protectDecimalPoints,
+  restoreDecimalPoints,
 } from './llm-text.utils';
 
 describe('llm-text.utils', () => {
@@ -46,6 +48,29 @@ describe('llm-text.utils', () => {
     it('should keep the fragment when no complete sentence exists', () => {
       expect(trimToLastCompleteSentence('Your current balance of 16875 TWD'))
         .toBe('Your current balance of 16875 TWD');
+    });
+
+    it('should not cut a number at its decimal point', () => {
+      expect(trimToLastCompleteSentence('Great savings rate. Keep expenses below 13,125.00 TW'))
+        .toBe('Great savings rate.');
+    });
+
+    it('should accept a sentence genuinely ending after a decimal number', () => {
+      expect(trimToLastCompleteSentence('Save more. You kept 16,875.00.'))
+        .toBe('Save more. You kept 16,875.00.');
+    });
+  });
+
+  describe('decimal point protection', () => {
+    it('should round-trip decimals through protect/restore', () => {
+      const text = 'Balance of 16,875.00 TWD. Spend less.';
+      const isProtected = protectDecimalPoints(text);
+      expect(isProtected).not.toContain('16,875.00');
+      expect(restoreDecimalPoints(isProtected)).toBe(text);
+    });
+
+    it('should leave sentence periods alone', () => {
+      expect(protectDecimalPoints('Done. Next 5. items')).toBe('Done. Next 5. items');
     });
   });
 
