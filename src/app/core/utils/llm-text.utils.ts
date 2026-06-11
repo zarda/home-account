@@ -59,6 +59,18 @@ export function restoreDecimalPoints(text: string): string {
 }
 
 /**
+ * Remove artifacts some models wrap around short answers: an echoed
+ * instruction prefix (e.g. 'on Traditional Chinese: "...') and wrapping
+ * quotation marks, including unbalanced leading ones.
+ */
+export function stripAdviceArtifacts(text: string): string {
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^(?:respond in|on|in)\s+[A-Za-z()（） ]+[:：]\s*/i, '');
+  cleaned = cleaned.replace(/^["“「『]\s*/, '').replace(/\s*["”」』]$/, '');
+  return cleaned.trim();
+}
+
+/**
  * Drop the final line of a (markdown) response when it was cut off
  * mid-sentence. List items and headers often legitimately end without
  * punctuation, so they are kept unless `dropListItems` is set — pass it

@@ -399,27 +399,40 @@ ${categoryBreakdown}
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
 ${historicalSection}${budgetSection}${ragSection}
-Write a 2-3 sentence summary that:
-1. Highlights the main spending pattern with specific amounts
-2. Notes any significant changes from previous period (if data available)
-3. Warns about any budgets near or over limit (if applicable)
-4. Provides one actionable insight
+Return AI Insights in this exact format (use markdown):
 
-Keep it concise and encouraging. Use plain language, no bullet points. Use ${baseCurrency} for currency amounts.
+## Spending Pattern
+[1-2 sentences about main spending categories with specific amounts and percentages]
 
-${this.getLanguageInstruction()}`;
+## Changes & Trends
+[1-2 sentences about significant changes from previous period with impact assessment]
+
+## Budget Status
+[1-2 sentences about budget limits - warnings if any are near limit, or confirmation if all good]
+
+## Actionable Insights
+- [Specific, practical insight #1]
+- [Specific, practical insight #2]
+- [Specific, practical insight #3]
+
+Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
+${ragSection ? 'Ground your insights in the Notable activity section — cite its specific transactions, amounts, and changes where relevant.\n' : ''}Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
+
+${this.getLanguageInstruction()}
+Write the "##" section headings in the same language as the response.`;
 
       const response = await this.client.responses.create({
         model: this.TEXT_MODEL,
         input: prompt,
-        max_output_tokens: 300,
+        max_output_tokens: 1500,
         store: false,
       });
 
       return response.output_text?.trim() || 'Unable to generate spending summary.';
     } catch (error) {
       console.error('OpenAI summary generation error:', error);
-      return 'Unable to generate spending summary at this time.';
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -457,12 +470,13 @@ Consider:
 - If balance is negative, acknowledge the situation kindly
 - If doing well (>30% savings), congratulate and suggest next steps
 
-${this.getLanguageInstruction()}`;
+${this.getLanguageInstruction()}
+Output only the advice sentences themselves — no preamble, no labels, no quotation marks.`;
 
       const response = await this.client.responses.create({
         model: this.TEXT_MODEL,
         input: prompt,
-        max_output_tokens: 150,
+        max_output_tokens: 400,
         store: false,
       });
 
@@ -472,7 +486,8 @@ ${this.getLanguageInstruction()}`;
       );
     } catch (error) {
       console.error('OpenAI financial advice error:', error);
-      return 'Keep tracking your expenses to better understand your spending patterns.';
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -691,7 +706,7 @@ Return ONLY valid JSON with this structure:
       const response = await this.client.responses.create({
         model: this.TEXT_MODEL,
         input: prompt,
-        max_output_tokens: 300,
+        max_output_tokens: 1500,
         store: false,
       });
 

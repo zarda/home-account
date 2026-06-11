@@ -4,6 +4,7 @@ import {
   dropIncompleteTrailingLine,
   protectDecimalPoints,
   restoreDecimalPoints,
+  stripAdviceArtifacts,
 } from './llm-text.utils';
 
 describe('llm-text.utils', () => {
@@ -105,5 +106,27 @@ describe('llm-text.utils', () => {
     it('should handle empty input', () => {
       expect(dropIncompleteTrailingLine('')).toBe('');
     });
+  });
+});
+
+describe('stripAdviceArtifacts', () => {
+  it('should drop an echoed language-instruction prefix and unbalanced quote', () => {
+    expect(stripAdviceArtifacts('on Traditional Chinese: "今年您成功將支出控制在收入內。'))
+      .toBe('今年您成功將支出控制在收入內。');
+  });
+
+  it('should strip balanced wrapping quotes', () => {
+    expect(stripAdviceArtifacts('"Save 20% of your income."'))
+      .toBe('Save 20% of your income.');
+  });
+
+  it('should leave clean advice untouched', () => {
+    const text = 'Your savings rate of 56% is excellent. Keep it up.';
+    expect(stripAdviceArtifacts(text)).toBe(text);
+  });
+
+  it('should not eat sentences that merely contain a colon', () => {
+    expect(stripAdviceArtifacts('Remember: save first, spend later.'))
+      .toBe('Remember: save first, spend later.');
   });
 });

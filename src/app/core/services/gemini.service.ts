@@ -516,9 +516,9 @@ Return AI Insights in this exact format (use markdown):
 
 Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
 ${ragSection ? 'Ground your insights in the Notable activity section — cite its specific transactions, amounts, and changes where relevant.\n' : ''}Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
-Begin your response directly with "## Spending Pattern".
 
-${this.getLanguageInstruction()}`;
+${this.getLanguageInstruction()}
+Write the "##" section headings in the same language as the response, starting with the first section.`;
 
       const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -584,8 +584,8 @@ ${savingsRate < 20 ? '- Address the low savings rate with concrete, actionable s
 ${summary.balance < 0 ? '- Prioritize: stop deficit spending and find income.' : '- Prioritize: maintain momentum and increase savings.'}
 
 TONE: Practical, specific, supportive. Use exact numbers from above.
-OUTPUT: Only the financial advice (2-3 sentences).
-${this.getLanguageInstruction()}`;
+${this.getLanguageInstruction()}
+OUTPUT: Only the advice sentences themselves — no preamble, no labels, no quotation marks.`;
 
       const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],

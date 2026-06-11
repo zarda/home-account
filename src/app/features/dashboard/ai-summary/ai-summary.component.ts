@@ -5,11 +5,9 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import {
-  GeminiService,
-  PreviousPeriodData,
-  isRateLimitMessage,
-} from '../../../core/services/gemini.service';
+import { PreviousPeriodData, isRateLimitMessage } from '../../../core/services/gemini.service';
+import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
+import { stripAdviceArtifacts } from '../../../core/utils/llm-text.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -32,7 +30,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   styleUrl: './ai-summary.component.scss'
 })
 export class AiSummaryComponent {
-  private geminiService = inject(GeminiService);
+  private cloudLLMProvider = inject(CloudLLMProviderService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private authService = inject(AuthService);
@@ -65,11 +63,12 @@ export class AiSummaryComponent {
     const txIds = this.transactions().map(t => t.id).sort().join(',');
     const locale = this.translationService.currentLocale();
     const grounding = this.ragEnabled() ? 'rag' : 'std';
-    return `ai-summary-${this.period()}-${locale}-${grounding}-${txIds.slice(0, 100)}`;
+    const provider = this.authService.currentUser()?.preferences?.llmProviderPreferences?.insights ?? 'gemini';
+    return `ai-summary-${this.period()}-${locale}-${grounding}-${provider}-${txIds.slice(0, 100)}`;
   });
 
-  // Check if AI is available
-  isAvailable = computed(() => this.geminiService.isAvailable());
+  // Check if any cloud AI provider is available
+  isAvailable = computed(() => this.cloudLLMProvider.hasAnyCloudProvider());
 
   // Minimum transactions required for insights
   hasEnoughData = computed(() => this.transactions().length >= 3);
@@ -117,7 +116,7 @@ export class AiSummaryComponent {
   }
 
   private async generateInsights(transactions: Transaction[], period: string): Promise<void> {
-    if (!this.geminiService.isAvailable() || transactions.length < 3) {
+    if (!this.cloudLLMProvider.hasAnyCloudProvider() || transactions.length < 3) {
       return;
     }
 
@@ -147,7 +146,7 @@ export class AiSummaryComponent {
 
       let summaryResult: string;
       try {
-        summaryResult = await this.geminiService.generateSpendingSummary(
+        summaryResult = await this.cloudLLMProvider.generateSpendingSummary(
           transactions,
           readablePeriod,
           currency,
@@ -162,7 +161,9 @@ export class AiSummaryComponent {
 
       let adviceResult: string;
       try {
-        adviceResult = await this.geminiService.getFinancialAdvice(periodTotal, currency, readablePeriod);
+        adviceResult = stripAdviceArtifacts(
+          await this.cloudLLMProvider.getFinancialAdvice(periodTotal, currency, readablePeriod)
+        );
       } catch (error) {
         adviceFailed = true;
         adviceResult = this.describeFailure(error, 'ai.adviceFallback');
