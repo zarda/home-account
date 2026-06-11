@@ -49,17 +49,18 @@ export class CloudLLMProviderService {
   }
 
   /**
-   * Initialize all providers with their respective API keys from user preferences.
+   * Initialize all providers with their respective API keys from user
+   * preferences. Pass the model ids selected in AI settings so Gemini does
+   * not silently revert to the catalog defaults.
    */
-  initializeFromUserPreferences(): void {
+  initializeFromUserPreferences(textModelId?: string, visionModelId?: string): void {
     const user = this.authService.currentUser();
     if (user?.preferences) {
       const { geminiApiKey, openaiApiKey, claudeApiKey } = user.preferences;
 
       if (geminiApiKey) {
-        // Note: Models will use defaults from AI strategy preferences if not explicitly passed
-        this.geminiService.reinitialize(geminiApiKey);
-        console.log('[CloudLLMProvider] Gemini initialized with API key');
+        this.geminiService.reinitialize(geminiApiKey, textModelId, visionModelId);
+        console.log(`[CloudLLMProvider] Gemini initialized with API key${textModelId ? ` (text: ${textModelId}, vision: ${visionModelId})` : ''}`);
       }
       if (openaiApiKey) {
         this.openaiService.reinitialize(openaiApiKey);

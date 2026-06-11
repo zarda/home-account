@@ -87,9 +87,10 @@ export class AIStrategyService {
   availableCloudProviders = computed(() => this.cloudLLMProvider.availableProviders());
 
   constructor() {
-    // Initialize cloud providers from user preferences
+    // Initialize cloud providers from user preferences, applying the stored
+    // model selection so startup honors the user's choice from AI settings
     console.log('[AIStrategy] Initializing from user preferences on app start');
-    this.cloudLLMProvider.initializeFromUserPreferences();
+    this.initializeCloudProviders();
 
     // Probe native capabilities (Mac environment, Apple Intelligence)
     if (this.canUseNative()) {
@@ -104,20 +105,28 @@ export class AIStrategyService {
         console.log('[AIStrategy] User loaded, checking for API keys');
         if (user.preferences?.geminiApiKey) {
           console.log('[AIStrategy] Found Gemini API key, reinitializing');
-          this.cloudLLMProvider.initializeFromUserPreferences();
+          this.initializeCloudProviders();
         }
         if (user.preferences?.openaiApiKey) {
           console.log('[AIStrategy] Found OpenAI API key, reinitializing');
-          this.cloudLLMProvider.initializeFromUserPreferences();
+          this.initializeCloudProviders();
         }
         if (user.preferences?.claudeApiKey) {
           console.log('[AIStrategy] Found Claude API key, reinitializing');
-          this.cloudLLMProvider.initializeFromUserPreferences();
+          this.initializeCloudProviders();
         }
       } else {
         console.log('[AIStrategy] No user loaded yet');
       }
     });
+  }
+
+  /**
+   * (Re)initialize cloud providers with the persisted model selection.
+   */
+  private initializeCloudProviders(): void {
+    const prefs = this._preferences();
+    this.cloudLLMProvider.initializeFromUserPreferences(prefs.textModel, prefs.visionModel);
   }
 
   /**
