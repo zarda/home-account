@@ -1,6 +1,8 @@
 # HomeAccount
 
-A personal finance management application built with Angular 21, supporting both web (PWA) and iOS native platforms.
+[![CI](https://github.com/zarda/home-account/actions/workflows/ci.yml/badge.svg)](https://github.com/zarda/home-account/actions/workflows/ci.yml)
+
+A personal finance management application built with Angular 21, supporting web (PWA), iOS native, and macOS (Apple Silicon) platforms.
 
 ## Why This Project?
 
@@ -10,8 +12,8 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Real-Time Sync** - Firebase Firestore with `onSnapshot` subscriptions for instant UI updates across devices
 - **Standalone Components** - No NgModules - all 40+ components use the modern standalone pattern
 - **Multi-Currency Engine** - Transaction-level exchange rate tracking with 12-hour cached rates
-- **Multi-Platform** - Single codebase deploys to web (Firebase) and iOS (App Store) via Capacitor
-- **AI Integration** - Cloud AI (Gemini) for web, native Vision OCR for iOS
+- **Multi-Platform** - Single codebase deploys to web (Firebase), iOS (App Store), and macOS (Apple Silicon) via Capacitor
+- **AI Integration** - Apple's on-device foundation model (Apple Intelligence) on macOS 26 / iOS 26, cloud AI (Gemini 3.1 / Gemma 4) for web, native Vision OCR everywhere as fallback
 - **Type-Safe Throughout** - Full TypeScript with strict mode, DTOs, and well-defined interfaces
 
 ## Features
@@ -28,13 +30,15 @@ This project demonstrates modern Angular development practices with a focus on:
 
 ## Platform-Specific Features
 
-| Feature | Web (PWA) | iOS (Native) |
-|---------|-----------|--------------|
-| **Receipt OCR** | Cloud AI (Gemini) | Native Vision Framework |
-| **Camera** | Browser API | Native Camera |
-| **Offline** | Service Worker | Native + SW |
-| **Donate Link** | Visible | Hidden (App Store guidelines) |
-| **Installation** | Add to Home Screen | App Store |
+| Feature | Web (PWA) | iOS (Native) | macOS (Apple Silicon) |
+|---------|-----------|--------------|-----------------------|
+| **Receipt OCR** | Cloud AI (Gemini) | Vision OCR + Apple Intelligence (iOS 26+) | Apple Intelligence (on-device) → Cloud AI → Vision OCR |
+| **Camera** | Browser API | Native Camera | File picker |
+| **Offline** | Service Worker | Native + SW | Native + SW |
+| **Donate Link** | Visible | Hidden (App Store guidelines) | Hidden (App Store guidelines) |
+| **Installation** | Add to Home Screen | App Store | App Store / runs the iOS app ("Designed for iPad") |
+
+On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence is available (macOS 26+ / iOS 26+ with the Foundation Models framework), receipts are processed fully on device: Vision OCR recognizes the text and Apple's foundation model structures it into transactions — no API key or network needed. Browsers cannot access Apple's model, so the Mac app is the way to use it; without Apple Intelligence, Macs fall back to the configured cloud models (Gemini 3.1 / Gemma 4) and then to the basic Vision OCR parser. Building the Apple Intelligence plugin requires Xcode 26 (it compiles to an unavailable stub on older SDKs).
 
 ## Tech Stack
 
@@ -44,8 +48,8 @@ This project demonstrates modern Angular development practices with a focus on:
 | UI | Angular Material 21, Tailwind CSS 3.4 |
 | State | Angular Signals |
 | Backend | Firebase (Auth, Firestore) |
-| AI (Web) | Google Generative AI (Gemini) |
-| AI (iOS) | Apple Vision Framework |
+| AI (Web) | Google Generative AI (Gemini 3.1 / Gemma 4) |
+| AI (On-Device) | Apple Foundation Models (Apple Intelligence) + Vision Framework |
 | Multi-Platform | Capacitor 8 |
 | Charts | Chart.js + ng2-charts |
 | Export | jspdf, date-fns |
@@ -107,15 +111,21 @@ home-account/
 ## Getting Started
 
 ```bash
-# Prerequisites: Node.js 18+, Angular CLI
+# Prerequisites: Node.js 20+, Angular CLI
 
 npm install
 
-# Configure Firebase (see src/environments/)
-# Configure Gemini API key in Profile Settings
+# Configure Firebase: copy the template and fill in your project values
+mkdir -p .vscode
+cp src/environments/environment.local.example.ts .vscode/environment.ts
+# Edit .vscode/environment.ts with your Firebase config
+
+# Configure Gemini API key in Profile Settings (after first run)
 
 npm start
 ```
+
+`src/environments/environment.ts` re-exports from the gitignored `.vscode/environment.ts`, so local Firebase keys never land in version control. Production builds use `environment.production.ts` with values injected from CI/CD secrets.
 
 ## Build Commands
 
@@ -177,8 +187,13 @@ The web app is a fully-featured Progressive Web App:
 | `npm run build:ios` | Build and sync to iOS |
 | `npm run cap:ios` | Open iOS project in Xcode |
 | `npm test` | Run unit tests |
+| `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run lint` | ESLint |
 | `firebase deploy` | Deploy web to Firebase Hosting |
+
+## Continuous Integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, headless unit tests with coverage, and a production build on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 

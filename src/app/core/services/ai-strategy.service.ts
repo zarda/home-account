@@ -4,47 +4,50 @@ import { ParsedReceipt } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
+import { VisionOcrService } from './vision-ocr.service';
+import { AppleIntelligenceService } from './apple-intelligence.service';
+import { NativeReceiptService } from './native-receipt.service';
+import { ProcessedTransaction, ProcessingResult } from './ai-types';
+import { fileToBase64 } from '../utils/file.utils';
+import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { LLMProvider } from '../../models';
-import VisionOCR, { VisionOCRResult } from '../plugins/vision-ocr.plugin';
+
+export type { ProcessedTransaction, ProcessingResult } from './ai-types';
 
 export interface AIPreferences {
   autoSync: boolean;
-  textModel?: string;      // Model ID for text tasks
-  visionModel?: string;    // Model ID for vision tasks
-}
-
-export interface ProcessingResult {
-  transactions: ProcessedTransaction[];
-  source: 'cloud' | 'native';
-  confidence: number;
-  processingTimeMs: number;
-}
-
-export interface ProcessedTransaction {
-  date: Date;
-  description: string;
-  amount: number;
-  type: 'income' | 'expense';
-  currency: string;
-  confidence: number;
-  source: 'cloud' | 'native';
-  notes?: string;
-  suggestedCategoryId?: string;
+  textModel?: string;      // Gemini model ID for text tasks
+  visionModel?: string;    // Gemini model ID for vision tasks
+  openaiModel?: string;    // OpenAI model ID (multimodal)
+  claudeModel?: string;    // Claude model ID (multimodal)
 }
 
 const DEFAULT_PREFERENCES: AIPreferences = {
   autoSync: true,
-  textModel: 'gemini-2.5-flash',
-  visionModel: 'gemini-3.1-flash-lite-preview',
+  textModel: DEFAULT_TEXT_MODEL,
+  visionModel: DEFAULT_VISION_MODEL,
+  openaiModel: DEFAULT_OPENAI_MODEL,
+  claudeModel: DEFAULT_CLAUDE_MODEL,
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
 
+/**
+ * Routes receipt processing to the best available engine:
+ * - On-device pipeline (Vision OCR + Apple Intelligence) on iPhone/iPad,
+ *   and on Macs when Apple's foundation model is available
+ * - Cloud AI (Gemini/OpenAI/Claude) on the web, and on Macs without
+ *   Apple Intelligence
+ * Each side falls back to the other when processing fails.
+ */
 @Injectable({ providedIn: 'root' })
 export class AIStrategyService {
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private pwaService = inject(PwaService);
   private authService = inject(AuthService);
+  private visionOcr = inject(VisionOcrService);
+  private appleIntelligence = inject(AppleIntelligenceService);
+  private nativeReceipt = inject(NativeReceiptService);
 
   // State signals
   private _preferences = signal<AIPreferences>(this.loadPreferences());
@@ -60,21 +63,44 @@ export class AIStrategyService {
   isNativePlatform = computed(() => Capacitor.isNativePlatform());
   platform = computed(() => Capacitor.getPlatform());
 
+  // True when the iOS build is running on macOS (Apple Silicon / Mac Catalyst)
+  isMacEnvironment = computed(() => this.visionOcr.isMacEnvironment());
+
+  // True when Apple's on-device foundation model (Apple Intelligence) is
+  // usable — iOS 26 / macOS 26 with Apple Intelligence enabled
+  canUseAppleIntelligence = computed(() => this.appleIntelligence.isModelAvailable());
+
   // Computed: Can use cloud AI (any provider)
   canUseCloud = computed(() =>
     this.pwaService.isOnline() && this.cloudLLMProvider.hasAnyCloudProvider()
   );
 
-  // Computed: Can use native AI (iOS only)
+  // Computed: Can use native AI (iOS and macOS via the Vision framework)
   canUseNative = computed(() => this.platform() === 'ios');
+
+  // Computed: Route receipts to the native pipeline. With Apple Intelligence
+  // the native pipeline (Vision OCR + on-device model) is preferred wherever
+  // it is available. Without it, Macs prefer the newer cloud models
+  // (Gemini 3.1 / Gemma 4) over the regex-based OCR parser.
+  useNativeOCR = computed(() =>
+    this.canUseNative() &&
+    (this.canUseAppleIntelligence() || !(this.isMacEnvironment() && this.canUseCloud()))
+  );
 
   // Computed: Available cloud providers
   availableCloudProviders = computed(() => this.cloudLLMProvider.availableProviders());
 
   constructor() {
-    // Initialize cloud providers from user preferences
+    // Initialize cloud providers from user preferences, applying the stored
+    // model selection so startup honors the user's choice from AI settings
     console.log('[AIStrategy] Initializing from user preferences on app start');
-    this.cloudLLMProvider.initializeFromUserPreferences();
+    this.initializeCloudProviders();
+
+    // Probe native capabilities (Mac environment, Apple Intelligence)
+    if (this.canUseNative()) {
+      this.visionOcr.detectEnvironment();
+      this.appleIntelligence.detectAvailability();
+    }
 
     // Reinitialize cloud providers when user data changes (e.g., API key updated)
     effect(() => {
@@ -83,20 +109,30 @@ export class AIStrategyService {
         console.log('[AIStrategy] User loaded, checking for API keys');
         if (user.preferences?.geminiApiKey) {
           console.log('[AIStrategy] Found Gemini API key, reinitializing');
-          this.cloudLLMProvider.initializeFromUserPreferences();
+          this.initializeCloudProviders();
         }
         if (user.preferences?.openaiApiKey) {
           console.log('[AIStrategy] Found OpenAI API key, reinitializing');
-          this.cloudLLMProvider.initializeFromUserPreferences();
+          this.initializeCloudProviders();
         }
         if (user.preferences?.claudeApiKey) {
           console.log('[AIStrategy] Found Claude API key, reinitializing');
-          this.cloudLLMProvider.initializeFromUserPreferences();
+          this.initializeCloudProviders();
         }
       } else {
         console.log('[AIStrategy] No user loaded yet');
       }
     });
+  }
+
+  /**
+   * (Re)initialize cloud providers with the persisted model selection.
+   */
+  private initializeCloudProviders(): void {
+    const prefs = this._preferences();
+    this.cloudLLMProvider.initializeFromUserPreferences(prefs.textModel, prefs.visionModel);
+    this.cloudLLMProvider.setOpenAIModel(prefs.openaiModel ?? DEFAULT_OPENAI_MODEL);
+    this.cloudLLMProvider.setClaudeModel(prefs.claudeModel ?? DEFAULT_CLAUDE_MODEL);
   }
 
   /**
@@ -107,6 +143,13 @@ export class AIStrategyService {
     const updated = { ...current, ...updates };
     this._preferences.set(updated);
     this.savePreferences(updated);
+
+    if (updates.openaiModel) {
+      this.cloudLLMProvider.setOpenAIModel(updates.openaiModel);
+    }
+    if (updates.claudeModel) {
+      this.cloudLLMProvider.setClaudeModel(updates.claudeModel);
+    }
 
     // If models changed, reinitialize Gemini service with error handling
     if (updates.textModel || updates.visionModel) {
@@ -136,52 +179,58 @@ export class AIStrategyService {
 
   /**
    * Process a receipt image using the appropriate AI strategy.
-   * - On iOS: Uses native Vision OCR
-   * - On Web: Uses cloud AI (Gemini/OpenAI/Claude)
    */
   async processReceipt(imageFile: File): Promise<ProcessingResult> {
-    const startTime = performance.now();
-    this._isProcessing.set(true);
-
-    try {
-      let result: ProcessingResult;
-
-      if (this.canUseNative()) {
-        // iOS: Use native Vision OCR
-        result = await this.processWithNative(imageFile);
-      } else {
-        // Web: Use cloud AI
-        result = await this.processWithCloud(imageFile);
-      }
-
-      const processingTimeMs = performance.now() - startTime;
-      this._lastProcessingTime.set(processingTimeMs);
-
-      return {
-        ...result,
-        processingTimeMs,
-      };
-    } finally {
-      this._isProcessing.set(false);
-    }
+    return this.runProcessing(
+      () => this.nativeReceipt.processImage(imageFile),
+      () => this.processWithCloud(imageFile),
+    );
   }
 
   /**
    * Process multiple images of a receipt.
    */
   async processMultipleImages(imageFiles: File[]): Promise<ProcessingResult> {
+    return this.runProcessing(
+      () => this.nativeReceipt.processImages(imageFiles),
+      () => this.processMultipleWithCloud(imageFiles),
+    );
+  }
+
+  /**
+   * Run native or cloud processing per the routing strategy, falling back
+   * to the other engine when the preferred one fails.
+   */
+  private async runProcessing(
+    native: () => Promise<ProcessingResult>,
+    cloud: () => Promise<ProcessingResult>,
+  ): Promise<ProcessingResult> {
     const startTime = performance.now();
     this._isProcessing.set(true);
 
     try {
       let result: ProcessingResult;
 
-      if (this.canUseNative()) {
-        // iOS: Process each image with native OCR and combine
-        result = await this.processMultipleWithNative(imageFiles);
+      if (this.useNativeOCR()) {
+        try {
+          result = await native();
+        } catch (error) {
+          if (!this.canUseCloud()) {
+            throw error;
+          }
+          console.warn('[AIStrategy] Native processing failed, falling back to cloud AI:', error);
+          result = await cloud();
+        }
       } else {
-        // Web: Use cloud AI
-        result = await this.processMultipleWithCloud(imageFiles);
+        try {
+          result = await cloud();
+        } catch (error) {
+          if (!this.canUseNative()) {
+            throw error;
+          }
+          console.warn('[AIStrategy] Cloud AI failed, falling back to native OCR:', error);
+          result = await native();
+        }
       }
 
       const processingTimeMs = performance.now() - startTime;
@@ -197,188 +246,12 @@ export class AIStrategyService {
   }
 
   /**
-   * Process with native iOS Vision OCR.
-   */
-  private async processWithNative(imageFile: File): Promise<ProcessingResult> {
-    console.log('[AIStrategy] Processing with native Vision OCR');
-    
-    try {
-      // Check if Vision OCR is available
-      const { available } = await VisionOCR.isAvailable();
-      if (!available) {
-        console.warn('[AIStrategy] Vision OCR not available, falling back to cloud');
-        if (this.canUseCloud()) {
-          return this.processWithCloud(imageFile);
-        }
-        throw new Error('Vision OCR is not available on this device.');
-      }
-
-      // Convert file to base64
-      const imageBase64 = await this.fileToBase64(imageFile);
-      
-      // Perform OCR
-      const ocrResult = await VisionOCR.recognizeText({
-        image: imageBase64,
-        languages: ['en-US', 'ja-JP', 'zh-Hant'],
-      });
-
-      // Parse the OCR result into a transaction
-      const transaction = this.parseOCRResult(ocrResult);
-
-      return {
-        transactions: [transaction],
-        source: 'native',
-        confidence: ocrResult.confidence,
-        processingTimeMs: 0,
-      };
-    } catch (error) {
-      console.error('[AIStrategy] Native OCR failed:', error);
-      
-      // Fall back to cloud if available
-      if (this.canUseCloud()) {
-        console.log('[AIStrategy] Falling back to cloud AI');
-        return this.processWithCloud(imageFile);
-      }
-      
-      throw error;
-    }
-  }
-
-  /**
-   * Process multiple images with native iOS Vision OCR.
-   */
-  private async processMultipleWithNative(imageFiles: File[]): Promise<ProcessingResult> {
-    console.log('[AIStrategy] Processing multiple images with native Vision OCR');
-    
-    try {
-      const { available } = await VisionOCR.isAvailable();
-      if (!available) {
-        console.warn('[AIStrategy] Vision OCR not available, falling back to cloud');
-        if (this.canUseCloud()) {
-          return this.processMultipleWithCloud(imageFiles);
-        }
-        throw new Error('Vision OCR is not available on this device.');
-      }
-
-      const transactions: ProcessedTransaction[] = [];
-      let totalConfidence = 0;
-
-      for (const file of imageFiles) {
-        const imageBase64 = await this.fileToBase64(file);
-        
-        const ocrResult = await VisionOCR.recognizeText({
-          image: imageBase64,
-          languages: ['en-US', 'ja-JP', 'zh-Hant'],
-        });
-
-        const transaction = this.parseOCRResult(ocrResult);
-        transactions.push(transaction);
-        totalConfidence += ocrResult.confidence;
-      }
-
-      const avgConfidence = transactions.length > 0 
-        ? totalConfidence / transactions.length 
-        : 0;
-
-      return {
-        transactions,
-        source: 'native',
-        confidence: avgConfidence,
-        processingTimeMs: 0,
-      };
-    } catch (error) {
-      console.error('[AIStrategy] Native OCR failed for multiple images:', error);
-      
-      if (this.canUseCloud()) {
-        console.log('[AIStrategy] Falling back to cloud AI');
-        return this.processMultipleWithCloud(imageFiles);
-      }
-      
-      throw error;
-    }
-  }
-
-  /**
-   * Parse OCR result text to extract transaction data.
-   * This is a basic parser that extracts date, amount, and merchant from OCR text.
-   */
-  private parseOCRResult(ocrResult: VisionOCRResult): ProcessedTransaction {
-    const text = ocrResult.text;
-    const lines = text.split('\n').filter(line => line.trim());
-    
-    // Try to extract date
-    const datePatterns = [
-      /(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/,  // MM/DD/YYYY or DD/MM/YYYY
-      /(\d{4})[/-](\d{1,2})[/-](\d{1,2})/,     // YYYY/MM/DD
-      /(\w{3,})\s+(\d{1,2}),?\s+(\d{4})/i,     // Month DD, YYYY
-    ];
-    
-    let extractedDate = new Date();
-    for (const pattern of datePatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        const parsed = new Date(match[0]);
-        if (!isNaN(parsed.getTime())) {
-          extractedDate = parsed;
-          break;
-        }
-      }
-    }
-
-    // Try to extract amount (look for currency patterns)
-    const amountPatterns = [
-      /(?:total|amount|due|pay|sum|charge)[:\s]*[¥$€£]?\s*([\d,]+\.?\d*)/i,
-      /[¥$€£]\s*([\d,]+\.?\d*)/,
-      /([\d,]+\.?\d*)\s*(?:円|yen|usd|thb)/i,
-    ];
-    
-    let extractedAmount = 0;
-    for (const pattern of amountPatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        const amount = parseFloat(match[1].replace(/,/g, ''));
-        if (!isNaN(amount) && amount > 0) {
-          extractedAmount = amount;
-          break;
-        }
-      }
-    }
-
-    // Try to extract currency
-    let extractedCurrency = 'USD';
-    if (text.includes('¥') || text.includes('円') || /yen/i.test(text)) {
-      extractedCurrency = 'JPY';
-    } else if (text.includes('€')) {
-      extractedCurrency = 'EUR';
-    } else if (text.includes('£')) {
-      extractedCurrency = 'GBP';
-    } else if (/THB|฿|baht/i.test(text)) {
-      extractedCurrency = 'THB';
-    }
-
-    // Use first non-empty line as merchant name (typically at top of receipt)
-    const merchant = lines[0] || 'Unknown Merchant';
-
-    return {
-      date: extractedDate,
-      description: merchant,
-      amount: extractedAmount,
-      type: 'expense',
-      currency: extractedCurrency,
-      confidence: ocrResult.confidence,
-      source: 'native',
-    };
-  }
-
-  /**
    * Process with cloud AI.
    */
   private async processWithCloud(imageFile: File): Promise<ProcessingResult> {
-    if (!this.canUseCloud()) {
-      throw new Error('Cloud AI is not available. Please check your internet connection and configure an API key in Profile Settings.');
-    }
+    this.ensureCloudAvailable();
 
-    const imageBase64 = await this.fileToBase64(imageFile);
+    const imageBase64 = await fileToBase64(imageFile);
     const receipt = await this.cloudLLMProvider.parseReceipt(imageBase64);
 
     return {
@@ -393,14 +266,11 @@ export class AIStrategyService {
    * Process multiple images with cloud AI.
    */
   private async processMultipleWithCloud(imageFiles: File[]): Promise<ProcessingResult> {
-    if (!this.canUseCloud()) {
-      throw new Error('Cloud AI is not available. Please check your internet connection and configure an API key in Profile Settings.');
-    }
+    this.ensureCloudAvailable();
 
     const imageBase64Array: string[] = [];
     for (const file of imageFiles) {
-      const base64 = await this.fileToBase64(file);
-      imageBase64Array.push(base64);
+      imageBase64Array.push(await fileToBase64(file));
     }
 
     const extracted = await this.cloudLLMProvider.extractTransactionsFromMultipleImages(imageBase64Array);
@@ -428,6 +298,12 @@ export class AIStrategyService {
     };
   }
 
+  private ensureCloudAvailable(): void {
+    if (!this.canUseCloud()) {
+      throw new Error('Cloud AI is not available. Please check your internet connection and configure an API key in Profile Settings.');
+    }
+  }
+
   /**
    * Convert parsed receipt to processed transaction.
    */
@@ -445,18 +321,6 @@ export class AIStrategyService {
         || '',
       suggestedCategoryId: receipt.suggestedCategory,
     };
-  }
-
-  /**
-   * Convert file to base64.
-   */
-  private fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
   }
 
   /**
@@ -491,6 +355,8 @@ export class AIStrategyService {
   getStatusInfo(): {
     cloudAvailable: boolean;
     nativeAvailable: boolean;
+    appleIntelligenceAvailable: boolean;
+    isMacEnvironment: boolean;
     isOnline: boolean;
     platform: string;
     availableProviders: LLMProvider[];
@@ -499,6 +365,8 @@ export class AIStrategyService {
     return {
       cloudAvailable: this.cloudLLMProvider.hasAnyCloudProvider(),
       nativeAvailable: this.canUseNative(),
+      appleIntelligenceAvailable: this.canUseAppleIntelligence(),
+      isMacEnvironment: this.isMacEnvironment(),
       isOnline: this.pwaService.isOnline(),
       platform: this.platform(),
       availableProviders: this.cloudLLMProvider.availableProviders(),

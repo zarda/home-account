@@ -366,7 +366,10 @@
     "aiMode": "Processing Mode",
     "aiModeDescription": "Choose how receipts and images are processed",
     "aiModeAuto": "Automatic",
-    "aiModeAutoDescription": "Automatically choose the best option based on connectivity and accuracy"
+    "aiModeAutoDescription": "Automatically choose the best option based on connectivity and accuracy",
+    "textModelLabel": "Text model (summaries & advice)",
+    "visionModelLabel": "Vision model (receipt scanning)",
+    "modelLabel": "Model"
   },
   "days": {
     "sunday": "Sunday",
@@ -574,7 +577,11 @@
     "financialAdvice": "Financial Tip",
     "refresh": "Refresh insights",
     "generating": "Generating insights...",
-    "noInsights": "Add more transactions to get AI insights"
+    "noInsights": "Add more transactions to get AI insights",
+    "rateLimited": "The AI service is busy right now (rate limit reached). Please try again in a minute.",
+    "invalidApiKey": "AI Insights unavailable: invalid API key. Please check Settings → AI Settings.",
+    "summaryUnavailable": "Unable to generate the spending summary right now. Tap refresh to try again.",
+    "adviceFallback": "Keep tracking your expenses to better understand your spending patterns."
   },
   "import": {
     "title": "Smart Import",
@@ -695,6 +702,7 @@
     "nativeOCRDescription": "Uses Apple Vision framework for fast, private on-device text recognition.",
     "onDevice": "On-Device",
     "nativeOCRReady": "Native OCR Ready",
+    "appleIntelligenceReady": "Apple Intelligence Ready (On-Device)",
     "cloudAIReady": "Cloud AI Ready",
     "configureRequired": "Configure API key",
     "addApiKeyHint": "Add at least one API key below to enable AI features",
@@ -715,7 +723,11 @@
     "storageInfo": "Storage",
     "totalCache": "Total Cache",
     "queueSynced": "Queue synced successfully",
-    "queueCleared": "Queue cleared"
+    "queueCleared": "Queue cleared",
+    "ragInsights": "Detail-grounded insights (RAG)",
+    "ragInsightsDescription": "When on, your spending insights include details of notable transactions — largest expenses, unusual amounts, and category changes — sent to your AI provider for richer analysis.",
+    "insightsSettings": "AI Insights",
+    "insightsSettingsHint": "Configure how your spending insights are generated"
   },
   "about": {
     "title": "About",

@@ -366,7 +366,10 @@
     "aiMode": "處理模式",
     "aiModeDescription": "選擇收據和圖片的處理方式",
     "aiModeAuto": "自動",
-    "aiModeAutoDescription": "根據網路連線狀態和準確度自動選擇最佳方式"
+    "aiModeAutoDescription": "根據網路連線狀態和準確度自動選擇最佳方式",
+    "textModelLabel": "文字模型（摘要與建議）",
+    "visionModelLabel": "視覺模型（收據掃描）",
+    "modelLabel": "模型"
   },
   "days": {
     "sunday": "週日",
@@ -574,7 +577,11 @@
     "financialAdvice": "理財建議",
     "refresh": "重新整理洞察",
     "generating": "正在產生洞察...",
-    "noInsights": "新增更多交易以獲得 AI 洞察"
+    "noInsights": "新增更多交易以獲得 AI 洞察",
+    "rateLimited": "AI 服務目前忙碌中（已達用量上限），請稍候一分鐘再試。",
+    "invalidApiKey": "無法使用 AI 洞察：API 金鑰無效。請前往「設定 → AI 設定」檢查。",
+    "summaryUnavailable": "目前無法產生消費摘要，請點擊重新整理再試一次。",
+    "adviceFallback": "持續記錄您的支出，以更深入了解您的消費模式。"
   },
   "import": {
     "title": "智慧匯入",
@@ -719,6 +726,7 @@
     "nativeOCRDescription": "使用 Apple Vision 框架進行快速、私密的裝置端文字識別。",
     "onDevice": "裝置端",
     "nativeOCRReady": "原生 OCR 就緒",
+    "appleIntelligenceReady": "Apple Intelligence 就緒（裝置端）",
     "cloudAIReady": "雲端 AI 就緒",
     "configureRequired": "設定 API 金鑰",
     "addApiKeyHint": "請在下方新增至少一個 API 金鑰以啟用 AI 功能",
@@ -739,7 +747,11 @@
     "storageInfo": "儲存空間",
     "totalCache": "快取總量",
     "queueSynced": "佇列同步成功",
-    "queueCleared": "佇列已清除"
+    "queueCleared": "佇列已清除",
+    "ragInsights": "以明細為依據的洞察（RAG）",
+    "ragInsightsDescription": "開啟後，消費洞察將包含值得注意的交易明細（最大支出、異常金額、類別變化），並傳送給您的 AI 服務以產生更深入的分析。",
+    "insightsSettings": "AI 洞察",
+    "insightsSettingsHint": "設定消費洞察的產生方式"
   },
   "about": {
     "title": "關於",

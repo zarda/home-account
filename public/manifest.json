@@ -7,7 +7,10 @@
   "orientation": "portrait-primary",
   "theme_color": "#1976d2",
   "background_color": "#ffffff",
-  "categories": ["finance", "productivity"],
+  "categories": [
+    "finance",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "/assets/icons/icon-72x72.png",
@@ -58,29 +61,30 @@
       "purpose": "maskable any"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/assets/screenshots/dashboard.png",
-      "sizes": "1080x1920",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Dashboard view showing spending overview"
-    }
-  ],
   "shortcuts": [
     {
       "name": "Add Transaction",
       "short_name": "Add",
       "description": "Quickly add a new transaction",
       "url": "/transactions/add",
-      "icons": [{ "src": "/assets/icons/shortcut-add.png", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "/assets/icons/shortcut-add.png",
+          "sizes": "96x96"
+        }
+      ]
     },
     {
       "name": "Scan Receipt",
       "short_name": "Scan",
       "description": "Scan a receipt with AI",
       "url": "/import/camera",
-      "icons": [{ "src": "/assets/icons/shortcut-camera.png", "sizes": "96x96" }]
+      "icons": [
+        {
+          "src": "/assets/icons/shortcut-camera.png",
+          "sizes": "96x96"
+        }
+      ]
     }
   ],
   "related_applications": [],

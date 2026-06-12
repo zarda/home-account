@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, computed } from '@angular/core';
+import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
@@ -29,18 +29,21 @@ export class TransactionPreviewTableComponent {
   @Output() transactionsUpdated = new EventEmitter<CategorizedImportTransaction[]>();
   @Output() selectionChanged = new EventEmitter<Set<string>>();
 
-  selectedCount = computed(() => {
+  // Plain methods, not computed(): `transactions` is a regular @Input array
+  // (mutated in place), not a signal — a computed would evaluate once and
+  // cache stale selection state forever
+  selectedCount(): number {
     return this.transactions.filter(t => t.selected).length;
-  });
+  }
 
-  allSelected = computed(() => {
+  allSelected(): boolean {
     const nonDuplicates = this.transactions.filter(t => !t.isDuplicate);
     return nonDuplicates.length > 0 && nonDuplicates.every(t => t.selected);
-  });
+  }
 
-  someSelected = computed(() => {
+  someSelected(): boolean {
     return this.transactions.some(t => t.selected);
-  });
+  }
 
   toggleSelectAll(checked: boolean): void {
     this.transactions.forEach(t => {

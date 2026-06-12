@@ -105,7 +105,7 @@ describe('ImportWizardComponent', () => {
     mockCategoryService = jasmine.createSpyObj('CategoryService', ['loadCategories'], {
       categories: signal(mockCategories)
     });
-    mockCategoryService.loadCategories.and.returnValue({ subscribe: () => ({ unsubscribe: () => {} }) } as never);
+    mockCategoryService.loadCategories.and.returnValue({ subscribe: () => ({ unsubscribe: () => undefined }) } as never);
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslationService.t.and.callFake((key: string) => key);

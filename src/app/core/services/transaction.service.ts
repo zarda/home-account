@@ -376,6 +376,50 @@ export class TransactionService {
   }
 
   // Helper to group transactions by category
+  /**
+   * Non-mutating period totals with a per-category expense breakdown
+   * (in base currency). Used for previous-period comparisons.
+   */
+  getPeriodCategoryTotals(start: Date, end: Date): Observable<{ income: number; expense: number; byCategory: CategoryTotal[] }> {
+    const userId = this.authService.userId();
+    if (!userId) return of({ income: 0, expense: 0, byCategory: [] });
+
+    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
+      orderBy: [{ field: 'date', direction: 'desc' }],
+      where: [
+        { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
+        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+      ]
+    };
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      options
+    ).pipe(
+      map(transactions => {
+        const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+        const toBase = (t: Transaction) => this.currencyService.convert(t.amount, t.currency, baseCurrency);
+
+        let income = 0;
+        let expense = 0;
+        const categoryTotals = new Map<string, number>();
+        for (const t of transactions) {
+          const amount = toBase(t);
+          if (t.type === 'income') {
+            income += amount;
+          } else if (t.type === 'expense') {
+            expense += amount;
+            categoryTotals.set(t.categoryId, (categoryTotals.get(t.categoryId) ?? 0) + amount);
+          }
+        }
+
+        const byCategory: CategoryTotal[] = Array.from(categoryTotals.entries())
+          .map(([categoryId, total]) => ({ categoryId, total }));
+        return { income, expense, byCategory };
+      })
+    );
+  }
+
   private groupByCategory(transactions: Transaction[]): CategoryTotal[] {
     const categoryMap = new Map<string, number>();
 

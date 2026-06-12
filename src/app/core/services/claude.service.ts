@@ -1,5 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
+import { DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
@@ -31,14 +32,14 @@ export class ClaudeService {
   // Computed signal for availability
   isAvailableSignal = computed(() => this._isAvailable());
 
-  // Model - Claude 3.5 Sonnet supports vision
-  private readonly MODEL = 'claude-sonnet-4-20250514';
+  // Selectable Claude model (all catalog entries are vision-capable)
+  private model = DEFAULT_CLAUDE_MODEL;
 
   constructor() {
     // Claude is not initialized by default - requires user API key
   }
 
-  private initialize(apiKey: string): void {
+  private async initialize(apiKey: string): Promise<void> {
     if (!apiKey || apiKey.trim() === '') {
       console.warn('Claude API key not provided');
       this.client = null;
@@ -53,10 +54,15 @@ export class ClaudeService {
     }
 
     try {
+      // The SDK is loaded on demand to keep it out of the initial bundle
+      const { default: Anthropic } = await import('@anthropic-ai/sdk');
       this.client = new Anthropic({
         apiKey: apiKey,
-        // Note: Anthropic SDK requires CORS handling in browser
-        // This may need a proxy in production
+        // Same bring-your-own-key trust model as the OpenAI provider: the
+        // user's own key, stored in their own account. Without this flag the
+        // SDK throws at construction in browsers, so Claude could never
+        // become available and its settings card stayed 'Not configured'.
+        dangerouslyAllowBrowser: true,
       });
       this.currentApiKey = apiKey;
       this._isAvailable.set(true);
@@ -71,13 +77,22 @@ export class ClaudeService {
   /**
    * Reinitialize Claude with a new API key.
    */
-  reinitialize(apiKey?: string): void {
+  reinitialize(apiKey?: string): Promise<void> {
     if (apiKey) {
-      this.initialize(apiKey);
-    } else {
-      this.client = null;
-      this.currentApiKey = null;
-      this._isAvailable.set(false);
+      return this.initialize(apiKey);
+    }
+    this.client = null;
+    this.currentApiKey = null;
+    this._isAvailable.set(false);
+    return Promise.resolve();
+  }
+
+
+  /** Switch the Claude model used for all requests. */
+  setModel(modelId: string): void {
+    if (modelId && modelId !== this.model) {
+      this.model = modelId;
+      console.log(`[ClaudeService] Model switched to ${modelId}`);
     }
   }
 
@@ -119,7 +134,7 @@ IMPORTANT:
       const mediaType = this.getMediaType(imageBase64);
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 2000,
         messages: [
           {
@@ -177,7 +192,7 @@ IMPORTANT:
     try {
       const categoryList = categories
         .filter((c) => !c.parentId && c.isActive)
-        .map((c) => `${c.id}: ${c.name}`)
+        .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const prompt = `Given this transaction description: "${description}"
@@ -188,7 +203,7 @@ ${categoryList}
 Return ONLY the category ID that best matches this transaction. Just the ID, nothing else.`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 50,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -218,7 +233,7 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
       const categories = this.categoryService.categories();
       const categoryList = categories
         .filter((c) => !c.parentId && c.isActive)
-        .map((c) => `${c.id}: ${c.name}`)
+        .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const transactionList = transactions
@@ -237,7 +252,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
 [{"index": 0, "categoryId": "food"}, {"index": 1, "categoryId": "transport"}]`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 500,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -272,7 +287,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     period: string,
     baseCurrency = 'USD',
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     if (!this.client) {
       throw new Error('Claude client not available');
@@ -291,7 +307,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         if (t.type !== 'expense') continue;
 
         const category = categories.find((c) => c.id === t.categoryId);
-        const categoryName = category?.name ?? 'Other';
+        const categoryName = this.translateCategoryName(category?.name);
 
         const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
         existing.total += toBaseCurrency(t.amount, t.currency);
@@ -321,7 +337,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         .slice(0, 5)
         .map((t) => {
           const cat = categories.find((c) => c.id === t.categoryId);
-          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${cat?.name ?? 'Other'})`;
+          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
         })
         .join('\n');
 
@@ -379,6 +395,11 @@ ${budgetLines}
 `;
       }
 
+    // Optional RAG grounding block (enableRagInsights preference)
+    const ragSection = ragContext?.trim()
+      ? `\nNotable activity (retrieved from your transactions):\n${ragContext.trim()}\n`
+      : '';
+
       const prompt = `Generate a brief, helpful spending summary for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
@@ -392,27 +413,40 @@ ${categoryBreakdown}
 
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}
-Write a 2-3 sentence summary that:
-1. Highlights the main spending pattern with specific amounts
-2. Notes any significant changes from previous period (if data available)
-3. Warns about any budgets near or over limit (if applicable)
-4. Provides one actionable insight
+${historicalSection}${budgetSection}${ragSection}
+Return AI Insights in this exact format (use markdown):
 
-Keep it concise and encouraging. Use plain language, no bullet points. Use ${baseCurrency} for currency amounts.
+## Spending Pattern
+[1-2 sentences about main spending categories with specific amounts and percentages]
 
-${this.getLanguageInstruction()}`;
+## Changes & Trends
+[1-2 sentences about significant changes from previous period with impact assessment]
+
+## Budget Status
+[1-2 sentences about budget limits - warnings if any are near limit, or confirmation if all good]
+
+## Actionable Insights
+- [Specific, practical insight #1]
+- [Specific, practical insight #2]
+- [Specific, practical insight #3]
+
+Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
+${ragSection ? 'Ground your insights in the Notable activity section — cite its specific transactions, amounts, and changes where relevant.\n' : ''}Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
+
+${this.getLanguageInstruction()}
+Write the "##" section headings in the same language as the response.`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
-        max_tokens: 300,
+        model: this.model,
+        max_tokens: 1500,
         messages: [{ role: 'user', content: prompt }],
       });
 
       return this.extractTextFromResponse(response) || 'Unable to generate spending summary.';
     } catch (error) {
       console.error('Claude summary generation error:', error);
-      return 'Unable to generate spending summary at this time.';
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -453,8 +487,8 @@ Consider:
 ${this.getLanguageInstruction()}`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
-        max_tokens: 150,
+        model: this.model,
+        max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       });
 
@@ -464,7 +498,8 @@ ${this.getLanguageInstruction()}`;
       );
     } catch (error) {
       console.error('Claude financial advice error:', error);
-      return 'Keep tracking your expenses to better understand your spending patterns.';
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -507,7 +542,7 @@ Only include confirmed transactions, not pending ones.`;
       const mediaType = this.getMediaType(imageBase64);
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 2000,
         messages: [
           {
@@ -623,7 +658,7 @@ If no transactions can be extracted, return an empty array: []`;
       content.push({ type: 'text', text: prompt });
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 4000,
         messages: [{ role: 'user', content }],
       });
@@ -693,7 +728,7 @@ Return ONLY valid JSON with this structure:
 }`;
 
       const response = await this.client.messages.create({
-        model: this.MODEL,
+        model: this.model,
         max_tokens: 300,
         messages: [{ role: 'user', content: prompt }],
       });
@@ -752,18 +787,31 @@ Return ONLY valid JSON with this structure:
     return cleaned.trim();
   }
 
+  /**
+   * Category names of default categories are stored as i18n keys
+   * (e.g. categoryNames.groceries) — translate them before they reach a
+   * prompt, otherwise the model echoes the raw key into the insights text.
+   */
+  private translateCategoryName(name?: string): string {
+    return name ? this.translationService.t(name) : 'Other';
+  }
+
   // Helper: Map category name to ID
   private mapCategoryNameToId(categoryName: string): string {
     const categories = this.categoryService.categories();
     const normalizedName = categoryName.toLowerCase().trim();
 
-    const exactMatch = categories.find((c) => c.name.toLowerCase() === normalizedName);
+    // Match against both the stored name (possibly an i18n key) and its translation
+    const namesOf = (c: Category) => [
+      c.name.toLowerCase(),
+      this.translateCategoryName(c.name).toLowerCase(),
+    ];
+
+    const exactMatch = categories.find((c) => namesOf(c).includes(normalizedName));
     if (exactMatch) return exactMatch.id;
 
     const partialMatch = categories.find(
-      (c) =>
-        c.name.toLowerCase().includes(normalizedName) ||
-        normalizedName.includes(c.name.toLowerCase())
+      (c) => namesOf(c).some((n) => n.includes(normalizedName) || normalizedName.includes(n))
     );
     if (partialMatch) return partialMatch.id;
 

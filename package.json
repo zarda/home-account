@@ -1,6 +1,6 @@
 {
   "name": "home-account",
-  "version": "1.8.76",
+  "version": "1.9.78",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -13,7 +13,11 @@
     "cap:ios": "npx cap open ios",
     "build:ios": "ng build --configuration=production-local && npx cap sync ios",
     "build:web": "npm run build:prod",
-    "postinstall": "bash scripts/patch-capacitor-firebase-auth.sh"
+    "postinstall": "bash scripts/patch-capacitor-firebase-auth.sh",
+    "test:ci": "ng test --watch=false --browsers=ChromeHeadless --code-coverage"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "prettier": {
     "printWidth": 100,

@@ -1,5 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
+import { DEFAULT_OPENAI_MODEL } from '../config/ai-models';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
@@ -32,14 +33,15 @@ export class OpenAIService {
   isAvailableSignal = computed(() => this._isAvailable());
 
   // Models
-  private readonly VISION_MODEL = 'gpt-4o';
-  private readonly TEXT_MODEL = 'gpt-4o-mini';
+  // OpenAI models are multimodal — one selectable model serves both text
+  // and vision tasks via the Responses API
+  private model = DEFAULT_OPENAI_MODEL;
 
   constructor() {
     // OpenAI is not initialized by default - requires user API key
   }
 
-  private initialize(apiKey: string): void {
+  private async initialize(apiKey: string): Promise<void> {
     if (!apiKey || apiKey.trim() === '') {
       console.warn('OpenAI API key not provided');
       this.client = null;
@@ -54,6 +56,8 @@ export class OpenAIService {
     }
 
     try {
+      // The SDK is loaded on demand to keep it out of the initial bundle
+      const { default: OpenAI } = await import('openai');
       this.client = new OpenAI({
         apiKey: apiKey,
         dangerouslyAllowBrowser: true, // Required for browser usage
@@ -71,13 +75,22 @@ export class OpenAIService {
   /**
    * Reinitialize OpenAI with a new API key.
    */
-  reinitialize(apiKey?: string): void {
+  reinitialize(apiKey?: string): Promise<void> {
     if (apiKey) {
-      this.initialize(apiKey);
-    } else {
-      this.client = null;
-      this.currentApiKey = null;
-      this._isAvailable.set(false);
+      return this.initialize(apiKey);
+    }
+    this.client = null;
+    this.currentApiKey = null;
+    this._isAvailable.set(false);
+    return Promise.resolve();
+  }
+
+
+  /** Switch the OpenAI model used for all requests. */
+  setModel(modelId: string): void {
+    if (modelId && modelId !== this.model) {
+      this.model = modelId;
+      console.log(`[OpenAIService] Model switched to ${modelId}`);
     }
   }
 
@@ -118,21 +131,22 @@ IMPORTANT:
         ? imageBase64
         : `data:image/jpeg;base64,${imageBase64}`;
 
-      const response = await this.client.chat.completions.create({
-        model: this.VISION_MODEL,
-        messages: [
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: [
           {
             role: 'user',
             content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: imageUrl } },
+              { type: 'input_text', text: prompt },
+              { type: 'input_image', image_url: imageUrl, detail: 'auto' },
             ],
           },
         ],
-        max_tokens: 2000,
+        max_output_tokens: 2000,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       const parsed = JSON.parse(cleanedJson);
 
@@ -170,7 +184,7 @@ IMPORTANT:
     try {
       const categoryList = categories
         .filter((c) => !c.parentId && c.isActive)
-        .map((c) => `${c.id}: ${c.name}`)
+        .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const prompt = `Given this transaction description: "${description}"
@@ -180,13 +194,14 @@ ${categoryList}
 
 Return ONLY the category ID that best matches this transaction. Just the ID, nothing else.`;
 
-      const response = await this.client.chat.completions.create({
-        model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 50,
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: prompt,
+        max_output_tokens: 50,
+        store: false,
       });
 
-      const suggestedId = response.choices[0]?.message?.content?.trim() || '';
+      const suggestedId = response.output_text?.trim() || '';
 
       // Validate the suggested ID exists
       const validCategory = categories.find((c) => c.id === suggestedId);
@@ -211,7 +226,7 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
       const categories = this.categoryService.categories();
       const categoryList = categories
         .filter((c) => !c.parentId && c.isActive)
-        .map((c) => `${c.id}: ${c.name}`)
+        .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const transactionList = transactions
@@ -229,13 +244,14 @@ ${transactionList}
 Return ONLY a valid JSON array with objects containing "index" and "categoryId":
 [{"index": 0, "categoryId": "food"}, {"index": 1, "categoryId": "transport"}]`;
 
-      const response = await this.client.chat.completions.create({
-        model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 500,
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: prompt,
+        max_output_tokens: 500,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       const categorizations = JSON.parse(cleanedJson);
 
@@ -265,7 +281,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     period: string,
     baseCurrency = 'USD',
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     if (!this.client) {
       throw new Error('OpenAI client not available');
@@ -284,7 +301,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         if (t.type !== 'expense') continue;
 
         const category = categories.find((c) => c.id === t.categoryId);
-        const categoryName = category?.name ?? 'Other';
+        const categoryName = this.translateCategoryName(category?.name);
 
         const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
         existing.total += toBaseCurrency(t.amount, t.currency);
@@ -314,7 +331,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         .slice(0, 5)
         .map((t) => {
           const cat = categories.find((c) => c.id === t.categoryId);
-          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${cat?.name ?? 'Other'})`;
+          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
         })
         .join('\n');
 
@@ -372,6 +389,11 @@ ${budgetLines}
 `;
       }
 
+    // Optional RAG grounding block (enableRagInsights preference)
+    const ragSection = ragContext?.trim()
+      ? `\nNotable activity (retrieved from your transactions):\n${ragContext.trim()}\n`
+      : '';
+
       const prompt = `Generate a brief, helpful spending summary for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
@@ -385,27 +407,41 @@ ${categoryBreakdown}
 
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}
-Write a 2-3 sentence summary that:
-1. Highlights the main spending pattern with specific amounts
-2. Notes any significant changes from previous period (if data available)
-3. Warns about any budgets near or over limit (if applicable)
-4. Provides one actionable insight
+${historicalSection}${budgetSection}${ragSection}
+Return AI Insights in this exact format (use markdown):
 
-Keep it concise and encouraging. Use plain language, no bullet points. Use ${baseCurrency} for currency amounts.
+## Spending Pattern
+[1-2 sentences about main spending categories with specific amounts and percentages]
 
-${this.getLanguageInstruction()}`;
+## Changes & Trends
+[1-2 sentences about significant changes from previous period with impact assessment]
 
-      const response = await this.client.chat.completions.create({
-        model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 300,
+## Budget Status
+[1-2 sentences about budget limits - warnings if any are near limit, or confirmation if all good]
+
+## Actionable Insights
+- [Specific, practical insight #1]
+- [Specific, practical insight #2]
+- [Specific, practical insight #3]
+
+Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
+${ragSection ? 'Ground your insights in the Notable activity section — cite its specific transactions, amounts, and changes where relevant.\n' : ''}Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
+
+${this.getLanguageInstruction()}
+Write the "##" section headings in the same language as the response.`;
+
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: prompt,
+        max_output_tokens: 1500,
+        store: false,
       });
 
-      return response.choices[0]?.message?.content?.trim() || 'Unable to generate spending summary.';
+      return response.output_text?.trim() || 'Unable to generate spending summary.';
     } catch (error) {
       console.error('OpenAI summary generation error:', error);
-      return 'Unable to generate spending summary at this time.';
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -443,21 +479,24 @@ Consider:
 - If balance is negative, acknowledge the situation kindly
 - If doing well (>30% savings), congratulate and suggest next steps
 
-${this.getLanguageInstruction()}`;
+${this.getLanguageInstruction()}
+Output only the advice sentences themselves — no preamble, no labels, no quotation marks.`;
 
-      const response = await this.client.chat.completions.create({
-        model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 150,
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: prompt,
+        max_output_tokens: 400,
+        store: false,
       });
 
       return (
-        response.choices[0]?.message?.content?.trim() ||
+        response.output_text?.trim() ||
         'Keep tracking your expenses to better understand your spending patterns.'
       );
     } catch (error) {
       console.error('OpenAI financial advice error:', error);
-      return 'Keep tracking your expenses to better understand your spending patterns.';
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -500,21 +539,22 @@ Only include confirmed transactions, not pending ones.`;
         ? imageBase64
         : `data:image/jpeg;base64,${imageBase64}`;
 
-      const response = await this.client.chat.completions.create({
-        model: this.VISION_MODEL,
-        messages: [
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: [
           {
             role: 'user',
             content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: imageUrl } },
+              { type: 'input_text', text: prompt },
+              { type: 'input_image', image_url: imageUrl, detail: 'auto' },
             ],
           },
         ],
-        max_tokens: 2000,
+        max_output_tokens: 2000,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
 
@@ -590,24 +630,25 @@ Return ONLY a valid JSON array (no markdown):
 
 If no transactions can be extracted, return an empty array: []`;
 
-      const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
-        { type: 'text', text: prompt },
+      const content: OpenAI.Responses.ResponseInputContent[] = [
+        { type: 'input_text', text: prompt },
       ];
 
       for (const imageBase64 of imageBase64Array) {
         const imageUrl = imageBase64.startsWith('data:')
           ? imageBase64
           : `data:image/jpeg;base64,${imageBase64}`;
-        content.push({ type: 'image_url', image_url: { url: imageUrl } });
+        content.push({ type: 'input_image', image_url: imageUrl, detail: 'auto' });
       }
 
-      const response = await this.client.chat.completions.create({
-        model: this.VISION_MODEL,
-        messages: [{ role: 'user', content }],
-        max_tokens: 4000,
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: [{ role: 'user', content }],
+        max_output_tokens: 4000,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       const extracted: MultiImageExtractedTransaction[] = JSON.parse(cleanedJson);
 
@@ -671,13 +712,14 @@ Return ONLY valid JSON with this structure:
   "hasHeader": true
 }`;
 
-      const response = await this.client.chat.completions.create({
-        model: this.TEXT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 300,
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: prompt,
+        max_output_tokens: 1500,
+        store: false,
       });
 
-      const responseText = response.choices[0]?.message?.content || '';
+      const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
       return JSON.parse(cleanedJson);
     } catch (error) {
@@ -715,18 +757,31 @@ Return ONLY valid JSON with this structure:
     return cleaned.trim();
   }
 
+  /**
+   * Category names of default categories are stored as i18n keys
+   * (e.g. categoryNames.groceries) — translate them before they reach a
+   * prompt, otherwise the model echoes the raw key into the insights text.
+   */
+  private translateCategoryName(name?: string): string {
+    return name ? this.translationService.t(name) : 'Other';
+  }
+
   // Helper: Map category name to ID
   private mapCategoryNameToId(categoryName: string): string {
     const categories = this.categoryService.categories();
     const normalizedName = categoryName.toLowerCase().trim();
 
-    const exactMatch = categories.find((c) => c.name.toLowerCase() === normalizedName);
+    // Match against both the stored name (possibly an i18n key) and its translation
+    const namesOf = (c: Category) => [
+      c.name.toLowerCase(),
+      this.translateCategoryName(c.name).toLowerCase(),
+    ];
+
+    const exactMatch = categories.find((c) => namesOf(c).includes(normalizedName));
     if (exactMatch) return exactMatch.id;
 
     const partialMatch = categories.find(
-      (c) =>
-        c.name.toLowerCase().includes(normalizedName) ||
-        normalizedName.includes(c.name.toLowerCase())
+      (c) => namesOf(c).some((n) => n.includes(normalizedName) || normalizedName.includes(n))
     );
     if (partialMatch) return partialMatch.id;
 

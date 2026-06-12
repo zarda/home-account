@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { GeminiService, ParsedReceipt, RawTransaction, ExtractedTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
@@ -20,23 +20,22 @@ export class CloudLLMProviderService {
   private claudeService = inject(ClaudeService);
   private authService = inject(AuthService);
 
-  // Signals for provider availability
-  private _providerStatus = signal<ProviderStatus>({
-    gemini: false,
-    openai: false,
-    claude: false,
-  });
+  // Provider availability is fully reactive: it flips when a provider's
+  // lazily-loaded SDK finishes initializing, instead of relying on
+  // imperative refreshes that could go stale
+  providerStatus = computed<ProviderStatus>(() => ({
+    gemini: this.geminiService.isAvailableSignal(),
+    openai: this.openaiService.isAvailableSignal(),
+    claude: this.claudeService.isAvailableSignal(),
+  }));
 
-  // Computed signals
-  providerStatus = computed(() => this._providerStatus());
-  
   hasAnyCloudProvider = computed(() => {
-    const status = this._providerStatus();
+    const status = this.providerStatus();
     return status.gemini || status.openai || status.claude;
   });
 
   availableProviders = computed(() => {
-    const status = this._providerStatus();
+    const status = this.providerStatus();
     const providers: LLMProvider[] = [];
     if (status.gemini) providers.push('gemini');
     if (status.openai) providers.push('openai');
@@ -44,22 +43,19 @@ export class CloudLLMProviderService {
     return providers;
   });
 
-  constructor() {
-    this.updateProviderStatus();
-  }
-
   /**
-   * Initialize all providers with their respective API keys from user preferences.
+   * Initialize all providers with their respective API keys from user
+   * preferences. Pass the model ids selected in AI settings so Gemini does
+   * not silently revert to the catalog defaults.
    */
-  initializeFromUserPreferences(): void {
+  initializeFromUserPreferences(textModelId?: string, visionModelId?: string): void {
     const user = this.authService.currentUser();
     if (user?.preferences) {
       const { geminiApiKey, openaiApiKey, claudeApiKey } = user.preferences;
 
       if (geminiApiKey) {
-        // Note: Models will use defaults from AI strategy preferences if not explicitly passed
-        this.geminiService.reinitialize(geminiApiKey);
-        console.log('[CloudLLMProvider] Gemini initialized with API key');
+        this.geminiService.reinitialize(geminiApiKey, textModelId, visionModelId);
+        console.log(`[CloudLLMProvider] Gemini initialized with API key${textModelId ? ` (text: ${textModelId}, vision: ${visionModelId})` : ''}`);
       }
       if (openaiApiKey) {
         this.openaiService.reinitialize(openaiApiKey);
@@ -73,25 +69,35 @@ export class CloudLLMProviderService {
       console.warn('[CloudLLMProvider] No user or preferences found');
     }
 
-    this.updateProviderStatus();
   }
 
   /**
    * Update a specific provider's API key.
    */
-  updateProviderApiKey(provider: LLMProvider, apiKey: string | undefined): void {
+  async updateProviderApiKey(provider: LLMProvider, apiKey: string | undefined): Promise<void> {
+    // Awaiting matters: initialization lazy-loads the provider SDK, and
+    // availability checks made before it resolves would read a stale false
     switch (provider) {
       case 'gemini':
-        this.geminiService.reinitialize(apiKey);
+        await this.geminiService.reinitialize(apiKey);
         break;
       case 'openai':
-        this.openaiService.reinitialize(apiKey);
+        await this.openaiService.reinitialize(apiKey);
         break;
       case 'claude':
-        this.claudeService.reinitialize(apiKey);
+        await this.claudeService.reinitialize(apiKey);
         break;
     }
-    this.updateProviderStatus();
+  }
+
+  /** Switch the OpenAI model used for all requests. */
+  setOpenAIModel(modelId: string): void {
+    this.openaiService.setModel(modelId);
+  }
+
+  /** Switch the Claude model used for all requests. */
+  setClaudeModel(modelId: string): void {
+    this.claudeService.setModel(modelId);
   }
 
   /**
@@ -101,19 +107,8 @@ export class CloudLLMProviderService {
     const user = this.authService.currentUser();
     const apiKey = user?.preferences?.geminiApiKey;
     this.geminiService.reinitialize(apiKey, textModelId, visionModelId);
-    this.updateProviderStatus();
   }
 
-  /**
-   * Update provider status based on current availability.
-   */
-  private updateProviderStatus(): void {
-    this._providerStatus.set({
-      gemini: this.geminiService.isAvailable(),
-      openai: this.openaiService.isAvailable(),
-      claude: this.claudeService.isAvailable(),
-    });
-  }
 
   /**
    * Get the provider preferences for the current user.
@@ -136,7 +131,7 @@ export class CloudLLMProviderService {
    */
   private getBestAvailableProvider(feature: AIFeatureType): LLMProvider | null {
     const preferred = this.getPreferredProvider(feature);
-    const status = this._providerStatus();
+    const status = this.providerStatus();
 
     // Try preferred provider first
     if (status[preferred]) {
@@ -158,7 +153,7 @@ export class CloudLLMProviderService {
    * Check if a specific provider is available.
    */
   isProviderAvailable(provider: LLMProvider): boolean {
-    return this._providerStatus()[provider];
+    return this.providerStatus()[provider];
   }
 
   /**
@@ -343,7 +338,8 @@ export class CloudLLMProviderService {
     period: string,
     baseCurrency?: string,
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     const provider = this.getBestAvailableProvider('insights');
     
@@ -354,15 +350,15 @@ export class CloudLLMProviderService {
     switch (provider) {
       case 'gemini':
         return this.geminiService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets
+          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
         );
       case 'openai':
         return this.openaiService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets
+          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
         );
       case 'claude':
         return this.claudeService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets
+          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
         );
     }
   }

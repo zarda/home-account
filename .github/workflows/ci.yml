@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ci:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # src/environments/environment.ts re-exports from .vscode/environment
+      # (gitignored, holds local Firebase keys), so type-checking needs a stub.
+      # Production builds replace it with environment.production.ts anyway.
+      - name: Create local environment stub
+        run: |
+          mkdir -p .vscode
+          cat > .vscode/environment.ts << 'EOF'
+          export const environment = {
+            production: false,
+            firebase: {
+              apiKey: 'ci-stub',
+              authDomain: 'ci-stub',
+              projectId: 'ci-stub',
+              storageBucket: 'ci-stub',
+              messagingSenderId: 'ci-stub',
+              appId: 'ci-stub',
+              measurementId: 'ci-stub'
+            },
+            donationUrlPaypal: ''
+          };
+          EOF
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:ci
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+      - name: Build (production)
+        run: npm run build

@@ -5,10 +5,14 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { GeminiService, PreviousPeriodData } from '../../../core/services/gemini.service';
+import { PreviousPeriodData, isRateLimitMessage } from '../../../core/services/gemini.service';
+import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
+import { stripAdviceArtifacts } from '../../../core/utils/llm-text.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { Budget, Transaction, MonthlyTotal } from '../../../models';
+import { AuthService } from '../../../core/services/auth.service';
+import { RagContextService } from '../../../core/services/rag-context.service';
+import { Budget, CategoryTotal, Transaction, MonthlyTotal } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -26,9 +30,11 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   styleUrl: './ai-summary.component.scss'
 })
 export class AiSummaryComponent {
-  private geminiService = inject(GeminiService);
+  private cloudLLMProvider = inject(CloudLLMProviderService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private authService = inject(AuthService);
+  private ragContextService = inject(RagContextService);
   private sanitizer = inject(DomSanitizer);
 
   // Inputs
@@ -36,6 +42,7 @@ export class AiSummaryComponent {
   period = input<string>('this month');
   baseCurrency = input<string>('USD');
   previousPeriodData = input<PreviousPeriodData | null>(null);
+  previousPeriodByCategory = input<CategoryTotal[] | null>(null);
   budgets = input<Budget[]>([]);
 
   // State
@@ -44,15 +51,24 @@ export class AiSummaryComponent {
   isLoading = signal(false);
   hasError = signal(false);
 
-  // Cache key for sessionStorage (includes locale for language-specific caching)
+  // Whether the user opted into RAG-grounded insights (persisted in Firestore)
+  private ragEnabled = computed(() =>
+    this.authService.currentUser()?.preferences?.enableRagInsights ?? false
+  );
+
+  // Cache key for sessionStorage (includes locale for language-specific
+  // caching, and the RAG flag so toggling regenerates instead of serving
+  // a stale cached summary)
   private cacheKey = computed(() => {
     const txIds = this.transactions().map(t => t.id).sort().join(',');
     const locale = this.translationService.currentLocale();
-    return `ai-summary-${this.period()}-${locale}-${txIds.slice(0, 100)}`;
+    const grounding = this.ragEnabled() ? 'rag' : 'std';
+    const provider = this.authService.currentUser()?.preferences?.llmProviderPreferences?.insights ?? 'gemini';
+    return `ai-summary-${this.period()}-${locale}-${grounding}-${provider}-${txIds.slice(0, 100)}`;
   });
 
-  // Check if AI is available
-  isAvailable = computed(() => this.geminiService.isAvailable());
+  // Check if any cloud AI provider is available
+  isAvailable = computed(() => this.cloudLLMProvider.hasAnyCloudProvider());
 
   // Minimum transactions required for insights
   hasEnoughData = computed(() => this.transactions().length >= 3);
@@ -100,7 +116,7 @@ export class AiSummaryComponent {
   }
 
   private async generateInsights(transactions: Transaction[], period: string): Promise<void> {
-    if (!this.geminiService.isAvailable() || transactions.length < 3) {
+    if (!this.cloudLLMProvider.hasAnyCloudProvider() || transactions.length < 3) {
       return;
     }
 
@@ -112,29 +128,77 @@ export class AiSummaryComponent {
       const periodTotal = this.calculatePeriodTotal(transactions);
       const readablePeriod = this.formatPeriod(period);
 
-      // Generate both summary and advice in parallel
-      const [summaryResult, adviceResult] = await Promise.all([
-        this.geminiService.generateSpendingSummary(
+      // Generate sequentially — firing both at once trips free-tier
+      // per-minute rate limits. Each call fails independently so a
+      // rate-limited summary still leaves usable advice (and vice versa).
+      let summaryFailed = false;
+      let adviceFailed = false;
+
+      // When the user opted into RAG grounding, retrieve notable activity
+      // (top expenses, anomalies, category deltas) for the prompt
+      const ragContext = this.ragEnabled()
+        ? this.ragContextService.buildSummaryGrounding({
+            transactions,
+            previousByCategory: this.previousPeriodByCategory(),
+            baseCurrency: currency,
+          })
+        : undefined;
+
+      let summaryResult: string;
+      try {
+        summaryResult = await this.cloudLLMProvider.generateSpendingSummary(
           transactions,
           readablePeriod,
           currency,
           this.previousPeriodData(),
-          this.budgets()
-        ),
-        this.geminiService.getFinancialAdvice(periodTotal, currency, readablePeriod)
-      ]);
+          this.budgets(),
+          ragContext
+        );
+      } catch (error) {
+        summaryFailed = true;
+        summaryResult = this.describeFailure(error);
+      }
+
+      let adviceResult: string;
+      try {
+        adviceResult = stripAdviceArtifacts(
+          await this.cloudLLMProvider.getFinancialAdvice(periodTotal, currency, readablePeriod)
+        );
+      } catch (error) {
+        adviceFailed = true;
+        adviceResult = this.describeFailure(error, 'ai.adviceFallback');
+      }
 
       this.summary.set(summaryResult);
       this.advice.set(adviceResult);
 
-      // Cache the results
-      this.cacheInsights(summaryResult, adviceResult);
+      // Cache only real results — caching a failure message would pin it
+      // for an hour even after a temporary rate limit clears
+      if (!summaryFailed && !adviceFailed) {
+        this.cacheInsights(summaryResult, adviceResult);
+      }
     } catch (error) {
       console.error('Failed to generate AI insights:', error);
       this.hasError.set(true);
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  /**
+   * Translate a generation failure into a localized, actionable message.
+   * The default explains the failure; advice uses a generic tip fallback
+   * unless the cause is something the user can act on.
+   */
+  private describeFailure(error: unknown, fallbackKey = 'ai.summaryUnavailable'): string {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('API key not valid') || message.includes('API_KEY_INVALID')) {
+      return this.translationService.t('ai.invalidApiKey');
+    }
+    if (isRateLimitMessage(message)) {
+      return this.translationService.t('ai.rateLimited');
+    }
+    return this.translationService.t(fallbackKey);
   }
 
   private calculatePeriodTotal(transactions: Transaction[]): MonthlyTotal {

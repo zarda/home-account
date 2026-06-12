@@ -14,11 +14,23 @@ public class VisionOCRPlugin: CAPPlugin, CAPBridgedPlugin {
     
     /// Check if Vision OCR is available on this device
     @objc func isAvailable(_ call: CAPPluginCall) {
+        // True when the iOS build is running on macOS (Apple Silicon "Designed
+        // for iPad" or Mac Catalyst) — the web layer uses this to prefer the
+        // newer cloud models over the basic OCR parsing pipeline.
+        let processInfo = ProcessInfo.processInfo
+        let isMacEnvironment = processInfo.isMacCatalystApp || processInfo.isiOSAppOnMac
+
         // Vision framework is available on iOS 13+
         if #available(iOS 13.0, *) {
-            call.resolve(["available": true])
+            call.resolve([
+                "available": true,
+                "isMacEnvironment": isMacEnvironment
+            ])
         } else {
-            call.resolve(["available": false])
+            call.resolve([
+                "available": false,
+                "isMacEnvironment": isMacEnvironment
+            ])
         }
     }
     

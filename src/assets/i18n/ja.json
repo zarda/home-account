@@ -366,7 +366,10 @@
     "aiMode": "処理モード",
     "aiModeDescription": "レシートや画像の処理方法を選択",
     "aiModeAuto": "自動",
-    "aiModeAutoDescription": "接続状況と精度に基づいて最適なオプションを自動選択"
+    "aiModeAutoDescription": "接続状況と精度に基づいて最適なオプションを自動選択",
+    "textModelLabel": "テキストモデル（サマリーとアドバイス）",
+    "visionModelLabel": "ビジョンモデル（レシートスキャン）",
+    "modelLabel": "モデル"
   },
   "days": {
     "sunday": "日曜日",
@@ -574,7 +577,11 @@
     "financialAdvice": "ファイナンシャルヒント",
     "refresh": "インサイトを更新",
     "generating": "インサイトを生成中...",
-    "noInsights": "AIインサイトを得るには、取引を追加してください"
+    "noInsights": "AIインサイトを得るには、取引を追加してください",
+    "rateLimited": "AIサービスが混み合っています（利用上限に到達）。1分ほど待ってから再試行してください。",
+    "invalidApiKey": "AIインサイトを利用できません：APIキーが無効です。「設定 → AI設定」をご確認ください。",
+    "summaryUnavailable": "現在、支出サマリーを生成できません。更新をタップして再試行してください。",
+    "adviceFallback": "支出を記録し続けて、消費パターンへの理解を深めましょう。"
   },
   "import": {
     "title": "スマートインポート",
@@ -719,6 +726,7 @@
     "nativeOCRDescription": "Apple Visionフレームワークを使用した高速でプライベートなデバイス上テキスト認識。",
     "onDevice": "デバイス上",
     "nativeOCRReady": "ネイティブOCR準備完了",
+    "appleIntelligenceReady": "Apple Intelligence 準備完了（オンデバイス）",
     "cloudAIReady": "クラウドAI準備完了",
     "configureRequired": "APIキーを設定",
     "addApiKeyHint": "AI機能を有効にするには、以下にAPIキーを追加してください",
@@ -739,7 +747,11 @@
     "storageInfo": "ストレージ",
     "totalCache": "合計キャッシュ",
     "queueSynced": "キューの同期が完了しました",
-    "queueCleared": "キューがクリアされました"
+    "queueCleared": "キューがクリアされました",
+    "ragInsights": "明細に基づくインサイト（RAG）",
+    "ragInsightsDescription": "オンにすると、注目すべき取引の明細（高額支出、異常な金額、カテゴリの変化）がAIプロバイダーに送信され、より具体的な分析が得られます。",
+    "insightsSettings": "AIインサイト",
+    "insightsSettingsHint": "支出インサイトの生成方法を設定します"
   },
   "about": {
     "title": "について",

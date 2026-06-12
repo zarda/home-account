@@ -22,6 +22,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
+import { TEXT_MODELS, VISION_MODELS, OPENAI_MODELS, CLAUDE_MODELS, DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../../../core/config/ai-models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -59,22 +60,17 @@ export class AiSettingsPageComponent implements OnInit {
 
   // Form state
   autoSync = signal<boolean>(true);
-  selectedTextModel = signal<string>('gemini-2.5-flash');
-  selectedVisionModel = signal<string>('gemini-3.1-flash-lite-preview');
+  enableRagInsights = signal<boolean>(false);
+  selectedTextModel = signal<string>(DEFAULT_TEXT_MODEL);
+  selectedVisionModel = signal<string>(DEFAULT_VISION_MODEL);
+  selectedOpenaiModel = signal<string>(DEFAULT_OPENAI_MODEL);
+  selectedClaudeModel = signal<string>(DEFAULT_CLAUDE_MODEL);
 
-  // Available models (verified from https://ai.google.dev/gemini-api/docs/models and https://ai.google.dev/gemma/docs/core)
-  textModels = [
-    { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite (Recommended)' },
-    { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' },
-    { id: 'gemma-4-26b-a4b-it', name: 'Gemma 4 26B MoE' },
-  ];
-
-  visionModels = [
-    { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite (Recommended)' },
-    { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
-    { id: 'gemma-4-31b-it', name: 'Gemma 4 31B' },  
-  ];
+  // Available models (single source of truth in core/config/ai-models.ts)
+  textModels = TEXT_MODELS;
+  visionModels = VISION_MODELS;
+  openaiModels = OPENAI_MODELS;
+  claudeModels = CLAUDE_MODELS;
 
   // API Keys for all providers
   geminiApiKey = '';
@@ -104,6 +100,8 @@ export class AiSettingsPageComponent implements OnInit {
   isGeminiAvailable = computed(() => this.geminiService.isAvailable());
   canUseCloud = computed(() => this.strategyService.canUseCloud());
   canUseNative = computed(() => this.strategyService.canUseNative());
+  canUseAppleIntelligence = computed(() => this.strategyService.canUseAppleIntelligence());
+  useNativeOCR = computed(() => this.strategyService.useNativeOCR());
   platform = computed(() => this.strategyService.platform());
   pendingQueueCount = computed(() => this.offlineQueue.pendingCount());
   cacheSize = computed(() => this.pwaService.cacheSize().total);
@@ -115,10 +113,12 @@ export class AiSettingsPageComponent implements OnInit {
     return count;
   });
 
-  // AI status text
+  // AI status text (on Macs cloud AI is preferred over native OCR when configured)
   aiStatusText = computed(() => {
-    if (this.canUseNative()) {
-      return this.translationService.t('aiPage.nativeOCRReady');
+    if (this.useNativeOCR()) {
+      return this.canUseAppleIntelligence()
+        ? this.translationService.t('aiPage.appleIntelligenceReady')
+        : this.translationService.t('aiPage.nativeOCRReady');
     }
     if (this.canUseCloud()) {
       return this.translationService.t('aiPage.cloudAIReady');
@@ -146,8 +146,30 @@ export class AiSettingsPageComponent implements OnInit {
 
   private loadModelSelection(): void {
     const prefs = this.strategyService.preferences();
-    this.selectedTextModel.set(prefs.textModel || 'gemini-3.1-flash-lite-preview');
-    this.selectedVisionModel.set(prefs.visionModel || 'gemini-2.5-flash');
+    this.selectedTextModel.set(prefs.textModel || DEFAULT_TEXT_MODEL);
+    this.selectedVisionModel.set(prefs.visionModel || DEFAULT_VISION_MODEL);
+    this.selectedOpenaiModel.set(prefs.openaiModel || DEFAULT_OPENAI_MODEL);
+    this.selectedClaudeModel.set(prefs.claudeModel || DEFAULT_CLAUDE_MODEL);
+  }
+
+  onOpenaiModelChange(modelId: string): void {
+    if (!this.openaiModels.some(m => m.id === modelId)) {
+      return;
+    }
+    this.selectedOpenaiModel.set(modelId);
+    this.strategyService.updatePreferences({ openaiModel: modelId });
+    const modelName = this.openaiModels.find(m => m.id === modelId)?.name || modelId;
+    this.snackBar.open(`✓ OpenAI model updated to ${modelName}`, 'OK', { duration: 2000 });
+  }
+
+  onClaudeModelChange(modelId: string): void {
+    if (!this.claudeModels.some(m => m.id === modelId)) {
+      return;
+    }
+    this.selectedClaudeModel.set(modelId);
+    this.strategyService.updatePreferences({ claudeModel: modelId });
+    const modelName = this.claudeModels.find(m => m.id === modelId)?.name || modelId;
+    this.snackBar.open(`✓ Claude model updated to ${modelName}`, 'OK', { duration: 2000 });
   }
 
   private loadApiKeys(): void {
@@ -156,6 +178,12 @@ export class AiSettingsPageComponent implements OnInit {
     this.openaiApiKey = user?.preferences?.openaiApiKey || '';
     this.claudeApiKey = user?.preferences?.claudeApiKey || '';
     this.llmProviderPreferences = user?.preferences?.llmProviderPreferences || DEFAULT_LLM_PROVIDER_PREFERENCES;
+    this.enableRagInsights.set(user?.preferences?.enableRagInsights ?? false);
+  }
+
+  async onRagInsightsChange(enabled: boolean): Promise<void> {
+    this.enableRagInsights.set(enabled);
+    await this.savePreference({ enableRagInsights: enabled });
   }
 
   // Check if provider is available
@@ -230,7 +258,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.geminiTestResult = null;
 
     try {
-      this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey);
       if (this.cloudLLMProvider.isProviderAvailable('gemini')) {
         this.geminiTestResult = 'success';
       } else {
@@ -263,7 +291,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.openaiTestResult = null;
 
     try {
-      this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey);
       if (this.cloudLLMProvider.isProviderAvailable('openai')) {
         this.openaiTestResult = 'success';
       } else {
@@ -296,7 +324,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.claudeTestResult = null;
 
     try {
-      this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey);
       if (this.cloudLLMProvider.isProviderAvailable('claude')) {
         this.claudeTestResult = 'success';
       } else {
@@ -358,11 +386,7 @@ export class AiSettingsPageComponent implements OnInit {
   }
 
   formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return this.pwaService.formatBytes(bytes);
   }
 
   private showToast(key: string): void {

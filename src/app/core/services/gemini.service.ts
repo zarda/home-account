@@ -1,9 +1,17 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import type { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
+import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import {
+  trimToLastCompleteSentence,
+  dropIncompleteTrailingLine,
+  dropNonCjkSentences,
+  protectDecimalPoints,
+  restoreDecimalPoints,
+} from '../utils/llm-text.utils';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -71,6 +79,14 @@ export interface CSVColumnMapping {
   hasHeader: boolean;
 }
 
+/** True when an error message indicates a rate limit / quota exhaustion. */
+export function isRateLimitMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('429') || lower.includes('resource_exhausted') ||
+    lower.includes('rate limit') || lower.includes('quota exceeded') ||
+    lower.includes('too many requests');
+}
+
 @Injectable({ providedIn: 'root' })
 export class GeminiService {
   private categoryService = inject(CategoryService);
@@ -81,8 +97,8 @@ export class GeminiService {
   private textModel: GenerativeModel | null = null;
   private visionModel: GenerativeModel | null = null;
   private currentApiKey: string | null = null;
-  private currentTextModelId = 'gemini-2.5-flash';
-  private currentVisionModelId = 'gemini-3.1-flash-lite-preview';
+  private currentTextModelId = DEFAULT_TEXT_MODEL;
+  private currentVisionModelId = DEFAULT_VISION_MODEL;
 
   // Signals
   isProcessing = signal<boolean>(false);
@@ -93,10 +109,10 @@ export class GeminiService {
   isAvailableSignal = computed(() => this._isAvailable());
 
   constructor() {
-    this.initializeGemini();
+    void this.initializeGemini();
   }
 
-  private initializeGemini(customApiKey?: string, textModelId?: string, visionModelId?: string): void {
+  private async initializeGemini(customApiKey?: string, textModelId?: string, visionModelId?: string): Promise<void> {
     // Priority: custom key > environment key (if available)
     const apiKey = customApiKey || (environment as { geminiApiKey?: string }).geminiApiKey;
 
@@ -110,8 +126,11 @@ export class GeminiService {
       return;
     }
 
-    const finalTextModel = textModelId || 'gemini-2.5-flash';
-    const finalVisionModel = visionModelId || 'gemini-3.1-flash-lite-preview';
+    // Fall back to the CURRENT models, not the catalog defaults — a
+    // reinitialization without explicit model ids (e.g. when the API key is
+    // saved) must not silently revert the user's model selection
+    const finalTextModel = textModelId || this.currentTextModelId;
+    const finalVisionModel = visionModelId || this.currentVisionModelId;
 
     // Same key — only update models if they changed
     if (apiKey === this.currentApiKey && this.genAI) {
@@ -127,6 +146,8 @@ export class GeminiService {
 
     try {
       console.log('[GeminiService] Initializing with new API key (length:', apiKey.length, ')');
+      // The SDK is loaded on demand to keep it out of the initial bundle
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
       this.genAI = new GoogleGenerativeAI(apiKey);
 
       this.textModel = this.genAI.getGenerativeModel({ model: finalTextModel });
@@ -151,8 +172,8 @@ export class GeminiService {
    * Reinitialize Gemini with a new API key and/or models.
    * Used when user provides their own API key or changes model selection in settings.
    */
-  reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): void {
-    this.initializeGemini(apiKey, textModelId, visionModelId);
+  reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): Promise<void> {
+    return this.initializeGemini(apiKey, textModelId, visionModelId);
   }
 
   // Check if Gemini is available
@@ -264,7 +285,7 @@ Return ONLY the JSON, nothing else.`;
     try {
       const categoryList = categories
         .filter(c => !c.parentId && c.isActive)
-        .map(c => `${c.id}: ${c.name}`)
+        .map(c => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const prompt = `Given this transaction description: "${description}"
@@ -310,7 +331,7 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
       const categories = this.categoryService.categories();
       const categoryList = categories
         .filter(c => !c.parentId && c.isActive)
-        .map(c => `${c.id}: ${c.name}`)
+        .map(c => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
       const transactionList = transactions
@@ -367,7 +388,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
     period: string,
     baseCurrency = 'USD',
     previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[]
+    budgets?: Budget[],
+    ragContext?: string
   ): Promise<string> {
     if (!this.textModel) {
       console.error('[GeminiService] ✗ Text model not available for spending summary');
@@ -390,7 +412,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         if (t.type !== 'expense') continue;
 
         const category = categories.find(c => c.id === t.categoryId);
-        const categoryName = category?.name ?? 'Other';
+        const categoryName = this.translateCategoryName(category?.name);
 
         const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
         existing.total += toBaseCurrency(t.amount, t.currency);
@@ -419,7 +441,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         .slice(0, 5)
         .map(t => {
           const cat = categories.find(c => c.id === t.categoryId);
-          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${cat?.name ?? 'Other'})`;
+          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
         })
         .join('\n');
 
@@ -458,6 +480,11 @@ ${budgetLines}
 `;
       }
 
+    // Optional RAG grounding block (enableRagInsights preference)
+    const ragSection = ragContext?.trim()
+      ? `\nNotable activity (retrieved from your transactions):\n${ragContext.trim()}\n`
+      : '';
+
       const prompt = `Generate structured AI Insights for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
@@ -471,7 +498,7 @@ ${categoryBreakdown}
 
 Largest individual expenses:
 ${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}
+${historicalSection}${budgetSection}${ragSection}
 Return AI Insights in this exact format (use markdown):
 
 ## Spending Pattern
@@ -489,32 +516,37 @@ Return AI Insights in this exact format (use markdown):
 - [Specific, practical insight #3]
 
 Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
+${ragSection ? 'Ground your insights in the Notable activity section — cite its specific transactions, amounts, and changes where relevant.\n' : ''}Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
 
-${this.getLanguageInstruction()}`;
+${this.getLanguageInstruction()}
+Write the section headings in the same language as the response. Format EVERY section heading — including the first one — as its own line starting with "## ".`;
 
-      const result = await this.textModel.generateContent({
+      const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 1200,
+          // Gemma 4 drafts verbosely before its final answer and needs more
+          // room, or the visible sections arrive truncated
+          maxOutputTokens: this.currentTextModelId.includes('gemma') ? 4096 : 2048,
           temperature: 0.3,
           topP: 0.7,
         }
       });
       const rawText = result.response.text().trim();
-      const responseText = this.currentTextModelId.includes('gemma-4')
+      const filteredText = this.currentTextModelId.includes('gemma-4')
         ? this.filterReasoningContext(rawText)
         : rawText;
-      console.log('[GeminiService] ✓ Spending summary generated successfully (length:', rawText.length, '→', responseText.length, ')');
+      // Never end on a line that was cut off mid-sentence; when the token
+      // limit was hit, even a trailing list item is known to be truncated
+      const responseText = dropIncompleteTrailingLine(filteredText, {
+        dropListItems: this.hitTokenLimit(result),
+      });
+      console.log(`[GeminiService] ✓ Spending summary generated by ${this.currentTextModelId} (length: ${rawText.length} → ${responseText.length})`);
       return responseText;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('[GeminiService] ✗ Summary generation error:', errorMsg);
-
-      if (errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID')) {
-        return 'AI Insights unavailable: Invalid API key. Please check Settings → AI Settings.';
-      }
-
-      return 'Unable to generate spending summary at this time.';
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -553,31 +585,35 @@ ${savingsRate < 20 ? '- Address the low savings rate with concrete, actionable s
 ${summary.balance < 0 ? '- Prioritize: stop deficit spending and find income.' : '- Prioritize: maintain momentum and increase savings.'}
 
 TONE: Practical, specific, supportive. Use exact numbers from above.
-OUTPUT: Only the financial advice (2-3 sentences).`;
+${this.getLanguageInstruction()}
+OUTPUT: Only the advice sentences themselves — no preamble, no labels, no quotation marks.`;
 
-      const result = await this.textModel.generateContent({
+      const result = await this.generateTextWithRetry({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 500,
+          maxOutputTokens: this.currentTextModelId.includes('gemma') ? 2048 : 1024,
           temperature: 0.2,
           topP: 0.7,
         }
       });
       const rawText = result.response.text().trim();
-      const responseText = this.currentTextModelId.includes('gemma-4')
+      let filteredText = this.currentTextModelId.includes('gemma-4')
         ? this.filterReasoningContextForAdvice(rawText)
         : rawText;
-      console.log('[GeminiService] ✓ Financial advice generated successfully (length:', rawText.length, '→', responseText.length, ')');
+      // In CJK locales, English-only sentences are leftover draft commentary
+      const locale = this.translationService.currentLocale();
+      if (locale === 'tc' || locale === 'ja') {
+        filteredText = dropNonCjkSentences(filteredText);
+      }
+      // Never show advice that was cut off mid-sentence
+      const responseText = trimToLastCompleteSentence(filteredText);
+      console.log(`[GeminiService] ✓ Financial advice generated by ${this.currentTextModelId} (length: ${rawText.length} → ${responseText.length})`);
       return responseText;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('[GeminiService] ✗ Financial advice error:', errorMsg);
-
-      if (errorMsg.includes('API key not valid') || errorMsg.includes('API_KEY_INVALID')) {
-        return 'Financial advice unavailable: Invalid API key. Please check Settings → AI Settings.';
-      }
-
-      return 'Keep tracking your expenses to better understand your spending patterns.';
+      // Let the caller decide how to present the failure (and in which language)
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -1209,14 +1245,17 @@ Return ONLY valid JSON (no thinking, no explanation):
     cleaned = cleaned.replace(/\n{2,}/g, ' ');  // Replace double newlines with space
     cleaned = cleaned.replace(/\s{2,}/g, ' ');  // Collapse multiple spaces
 
-    // Deduplicate: if the text repeats itself, keep only first occurrence
-    const trimmed = cleaned.trim();
-    // Match sentences including their punctuation
-    const sentenceMatches = trimmed.match(/[^.!?]*[.!?]+/g) || [];
+    // Deduplicate: if the text repeats itself, keep only first occurrence.
+    // Decimal points are protected so amounts like 16,875.00 are not split
+    // into separate "sentences" ("...16,875." + "00 TWD...").
+    const trimmed = protectDecimalPoints(cleaned.trim());
+    // Match sentences including their punctuation (Latin and CJK)
+    const sentenceMatches = trimmed.match(/[^.!?。！？]*[.!?。！？]+/g) || [];
     const sentences = sentenceMatches.map(s => s.trim()).filter(s => s.length > 0);
 
     if (sentences.length === 0) {
-      return trimmed.length > 20 ? trimmed : text.trim();
+      const restored = restoreDecimalPoints(trimmed);
+      return restored.length > 20 ? restored : text.trim();
     }
 
     // If we have repeated sentences, keep unique ones
@@ -1226,7 +1265,7 @@ Return ONLY valid JSON (no thinking, no explanation):
 
     for (const sent of sentences) {
       // For comparison, remove punctuation and normalize
-      const normalized = sent.trim().replace(/[.!?]+$/, '').toLowerCase();
+      const normalized = sent.trim().replace(/[.!?。！？]+$/, '').toLowerCase();
 
       // Check for exact match or near-duplicate
       let isDuplicate = false;
@@ -1255,12 +1294,12 @@ Return ONLY valid JSON (no thinking, no explanation):
       }
     }
 
-    let result = uniqueSentences.join(' ').trim();
+    let result = restoreDecimalPoints(uniqueSentences.join(' ').trim());
 
     // Ensure 2-3 sentences max (typical financial advice length)
     // Sentences already have punctuation, so we can count them directly
     if (uniqueSentences.length > 3) {
-      result = uniqueSentences.slice(0, 3).join(' ').trim();
+      result = restoreDecimalPoints(uniqueSentences.slice(0, 3).join(' ').trim());
     }
 
     // Log deduplication results
@@ -1319,27 +1358,67 @@ Return ONLY valid JSON (no thinking, no explanation):
 
   // Helper: Check if an error is a rate limit / quota exhaustion error
   private isRateLimitError(message: string): boolean {
-    const lower = message.toLowerCase();
-    return lower.includes('429') || lower.includes('resource_exhausted') ||
-      lower.includes('rate limit') || lower.includes('quota exceeded') ||
-      lower.includes('too many requests');
+    return isRateLimitMessage(message);
   }
 
-  // Helper: Map category name to ID
+  /**
+   * Category names of default categories are stored as i18n keys
+   * (e.g. categoryNames.groceries) — translate them before they reach a
+   * prompt, otherwise the model echoes the raw key into the insights text.
+   */
+  private translateCategoryName(name?: string): string {
+    return name ? this.translationService.t(name) : 'Other';
+  }
+
+  /** True when generation stopped because the output token limit was reached. */
+  private hitTokenLimit(result: GenerateContentResult): boolean {
+    return String(result.response.candidates?.[0]?.finishReason) === 'MAX_TOKENS';
+  }
+
+  /**
+   * Generate text, retrying once after a short delay on rate-limit errors.
+   * The dashboard requests summary and advice close together, which can
+   * trip free-tier per-minute limits.
+   */
+  private async generateTextWithRetry(
+    request: Parameters<GenerativeModel['generateContent']>[0]
+  ): Promise<GenerateContentResult> {
+    if (!this.textModel) {
+      throw new Error('Gemini text model not available');
+    }
+    try {
+      return await this.textModel.generateContent(request);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!this.isRateLimitError(message)) {
+        throw error;
+      }
+      console.warn('[GeminiService] Rate limited, retrying once in 2.5s');
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      return await this.textModel.generateContent(request);
+    }
+  }
+
   private mapCategoryNameToId(categoryName: string): string {
     const categories = this.categoryService.categories();
     const normalizedName = categoryName.toLowerCase().trim();
 
+    // Category names may be stored as i18n keys (e.g. categoryNames.groceries),
+    // while the model sees and returns translated names — match against both
+    const namesOf = (c: Category) => [
+      c.name.toLowerCase(),
+      this.translateCategoryName(c.name).toLowerCase(),
+    ];
+
     // Try exact match first
     const exactMatch = categories.find(
-      c => c.name.toLowerCase() === normalizedName
+      c => namesOf(c).includes(normalizedName)
     );
     if (exactMatch) return exactMatch.id;
 
     // Try partial match
     const partialMatch = categories.find(
-      c => c.name.toLowerCase().includes(normalizedName) ||
-           normalizedName.includes(c.name.toLowerCase())
+      c => namesOf(c).some(n => n.includes(normalizedName) || normalizedName.includes(n))
     );
     if (partialMatch) return partialMatch.id;
 
