@@ -72,12 +72,7 @@
               "canvg",
               "core-js",
               "raf",
-              "rgbcolor",
-              "standardwebhooks"
-            ],
-            "externalDependencies": [
-              "node:fs",
-              "node:path"
+              "rgbcolor"
             ]
           },
           "configurations": {
@@ -165,10 +160,6 @@
             ],
             "styles": [
               "src/styles.scss"
-            ],
-            "externalDependencies": [
-              "node:fs",
-              "node:path"
             ]
           }
         },

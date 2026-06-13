@@ -5,13 +5,6 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    ignore:
-      # jasmine-core 6 removed jasmine.QueryString, which karma-jasmine-html-reporter
-      # still constructs at boot; karma is deprecated and will not gain jasmine 6
-      # support. Stay on 5.x for as long as tests run through karma.
-      - dependency-name: jasmine-core
-        update-types:
-          - "version-update:semver-major"
     groups:
       angular:
         patterns:

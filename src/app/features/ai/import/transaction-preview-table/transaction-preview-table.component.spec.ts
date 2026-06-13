@@ -9,10 +9,7 @@ describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
   let fixture: ComponentFixture<TransactionPreviewTableComponent>;
 
-  // Built fresh for every test: several tests mutate the transaction objects
-  // in place (selected, type, category), so a shared array makes results
-  // depend on execution order under Jasmine's random ordering.
-  const createMockTransactions = (): CategorizedImportTransaction[] => [
+  const mockTransactions: CategorizedImportTransaction[] = [
     {
       id: 'txn1',
       description: 'Coffee Shop',
@@ -50,11 +47,8 @@ describe('TransactionPreviewTableComponent', () => {
       selected: false
     }
   ];
-  let mockTransactions: CategorizedImportTransaction[];
 
   beforeEach(async () => {
-    mockTransactions = createMockTransactions();
-
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
       schemas: [NO_ERRORS_SCHEMA]
