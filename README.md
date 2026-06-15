@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/zarda/home-account/actions/workflows/ci.yml/badge.svg)](https://github.com/zarda/home-account/actions/workflows/ci.yml)
 
-A personal finance management application built with Angular 21, supporting web (PWA), iOS native, and macOS (Apple Silicon) platforms.
+A personal finance management application built with Angular 22, supporting web (PWA), iOS native, and macOS (Apple Silicon) platforms.
 
 ## Why This Project?
 
 This project demonstrates modern Angular development practices with a focus on:
 
-- **Signal-Based Architecture** - Uses Angular 21 signals for reactive state management instead of NgRx/Redux, resulting in less boilerplate and fine-grained reactivity
+- **Signal-Based Architecture** - Uses Angular 22 signals for reactive state management instead of NgRx/Redux, resulting in less boilerplate and fine-grained reactivity
 - **Real-Time Sync** - Firebase Firestore with `onSnapshot` subscriptions for instant UI updates across devices
 - **Standalone Components** - No NgModules - all 40+ components use the modern standalone pattern
 - **Multi-Currency Engine** - Transaction-level exchange rate tracking with 12-hour cached rates
@@ -44,8 +44,8 @@ On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence i
 
 | Category | Technology |
 |----------|------------|
-| Frontend | Angular 21, TypeScript 5.9 |
-| UI | Angular Material 21, Tailwind CSS 3.4 |
+| Frontend | Angular 22, TypeScript 6.0 |
+| UI | Angular Material 22, Tailwind CSS 3.4 |
 | State | Angular Signals |
 | Backend | Firebase (Auth, Firestore) |
 | AI (Web) | Google Generative AI (Gemini 3.1 / Gemma 4) |

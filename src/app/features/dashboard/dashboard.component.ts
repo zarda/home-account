@@ -74,7 +74,11 @@ export class DashboardComponent implements OnInit {
     return `${months[cp.month!]} ${cp.year}`;
   });
 
-  isCustomPeriod = computed(() => this.selectedPeriod === 'custom');
+  // A method (not a computed) because `selectedPeriod` is a plain property,
+  // not a signal — a computed would cache the initial value and never update.
+  isCustomPeriod(): boolean {
+    return this.selectedPeriod === 'custom';
+  }
 
   // ViewChild for date pickers
   @ViewChild('monthPicker') monthPicker!: MatDatepicker<Date>;

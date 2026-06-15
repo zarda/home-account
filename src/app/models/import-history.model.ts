@@ -36,6 +36,7 @@ export interface ImagePositionMetadata {
   positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position within image
   confidenceScore: number;         // OCR/extraction confidence (0-1)
   wasMerged?: boolean;             // True if this item was deduplicated from multiple images
+  mergedFromImages?: number[];     // Source image indices this item was merged from
 }
 
 export interface CategorizedImportTransaction {

@@ -4,6 +4,9 @@ import { firstValueFrom } from 'rxjs';
 import { TransactionService } from './transaction.service';
 import { Transaction, CategorizedImportTransaction, DuplicateCheck, ImagePositionMetadata } from '../../models';
 
+/** Minimum Dice-coefficient overlap for two descriptions to count as similar. */
+const SIMILARITY_THRESHOLD = 0.7;
+
 @Injectable({ providedIn: 'root' })
 export class DuplicateDetectionService {
   private transactionService = inject(TransactionService);
@@ -90,7 +93,7 @@ export class DuplicateDetectionService {
 
       if (sameDay) {
         // Check exact match (same day + same amount + similar description)
-        if (this.isSimilarDescriptionCached(txn.description, existing.description, descBigramCache)) {
+        if (this.descriptionsSimilar(txn.description, existing.description, descBigramCache)) {
           return {
             transactionId: txn.id, isDuplicate: true, matchType: 'exact',
             existingTransactionId: existing.id, confidence: 1.0
@@ -124,10 +127,16 @@ export class DuplicateDetectionService {
   }
 
   /**
-   * Description similarity check using pre-computed bigram cache
+   * Whether two descriptions are similar enough to be the same transaction:
+   * exact match, substring containment, or a Dice-coefficient bigram overlap
+   * at/above SIMILARITY_THRESHOLD. An optional bigram cache (keyed by the
+   * normalized description) skips recomputing bigrams for the existing
+   * transactions that are compared repeatedly.
    */
-  private isSimilarDescriptionCached(
-    desc1: string, desc2: string, cache: Map<string, Set<string>>
+  private descriptionsSimilar(
+    desc1: string,
+    desc2: string,
+    cache?: Map<string, Set<string>>,
   ): boolean {
     const n1 = this.normalizeDescription(desc1);
     const n2 = this.normalizeDescription(desc2);
@@ -135,14 +144,8 @@ export class DuplicateDetectionService {
     if (n1.includes(n2) || n2.includes(n1)) return true;
 
     const bigrams1 = this.getBigrams(n1);
-    const bigrams2 = cache.get(n2) || this.getBigrams(n2);
-    if (bigrams1.size === 0 || bigrams2.size === 0) return n1 === n2;
-
-    let intersection = 0;
-    for (const b of bigrams1) {
-      if (bigrams2.has(b)) intersection++;
-    }
-    return (2 * intersection) / (bigrams1.size + bigrams2.size) >= 0.7;
+    const bigrams2 = cache?.get(n2) ?? this.getBigrams(n2);
+    return this.diceCoefficient(bigrams1, bigrams2) >= SIMILARITY_THRESHOLD;
   }
 
   /**
@@ -150,26 +153,6 @@ export class DuplicateDetectionService {
    */
   private isSameAmount(amount1: number, amount2: number): boolean {
     return Math.abs(amount1 - amount2) < 0.01;
-  }
-
-  /**
-   * Check if two descriptions are similar
-   */
-  private isSimilarDescription(desc1: string, desc2: string): boolean {
-    const normalized1 = this.normalizeDescription(desc1);
-    const normalized2 = this.normalizeDescription(desc2);
-
-    // Exact match after normalization
-    if (normalized1 === normalized2) return true;
-
-    // Check if one contains the other
-    if (normalized1.includes(normalized2) || normalized2.includes(normalized1)) {
-      return true;
-    }
-
-    // Calculate similarity score
-    const similarity = this.calculateSimilarity(normalized1, normalized2);
-    return similarity >= 0.7;
   }
 
   /**
@@ -183,23 +166,16 @@ export class DuplicateDetectionService {
   }
 
   /**
-   * Calculate similarity score between two strings (Dice coefficient)
+   * Sørensen–Dice coefficient between two bigram sets (0–1). Returns 0 when
+   * either set is empty so callers fall back to the exact/substring checks.
    */
-  private calculateSimilarity(str1: string, str2: string): number {
-    if (str1.length < 2 || str2.length < 2) {
-      return str1 === str2 ? 1 : 0;
-    }
-
-    const bigrams1 = this.getBigrams(str1);
-    const bigrams2 = this.getBigrams(str2);
+  private diceCoefficient(bigrams1: Set<string>, bigrams2: Set<string>): number {
+    if (bigrams1.size === 0 || bigrams2.size === 0) return 0;
 
     let intersection = 0;
     for (const bigram of bigrams1) {
-      if (bigrams2.has(bigram)) {
-        intersection++;
-      }
+      if (bigrams2.has(bigram)) intersection++;
     }
-
     return (2 * intersection) / (bigrams1.size + bigrams2.size);
   }
 
@@ -267,7 +243,7 @@ export class DuplicateDetectionService {
         if (!isInOverlapZone) continue;
 
         // Check if descriptions and amounts match
-        const isSimilar = this.isSimilarDescription(txn.description, other.description);
+        const isSimilar = this.descriptionsSimilar(txn.description, other.description);
         const sameAmount = this.isSameAmountWithTolerance(txn.amount, other.amount, 0.01);
 
         if (isSimilar && sameAmount) {

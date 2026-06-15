@@ -55,7 +55,7 @@ export class ClaudeService {
 
     try {
       // The SDK is loaded on demand to keep it out of the initial bundle
-      const { default: Anthropic } = await import('@anthropic-ai/sdk');
+      const { default: Anthropic } = await this.loadSdk();
       this.client = new Anthropic({
         apiKey: apiKey,
         // Same bring-your-own-key trust model as the OpenAI provider: the
@@ -72,6 +72,11 @@ export class ClaudeService {
       this.currentApiKey = null;
       this._isAvailable.set(false);
     }
+  }
+
+  // Seam for the on-demand SDK import so the load step can be substituted.
+  protected loadSdk(): Promise<typeof import('@anthropic-ai/sdk')> {
+    return import('@anthropic-ai/sdk');
   }
 
   /**
