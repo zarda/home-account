@@ -242,6 +242,7 @@ Return ONLY the JSON, nothing else.`;
 
         const categoryId = this.mapCategoryNameToId(parsed.suggestedCategory);
 
+        this.isProcessing.set(false);
         return {
           merchant: parsed.merchant || 'Unknown',
           amount: Number(parsed.amount) || 0,

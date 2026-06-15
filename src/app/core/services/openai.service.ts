@@ -57,7 +57,7 @@ export class OpenAIService {
 
     try {
       // The SDK is loaded on demand to keep it out of the initial bundle
-      const { default: OpenAI } = await import('openai');
+      const { default: OpenAI } = await this.loadSdk();
       this.client = new OpenAI({
         apiKey: apiKey,
         dangerouslyAllowBrowser: true, // Required for browser usage
@@ -70,6 +70,11 @@ export class OpenAIService {
       this.currentApiKey = null;
       this._isAvailable.set(false);
     }
+  }
+
+  // Seam for the on-demand SDK import so the load step can be substituted.
+  protected loadSdk(): Promise<typeof import('openai')> {
+    return import('openai');
   }
 
   /**

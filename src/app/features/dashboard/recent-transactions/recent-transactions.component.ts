@@ -61,8 +61,8 @@ export class RecentTransactionsComponent {
   }
 
   onAddTransaction(): void {
-    // Navigate to transactions page with add mode
-    window.location.href = '/transactions?action=add';
+    // Navigate to transactions page with add mode (SPA navigation, no full reload)
+    this.router.navigate(['/transactions'], { queryParams: { action: 'add' } });
   }
 
   onTransactionClick(transaction: Transaction): void {
