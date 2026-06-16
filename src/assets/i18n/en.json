@@ -126,7 +126,9 @@
     "yearly": "Yearly",
     "noteOptional": "Note (Optional)",
     "notePlaceholder": "Additional details...",
-    "saveChanges": "Save Changes"
+    "saveChanges": "Save Changes",
+    "receipt": "Receipt",
+    "viewReceipt": "View receipt"
   },
   "budget": {
     "title": "Budget",

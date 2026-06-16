@@ -15,6 +15,7 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -24,6 +25,8 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { compressImage } from '../../../shared/utils/image-compression';
+import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -47,6 +50,7 @@ interface DialogData {
     MatIconModule,
     MatProgressSpinnerModule,
     MatChipsModule,
+    MatTooltipModule,
     MatSnackBarModule,
     TranslatePipe,
     CdkTextareaAutosize
@@ -78,6 +82,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   receiptPreview = signal<string | null>(null);
   isScanning = signal(false);
   scanError = signal<string | null>(null);
+  // Compressed receipt image to upload alongside the transaction.
+  receiptFile = signal<File | null>(null);
+
+  // Existing stored receipt (edit mode) — read-only thumbnail.
+  get existingReceiptUrl(): string | null {
+    return this.data.transaction?.receiptUrl ?? null;
+  }
 
   // AI Category Suggestion signals
   suggestedCategory = signal<Category | null>(null);
@@ -256,6 +267,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
     try {
       const formValue = this.form.value;
+      const receipt = this.receiptFile();
 
       const transactionData: CreateTransactionDTO = {
         type: formValue.type,
@@ -266,6 +278,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         date: formValue.date,
         ...(formValue.note ? { note: formValue.note } : {}),
         ...(formValue.period ? { period: formValue.period } : {}),
+        ...(receipt ? { receiptFile: receipt } : {}),
       };
 
       if (this.data.mode === 'add') {
@@ -291,9 +304,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   // === AI Receipt Scanner Methods ===
 
-  onReceiptSelected(event: Event): void {
+  async onReceiptSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
+
+    // Reset input so the same file can be selected again
+    input.value = '';
+
     if (!file) return;
 
     // Validate file type
@@ -306,7 +323,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       return;
     }
 
-    // Read file and convert to base64
+    // Compress/resize and cap at the receipt size limit before keeping the file.
+    let receipt: File;
+    try {
+      receipt = await compressImage(file, { maxBytes: MAX_RECEIPT_BYTES });
+    } catch {
+      receipt = file;
+    }
+    this.receiptFile.set(receipt);
+
+    // Build a preview and run the AI scan from the (compressed) file.
     const reader = new FileReader();
     reader.onload = () => {
       const base64 = reader.result as string;
@@ -320,10 +346,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         { duration: 3000 }
       );
     };
-    reader.readAsDataURL(file);
-
-    // Reset input so the same file can be selected again
-    input.value = '';
+    reader.readAsDataURL(receipt);
   }
 
   private async scanReceipt(base64Image: string): Promise<void> {
@@ -372,6 +395,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   clearReceipt(): void {
     this.receiptPreview.set(null);
     this.scanError.set(null);
+    this.receiptFile.set(null);
   }
 
   // === AI Category Suggestion Methods ===

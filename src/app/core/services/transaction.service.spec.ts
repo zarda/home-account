@@ -3,8 +3,10 @@ import { TransactionService } from './transaction.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
+import { StorageService } from './storage.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
+import { MockStorageService } from './testing/mock-storage.service';
 import {
   createTransaction,
   createMixedTransactions
@@ -15,6 +17,7 @@ describe('TransactionService', () => {
   let service: TransactionService;
   let mockFirestore: MockFirestoreService;
   let mockAuth: MockAuthService;
+  let mockStorage: MockStorageService;
   let currencyService: CurrencyService;
 
   beforeEach(() => {
@@ -23,12 +26,14 @@ describe('TransactionService', () => {
         TransactionService,
         CurrencyService,
         { provide: FirestoreService, useClass: MockFirestoreService },
-        { provide: AuthService, useClass: MockAuthService }
+        { provide: AuthService, useClass: MockAuthService },
+        { provide: StorageService, useClass: MockStorageService }
       ]
     });
 
     mockFirestore = TestBed.inject(FirestoreService) as unknown as MockFirestoreService;
     mockAuth = TestBed.inject(AuthService) as unknown as MockAuthService;
+    mockStorage = TestBed.inject(StorageService) as unknown as MockStorageService;
     currencyService = TestBed.inject(CurrencyService);
     service = TestBed.inject(TransactionService);
 
@@ -46,6 +51,7 @@ describe('TransactionService', () => {
   afterEach(() => {
     mockFirestore.clearMocks();
     mockAuth.clearMocks();
+    mockStorage.clearMocks();
   });
 
   describe('initialization', () => {
@@ -160,6 +166,49 @@ describe('TransactionService', () => {
       expect(transactionData['currency']).toBe('EUR');
       expect(transactionData['exchangeRate']).toBeDefined();
     });
+
+    it('uploads the receipt and persists receiptUrl when a receiptFile is present', async () => {
+      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+      const id = await service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'With receipt',
+        date: new Date(),
+        receiptFile
+      });
+
+      // Receipt uploaded under the generated transaction id.
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(1);
+      const uploadArgs = mockStorage.uploadReceiptSpy.mostRecent()?.args ?? [];
+      expect(uploadArgs[0]).toBe('test-user-123');
+      expect(uploadArgs[1]).toBe(id);
+      expect(uploadArgs[2]).toBe(receiptFile);
+
+      // Saved with setDocument (id pre-generated) and the resulting URL.
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(1);
+      const setArgs = mockFirestore.setDocumentSpy.mostRecent()?.args ?? [];
+      const savedDoc = setArgs[1] as Record<string, unknown>;
+      expect(savedDoc['receiptUrl']).toBe(mockStorage.uploadResult);
+    });
+
+    it('does not upload when no receiptFile is provided', async () => {
+      await service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'No receipt',
+        date: new Date()
+      });
+
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
+      // Falls back to the auto-id addDocument path.
+      expect(mockFirestore.addDocumentSpy.calls.length).toBe(1);
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+    });
   });
 
   describe('updateTransaction', () => {
@@ -184,6 +233,21 @@ describe('TransactionService', () => {
       await updatePromise;
       expect(service.isLoading()).toBe(false);
     });
+
+    it('uploads a new receipt and persists receiptUrl', async () => {
+      mockFirestore.setMockDocument('users/test-user-123/transactions/txn-1', createTransaction({ id: 'txn-1' }));
+      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+      await service.updateTransaction('txn-1', { receiptFile });
+
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(1);
+      const uploadArgs = mockStorage.uploadReceiptSpy.mostRecent()?.args ?? [];
+      expect(uploadArgs[1]).toBe('txn-1');
+
+      const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
+      const updateData = updateArgs[1] as Record<string, unknown>;
+      expect(updateData['receiptUrl']).toBe(mockStorage.uploadResult);
+    });
   });
 
   describe('deleteTransaction', () => {
@@ -201,6 +265,31 @@ describe('TransactionService', () => {
 
       await deletePromise;
       expect(service.isLoading()).toBe(false);
+    });
+
+    it('removes the stored receipt when the transaction has one', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', receiptUrl: 'https://storage.example.com/receipt.jpg' })
+      );
+
+      await service.deleteTransaction('txn-1');
+
+      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(1);
+      const args = mockStorage.deleteReceiptSpy.mostRecent()?.args ?? [];
+      expect(args[0]).toBe('test-user-123');
+      expect(args[1]).toBe('txn-1');
+    });
+
+    it('does not call storage cleanup when there is no receipt', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1' })
+      );
+
+      await service.deleteTransaction('txn-1');
+
+      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(0);
     });
   });
 

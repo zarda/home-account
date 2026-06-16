@@ -126,7 +126,9 @@
     "yearly": "每年",
     "noteOptional": "備註（選填）",
     "notePlaceholder": "其他詳細資訊...",
-    "saveChanges": "儲存變更"
+    "saveChanges": "儲存變更",
+    "receipt": "收據",
+    "viewReceipt": "查看收據"
   },
   "budget": {
     "title": "預算",

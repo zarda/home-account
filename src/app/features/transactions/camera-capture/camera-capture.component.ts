@@ -13,6 +13,7 @@ import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
 
 interface CapturedImage {
   id: string;
@@ -163,72 +164,9 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
    * This is especially important on iOS where camera images can be very large.
    */
   private compressImage(file: File): Promise<File> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = () => {
-        const img = new Image();
-        
-        img.onload = () => {
-          try {
-            // Calculate new dimensions
-            let { width, height } = img;
-            
-            if (width > this.MAX_IMAGE_SIZE || height > this.MAX_IMAGE_SIZE) {
-              if (width > height) {
-                height = (height / width) * this.MAX_IMAGE_SIZE;
-                width = this.MAX_IMAGE_SIZE;
-              } else {
-                width = (width / height) * this.MAX_IMAGE_SIZE;
-                height = this.MAX_IMAGE_SIZE;
-              }
-            }
-
-            // Create canvas and draw resized image
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              resolve(file); // Fall back to original
-              return;
-            }
-
-            // Use better image smoothing for iOS
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, width, height);
-
-            // Convert to blob
-            canvas.toBlob(
-              (blob) => {
-                if (blob) {
-                  const compressedFile = new File([blob], file.name, {
-                    type: 'image/jpeg',
-                    lastModified: Date.now(),
-                  });
-                  
-                  console.log(`[Camera] Compressed: ${file.size} -> ${compressedFile.size} bytes`);
-                  resolve(compressedFile);
-                } else {
-                  resolve(file);
-                }
-              },
-              'image/jpeg',
-              this.JPEG_QUALITY
-            );
-          } catch (err) {
-            reject(err);
-          }
-        };
-
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = reader.result as string;
-      };
-
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
+    return compressImageUtil(file, {
+      maxDimension: this.MAX_IMAGE_SIZE,
+      quality: this.JPEG_QUALITY,
     });
   }
 

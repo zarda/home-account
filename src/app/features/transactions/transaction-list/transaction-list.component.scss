@@ -228,6 +228,34 @@
   vertical-align: middle;
 }
 
+.receipt-icon-link {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+.receipt-icon {
+  font-size: 14px !important;
+  width: 14px !important;
+  height: 14px !important;
+  @apply text-gray-400 dark:text-gray-500;
+  vertical-align: middle;
+}
+
+.receipt-icon-link:hover .receipt-icon {
+  @apply text-primary-600 dark:text-primary-400;
+}
+
+.receipt-indicator {
+  font-size: 14px !important;
+  width: 14px !important;
+  height: 14px !important;
+  @apply text-gray-400 dark:text-gray-500;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 .amount-text {
   font-size: 0.875rem;
   font-weight: 600;

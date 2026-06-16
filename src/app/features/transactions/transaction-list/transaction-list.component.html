@@ -27,7 +27,12 @@
 
           <!-- Details -->
           <div class="item-details">
-            <span class="item-description">{{ transaction.description }}</span>
+            <span class="item-description">
+              {{ transaction.description }}
+              @if (transaction.receiptUrl) {
+                <mat-icon class="receipt-indicator">receipt_long</mat-icon>
+              }
+            </span>
             <span class="item-category">{{ getCategoryName(transaction.categoryId) }}</span>
           </div>
 
@@ -106,6 +111,18 @@
           <span class="description-text">{{ transaction.description }}</span>
           @if (transaction.note) {
             <mat-icon class="note-icon" [matTooltip]="transaction.note">notes</mat-icon>
+          }
+          @if (transaction.receiptUrl) {
+            <a
+              class="receipt-icon-link"
+              [href]="transaction.receiptUrl"
+              target="_blank"
+              rel="noopener"
+              (click)="$event.stopPropagation()"
+              [matTooltip]="'transactions.viewReceipt' | translate"
+            >
+              <mat-icon class="receipt-icon">receipt_long</mat-icon>
+            </a>
           }
         </td>
       </ng-container>
