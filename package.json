@@ -8,13 +8,15 @@
     "build:prod": "ng build --configuration=production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+    "test:smoke": "ng test --watch=false --browsers=ChromeHeadless --include='**/*.smoke.spec.ts'",
+    "smoke": "firebase emulators:exec --only auth,storage --project demo-home-account \"npm run test:smoke\"",
     "lint": "ng lint",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "build:ios": "ng build --configuration=production-local && npx cap sync ios",
     "build:web": "npm run build:prod",
     "postinstall": "bash scripts/patch-capacitor-firebase-auth.sh",
-    "test:ci": "ng test --watch=false --browsers=ChromeHeadless --code-coverage"
+    "test:ci": "ng test --watch=false --browsers=ChromeHeadless --code-coverage --exclude='**/*.smoke.spec.ts'"
   },
   "engines": {
     "node": ">=20"
@@ -71,6 +73,7 @@
     "angular-eslint": "21.0.1",
     "autoprefixer": "^10.4.23",
     "eslint": "^9.39.1",
+    "firebase-tools": "^15.20.0",
     "istanbul-lib-instrument": "^6.0.3",
     "jasmine-core": "~5.9.0",
     "karma": "~6.4.0",

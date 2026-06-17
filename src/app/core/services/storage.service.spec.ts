@@ -3,11 +3,10 @@ import { Storage } from '@angular/fire/storage';
 import { StorageService, MAX_RECEIPT_BYTES } from './storage.service';
 
 /**
- * StorageService wraps the Firebase Storage modular SDK (ref/uploadBytes/
- * getDownloadURL/deleteObject). As with FirestoreService, those thin
- * pass-throughs are exercised end-to-end via TransactionService tests using a
- * MockStorageService; here we unit test the deterministic logic (the size
- * guard) that runs before any network call.
+ * Unit tests for StorageService. The thin Firebase Storage pass-throughs
+ * (ref/uploadBytes/getDownloadURL/deleteObject) are covered end-to-end by the
+ * emulator smoke test (storage.service.smoke.spec.ts); here we only unit test
+ * the deterministic logic (the size guard) that runs before any network call.
  */
 describe('StorageService', () => {
   let service: StorageService;
