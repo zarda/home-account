@@ -121,6 +121,7 @@ describe('OfflineQueueService', () => {
       await service.updateTransactionStatus(id, 'failed', 'nope');
       const txs = await service.getPendingTransactions();
       expect(txs[0].lastError).toBe('nope');
+      expect(txs[0].retryCount).toBe(1);
     });
   });
 
@@ -164,22 +165,40 @@ describe('OfflineQueueService', () => {
       expect(service.lastSyncTime()).not.toBeNull();
     });
 
-    it('processes pending transactions and dispatches image events', async () => {
+    it('dispatches processing events for pending images and transactions', async () => {
       await service.queueImage(imageFile());
       await service.queueTransaction({
         date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
         currency: 'USD', categoryId: 'c', source: 'local',
       });
       const imageEvents: Event[] = [];
-      const listener = (e: Event) => imageEvents.push(e);
-      window.addEventListener('process-queued-image', listener);
+      const txEvents: Event[] = [];
+      const imageListener = (e: Event) => imageEvents.push(e);
+      const txListener = (e: Event) => txEvents.push(e);
+      window.addEventListener('process-queued-image', imageListener);
+      window.addEventListener('sync-queued-transaction', txListener);
 
       const result = await service.syncQueue();
 
-      window.removeEventListener('process-queued-image', listener);
-      expect(result.success).toBe(1); // the transaction
+      window.removeEventListener('process-queued-image', imageListener);
+      window.removeEventListener('sync-queued-transaction', txListener);
+      // success now counts items handed off for async processing (image + tx);
+      // the real outcome is set later by OfflineQueueProcessorService.
+      expect(result.success).toBe(2);
       expect(imageEvents.length).toBe(1);
+      expect(txEvents.length).toBe(1);
       expect(service.isSyncing()).toBeFalse();
+    });
+
+    it('fails transactions that exceeded the retry limit', async () => {
+      const id = await service.queueTransaction({
+        date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
+        currency: 'USD', categoryId: 'c', source: 'local',
+      });
+      // Push retry count past the limit.
+      for (let i = 0; i < 3; i++) await service.updateTransactionStatus(id, 'failed', 'e');
+      const result = await service.syncQueue();
+      expect(result.failed).toBeGreaterThanOrEqual(1);
     });
 
     it('fails images that exceeded the retry limit', async () => {
