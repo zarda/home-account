@@ -46,6 +46,7 @@ export interface QueuedTransaction {
   source: 'local' | 'cloud';
   createdAt: number;
   status: QueueStatus;
+  retryCount: number;
   syncedAt?: number;
   lastError?: string;
 }
@@ -210,7 +211,7 @@ export class OfflineQueueService implements OnDestroy {
   /**
    * Queue a transaction for later sync.
    */
-  async queueTransaction(transaction: Omit<QueuedTransaction, 'id' | 'createdAt' | 'status'>): Promise<string> {
+  async queueTransaction(transaction: Omit<QueuedTransaction, 'id' | 'createdAt' | 'status' | 'retryCount'>): Promise<string> {
     if (!this.db) {
       throw new Error('Database not initialized');
     }
@@ -222,6 +223,7 @@ export class OfflineQueueService implements OnDestroy {
       id,
       createdAt: Date.now(),
       status: 'pending',
+      retryCount: 0,
     };
 
     await this.db.put('pending-transactions', queuedTx);
@@ -308,6 +310,7 @@ export class OfflineQueueService implements OnDestroy {
       }
       if (error) {
         tx.lastError = error;
+        tx.retryCount = (tx.retryCount ?? 0) + 1;
       }
       await this.db.put('pending-transactions', tx);
       await this.updatePendingCount();
@@ -346,6 +349,11 @@ export class OfflineQueueService implements OnDestroy {
 
     await this.logSync('sync_started');
 
+    // NOTE: items are processed asynchronously by OfflineQueueProcessorService,
+    // which sets each item's final status from the real outcome. The counts
+    // below therefore report items *handed off* for processing (`success`) and
+    // items rejected up front, e.g. past the retry limit (`failed`); the real
+    // success/failure is reflected in each item's IndexedDB status.
     let success = 0;
     let failed = 0;
 
@@ -368,31 +376,35 @@ export class OfflineQueueService implements OnDestroy {
         if (image.retryCount >= MAX_RETRY_COUNT) {
           await this.updateImageStatus(image.id, 'failed', 'Max retries exceeded');
           failed++;
+          await this.logSync('item_failed', image.id, 'Max retries exceeded');
         } else {
-          // Mark as processing - actual processing will be done by AIStrategyService
+          // Mark as processing - actual processing will be done by OfflineQueueProcessorService
           await this.updateImageStatus(image.id, 'processing');
           // Emit event for processing
           window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id: image.id } }));
+          success++;
+          await this.logSync('item_processed', image.id, 'Image dispatched for processing');
         }
 
         processed++;
         this._syncProgress.set(Math.round((processed / total) * 100));
       }
 
-      // Process transactions (these just need to be saved to Firestore)
+      // Process transactions (these need to be persisted to Firestore).
+      // Like images, the actual write is handled asynchronously by
+      // OfflineQueueProcessorService, which sets the final status from the
+      // real outcome. We only mark the item 'processing' and dispatch here so a
+      // concurrent re-sync won't dispatch the same transaction twice.
       for (const tx of pendingTxs) {
-        try {
-          // Emit event for saving
-          window.dispatchEvent(new CustomEvent('sync-queued-transaction', { detail: { transaction: tx } }));
-          await this.updateTransactionStatus(tx.id, 'completed');
-          success++;
-          await this.logSync('item_processed', tx.id, 'Transaction synced');
-        } catch (error) {
-          await this.updateTransactionStatus(tx.id, 'failed', 
-            error instanceof Error ? error.message : 'Sync failed');
+        if (tx.retryCount >= MAX_RETRY_COUNT) {
+          await this.updateTransactionStatus(tx.id, 'failed', 'Max retries exceeded');
           failed++;
-          await this.logSync('item_failed', tx.id, 
-            error instanceof Error ? error.message : 'Unknown error');
+          await this.logSync('item_failed', tx.id, 'Max retries exceeded');
+        } else {
+          await this.updateTransactionStatus(tx.id, 'processing');
+          window.dispatchEvent(new CustomEvent('sync-queued-transaction', { detail: { transaction: tx } }));
+          success++;
+          await this.logSync('item_processed', tx.id, 'Transaction dispatched for sync');
         }
 
         processed++;
