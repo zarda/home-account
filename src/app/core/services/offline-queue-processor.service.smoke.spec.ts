@@ -1,8 +1,11 @@
+// Import the Firebase SDK through @angular/fire (not the root `firebase/*`
+// packages). @angular/fire bundles its own pinned Firebase major, so a Firestore
+// instance built from root `firebase/firestore` is incompatible with the writes
+// FirestoreService issues via @angular/fire — they must come from the same copy.
 import { TestBed } from '@angular/core/testing';
-import { initializeApp, deleteApp, FirebaseApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { Firestore } from '@angular/fire/firestore';
+import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
+import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
+import { getFirestore, connectFirestoreEmulator, Firestore } from '@angular/fire/firestore';
 
 import { OfflineQueueService, QueuedTransaction } from './offline-queue.service';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
