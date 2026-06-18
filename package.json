@@ -70,7 +70,7 @@
     "@angular/compiler-cli": "^22.0.2",
     "@angular/localize": "^22.0.2",
     "@types/jasmine": "~5.1.0",
-    "angular-eslint": "21.0.1",
+    "angular-eslint": "22.0.0",
     "autoprefixer": "^10.4.23",
     "eslint": "^9.39.1",
     "firebase-tools": "^15.20.0",
