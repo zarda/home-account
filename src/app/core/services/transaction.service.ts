@@ -4,6 +4,7 @@ import { Observable, map, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
+import { StorageService } from './storage.service';
 import {
   Transaction,
   TransactionFilters,
@@ -17,6 +18,7 @@ export class TransactionService {
   private firestoreService = inject(FirestoreService);
   private authService = inject(AuthService);
   private currencyService = inject(CurrencyService);
+  private storageService = inject(StorageService);
   private injector = inject(Injector);
 
   // Helper to update budgets after transaction changes
@@ -170,12 +172,26 @@ export class TransactionService {
         ...(data.location ? { location: data.location } : {})
       };
 
-      // TODO: Handle receipt file upload to Firebase Storage
-
-      const id = await this.firestoreService.addDocument(
-        this.userTransactionsPath,
-        transaction
-      );
+      let id: string;
+      if (data.receiptFile) {
+        // Pre-generate the id so the receipt's storage object and the
+        // Firestore document share the same key, then upload before saving.
+        id = this.firestoreService.generateId(this.userTransactionsPath);
+        transaction.receiptUrl = await this.storageService.uploadReceipt(
+          userId,
+          id,
+          data.receiptFile
+        );
+        await this.firestoreService.setDocument(
+          `${this.userTransactionsPath}/${id}`,
+          transaction
+        );
+      } else {
+        id = await this.firestoreService.addDocument(
+          this.userTransactionsPath,
+          transaction
+        );
+      }
 
       // Update affected budgets if this is an expense
       if (data.type === 'expense') {
@@ -226,6 +242,18 @@ export class TransactionService {
         }
       }
 
+      // Upload a new receipt if one was provided (overwrites the per-id object).
+      if (data.receiptFile) {
+        const userId = this.authService.userId();
+        if (userId) {
+          updateData.receiptUrl = await this.storageService.uploadReceipt(
+            userId,
+            id,
+            data.receiptFile
+          );
+        }
+      }
+
       await this.firestoreService.updateDocument(
         `${this.userTransactionsPath}/${id}`,
         updateData
@@ -269,6 +297,18 @@ export class TransactionService {
         `${this.userTransactionsPath}/${id}`
       );
 
+      // Remove the stored receipt object to avoid orphaned files.
+      if (transaction?.receiptUrl) {
+        const userId = this.authService.userId();
+        if (userId) {
+          try {
+            await this.storageService.deleteReceipt(userId, id);
+          } catch {
+            // Don't fail the transaction delete if receipt cleanup fails.
+          }
+        }
+      }
+
       // Update affected budget if this was an expense
       if (transaction?.type === 'expense') {
         await this.updateAffectedBudgets(transaction.categoryId);
@@ -284,12 +324,22 @@ export class TransactionService {
 
     try {
       const transactions = this.transactions();
+      const userId = this.authService.userId();
 
       // Delete in batches
       for (const transaction of transactions) {
         await this.firestoreService.deleteDocument(
           `${this.userTransactionsPath}/${transaction.id}`
         );
+
+        // Remove any stored receipt to avoid orphaned files.
+        if (userId && transaction.receiptUrl) {
+          try {
+            await this.storageService.deleteReceipt(userId, transaction.id);
+          } catch {
+            // Best-effort cleanup; continue clearing the rest.
+          }
+        }
       }
     } finally {
       this.isLoading.set(false);

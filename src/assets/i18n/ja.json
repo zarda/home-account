@@ -126,7 +126,9 @@
     "yearly": "年次",
     "noteOptional": "メモ（任意）",
     "notePlaceholder": "追加の詳細...",
-    "saveChanges": "変更を保存"
+    "saveChanges": "変更を保存",
+    "receipt": "レシート",
+    "viewReceipt": "レシートを表示"
   },
   "budget": {
     "title": "予算",

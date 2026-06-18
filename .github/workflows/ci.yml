@@ -59,5 +59,18 @@ jobs:
           path: coverage/
           retention-days: 14
 
+      # Java is required to run the Firebase Storage/Auth emulators.
+      - name: Set up Java (Firebase emulators)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Smoke test: real upload/download/delete + storage.rules enforcement
+      # against the Firebase emulators (no production project needed; the
+      # demo- project id runs the emulators fully offline).
+      - name: Smoke test (Firebase emulators)
+        run: npm run smoke
+
       - name: Build (production)
         run: npm run build

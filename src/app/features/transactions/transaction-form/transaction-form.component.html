@@ -59,6 +59,21 @@
         </div>
       }
 
+      <!-- Existing receipt (edit mode): read-only thumbnail linking to full image -->
+      @if (data.mode === 'edit' && existingReceiptUrl) {
+        <div class="receipt-scanner-section">
+          <a
+            class="receipt-preview receipt-link"
+            [href]="existingReceiptUrl"
+            target="_blank"
+            rel="noopener"
+            [matTooltip]="'transactions.viewReceipt' | translate"
+          >
+            <img [src]="existingReceiptUrl" [alt]="'transactions.receipt' | translate" />
+          </a>
+        </div>
+      }
+
       <!-- Type Toggle -->
       <div class="type-toggle-container">
         <mat-button-toggle-group formControlName="type" class="type-toggle">

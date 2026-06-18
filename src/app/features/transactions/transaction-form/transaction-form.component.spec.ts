@@ -154,6 +154,24 @@ describe('TransactionFormComponent', () => {
       expect(dialogRef.close).toHaveBeenCalledWith(true);
     });
 
+    it('forwards the captured receipt file in the DTO', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      const receipt = new File(['x'], 'r.jpg', { type: 'image/jpeg' });
+      component.receiptFile.set(receipt);
+      await component.onSubmit();
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.receiptFile).toBe(receipt);
+    });
+
+    it('omits receiptFile when none was captured', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      await component.onSubmit();
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.receiptFile).toBeUndefined();
+    });
+
     it('updates an existing transaction in edit mode', async () => {
       const txn = createTransaction({ id: 'e1' });
       const component = build({ mode: 'edit', transaction: txn }).componentInstance;
@@ -205,13 +223,15 @@ describe('TransactionFormComponent', () => {
       expect(component.scanError()).toBe('ai.scanError');
     });
 
-    it('clearReceipt resets preview and error', () => {
+    it('clearReceipt resets preview, error and captured file', () => {
       const component = build().componentInstance;
       component.receiptPreview.set('x');
       component.scanError.set('y');
+      component.receiptFile.set(new File(['x'], 'r.jpg', { type: 'image/jpeg' }));
       component.clearReceipt();
       expect(component.receiptPreview()).toBeNull();
       expect(component.scanError()).toBeNull();
+      expect(component.receiptFile()).toBeNull();
     });
   });
 

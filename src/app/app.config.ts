@@ -6,6 +6,7 @@ import { provideFirebaseApp, initializeApp, getApp } from '@angular/fire/app';
 import { provideAuth } from '@angular/fire/auth';
 import { initializeAuth, browserLocalPersistence, getAuth } from 'firebase/auth';
 import { provideFirestore, getFirestore } from '@angular/fire/firestore';
+import { provideStorage, getStorage } from '@angular/fire/storage';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { provideHttpClient } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
@@ -36,6 +37,7 @@ export const appConfig: ApplicationConfig = {
       return getAuth();
     }),
     provideFirestore(() => getFirestore()),
+    provideStorage(() => getStorage()),
     provideCharts(withDefaultRegisterables()),
     provideAppInitializer(() => inject(TranslationService).init()),
     provideAppInitializer(() => {

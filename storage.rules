@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Receipt images, scoped to the owning user.
+    // Path: users/{userId}/receipts/{transactionId}
+    match /users/{userId}/receipts/{fileName} {
+      // Only the owner may read their receipts.
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Only the owner may upload, limited to images up to 2 MB.
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      // Only the owner may delete their receipts.
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Deny all other access by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
