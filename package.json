@@ -9,7 +9,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:smoke": "ng test --watch=false --browsers=ChromeHeadless --include='**/*.smoke.spec.ts'",
-    "smoke": "firebase emulators:exec --only auth,storage --project demo-home-account \"npm run test:smoke\"",
+    "smoke": "firebase emulators:exec --only auth,storage,firestore --project demo-home-account \"npm run test:smoke\"",
     "lint": "ng lint",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
