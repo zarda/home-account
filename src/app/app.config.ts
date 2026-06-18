@@ -15,6 +15,7 @@ import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { TranslationService } from './core/services/translation.service';
 import { ThemeService } from './core/services/theme.service';
+import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -43,6 +44,11 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => {
       // Initialize theme service (will apply saved theme once user preferences load)
       inject(ThemeService);
+    }),
+    provideAppInitializer(() => {
+      // Attach the offline-queue processing listeners at startup so queued
+      // images/transactions are handled as soon as connectivity returns.
+      inject(OfflineQueueProcessorService);
     })
   ]
 };
