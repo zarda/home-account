@@ -125,7 +125,7 @@ cp src/environments/environment.local.example.ts .vscode/environment.ts
 npm start
 ```
 
-`src/environments/environment.ts` re-exports from the gitignored `.vscode/environment.ts`, so local Firebase keys never land in version control. Production builds use `environment.production.ts` with values injected from CI/CD secrets.
+`src/environments/environment.ts` re-exports from the gitignored `.vscode/environment.ts`, so local Firebase keys never land in version control. Production builds use the gitignored `environment.prod-local.ts` — copy `src/environments/environment.prod-local.example.ts` to `environment.prod-local.ts` and fill in your Firebase values, so deploy config stays out of version control too. (If it's missing, the production build fails loudly rather than shipping placeholders.)
 
 ## Build Commands
 

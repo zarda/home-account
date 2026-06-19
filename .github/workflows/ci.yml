@@ -25,14 +25,30 @@ jobs:
         run: npm ci
 
       # src/environments/environment.ts re-exports from .vscode/environment
-      # (gitignored, holds local Firebase keys), so type-checking needs a stub.
-      # Production builds replace it with environment.production.ts anyway.
-      - name: Create local environment stub
+      # (gitignored, holds local Firebase keys), so lint/test type-checking needs
+      # a stub. The production build replaces environment.ts with the gitignored
+      # environment.prod-local.ts, so the build step needs that stub too.
+      - name: Create local environment stubs
         run: |
           mkdir -p .vscode
           cat > .vscode/environment.ts << 'EOF'
           export const environment = {
             production: false,
+            firebase: {
+              apiKey: 'ci-stub',
+              authDomain: 'ci-stub',
+              projectId: 'ci-stub',
+              storageBucket: 'ci-stub',
+              messagingSenderId: 'ci-stub',
+              appId: 'ci-stub',
+              measurementId: 'ci-stub'
+            },
+            donationUrlPaypal: ''
+          };
+          EOF
+          cat > src/environments/environment.prod-local.ts << 'EOF'
+          export const environment = {
+            production: true,
             firebase: {
               apiKey: 'ci-stub',
               authDomain: 'ci-stub',

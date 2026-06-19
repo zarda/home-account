@@ -7,7 +7,7 @@
 //
 // src/environments/environment.ts re-exports from .vscode/environment so local
 // secrets never land in version control. Production builds replace it with
-// environment.production.ts via fileReplacements (values injected in CI/CD).
+// environment.prod-local.ts via fileReplacements (see environment.prod-local.example.ts).
 export const environment = {
   production: false,
   firebase: {
