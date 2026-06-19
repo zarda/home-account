@@ -1,3 +1,3 @@
 // Re-export from .vscode (gitignored) for local development
-// For production, environment.production.ts is used with GitHub secrets
+// For production builds, environment.prod-local.ts (gitignored) is swapped in via fileReplacements
 export { environment } from '../../.vscode/environment';
