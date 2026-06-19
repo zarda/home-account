@@ -1,8 +1,11 @@
+// Import the Firebase SDK through @angular/fire (not the root `firebase/*`
+// packages). @angular/fire bundles its own pinned Firebase major, so a Storage
+// instance built from root `firebase/storage` is incompatible with the `ref()`
+// StorageService calls via @angular/fire — they must come from the same copy.
 import { TestBed } from '@angular/core/testing';
-import { initializeApp, deleteApp, FirebaseApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from 'firebase/auth';
-import { getStorage, connectStorageEmulator, FirebaseStorage } from 'firebase/storage';
-import { Storage } from '@angular/fire/storage';
+import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
+import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
+import { getStorage, connectStorageEmulator, FirebaseStorage, Storage } from '@angular/fire/storage';
 import { StorageService } from './storage.service';
 
 /**
