@@ -25,6 +25,13 @@ export class RagContextService {
     transactions: Transaction[];
     previousByCategory: CategoryTotal[] | null;
     baseCurrency: string;
+    /**
+     * Trailing-window expenses (typically the last ~6 months, including the
+     * current period) used as the baseline for anomaly detection. When omitted
+     * or empty, the baseline collapses to the current period — reproducing the
+     * original current-period-only behaviour.
+     */
+    historicalExpenses?: Transaction[] | null;
   }): string {
     const { transactions, previousByCategory, baseCurrency } = opts;
     const expenses = transactions.filter(t => t.type === 'expense');
@@ -40,7 +47,13 @@ export class RagContextService {
       sections.push(topExpenses);
     }
 
-    const anomalies = this.buildAmountAnomalies(expenses, toBase, baseCurrency);
+    // Prefer a longer historical baseline when supplied; otherwise fall back to
+    // the current period's expenses so behaviour is unchanged without history.
+    const baselineExpenses = opts.historicalExpenses?.length
+      ? opts.historicalExpenses.filter(t => t.type === 'expense')
+      : expenses;
+
+    const anomalies = this.buildAmountAnomalies(expenses, baselineExpenses, toBase, baseCurrency);
     if (anomalies) {
       sections.push(anomalies);
     }
@@ -68,36 +81,49 @@ export class RagContextService {
   }
 
   /**
-   * Flag transactions far above their category's typical amount this period
-   * (above mean + 2*stddev, in categories with at least 4 transactions).
-   * Baseline is intentionally the current period's intra-category
-   * distribution; a longer historical baseline is a future enhancement.
+   * Flag current-period transactions far above their category's typical amount
+   * (above mean + 2*stddev, in categories with at least 4 baseline samples).
+   * The baseline distribution is drawn from `baselineExpenses` — a trailing
+   * window (e.g. the last ~6 months) that includes the current period — so the
+   * detector works early in a period and reflects month-over-month norms.
+   * Only `expenses` (the current period) are eligible to be flagged; when no
+   * history is supplied `baselineExpenses` equals `expenses` and this reduces
+   * to the original current-period-only behaviour.
    */
   private buildAmountAnomalies(
     expenses: Transaction[],
+    baselineExpenses: Transaction[],
     toBase: (t: Transaction) => number,
     baseCurrency: string,
   ): string {
-    const byCategory = new Map<string, Transaction[]>();
+    const baselineByCategory = new Map<string, number[]>();
+    for (const t of baselineExpenses) {
+      const list = baselineByCategory.get(t.categoryId) ?? [];
+      list.push(toBase(t));
+      baselineByCategory.set(t.categoryId, list);
+    }
+
+    const candidatesByCategory = new Map<string, Transaction[]>();
     for (const t of expenses) {
-      const list = byCategory.get(t.categoryId) ?? [];
+      const list = candidatesByCategory.get(t.categoryId) ?? [];
       list.push(t);
-      byCategory.set(t.categoryId, list);
+      candidatesByCategory.set(t.categoryId, list);
     }
 
     const anomalies: { transaction: Transaction; amount: number; typical: number }[] = [];
-    for (const transactions of byCategory.values()) {
-      if (transactions.length < 4) {
+    for (const [categoryId, candidates] of candidatesByCategory) {
+      const baseline = baselineByCategory.get(categoryId) ?? [];
+      if (baseline.length < 4) {
         continue;
       }
-      const amounts = transactions.map(toBase);
-      const mean = amounts.reduce((sum, a) => sum + a, 0) / amounts.length;
-      const variance = amounts.reduce((sum, a) => sum + (a - mean) ** 2, 0) / amounts.length;
+      const mean = baseline.reduce((sum, a) => sum + a, 0) / baseline.length;
+      const variance = baseline.reduce((sum, a) => sum + (a - mean) ** 2, 0) / baseline.length;
       const threshold = mean + 2 * Math.sqrt(variance);
 
-      for (let i = 0; i < transactions.length; i++) {
-        if (amounts[i] > threshold) {
-          anomalies.push({ transaction: transactions[i], amount: amounts[i], typical: mean });
+      for (const transaction of candidates) {
+        const amount = toBase(transaction);
+        if (amount > threshold) {
+          anomalies.push({ transaction, amount, typical: mean });
         }
       }
     }
