@@ -75,7 +75,7 @@
     "eslint": "^9.39.1",
     "firebase-tools": "^15.20.0",
     "istanbul-lib-instrument": "^6.0.3",
-    "jasmine-core": "~5.9.0",
+    "jasmine-core": "~5.13.0",
     "karma": "~6.4.0",
     "karma-chrome-launcher": "~3.2.0",
     "karma-coverage": "~2.2.0",
