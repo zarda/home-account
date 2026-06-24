@@ -470,6 +470,31 @@ export class TransactionService {
     );
   }
 
+  /**
+   * Non-mutating fetch of expense transactions within a date range. Used to
+   * build a longer historical baseline (e.g. the trailing few months) for
+   * anomaly detection without disturbing the main `transactions` signal.
+   */
+  getExpensesInRange(start: Date, end: Date): Observable<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return of([]);
+
+    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
+      orderBy: [{ field: 'date', direction: 'desc' }],
+      where: [
+        { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
+        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+      ]
+    };
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      options
+    ).pipe(
+      map(transactions => transactions.filter(t => t.type === 'expense'))
+    );
+  }
+
   private groupByCategory(transactions: Transaction[]): CategoryTotal[] {
     const categoryMap = new Map<string, number>();
 
