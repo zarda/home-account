@@ -329,6 +329,24 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('getExpensesInRange', () => {
+    it('returns only expenses and leaves the transactions signal untouched', (done) => {
+      const transactions = createMixedTransactions();
+      mockFirestore.setMockCollection('users/test-user-123/transactions', transactions);
+
+      const expectedExpenseCount = transactions.filter(t => t.type === 'expense').length;
+
+      service.getExpensesInRange(new Date(2026, 0, 1), new Date(2026, 5, 30)).subscribe(result => {
+        // Only expenses are returned...
+        expect(result.length).toBe(expectedExpenseCount);
+        expect(result.every(t => t.type === 'expense')).toBe(true);
+        // ...and unlike getByDateRange this query does not mutate the main signal.
+        expect(service.transactions()).toEqual([]);
+        done();
+      });
+    });
+  });
+
   describe('getByCategory', () => {
     it('should call getTransactions with category filter', (done) => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);

@@ -43,6 +43,9 @@ export class AiSummaryComponent {
   baseCurrency = input<string>('USD');
   previousPeriodData = input<PreviousPeriodData | null>(null);
   previousPeriodByCategory = input<CategoryTotal[] | null>(null);
+  // Trailing-window expenses (~6 months, including the current period) used as
+  // the baseline for RAG anomaly detection. Null falls back to current period.
+  historicalExpenses = input<Transaction[] | null>(null);
   budgets = input<Budget[]>([]);
 
   // State
@@ -141,6 +144,7 @@ export class AiSummaryComponent {
             transactions,
             previousByCategory: this.previousPeriodByCategory(),
             baseCurrency: currency,
+            historicalExpenses: this.historicalExpenses(),
           })
         : undefined;
 
