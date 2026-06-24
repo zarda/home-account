@@ -18,6 +18,7 @@ describe('DashboardComponent', () => {
     getByDateRange: jasmine.Spy;
     getRecentTransactions: jasmine.Spy;
     getPeriodCategoryTotals: jasmine.Spy;
+    getExpensesInRange: jasmine.Spy;
   };
   let budgetService: {
     activeBudgets: ReturnType<typeof signal<unknown[]>>;
@@ -41,6 +42,7 @@ describe('DashboardComponent', () => {
       getPeriodCategoryTotals: jasmine
         .createSpy('getPeriodCategoryTotals')
         .and.returnValue(of({ income: 0, expense: 0, byCategory: [] })),
+      getExpensesInRange: jasmine.createSpy('getExpensesInRange').and.returnValue(of([])),
     };
     budgetService = {
       activeBudgets: signal<unknown[]>([]),

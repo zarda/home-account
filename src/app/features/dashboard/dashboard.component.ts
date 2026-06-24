@@ -24,6 +24,12 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 
 type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'custom';
 
+// Trailing window (in months) used as the baseline for AI spending-anomaly
+// detection. The window always extends back from the current period's end and
+// includes the whole current period, so sparse history transparently degrades
+// to current-period-only behaviour.
+const BASELINE_WINDOW_MONTHS = 6;
+
 interface CustomPeriod {
   type: 'month' | 'year';
   year: number;
@@ -99,6 +105,8 @@ export class DashboardComponent implements OnInit {
   recentTransactions = signal<Transaction[]>([]);
   previousPeriodData = signal<{ income: number; expense: number } | null>(null);
   previousPeriodByCategory = signal<CategoryTotal[] | null>(null);
+  // Trailing-window expenses feeding the AI anomaly baseline (see BASELINE_WINDOW_MONTHS)
+  historicalExpenses = signal<Transaction[] | null>(null);
 
   // Compute totals with real-time currency conversion to user's base currency
   totalIncome = computed(() => {
@@ -229,6 +237,9 @@ export class DashboardComponent implements OnInit {
     // Load previous period data for AI comparison
     this.loadPreviousPeriodData();
 
+    // Load the trailing historical window that feeds the AI anomaly baseline
+    this.loadHistoricalBaseline();
+
     // Load budgets
     this.budgetService.getBudgets().subscribe();
 
@@ -256,6 +267,33 @@ export class DashboardComponent implements OnInit {
         this.previousPeriodByCategory.set(null);
       }
     });
+  }
+
+  private loadHistoricalBaseline(): void {
+    const { start, end } = this.getBaselineWindowDates();
+
+    // Non-mutating query so the current-period transactions signal is untouched;
+    // the trailing window only feeds the RAG anomaly baseline for insights.
+    this.transactionService.getExpensesInRange(start, end).subscribe({
+      next: (expenses) => {
+        this.historicalExpenses.set(expenses);
+      },
+      error: () => {
+        this.historicalExpenses.set(null);
+      }
+    });
+  }
+
+  // Trailing baseline window: from BASELINE_WINDOW_MONTHS before the current
+  // period's end up to that end, but never starting after the current period's
+  // start — so the window always covers the whole current period.
+  private getBaselineWindowDates(): { start: Date; end: Date } {
+    const { start: periodStart, end } = this.getPeriodDates();
+    const windowStart = new Date(end.getFullYear(), end.getMonth() - BASELINE_WINDOW_MONTHS, 1);
+    return {
+      start: windowStart < periodStart ? windowStart : periodStart,
+      end
+    };
   }
 
   private getPreviousPeriodDates(): { start: Date; end: Date } | null {
