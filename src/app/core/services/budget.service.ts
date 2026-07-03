@@ -244,14 +244,12 @@ export class BudgetService {
 
     const { start, end } = this.getBudgetPeriodDates(budget);
 
-    // Get transactions for this category in the budget period
+    // Get expense transactions for this category in the budget period.
+    // Uses the non-mutating query: recalculation runs as a side effect of
+    // posting transactions and must never overwrite the shared transactions
+    // signal the dashboard binds its summary to.
     const txns = await firstValueFrom(
-      this.transactionService.getTransactions({
-        categoryId: budget.categoryId,
-        startDate: start,
-        endDate: end,
-        type: 'expense'
-      })
+      this.transactionService.getExpensesInRange(start, end, budget.categoryId)
     );
 
     // Ensure exchange rates are loaded before currency conversion

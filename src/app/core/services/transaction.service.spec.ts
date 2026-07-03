@@ -405,6 +405,23 @@ describe('TransactionService', () => {
         done();
       });
     });
+
+    it('adds a categoryId where clause when a category filter is provided', (done) => {
+      mockFirestore.setMockCollection('users/test-user-123/transactions', []);
+
+      service.getExpensesInRange(new Date(2026, 0, 1), new Date(2026, 5, 30), 'food').subscribe(() => {
+        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const options = callArgs[1] as {
+          where?: { field: string; op: string; value: unknown }[];
+        } | undefined;
+        expect(options?.where).toContain(
+          jasmine.objectContaining({ field: 'categoryId', op: '==', value: 'food' })
+        );
+        // Still non-mutating with the category filter applied.
+        expect(service.transactions()).toEqual([]);
+        done();
+      });
+    });
   });
 
   describe('getByCategory', () => {
