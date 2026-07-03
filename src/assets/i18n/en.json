@@ -82,7 +82,8 @@
     "spendingByCategory": "Spending by Category",
     "noExpenses": "No expenses yet",
     "addFirstTransaction": "Add your first transaction to get started",
-    "addExpensesToSeeBreakdown": "Start adding expenses to see your spending breakdown"
+    "addExpensesToSeeBreakdown": "Start adding expenses to see your spending breakdown",
+    "vsPreviousPeriod": "vs previous period"
   },
   "transactions": {
     "title": "Transactions",

@@ -82,7 +82,8 @@
     "spendingByCategory": "カテゴリ別支出",
     "noExpenses": "支出なし",
     "addFirstTransaction": "最初の取引を追加してください",
-    "addExpensesToSeeBreakdown": "支出を追加すると内訳が表示されます"
+    "addExpensesToSeeBreakdown": "支出を追加すると内訳が表示されます",
+    "vsPreviousPeriod": "前期比"
   },
   "transactions": {
     "title": "取引履歴",

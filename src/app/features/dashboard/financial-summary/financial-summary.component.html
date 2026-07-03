@@ -9,9 +9,23 @@
             {{ formatAmount(income()) }}
           </p>
         </div>
-        <div class="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
-          <mat-icon class="text-green-600 dark:text-green-400">trending_up</mat-icon>
-        </div>
+        @if (incomeChange() !== null) {
+          <div class="text-right">
+            <span
+              class="change-indicator"
+              [class.positive]="incomeChange()! >= 0"
+              [class.negative]="incomeChange()! < 0"
+            >
+              <mat-icon>{{ incomeChange()! >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+              {{ incomeChange()! | number:'1.1-1' }}%
+            </span>
+            <p class="chip-caption">{{ 'dashboard.vsPreviousPeriod' | translate }}</p>
+          </div>
+        } @else {
+          <div class="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center">
+            <mat-icon class="text-green-600 dark:text-green-400">trending_up</mat-icon>
+          </div>
+        }
       </div>
     </mat-card-content>
   </mat-card>
@@ -26,9 +40,23 @@
             {{ formatAmount(expenses()) }}
           </p>
         </div>
-        <div class="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900 flex items-center justify-center">
-          <mat-icon class="text-red-600 dark:text-red-400">trending_down</mat-icon>
-        </div>
+        @if (expensesChange() !== null) {
+          <div class="text-right">
+            <span
+              class="change-indicator"
+              [class.positive]="expensesChange()! < 0"
+              [class.negative]="expensesChange()! >= 0"
+            >
+              <mat-icon>{{ expensesChange()! >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+              {{ expensesChange()! | number:'1.1-1' }}%
+            </span>
+            <p class="chip-caption">{{ 'dashboard.vsPreviousPeriod' | translate }}</p>
+          </div>
+        } @else {
+          <div class="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900 flex items-center justify-center">
+            <mat-icon class="text-red-600 dark:text-red-400">trending_down</mat-icon>
+          </div>
+        }
       </div>
     </mat-card-content>
   </mat-card>
@@ -49,22 +77,36 @@
             {{ formatAmount(balance()) }}
           </p>
         </div>
-        <div
-          class="w-10 h-10 rounded-lg flex items-center justify-center"
-          [class.bg-green-100]="balance() >= 0"
-          [class.dark:bg-green-900]="balance() >= 0"
-          [class.bg-red-100]="balance() < 0"
-          [class.dark:bg-red-900]="balance() < 0"
-        >
-          <mat-icon
-            [class.text-green-600]="balance() >= 0"
-            [class.dark:text-green-400]="balance() >= 0"
-            [class.text-red-600]="balance() < 0"
-            [class.dark:text-red-400]="balance() < 0"
+        @if (balanceChange() !== null) {
+          <div class="text-right">
+            <span
+              class="change-indicator"
+              [class.positive]="balanceChange()! >= 0"
+              [class.negative]="balanceChange()! < 0"
+            >
+              <mat-icon>{{ balanceChange()! >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+              {{ balanceChange()! | number:'1.1-1' }}%
+            </span>
+            <p class="chip-caption">{{ 'dashboard.vsPreviousPeriod' | translate }}</p>
+          </div>
+        } @else {
+          <div
+            class="w-10 h-10 rounded-lg flex items-center justify-center"
+            [class.bg-green-100]="balance() >= 0"
+            [class.dark:bg-green-900]="balance() >= 0"
+            [class.bg-red-100]="balance() < 0"
+            [class.dark:bg-red-900]="balance() < 0"
           >
-            account_balance_wallet
-          </mat-icon>
-        </div>
+            <mat-icon
+              [class.text-green-600]="balance() >= 0"
+              [class.dark:text-green-400]="balance() >= 0"
+              [class.text-red-600]="balance() < 0"
+              [class.dark:text-red-400]="balance() < 0"
+            >
+              account_balance_wallet
+            </mat-icon>
+          </div>
+        }
       </div>
     </mat-card-content>
   </mat-card>
