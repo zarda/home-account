@@ -9,3 +9,4 @@ export * from './gemini.service';
 export * from './export.service';
 export * from './translation.service';
 export * from './theme.service';
+export * from './announcer.service';

@@ -9,6 +9,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Transaction } from '../../../models';
 import { createTransaction } from '../../../core/services/testing';
 
@@ -16,6 +17,8 @@ describe('TransactionListComponent', () => {
   let component: TransactionListComponent;
   let fixture: ComponentFixture<TransactionListComponent>;
   let dialog: jasmine.SpyObj<MatDialog>;
+  let translation: jasmine.SpyObj<TranslationService>;
+  let announcer: jasmine.SpyObj<AnnouncerService>;
 
   const txns: Transaction[] = [
     createTransaction({ amount: 30, description: 'Banana', date: Timestamp.fromDate(new Date(2026, 0, 2)) }),
@@ -35,8 +38,9 @@ describe('TransactionListComponent', () => {
     categoryHelper.getCategoryName.and.returnValue('Cat');
     categoryHelper.getCategoryIcon.and.returnValue('icon');
     categoryHelper.getCategoryColor.and.returnValue('#000');
-    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => k);
+    announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
@@ -46,6 +50,7 @@ describe('TransactionListComponent', () => {
         { provide: DateFormatService, useValue: dateFormat },
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
+        { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialog, useValue: dialog },
       ],
     }).compileComponents();
@@ -94,6 +99,25 @@ describe('TransactionListComponent', () => {
     expect(component.formatAmount(5, 'USD')).toBe('USD 5');
     expect(component.formatDate(Timestamp.now())).toBe('date');
     expect(component.formatRelativeDate(Timestamp.now())).toBe('rel');
+  });
+
+  describe('result count announcements', () => {
+    it('does not announce on initial render', () => {
+      expect(announcer.announce).not.toHaveBeenCalled();
+    });
+
+    it('announces when the number of transactions changes', () => {
+      fixture.componentRef.setInput('transactions', txns.slice(0, 2));
+      fixture.detectChanges();
+      expect(translation.t).toHaveBeenCalledWith('transactions.resultCountAnnouncement', { count: 2 });
+      expect(announcer.announce).toHaveBeenCalledWith('transactions.resultCountAnnouncement');
+    });
+
+    it('does not announce when a new array has the same count', () => {
+      fixture.componentRef.setInput('transactions', [...txns]);
+      fixture.detectChanges();
+      expect(announcer.announce).not.toHaveBeenCalled();
+    });
   });
 
   describe('confirmDelete', () => {

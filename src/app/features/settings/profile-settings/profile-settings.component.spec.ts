@@ -7,6 +7,7 @@ import { ProfileSettingsComponent } from './profile-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ThemeService } from '../../../core/services/theme.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 
 describe('ProfileSettingsComponent', () => {
@@ -17,6 +18,7 @@ describe('ProfileSettingsComponent', () => {
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockThemeService: jasmine.SpyObj<ThemeService>;
   let mockGeminiService: jasmine.SpyObj<GeminiService>;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
 
   const mockUser = {
     preferences: {
@@ -53,6 +55,8 @@ describe('ProfileSettingsComponent', () => {
     mockGeminiService = jasmine.createSpyObj('GeminiService', ['reinitialize', 'isAvailable']);
     mockGeminiService.isAvailable.and.returnValue(true);
 
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
+
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
@@ -60,7 +64,8 @@ describe('ProfileSettingsComponent', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: ThemeService, useValue: mockThemeService },
-        { provide: GeminiService, useValue: mockGeminiService }
+        { provide: GeminiService, useValue: mockGeminiService },
+        { provide: AnnouncerService, useValue: mockAnnouncer }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -134,6 +139,13 @@ describe('ProfileSettingsComponent', () => {
 
       expect(mockTranslationService.setLocale).toHaveBeenCalledWith('tc');
       expect(mockAuthService.updateUserPreferences).toHaveBeenCalled();
+    });
+
+    it('should announce the error assertively when saving fails', async () => {
+      mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('fail')));
+      await component.onCurrencyChange();
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('common.error', 'assertive');
     });
   });
 });

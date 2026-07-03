@@ -13,6 +13,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { AIImportService } from '../../../../core/services/ai-import.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import {
   CategorizedImportTransaction,
   ImportResult,
@@ -51,6 +52,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
   private router = inject(Router);
 
   @ViewChild('stepper') stepper!: MatStepper;
@@ -316,24 +318,20 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         'generic_csv'
       );
 
-      this.snackBar.open(
-        this.t('import.importComplete', { count: result.successCount }),
-        this.t('common.close'),
-        { duration: 5000 }
-      );
+      const message = this.t('import.importComplete', { count: result.successCount });
+      this.snackBar.open(message, this.t('common.close'), { duration: 5000 });
+      this.announcer.announce(message);
 
       // Navigate back to transactions with showAll to see imported data
       this.router.navigate(['/transactions'], {
         queryParams: { showAll: 'true' }
       });
     } catch (error) {
-      this.snackBar.open(
-        this.t('import.importFailed', {
-          error: error instanceof Error ? error.message : 'Unknown error'
-        }),
-        this.t('common.close'),
-        { duration: 5000 }
-      );
+      const message = this.t('import.importFailed', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      this.snackBar.open(message, this.t('common.close'), { duration: 5000 });
+      this.announcer.announce(message, 'assertive');
     } finally {
       this.isImporting.set(false);
     }

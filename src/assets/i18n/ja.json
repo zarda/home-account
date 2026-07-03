@@ -128,7 +128,8 @@
     "notePlaceholder": "追加の詳細...",
     "saveChanges": "変更を保存",
     "receipt": "レシート",
-    "viewReceipt": "レシートを表示"
+    "viewReceipt": "レシートを表示",
+    "resultCountAnnouncement": "{{count}}件の取引を表示しています"
   },
   "budget": {
     "title": "予算",

@@ -7,6 +7,7 @@ import { AIImportService } from '../../../core/services/ai-import.service';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { ImportResult } from '../../../models';
 
 describe('CameraCaptureComponent', () => {
@@ -15,6 +16,7 @@ describe('CameraCaptureComponent', () => {
   let pwaService: jasmine.SpyObj<PwaService>;
   let offlineQueue: jasmine.SpyObj<OfflineQueueService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let announcer: jasmine.SpyObj<AnnouncerService>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<CameraCaptureComponent>>;
   let router: jasmine.SpyObj<Router>;
 
@@ -56,6 +58,7 @@ describe('CameraCaptureComponent', () => {
     offlineQueue = jasmine.createSpyObj('OfflineQueueService', ['queueImage']);
     offlineQueue.queueImage.and.resolveTo(undefined as never);
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
+    announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
     router = jasmine.createSpyObj('Router', ['navigate']);
 
@@ -67,6 +70,7 @@ describe('CameraCaptureComponent', () => {
         { provide: PwaService, useValue: pwaService },
         { provide: OfflineQueueService, useValue: offlineQueue },
         { provide: MatSnackBar, useValue: snackBar },
+        { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: Router, useValue: router },
       ],
@@ -199,6 +203,7 @@ describe('CameraCaptureComponent', () => {
       await component.processImage();
       expect(offlineQueue.queueImage).toHaveBeenCalledTimes(2);
       expect(dialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ queued: true }));
+      expect(announcer.announce).toHaveBeenCalledWith('2 image(s) queued for processing when online');
     });
 
     it('shows an error when no AI provider is available', async () => {

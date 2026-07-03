@@ -8,6 +8,7 @@ import { ImportWizardComponent } from './import-wizard.component';
 import { AIImportService } from '../../../../core/services/ai-import.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { Category, CategorizedImportTransaction, ImportResult } from '../../../../models';
 
 describe('ImportWizardComponent', () => {
@@ -17,6 +18,7 @@ describe('ImportWizardComponent', () => {
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
   let mockRouter: jasmine.SpyObj<Router>;
 
   const mockCategories: Category[] = [
@@ -111,6 +113,7 @@ describe('ImportWizardComponent', () => {
     mockTranslationService.t.and.callFake((key: string) => key);
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     mockRouter = jasmine.createSpyObj('Router', ['navigate']);
 
     await TestBed.configureTestingModule({
@@ -120,6 +123,7 @@ describe('ImportWizardComponent', () => {
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: AnnouncerService, useValue: mockAnnouncer },
         { provide: Router, useValue: mockRouter }
       ],
       schemas: [NO_ERRORS_SCHEMA]
@@ -350,6 +354,7 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(mockImportService.confirmImport).toHaveBeenCalled();
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('import.importComplete');
     }));
 
     it('should navigate to transactions page on success', fakeAsync(() => {
@@ -378,6 +383,7 @@ describe('ImportWizardComponent', () => {
       }).not.toThrow();
 
       expect(component.isImporting()).toBeFalse();
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('import.importFailed', 'assertive');
     }));
   });
 

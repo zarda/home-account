@@ -12,6 +12,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { RecurringService } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { RecurringTransaction, Category, CreateRecurringDTO } from '../../../models';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -44,6 +45,7 @@ export class RecurringTransactionsComponent implements OnInit {
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
 
   private t(key: string, params?: Record<string, string | number>): string {
     return this.translationService.t(key, params);
@@ -93,10 +95,14 @@ export class RecurringTransactionsComponent implements OnInit {
   async toggleActive(recurring: RecurringTransaction): Promise<void> {
     if (recurring.isActive) {
       await this.recurringService.pauseRecurring(recurring.id);
-      this.snackBar.open(this.t('settings.recurringPaused'), this.t('common.close'), { duration: 2000 });
+      const message = this.t('settings.recurringPaused');
+      this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
+      this.announcer.announce(message);
     } else {
       await this.recurringService.resumeRecurring(recurring.id);
-      this.snackBar.open(this.t('settings.recurringResumed'), this.t('common.close'), { duration: 2000 });
+      const message = this.t('settings.recurringResumed');
+      this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
+      this.announcer.announce(message);
     }
   }
 
@@ -113,7 +119,9 @@ export class RecurringTransactionsComponent implements OnInit {
     dialogRef.afterClosed().subscribe(confirmed => {
       if (confirmed) {
         this.recurringService.deleteRecurring(recurring.id).then(() => {
-          this.snackBar.open(this.t('settings.recurringDeleted'), this.t('common.close'), { duration: 2000 });
+          const message = this.t('settings.recurringDeleted');
+          this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
+          this.announcer.announce(message);
         });
       }
     });
@@ -129,9 +137,13 @@ export class RecurringTransactionsComponent implements OnInit {
     dialogRef.afterClosed().subscribe((result: CreateRecurringDTO | undefined) => {
       if (result) {
         this.recurringService.createRecurring(result).then(() => {
-          this.snackBar.open(this.t('settings.recurringCreated'), this.t('common.close'), { duration: 2000 });
+          const message = this.t('settings.recurringCreated');
+          this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
+          this.announcer.announce(message);
         }).catch(() => {
-          this.snackBar.open(this.t('settings.recurringCreateFailed'), this.t('common.close'), { duration: 3000 });
+          const message = this.t('settings.recurringCreateFailed');
+          this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+          this.announcer.announce(message, 'assertive');
         });
       }
     });

@@ -10,6 +10,7 @@ import { OfflineQueueService } from '../../../core/services/offline-queue.servic
 import { GeminiService } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 
 describe('AiSettingsPageComponent', () => {
   let component: AiSettingsPageComponent;
@@ -20,6 +21,7 @@ describe('AiSettingsPageComponent', () => {
   let geminiServiceMock: jasmine.SpyObj<GeminiService>;
   let cloudLLMProviderMock: jasmine.SpyObj<CloudLLMProviderService>;
   let authServiceMock: jasmine.SpyObj<AuthService>;
+  let announcerMock: jasmine.SpyObj<AnnouncerService>;
 
   beforeEach(async () => {
     strategyServiceMock = jasmine.createSpyObj('AIStrategyService', [
@@ -82,6 +84,8 @@ describe('AiSettingsPageComponent', () => {
     } as any);
     authServiceMock.updateUserPreferences.and.returnValue(Promise.resolve());
 
+    announcerMock = jasmine.createSpyObj('AnnouncerService', ['announce']);
+
     await TestBed.configureTestingModule({
       imports: [
         AiSettingsPageComponent,
@@ -96,6 +100,7 @@ describe('AiSettingsPageComponent', () => {
         { provide: GeminiService, useValue: geminiServiceMock },
         { provide: CloudLLMProviderService, useValue: cloudLLMProviderMock },
         { provide: AuthService, useValue: authServiceMock },
+        { provide: AnnouncerService, useValue: announcerMock },
       ],
     }).compileComponents();
 
@@ -159,11 +164,19 @@ describe('AiSettingsPageComponent', () => {
     it('should sync queue', async () => {
       await component.syncQueue();
       expect(offlineQueueServiceMock.syncQueue).toHaveBeenCalled();
+      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueSynced');
     });
 
     it('should clear queue', async () => {
       await component.clearQueue();
       expect(offlineQueueServiceMock.clearAll).toHaveBeenCalled();
+      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueCleared');
+    });
+
+    it('should announce sync failures assertively', async () => {
+      offlineQueueServiceMock.syncQueue.and.returnValue(Promise.reject(new Error('offline')));
+      await component.syncQueue();
+      expect(announcerMock.announce).toHaveBeenCalledWith('Failed to sync queue', 'assertive');
     });
   });
 

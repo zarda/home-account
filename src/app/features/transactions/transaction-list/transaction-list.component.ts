@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 
 import { MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
@@ -13,6 +13,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -45,8 +46,24 @@ export class TransactionListComponent {
   private categoryHelperService = inject(CategoryHelperService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
+  private announcer = inject(AnnouncerService);
 
   displayedColumns = ['date', 'category', 'description', 'amount', 'actions'];
+
+  private previousCount: number | null = null;
+
+  constructor() {
+    // Announce result-count changes (e.g. after filtering) to assistive technology.
+    effect(() => {
+      const count = this.transactions().length;
+      if (this.previousCount !== null && this.previousCount !== count) {
+        this.announcer.announce(
+          this.translationService.t('transactions.resultCountAnnouncement', { count })
+        );
+      }
+      this.previousCount = count;
+    });
+  }
 
   // Use signals for sort state
   private sortActive = signal<string>('date');

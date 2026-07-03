@@ -8,7 +8,11 @@ import { MatButtonModule } from '@angular/material/button';
   standalone: true,
   imports: [MatIconModule, MatButtonModule],
   template: `
-    <div class="flex flex-col items-center justify-center py-12 px-4 text-center">
+    <div
+      class="flex flex-col items-center justify-center py-12 px-4 text-center"
+      role="status"
+      aria-live="polite"
+    >
       <div
         class="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4"
       >

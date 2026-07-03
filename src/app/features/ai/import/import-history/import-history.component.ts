@@ -14,6 +14,7 @@ import { Timestamp } from '@angular/fire/firestore';
 
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ImportHistory, ImportStatus } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -40,6 +41,7 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
   private importHistoryService = inject(ImportHistoryService);
   private translationService = inject(TranslationService);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
   private dialog = inject(MatDialog);
   private router = inject(Router);
 
@@ -152,17 +154,13 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
       if (confirmed) {
         try {
           await this.importHistoryService.deleteImportHistory(item.id);
-          this.snackBar.open(
-            this.t('import.historyDeleted'),
-            this.t('common.close'),
-            { duration: 3000 }
-          );
+          const message = this.t('import.historyDeleted');
+          this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+          this.announcer.announce(message);
         } catch {
-          this.snackBar.open(
-            this.t('import.deleteHistoryFailed'),
-            this.t('common.close'),
-            { duration: 3000 }
-          );
+          const message = this.t('import.deleteHistoryFailed');
+          this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+          this.announcer.announce(message, 'assertive');
         }
       }
     });

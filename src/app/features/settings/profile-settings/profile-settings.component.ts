@@ -12,6 +12,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { ThemeService, ThemePreference } from '../../../core/services/theme.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { SUPPORTED_CURRENCIES } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -35,6 +36,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 export class ProfileSettingsComponent {
   private authService = inject(AuthService);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
 
@@ -80,10 +82,12 @@ export class ProfileSettingsComponent {
         ...pref,
       });
     } catch {
-      this.snackBar.open(this.translationService.t('common.error'), this.translationService.t('common.close'), {
+      const message = this.translationService.t('common.error');
+      this.snackBar.open(message, this.translationService.t('common.close'), {
         duration: 3000,
         horizontalPosition: 'center',
       });
+      this.announcer.announce(message, 'assertive');
     }
   }
 }

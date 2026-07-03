@@ -22,6 +22,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -69,6 +70,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private translationService = inject(TranslationService);
   private geminiService = inject(GeminiService);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
   private cdr = inject(ChangeDetectorRef);
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
@@ -315,11 +317,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      this.snackBar.open(
-        this.translationService.t('ai.invalidFileType'),
-        this.translationService.t('common.close'),
-        { duration: 3000 }
-      );
+      const message = this.translationService.t('ai.invalidFileType');
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
       return;
     }
 
@@ -340,11 +340,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanReceipt(base64);
     };
     reader.onerror = () => {
-      this.snackBar.open(
-        this.translationService.t('ai.readError'),
-        this.translationService.t('common.close'),
-        { duration: 3000 }
-      );
+      const message = this.translationService.t('ai.readError');
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
     };
     reader.readAsDataURL(receipt);
   }
@@ -374,19 +372,15 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       }
 
       // Show success message
-      this.snackBar.open(
-        this.translationService.t('ai.scanSuccess'),
-        this.translationService.t('common.close'),
-        { duration: 3000 }
-      );
+      const message = this.translationService.t('ai.scanSuccess');
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message);
     } catch (error) {
       console.error('Receipt scan error:', error);
-      this.scanError.set(this.translationService.t('ai.scanError'));
-      this.snackBar.open(
-        this.translationService.t('ai.scanError'),
-        this.translationService.t('common.close'),
-        { duration: 4000 }
-      );
+      const message = this.translationService.t('ai.scanError');
+      this.scanError.set(message);
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 4000 });
+      this.announcer.announce(message, 'assertive');
     } finally {
       this.isScanning.set(false);
     }

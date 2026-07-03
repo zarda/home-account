@@ -11,6 +11,7 @@ import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;
@@ -22,6 +23,7 @@ describe('DataManagementComponent', () => {
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
 
   beforeEach(async () => {
     mockExportService = jasmine.createSpyObj('ExportService', [
@@ -54,6 +56,7 @@ describe('DataManagementComponent', () => {
 
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslationService.t.and.callFake((key: string) => key);
@@ -67,7 +70,8 @@ describe('DataManagementComponent', () => {
         { provide: AuthService, useValue: mockAuthService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        { provide: AnnouncerService, useValue: mockAnnouncer }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -124,6 +128,7 @@ describe('DataManagementComponent', () => {
       tick();
 
       expect(mockSnackBar.open).toHaveBeenCalledWith('settings.backupExported', 'common.close', { duration: 3000 });
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('settings.backupExported');
     }));
 
     it('should set isExporting to false after completion', fakeAsync(() => {
@@ -163,6 +168,7 @@ describe('DataManagementComponent', () => {
       component.onFileSelected(event);
 
       expect(mockSnackBar.open).toHaveBeenCalledWith('settings.selectCsvOrJson', 'common.close', { duration: 3000 });
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('settings.selectCsvOrJson', 'assertive');
     });
 
     it('should handle no file selected', () => {
