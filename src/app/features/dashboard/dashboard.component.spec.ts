@@ -1,8 +1,16 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, Subject, throwError } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
+import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
+import { SpendingChartComponent } from './spending-chart/spending-chart.component';
+import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
+import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
+import { AiSummaryComponent } from './ai-summary/ai-summary.component';
+import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
@@ -13,6 +21,18 @@ import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { BudgetAlert, Transaction, User } from '../../models';
 import { createTransaction, createCategory, createUser } from '../../core/services/testing';
+
+// Stands in for the real summary component when the real dashboard template
+// is rendered, capturing exactly what the template binds to each input.
+@Component({ selector: 'app-financial-summary', standalone: true, template: '' })
+class FinancialSummaryStubComponent {
+  income = input<number>(0);
+  expenses = input<number>(0);
+  balance = input<number>(0);
+  currency = input<string>('USD');
+  previousIncome = input<number | null>(null);
+  previousExpenses = input<number | null>(null);
+}
 
 describe('DashboardComponent', () => {
   let transactionService: {
@@ -397,6 +417,71 @@ describe('DashboardComponent', () => {
       budgets$.next([]);
       expect(snackBar.open).not.toHaveBeenCalled();
       expect(announcer.announce).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('financial summary bindings (real template)', () => {
+    beforeEach(async () => {
+      // The shared TestBed above blanks the template, so it cannot catch the
+      // [previousIncome]/[previousExpenses] bindings being swapped or
+      // dropped. Re-configure to render the REAL dashboard template, with
+      // the summary component swapped for an input-capturing stub and the
+      // remaining heavy children left to NO_ERRORS_SCHEMA.
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [DashboardComponent],
+        providers: [
+          provideNoopAnimations(),
+          { provide: TransactionService, useValue: transactionService },
+          { provide: BudgetService, useValue: budgetService },
+          { provide: CategoryService, useValue: categoryService },
+          { provide: RecurringService, useValue: recurringService },
+          { provide: CurrencyService, useValue: currencyService },
+          { provide: AuthService, useValue: authService },
+          { provide: TranslationService, useValue: translation },
+          { provide: MatSnackBar, useValue: snackBar },
+          { provide: AnnouncerService, useValue: announcer },
+        ],
+      })
+        .overrideComponent(DashboardComponent, {
+          remove: {
+            imports: [
+              FinancialSummaryComponent,
+              SpendingChartComponent,
+              RecentTransactionsComponent,
+              BudgetProgressComponent,
+              AiSummaryComponent,
+              LoadingSpinnerComponent,
+            ],
+          },
+          add: { imports: [FinancialSummaryStubComponent], schemas: [NO_ERRORS_SCHEMA] },
+        })
+        .compileComponents();
+    });
+
+    it('binds current and previous period totals to app-financial-summary', () => {
+      transactionService.getPeriodCategoryTotals.and.returnValue(
+        of({ income: 1234, expense: 567, byCategory: [] }),
+      );
+      transactionService.transactions.set([
+        createTransaction({ type: 'income', amount: 1000 }),
+        createTransaction({ type: 'expense', amount: 600 }),
+      ]);
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      const stub = fixture.debugElement.query(By.directive(FinancialSummaryStubComponent))
+        ?.componentInstance as FinancialSummaryStubComponent;
+      expect(stub).withContext('app-financial-summary rendered').toBeTruthy();
+      expect(stub.income()).toBe(1000);
+      expect(stub.expenses()).toBe(600);
+      expect(stub.balance()).toBe(400);
+      expect(stub.currency()).toBe('USD');
+      // Distinct values catch both a swap and a drop of the two previous-
+      // period bindings that drive the delta chips.
+      expect(stub.previousIncome()).toBe(1234);
+      expect(stub.previousExpenses()).toBe(567);
     });
   });
 });

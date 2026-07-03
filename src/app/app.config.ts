@@ -10,6 +10,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
   FirestoreSettings,
+  PersistentTabManager,
 } from '@angular/fire/firestore';
 import { provideStorage, getStorage } from '@angular/fire/storage';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
@@ -23,11 +24,24 @@ import { ThemeService } from './core/services/theme.service';
 import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
 
 /**
+ * Tab manager for the Firestore local cache. Multi-tab so the IndexedDB
+ * cache is shared when the app is open in more than one tab, instead of the
+ * second tab failing with failed-precondition errors.
+ *
+ * Exported as its own seam because this choice is otherwise unobservable:
+ * the cache object built by persistentLocalCache() reports kind
+ * 'persistent' for BOTH tab managers and keeps the difference in private
+ * fields, so a test can only assert the multi-tab criterion here, on the
+ * manager's public `kind` discriminant (app.config.spec.ts).
+ */
+export function firestoreCacheTabManager(): PersistentTabManager {
+  return persistentMultipleTabManager();
+}
+
+/**
  * Firestore settings with an on-disk (IndexedDB) local cache so previously
  * loaded documents (transactions, budgets, categories) are still served to
- * onSnapshot listeners while offline. persistentMultipleTabManager shares
- * the cache across tabs instead of throwing failed-precondition errors when
- * the app is open in more than one tab. If IndexedDB is unavailable the SDK
+ * onSnapshot listeners while offline. If IndexedDB is unavailable the SDK
  * logs a warning and falls back to the in-memory cache (the previous
  * behaviour).
  *
@@ -39,8 +53,23 @@ import { OfflineQueueProcessorService } from './core/services/offline-queue-proc
  */
 export function firestorePersistentCacheSettings(): FirestoreSettings {
   return {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    localCache: persistentLocalCache({ tabManager: firestoreCacheTabManager() }),
   };
+}
+
+/**
+ * Factory behind provideFirestore. Offline reads depend on going through
+ * initializeFirestore with the persistent-cache settings — a plain
+ * getFirestore() would silently drop the cache. The collaborators are
+ * default parameters so the spec can assert that wiring with fakes: booting
+ * a real Firestore instance inside the Karma suite leaves background work
+ * that stalls the browser teardown.
+ */
+export function appFirestoreFactory(
+  initialize: typeof initializeFirestore = initializeFirestore,
+  app: typeof getApp = getApp,
+): ReturnType<typeof initializeFirestore> {
+  return initialize(app(), firestorePersistentCacheSettings());
 }
 
 export const appConfig: ApplicationConfig = {
@@ -63,7 +92,7 @@ export const appConfig: ApplicationConfig = {
       // Use default (IndexedDB) persistence for web
       return getAuth();
     }),
-    provideFirestore(() => initializeFirestore(getApp(), firestorePersistentCacheSettings())),
+    provideFirestore(() => appFirestoreFactory()),
     provideStorage(() => getStorage()),
     provideCharts(withDefaultRegisterables()),
     provideAppInitializer(() => inject(TranslationService).init()),

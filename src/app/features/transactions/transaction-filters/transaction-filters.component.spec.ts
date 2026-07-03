@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { of } from 'rxjs';
@@ -490,6 +490,34 @@ describe('TransactionFiltersComponent', () => {
       // Type + Category + Currency
       expect(selects.length).toBe(3);
     });
+
+    it('should emit the chosen currency when an option is picked in the rendered dropdown', fakeAsync(() => {
+      spyOn(component.filtersChanged, 'emit');
+      component.expanded.set(true);
+      fixture.detectChanges();
+
+      // Currency is the third select in the filter grid (type, category,
+      // currency); MatSelect opens on a click of its inner trigger.
+      const compiled = fixture.nativeElement as HTMLElement;
+      const triggers = compiled.querySelectorAll<HTMLElement>('.filter-grid mat-select .mat-mdc-select-trigger');
+      const currencyTrigger = triggers[2];
+      expect(currencyTrigger).withContext('currency select trigger').toBeTruthy();
+      currencyTrigger.click();
+      fixture.detectChanges();
+      flush();
+
+      // Options render into the overlay container, outside the fixture.
+      const options = Array.from(document.querySelectorAll<HTMLElement>('mat-option'));
+      const eurOption = options.find(option => option.textContent?.trim() === 'EUR');
+      expect(eurOption).withContext('EUR option from CurrencyService').toBeTruthy();
+      eurOption!.click();
+      fixture.detectChanges();
+      flush();
+
+      expect(component.filters.currency).toBe('EUR');
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent().args[0];
+      expect(emitted).toEqual(jasmine.objectContaining({ currency: 'EUR' }));
+    }));
 
     it('should hide filter panel when collapsed', () => {
       component.expanded.set(false);
