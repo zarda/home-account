@@ -8,6 +8,7 @@ import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
+import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { BudgetAlert, Transaction, User } from '../../models';
@@ -29,6 +30,7 @@ describe('DashboardComponent', () => {
     getBudgets: jasmine.Spy;
   };
   let categoryService: { categories: ReturnType<typeof signal<unknown[]>>; loadCategories: jasmine.Spy };
+  let recurringService: { catchUpRecurringTransactions: jasmine.Spy };
   let authService: { currentUser: ReturnType<typeof signal<User | null>> };
   let currencyService: jasmine.SpyObj<CurrencyService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
@@ -60,6 +62,11 @@ describe('DashboardComponent', () => {
       categories: signal<unknown[]>([createCategory({ id: 'food' })]),
       loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
     };
+    recurringService = {
+      catchUpRecurringTransactions: jasmine
+        .createSpy('catchUpRecurringTransactions')
+        .and.returnValue(Promise.resolve([])),
+    };
     authService = { currentUser: signal<User | null>(createUser({ displayName: 'Ada Lovelace' })) };
     currencyService = jasmine.createSpyObj('CurrencyService', ['convert']);
     currencyService.convert.and.callFake((amount: number) => amount);
@@ -75,6 +82,7 @@ describe('DashboardComponent', () => {
         { provide: TransactionService, useValue: transactionService },
         { provide: BudgetService, useValue: budgetService },
         { provide: CategoryService, useValue: categoryService },
+        { provide: RecurringService, useValue: recurringService },
         { provide: CurrencyService, useValue: currencyService },
         { provide: AuthService, useValue: authService },
         { provide: TranslationService, useValue: translation },
@@ -266,6 +274,29 @@ describe('DashboardComponent', () => {
       component.selectedPeriod = 'thisYear';
       component.onPeriodChange();
       expect(component.previousPeriodData()).toBeNull();
+    });
+  });
+
+  describe('recurring catch-up', () => {
+    it('triggers the catch-up once on init, not again on period changes', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      expect(recurringService.catchUpRecurringTransactions).toHaveBeenCalledTimes(1);
+
+      fixture.componentInstance.onPeriodChange();
+      expect(recurringService.catchUpRecurringTransactions).toHaveBeenCalledTimes(1);
+    });
+
+    it('still loads the dashboard when the catch-up fails', async () => {
+      recurringService.catchUpRecurringTransactions.and.returnValue(
+        Promise.reject(new Error('offline')),
+      );
+      const fixture = build();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(fixture.componentInstance.isLoading()).toBeFalse();
+      expect(transactionService.getByDateRange).toHaveBeenCalled();
     });
   });
 

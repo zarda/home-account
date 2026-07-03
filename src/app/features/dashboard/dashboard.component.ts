@@ -13,6 +13,7 @@ import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
+import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { Transaction, Category, CategoryTotal, BudgetAlertSeverity } from '../../models';
@@ -67,6 +68,7 @@ export class DashboardComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
+  private recurringService = inject(RecurringService);
   private translationService = inject(TranslationService);
   private snackBar = inject(MatSnackBar);
   private announcer = inject(AnnouncerService);
@@ -178,6 +180,12 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadData();
+    // Post recurring occurrences that came due since the app was last open.
+    // Deliberately outside loadData(): period toggles must not re-run it.
+    // The live subscriptions above surface newly posted docs automatically.
+    this.recurringService.catchUpRecurringTransactions().catch(() => {
+      // Non-fatal: the dashboard still renders with existing data.
+    });
   }
 
   onPeriodChange(): void {

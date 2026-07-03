@@ -5,6 +5,8 @@ import { RecurringService } from './recurring.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
+import { BudgetService } from './budget.service';
+import { CurrencyService } from './currency.service';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -17,6 +19,8 @@ describe('RecurringService', () => {
   let mockFirestoreService: jasmine.SpyObj<FirestoreService>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let mockTransactionService: jasmine.SpyObj<TransactionService>;
+  let mockBudgetService: jasmine.SpyObj<BudgetService>;
+  let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
 
   const DAY = 24 * 60 * 60 * 1000;
 
@@ -57,7 +61,11 @@ describe('RecurringService', () => {
     });
 
     mockTransactionService = jasmine.createSpyObj('TransactionService', ['addTransaction']);
+    mockBudgetService = jasmine.createSpyObj('BudgetService', ['getBudgets']);
+    mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['ensureRatesLoaded']);
 
+    mockBudgetService.getBudgets.and.returnValue(of([]));
+    mockCurrencyService.ensureRatesLoaded.and.returnValue(Promise.resolve());
     mockFirestoreService.subscribeToCollection.and.returnValue(of([]));
     mockFirestoreService.subscribeToDocument.and.returnValue(of(null));
     mockFirestoreService.addDocument.and.returnValue(Promise.resolve('new-rec-id'));
@@ -73,7 +81,9 @@ describe('RecurringService', () => {
         RecurringService,
         { provide: FirestoreService, useValue: mockFirestoreService },
         { provide: AuthService, useValue: mockAuthService },
-        { provide: TransactionService, useValue: mockTransactionService }
+        { provide: TransactionService, useValue: mockTransactionService },
+        { provide: BudgetService, useValue: mockBudgetService },
+        { provide: CurrencyService, useValue: mockCurrencyService }
       ]
     });
 
@@ -407,9 +417,162 @@ describe('RecurringService', () => {
       expect(result).toEqual([]);
     });
 
+    it('should not touch the recurring document when nothing is due', async () => {
+      const future = new Date(Date.now() + 10 * DAY);
+      service.recurringTransactions.set([
+        createRecurring({ nextOccurrence: Timestamp.fromDate(future) })
+      ]);
+
+      const result = await service.processRecurringTransactions();
+
+      expect(result).toEqual([]);
+      expect(mockTransactionService.addTransaction).not.toHaveBeenCalled();
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('should post exactly one occurrence with a deterministic id for one missed period', async () => {
+      const due = new Date(Date.now() - 3 * DAY);
+      service.recurringTransactions.set([
+        createRecurring({ id: 'rec1', nextOccurrence: Timestamp.fromDate(due) })
+      ]);
+
+      await service.processRecurringTransactions();
+
+      expect(mockTransactionService.addTransaction).toHaveBeenCalledTimes(1);
+      const [dto, options] = mockTransactionService.addTransaction.calls.mostRecent().args;
+      expect(dto.date).toEqual(due);
+      expect(options).toEqual({ id: `rec-rec1-${due.getTime()}` });
+
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledTimes(1);
+      const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      expect(path).toBe('users/user123/recurring/rec1');
+      const record = data as { nextOccurrence: Timestamp; lastProcessed: Timestamp };
+      expect(record.nextOccurrence.toDate().getTime()).toBeGreaterThan(Date.now());
+      expect(record.lastProcessed).toBeDefined();
+    });
+
+    it('should post one transaction per missed period and advance the rule once', async () => {
+      const due = new Date(Date.now() - 2.5 * DAY);
+      const second = new Date(due);
+      second.setDate(second.getDate() + 1);
+      const third = new Date(second);
+      third.setDate(third.getDate() + 1);
+      const createdTxn = { id: 'txn-id', amount: 5000 } as unknown as Transaction;
+      service.recurringTransactions.set([
+        createRecurring({
+          id: 'daily1',
+          frequency: { type: 'daily', interval: 1 },
+          nextOccurrence: Timestamp.fromDate(due)
+        })
+      ]);
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(createdTxn));
+
+      const result = await service.processRecurringTransactions();
+
+      // 2.5 days late on a daily rule => the 3 occurrences at due, due+1d, due+2d
+      expect(mockTransactionService.addTransaction).toHaveBeenCalledTimes(3);
+      const calls = mockTransactionService.addTransaction.calls.allArgs();
+      expect(calls.map(args => args[0].date)).toEqual([due, second, third]);
+      expect(calls.map(args => args[1]?.id)).toEqual([
+        `rec-daily1-${due.getTime()}`,
+        `rec-daily1-${second.getTime()}`,
+        `rec-daily1-${third.getTime()}`
+      ]);
+      expect(result.length).toBe(3);
+
+      // One document update carrying the final (future) next occurrence
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledTimes(1);
+      const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      expect(path).toBe('users/user123/recurring/daily1');
+      const next = (data as { nextOccurrence: Timestamp }).nextOccurrence.toDate();
+      expect(next.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('should post at most one occurrence when the frequency never advances', async () => {
+      const due = new Date(Date.now() - 3 * DAY);
+      service.recurringTransactions.set([
+        createRecurring({
+          id: 'stuck',
+          frequency: { type: 'daily', interval: 0 },
+          nextOccurrence: Timestamp.fromDate(due)
+        })
+      ]);
+
+      const result = await service.processRecurringTransactions();
+
+      expect(mockTransactionService.addTransaction).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([]);
+    });
+
     it('should reset isLoading after completion', async () => {
       await service.processRecurringTransactions();
       expect(service.isLoading()).toBeFalse();
+    });
+  });
+
+  describe('catchUpRecurringTransactions', () => {
+    it('should resolve empty and touch nothing when not authenticated', async () => {
+      (mockAuthService.userId as jasmine.Spy).and.returnValue(null);
+
+      const result = await service.catchUpRecurringTransactions();
+
+      expect(result).toEqual([]);
+      expect(mockCurrencyService.ensureRatesLoaded).not.toHaveBeenCalled();
+      expect(mockBudgetService.getBudgets).not.toHaveBeenCalled();
+      expect(mockFirestoreService.subscribeToCollection).not.toHaveBeenCalled();
+    });
+
+    it('should load rates, budgets and fresh recurring rules before processing', async () => {
+      const due = new Date(Date.now() - 3 * DAY);
+      mockFirestoreService.subscribeToCollection.and.returnValue(
+        of([createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) })])
+      );
+
+      await service.catchUpRecurringTransactions();
+
+      expect(mockCurrencyService.ensureRatesLoaded).toHaveBeenCalled();
+      expect(mockBudgetService.getBudgets).toHaveBeenCalled();
+      expect(mockFirestoreService.subscribeToCollection).toHaveBeenCalledWith(
+        'users/user123/recurring',
+        { orderBy: [{ field: 'nextOccurrence', direction: 'asc' }] }
+      );
+      expect(mockTransactionService.addTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('should share a single run between concurrent triggers', async () => {
+      const due = new Date(Date.now() - 3 * DAY);
+      mockFirestoreService.subscribeToCollection.and.returnValue(
+        of([createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) })])
+      );
+
+      const first = service.catchUpRecurringTransactions();
+      const second = service.catchUpRecurringTransactions();
+
+      expect(second).toBe(first);
+      await first;
+      expect(mockTransactionService.addTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('should post nothing on a repeated load once nextOccurrence has advanced', async () => {
+      const due = new Date(Date.now() - 3 * DAY);
+      mockFirestoreService.subscribeToCollection.and.returnValue(
+        of([createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) })])
+      );
+
+      await service.catchUpRecurringTransactions();
+      expect(mockTransactionService.addTransaction).toHaveBeenCalledTimes(1);
+
+      // A fresh load now returns the advanced (future) nextOccurrence,
+      // exactly as Firestore would after the first run persisted it.
+      const advanced = new Date(Date.now() + 27 * DAY);
+      mockFirestoreService.subscribeToCollection.and.returnValue(
+        of([createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(advanced) })])
+      );
+
+      const result = await service.catchUpRecurringTransactions();
+
+      expect(result).toEqual([]);
+      expect(mockTransactionService.addTransaction).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -1,8 +1,10 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { Observable, map, of } from 'rxjs';
+import { Observable, map, of, firstValueFrom } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
+import { BudgetService } from './budget.service';
+import { CurrencyService } from './currency.service';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -17,10 +19,15 @@ export class RecurringService {
   private firestoreService = inject(FirestoreService);
   private authService = inject(AuthService);
   private transactionService = inject(TransactionService);
+  private budgetService = inject(BudgetService);
+  private currencyService = inject(CurrencyService);
 
   // Signals
   recurringTransactions = signal<RecurringTransaction[]>([]);
   isLoading = signal<boolean>(false);
+
+  // Shared promise so concurrent catch-up triggers run the engine only once
+  private catchUpInFlight: Promise<Transaction[]> | null = null;
 
   // Computed signals
   activeRecurring = computed(() =>
@@ -201,6 +208,31 @@ export class RecurringService {
     );
   }
 
+  // In-app catch-up: load fresh recurring rules, then post every occurrence
+  // due since the app was last open. Safe to call repeatedly; concurrent
+  // callers share one run, and repeated runs find nothing due because
+  // nextOccurrence has already advanced past now.
+  catchUpRecurringTransactions(): Promise<Transaction[]> {
+    if (!this.authService.userId()) return Promise.resolve([]);
+    if (this.catchUpInFlight) return this.catchUpInFlight;
+
+    this.catchUpInFlight = (async () => {
+      try {
+        // Rates and budgets must be in memory so posted amounts convert
+        // correctly and updateAffectedBudgets -> recalculateBudgetsForCategory
+        // can find the budgets to recalculate.
+        await this.currencyService.ensureRatesLoaded();
+        await firstValueFrom(this.budgetService.getBudgets());
+        await firstValueFrom(this.getRecurring());
+        return await this.processRecurringTransactions();
+      } finally {
+        this.catchUpInFlight = null;
+      }
+    })();
+
+    return this.catchUpInFlight;
+  }
+
   // Process due recurring transactions and create actual transactions
   async processRecurringTransactions(): Promise<Transaction[]> {
     this.isLoading.set(true);
@@ -225,42 +257,50 @@ export class RecurringService {
           continue;
         }
 
-        // Create the transaction
-        const transactionData: CreateTransactionDTO = {
-          type: recurring.type,
-          amount: recurring.amount,
-          currency: recurring.currency,
-          categoryId: recurring.categoryId,
-          description: recurring.description,
-          date: recurring.nextOccurrence.toDate(),
-          isRecurring: true,
-          recurringId: recurring.id
-        };
+        // Catch up every occurrence that came due since the last run
+        let occurrenceDate = recurring.nextOccurrence.toDate();
 
-        const transactionId = await this.transactionService.addTransaction(transactionData);
+        while (occurrenceDate <= now) {
+          const transactionData: CreateTransactionDTO = {
+            type: recurring.type,
+            amount: recurring.amount,
+            currency: recurring.currency,
+            categoryId: recurring.categoryId,
+            description: recurring.description,
+            date: occurrenceDate,
+            isRecurring: true,
+            recurringId: recurring.id
+          };
 
-        // Update the recurring transaction with next occurrence
-        const nextOccurrence = this.calculateNextOccurrenceFromDate(
-          recurring.nextOccurrence.toDate(),
-          recurring.frequency
-        );
+          // Deterministic id makes posting idempotent across repeated runs
+          // and multiple devices: racing writers overwrite one document.
+          const transactionId = await this.transactionService.addTransaction(transactionData, {
+            id: `rec-${recurring.id}-${occurrenceDate.getTime()}`
+          });
 
+          // Fetch the created transaction
+          const transaction = await this.firestoreService.getDocument<Transaction>(
+            `users/${userId}/transactions/${transactionId}`
+          );
+
+          if (transaction) {
+            createdTransactions.push(transaction);
+          }
+
+          const next = this.calculateNextOccurrenceFromDate(occurrenceDate, recurring.frequency);
+          // Safety: a non-advancing frequency must not spin forever
+          if (next.getTime() <= occurrenceDate.getTime()) break;
+          occurrenceDate = next;
+        }
+
+        // Update the recurring transaction once with the final next occurrence
         await this.firestoreService.updateDocument(
           `${this.userRecurringPath}/${recurring.id}`,
           {
-            nextOccurrence: this.firestoreService.dateToTimestamp(nextOccurrence),
+            nextOccurrence: this.firestoreService.dateToTimestamp(occurrenceDate),
             lastProcessed: this.firestoreService.getTimestamp()
           }
         );
-
-        // Fetch the created transaction
-        const transaction = await this.firestoreService.getDocument<Transaction>(
-          `users/${userId}/transactions/${transactionId}`
-        );
-
-        if (transaction) {
-          createdTransactions.push(transaction);
-        }
       }
 
       return createdTransactions;

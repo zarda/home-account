@@ -141,7 +141,7 @@ export class TransactionService {
   }
 
   // Add a new transaction
-  async addTransaction(data: CreateTransactionDTO): Promise<string> {
+  async addTransaction(data: CreateTransactionDTO, options?: { id?: string }): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -182,6 +182,15 @@ export class TransactionService {
           id,
           data.receiptFile
         );
+        await this.firestoreService.setDocument(
+          `${this.userTransactionsPath}/${id}`,
+          transaction
+        );
+      } else if (options?.id) {
+        // Caller-supplied deterministic id (recurring engine idempotency):
+        // posting the same occurrence twice overwrites one document instead
+        // of duplicating it.
+        id = options.id;
         await this.firestoreService.setDocument(
           `${this.userTransactionsPath}/${id}`,
           transaction
