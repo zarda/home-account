@@ -39,7 +39,7 @@ export interface CreateRecurringDTO {
   description: string;
   frequency: RecurringFrequency;
   startDate: Date;
-  endDate?: Date;
+  endDate?: Date | null;         // null = explicitly remove the end date (updates)
 }
 
 export interface RecurringOccurrence {

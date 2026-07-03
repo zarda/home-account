@@ -1,8 +1,8 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
+import { Timestamp, FieldValue, deleteField } from '@angular/fire/firestore';
 import { Observable, map, of, firstValueFrom } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
-import { TransactionService } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import {
@@ -11,14 +11,20 @@ import {
   CreateRecurringDTO,
   RecurringOccurrence,
   Transaction,
-  CreateTransactionDTO
+  TransactionType
 } from '../../models';
+
+// Result of atomically claiming a due rule on the server
+interface ClaimResult {
+  postedIds: string[];
+  categoryId: string;
+  type: TransactionType;
+}
 
 @Injectable({ providedIn: 'root' })
 export class RecurringService {
   private firestoreService = inject(FirestoreService);
   private authService = inject(AuthService);
-  private transactionService = inject(TransactionService);
   private budgetService = inject(BudgetService);
   private currencyService = inject(CurrencyService);
 
@@ -126,7 +132,9 @@ export class RecurringService {
     this.isLoading.set(true);
 
     try {
-      const updateData: Partial<RecurringTransaction> = {};
+      const updateData: Partial<Omit<RecurringTransaction, 'endDate'>> & {
+        endDate?: Timestamp | FieldValue;
+      } = {};
 
       if (data.name !== undefined) updateData.name = data.name;
       if (data.type !== undefined) updateData.type = data.type;
@@ -141,20 +149,33 @@ export class RecurringService {
       }
 
       if (data.endDate !== undefined) {
-        updateData.endDate = this.firestoreService.dateToTimestamp(data.endDate);
+        // null expresses "remove the end date": delete the stored field so
+        // the catch-up engine stops bounding (and pausing) the rule by it.
+        updateData.endDate = data.endDate === null
+          ? deleteField()
+          : this.firestoreService.dateToTimestamp(data.endDate);
       }
 
-      // Recalculate next occurrence if frequency or start date changed
-      if (data.frequency || data.startDate) {
+      // Recalculate next occurrence only when frequency or start date
+      // actually changed. Edits to other fields (name, amount, ...) must not
+      // advance the pointer past due-but-unposted occurrences.
+      if (data.frequency !== undefined || data.startDate !== undefined) {
         const current = await this.firestoreService.getDocument<RecurringTransaction>(
           `${this.userRecurringPath}/${id}`
         );
 
         if (current) {
-          const frequency = data.frequency ?? current.frequency;
-          const startDate = data.startDate ?? current.startDate.toDate();
-          const nextOccurrence = this.calculateNextOccurrence(startDate, frequency);
-          updateData.nextOccurrence = this.firestoreService.dateToTimestamp(nextOccurrence);
+          const frequencyChanged = data.frequency !== undefined &&
+            !this.isSameFrequency(data.frequency, current.frequency);
+          const startDateChanged = data.startDate !== undefined &&
+            data.startDate.getTime() !== current.startDate.toDate().getTime();
+
+          if (frequencyChanged || startDateChanged) {
+            const frequency = data.frequency ?? current.frequency;
+            const startDate = data.startDate ?? current.startDate.toDate();
+            const nextOccurrence = this.calculateNextOccurrence(startDate, frequency);
+            updateData.nextOccurrence = this.firestoreService.dateToTimestamp(nextOccurrence);
+          }
         }
       }
 
@@ -219,8 +240,8 @@ export class RecurringService {
     this.catchUpInFlight = (async () => {
       try {
         // Rates and budgets must be in memory so posted amounts convert
-        // correctly and updateAffectedBudgets -> recalculateBudgetsForCategory
-        // can find the budgets to recalculate.
+        // correctly and recalculateBudgetsForCategory can find the budgets
+        // to recalculate after the claims commit.
         await this.currencyService.ensureRatesLoaded();
         await firstValueFrom(this.budgetService.getBudgets());
         await firstValueFrom(this.getRecurring());
@@ -233,7 +254,12 @@ export class RecurringService {
     return this.catchUpInFlight;
   }
 
-  // Process due recurring transactions and create actual transactions
+  // Process due recurring transactions and create actual transactions.
+  // Each due rule is claimed on the SERVER inside a Firestore transaction:
+  // the rule doc is re-read fresh, every due occurrence is written and the
+  // rule's nextOccurrence is advanced in the same atomic commit. A racing
+  // device's transaction sees the advanced pointer and no-ops, so a stale
+  // local cache can never double-post or overwrite user-edited occurrences.
   async processRecurringTransactions(): Promise<Transaction[]> {
     this.isLoading.set(true);
 
@@ -243,6 +269,7 @@ export class RecurringService {
 
       const now = new Date();
       const createdTransactions: Transaction[] = [];
+      const affectedExpenseCategories = new Set<string>();
 
       // Get all active recurring transactions that are due
       const dueRecurring = this.activeRecurring().filter(r => {
@@ -251,34 +278,24 @@ export class RecurringService {
       });
 
       for (const recurring of dueRecurring) {
-        // Check if end date has passed
-        if (recurring.endDate && recurring.endDate.toDate() < now) {
-          await this.pauseRecurring(recurring.id);
+        let claim: ClaimResult | null;
+        try {
+          claim = await this.claimDueOccurrences(recurring.id, userId, now);
+        } catch {
+          // Firestore transactions require the network: while offline the
+          // claim rejects, so skip silently — the rule is picked up again
+          // by the next online catch-up.
           continue;
         }
 
-        // Catch up every occurrence that came due since the last run
-        let occurrenceDate = recurring.nextOccurrence.toDate();
+        if (!claim || claim.postedIds.length === 0) continue;
 
-        while (occurrenceDate <= now) {
-          const transactionData: CreateTransactionDTO = {
-            type: recurring.type,
-            amount: recurring.amount,
-            currency: recurring.currency,
-            categoryId: recurring.categoryId,
-            description: recurring.description,
-            date: occurrenceDate,
-            isRecurring: true,
-            recurringId: recurring.id
-          };
+        if (claim.type === 'expense') {
+          affectedExpenseCategories.add(claim.categoryId);
+        }
 
-          // Deterministic id makes posting idempotent across repeated runs
-          // and multiple devices: racing writers overwrite one document.
-          const transactionId = await this.transactionService.addTransaction(transactionData, {
-            id: `rec-${recurring.id}-${occurrenceDate.getTime()}`
-          });
-
-          // Fetch the created transaction
+        // Fetch the created transactions
+        for (const transactionId of claim.postedIds) {
           const transaction = await this.firestoreService.getDocument<Transaction>(
             `users/${userId}/transactions/${transactionId}`
           );
@@ -286,27 +303,112 @@ export class RecurringService {
           if (transaction) {
             createdTransactions.push(transaction);
           }
-
-          const next = this.calculateNextOccurrenceFromDate(occurrenceDate, recurring.frequency);
-          // Safety: a non-advancing frequency must not spin forever
-          if (next.getTime() <= occurrenceDate.getTime()) break;
-          occurrenceDate = next;
         }
+      }
 
-        // Update the recurring transaction once with the final next occurrence
-        await this.firestoreService.updateDocument(
-          `${this.userRecurringPath}/${recurring.id}`,
-          {
-            nextOccurrence: this.firestoreService.dateToTimestamp(occurrenceDate),
-            lastProcessed: this.firestoreService.getTimestamp()
-          }
-        );
+      // The claim writes occurrence docs directly (bypassing
+      // TransactionService.addTransaction), so recalculate the affected
+      // budgets explicitly once the claims are committed.
+      for (const categoryId of affectedExpenseCategories) {
+        await this.budgetService.recalculateBudgetsForCategory(categoryId);
       }
 
       return createdTransactions;
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  // Atomically claim a due rule and post its occurrences on the server.
+  // Returns null when there is nothing to claim (rule missing, paused, or a
+  // racing device already advanced nextOccurrence past now).
+  private async claimDueOccurrences(
+    recurringId: string,
+    userId: string,
+    now: Date
+  ): Promise<ClaimResult | null> {
+    const ruleRef = this.firestoreService.getDocRef(
+      `${this.userRecurringPath}/${recurringId}`
+    );
+
+    return this.firestoreService.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ruleRef);
+      if (!snapshot.exists()) return null;
+
+      const rule = { ...snapshot.data(), id: snapshot.id } as RecurringTransaction;
+      let occurrenceDate = rule.nextOccurrence.toDate();
+
+      // Re-check on fresh server data: another device may have paused,
+      // edited, or already processed this rule.
+      if (!rule.isActive || occurrenceDate > now) return null;
+
+      // Occurrences that came due BEFORE the end date must still be posted
+      // even when the end date itself has passed.
+      const endDate = rule.endDate?.toDate();
+      const endDatePassed = endDate !== undefined && endDate < now;
+      const postUntil = endDatePassed ? endDate : now;
+
+      const postedIds: string[] = [];
+
+      // Catch up every occurrence that came due since the last run
+      while (occurrenceDate <= postUntil) {
+        // Deterministic id keeps posting idempotent across repeated runs
+        const transactionId = `rec-${rule.id}-${occurrenceDate.getTime()}`;
+        const transactionRef = this.firestoreService.getDocRef(
+          `users/${userId}/transactions/${transactionId}`
+        );
+        tx.set(transactionRef, this.buildOccurrenceDocument(rule, occurrenceDate, userId));
+        postedIds.push(transactionId);
+
+        const next = this.calculateNextOccurrenceFromDate(occurrenceDate, rule.frequency);
+        // Safety: a non-advancing frequency must not spin forever
+        if (next.getTime() <= occurrenceDate.getTime()) break;
+        occurrenceDate = next;
+      }
+
+      // Advance the pointer (and pause an ended rule) in the SAME
+      // transaction so posting and claim commit atomically.
+      const update: Partial<RecurringTransaction> = {
+        updatedAt: this.firestoreService.getTimestamp()
+      };
+      if (postedIds.length > 0) {
+        update.nextOccurrence = this.firestoreService.dateToTimestamp(occurrenceDate);
+        update.lastProcessed = this.firestoreService.getTimestamp();
+      }
+      if (endDatePassed) {
+        update.isActive = false;
+      }
+      tx.update(ruleRef, update);
+
+      return { postedIds, categoryId: rule.categoryId, type: rule.type };
+    });
+  }
+
+  // Build an occurrence transaction document with the exact shape
+  // TransactionService.addTransaction persists for a recurring posting.
+  private buildOccurrenceDocument(
+    rule: RecurringTransaction,
+    occurrenceDate: Date,
+    userId: string
+  ): Omit<Transaction, 'id'> {
+    const baseCurrency = this.authService.currentUser()?.preferences.baseCurrency ?? 'USD';
+    const exchangeRate = this.currencyService.getExchangeRate(rule.currency, baseCurrency);
+
+    return {
+      userId,
+      type: rule.type,
+      amount: rule.amount,
+      currency: rule.currency,
+      amountInBaseCurrency: rule.amount * exchangeRate,
+      exchangeRate,
+      categoryId: rule.categoryId,
+      description: rule.description,
+      date: this.firestoreService.dateToTimestamp(occurrenceDate),
+      createdAt: this.firestoreService.getTimestamp(),
+      updatedAt: this.firestoreService.getTimestamp(),
+      isRecurring: true,
+      recurringId: rule.id
+    };
   }
 
   // Get upcoming occurrences for the next N days
@@ -343,6 +445,15 @@ export class RecurringService {
         return occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
       })
     );
+  }
+
+  // Whether two frequencies describe the same schedule
+  private isSameFrequency(a: RecurringFrequency, b: RecurringFrequency): boolean {
+    return a.type === b.type &&
+      a.interval === b.interval &&
+      a.dayOfWeek === b.dayOfWeek &&
+      a.dayOfMonth === b.dayOfMonth &&
+      a.monthOfYear === b.monthOfYear;
   }
 
   // Calculate next occurrence from today
