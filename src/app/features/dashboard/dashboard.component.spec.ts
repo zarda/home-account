@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
 import { TransactionService } from '../../core/services/transaction.service';
@@ -364,6 +364,39 @@ describe('DashboardComponent', () => {
       fixture.detectChanges();
       fixture.componentInstance.onPeriodChange();
       expect(snackBar.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('subscribes to budgets once, not again on each period change', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onPeriodChange();
+      fixture.componentInstance.onPeriodChange();
+      expect(budgetService.getBudgets).toHaveBeenCalledTimes(1);
+    });
+
+    it('alerts on a later emission when a threshold is crossed while alive', () => {
+      const budgets$ = new Subject<unknown[]>();
+      budgetService.getBudgets.and.returnValue(budgets$);
+      const fixture = build();
+      fixture.detectChanges();
+      expect(snackBar.open).not.toHaveBeenCalled();
+
+      budgetService.budgetAlerts.set([warningAlert]);
+      budgets$.next([]);
+      expect(snackBar.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops reacting to budget emissions once the component is destroyed', () => {
+      const budgets$ = new Subject<unknown[]>();
+      budgetService.getBudgets.and.returnValue(budgets$);
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.destroy();
+
+      budgetService.budgetAlerts.set([warningAlert]);
+      budgets$.next([]);
+      expect(snackBar.open).not.toHaveBeenCalled();
+      expect(announcer.announce).not.toHaveBeenCalled();
     });
   });
 });

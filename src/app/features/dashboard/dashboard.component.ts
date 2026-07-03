@@ -1,4 +1,5 @@
-import { Component, computed, effect, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
@@ -72,6 +73,7 @@ export class DashboardComponent implements OnInit {
   private translationService = inject(TranslationService);
   private snackBar = inject(MatSnackBar);
   private announcer = inject(AnnouncerService);
+  private destroyRef = inject(DestroyRef);
 
   selectedPeriod: PeriodOption = 'thisMonth';
   isLoading = signal(true);
@@ -179,6 +181,17 @@ export class DashboardComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // Load budgets once, then surface any threshold alerts. Deliberately
+    // outside loadData(): getBudgets is an infinite live stream, so period
+    // changes must not stack extra subscriptions, and takeUntilDestroyed
+    // stops destroyed dashboard instances from reacting to later budget
+    // writes made elsewhere in the app.
+    this.budgetService.getBudgets()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.maybeShowBudgetAlerts()
+      });
+
     this.loadData();
     // Post recurring occurrences that came due since the app was last open.
     // Deliberately outside loadData(): period toggles must not re-run it.
@@ -255,11 +268,6 @@ export class DashboardComponent implements OnInit {
 
     // Load the trailing historical window that feeds the AI anomaly baseline
     this.loadHistoricalBaseline();
-
-    // Load budgets, then surface any threshold alerts
-    this.budgetService.getBudgets().subscribe({
-      next: () => this.maybeShowBudgetAlerts()
-    });
 
     // Load categories
     this.categoryService.loadCategories().subscribe();
