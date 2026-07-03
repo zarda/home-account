@@ -13,6 +13,7 @@ import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
 
@@ -47,6 +48,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   private offlineQueue = inject(OfflineQueueService);
   private snackBar = inject(MatSnackBar);
   private announcer = inject(AnnouncerService);
+  private translationService = inject(TranslationService);
   private router = inject(Router);
 
   // Support for multiple captured images
@@ -311,8 +313,8 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         await this.offlineQueue.queueImage(file);
       }
 
-      const message = `${files.length} image(s) queued for processing when online`;
-      this.snackBar.open(message, 'OK', { duration: 4000 });
+      const message = this.translationService.t('import.queuedForLater', { count: files.length });
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 4000 });
       this.announcer.announce(message);
 
       this.dialogRef.close({ success: true, queued: true, count: files.length });

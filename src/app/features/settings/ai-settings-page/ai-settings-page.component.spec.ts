@@ -173,10 +173,40 @@ describe('AiSettingsPageComponent', () => {
       expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueCleared');
     });
 
-    it('should announce sync failures assertively', async () => {
+    it('should announce sync failures assertively with a translated message', async () => {
       offlineQueueServiceMock.syncQueue.and.returnValue(Promise.reject(new Error('offline')));
       await component.syncQueue();
-      expect(announcerMock.announce).toHaveBeenCalledWith('Failed to sync queue', 'assertive');
+      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueSyncFailed', 'assertive');
+    });
+
+    it('should announce clear failures assertively with a translated message', async () => {
+      offlineQueueServiceMock.clearAll.and.returnValue(Promise.reject(new Error('offline')));
+      await component.clearQueue();
+      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueClearFailed', 'assertive');
+    });
+  });
+
+  describe('model selection', () => {
+    it('should announce a translated confirmation when the text model changes', () => {
+      const modelId = component.textModels[0].id;
+      component.onTextModelChange(modelId);
+      expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ textModel: modelId });
+      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.textModelUpdated');
+    });
+
+    it('should announce a translated confirmation when the vision model changes', () => {
+      const modelId = component.visionModels[0].id;
+      component.onVisionModelChange(modelId);
+      expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ visionModel: modelId });
+      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.visionModelUpdated');
+    });
+
+    it('should announce a translated error for an invalid model selection', () => {
+      component.onTextModelChange('not-a-real-model');
+      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.invalidModelSelection', 'assertive');
+      expect(strategyServiceMock.updatePreferences).not.toHaveBeenCalledWith(
+        jasmine.objectContaining({ textModel: 'not-a-real-model' })
+      );
     });
   });
 
