@@ -1,11 +1,13 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
 import { BudgetService } from './budget.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
-import { Budget } from '../../models';
+import { CurrencyService } from './currency.service';
+import { Budget, Transaction } from '../../models';
 
 describe('BudgetService', () => {
   let service: BudgetService;
@@ -78,7 +80,8 @@ describe('BudgetService', () => {
     });
 
     mockTransactionService = jasmine.createSpyObj('TransactionService', [
-      'getTransactions'
+      'getTransactions',
+      'getExpensesInRange'
     ]);
 
     // Default mock returns
@@ -352,6 +355,55 @@ describe('BudgetService', () => {
     });
   });
 
+  describe('budgetAlerts', () => {
+    it('should return no alerts when spending is under the threshold', () => {
+      service.budgets.set([{ ...mockBudgets[0], spent: 250 }]); // 50% of 500
+      expect(service.budgetAlerts()).toEqual([]);
+    });
+
+    it('should return a warning alert at the budget alertThreshold', () => {
+      service.budgets.set([{ ...mockBudgets[0], spent: 400 }]); // 80% of 500
+      const alerts = service.budgetAlerts();
+      expect(alerts.length).toBe(1);
+      expect(alerts[0].budgetId).toBe('budget1');
+      expect(alerts[0].severity).toBe('warning');
+      expect(alerts[0].remaining).toBe(100);
+      expect(alerts[0].percentUsed).toBe(80);
+    });
+
+    it('should return a critical alert at 90%', () => {
+      service.budgets.set([{ ...mockBudgets[0], spent: 450 }]); // 90% of 500
+      expect(service.budgetAlerts()[0].severity).toBe('critical');
+    });
+
+    it('should return an exceeded alert with zero remaining when over budget', () => {
+      service.budgets.set([{ ...mockBudgets[0], spent: 550 }]); // 110% of 500
+      const alerts = service.budgetAlerts();
+      expect(alerts[0].severity).toBe('exceeded');
+      expect(alerts[0].remaining).toBe(0);
+      expect(alerts[0].percentUsed).toBeCloseTo(110, 5);
+    });
+
+    it('should exclude inactive budgets', () => {
+      service.budgets.set([
+        { ...mockBudgets[0], spent: 250 },
+        { ...mockBudgets[2], spent: 95 } // 95% of 100 but inactive
+      ]);
+      expect(service.budgetAlerts()).toEqual([]);
+    });
+
+    it('should sort alerts by percentUsed descending', () => {
+      service.budgets.set([
+        { ...mockBudgets[0], spent: 425 }, // 85% of 500
+        { ...mockBudgets[1], spent: 210 } // 105% of 200
+      ]);
+      const alerts = service.budgetAlerts();
+      expect(alerts.length).toBe(2);
+      expect(alerts[0].budgetId).toBe('budget2');
+      expect(alerts[1].budgetId).toBe('budget1');
+    });
+  });
+
   describe('updateBudgetSpent', () => {
     it('should call updateDocument with spent amount', async () => {
       mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
@@ -362,6 +414,73 @@ describe('BudgetService', () => {
         'users/user123/budgets/budget1',
         { spent: 350 }
       );
+    });
+  });
+
+  describe('recalculateBudgetSpent', () => {
+    beforeEach(() => {
+      const currencyService = TestBed.inject(CurrencyService);
+      spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
+      spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(mockBudgets[0]));
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+      mockTransactionService.getExpensesInRange.and.returnValue(of([
+        { amount: 100, currency: 'USD' } as Transaction,
+        { amount: 50, currency: 'USD' } as Transaction
+      ]));
+    });
+
+    it('should sum expenses from the non-mutating query and persist spent', async () => {
+      await service.recalculateBudgetSpent('budget1');
+
+      expect(mockTransactionService.getExpensesInRange).toHaveBeenCalledWith(
+        jasmine.any(Date),
+        jasmine.any(Date),
+        'cat1'
+      );
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+        'users/user123/budgets/budget1',
+        { spent: 150 }
+      );
+    });
+
+    it('should never run the signal-mutating getTransactions query', async () => {
+      // Regression: recalculation used to run getTransactions, whose map()
+      // overwrites the shared transactions signal the dashboard summary
+      // binds to, leaving it holding one category's budget-period expenses.
+      const shared = signal<Transaction[]>([{ id: 'txn-1' } as Transaction]);
+      (mockTransactionService as unknown as { transactions: typeof shared }).transactions = shared;
+
+      await service.recalculateBudgetSpent('budget1');
+
+      expect(mockTransactionService.getTransactions).not.toHaveBeenCalled();
+      expect(shared()).toEqual([{ id: 'txn-1' } as Transaction]);
+    });
+
+    it('should do nothing when the budget does not exist', async () => {
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(null));
+
+      await service.recalculateBudgetSpent('missing');
+
+      expect(mockTransactionService.getExpensesInRange).not.toHaveBeenCalled();
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recalculateBudgetsForCategory', () => {
+    it('should recalculate each active budget in the category', async () => {
+      const currencyService = TestBed.inject(CurrencyService);
+      spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
+      spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(mockBudgets[0]));
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+      mockTransactionService.getExpensesInRange.and.returnValue(of([]));
+      service.budgets.set(mockBudgets);
+
+      await service.recalculateBudgetsForCategory('cat1');
+
+      expect(mockFirestoreService.getDocument).toHaveBeenCalledWith('users/user123/budgets/budget1');
+      expect(mockTransactionService.getExpensesInRange).toHaveBeenCalledTimes(1);
     });
   });
 });

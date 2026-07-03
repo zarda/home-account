@@ -8,6 +8,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { CategoryManagerComponent } from './category-manager.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 
 describe('CategoryManagerComponent', () => {
@@ -17,6 +18,7 @@ describe('CategoryManagerComponent', () => {
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
 
   const mockCategories: Category[] = [
     {
@@ -81,6 +83,7 @@ describe('CategoryManagerComponent', () => {
 
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslationService.t.and.callFake((key: string) => {
@@ -103,7 +106,8 @@ describe('CategoryManagerComponent', () => {
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        { provide: AnnouncerService, useValue: mockAnnouncer }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -216,6 +220,7 @@ describe('CategoryManagerComponent', () => {
       tick();
 
       expect(mockSnackBar.open).toHaveBeenCalledWith('Category created', 'Close', { duration: 2000 });
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Category created');
     }));
   });
 

@@ -82,7 +82,8 @@
     "spendingByCategory": "Spending by Category",
     "noExpenses": "No expenses yet",
     "addFirstTransaction": "Add your first transaction to get started",
-    "addExpensesToSeeBreakdown": "Start adding expenses to see your spending breakdown"
+    "addExpensesToSeeBreakdown": "Start adding expenses to see your spending breakdown",
+    "vsPreviousPeriod": "vs previous period"
   },
   "transactions": {
     "title": "Transactions",
@@ -128,7 +129,8 @@
     "notePlaceholder": "Additional details...",
     "saveChanges": "Save Changes",
     "receipt": "Receipt",
-    "viewReceipt": "View receipt"
+    "viewReceipt": "View receipt",
+    "resultCountAnnouncement": "{{count}} transactions shown"
   },
   "budget": {
     "title": "Budget",
@@ -162,7 +164,11 @@
     "startDateOptional": "Start Date (Optional)",
     "startDateTooltip": "Defines when budget period begins",
     "useDefault": "Use default",
-    "alertWhenReaches": "Alert when spending reaches"
+    "alertWhenReaches": "Alert when spending reaches",
+    "alertSnackbarExceeded": "{{name}}: budget exceeded ({{percent}}% used)",
+    "alertSnackbarCritical": "{{name}}: almost at limit ({{percent}}% used)",
+    "alertSnackbarWarning": "{{name}}: approaching limit ({{percent}}% used)",
+    "alertSnackbarMore": "+{{count}} more budget alerts"
   },
   "reports": {
     "title": "Reports",
@@ -238,6 +244,7 @@
     "dataManagementDescription": "Export, import, and backup your data",
     "language": "Language",
     "currency": "Currency",
+    "displayName": "Display Name",
     "theme": "Theme",
     "themeLight": "Light",
     "themeDark": "Dark",
@@ -322,6 +329,8 @@
     "recurringDeleted": "Recurring transaction deleted",
     "recurringCreated": "Recurring transaction created",
     "recurringCreateFailed": "Failed to create recurring transaction",
+    "recurringUpdated": "Recurring transaction updated",
+    "recurringUpdateFailed": "Failed to update recurring transaction",
     "deleteRecurringTitle": "Delete Recurring Transaction",
     "deleteRecurringMessage": "Are you sure you want to delete \"{{name}}\"? This will not affect existing transactions.",
     "addRecurring": "Add Recurring Transaction",
@@ -660,7 +669,7 @@
     "nativeOCR": "Native Vision OCR",
     "configureAI": "Configure API key in Settings",
     "iosInstallHint": "For the best camera experience, add this app to your Home Screen",
-    "queuedForLater": "{{count}} image(s) queued for processing when online",
+    "queuedForLater": "{{count}} images queued for processing when online",
     "notes": "Notes",
     "errorTitleRateLimit": "Rate Limit Reached",
     "errorTitleAuth": "API Key Issue",
@@ -724,6 +733,15 @@
     "totalCache": "Total Cache",
     "queueSynced": "Queue synced successfully",
     "queueCleared": "Queue cleared",
+    "queueSyncFailed": "Failed to sync queue",
+    "queueClearFailed": "Failed to clear queue",
+    "invalidModelSelection": "Invalid model selection",
+    "textModelUpdated": "Text model updated to {{model}}",
+    "textModelUpdateFailed": "Failed to update text model. Please try again.",
+    "visionModelUpdated": "Vision model updated to {{model}}",
+    "visionModelUpdateFailed": "Failed to update vision model. Please try again.",
+    "openaiModelUpdated": "OpenAI model updated to {{model}}",
+    "claudeModelUpdated": "Claude model updated to {{model}}",
     "ragInsights": "Detail-grounded insights (RAG)",
     "ragInsightsDescription": "When on, your spending insights include details of notable transactions — largest expenses, unusual amounts, and category changes — sent to your AI provider for richer analysis.",
     "insightsSettings": "AI Insights",

@@ -11,6 +11,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { Transaction, Category, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
@@ -25,6 +26,7 @@ describe('TransactionFormComponent', () => {
   };
   let gemini: jasmine.SpyObj<GeminiService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let announcer: jasmine.SpyObj<AnnouncerService>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<TransactionFormComponent>>;
   let currentUser: ReturnType<typeof signal<User | null>>;
 
@@ -57,6 +59,7 @@ describe('TransactionFormComponent', () => {
     gemini.parseReceipt.and.resolveTo({ amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1), suggestedCategory: 'food' } as never);
     gemini.suggestCategory.and.resolveTo('food');
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
+    announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
     currentUser = signal<User | null>(createUser());
 
@@ -75,6 +78,7 @@ describe('TransactionFormComponent', () => {
         { provide: TranslationService, useValue: translation },
         { provide: GeminiService, useValue: gemini },
         { provide: MatSnackBar, useValue: snackBar },
+        { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
@@ -200,6 +204,7 @@ describe('TransactionFormComponent', () => {
       const file = new File(['x'], 'a.txt', { type: 'text/plain' });
       component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
       expect(snackBar.open).toHaveBeenCalled();
+      expect(announcer.announce).toHaveBeenCalledWith('ai.invalidFileType', 'assertive');
     });
 
     it('ignores an empty selection', () => {
@@ -214,6 +219,7 @@ describe('TransactionFormComponent', () => {
       expect(component.form.get('description')?.value).toBe('Cafe');
       expect(component.form.get('categoryId')?.value).toBe('food');
       expect(component.isScanning()).toBeFalse();
+      expect(announcer.announce).toHaveBeenCalledWith('ai.scanSuccess');
     });
 
     it('scanReceipt records an error on failure', async () => {
@@ -221,6 +227,7 @@ describe('TransactionFormComponent', () => {
       const component = build().componentInstance;
       await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
       expect(component.scanError()).toBe('ai.scanError');
+      expect(announcer.announce).toHaveBeenCalledWith('ai.scanError', 'assertive');
     });
 
     it('clearReceipt resets preview, error and captured file', () => {

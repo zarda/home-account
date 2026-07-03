@@ -7,6 +7,7 @@ import { ProfileSettingsComponent } from './profile-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ThemeService } from '../../../core/services/theme.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 
 describe('ProfileSettingsComponent', () => {
@@ -17,8 +18,10 @@ describe('ProfileSettingsComponent', () => {
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockThemeService: jasmine.SpyObj<ThemeService>;
   let mockGeminiService: jasmine.SpyObj<GeminiService>;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
 
   const mockUser = {
+    displayName: 'Test User',
     preferences: {
       baseCurrency: 'USD',
       theme: 'light' as const,
@@ -28,10 +31,11 @@ describe('ProfileSettingsComponent', () => {
   };
 
   beforeEach(async () => {
-    mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences'], {
+    mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences', 'updateUserProfile'], {
       currentUser: signal(mockUser)
     });
     mockAuthService.updateUserPreferences.and.returnValue(Promise.resolve());
+    mockAuthService.updateUserProfile.and.returnValue(Promise.resolve());
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
 
@@ -53,6 +57,8 @@ describe('ProfileSettingsComponent', () => {
     mockGeminiService = jasmine.createSpyObj('GeminiService', ['reinitialize', 'isAvailable']);
     mockGeminiService.isAvailable.and.returnValue(true);
 
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
+
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
@@ -60,7 +66,8 @@ describe('ProfileSettingsComponent', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: ThemeService, useValue: mockThemeService },
-        { provide: GeminiService, useValue: mockGeminiService }
+        { provide: GeminiService, useValue: mockGeminiService },
+        { provide: AnnouncerService, useValue: mockAnnouncer }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -75,6 +82,10 @@ describe('ProfileSettingsComponent', () => {
   });
 
   describe('initialization', () => {
+    it('should load displayName from user', () => {
+      expect(component.displayName).toBe('Test User');
+    });
+
     it('should load baseCurrency from user preferences', () => {
       expect(component.baseCurrency).toBe('USD');
     });
@@ -134,6 +145,49 @@ describe('ProfileSettingsComponent', () => {
 
       expect(mockTranslationService.setLocale).toHaveBeenCalledWith('tc');
       expect(mockAuthService.updateUserPreferences).toHaveBeenCalled();
+    });
+
+    it('should announce the error assertively when saving fails', async () => {
+      mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('fail')));
+      await component.onCurrencyChange();
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('common.error', 'assertive');
+    });
+  });
+
+  describe('display name changes', () => {
+    it('should save trimmed display name via updateUserProfile on blur', async () => {
+      component.displayName = '  New Name  ';
+      await component.onDisplayNameChange();
+
+      expect(mockAuthService.updateUserProfile).toHaveBeenCalledWith({ displayName: 'New Name' });
+      expect(component.displayName).toBe('New Name');
+    });
+
+    it('should not save when display name is unchanged', async () => {
+      component.displayName = 'Test User';
+      await component.onDisplayNameChange();
+
+      expect(mockAuthService.updateUserProfile).not.toHaveBeenCalled();
+    });
+
+    it('should reset empty input without saving', async () => {
+      component.displayName = '   ';
+      await component.onDisplayNameChange();
+
+      expect(mockAuthService.updateUserProfile).not.toHaveBeenCalled();
+      expect(component.displayName).toBe('Test User');
+    });
+
+    it('should show error snackbar and revert when save fails', async () => {
+      const snackBarOpen = spyOn(fixture.debugElement.injector.get(MatSnackBar), 'open');
+      mockAuthService.updateUserProfile.and.returnValue(Promise.reject(new Error('fail')));
+      component.displayName = 'New Name';
+      await component.onDisplayNameChange();
+
+      expect(snackBarOpen).toHaveBeenCalledWith('common.error', 'common.close', jasmine.any(Object));
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('common.error', 'assertive');
+      expect(component.displayName).toBe('Test User');
     });
   });
 });

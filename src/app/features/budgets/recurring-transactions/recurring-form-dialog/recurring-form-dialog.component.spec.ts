@@ -342,6 +342,81 @@ describe('RecurringFormDialogComponent', () => {
     });
   });
 
+  describe('endDate handling on save', () => {
+    const recurringWithEndDate = {
+      id: 'rec1',
+      name: 'Test',
+      type: 'expense',
+      amount: 100,
+      currency: 'USD',
+      categoryId: 'cat1',
+      description: '',
+      frequency: { type: 'monthly', interval: 1 },
+      startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
+      endDate: Timestamp.fromDate(new Date(2026, 11, 31)),
+      isActive: true
+    } as RecurringTransaction;
+
+    async function createEditComponent(
+      recurring: RecurringTransaction
+    ): Promise<RecurringFormDialogComponent> {
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(RecurringFormDialogComponent, {
+          set: { template: '<div></div>' }
+        })
+        .compileComponents();
+
+      const editFixture = TestBed.createComponent(RecurringFormDialogComponent);
+      editFixture.detectChanges();
+      return editFixture.componentInstance;
+    }
+
+    it('omits endDate when creating without one', () => {
+      component.name = 'Test';
+      component.amount = 100;
+      component.categoryId = 'cat1';
+
+      component.save();
+
+      const result = mockDialogRef.close.calls.mostRecent().args[0] as Record<string, unknown>;
+      expect('endDate' in result).toBeFalse();
+    });
+
+    it('keeps the end date when editing and it stays set', async () => {
+      const editComponent = await createEditComponent(recurringWithEndDate);
+      expect(editComponent.hasEndDate).toBeTrue();
+
+      editComponent.save();
+
+      const result = mockDialogRef.close.calls.mostRecent().args[0] as Record<string, unknown>;
+      expect(result['endDate']).toEqual(new Date(2026, 11, 31));
+    });
+
+    it('sends endDate null when the end date is removed in edit mode', async () => {
+      const editComponent = await createEditComponent(recurringWithEndDate);
+      editComponent.toggleEndDate();
+      expect(editComponent.hasEndDate).toBeFalse();
+
+      editComponent.save();
+
+      const result = mockDialogRef.close.calls.mostRecent().args[0] as Record<string, unknown>;
+      expect('endDate' in result).toBeTrue();
+      expect(result['endDate']).toBeNull();
+    });
+  });
+
   describe('cancel', () => {
     it('should close dialog without result', () => {
       component.cancel();

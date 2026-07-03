@@ -15,6 +15,7 @@ import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -43,6 +44,7 @@ export class DataManagementComponent {
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
 
   private t(key: string, params?: Record<string, string | number>): string {
     return this.translationService.t(key, params);
@@ -76,10 +78,14 @@ export class DataManagementComponent {
       );
 
       if (success) {
-        this.snackBar.open(this.t('settings.backupExported'), this.t('common.close'), { duration: 3000 });
+        const message = this.t('settings.backupExported');
+        this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+        this.announcer.announce(message);
       }
     } catch {
-      this.snackBar.open(this.t('settings.backupExportFailed'), this.t('common.close'), { duration: 3000 });
+      const message = this.t('settings.backupExportFailed');
+      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
     } finally {
       this.isExporting.set(false);
     }
@@ -99,10 +105,14 @@ export class DataManagementComponent {
       );
 
       if (success) {
-        this.snackBar.open(this.t('settings.transactionsExported'), this.t('common.close'), { duration: 3000 });
+        const message = this.t('settings.transactionsExported');
+        this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+        this.announcer.announce(message);
       }
     } catch {
-      this.snackBar.open(this.t('settings.transactionsExportFailed'), this.t('common.close'), { duration: 3000 });
+      const message = this.t('settings.transactionsExportFailed');
+      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
     } finally {
       this.isExporting.set(false);
     }
@@ -119,7 +129,9 @@ export class DataManagementComponent {
     const isJSON = file.name.endsWith('.json');
 
     if (!isCSV && !isJSON) {
-      this.snackBar.open(this.t('settings.selectCsvOrJson'), this.t('common.close'), { duration: 3000 });
+      const message = this.t('settings.selectCsvOrJson');
+      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
       return;
     }
 
@@ -140,7 +152,9 @@ export class DataManagementComponent {
       this.importedTransactions.set(transactions);
       this.showImportPreview.set(true);
     } catch {
-      this.snackBar.open(this.t('settings.csvParseFailed'), this.t('common.close'), { duration: 3000 });
+      const message = this.t('settings.csvParseFailed');
+      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
     } finally {
       this.isImporting.set(false);
     }
@@ -169,14 +183,18 @@ export class DataManagementComponent {
         this.importedTransactions.set(transactions);
         this.showImportPreview.set(true);
       } catch {
-        this.snackBar.open(this.t('settings.invalidBackupFormat'), this.t('common.close'), { duration: 3000 });
+        const message = this.t('settings.invalidBackupFormat');
+        this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+        this.announcer.announce(message, 'assertive');
       } finally {
         this.isImporting.set(false);
       }
     };
 
     reader.onerror = () => {
-      this.snackBar.open(this.t('settings.fileReadFailed'), this.t('common.close'), { duration: 3000 });
+      const message = this.t('settings.fileReadFailed');
+      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
       this.isImporting.set(false);
     };
 
@@ -208,7 +226,9 @@ export class DataManagementComponent {
           this.importProgress.set(Math.round(((i + 1) / parsed.length) * 100));
         }
 
-        this.snackBar.open(this.t('settings.transactionsImported', { count: transactions.length }), this.t('common.close'), { duration: 3000 });
+        const message = this.t('settings.transactionsImported', { count: transactions.length });
+        this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+        this.announcer.announce(message);
         this.cancelImport();
         this.isImporting.set(false);
       }
@@ -248,9 +268,13 @@ export class DataManagementComponent {
           if (finalConfirm) {
             try {
               await this.transactionService.deleteAllTransactions();
-              this.snackBar.open(this.t('settings.allTransactionsDeleted'), this.t('common.close'), { duration: 3000 });
+              const message = this.t('settings.allTransactionsDeleted');
+              this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+              this.announcer.announce(message);
             } catch {
-              this.snackBar.open(this.t('settings.deleteTransactionsFailed'), this.t('common.close'), { duration: 3000 });
+              const message = this.t('settings.deleteTransactionsFailed');
+              this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+              this.announcer.announce(message, 'assertive');
             }
           }
         });

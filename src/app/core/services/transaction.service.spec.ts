@@ -2,12 +2,14 @@ import { TestBed } from '@angular/core/testing';
 import { TransactionService } from './transaction.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
+import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import { MockStorageService } from './testing/mock-storage.service';
 import {
+  createBudget,
   createTransaction,
   createMixedTransactions
 } from './testing/test-data';
@@ -209,6 +211,51 @@ describe('TransactionService', () => {
       expect(mockFirestore.addDocumentSpy.calls.length).toBe(1);
       expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
     });
+
+    it('writes to the caller-supplied id via setDocument', async () => {
+      const id = await service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Recurring occurrence',
+          date: new Date()
+        },
+        { id: 'rec-r1-123' }
+      );
+
+      expect(id).toBe('rec-r1-123');
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(1);
+      expect(mockFirestore.setDocumentSpy.mostRecent()?.args[0]).toBe(
+        'users/test-user-123/transactions/rec-r1-123'
+      );
+      // The auto-id path must not run when a deterministic id is supplied.
+      expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('recalculates affected budgets after posting an expense', async () => {
+      const budgetService = TestBed.inject(BudgetService);
+      const budget = createBudget({ id: 'b1', categoryId: 'food' });
+      budgetService.budgets.set([budget]);
+      mockFirestore.setMockDocument('users/test-user-123/budgets/b1', budget);
+      spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
+
+      await service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Groceries',
+        date: new Date()
+      });
+
+      const budgetUpdate = mockFirestore.updateDocumentSpy.calls.find(
+        c => c.args[0] === 'users/test-user-123/budgets/b1'
+      );
+      expect(budgetUpdate).toBeDefined();
+      expect('spent' in (budgetUpdate?.args[1] as object)).toBeTrue();
+    });
   });
 
   describe('updateTransaction', () => {
@@ -313,6 +360,19 @@ describe('TransactionService', () => {
         done();
       });
     });
+
+    it('should add currency where clause when currency filter is set', (done) => {
+      service.getTransactions({ currency: 'USD' }).subscribe(() => {
+        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const options = callArgs[1] as {
+          where?: { field: string; op: string; value: unknown }[];
+        } | undefined;
+        expect(options?.where).toContain(
+          jasmine.objectContaining({ field: 'currency', op: '==', value: 'USD' })
+        );
+        done();
+      });
+    });
   });
 
   describe('getByDateRange', () => {
@@ -341,6 +401,23 @@ describe('TransactionService', () => {
         expect(result.length).toBe(expectedExpenseCount);
         expect(result.every(t => t.type === 'expense')).toBe(true);
         // ...and unlike getByDateRange this query does not mutate the main signal.
+        expect(service.transactions()).toEqual([]);
+        done();
+      });
+    });
+
+    it('adds a categoryId where clause when a category filter is provided', (done) => {
+      mockFirestore.setMockCollection('users/test-user-123/transactions', []);
+
+      service.getExpensesInRange(new Date(2026, 0, 1), new Date(2026, 5, 30), 'food').subscribe(() => {
+        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const options = callArgs[1] as {
+          where?: { field: string; op: string; value: unknown }[];
+        } | undefined;
+        expect(options?.where).toContain(
+          jasmine.objectContaining({ field: 'categoryId', op: '==', value: 'food' })
+        );
+        // Still non-mutating with the category filter applied.
         expect(service.transactions()).toEqual([]);
         done();
       });

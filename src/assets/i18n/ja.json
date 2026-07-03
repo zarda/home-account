@@ -82,7 +82,8 @@
     "spendingByCategory": "カテゴリ別支出",
     "noExpenses": "支出なし",
     "addFirstTransaction": "最初の取引を追加してください",
-    "addExpensesToSeeBreakdown": "支出を追加すると内訳が表示されます"
+    "addExpensesToSeeBreakdown": "支出を追加すると内訳が表示されます",
+    "vsPreviousPeriod": "前期比"
   },
   "transactions": {
     "title": "取引履歴",
@@ -128,7 +129,8 @@
     "notePlaceholder": "追加の詳細...",
     "saveChanges": "変更を保存",
     "receipt": "レシート",
-    "viewReceipt": "レシートを表示"
+    "viewReceipt": "レシートを表示",
+    "resultCountAnnouncement": "{{count}}件の取引を表示しています"
   },
   "budget": {
     "title": "予算",
@@ -162,7 +164,11 @@
     "startDateOptional": "開始日（任意）",
     "startDateTooltip": "予算期間の開始日を定義します",
     "useDefault": "デフォルトを使用",
-    "alertWhenReaches": "アラート発生時の支出割合"
+    "alertWhenReaches": "アラート発生時の支出割合",
+    "alertSnackbarExceeded": "{{name}}：予算超過（{{percent}}% 使用）",
+    "alertSnackbarCritical": "{{name}}：ほぼ上限に到達（{{percent}}% 使用）",
+    "alertSnackbarWarning": "{{name}}：上限に近づいています（{{percent}}% 使用）",
+    "alertSnackbarMore": "他 {{count}} 件の予算アラート"
   },
   "reports": {
     "title": "レポート",
@@ -238,6 +244,7 @@
     "dataManagementDescription": "データのエクスポート、インポート、バックアップ",
     "language": "言語",
     "currency": "通貨",
+    "displayName": "表示名",
     "theme": "テーマ",
     "themeLight": "ライト",
     "themeDark": "ダーク",
@@ -313,6 +320,8 @@
     "recurringDeleted": "定期取引を削除しました",
     "recurringCreated": "定期取引を作成しました",
     "recurringCreateFailed": "定期取引の作成に失敗しました",
+    "recurringUpdated": "定期取引を更新しました",
+    "recurringUpdateFailed": "定期取引の更新に失敗しました",
     "deleteRecurringTitle": "定期取引を削除",
     "deleteRecurringMessage": "「{{name}}」を削除してもよろしいですか？既存の取引には影響しません。",
     "addRecurring": "定期取引を追加",
@@ -748,6 +757,15 @@
     "totalCache": "合計キャッシュ",
     "queueSynced": "キューの同期が完了しました",
     "queueCleared": "キューがクリアされました",
+    "queueSyncFailed": "キューの同期に失敗しました",
+    "queueClearFailed": "キューのクリアに失敗しました",
+    "invalidModelSelection": "無効なモデルが選択されました",
+    "textModelUpdated": "テキストモデルを{{model}}に更新しました",
+    "textModelUpdateFailed": "テキストモデルの更新に失敗しました。もう一度お試しください。",
+    "visionModelUpdated": "ビジョンモデルを{{model}}に更新しました",
+    "visionModelUpdateFailed": "ビジョンモデルの更新に失敗しました。もう一度お試しください。",
+    "openaiModelUpdated": "OpenAIモデルを{{model}}に更新しました",
+    "claudeModelUpdated": "Claudeモデルを{{model}}に更新しました",
     "ragInsights": "明細に基づくインサイト（RAG）",
     "ragInsightsDescription": "オンにすると、注目すべき取引の明細（高額支出、異常な金額、カテゴリの変化）がAIプロバイダーに送信され、より具体的な分析が得られます。",
     "insightsSettings": "AIインサイト",

@@ -92,6 +92,8 @@
       [expenses]="totalExpenses()"
       [balance]="balance()"
       [currency]="baseCurrency()"
+      [previousIncome]="previousPeriodData()?.income ?? null"
+      [previousExpenses]="previousPeriodData()?.expense ?? null"
     />
 
     <!-- AI Insights -->

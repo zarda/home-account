@@ -19,6 +19,7 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
@@ -56,6 +57,7 @@ export class AiSettingsPageComponent implements OnInit {
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private authService = inject(AuthService);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
   private location = inject(Location);
 
   // Form state
@@ -159,7 +161,9 @@ export class AiSettingsPageComponent implements OnInit {
     this.selectedOpenaiModel.set(modelId);
     this.strategyService.updatePreferences({ openaiModel: modelId });
     const modelName = this.openaiModels.find(m => m.id === modelId)?.name || modelId;
-    this.snackBar.open(`✓ OpenAI model updated to ${modelName}`, 'OK', { duration: 2000 });
+    const message = this.translationService.t('aiPage.openaiModelUpdated', { model: modelName });
+    this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
+    this.announcer.announce(message);
   }
 
   onClaudeModelChange(modelId: string): void {
@@ -169,7 +173,9 @@ export class AiSettingsPageComponent implements OnInit {
     this.selectedClaudeModel.set(modelId);
     this.strategyService.updatePreferences({ claudeModel: modelId });
     const modelName = this.claudeModels.find(m => m.id === modelId)?.name || modelId;
-    this.snackBar.open(`✓ Claude model updated to ${modelName}`, 'OK', { duration: 2000 });
+    const message = this.translationService.t('aiPage.claudeModelUpdated', { model: modelName });
+    this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
+    this.announcer.announce(message);
   }
 
   private loadApiKeys(): void {
@@ -195,7 +201,9 @@ export class AiSettingsPageComponent implements OnInit {
   onTextModelChange(modelId: string): void {
     // Validate model ID
     if (!this.textModels.some(m => m.id === modelId)) {
-      this.snackBar.open('Invalid model selection', 'OK', { duration: 2000 });
+      const message = this.translationService.t('aiPage.invalidModelSelection');
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
+      this.announcer.announce(message, 'assertive');
       return;
     }
 
@@ -203,16 +211,20 @@ export class AiSettingsPageComponent implements OnInit {
       this.selectedTextModel.set(modelId);
       this.strategyService.updatePreferences({ textModel: modelId });
       const modelName = this.textModels.find(m => m.id === modelId)?.name || modelId;
-      this.snackBar.open(`✓ Text model updated to ${modelName}`, 'OK', {
+      const message = this.translationService.t('aiPage.textModelUpdated', { model: modelName });
+      this.snackBar.open(message, this.translationService.t('common.close'), {
         duration: 2000,
         panelClass: 'success-snackbar'
       });
+      this.announcer.announce(message);
     } catch (error) {
       console.error('[AI Settings] Failed to change text model:', error);
-      this.snackBar.open('Failed to update text model. Please try again.', 'Retry', {
+      const message = this.translationService.t('aiPage.textModelUpdateFailed');
+      this.snackBar.open(message, this.translationService.t('common.tryAgain'), {
         duration: 4000,
         panelClass: 'error-snackbar'
       });
+      this.announcer.announce(message, 'assertive');
       // Reload from preferences
       this.loadModelSelection();
     }
@@ -221,7 +233,9 @@ export class AiSettingsPageComponent implements OnInit {
   onVisionModelChange(modelId: string): void {
     // Validate model ID
     if (!this.visionModels.some(m => m.id === modelId)) {
-      this.snackBar.open('Invalid model selection', 'OK', { duration: 2000 });
+      const message = this.translationService.t('aiPage.invalidModelSelection');
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
+      this.announcer.announce(message, 'assertive');
       return;
     }
 
@@ -229,16 +243,20 @@ export class AiSettingsPageComponent implements OnInit {
       this.selectedVisionModel.set(modelId);
       this.strategyService.updatePreferences({ visionModel: modelId });
       const modelName = this.visionModels.find(m => m.id === modelId)?.name || modelId;
-      this.snackBar.open(`✓ Vision model updated to ${modelName}`, 'OK', {
+      const message = this.translationService.t('aiPage.visionModelUpdated', { model: modelName });
+      this.snackBar.open(message, this.translationService.t('common.close'), {
         duration: 2000,
         panelClass: 'success-snackbar'
       });
+      this.announcer.announce(message);
     } catch (error) {
       console.error('[AI Settings] Failed to change vision model:', error);
-      this.snackBar.open('Failed to update vision model. Please try again.', 'Retry', {
+      const message = this.translationService.t('aiPage.visionModelUpdateFailed');
+      this.snackBar.open(message, this.translationService.t('common.tryAgain'), {
         duration: 4000,
         panelClass: 'error-snackbar'
       });
+      this.announcer.announce(message, 'assertive');
       // Reload from preferences
       this.loadModelSelection();
     }
@@ -355,10 +373,12 @@ export class AiSettingsPageComponent implements OnInit {
         ...pref,
       });
     } catch {
-      this.snackBar.open(this.translationService.t('common.error'), this.translationService.t('common.close'), {
+      const message = this.translationService.t('common.error');
+      this.snackBar.open(message, this.translationService.t('common.close'), {
         duration: 3000,
         horizontalPosition: 'center',
       });
+      this.announcer.announce(message, 'assertive');
     }
   }
 
@@ -372,7 +392,9 @@ export class AiSettingsPageComponent implements OnInit {
       await this.offlineQueue.syncQueue();
       this.showToast('aiPage.queueSynced');
     } catch {
-      this.snackBar.open('Failed to sync queue', 'OK', { duration: 3000 });
+      const message = this.translationService.t('aiPage.queueSyncFailed');
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
     }
   }
 
@@ -381,7 +403,9 @@ export class AiSettingsPageComponent implements OnInit {
       await this.offlineQueue.clearAll();
       this.showToast('aiPage.queueCleared');
     } catch {
-      this.snackBar.open('Failed to clear queue', 'OK', { duration: 3000 });
+      const message = this.translationService.t('aiPage.queueClearFailed');
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
+      this.announcer.announce(message, 'assertive');
     }
   }
 
@@ -393,5 +417,6 @@ export class AiSettingsPageComponent implements OnInit {
     const message = this.translationService.t(key);
     const okText = this.translationService.t('common.close') || 'OK';
     this.snackBar.open(message, okText, { duration: 3000 });
+    this.announcer.announce(message);
   }
 }

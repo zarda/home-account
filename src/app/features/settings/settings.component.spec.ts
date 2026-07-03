@@ -47,15 +47,15 @@ describe('SettingsComponent', () => {
 
   describe('user info', () => {
     it('should display user name', () => {
-      expect(component.userName).toBe('Test User');
+      expect(component.userName()).toBe('Test User');
     });
 
     it('should display user email', () => {
-      expect(component.userEmail).toBe('test@example.com');
+      expect(component.userEmail()).toBe('test@example.com');
     });
 
     it('should display user photo', () => {
-      expect(component.userPhoto).toBe('https://example.com/photo.jpg');
+      expect(component.userPhoto()).toBe('https://example.com/photo.jpg');
     });
   });
 
@@ -87,15 +87,15 @@ describe('SettingsComponent', () => {
     });
 
     it('should fallback to User when no displayName', () => {
-      expect(component.userName).toBe('User');
+      expect(component.userName()).toBe('User');
     });
 
     it('should fallback to empty string when no email', () => {
-      expect(component.userEmail).toBe('');
+      expect(component.userEmail()).toBe('');
     });
 
     it('should fallback to empty string when no photoURL', () => {
-      expect(component.userPhoto).toBe('');
+      expect(component.userPhoto()).toBe('');
     });
   });
 });

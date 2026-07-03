@@ -202,6 +202,11 @@ describe('BudgetProgressCardComponent', () => {
   });
 
   describe('alertSeverity', () => {
+    it('should return null under the alert threshold', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 70, alertThreshold: 80 }));
+      expect(component.alertSeverity()).toBeNull();
+    });
+
     it('should return warning for 80-89%', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85, alertThreshold: 80 }));
       expect(component.alertSeverity()).toBe('warning');
@@ -215,6 +220,12 @@ describe('BudgetProgressCardComponent', () => {
     it('should return exceeded for 100% and over', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 110, alertThreshold: 80 }));
       expect(component.alertSeverity()).toBe('exceeded');
+    });
+
+    it('should show critical even when alertThreshold is above 90', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 92, alertThreshold: 95 }));
+      expect(component.showAlert()).toBe(true);
+      expect(component.alertSeverity()).toBe('critical');
     });
   });
 

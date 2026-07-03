@@ -63,6 +63,10 @@
           </div>
 
           <mat-menu #actionMenu="matMenu">
+            <button mat-menu-item (click)="openEditDialog(recurring)">
+              <mat-icon>edit</mat-icon>
+              <span>{{ 'common.edit' | translate }}</span>
+            </button>
             @if (recurring.isActive) {
               <button mat-menu-item (click)="toggleActive(recurring)">
                 <mat-icon>pause</mat-icon>

@@ -1,10 +1,11 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { of } from 'rxjs';
 import { TransactionFiltersComponent } from './transaction-filters.component';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { Category } from '../../../models';
 
 describe('TransactionFiltersComponent', () => {
@@ -14,6 +15,7 @@ describe('TransactionFiltersComponent', () => {
     getTransactionDatesForMonth: jasmine.Spy;
   };
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
+  let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
 
   const mockCategories: Category[] = [
     {
@@ -79,11 +81,18 @@ describe('TransactionFiltersComponent', () => {
       return translations[key] || key;
     });
 
+    mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies']);
+    mockCurrencyService.getSupportedCurrencies.and.returnValue([
+      { code: 'USD', nameKey: 'currencies.usd', symbol: '$' },
+      { code: 'EUR', nameKey: 'currencies.eur', symbol: '€' }
+    ]);
+
     await TestBed.configureTestingModule({
       imports: [TransactionFiltersComponent, NoopAnimationsModule],
       providers: [
         { provide: TransactionService, useValue: mockTransactionService },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        { provide: CurrencyService, useValue: mockCurrencyService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -129,6 +138,12 @@ describe('TransactionFiltersComponent', () => {
 
     it('should start with expanded as false', () => {
       expect(component.expanded()).toBe(false);
+    });
+
+    it('should load supported currencies from CurrencyService', () => {
+      expect(mockCurrencyService.getSupportedCurrencies).toHaveBeenCalled();
+      expect(component.currencies.length).toBe(2);
+      expect(component.currencies[0].code).toBe('USD');
     });
   });
 
@@ -245,15 +260,21 @@ describe('TransactionFiltersComponent', () => {
       expect(component.activeFilterCount()).toBe(1);
     });
 
+    it('should count currency filter', () => {
+      component.filters = { currency: 'USD' };
+      expect(component.activeFilterCount()).toBe(1);
+    });
+
     it('should count multiple filters', () => {
       component.filters = {
         type: 'expense',
         categoryId: 'cat1',
         searchQuery: 'test',
         minAmount: 100,
-        maxAmount: 500
+        maxAmount: 500,
+        currency: 'USD'
       };
-      expect(component.activeFilterCount()).toBe(5);
+      expect(component.activeFilterCount()).toBe(6);
     });
   });
 
@@ -282,7 +303,8 @@ describe('TransactionFiltersComponent', () => {
         categoryId: 'cat1',
         startDate: new Date(),
         endDate: new Date(),
-        searchQuery: 'test'
+        searchQuery: 'test',
+        currency: 'USD'
       };
 
       component.clearFilters();
@@ -420,6 +442,18 @@ describe('TransactionFiltersComponent', () => {
       expect(emittedFilters.startDate).toBeDefined();
       expect(emittedFilters.categoryId).toBeUndefined();
       expect(emittedFilters.searchQuery).toBeUndefined();
+      expect(emittedFilters.currency).toBeUndefined();
+    });
+
+    it('should include currency in emitted filters', () => {
+      spyOn(component.filtersChanged, 'emit');
+
+      component.filters = { currency: 'EUR' };
+
+      component.onFilterChange();
+
+      const emittedFilters = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent().args[0];
+      expect(emittedFilters.currency).toBe('EUR');
     });
   });
 
@@ -446,6 +480,44 @@ describe('TransactionFiltersComponent', () => {
       const filterPanel = compiled.querySelector('.filter-panel');
       expect(filterPanel).toBeTruthy();
     });
+
+    it('should render currency select in filter panel', () => {
+      component.expanded.set(true);
+      fixture.detectChanges();
+
+      const compiled = fixture.nativeElement as HTMLElement;
+      const selects = compiled.querySelectorAll('.filter-grid mat-select');
+      // Type + Category + Currency
+      expect(selects.length).toBe(3);
+    });
+
+    it('should emit the chosen currency when an option is picked in the rendered dropdown', fakeAsync(() => {
+      spyOn(component.filtersChanged, 'emit');
+      component.expanded.set(true);
+      fixture.detectChanges();
+
+      // Currency is the third select in the filter grid (type, category,
+      // currency); MatSelect opens on a click of its inner trigger.
+      const compiled = fixture.nativeElement as HTMLElement;
+      const triggers = compiled.querySelectorAll<HTMLElement>('.filter-grid mat-select .mat-mdc-select-trigger');
+      const currencyTrigger = triggers[2];
+      expect(currencyTrigger).withContext('currency select trigger').toBeTruthy();
+      currencyTrigger.click();
+      fixture.detectChanges();
+      flush();
+
+      // Options render into the overlay container, outside the fixture.
+      const options = Array.from(document.querySelectorAll<HTMLElement>('mat-option'));
+      const eurOption = options.find(option => option.textContent?.trim() === 'EUR');
+      expect(eurOption).withContext('EUR option from CurrencyService').toBeTruthy();
+      eurOption!.click();
+      fixture.detectChanges();
+      flush();
+
+      expect(component.filters.currency).toBe('EUR');
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent().args[0];
+      expect(emitted).toEqual(jasmine.objectContaining({ currency: 'EUR' }));
+    }));
 
     it('should hide filter panel when collapsed', () => {
       component.expanded.set(false);

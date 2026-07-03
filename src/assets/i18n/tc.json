@@ -82,7 +82,8 @@
     "spendingByCategory": "各類別支出",
     "noExpenses": "尚無支出",
     "addFirstTransaction": "新增您的第一筆交易",
-    "addExpensesToSeeBreakdown": "開始新增支出以查看支出明細"
+    "addExpensesToSeeBreakdown": "開始新增支出以查看支出明細",
+    "vsPreviousPeriod": "與上期相比"
   },
   "transactions": {
     "title": "交易紀錄",
@@ -128,7 +129,8 @@
     "notePlaceholder": "其他詳細資訊...",
     "saveChanges": "儲存變更",
     "receipt": "收據",
-    "viewReceipt": "查看收據"
+    "viewReceipt": "查看收據",
+    "resultCountAnnouncement": "顯示 {{count}} 筆交易"
   },
   "budget": {
     "title": "預算",
@@ -162,7 +164,11 @@
     "startDateOptional": "開始日期（選填）",
     "startDateTooltip": "定義預算週期的開始時間",
     "useDefault": "使用預設",
-    "alertWhenReaches": "支出達到時發出提醒"
+    "alertWhenReaches": "支出達到時發出提醒",
+    "alertSnackbarExceeded": "{{name}}：已超出預算（已使用 {{percent}}%）",
+    "alertSnackbarCritical": "{{name}}：即將達到上限（已使用 {{percent}}%）",
+    "alertSnackbarWarning": "{{name}}：接近上限（已使用 {{percent}}%）",
+    "alertSnackbarMore": "另有 {{count}} 個預算提醒"
   },
   "reports": {
     "title": "報表",
@@ -238,6 +244,7 @@
     "dataManagementDescription": "匯出、匯入和備份您的資料",
     "language": "語言",
     "currency": "貨幣",
+    "displayName": "顯示名稱",
     "theme": "主題",
     "themeLight": "淺色",
     "themeDark": "深色",
@@ -322,6 +329,8 @@
     "recurringDeleted": "定期交易已刪除",
     "recurringCreated": "定期交易已建立",
     "recurringCreateFailed": "建立定期交易失敗",
+    "recurringUpdated": "定期交易已更新",
+    "recurringUpdateFailed": "更新定期交易失敗",
     "deleteRecurringTitle": "刪除定期交易",
     "deleteRecurringMessage": "確定要刪除「{{name}}」嗎？這不會影響現有的交易。",
     "addRecurring": "新增定期交易",
@@ -748,6 +757,15 @@
     "totalCache": "快取總量",
     "queueSynced": "佇列同步成功",
     "queueCleared": "佇列已清除",
+    "queueSyncFailed": "同步佇列失敗",
+    "queueClearFailed": "清除佇列失敗",
+    "invalidModelSelection": "無效的模型選擇",
+    "textModelUpdated": "文字模型已更新為 {{model}}",
+    "textModelUpdateFailed": "更新文字模型失敗，請再試一次。",
+    "visionModelUpdated": "視覺模型已更新為 {{model}}",
+    "visionModelUpdateFailed": "更新視覺模型失敗，請再試一次。",
+    "openaiModelUpdated": "OpenAI 模型已更新為 {{model}}",
+    "claudeModelUpdated": "Claude 模型已更新為 {{model}}",
     "ragInsights": "以明細為依據的洞察（RAG）",
     "ragInsightsDescription": "開啟後，消費洞察將包含值得注意的交易明細（最大支出、異常金額、類別變化），並傳送給您的 AI 服務以產生更深入的分析。",
     "insightsSettings": "AI 洞察",

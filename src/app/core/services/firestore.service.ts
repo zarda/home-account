@@ -20,7 +20,9 @@ import {
   DocumentReference,
   Timestamp,
   onSnapshot,
-  QuerySnapshot
+  QuerySnapshot,
+  runTransaction,
+  Transaction as FirestoreTransaction
 } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
 
@@ -172,6 +174,15 @@ export class FirestoreService {
   async deleteDocument(path: string): Promise<void> {
     const docRef = doc(this.firestore, path);
     await deleteDoc(docRef);
+  }
+
+  // Run an atomic read-then-write transaction. All reads see fresh server
+  // data and the writes only commit if none of the read documents changed
+  // underneath; note this requires the network and rejects while offline.
+  async runTransaction<T>(
+    updateFn: (transaction: FirestoreTransaction) => Promise<T>
+  ): Promise<T> {
+    return runTransaction(this.firestore, updateFn);
   }
 
   // Helper to build query constraints from options

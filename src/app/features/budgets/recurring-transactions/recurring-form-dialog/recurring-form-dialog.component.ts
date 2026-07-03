@@ -236,7 +236,14 @@ export class RecurringFormDialogComponent implements OnInit {
         ...(this.showDayOfMonth && this.dayOfMonth !== null && { dayOfMonth: this.dayOfMonth }),
       },
       startDate: this.startDate,
-      ...(this.hasEndDate && this.endDate && { endDate: this.endDate }),
+      // In edit mode an unset end date must be sent explicitly as null so
+      // updateRecurring deletes the stored field; when creating it is simply
+      // omitted.
+      ...(this.hasEndDate && this.endDate
+        ? { endDate: this.endDate }
+        : this.isEdit
+          ? { endDate: null }
+          : {}),
     };
 
     this.dialogRef.close(result);

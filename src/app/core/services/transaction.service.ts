@@ -141,7 +141,7 @@ export class TransactionService {
   }
 
   // Add a new transaction
-  async addTransaction(data: CreateTransactionDTO): Promise<string> {
+  async addTransaction(data: CreateTransactionDTO, options?: { id?: string }): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -182,6 +182,15 @@ export class TransactionService {
           id,
           data.receiptFile
         );
+        await this.firestoreService.setDocument(
+          `${this.userTransactionsPath}/${id}`,
+          transaction
+        );
+      } else if (options?.id) {
+        // Caller-supplied deterministic id (recurring engine idempotency):
+        // posting the same occurrence twice overwrites one document instead
+        // of duplicating it.
+        id = options.id;
         await this.firestoreService.setDocument(
           `${this.userTransactionsPath}/${id}`,
           transaction
@@ -471,11 +480,13 @@ export class TransactionService {
   }
 
   /**
-   * Non-mutating fetch of expense transactions within a date range. Used to
-   * build a longer historical baseline (e.g. the trailing few months) for
-   * anomaly detection without disturbing the main `transactions` signal.
+   * Non-mutating fetch of expense transactions within a date range,
+   * optionally narrowed to a single category. Used to build a longer
+   * historical baseline (e.g. the trailing few months) for anomaly detection
+   * and for budget-spent recalculation, without disturbing the main
+   * `transactions` signal.
    */
-  getExpensesInRange(start: Date, end: Date): Observable<Transaction[]> {
+  getExpensesInRange(start: Date, end: Date, categoryId?: string): Observable<Transaction[]> {
     const userId = this.authService.userId();
     if (!userId) return of([]);
 
@@ -486,6 +497,10 @@ export class TransactionService {
         { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
       ]
     };
+
+    if (categoryId) {
+      options.where!.push({ field: 'categoryId', op: '==', value: categoryId });
+    }
 
     return this.firestoreService.subscribeToCollection<Transaction>(
       this.userTransactionsPath,

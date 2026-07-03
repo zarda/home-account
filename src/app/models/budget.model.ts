@@ -29,12 +29,14 @@ export interface BudgetSummary {
   transactions: number;          // Count
 }
 
+export type BudgetAlertSeverity = 'warning' | 'critical' | 'exceeded';
+
 export interface BudgetAlert {
   budgetId: string;
   budgetName: string;
   percentUsed: number;
   remaining: number;
-  severity: 'warning' | 'critical' | 'exceeded';
+  severity: BudgetAlertSeverity;
 }
 
 export interface CreateBudgetDTO {

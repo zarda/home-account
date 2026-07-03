@@ -10,6 +10,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { ImportHistoryComponent } from './import-history.component';
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { ImportHistory } from '../../../../models';
 
 describe('ImportHistoryComponent', () => {
@@ -18,6 +19,7 @@ describe('ImportHistoryComponent', () => {
   let mockImportHistoryService: jasmine.SpyObj<ImportHistoryService>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
+  let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockRouter: jasmine.SpyObj<Router>;
 
@@ -76,6 +78,7 @@ describe('ImportHistoryComponent', () => {
     mockTranslationService.t.and.callFake((key: string) => key);
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
+    mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockRouter = jasmine.createSpyObj('Router', ['navigate']);
 
@@ -85,13 +88,21 @@ describe('ImportHistoryComponent', () => {
         { provide: ImportHistoryService, useValue: mockImportHistoryService },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: AnnouncerService, useValue: mockAnnouncer },
         { provide: MatDialog, useValue: mockDialog },
         { provide: Router, useValue: mockRouter }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
       .overrideComponent(ImportHistoryComponent, {
-        set: { template: '<div></div>' }
+        set: {
+          template: '<div></div>',
+          providers: [
+            { provide: MatDialog, useValue: mockDialog },
+            { provide: MatSnackBar, useValue: mockSnackBar },
+            { provide: TranslationService, useValue: mockTranslationService }
+          ]
+        }
       })
       .compileComponents();
 
@@ -236,8 +247,32 @@ describe('ImportHistoryComponent', () => {
     });
   });
 
-  // Note: Dialog tests require more complex mocking of Angular Material dialog
-  // The deleteHistory method is tested indirectly through the component functionality
+  describe('deleteHistory', () => {
+    beforeEach(() => {
+      fixture.detectChanges();
+    });
+
+    it('should announce the deletion when confirmed', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.deleteHistory(mockHistory[0]);
+      tick();
+
+      expect(mockImportHistoryService.deleteImportHistory).toHaveBeenCalledWith('import1');
+      expect(mockSnackBar.open).toHaveBeenCalledWith('import.historyDeleted', 'common.close', { duration: 3000 });
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('import.historyDeleted');
+    }));
+
+    it('should announce failures assertively', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      mockImportHistoryService.deleteImportHistory.and.returnValue(Promise.reject(new Error('fail')));
+
+      component.deleteHistory(mockHistory[0]);
+      tick();
+
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('import.deleteHistoryFailed', 'assertive');
+    }));
+  });
 
   describe('navigation', () => {
     beforeEach(() => {

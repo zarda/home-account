@@ -12,6 +12,7 @@ import { MatMenuModule } from '@angular/material/menu';
 
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 import { CategoryFormDialogComponent } from './category-form-dialog/category-form-dialog.component';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -40,6 +41,7 @@ export class CategoryManagerComponent implements OnInit {
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
 
   selectedType: 'expense' | 'income' = 'expense';
   categories = signal<Category[]>([]);
@@ -73,7 +75,9 @@ export class CategoryManagerComponent implements OnInit {
     // Update order for all categories
     const ids = categories.map(c => c.id);
     this.categoryService.reorderCategories(ids).then(() => {
-      this.snackBar.open(this.translationService.t('settings.categoriesReordered'), this.translationService.t('common.close'), { duration: 2000 });
+      const message = this.translationService.t('settings.categoriesReordered');
+      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
+      this.announcer.announce(message);
       this.loadCategories();
     });
   }
@@ -92,7 +96,9 @@ export class CategoryManagerComponent implements OnInit {
           color: result.color,
           type: this.selectedType,
         }).then(() => {
-          this.snackBar.open(this.translationService.t('settings.categoryCreated'), this.translationService.t('common.close'), { duration: 2000 });
+          const message = this.translationService.t('settings.categoryCreated');
+          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
+          this.announcer.announce(message);
           this.loadCategories();
         });
       }
@@ -112,7 +118,9 @@ export class CategoryManagerComponent implements OnInit {
           icon: result.icon,
           color: result.color,
         }).then(() => {
-          this.snackBar.open(this.translationService.t('settings.categoryUpdated'), this.translationService.t('common.close'), { duration: 2000 });
+          const message = this.translationService.t('settings.categoryUpdated');
+          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
+          this.announcer.announce(message);
           this.loadCategories();
         });
       }
@@ -132,7 +140,9 @@ export class CategoryManagerComponent implements OnInit {
     dialogRef.afterClosed().subscribe(confirmed => {
       if (confirmed) {
         this.categoryService.deleteCategory(category.id).then(() => {
-          this.snackBar.open(this.translationService.t('settings.categoryDeleted'), this.translationService.t('common.close'), { duration: 2000 });
+          const message = this.translationService.t('settings.categoryDeleted');
+          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
+          this.announcer.announce(message);
           this.loadCategories();
         });
       }

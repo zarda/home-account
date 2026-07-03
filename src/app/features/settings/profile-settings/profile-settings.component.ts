@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -12,6 +13,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { ThemeService, ThemePreference } from '../../../core/services/theme.service';
+import { AnnouncerService } from '../../../core/services/announcer.service';
 import { SUPPORTED_CURRENCIES } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -22,6 +24,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     CommonModule,
     FormsModule,
     MatFormFieldModule,
+    MatInputModule,
     MatSelectModule,
     MatButtonModule,
     MatIconModule,
@@ -35,10 +38,14 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 export class ProfileSettingsComponent {
   private authService = inject(AuthService);
   private snackBar = inject(MatSnackBar);
+  private announcer = inject(AnnouncerService);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
 
   currencies = SUPPORTED_CURRENCIES;
+
+  // Current profile
+  displayName = this.authService.currentUser()?.displayName || '';
 
   // Current preferences
   baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
@@ -53,6 +60,28 @@ export class ProfileSettingsComponent {
   ];
 
   languages = this.translationService.languages;
+
+  async onDisplayNameChange(): Promise<void> {
+    const trimmed = this.displayName.trim();
+    const current = this.authService.currentUser()?.displayName ?? '';
+    if (!trimmed || trimmed === current) {
+      this.displayName = current;
+      return;
+    }
+
+    this.displayName = trimmed;
+    try {
+      await this.authService.updateUserProfile({ displayName: trimmed });
+    } catch {
+      this.displayName = current;
+      const message = this.translationService.t('common.error');
+      this.snackBar.open(message, this.translationService.t('common.close'), {
+        duration: 3000,
+        horizontalPosition: 'center',
+      });
+      this.announcer.announce(message, 'assertive');
+    }
+  }
 
   async onCurrencyChange(): Promise<void> {
     await this.savePreference({ baseCurrency: this.baseCurrency });
@@ -80,10 +109,12 @@ export class ProfileSettingsComponent {
         ...pref,
       });
     } catch {
-      this.snackBar.open(this.translationService.t('common.error'), this.translationService.t('common.close'), {
+      const message = this.translationService.t('common.error');
+      this.snackBar.open(message, this.translationService.t('common.close'), {
         duration: 3000,
         horizontalPosition: 'center',
       });
+      this.announcer.announce(message, 'assertive');
     }
   }
 }
