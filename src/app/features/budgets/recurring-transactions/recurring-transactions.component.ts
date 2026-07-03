@@ -148,4 +148,26 @@ export class RecurringTransactionsComponent implements OnInit {
       }
     });
   }
+
+  openEditDialog(recurring: RecurringTransaction): void {
+    const dialogRef = this.dialog.open(RecurringFormDialogComponent, {
+      width: '100%',
+      maxWidth: '500px',
+      data: { recurring }
+    });
+
+    dialogRef.afterClosed().subscribe((result: CreateRecurringDTO | undefined) => {
+      if (result) {
+        this.recurringService.updateRecurring(recurring.id, result).then(() => {
+          const message = this.t('settings.recurringUpdated');
+          this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
+          this.announcer.announce(message);
+        }).catch(() => {
+          const message = this.t('settings.recurringUpdateFailed');
+          this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
+          this.announcer.announce(message, 'assertive');
+        });
+      }
+    });
+  }
 }

@@ -315,6 +315,8 @@
     "recurringDeleted": "定期取引を削除しました",
     "recurringCreated": "定期取引を作成しました",
     "recurringCreateFailed": "定期取引の作成に失敗しました",
+    "recurringUpdated": "定期取引を更新しました",
+    "recurringUpdateFailed": "定期取引の更新に失敗しました",
     "deleteRecurringTitle": "定期取引を削除",
     "deleteRecurringMessage": "「{{name}}」を削除してもよろしいですか？既存の取引には影響しません。",
     "addRecurring": "定期取引を追加",

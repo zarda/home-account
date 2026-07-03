@@ -7,6 +7,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { RecurringTransactionsComponent } from './recurring-transactions.component';
+import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
 import { RecurringService } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -61,6 +62,7 @@ describe('RecurringTransactionsComponent', () => {
     mockRecurringService = jasmine.createSpyObj('RecurringService', [
       'getRecurring',
       'createRecurring',
+      'updateRecurring',
       'deleteRecurring',
       'pauseRecurring',
       'resumeRecurring',
@@ -68,6 +70,7 @@ describe('RecurringTransactionsComponent', () => {
     ]);
     mockRecurringService.getRecurring.and.returnValue(of(mockRecurring));
     mockRecurringService.createRecurring.and.returnValue(Promise.resolve('new-id'));
+    mockRecurringService.updateRecurring.and.returnValue(Promise.resolve());
     mockRecurringService.deleteRecurring.and.returnValue(Promise.resolve());
     mockRecurringService.pauseRecurring.and.returnValue(Promise.resolve());
     mockRecurringService.resumeRecurring.and.returnValue(Promise.resolve());
@@ -86,6 +89,8 @@ describe('RecurringTransactionsComponent', () => {
         'settings.recurringPaused': 'Recurring transaction paused',
         'settings.recurringResumed': 'Recurring transaction resumed',
         'settings.recurringCreated': 'Recurring transaction created',
+        'settings.recurringUpdated': 'Recurring transaction updated',
+        'settings.recurringUpdateFailed': 'Failed to update recurring transaction',
         'settings.recurringDeleted': 'Recurring transaction deleted',
         'settings.deleteRecurringTitle': 'Delete Recurring Transaction',
         'settings.deleteRecurringMessage': 'Are you sure?',
@@ -294,6 +299,66 @@ describe('RecurringTransactionsComponent', () => {
 
       expect(mockSnackBar.open).toHaveBeenCalledWith('settings.recurringCreateFailed', 'Close', { duration: 3000 });
       expect(mockAnnouncer.announce).toHaveBeenCalledWith('settings.recurringCreateFailed', 'assertive');
+    }));
+  });
+
+  describe('openEditDialog', () => {
+    const editResult = {
+      name: 'Updated Rent',
+      type: 'expense' as const,
+      amount: 1600,
+      currency: 'USD',
+      categoryId: 'cat1',
+      description: 'Updated apartment rent',
+      frequency: { type: 'monthly' as const, interval: 1 },
+      startDate: new Date()
+    };
+
+    it('should open edit dialog with the recurring transaction as data', () => {
+      const mockDialogRef = { afterClosed: () => of(undefined) };
+      mockDialog.open.and.returnValue(mockDialogRef as never);
+
+      component.openEditDialog(mockRecurring[0]);
+
+      expect(mockDialog.open).toHaveBeenCalledWith(RecurringFormDialogComponent, {
+        width: '100%',
+        maxWidth: '500px',
+        data: { recurring: mockRecurring[0] }
+      });
+    });
+
+    it('should update recurring when dialog returns result', fakeAsync(() => {
+      const mockDialogRef = { afterClosed: () => of(editResult) };
+      mockDialog.open.and.returnValue(mockDialogRef as never);
+
+      component.openEditDialog(mockRecurring[0]);
+      tick();
+
+      expect(mockRecurringService.updateRecurring).toHaveBeenCalledWith('rec1', editResult);
+      expect(mockSnackBar.open).toHaveBeenCalledWith('Recurring transaction updated', 'Close', { duration: 2000 });
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Recurring transaction updated');
+    }));
+
+    it('should not update when dialog is dismissed', fakeAsync(() => {
+      const mockDialogRef = { afterClosed: () => of(undefined) };
+      mockDialog.open.and.returnValue(mockDialogRef as never);
+
+      component.openEditDialog(mockRecurring[0]);
+      tick();
+
+      expect(mockRecurringService.updateRecurring).not.toHaveBeenCalled();
+    }));
+
+    it('should show error snackbar when update fails', fakeAsync(() => {
+      const mockDialogRef = { afterClosed: () => of(editResult) };
+      mockDialog.open.and.returnValue(mockDialogRef as never);
+      mockRecurringService.updateRecurring.and.returnValue(Promise.reject(new Error('fail')));
+
+      component.openEditDialog(mockRecurring[0]);
+      tick();
+
+      expect(mockSnackBar.open).toHaveBeenCalledWith('Failed to update recurring transaction', 'Close', { duration: 3000 });
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Failed to update recurring transaction', 'assertive');
     }));
   });
 });
