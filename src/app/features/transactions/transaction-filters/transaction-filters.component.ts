@@ -10,8 +10,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { Subscription } from 'rxjs';
-import { Category, TransactionFilters } from '../../../models';
+import { Category, CurrencyInfo, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -35,6 +36,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy, AfterViewInit {
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);
+  private currencyService = inject(CurrencyService);
 
   @ViewChild('dayPicker') dayPicker!: MatDatepicker<Date>;
   @ViewChild('startPicker') startPicker!: MatDatepicker<Date>;
@@ -52,6 +54,8 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   activeQuickFilter = signal<string | null>(null);
 
   filters: TransactionFilters = {};
+
+  currencies: CurrencyInfo[] = this.currencyService.getSupportedCurrencies();
 
   // Store transaction dates for calendar highlighting - keyed by "year-month"
   private transactionDatesCache = new Map<string, Map<string, 'income' | 'expense' | 'both'>>();
@@ -178,6 +182,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (this.filters.searchQuery) count++;
     if (this.filters.minAmount !== undefined) count++;
     if (this.filters.maxAmount !== undefined) count++;
+    if (this.filters.currency) count++;
     return count;
   }
 
@@ -268,6 +273,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (this.filters.searchQuery) cleanFilters.searchQuery = this.filters.searchQuery;
     if (this.filters.minAmount !== undefined) cleanFilters.minAmount = this.filters.minAmount;
     if (this.filters.maxAmount !== undefined) cleanFilters.maxAmount = this.filters.maxAmount;
+    if (this.filters.currency) cleanFilters.currency = this.filters.currency;
 
     this.filtersChanged.emit(cleanFilters);
   }

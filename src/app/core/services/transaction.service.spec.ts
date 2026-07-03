@@ -313,6 +313,19 @@ describe('TransactionService', () => {
         done();
       });
     });
+
+    it('should add currency where clause when currency filter is set', (done) => {
+      service.getTransactions({ currency: 'USD' }).subscribe(() => {
+        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const options = callArgs[1] as {
+          where?: { field: string; op: string; value: unknown }[];
+        } | undefined;
+        expect(options?.where).toContain(
+          jasmine.objectContaining({ field: 'currency', op: '==', value: 'USD' })
+        );
+        done();
+      });
+    });
   });
 
   describe('getByDateRange', () => {
