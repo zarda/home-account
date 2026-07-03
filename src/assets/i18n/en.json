@@ -164,7 +164,11 @@
     "startDateOptional": "Start Date (Optional)",
     "startDateTooltip": "Defines when budget period begins",
     "useDefault": "Use default",
-    "alertWhenReaches": "Alert when spending reaches"
+    "alertWhenReaches": "Alert when spending reaches",
+    "alertSnackbarExceeded": "{{name}}: budget exceeded ({{percent}}% used)",
+    "alertSnackbarCritical": "{{name}}: almost at limit ({{percent}}% used)",
+    "alertSnackbarWarning": "{{name}}: approaching limit ({{percent}}% used)",
+    "alertSnackbarMore": "+{{count}} more budget alerts"
   },
   "reports": {
     "title": "Reports",

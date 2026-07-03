@@ -164,7 +164,11 @@
     "startDateOptional": "開始日（任意）",
     "startDateTooltip": "予算期間の開始日を定義します",
     "useDefault": "デフォルトを使用",
-    "alertWhenReaches": "アラート発生時の支出割合"
+    "alertWhenReaches": "アラート発生時の支出割合",
+    "alertSnackbarExceeded": "{{name}}：予算超過（{{percent}}% 使用）",
+    "alertSnackbarCritical": "{{name}}：ほぼ上限に到達（{{percent}}% 使用）",
+    "alertSnackbarWarning": "{{name}}：上限に近づいています（{{percent}}% 使用）",
+    "alertSnackbarMore": "他 {{count}} 件の予算アラート"
   },
   "reports": {
     "title": "レポート",

@@ -164,7 +164,11 @@
     "startDateOptional": "開始日期（選填）",
     "startDateTooltip": "定義預算週期的開始時間",
     "useDefault": "使用預設",
-    "alertWhenReaches": "支出達到時發出提醒"
+    "alertWhenReaches": "支出達到時發出提醒",
+    "alertSnackbarExceeded": "{{name}}：已超出預算（已使用 {{percent}}%）",
+    "alertSnackbarCritical": "{{name}}：即將達到上限（已使用 {{percent}}%）",
+    "alertSnackbarWarning": "{{name}}：接近上限（已使用 {{percent}}%）",
+    "alertSnackbarMore": "另有 {{count}} 個預算提醒"
   },
   "reports": {
     "title": "報表",

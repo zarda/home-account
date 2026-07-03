@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Budget, Category, Transaction } from '../../../models';
+import { BUDGET_ALERT_THRESHOLDS } from '../../../core/utils/budget-alert.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -67,8 +68,8 @@ export class BudgetProgressComponent {
 
   getProgressColor(budget: Budget): 'primary' | 'accent' | 'warn' {
     const percentage = this.getPercentage(budget);
-    if (percentage >= 100) return 'warn';
-    if (percentage >= 80) return 'accent';
+    if (percentage >= BUDGET_ALERT_THRESHOLDS.exceeded) return 'warn';
+    if (percentage >= BUDGET_ALERT_THRESHOLDS.warning) return 'accent';
     return 'primary';
   }
 
@@ -84,8 +85,8 @@ export class BudgetProgressComponent {
 
   getPercentageClass(budget: Budget): string {
     const percentage = this.getPercentage(budget);
-    if (percentage >= 100) return 'text-red-600';
-    if (percentage >= 80) return 'text-yellow-600';
+    if (percentage >= BUDGET_ALERT_THRESHOLDS.exceeded) return 'text-red-600';
+    if (percentage >= BUDGET_ALERT_THRESHOLDS.warning) return 'text-yellow-600';
     return 'text-green-600';
   }
 }

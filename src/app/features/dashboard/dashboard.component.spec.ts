@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of, throwError } from 'rxjs';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
@@ -8,7 +9,8 @@ import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
 import { TranslationService } from '../../core/services/translation.service';
-import { Transaction, User } from '../../models';
+import { AnnouncerService } from '../../core/services/announcer.service';
+import { BudgetAlert, Transaction, User } from '../../models';
 import { createTransaction, createCategory, createUser } from '../../core/services/testing';
 
 describe('DashboardComponent', () => {
@@ -22,12 +24,16 @@ describe('DashboardComponent', () => {
   };
   let budgetService: {
     activeBudgets: ReturnType<typeof signal<unknown[]>>;
+    budgetAlerts: ReturnType<typeof signal<BudgetAlert[]>>;
     isLoading: ReturnType<typeof signal<boolean>>;
     getBudgets: jasmine.Spy;
   };
   let categoryService: { categories: ReturnType<typeof signal<unknown[]>>; loadCategories: jasmine.Spy };
   let authService: { currentUser: ReturnType<typeof signal<User | null>> };
   let currencyService: jasmine.SpyObj<CurrencyService>;
+  let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let announcer: jasmine.SpyObj<AnnouncerService>;
+  let translation: jasmine.SpyObj<TranslationService>;
 
   function build() {
     return TestBed.createComponent(DashboardComponent);
@@ -46,6 +52,7 @@ describe('DashboardComponent', () => {
     };
     budgetService = {
       activeBudgets: signal<unknown[]>([]),
+      budgetAlerts: signal<BudgetAlert[]>([]),
       isLoading: signal(false),
       getBudgets: jasmine.createSpy('getBudgets').and.returnValue(of([])),
     };
@@ -57,8 +64,10 @@ describe('DashboardComponent', () => {
     currencyService = jasmine.createSpyObj('CurrencyService', ['convert']);
     currencyService.convert.and.callFake((amount: number) => amount);
 
-    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => k);
+    snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
+    announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
@@ -69,6 +78,8 @@ describe('DashboardComponent', () => {
         { provide: CurrencyService, useValue: currencyService },
         { provide: AuthService, useValue: authService },
         { provide: TranslationService, useValue: translation },
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: AnnouncerService, useValue: announcer },
       ],
     })
       .overrideComponent(DashboardComponent, { set: { imports: [], template: '' } })
@@ -255,6 +266,73 @@ describe('DashboardComponent', () => {
       component.selectedPeriod = 'thisYear';
       component.onPeriodChange();
       expect(component.previousPeriodData()).toBeNull();
+    });
+  });
+
+  describe('budget alerts', () => {
+    const warningAlert: BudgetAlert = {
+      budgetId: 'b1',
+      budgetName: 'Food',
+      percentUsed: 85,
+      remaining: 75,
+      severity: 'warning',
+    };
+    const exceededAlert: BudgetAlert = {
+      budgetId: 'b2',
+      budgetName: 'Travel',
+      percentUsed: 110,
+      remaining: 0,
+      severity: 'exceeded',
+    };
+
+    it('does not open a snackbar when no budget crosses a threshold', () => {
+      build().detectChanges();
+      expect(snackBar.open).not.toHaveBeenCalled();
+      expect(announcer.announce).not.toHaveBeenCalled();
+    });
+
+    it('opens a dismissible snackbar when a budget is in warning', () => {
+      budgetService.budgetAlerts.set([warningAlert]);
+      build().detectChanges();
+      expect(snackBar.open).toHaveBeenCalledWith('budget.alertSnackbarWarning', 'common.close', {
+        duration: 8000,
+      });
+      expect(translation.t).toHaveBeenCalledWith('budget.alertSnackbarWarning', {
+        name: 'Food',
+        percent: 85,
+      });
+    });
+
+    it('opens an exceeded snackbar and announces it for an exceeded budget', () => {
+      budgetService.budgetAlerts.set([exceededAlert]);
+      build().detectChanges();
+      expect(snackBar.open).toHaveBeenCalledWith('budget.alertSnackbarExceeded', 'common.close', {
+        duration: 8000,
+      });
+      expect(announcer.announce).toHaveBeenCalledWith('budget.alertSnackbarExceeded');
+      expect(translation.t).toHaveBeenCalledWith('budget.alertSnackbarExceeded', {
+        name: 'Travel',
+        percent: 110,
+      });
+    });
+
+    it('appends a more-count when several budgets alert', () => {
+      budgetService.budgetAlerts.set([exceededAlert, warningAlert]);
+      build().detectChanges();
+      expect(snackBar.open).toHaveBeenCalledWith(
+        'budget.alertSnackbarExceeded budget.alertSnackbarMore',
+        'common.close',
+        { duration: 8000 },
+      );
+      expect(translation.t).toHaveBeenCalledWith('budget.alertSnackbarMore', { count: 1 });
+    });
+
+    it('notifies only once per dashboard visit', () => {
+      budgetService.budgetAlerts.set([warningAlert]);
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onPeriodChange();
+      expect(snackBar.open).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -5,6 +5,7 @@ import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
 import { CurrencyService } from './currency.service';
+import { getBudgetAlertSeverity } from '../utils/budget-alert.utils';
 import {
   Budget,
   BudgetSummary,
@@ -35,6 +36,27 @@ export class BudgetService {
   totalSpent = computed(() =>
     this.activeBudgets().reduce((sum, b) => sum + b.spent, 0)
   );
+
+  // Alerts for active budgets over their thresholds, most severe first
+  budgetAlerts = computed(() => {
+    const alerts: BudgetAlert[] = [];
+
+    for (const budget of this.activeBudgets()) {
+      const percentUsed = (budget.spent / budget.amount) * 100;
+      const severity = getBudgetAlertSeverity(percentUsed, budget.alertThreshold);
+      if (!severity) continue;
+
+      alerts.push({
+        budgetId: budget.id,
+        budgetName: budget.name,
+        percentUsed,
+        remaining: Math.max(0, budget.amount - budget.spent),
+        severity
+      });
+    }
+
+    return alerts.sort((a, b) => b.percentUsed - a.percentUsed);
+  });
 
   private get userBudgetsPath(): string {
     const userId = this.authService.userId();
@@ -199,45 +221,9 @@ export class BudgetService {
 
   // Check for budget alerts
   checkBudgetAlerts(): Observable<BudgetAlert[]> {
-    return this.getBudgets().pipe(
-      map(budgets => {
-        const alerts: BudgetAlert[] = [];
-
-        for (const budget of budgets) {
-          if (!budget.isActive) continue;
-
-          const percentUsed = (budget.spent / budget.amount) * 100;
-
-          if (percentUsed >= 100) {
-            alerts.push({
-              budgetId: budget.id,
-              budgetName: budget.name,
-              percentUsed,
-              remaining: 0,
-              severity: 'exceeded'
-            });
-          } else if (percentUsed >= 90) {
-            alerts.push({
-              budgetId: budget.id,
-              budgetName: budget.name,
-              percentUsed,
-              remaining: budget.amount - budget.spent,
-              severity: 'critical'
-            });
-          } else if (percentUsed >= budget.alertThreshold) {
-            alerts.push({
-              budgetId: budget.id,
-              budgetName: budget.name,
-              percentUsed,
-              remaining: budget.amount - budget.spent,
-              severity: 'warning'
-            });
-          }
-        }
-
-        return alerts.sort((a, b) => b.percentUsed - a.percentUsed);
-      })
-    );
+    // getBudgets() sets the budgets signal before this map runs,
+    // so the derived budgetAlerts signal is already up to date.
+    return this.getBudgets().pipe(map(() => this.budgetAlerts()));
   }
 
   // Update spent amount for a budget (called when transactions change)

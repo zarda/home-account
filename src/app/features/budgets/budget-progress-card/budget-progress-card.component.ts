@@ -10,6 +10,10 @@ import { MatButtonModule } from '@angular/material/button';
 
 import { Budget, BudgetPeriod } from '../../../models';
 import { Category } from '../../../models';
+import {
+  BUDGET_ALERT_THRESHOLDS,
+  getBudgetAlertSeverity
+} from '../../../core/utils/budget-alert.utils';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -58,29 +62,24 @@ export class BudgetProgressCardComponent {
 
   progressColor = computed((): 'primary' | 'accent' | 'warn' => {
     const pct = this.percentage();
-    if (pct >= 80) return 'warn';
+    if (pct >= BUDGET_ALERT_THRESHOLDS.warning) return 'warn';
     if (pct >= 50) return 'accent';
     return 'primary';
   });
 
   statusClass = computed(() => {
     const pct = this.percentage();
-    if (pct >= 100) return 'text-red-600 font-semibold';
-    if (pct >= 80) return 'text-orange-500';
+    if (pct >= BUDGET_ALERT_THRESHOLDS.exceeded) return 'text-red-600 font-semibold';
+    if (pct >= BUDGET_ALERT_THRESHOLDS.warning) return 'text-orange-500';
     if (pct >= 50) return 'text-yellow-600';
     return 'text-green-600';
   });
 
-  showAlert = computed(() => {
-    return this.percentage() >= this.budget().alertThreshold;
-  });
+  alertSeverity = computed(() =>
+    getBudgetAlertSeverity(this.percentage(), this.budget().alertThreshold)
+  );
 
-  alertSeverity = computed((): 'exceeded' | 'critical' | 'warning' => {
-    const pct = this.percentage();
-    if (pct >= 100) return 'exceeded';
-    if (pct >= 90) return 'critical';
-    return 'warning';
-  });
+  showAlert = computed(() => this.alertSeverity() !== null);
 
   alertText = computed(() => {
     switch (this.alertSeverity()) {
