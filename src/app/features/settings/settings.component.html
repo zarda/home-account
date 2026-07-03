@@ -7,16 +7,16 @@
 
   <!-- User Card -->
   <div class="user-card">
-    @if (userPhoto) {
-      <img [src]="userPhoto" alt="Profile" class="user-avatar">
+    @if (userPhoto()) {
+      <img [src]="userPhoto()" alt="Profile" class="user-avatar">
     } @else {
       <div class="user-avatar-placeholder">
         <mat-icon>person</mat-icon>
       </div>
     }
     <div class="user-info">
-      <span class="user-name">{{ userName }}</span>
-      <span class="user-email">{{ userEmail }}</span>
+      <span class="user-name">{{ userName() }}</span>
+      <span class="user-email">{{ userEmail() }}</span>
     </div>
   </div>
 

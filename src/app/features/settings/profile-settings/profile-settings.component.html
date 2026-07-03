@@ -1,5 +1,13 @@
 <div class="profile-settings">
   <div class="settings-grid">
+    <!-- Display Name -->
+    <div class="setting-item">
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'settings.displayName' | translate }}</mat-label>
+        <input matInput type="text" [(ngModel)]="displayName" (blur)="onDisplayNameChange()">
+      </mat-form-field>
+    </div>
+
     <!-- Base Currency -->
     <div class="setting-item">
       <mat-form-field appearance="outline">

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -23,6 +24,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     CommonModule,
     FormsModule,
     MatFormFieldModule,
+    MatInputModule,
     MatSelectModule,
     MatButtonModule,
     MatIconModule,
@@ -42,6 +44,9 @@ export class ProfileSettingsComponent {
 
   currencies = SUPPORTED_CURRENCIES;
 
+  // Current profile
+  displayName = this.authService.currentUser()?.displayName || '';
+
   // Current preferences
   baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
   theme: ThemePreference = this.authService.currentUser()?.preferences?.theme || 'system';
@@ -55,6 +60,28 @@ export class ProfileSettingsComponent {
   ];
 
   languages = this.translationService.languages;
+
+  async onDisplayNameChange(): Promise<void> {
+    const trimmed = this.displayName.trim();
+    const current = this.authService.currentUser()?.displayName ?? '';
+    if (!trimmed || trimmed === current) {
+      this.displayName = current;
+      return;
+    }
+
+    this.displayName = trimmed;
+    try {
+      await this.authService.updateUserProfile({ displayName: trimmed });
+    } catch {
+      this.displayName = current;
+      const message = this.translationService.t('common.error');
+      this.snackBar.open(message, this.translationService.t('common.close'), {
+        duration: 3000,
+        horizontalPosition: 'center',
+      });
+      this.announcer.announce(message, 'assertive');
+    }
+  }
 
   async onCurrencyChange(): Promise<void> {
     await this.savePreference({ baseCurrency: this.baseCurrency });

@@ -239,6 +239,7 @@
     "dataManagementDescription": "データのエクスポート、インポート、バックアップ",
     "language": "言語",
     "currency": "通貨",
+    "displayName": "表示名",
     "theme": "テーマ",
     "themeLight": "ライト",
     "themeDark": "ダーク",

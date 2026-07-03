@@ -239,6 +239,7 @@
     "dataManagementDescription": "Export, import, and backup your data",
     "language": "Language",
     "currency": "Currency",
+    "displayName": "Display Name",
     "theme": "Theme",
     "themeLight": "Light",
     "themeDark": "Dark",

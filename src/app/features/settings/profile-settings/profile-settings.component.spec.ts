@@ -21,6 +21,7 @@ describe('ProfileSettingsComponent', () => {
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
 
   const mockUser = {
+    displayName: 'Test User',
     preferences: {
       baseCurrency: 'USD',
       theme: 'light' as const,
@@ -30,10 +31,11 @@ describe('ProfileSettingsComponent', () => {
   };
 
   beforeEach(async () => {
-    mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences'], {
+    mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences', 'updateUserProfile'], {
       currentUser: signal(mockUser)
     });
     mockAuthService.updateUserPreferences.and.returnValue(Promise.resolve());
+    mockAuthService.updateUserProfile.and.returnValue(Promise.resolve());
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
 
@@ -80,6 +82,10 @@ describe('ProfileSettingsComponent', () => {
   });
 
   describe('initialization', () => {
+    it('should load displayName from user', () => {
+      expect(component.displayName).toBe('Test User');
+    });
+
     it('should load baseCurrency from user preferences', () => {
       expect(component.baseCurrency).toBe('USD');
     });
@@ -146,6 +152,42 @@ describe('ProfileSettingsComponent', () => {
       await component.onCurrencyChange();
 
       expect(mockAnnouncer.announce).toHaveBeenCalledWith('common.error', 'assertive');
+    });
+  });
+
+  describe('display name changes', () => {
+    it('should save trimmed display name via updateUserProfile on blur', async () => {
+      component.displayName = '  New Name  ';
+      await component.onDisplayNameChange();
+
+      expect(mockAuthService.updateUserProfile).toHaveBeenCalledWith({ displayName: 'New Name' });
+      expect(component.displayName).toBe('New Name');
+    });
+
+    it('should not save when display name is unchanged', async () => {
+      component.displayName = 'Test User';
+      await component.onDisplayNameChange();
+
+      expect(mockAuthService.updateUserProfile).not.toHaveBeenCalled();
+    });
+
+    it('should reset empty input without saving', async () => {
+      component.displayName = '   ';
+      await component.onDisplayNameChange();
+
+      expect(mockAuthService.updateUserProfile).not.toHaveBeenCalled();
+      expect(component.displayName).toBe('Test User');
+    });
+
+    it('should show error snackbar and revert when save fails', async () => {
+      const snackBarOpen = spyOn(fixture.debugElement.injector.get(MatSnackBar), 'open');
+      mockAuthService.updateUserProfile.and.returnValue(Promise.reject(new Error('fail')));
+      component.displayName = 'New Name';
+      await component.onDisplayNameChange();
+
+      expect(snackBarOpen).toHaveBeenCalledWith('common.error', 'common.close', jasmine.any(Object));
+      expect(mockAnnouncer.announce).toHaveBeenCalledWith('common.error', 'assertive');
+      expect(component.displayName).toBe('Test User');
     });
   });
 });

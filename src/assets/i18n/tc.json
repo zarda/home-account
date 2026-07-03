@@ -239,6 +239,7 @@
     "dataManagementDescription": "匯出、匯入和備份您的資料",
     "language": "語言",
     "currency": "貨幣",
+    "displayName": "顯示名稱",
     "theme": "主題",
     "themeLight": "淺色",
     "themeDark": "深色",

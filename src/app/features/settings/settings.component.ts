@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
@@ -30,7 +30,7 @@ import { DataManagementComponent } from './data-management/data-management.compo
 export class SettingsComponent {
   private authService = inject(AuthService);
 
-  userName = this.authService.currentUser()?.displayName || 'User';
-  userEmail = this.authService.currentUser()?.email || '';
-  userPhoto = this.authService.currentUser()?.photoURL || '';
+  userName = computed(() => this.authService.currentUser()?.displayName || 'User');
+  userEmail = computed(() => this.authService.currentUser()?.email || '');
+  userPhoto = computed(() => this.authService.currentUser()?.photoURL || '');
 }
