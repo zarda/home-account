@@ -7,17 +7,16 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { ExportService, ImportedTransaction } from '../../../core/services/export.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
   selector: 'app-data-management',
@@ -30,21 +29,19 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
     MatButtonModule,
     MatProgressBarModule,
     MatDialogModule,
-    MatSnackBarModule,
     TranslatePipe,
   ],
   templateUrl: './data-management.component.html',
   styleUrl: './data-management.component.scss',
 })
 export class DataManagementComponent {
+  private notifications = inject(NotificationService);
   private exportService = inject(ExportService);
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
 
   private t(key: string, params?: Record<string, string | number>): string {
     return this.translationService.t(key, params);
@@ -79,13 +76,11 @@ export class DataManagementComponent {
 
       if (success) {
         const message = this.t('settings.backupExported');
-        this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-        this.announcer.announce(message);
+        this.notifications.success(message);
       }
     } catch {
       const message = this.t('settings.backupExportFailed');
-      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     } finally {
       this.isExporting.set(false);
     }
@@ -106,13 +101,11 @@ export class DataManagementComponent {
 
       if (success) {
         const message = this.t('settings.transactionsExported');
-        this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-        this.announcer.announce(message);
+        this.notifications.success(message);
       }
     } catch {
       const message = this.t('settings.transactionsExportFailed');
-      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     } finally {
       this.isExporting.set(false);
     }
@@ -130,8 +123,7 @@ export class DataManagementComponent {
 
     if (!isCSV && !isJSON) {
       const message = this.t('settings.selectCsvOrJson');
-      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
       return;
     }
 
@@ -153,8 +145,7 @@ export class DataManagementComponent {
       this.showImportPreview.set(true);
     } catch {
       const message = this.t('settings.csvParseFailed');
-      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     } finally {
       this.isImporting.set(false);
     }
@@ -184,8 +175,7 @@ export class DataManagementComponent {
         this.showImportPreview.set(true);
       } catch {
         const message = this.t('settings.invalidBackupFormat');
-        this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-        this.announcer.announce(message, 'assertive');
+        this.notifications.error(message);
       } finally {
         this.isImporting.set(false);
       }
@@ -193,8 +183,7 @@ export class DataManagementComponent {
 
     reader.onerror = () => {
       const message = this.t('settings.fileReadFailed');
-      this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
       this.isImporting.set(false);
     };
 
@@ -227,8 +216,7 @@ export class DataManagementComponent {
         }
 
         const message = this.t('settings.transactionsImported', { count: transactions.length });
-        this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-        this.announcer.announce(message);
+        this.notifications.success(message);
         this.cancelImport();
         this.isImporting.set(false);
       }
@@ -269,12 +257,10 @@ export class DataManagementComponent {
             try {
               await this.transactionService.deleteAllTransactions();
               const message = this.t('settings.allTransactionsDeleted');
-              this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-              this.announcer.announce(message);
+              this.notifications.success(message);
             } catch {
               const message = this.t('settings.deleteTransactionsFailed');
-              this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-              this.announcer.announce(message, 'assertive');
+              this.notifications.error(message);
             }
           }
         });

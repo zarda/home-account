@@ -15,9 +15,11 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { Transaction, Category, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
+import { NotificationService } from '../../../core/services/notification.service';
 
 describe('TransactionFormComponent', () => {
   let transactionService: jasmine.SpyObj<TransactionService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let categoryService: {
     categories: ReturnType<typeof signal<Category[]>>;
     expenseCategories: ReturnType<typeof signal<Category[]>>;
@@ -55,6 +57,7 @@ describe('TransactionFormComponent', () => {
       loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
     };
     gemini = jasmine.createSpyObj('GeminiService', ['isAvailable', 'parseReceipt', 'suggestCategory']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     gemini.isAvailable.and.returnValue(true);
     gemini.parseReceipt.and.resolveTo({ amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1), suggestedCategory: 'food' } as never);
     gemini.suggestCategory.and.resolveTo('food');
@@ -71,6 +74,7 @@ describe('TransactionFormComponent', () => {
     await TestBed.configureTestingModule({
       imports: [TransactionFormComponent, ReactiveFormsModule],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },
         { provide: CurrencyService, useValue: currency },
@@ -203,14 +207,13 @@ describe('TransactionFormComponent', () => {
       const component = build().componentInstance;
       const file = new File(['x'], 'a.txt', { type: 'text/plain' });
       component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
-      expect(snackBar.open).toHaveBeenCalled();
-      expect(announcer.announce).toHaveBeenCalledWith('ai.invalidFileType', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('ai.invalidFileType');
     });
 
     it('ignores an empty selection', () => {
       const component = build().componentInstance;
       component.onReceiptSelected({ target: { files: [], value: '' } } as unknown as Event);
-      expect(snackBar.open).not.toHaveBeenCalled();
+      expect(notifications.error).not.toHaveBeenCalled();
     });
 
     it('scanReceipt fills the form on success', async () => {
@@ -219,7 +222,7 @@ describe('TransactionFormComponent', () => {
       expect(component.form.get('description')?.value).toBe('Cafe');
       expect(component.form.get('categoryId')?.value).toBe('food');
       expect(component.isScanning()).toBeFalse();
-      expect(announcer.announce).toHaveBeenCalledWith('ai.scanSuccess');
+      expect(notifications.success).toHaveBeenCalledWith('ai.scanSuccess');
     });
 
     it('scanReceipt records an error on failure', async () => {
@@ -227,7 +230,7 @@ describe('TransactionFormComponent', () => {
       const component = build().componentInstance;
       await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
       expect(component.scanError()).toBe('ai.scanError');
-      expect(announcer.announce).toHaveBeenCalledWith('ai.scanError', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('ai.scanError');
     });
 
     it('clearReceipt resets preview, error and captured file', () => {

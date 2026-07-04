@@ -8,14 +8,13 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { ThemeService, ThemePreference } from '../../../core/services/theme.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { SUPPORTED_CURRENCIES } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
   selector: 'app-profile-settings',
@@ -29,16 +28,14 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatButtonModule,
     MatIconModule,
     MatButtonToggleModule,
-    MatSnackBarModule,
     TranslatePipe,
   ],
   templateUrl: './profile-settings.component.html',
   styleUrl: './profile-settings.component.scss',
 })
 export class ProfileSettingsComponent {
+  private notifications = inject(NotificationService);
   private authService = inject(AuthService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
 
@@ -75,11 +72,7 @@ export class ProfileSettingsComponent {
     } catch {
       this.displayName = current;
       const message = this.translationService.t('common.error');
-      this.snackBar.open(message, this.translationService.t('common.close'), {
-        duration: 3000,
-        horizontalPosition: 'center',
-      });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     }
   }
 
@@ -110,11 +103,7 @@ export class ProfileSettingsComponent {
       });
     } catch {
       const message = this.translationService.t('common.error');
-      this.snackBar.open(message, this.translationService.t('common.close'), {
-        duration: 3000,
-        horizontalPosition: 'center',
-      });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     }
   }
 }

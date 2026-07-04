@@ -6,14 +6,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 
 import { AIImportService } from '../../../../core/services/ai-import.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { AnnouncerService } from '../../../../core/services/announcer.service';
 import {
   CategorizedImportTransaction,
   ImportResult,
@@ -25,6 +23,7 @@ import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component'
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
 import { DuplicateWarningComponent, DuplicateInfo } from '../duplicate-warning/duplicate-warning.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { NotificationService } from '../../../../core/services/notification.service';
 
 @Component({
   selector: 'app-import-wizard',
@@ -36,7 +35,6 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
     MatIconModule,
     MatProgressSpinnerModule,
     MatProgressBarModule,
-    MatSnackBarModule,
     MatCardModule,
     MatChipsModule,
     FileDropzoneComponent,
@@ -48,11 +46,10 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
   styleUrl: './import-wizard.component.scss'
 })
 export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
+  private notifications = inject(NotificationService);
   private importService = inject(AIImportService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private router = inject(Router);
 
   @ViewChild('stepper') stepper!: MatStepper;
@@ -319,8 +316,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       );
 
       const message = this.t('import.importComplete', { count: result.successCount });
-      this.snackBar.open(message, this.t('common.close'), { duration: 5000 });
-      this.announcer.announce(message);
+      this.notifications.success(message);
 
       // Navigate back to transactions with showAll to see imported data
       this.router.navigate(['/transactions'], {
@@ -330,8 +326,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       const message = this.t('import.importFailed', {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
-      this.snackBar.open(message, this.t('common.close'), { duration: 5000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     } finally {
       this.isImporting.set(false);
     }

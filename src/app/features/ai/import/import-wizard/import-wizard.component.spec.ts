@@ -10,11 +10,13 @@ import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { Category, CategorizedImportTransaction, ImportResult } from '../../../../models';
+import { NotificationService } from '../../../../core/services/notification.service';
 
 describe('ImportWizardComponent', () => {
   let component: ImportWizardComponent;
   let fixture: ComponentFixture<ImportWizardComponent>;
   let mockImportService: jasmine.SpyObj<AIImportService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
@@ -110,6 +112,7 @@ describe('ImportWizardComponent', () => {
     mockCategoryService.loadCategories.and.returnValue({ subscribe: () => ({ unsubscribe: () => undefined }) } as never);
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     mockTranslationService.t.and.callFake((key: string) => key);
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
@@ -119,6 +122,7 @@ describe('ImportWizardComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ImportWizardComponent, NoopAnimationsModule],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: AIImportService, useValue: mockImportService },
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: TranslationService, useValue: mockTranslationService },
@@ -354,7 +358,7 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(mockImportService.confirmImport).toHaveBeenCalled();
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('import.importComplete');
+      expect(notifications.success).toHaveBeenCalledWith('import.importComplete');
     }));
 
     it('should navigate to transactions page on success', fakeAsync(() => {
@@ -383,7 +387,7 @@ describe('ImportWizardComponent', () => {
       }).not.toThrow();
 
       expect(component.isImporting()).toBeFalse();
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('import.importFailed', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('import.importFailed');
     }));
   });
 

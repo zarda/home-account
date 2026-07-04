@@ -10,11 +10,13 @@ import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
+import { NotificationService } from '../../../core/services/notification.service';
 
 describe('CategoryManagerComponent', () => {
   let component: CategoryManagerComponent;
   let fixture: ComponentFixture<CategoryManagerComponent>;
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
@@ -82,6 +84,7 @@ describe('CategoryManagerComponent', () => {
     mockCategoryService.reorderCategories.and.returnValue(Promise.resolve());
 
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
@@ -103,6 +106,7 @@ describe('CategoryManagerComponent', () => {
     await TestBed.configureTestingModule({
       imports: [CategoryManagerComponent, NoopAnimationsModule],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
@@ -115,6 +119,7 @@ describe('CategoryManagerComponent', () => {
         set: {
           template: '<div></div>',
           providers: [
+        { provide: NotificationService, useValue: notifications },
             { provide: MatDialog, useValue: mockDialog },
             { provide: MatSnackBar, useValue: mockSnackBar },
             { provide: TranslationService, useValue: mockTranslationService }
@@ -219,8 +224,7 @@ describe('CategoryManagerComponent', () => {
       component.openAddDialog();
       tick();
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Category created', 'Close', { duration: 2000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Category created');
+      expect(notifications.success).toHaveBeenCalledWith('Category created');
     }));
   });
 

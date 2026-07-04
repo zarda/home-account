@@ -11,11 +11,13 @@ import { GeminiService } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
+import { NotificationService } from '../../../core/services/notification.service';
 
 describe('AiSettingsPageComponent', () => {
   let component: AiSettingsPageComponent;
   let fixture: ComponentFixture<AiSettingsPageComponent>;
   let strategyServiceMock: jasmine.SpyObj<AIStrategyService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let pwaServiceMock: jasmine.SpyObj<PwaService>;
   let offlineQueueServiceMock: jasmine.SpyObj<OfflineQueueService>;
   let geminiServiceMock: jasmine.SpyObj<GeminiService>;
@@ -43,6 +45,7 @@ describe('AiSettingsPageComponent', () => {
     strategyServiceMock.platform.and.returnValue('web');
 
     pwaServiceMock = jasmine.createSpyObj('PwaService', ['isOnline', 'cacheSize', 'formatBytes']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     pwaServiceMock.isOnline.and.returnValue(true);
     pwaServiceMock.cacheSize.and.returnValue({ total: 0, models: 0, static: 0, dynamic: 0 });
     pwaServiceMock.formatBytes.and.callFake((bytes: number) => {
@@ -94,6 +97,7 @@ describe('AiSettingsPageComponent', () => {
         HttpClientTestingModule,
       ],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: AIStrategyService, useValue: strategyServiceMock },
         { provide: PwaService, useValue: pwaServiceMock },
         { provide: OfflineQueueService, useValue: offlineQueueServiceMock },
@@ -164,25 +168,25 @@ describe('AiSettingsPageComponent', () => {
     it('should sync queue', async () => {
       await component.syncQueue();
       expect(offlineQueueServiceMock.syncQueue).toHaveBeenCalled();
-      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueSynced');
+      expect(notifications.success).toHaveBeenCalledWith('aiPage.queueSynced');
     });
 
     it('should clear queue', async () => {
       await component.clearQueue();
       expect(offlineQueueServiceMock.clearAll).toHaveBeenCalled();
-      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueCleared');
+      expect(notifications.success).toHaveBeenCalledWith('aiPage.queueCleared');
     });
 
     it('should announce sync failures assertively with a translated message', async () => {
       offlineQueueServiceMock.syncQueue.and.returnValue(Promise.reject(new Error('offline')));
       await component.syncQueue();
-      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueSyncFailed', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('aiPage.queueSyncFailed');
     });
 
     it('should announce clear failures assertively with a translated message', async () => {
       offlineQueueServiceMock.clearAll.and.returnValue(Promise.reject(new Error('offline')));
       await component.clearQueue();
-      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.queueClearFailed', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('aiPage.queueClearFailed');
     });
   });
 
@@ -191,19 +195,19 @@ describe('AiSettingsPageComponent', () => {
       const modelId = component.textModels[0].id;
       component.onTextModelChange(modelId);
       expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ textModel: modelId });
-      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.textModelUpdated');
+      expect(notifications.success).toHaveBeenCalledWith('aiPage.textModelUpdated');
     });
 
     it('should announce a translated confirmation when the vision model changes', () => {
       const modelId = component.visionModels[0].id;
       component.onVisionModelChange(modelId);
       expect(strategyServiceMock.updatePreferences).toHaveBeenCalledWith({ visionModel: modelId });
-      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.visionModelUpdated');
+      expect(notifications.success).toHaveBeenCalledWith('aiPage.visionModelUpdated');
     });
 
     it('should announce a translated error for an invalid model selection', () => {
       component.onTextModelChange('not-a-real-model');
-      expect(announcerMock.announce).toHaveBeenCalledWith('aiPage.invalidModelSelection', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('aiPage.invalidModelSelection');
       expect(strategyServiceMock.updatePreferences).not.toHaveBeenCalledWith(
         jasmine.objectContaining({ textModel: 'not-a-real-model' })
       );

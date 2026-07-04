@@ -6,12 +6,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { RecurringService } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { RecurringTransaction, Category, CreateRecurringDTO } from '../../../models';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -19,6 +17,7 @@ import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
   selector: 'app-recurring-transactions',
@@ -32,7 +31,6 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
     MatMenuModule,
     MatChipsModule,
     MatDialogModule,
-    MatSnackBarModule,
     EmptyStateComponent,
     CurrencyPipe,
     DatePipe,
@@ -42,12 +40,11 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
   styleUrl: './recurring-transactions.component.scss',
 })
 export class RecurringTransactionsComponent implements OnInit {
+  private notifications = inject(NotificationService);
   private recurringService = inject(RecurringService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
 
   private t(key: string, params?: Record<string, string | number>): string {
     return this.translationService.t(key, params);
@@ -98,13 +95,11 @@ export class RecurringTransactionsComponent implements OnInit {
     if (recurring.isActive) {
       await this.recurringService.pauseRecurring(recurring.id);
       const message = this.t('settings.recurringPaused');
-      this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
-      this.announcer.announce(message);
+      this.notifications.success(message);
     } else {
       await this.recurringService.resumeRecurring(recurring.id);
       const message = this.t('settings.recurringResumed');
-      this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
-      this.announcer.announce(message);
+      this.notifications.success(message);
     }
   }
 
@@ -122,8 +117,7 @@ export class RecurringTransactionsComponent implements OnInit {
       if (confirmed) {
         this.recurringService.deleteRecurring(recurring.id).then(() => {
           const message = this.t('settings.recurringDeleted');
-          this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
         });
       }
     });
@@ -140,12 +134,10 @@ export class RecurringTransactionsComponent implements OnInit {
       if (result) {
         this.recurringService.createRecurring(result).then(() => {
           const message = this.t('settings.recurringCreated');
-          this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
         }).catch(() => {
           const message = this.t('settings.recurringCreateFailed');
-          this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-          this.announcer.announce(message, 'assertive');
+          this.notifications.error(message);
         });
       }
     });
@@ -162,12 +154,10 @@ export class RecurringTransactionsComponent implements OnInit {
       if (result) {
         this.recurringService.updateRecurring(recurring.id, result).then(() => {
           const message = this.t('settings.recurringUpdated');
-          this.snackBar.open(message, this.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
         }).catch(() => {
           const message = this.t('settings.recurringUpdateFailed');
-          this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-          this.announcer.announce(message, 'assertive');
+          this.notifications.error(message);
         });
       }
     });

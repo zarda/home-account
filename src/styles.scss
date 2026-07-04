@@ -254,6 +254,21 @@ html, body {
   justify-content: flex-end;
 }
 
+/* Snackbar tone accents (NotificationService panelClass hooks). A leading
+   border tints the transient toast by outcome without changing the default
+   dark snackbar surface. */
+.snackbar-success .mdc-snackbar__surface {
+  border-inline-start: 4px solid var(--color-income);
+}
+
+.snackbar-error .mdc-snackbar__surface {
+  border-inline-start: 4px solid var(--color-expense);
+}
+
+.snackbar-info .mdc-snackbar__surface {
+  border-inline-start: 4px solid var(--color-info);
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

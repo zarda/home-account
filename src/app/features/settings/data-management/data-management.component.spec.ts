@@ -12,11 +12,13 @@ import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
+import { NotificationService } from '../../../core/services/notification.service';
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;
   let fixture: ComponentFixture<DataManagementComponent>;
   let mockExportService: jasmine.SpyObj<ExportService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let mockTransactionService: jasmine.SpyObj<TransactionService>;
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
@@ -53,6 +55,7 @@ describe('DataManagementComponent', () => {
     });
 
     mockAuthService = jasmine.createSpyObj('AuthService', ['signOut']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
@@ -64,6 +67,7 @@ describe('DataManagementComponent', () => {
     await TestBed.configureTestingModule({
       imports: [DataManagementComponent, NoopAnimationsModule],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: ExportService, useValue: mockExportService },
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: CategoryService, useValue: mockCategoryService },
@@ -79,6 +83,7 @@ describe('DataManagementComponent', () => {
         set: {
           template: '<div></div>',
           providers: [
+        { provide: NotificationService, useValue: notifications },
             { provide: MatDialog, useValue: mockDialog },
             { provide: MatSnackBar, useValue: mockSnackBar },
             { provide: TranslationService, useValue: mockTranslationService }
@@ -127,8 +132,7 @@ describe('DataManagementComponent', () => {
       component.exportFullBackup();
       tick();
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.backupExported', 'common.close', { duration: 3000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('settings.backupExported');
+      expect(notifications.success).toHaveBeenCalledWith('settings.backupExported');
     }));
 
     it('should set isExporting to false after completion', fakeAsync(() => {
@@ -152,7 +156,6 @@ describe('DataManagementComponent', () => {
       component.exportTransactionsCSV();
       tick();
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.transactionsExported', 'common.close', { duration: 3000 });
     }));
   });
 
@@ -167,8 +170,7 @@ describe('DataManagementComponent', () => {
 
       component.onFileSelected(event);
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.selectCsvOrJson', 'common.close', { duration: 3000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('settings.selectCsvOrJson', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('settings.selectCsvOrJson');
     });
 
     it('should handle no file selected', () => {

@@ -7,18 +7,17 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatMenuModule } from '@angular/material/menu';
 
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 import { CategoryFormDialogComponent } from './category-form-dialog/category-form-dialog.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
   selector: 'app-category-manager',
@@ -33,7 +32,6 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
     MatButtonModule,
     MatButtonToggleModule,
     MatDialogModule,
-    MatSnackBarModule,
     MatMenuModule,
     TranslatePipe,
   ],
@@ -41,11 +39,10 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
   styleUrl: './category-manager.component.scss',
 })
 export class CategoryManagerComponent implements OnInit {
+  private notifications = inject(NotificationService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
 
   selectedType: 'expense' | 'income' = 'expense';
   categories = signal<Category[]>([]);
@@ -80,8 +77,7 @@ export class CategoryManagerComponent implements OnInit {
     const ids = categories.map(c => c.id);
     this.categoryService.reorderCategories(ids).then(() => {
       const message = this.translationService.t('settings.categoriesReordered');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-      this.announcer.announce(message);
+      this.notifications.success(message);
       this.loadCategories();
     });
   }
@@ -101,8 +97,7 @@ export class CategoryManagerComponent implements OnInit {
           type: this.selectedType,
         }).then(() => {
           const message = this.translationService.t('settings.categoryCreated');
-          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
           this.loadCategories();
         });
       }
@@ -123,8 +118,7 @@ export class CategoryManagerComponent implements OnInit {
           color: result.color,
         }).then(() => {
           const message = this.translationService.t('settings.categoryUpdated');
-          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
           this.loadCategories();
         });
       }
@@ -147,8 +141,7 @@ export class CategoryManagerComponent implements OnInit {
       if (confirmed) {
         this.categoryService.deleteCategory(category.id).then(() => {
           const message = this.translationService.t('settings.categoryDeleted');
-          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
           this.loadCategories();
         });
       }

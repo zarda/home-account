@@ -14,11 +14,13 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RecurringTransaction, Category } from '../../../models';
+import { NotificationService } from '../../../core/services/notification.service';
 
 describe('RecurringTransactionsComponent', () => {
   let component: RecurringTransactionsComponent;
   let fixture: ComponentFixture<RecurringTransactionsComponent>;
   let mockRecurringService: jasmine.SpyObj<RecurringService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
@@ -78,6 +80,7 @@ describe('RecurringTransactionsComponent', () => {
     mockRecurringService.getFrequencyText.and.returnValue('Every month on the 1st');
 
     mockCategoryService = jasmine.createSpyObj('CategoryService', ['loadCategories']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     mockCategoryService.loadCategories.and.returnValue(of(mockCategories));
 
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
@@ -105,6 +108,7 @@ describe('RecurringTransactionsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [RecurringTransactionsComponent, NoopAnimationsModule],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: RecurringService, useValue: mockRecurringService },
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: MatDialog, useValue: mockDialog },
@@ -124,6 +128,7 @@ describe('RecurringTransactionsComponent', () => {
         set: {
           template: '<div></div>',
           providers: [
+        { provide: NotificationService, useValue: notifications },
             { provide: MatDialog, useValue: mockDialog },
             { provide: MatSnackBar, useValue: mockSnackBar },
             { provide: TranslationService, useValue: mockTranslationService }
@@ -207,8 +212,7 @@ describe('RecurringTransactionsComponent', () => {
       tick();
 
       expect(mockRecurringService.pauseRecurring).toHaveBeenCalledWith('rec1');
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Recurring transaction paused', 'Close', { duration: 2000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Recurring transaction paused');
+      expect(notifications.success).toHaveBeenCalledWith('Recurring transaction paused');
     }));
 
     it('should resume paused recurring transaction', fakeAsync(() => {
@@ -218,8 +222,7 @@ describe('RecurringTransactionsComponent', () => {
       tick();
 
       expect(mockRecurringService.resumeRecurring).toHaveBeenCalledWith('rec1');
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Recurring transaction resumed', 'Close', { duration: 2000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Recurring transaction resumed');
+      expect(notifications.success).toHaveBeenCalledWith('Recurring transaction resumed');
     }));
   });
 
@@ -282,8 +285,7 @@ describe('RecurringTransactionsComponent', () => {
       tick();
 
       expect(mockRecurringService.createRecurring).toHaveBeenCalledWith(result);
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Recurring transaction created', 'Close', { duration: 2000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Recurring transaction created');
+      expect(notifications.success).toHaveBeenCalledWith('Recurring transaction created');
     }));
 
     it('should announce assertively when creation fails', fakeAsync(() => {
@@ -304,8 +306,7 @@ describe('RecurringTransactionsComponent', () => {
       component.openAddDialog();
       tick();
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('settings.recurringCreateFailed', 'Close', { duration: 3000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('settings.recurringCreateFailed', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('settings.recurringCreateFailed');
     }));
   });
 
@@ -342,8 +343,7 @@ describe('RecurringTransactionsComponent', () => {
       tick();
 
       expect(mockRecurringService.updateRecurring).toHaveBeenCalledWith('rec1', editResult);
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Recurring transaction updated', 'Close', { duration: 2000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Recurring transaction updated');
+      expect(notifications.success).toHaveBeenCalledWith('Recurring transaction updated');
     }));
 
     it('should not update when dialog is dismissed', fakeAsync(() => {
@@ -364,8 +364,7 @@ describe('RecurringTransactionsComponent', () => {
       component.openEditDialog(mockRecurring[0]);
       tick();
 
-      expect(mockSnackBar.open).toHaveBeenCalledWith('Failed to update recurring transaction', 'Close', { duration: 3000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('Failed to update recurring transaction', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('Failed to update recurring transaction');
     }));
   });
 
@@ -379,6 +378,7 @@ describe('RecurringTransactionsComponent', () => {
       await TestBed.configureTestingModule({
         imports: [RecurringTransactionsComponent, NoopAnimationsModule],
         providers: [
+        { provide: NotificationService, useValue: notifications },
           { provide: RecurringService, useValue: mockRecurringService },
           { provide: CategoryService, useValue: mockCategoryService },
           { provide: MatDialog, useValue: mockDialog },
@@ -402,6 +402,7 @@ describe('RecurringTransactionsComponent', () => {
         .overrideComponent(RecurringTransactionsComponent, {
           add: {
             providers: [
+        { provide: NotificationService, useValue: notifications },
               { provide: MatDialog, useValue: mockDialog },
               { provide: MatSnackBar, useValue: mockSnackBar },
               { provide: TranslationService, useValue: mockTranslationService }

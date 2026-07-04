@@ -9,11 +9,13 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { ThemeService } from '../../../core/services/theme.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
+import { NotificationService } from '../../../core/services/notification.service';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
   let fixture: ComponentFixture<ProfileSettingsComponent>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockThemeService: jasmine.SpyObj<ThemeService>;
@@ -38,6 +40,7 @@ describe('ProfileSettingsComponent', () => {
     mockAuthService.updateUserProfile.and.returnValue(Promise.resolve());
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['setLocale', 't'], {
       currentLocale: signal('en'),
@@ -62,6 +65,7 @@ describe('ProfileSettingsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: AuthService, useValue: mockAuthService },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: TranslationService, useValue: mockTranslationService },
@@ -151,7 +155,7 @@ describe('ProfileSettingsComponent', () => {
       mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('fail')));
       await component.onCurrencyChange();
 
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('common.error', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
     });
   });
 
@@ -179,14 +183,12 @@ describe('ProfileSettingsComponent', () => {
       expect(component.displayName).toBe('Test User');
     });
 
-    it('should show error snackbar and revert when save fails', async () => {
-      const snackBarOpen = spyOn(fixture.debugElement.injector.get(MatSnackBar), 'open');
+    it('should show error notification and revert when save fails', async () => {
       mockAuthService.updateUserProfile.and.returnValue(Promise.reject(new Error('fail')));
       component.displayName = 'New Name';
       await component.onDisplayNameChange();
 
-      expect(snackBarOpen).toHaveBeenCalledWith('common.error', 'common.close', jasmine.any(Object));
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('common.error', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
       expect(component.displayName).toBe('Test User');
     });
   });
