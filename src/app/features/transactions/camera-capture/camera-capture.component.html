@@ -68,8 +68,7 @@
       <div class="multi-image-preview">
         @if (isProcessing()) {
           <div class="processing-overlay">
-            <mat-spinner diameter="48"></mat-spinner>
-            <p>{{ processingStatus() }}</p>
+            <app-loading-spinner size="lg" [message]="processingStatus()" />
           </div>
         }
 

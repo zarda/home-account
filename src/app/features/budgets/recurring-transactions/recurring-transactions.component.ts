@@ -5,7 +5,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
@@ -19,18 +18,19 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 
 @Component({
   selector: 'app-recurring-transactions',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
     AmountDisplayComponent,
     CommonModule,
     MatIconModule,
     MatButtonModule,
     MatMenuModule,
     MatChipsModule,
-    MatProgressSpinnerModule,
     MatDialogModule,
     MatSnackBarModule,
     EmptyStateComponent,

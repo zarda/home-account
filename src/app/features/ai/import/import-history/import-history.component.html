@@ -11,9 +11,7 @@
   </app-page-header>
 
   @if (isLoading()) {
-    <div class="loading">
-      <mat-spinner diameter="40"></mat-spinner>
-    </div>
+    <app-loading-spinner [message]="'import.loadingHistory' | translate" />
   } @else if (importHistory().length === 0) {
     <app-empty-state
       icon="history"

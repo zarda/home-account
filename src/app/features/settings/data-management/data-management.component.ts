@@ -5,7 +5,6 @@ import { firstValueFrom } from 'rxjs';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
@@ -18,16 +17,17 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 
 @Component({
   selector: 'app-data-management',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
     CommonModule,
     RouterLink,
     MatIconModule,
     MatButtonModule,
-    MatProgressSpinnerModule,
     MatProgressBarModule,
     MatDialogModule,
     MatSnackBarModule,

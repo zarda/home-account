@@ -605,6 +605,7 @@
     "viewHistory": "查看歷史",
     "history": "匯入歷史",
     "noHistory": "沒有匯入歷史",
+    "loadingHistory": "正在載入記錄…",
     "startImport": "開始匯入",
     "uploadStep": "上傳檔案",
     "processingStep": "處理中",

@@ -81,21 +81,6 @@ mat-card-content {
   padding: 16px;
 }
 
-// Loading state
-.loading-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 24px 0;
-  @apply text-gray-500 dark:text-gray-400;
-
-  span {
-    font-size: var(--text-sm);
-  }
-}
-
-// Empty state
 // Error state
 .error-state {
   display: flex;

@@ -99,8 +99,7 @@
           hidden
         />
         @if (isImporting()) {
-          <mat-spinner diameter="32"></mat-spinner>
-          <span>{{ 'settings.processingFile' | translate }}</span>
+          <app-loading-spinner [message]="'settings.processingFile' | translate" />
         } @else {
           <mat-icon>cloud_upload</mat-icon>
           <span class="dropzone-text">{{ 'settings.uploadPrompt' | translate }}</span>

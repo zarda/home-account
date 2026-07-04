@@ -413,7 +413,7 @@ stable — reference them in commit messages (see 10.2).
 - [x] **P3.6** — Adopt fixed `AmountDisplayComponent` app-wide (§7; depends on P0.6)
 - [x] **P3.7** — Dialog defaults (`MAT_DIALOG_DEFAULT_OPTIONS`) + one dialog chrome (§7)
 - [x] **P3.8** — Adopt `EmptyStateComponent` everywhere; add `size='sm'` (§7)
-- [ ] **P3.9** — Adopt `LoadingSpinnerComponent` for page/section loading (§7)
+- [x] **P3.9** — Adopt `LoadingSpinnerComponent` for page/section loading (§7)
 - [ ] **P3.10** — Notification service wrapping the uniform snackbar shape (§7)
 - [ ] **P3.11** — Pure/memoized `TranslatePipe` (§7)
 

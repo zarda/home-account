@@ -7,7 +7,6 @@ import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
@@ -20,11 +19,13 @@ import { ImportHistory, ImportStatus } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
+import { LoadingSpinnerComponent } from '../../../../shared/components/loading-spinner/loading-spinner.component';
 
 @Component({
   selector: 'app-import-history',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
     EmptyStateComponent,
     PageHeaderComponent,
     CommonModule,
@@ -33,7 +34,6 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
     MatIconModule,
     MatButtonModule,
     MatChipsModule,
-    MatProgressSpinnerModule,
     MatSnackBarModule,
     MatDialogModule,
     TranslatePipe

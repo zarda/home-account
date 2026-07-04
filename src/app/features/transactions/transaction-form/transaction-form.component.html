@@ -33,8 +33,7 @@
               </button>
               @if (isScanning()) {
                 <div class="scanning-overlay">
-                  <mat-spinner diameter="32"></mat-spinner>
-                  <span>{{ 'ai.scanning' | translate }}</span>
+                  <app-loading-spinner [message]="'ai.scanning' | translate" />
                 </div>
               }
             </div>

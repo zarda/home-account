@@ -636,6 +636,7 @@
     "duplicatesSkipped": "Duplicates skipped",
     "history": "Import History",
     "noHistory": "No import history yet",
+    "loadingHistory": "Loading history…",
     "startImport": "Start Import",
     "deleteHistory": "Delete History",
     "deleteHistoryConfirm": "Are you sure you want to delete this import history record?",

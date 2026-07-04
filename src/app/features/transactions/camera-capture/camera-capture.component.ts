@@ -17,6 +17,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 
 interface CapturedImage {
   id: string;
@@ -29,6 +30,7 @@ interface CapturedImage {
   selector: 'app-camera-capture',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
     DialogHeaderComponent,
     CommonModule,
     MatDialogModule,

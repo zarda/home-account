@@ -9,9 +9,7 @@
   </div>
 
   @if (isLoading()) {
-    <div class="loading-state">
-      <mat-spinner diameter="32"></mat-spinner>
-    </div>
+    <app-loading-spinner />
   } @else if (recurringTransactions().length === 0) {
     <app-empty-state
       icon="repeat"

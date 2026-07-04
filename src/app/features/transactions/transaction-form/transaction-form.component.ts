@@ -29,6 +29,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -39,6 +40,7 @@ interface DialogData {
   selector: 'app-transaction-form',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
     DialogHeaderComponent,
     CommonModule,
     ReactiveFormsModule,
