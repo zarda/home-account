@@ -49,3 +49,7 @@ src/environments/environment.prod-local.ts
 ios/App/App/GoogleService-Info.plist
 **/GoogleService-Info.plist
 firebase-debug.log
+
+# Firebase emulator logs
+firestore-debug.log
+ui-debug.log
