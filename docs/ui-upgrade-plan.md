@@ -391,7 +391,7 @@ stable — reference them in commit messages (see 10.2).
 - [ ] **P1.4** — Typography & spacing scale; radius + elevation tokens (§5.4)
 - [ ] **P1.5** — Self-host fonts/icons; fix `theme-color` PWA chrome (§5.5)
 - [ ] **P1.6** — Shared chart-theme helper reacting to theme flips (§5.6)
-- [ ] **P1.7** — Global `:focus-visible` + `prefers-reduced-motion` primitives (§5.7)
+- [x] **P1.7** — Global `:focus-visible` + `prefers-reduced-motion` primitives (§5.7)
 
 **Phase 2 — app shell & navigation (§6):**
 

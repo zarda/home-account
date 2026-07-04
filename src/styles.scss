@@ -282,6 +282,29 @@ html, body {
   color: var(--text-primary);
 }
 
+/* Keyboard focus: one visible, token-driven ring app-wide. Material
+   components keep their own focus treatment; this covers hand-rolled
+   interactive elements (drawer links, dropzones, custom rows) that
+   previously stripped or never defined an outline. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Respect the user's reduced-motion preference everywhere: collapse
+   animations/transitions to a frame instead of removing them, so
+   animation-end hooks still fire. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Custom utility classes */
 .mat-elevation-soft {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
