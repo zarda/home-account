@@ -4,7 +4,21 @@
   background-color: var(--surface-background);
 }
 
-// Sidebar backdrop (visible on all screen sizes when sidebar open)
+// Docked sidebar (desktop): a layout column, not an overlay — no backdrop,
+// no shadow, content shifts right instead of being covered.
+.sidebar-docked {
+  position: fixed;
+  top: 64px; // Below header
+  left: 0;
+  bottom: 0;
+  width: 256px;
+  z-index: var(--z-docked-sidebar);
+  background: var(--surface-card);
+  border-right: 1px solid var(--border-primary);
+  overflow-y: auto;
+}
+
+// Backdrop for the overlay drawer (tablet/mobile only)
 .sidebar-backdrop {
   position: fixed;
   top: 0;
@@ -12,28 +26,23 @@
   right: 0;
   bottom: 0;
   background: var(--overlay-backdrop);
-  z-index: 1100;
+  z-index: var(--z-drawer-backdrop);
   cursor: pointer;
 }
 
-// Sidebar drawer - overlay mode for all screens
+// Overlay drawer (tablet/mobile only): full height from the top
 .sidebar-drawer {
   position: fixed;
-  top: 64px; // Below header on desktop
+  top: 0;
   left: 0;
   bottom: 0;
-  width: 256px;
-  z-index: 1200;
+  width: 280px;
+  z-index: var(--z-drawer);
   background: var(--surface-card);
   border-right: 1px solid var(--border-primary);
   box-shadow: var(--shadow-overlay);
   animation: slideIn 0.2s ease-out;
-
-  // Tablet/Mobile: Full height from top
-  &.tablet-mobile {
-    top: 0;
-    width: 280px;
-  }
+  overflow-y: auto;
 }
 
 @keyframes slideIn {
@@ -56,6 +65,10 @@
   padding-top: 64px;
 }
 
+.main-container.with-docked-sidebar {
+  left: 256px;
+}
+
 .main-container.with-bottom-nav {
   bottom: 64px;
 }
@@ -73,7 +86,7 @@
   left: 0;
   right: 0;
   height: 64px;
-  z-index: 1000;
+  z-index: var(--z-bottom-nav);
 }
 
 .bottom-nav-container.visible {

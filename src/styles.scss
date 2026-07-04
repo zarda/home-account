@@ -77,6 +77,16 @@ html.dark-theme {
   --radius-full: 9999px;
   --radius-card: var(--radius-md);
 
+  // Z-index scale for the app shell. Everything sits below the CDK
+  // overlay container (z-index 1000) so Material menus, dialogs, and
+  // snackbars always render above shell chrome — previously the drawer
+  // (1200) could cover open dialogs.
+  --z-header: 800;
+  --z-bottom-nav: 850;
+  --z-docked-sidebar: 790;
+  --z-drawer-backdrop: 900;
+  --z-drawer: 910;
+
   // Brand colors
   --color-primary: #3F51B5;
   --color-primary-light: #eef2ff;

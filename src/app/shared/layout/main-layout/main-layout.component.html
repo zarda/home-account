@@ -1,11 +1,18 @@
 <!-- Header -->
 <app-header
-  [isSidebarOpen]="sidebarOpen()"
+  [isSidebarOpen]="sidebarVisible()"
   (toggleSidebar)="toggleSidebar()"
 />
 
-<!-- Sidebar Overlay (all screen sizes) -->
-@if (sidebarOpen()) {
+<!-- Docked sidebar (desktop): part of the layout, no backdrop, content offset -->
+@if (showDockedSidebar()) {
+  <div class="sidebar-docked">
+    <app-sidebar [isExpanded]="true" (navItemClicked)="onNavItemClicked()" />
+  </div>
+}
+
+<!-- Overlay drawer (tablet/mobile only): modal, with backdrop + focus trap -->
+@if (isOverlayMode() && sidebarOpen()) {
   <div
     class="sidebar-backdrop"
     role="button"
@@ -15,7 +22,14 @@
     (keydown.enter)="closeSidebar()"
     (keydown.escape)="closeSidebar()"
   ></div>
-  <div class="sidebar-drawer" [class.tablet-mobile]="isOverlayMode()">
+  <div
+    class="sidebar-drawer"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Navigation"
+    cdkTrapFocus
+    cdkTrapFocusAutoCapture
+  >
     <app-sidebar [isExpanded]="true" (navItemClicked)="onNavItemClicked()" />
   </div>
 }
@@ -24,6 +38,7 @@
 <div
   class="main-container"
   [class.with-bottom-nav]="isMobile()"
+  [class.with-docked-sidebar]="showDockedSidebar()"
 >
   <div class="content-wrapper">
     <router-outlet />
