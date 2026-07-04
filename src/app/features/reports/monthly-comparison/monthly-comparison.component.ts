@@ -9,6 +9,7 @@ import { ChartConfiguration, ChartData } from 'chart.js';
 
 import { Transaction } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -28,6 +29,7 @@ interface MonthlyComparison {
   selector: 'app-monthly-comparison',
   standalone: true,
   imports: [
+    StatCardComponent,
     CommonModule,
     MatCardModule,
     MatIconModule,

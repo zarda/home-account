@@ -1,0 +1,32 @@
+<div class="stat-card elevation-card">
+  @if (icon()) {
+    <div class="stat-icon" [class]="'tone-' + tone()">
+      <mat-icon>{{ icon() }}</mat-icon>
+    </div>
+  }
+
+  <div class="stat-body">
+    <span class="stat-label">
+      {{ label() }}
+      @if (labelSuffix()) {
+        <span class="stat-label-suffix">{{ labelSuffix() }}</span>
+      }
+    </span>
+    <span class="stat-value" [class]="'tone-' + tone()">{{ value() }}</span>
+    @if (detail()) {
+      <span class="stat-detail" [class]="'detail-' + detailTone()">{{ detail() }}</span>
+    }
+  </div>
+
+  @if (delta() !== null) {
+    <div class="stat-delta">
+      <span class="delta-chip" [class.positive]="deltaIsPositive()" [class.negative]="!deltaIsPositive()">
+        <mat-icon>{{ delta()! >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+        {{ delta()! | number: '1.1-1' }}%
+      </span>
+      @if (deltaCaption()) {
+        <span class="delta-caption">{{ deltaCaption() }}</span>
+      }
+    </div>
+  }
+</div>

@@ -8,38 +8,28 @@
   <div class="spending-analysis">
     <!-- Summary Cards -->
     <div class="summary-cards">
-      <div class="summary-card income">
-        <div class="card-icon">
-          <mat-icon>trending_up</mat-icon>
-        </div>
-        <div class="card-content">
-          <span class="label">{{ 'reports.totalIncome' | translate }}</span>
-          <span class="value">{{ totalIncome() | currency:currencyCode:'symbol':'1.2-2' }}</span>
-        </div>
-      </div>
+      <app-stat-card
+        [label]="'reports.totalIncome' | translate"
+        [value]="(totalIncome() | currency:currencyCode:'symbol':'1.2-2') ?? ''"
+        icon="trending_up"
+        tone="income"
+      />
 
-      <div class="summary-card expense">
-        <div class="card-icon">
-          <mat-icon>trending_down</mat-icon>
-        </div>
-        <div class="card-content">
-          <span class="label">{{ 'reports.totalExpenses' | translate }}</span>
-          <span class="value">{{ totalExpenses() | currency:currencyCode:'symbol':'1.2-2' }}</span>
-        </div>
-      </div>
+      <app-stat-card
+        [label]="'reports.totalExpenses' | translate"
+        [value]="(totalExpenses() | currency:currencyCode:'symbol':'1.2-2') ?? ''"
+        icon="trending_down"
+        tone="expense"
+      />
 
-      <div class="summary-card" [class.positive]="netSavings() >= 0" [class.negative]="netSavings() < 0">
-        <div class="card-icon">
-          <mat-icon>{{ netSavings() >= 0 ? 'savings' : 'money_off' }}</mat-icon>
-        </div>
-        <div class="card-content">
-          <span class="label">{{ 'reports.netSavings' | translate }}</span>
-          <span class="value">{{ netSavings() | currency:currencyCode:'symbol':'1.2-2' }}</span>
-          <span class="rate" [class.positive]="savingsRate() >= 0" [class.negative]="savingsRate() < 0">
-            {{ savingsRate() >= 0 ? '+' : '' }}{{ savingsRate() | number:'1.1-1' }}%
-          </span>
-        </div>
-      </div>
+      <app-stat-card
+        [label]="'reports.netSavings' | translate"
+        [value]="(netSavings() | currency:currencyCode:'symbol':'1.2-2') ?? ''"
+        [icon]="netSavings() >= 0 ? 'savings' : 'money_off'"
+        [tone]="netSavings() >= 0 ? 'positive' : 'negative'"
+        [detail]="(savingsRate() >= 0 ? '+' : '') + (savingsRate() | number:'1.1-1') + '%'"
+        [detailTone]="savingsRate() >= 0 ? 'positive' : 'negative'"
+      />
     </div>
 
     <!-- Trend Chart -->

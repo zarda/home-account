@@ -407,7 +407,7 @@ stable — reference them in commit messages (see 10.2).
 
 - [x] **P3.1** — Extract `<app-page-header>` (§7)
 - [x] **P3.2** — Extract `<app-period-selector>` (§7)
-- [ ] **P3.3** — Extract `<app-stat-card>` (§7)
+- [x] **P3.3** — Extract `<app-stat-card>` (§7)
 - [ ] **P3.4** — Extract `<app-transaction-row>` (§7)
 - [ ] **P3.5** — Extend `CategoryChipComponent` with tile appearance; replace 6+ local copies (§7)
 - [ ] **P3.6** — Adopt fixed `AmountDisplayComponent` app-wide (§7; depends on P0.6)

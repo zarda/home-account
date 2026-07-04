@@ -8,6 +8,7 @@ import { ChartConfiguration, ChartData } from 'chart.js';
 
 import { Transaction, Category } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ChartThemeService } from '../../../core/services/chart-theme.service';
@@ -25,6 +26,7 @@ interface MonthlyData {
   selector: 'app-spending-analysis',
   standalone: true,
   imports: [
+    StatCardComponent,
     CommonModule,
     MatCardModule,
     MatIconModule,
