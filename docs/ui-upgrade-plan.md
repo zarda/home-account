@@ -366,7 +366,7 @@ stable — reference them in commit messages (see 10.2).
 
 **Test scaffolding (lands first):**
 
-- [ ] **PT.1** — Route-level UI smoke spec: boot the app against the Firebase emulators
+- [x] **PT.1** — Route-level UI smoke spec: boot the app against the Firebase emulators
   (pattern: `src/app/core/services/storage.service.smoke.spec.ts`), render the shell and each
   main route (dashboard, transactions, budgets, reports, settings), assert each page renders
   its header/key landmark and throws no errors. Name it `*.smoke.spec.ts` so the existing
