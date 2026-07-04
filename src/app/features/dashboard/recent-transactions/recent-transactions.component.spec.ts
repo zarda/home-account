@@ -1,13 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter, Router } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 import { RecentTransactionsComponent } from './recent-transactions.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction } from '../../../models';
+import { createUser } from '../../../core/services/testing';
 
 describe('RecentTransactionsComponent', () => {
   let component: RecentTransactionsComponent;
@@ -17,7 +20,10 @@ describe('RecentTransactionsComponent', () => {
   let router: Router;
 
   beforeEach(async () => {
-    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
     currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
     categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
       'getCategoryName',
@@ -38,6 +44,7 @@ describe('RecentTransactionsComponent', () => {
       providers: [
         provideRouter([]),
         { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
         { provide: DateFormatService, useValue: dateFormat },
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
@@ -65,6 +72,23 @@ describe('RecentTransactionsComponent', () => {
     expect(component.formatAmount(20, 'USD')).toBe('USD 20');
     expect(component.formatDate(Timestamp.now())).toBe('2026-06-15');
     expect(component.formatRelativeDate(Timestamp.now())).toBe('today');
+  });
+
+  describe('convertedAmount', () => {
+    const foreignRow = {
+      amount: 3800,
+      currency: 'JPY',
+      amountInBaseCurrency: 25.42
+    } as Transaction;
+
+    it('shows the base-currency value for foreign-currency rows', () => {
+      expect(component.convertedAmount(foreignRow)).toBe('≈ USD 25.42');
+    });
+
+    it('returns null for rows already in the base currency', () => {
+      const usdRow = { amount: 10, currency: 'USD', amountInBaseCurrency: 10 } as Transaction;
+      expect(component.convertedAmount(usdRow)).toBeNull();
+    });
   });
 
   it('onAddTransaction navigates to the transactions page in add mode', () => {

@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { Timestamp } from '@angular/fire/firestore';
 import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -33,6 +34,7 @@ export class RecentTransactionsComponent {
 
   private router = inject(Router);
   private currencyService = inject(CurrencyService);
+  private authService = inject(AuthService);
   private dateFormatService = inject(DateFormatService);
   private categoryHelperService = inject(CategoryHelperService);
 
@@ -50,6 +52,16 @@ export class RecentTransactionsComponent {
 
   formatAmount(amount: number, currency: string): string {
     return this.currencyService.formatCurrency(amount, currency);
+  }
+
+  // Secondary line for foreign-currency rows: what the row counts as in the
+  // user's base currency (write-time snapshot; live conversion for legacy
+  // rows). Null for rows already in the base currency.
+  convertedAmount(transaction: Transaction): string | null {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    if (transaction.currency === baseCurrency) return null;
+    const inBase = this.currencyService.amountInBase(transaction, baseCurrency);
+    return `≈ ${this.currencyService.formatCurrency(inBase, baseCurrency)}`;
   }
 
   formatDate(date: Date | Timestamp): string {

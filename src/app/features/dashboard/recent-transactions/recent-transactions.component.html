@@ -55,6 +55,9 @@
               >
                 {{ transaction.type === 'income' ? '+' : '-' }}{{ formatAmount(transaction.amount, transaction.currency) }}
               </span>
+              @if (convertedAmount(transaction); as converted) {
+                <span class="amount-converted">{{ converted }}</span>
+              }
               <span class="transaction-date">{{ formatRelativeDate(transaction.date) }}</span>
             </div>
           </div>

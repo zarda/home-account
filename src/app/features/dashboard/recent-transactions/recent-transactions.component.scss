@@ -137,6 +137,10 @@
   @apply text-red-600 dark:text-red-400;
 }
 
+.amount-converted {
+  @apply block text-xs text-gray-400 dark:text-gray-500;
+}
+
 .transaction-date {
   font-size: 0.75rem;
   @apply text-gray-400 dark:text-gray-500;

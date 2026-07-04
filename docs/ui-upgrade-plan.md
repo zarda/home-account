@@ -381,7 +381,7 @@ stable — reference them in commit messages (see 10.2).
 - [x] **P0.5** — Un-clip the "Currency" label in the Add Transaction dialog (§4 row 0.5)
 - [x] **P0.6** — Fix `AmountDisplayComponent` reactivity via signal inputs (§4 row 0.6)
 - [x] **P0.7** — ConfirmDialog i18n fallback + `confirmText`→`confirmLabel` call sites (§4 row 0.7)
-- [ ] **P0.8** — Converted secondary value on foreign-currency rows (§4 row 0.8)
+- [x] **P0.8** — Converted secondary value on foreign-currency rows (§4 row 0.8)
 
 **Phase 1 — token & theming foundation (§5):**
 
