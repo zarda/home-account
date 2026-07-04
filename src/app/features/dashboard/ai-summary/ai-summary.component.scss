@@ -2,7 +2,7 @@
   @apply bg-gradient-to-br from-primary-50 to-indigo-50;
   @apply dark:from-primary-900/20 dark:to-indigo-900/20;
   @apply border border-primary-100 dark:border-primary-800;
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -25,13 +25,13 @@ mat-card-header {
 
 .ai-icon {
   @apply text-primary-500;
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
 
 .title {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   @apply text-primary-700 dark:text-primary-300;
   text-transform: uppercase;
@@ -47,7 +47,7 @@ mat-card-header {
   justify-content: center;
 
   mat-icon {
-    font-size: 18px;
+    font-size: var(--text-lg);
     width: 18px;
     height: 18px;
     display: flex;
@@ -91,7 +91,7 @@ mat-card-content {
   @apply text-gray-500 dark:text-gray-400;
 
   span {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
   }
 }
 
@@ -107,13 +107,13 @@ mat-card-content {
   @apply text-gray-400 dark:text-gray-500;
 
   mat-icon {
-    font-size: 32px;
+    font-size: var(--text-3xl);
     width: 32px;
     height: 32px;
   }
 
   span {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
   }
 }
 
@@ -124,18 +124,18 @@ mat-card-content {
   justify-content: center;
   gap: 8px;
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   @apply bg-red-50 dark:bg-red-900/20;
   @apply text-red-600 dark:text-red-400;
 
   mat-icon {
-    font-size: 20px;
+    font-size: var(--text-xl);
     width: 20px;
     height: 20px;
   }
 
   span {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
   }
 }
 
@@ -145,7 +145,7 @@ mat-card-content {
 }
 
 .summary-text {
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
   line-height: 1.6;
   @apply text-gray-700 dark:text-gray-300;
   margin: 0;
@@ -153,7 +153,7 @@ mat-card-content {
 
 .advice-section {
   padding: 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   @apply bg-amber-50 dark:bg-amber-900/20;
   @apply border border-amber-200 dark:border-amber-800;
 }
@@ -165,14 +165,14 @@ mat-card-content {
   margin-bottom: 8px;
 
   mat-icon {
-    font-size: 18px;
+    font-size: var(--text-lg);
     width: 18px;
     height: 18px;
     @apply text-amber-500;
   }
 
   span {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -182,7 +182,7 @@ mat-card-content {
 }
 
 .advice-text {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
   @apply text-amber-800 dark:text-amber-200;
   margin: 0;
@@ -201,25 +201,25 @@ mat-card-content {
   }
 
   .markdown-h1 {
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     border-bottom: 2px solid;
     @apply border-primary-300 dark:border-primary-700;
     padding-bottom: 8px;
   }
 
   .markdown-h2 {
-    font-size: 1.1rem;
+    font-size: var(--text-lg);
     border-bottom: 1px solid;
     @apply border-primary-200 dark:border-primary-800;
     padding-bottom: 6px;
   }
 
   .markdown-h3 {
-    font-size: 1rem;
+    font-size: var(--text-base);
   }
 
   p {
-    font-size: 0.9375rem;
+    font-size: var(--text-base);
     line-height: 1.6;
     @apply text-gray-700 dark:text-gray-300;
     margin: 8px 0;
@@ -242,7 +242,7 @@ mat-card-content {
     margin: 8px 0;
 
     li {
-      font-size: 0.9375rem;
+      font-size: var(--text-base);
       line-height: 1.6;
       @apply text-gray-700 dark:text-gray-300;
       margin-bottom: 6px;

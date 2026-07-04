@@ -11,7 +11,7 @@
 
 .section-label {
   display: block;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   @apply text-gray-700 dark:text-gray-300;
   margin-bottom: 12px;
@@ -32,7 +32,7 @@
   width: 44px;
   height: 44px;
   @apply border border-gray-200 dark:border-gray-700;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   @apply bg-white dark:bg-gray-800;
   cursor: pointer;
   display: flex;
@@ -73,7 +73,7 @@
   width: 44px;
   height: 44px;
   border: 2px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -91,7 +91,7 @@
 
   mat-icon {
     color: white;
-    font-size: 20px;
+    font-size: var(--text-xl);
     width: 20px;
     height: 20px;
   }
@@ -109,13 +109,13 @@
   gap: 12px;
   padding: 12px;
   @apply bg-gray-50 dark:bg-gray-800;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .preview-icon {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;

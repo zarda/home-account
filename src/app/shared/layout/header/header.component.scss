@@ -27,7 +27,7 @@
 }
 
 .app-title {
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--color-primary);
 }
@@ -71,7 +71,7 @@ button[aria-label="User menu"] {
 }
 
 .user-email {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 4px 0 0 0;
 }

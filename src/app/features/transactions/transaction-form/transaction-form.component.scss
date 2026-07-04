@@ -14,7 +14,7 @@
   @apply border-2 border-dashed border-gray-300 dark:border-gray-600;
   @apply bg-gray-50 dark:bg-gray-800;
   @apply hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   transition: all 0.2s ease;
 
   mat-icon {
@@ -35,7 +35,7 @@
 
 .receipt-preview {
   position: relative;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   @apply bg-gray-100 dark:bg-gray-800;
   @apply border border-gray-200 dark:border-gray-700;
@@ -107,7 +107,7 @@
   }
 
   .ai-icon {
-    font-size: 16px;
+    font-size: var(--text-base);
     width: 16px;
     height: 16px;
     margin-right: 4px;
@@ -115,7 +115,7 @@
   }
 
   mat-icon:not(.ai-icon) {
-    font-size: 18px;
+    font-size: var(--text-lg);
     width: 18px;
     height: 18px;
     margin-right: 6px;
@@ -142,7 +142,7 @@
 }
 
 .dialog-title {
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   @apply text-gray-900 dark:text-gray-100;
   margin: 0;
@@ -166,7 +166,7 @@
 .type-toggle {
   width: 100%;
   max-width: 320px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -224,7 +224,7 @@
 }
 
 .category-option mat-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
@@ -257,7 +257,7 @@
 }
 
 ::ng-deep .mat-mdc-dialog-surface {
-  border-radius: 16px !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 // Calendar date highlighting (must use ::ng-deep as datepicker renders in overlay)

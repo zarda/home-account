@@ -41,7 +41,7 @@
 
   .picker-btn {
     border: 1px solid var(--border-primary);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     width: 40px;
     height: 40px;
     display: flex;
@@ -67,8 +67,8 @@
   padding: 4px 4px 4px 12px;
   background: var(--color-primary-light);
   border: 1px solid var(--color-accent-light);
-  border-radius: 16px;
-  font-size: 0.875rem;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-accent);
 
@@ -78,7 +78,7 @@
     line-height: 24px;
 
     mat-icon {
-      font-size: 16px;
+      font-size: var(--text-base);
       width: 16px;
       height: 16px;
     }
@@ -102,7 +102,7 @@
 // Tabs styling
 .reports-tabs {
   background: var(--surface-card);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 
@@ -123,7 +123,7 @@
 
 .tab-icon {
   margin-right: 8px;
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }

@@ -13,7 +13,7 @@
 /* Mobile List Styles */
 .mobile-list {
   @apply bg-white dark:bg-gray-800;
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
 }
@@ -38,7 +38,7 @@
 .category-icon {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,7 +46,7 @@
 }
 
 .category-icon mat-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
@@ -60,7 +60,7 @@
 }
 
 .item-description {
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
   font-weight: 500;
   @apply text-gray-900 dark:text-gray-100;
   white-space: nowrap;
@@ -69,7 +69,7 @@
 }
 
 .item-category {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   @apply text-gray-500 dark:text-gray-400;
 }
 
@@ -82,7 +82,7 @@
 }
 
 .amount {
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
   font-weight: 600;
 }
 
@@ -99,7 +99,7 @@
 }
 
 .item-date {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   @apply text-gray-400 dark:text-gray-500;
 }
 
@@ -124,7 +124,7 @@
 /* Desktop Table Styles */
 .desktop-view {
   @apply bg-white dark:bg-gray-800;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
@@ -139,7 +139,7 @@
 }
 
 ::ng-deep .desktop-table .mat-mdc-header-cell {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   @apply text-gray-500 dark:text-gray-400;
   text-transform: uppercase;
@@ -186,7 +186,7 @@
 }
 
 .date-text {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   @apply text-gray-500 dark:text-gray-400;
 }
 
@@ -199,7 +199,7 @@
 .category-icon-sm {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -207,24 +207,24 @@
 }
 
 .category-icon-sm mat-icon {
-  font-size: 16px;
+  font-size: var(--text-base);
   width: 16px;
   height: 16px;
 }
 
 .category-name {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   @apply text-gray-700 dark:text-gray-300;
 }
 
 .description-text {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   @apply text-gray-900 dark:text-gray-100;
 }
 
 .note-icon {
-  font-size: 14px !important;
+  font-size: var(--text-sm) !important;
   width: 14px !important;
   height: 14px !important;
   @apply text-gray-400 dark:text-gray-500;
@@ -240,7 +240,7 @@
 }
 
 .receipt-icon {
-  font-size: 14px !important;
+  font-size: var(--text-sm) !important;
   width: 14px !important;
   height: 14px !important;
   @apply text-gray-400 dark:text-gray-500;
@@ -252,7 +252,7 @@
 }
 
 .receipt-indicator {
-  font-size: 14px !important;
+  font-size: var(--text-sm) !important;
   width: 14px !important;
   height: 14px !important;
   @apply text-gray-400 dark:text-gray-500;
@@ -261,7 +261,7 @@
 }
 
 .amount-text {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -284,7 +284,7 @@
 }
 
 .action-btn mat-icon {
-  font-size: 18px;
+  font-size: var(--text-lg);
   width: 18px;
   height: 18px;
   line-height: 18px;
@@ -319,10 +319,10 @@
   }
 
   .item-description {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
   }
 
   .amount {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
   }
 }

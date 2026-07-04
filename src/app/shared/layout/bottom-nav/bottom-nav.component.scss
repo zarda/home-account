@@ -23,7 +23,7 @@
   height: 48px;
   color: var(--text-muted);
   text-decoration: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .nav-item:hover {

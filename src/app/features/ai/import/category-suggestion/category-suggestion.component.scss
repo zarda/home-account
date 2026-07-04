@@ -7,14 +7,14 @@
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 13px;
+  border-radius: var(--radius-xl);
+  font-size: var(--text-sm);
   min-width: auto;
   height: 32px;
 }
 
 .category-icon {
-  font-size: 18px;
+  font-size: var(--text-lg);
   width: 18px;
   height: 18px;
   line-height: 18px;
@@ -28,9 +28,9 @@
 }
 
 .confidence-indicator {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-weight: 500;
 }
 
@@ -51,7 +51,7 @@
 }
 
 .dropdown-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
   line-height: 20px;

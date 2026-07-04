@@ -1,6 +1,6 @@
 .filters-container {
   @apply bg-white dark:bg-gray-800;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
@@ -18,14 +18,14 @@
   align-items: center;
   gap: 8px;
   @apply bg-gray-100 dark:bg-gray-700;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   min-width: 0;
 }
 
 .search-icon {
   @apply text-gray-400 dark:text-gray-500;
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
   flex-shrink: 0;
@@ -35,7 +35,7 @@
   flex: 1;
   border: none;
   background: transparent;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   outline: none;
   min-width: 0;
   @apply text-gray-900 dark:text-gray-100;
@@ -61,9 +61,9 @@
 .quick-btn {
   padding: 6px 12px;
   @apply border border-gray-200 dark:border-gray-700;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   @apply bg-white dark:bg-gray-800;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   @apply text-gray-500 dark:text-gray-400;
   cursor: pointer;
@@ -91,7 +91,7 @@
 }
 
 .quick-btn.date-picker-btn mat-icon {
-  font-size: 16px;
+  font-size: var(--text-base);
   width: 16px;
   height: 16px;
   line-height: 16px;
@@ -107,7 +107,7 @@
   width: 40px;
   height: 40px;
   @apply border border-gray-200 dark:border-gray-700;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   @apply bg-white dark:bg-gray-800;
   cursor: pointer;
   position: relative;
@@ -124,7 +124,7 @@
 }
 
 .filter-toggle mat-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
@@ -138,7 +138,7 @@
   border-radius: 50%;
   background: var(--color-primary);
   color: white;
-  font-size: 0.625rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -151,10 +151,10 @@
   gap: 4px;
   padding: 8px 16px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary);
   color: white;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -165,7 +165,7 @@
 }
 
 .add-btn mat-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
@@ -215,10 +215,10 @@
   margin-top: 8px;
   padding: 6px 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-error);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -228,7 +228,7 @@
 }
 
 .clear-btn mat-icon {
-  font-size: 16px;
+  font-size: var(--text-base);
   width: 16px;
   height: 16px;
 }

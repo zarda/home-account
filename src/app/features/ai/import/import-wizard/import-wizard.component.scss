@@ -18,14 +18,14 @@
 
 .header-content h1 {
   margin: 0 0 4px;
-  font-size: 28px;
+  font-size: var(--text-3xl);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .subtitle {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
@@ -44,7 +44,7 @@
 
 .features-row mat-chip {
   background: var(--surface-hover);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
 /* Stepper Styling */
@@ -88,12 +88,12 @@
   gap: 8px;
   padding: 0 24px;
   height: 44px;
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 500;
 }
 
 .action-button mat-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
@@ -101,8 +101,8 @@
 .count-badge {
   background: rgba(255, 255, 255, 0.2);
   padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   margin-left: 4px;
 }
 
@@ -112,7 +112,7 @@
 }
 
 .image-previews h3 {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-muted);
   margin: 0 0 12px;
@@ -126,7 +126,7 @@
 
 .preview-item {
   position: relative;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border-primary);
   aspect-ratio: 1;
@@ -146,7 +146,7 @@
   padding: 6px 8px;
   background: linear-gradient(transparent, rgba(0,0,0,0.7));
   color: white;
-  font-size: 11px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -227,14 +227,14 @@
 }
 
 .processing-title {
-  font-size: 22px;
+  font-size: var(--text-2xl);
   font-weight: 600;
   margin: 0 0 8px;
   color: var(--text-primary);
 }
 
 .processing-status {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 0 0 24px;
 }
@@ -246,7 +246,7 @@
 
 .custom-progress {
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 ::ng-deep .custom-progress .mdc-linear-progress__buffer-bar {
@@ -257,7 +257,7 @@
   position: absolute;
   right: 0;
   top: 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-muted);
 }
@@ -275,14 +275,14 @@
   gap: 12px;
   padding: 10px 14px;
   background: var(--surface-background);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   color: var(--text-muted);
   transition: all 0.3s ease;
 }
 
 .step-indicator mat-icon {
-  font-size: 18px;
+  font-size: var(--text-lg);
   width: 18px;
   height: 18px;
 }
@@ -328,14 +328,14 @@
 }
 
 .success-title {
-  font-size: 24px;
+  font-size: var(--text-2xl);
   font-weight: 600;
   margin: 0 0 8px;
   color: var(--text-primary);
 }
 
 .success-subtitle {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 0 0 24px;
 }
@@ -350,23 +350,23 @@
 }
 
 .error-title {
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 8px;
 }
 
 .error-message {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 0 0 8px;
 }
 
 .error-hint {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-secondary, #666);
   background: var(--surface-hover-active);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 10px 14px;
   margin: 0 0 20px;
   line-height: 1.5;
@@ -392,14 +392,14 @@
 }
 
 .review-header h2 {
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: 600;
   margin: 0 0 4px;
   color: var(--text-primary);
 }
 
 .review-header p {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 0;
 }
@@ -413,14 +413,14 @@
 }
 
 .summary-icon {
-  font-size: 32px;
+  font-size: var(--text-3xl);
   width: 32px;
   height: 32px;
   color: var(--color-primary);
 }
 
 .summary-header h2 {
-  font-size: 22px;
+  font-size: var(--text-2xl);
   font-weight: 600;
   margin: 0;
   color: var(--text-primary);
@@ -439,7 +439,7 @@
   gap: 16px;
   padding: 20px;
   background: var(--surface-card);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-primary);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -450,11 +450,11 @@
 }
 
 .summary-card mat-icon {
-  font-size: 28px;
+  font-size: var(--text-3xl);
   width: 28px;
   height: 28px;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 
 .transactions-card mat-icon {
@@ -501,13 +501,13 @@
   margin: 16px 0;
   background: rgba(156, 39, 176, 0.08);
   border: 1px solid rgba(156, 39, 176, 0.2);
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   color: var(--text-primary);
 
   mat-icon {
     color: #9c27b0;
-    font-size: 20px;
+    font-size: var(--text-xl);
     width: 20px;
     height: 20px;
   }
@@ -516,8 +516,8 @@
     background: #009688;
     color: white;
     padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 12px;
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
     font-weight: 500;
     margin-left: 8px;
   }
@@ -529,7 +529,7 @@
 }
 
 .card-value {
-  font-size: 22px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -547,7 +547,7 @@
 }
 
 .card-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -557,12 +557,12 @@
   text-align: center;
   padding: 24px;
   background: var(--surface-background);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   margin-bottom: 24px;
 }
 
 .importing-status {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 12px 0 0;
 }
@@ -582,11 +582,11 @@
   }
 
   .header-content h1 {
-    font-size: 22px;
+    font-size: var(--text-2xl);
   }
 
   .features-row mat-chip {
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
 
   .step-actions {
@@ -607,7 +607,7 @@
   }
 
   .card-value {
-    font-size: 18px;
+    font-size: var(--text-lg);
   }
 
   .processing-card,

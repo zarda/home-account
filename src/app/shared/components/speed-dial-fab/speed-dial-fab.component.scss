@@ -55,10 +55,10 @@
     background: rgba(0, 0, 0, 0.7);
     color: white;
     padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 14px;
+    border-radius: var(--radius-xs);
+    font-size: var(--text-sm);
     white-space: nowrap;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-md);
   }
 }
 

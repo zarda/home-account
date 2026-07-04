@@ -67,7 +67,7 @@
 .login-card {
   width: 100%;
   max-width: 400px;
-  border-radius: 24px !important;
+  border-radius: var(--radius-xl) !important;
   background: color-mix(in srgb, var(--surface-card) 90%, transparent) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -117,7 +117,7 @@ mat-card-header {
 .icon-wrapper {
   width: 80px;
   height: 80px;
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
   align-items: center;
@@ -149,16 +149,16 @@ mat-card-header {
   padding: 0.75rem 1rem;
   background: var(--color-error-light);
   border: 1px solid var(--color-error);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   color: var(--color-error);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
 .error-icon {
-  font-size: 20px !important;
+  font-size: var(--text-xl) !important;
   width: 20px !important;
   height: 20px !important;
 }
@@ -167,11 +167,11 @@ mat-card-header {
 .google-btn {
   width: 100%;
   height: 48px !important;
-  border-radius: 12px !important;
+  border-radius: var(--radius-md) !important;
   background: var(--surface-card) !important;
   color: var(--text-secondary) !important;
   font-weight: 500 !important;
-  font-size: 0.95rem !important;
+  font-size: var(--text-base) !important;
   border: 1px solid var(--border-primary) !important;
   box-shadow: var(--shadow-sm) !important;
   transition: all 0.2s ease !important;

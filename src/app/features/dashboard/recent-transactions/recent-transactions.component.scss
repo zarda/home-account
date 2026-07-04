@@ -1,5 +1,5 @@
 .card {
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   height: 100%;
   overflow: hidden;
   min-width: 0; // Allow card to shrink in grid
@@ -14,7 +14,7 @@
 }
 
 .card-title {
-  font-size: 1.125rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   @apply text-gray-900 dark:text-gray-100;
   margin: 0;
@@ -24,7 +24,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   @apply text-indigo-600 dark:text-indigo-400;
   text-decoration: none;
@@ -36,7 +36,7 @@
 }
 
 .view-all-icon {
-  font-size: 18px;
+  font-size: var(--text-lg);
   width: 18px;
   height: 18px;
 }
@@ -76,7 +76,7 @@
 .category-icon {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -84,7 +84,7 @@
 }
 
 .category-icon mat-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
@@ -98,7 +98,7 @@
 }
 
 .transaction-description {
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
   font-weight: 500;
   @apply text-gray-900 dark:text-gray-100;
   white-space: nowrap;
@@ -107,7 +107,7 @@
 }
 
 .transaction-category {
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   @apply text-gray-500 dark:text-gray-400;
 }
 
@@ -121,7 +121,7 @@
 }
 
 .amount {
-  font-size: 0.9375rem;
+  font-size: var(--text-base);
   font-weight: 600;
   white-space: nowrap; // Prevent amount from wrapping
   overflow: hidden;
@@ -142,7 +142,7 @@
 }
 
 .transaction-date {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   @apply text-gray-400 dark:text-gray-500;
 }
 
@@ -168,10 +168,10 @@
   }
 
   .transaction-description {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
   }
 
   .amount {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
   }
 }

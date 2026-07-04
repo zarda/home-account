@@ -17,19 +17,19 @@
   gap: 16px;
   padding: 20px;
   @apply bg-white dark:bg-gray-800;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   @apply border border-gray-200 dark:border-gray-700;
 
   .card-icon {
     width: 48px;
     height: 48px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
 
     mat-icon {
-      font-size: 24px;
+      font-size: var(--text-2xl);
       width: 24px;
       height: 24px;
     }
@@ -41,17 +41,17 @@
     gap: 4px;
 
     .label {
-      font-size: 0.875rem;
+      font-size: var(--text-sm);
       @apply text-gray-500 dark:text-gray-400;
     }
 
     .value {
-      font-size: 1.5rem;
+      font-size: var(--text-2xl);
       font-weight: 600;
     }
 
     .rate {
-      font-size: 0.875rem;
+      font-size: var(--text-sm);
       font-weight: 500;
 
       &.positive {
@@ -128,7 +128,7 @@
   }
 
   mat-card-title {
-    font-size: 1.125rem;
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 }
@@ -146,7 +146,7 @@
   }
 
   mat-card-title {
-    font-size: 1.125rem;
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 }
@@ -172,13 +172,13 @@
 .category-icon {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
 
   mat-icon {
-    font-size: 20px;
+    font-size: var(--text-xl);
     width: 20px;
     height: 20px;
   }
@@ -196,7 +196,7 @@
   }
 
   .category-amount {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
     @apply text-gray-500 dark:text-gray-400;
   }
 }
@@ -211,20 +211,20 @@
   flex: 1;
   height: 8px;
   @apply bg-gray-100 dark:bg-gray-700;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   transition: width 0.3s ease;
 }
 
 .percentage-text {
   min-width: 50px;
   text-align: right;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   @apply text-gray-500 dark:text-gray-400;
 }

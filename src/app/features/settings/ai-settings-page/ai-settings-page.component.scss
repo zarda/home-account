@@ -11,7 +11,7 @@
   gap: 16px;
   padding: 16px;
   background: linear-gradient(135deg, var(--mat-sys-primary-container) 0%, var(--mat-sys-surface) 100%);
-  border-radius: 0 0 24px 24px;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
   margin-bottom: 16px;
 
   .back-button {
@@ -23,14 +23,14 @@
 
     h1 {
       margin: 0;
-      font-size: 24px;
+      font-size: var(--text-2xl);
       font-weight: 600;
       color: var(--mat-sys-on-surface);
     }
 
     .subtitle {
       margin: 4px 0 0;
-      font-size: 14px;
+      font-size: var(--text-sm);
       color: var(--mat-sys-on-surface-variant);
     }
   }
@@ -77,11 +77,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     flex-shrink: 0;
 
     mat-icon {
-      font-size: 28px;
+      font-size: var(--text-3xl);
       width: 28px;
       height: 28px;
     }
@@ -94,13 +94,13 @@
     gap: 2px;
 
     .status-title {
-      font-size: 16px;
+      font-size: var(--text-base);
       font-weight: 600;
       color: var(--mat-sys-on-surface);
     }
 
     .status-hint {
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--mat-sys-on-surface-variant);
     }
   }
@@ -110,8 +110,8 @@
     align-items: center;
     gap: 4px;
     padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 12px;
+    border-radius: var(--radius-xl);
+    font-size: var(--text-xs);
     font-weight: 500;
 
     &.offline {
@@ -120,7 +120,7 @@
     }
 
     mat-icon {
-      font-size: 16px;
+      font-size: var(--text-base);
       width: 16px;
       height: 16px;
     }
@@ -144,21 +144,21 @@
       justify-content: center;
       background-color: var(--mat-sys-primary-container);
       color: var(--mat-sys-primary);
-      border-radius: 10px;
-      font-size: 20px;
+      border-radius: var(--radius-md);
+      font-size: var(--text-xl);
       flex-shrink: 0;
     }
 
     h2 {
       margin: 0;
-      font-size: 16px;
+      font-size: var(--text-base);
       font-weight: 600;
       color: var(--mat-sys-on-surface);
     }
 
     .section-description {
       margin: 2px 0 0;
-      font-size: 13px;
+      font-size: var(--text-sm);
       color: var(--mat-sys-on-surface-variant);
     }
   }
@@ -187,12 +187,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     position: relative;
     overflow: hidden;
 
     mat-icon {
-      font-size: 24px;
+      font-size: var(--text-2xl);
       width: 24px;
       height: 24px;
       color: white;
@@ -223,7 +223,7 @@
     color: var(--mat-sys-primary);
 
     mat-icon {
-      font-size: 16px;
+      font-size: var(--text-base);
       width: 16px;
       height: 16px;
     }
@@ -237,8 +237,8 @@
     padding: 4px 12px;
     background-color: var(--mat-sys-tertiary);
     color: var(--mat-sys-on-tertiary);
-    border-radius: 16px;
-    font-size: 11px;
+    border-radius: var(--radius-lg);
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -291,8 +291,8 @@
   align-items: center;
   gap: 6px;
   padding: 10px 14px;
-  border-radius: 10px;
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   font-weight: 500;
   margin-top: 8px;
 
@@ -307,7 +307,7 @@
   }
 
   mat-icon {
-    font-size: 18px;
+    font-size: var(--text-lg);
     width: 18px;
     height: 18px;
   }
@@ -321,11 +321,11 @@
   margin-top: 16px;
   background-color: var(--mat-sys-error-container);
   color: var(--mat-sys-on-error-container);
-  border-radius: 12px;
-  font-size: 14px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
 
   mat-icon {
-    font-size: 20px;
+    font-size: var(--text-xl);
     width: 20px;
     height: 20px;
   }
@@ -335,7 +335,7 @@
 .preferences-icon {
   background-color: var(--mat-sys-secondary-container);
   color: var(--mat-sys-on-secondary-container);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 6px;
 }
 
@@ -355,7 +355,7 @@
 }
 
 .option-status {
-  font-size: 1rem;
+  font-size: var(--text-base);
   width: 1rem;
   height: 1rem;
   margin-left: 8px;
@@ -376,14 +376,14 @@
 .queue-icon {
   background-color: var(--mat-sys-tertiary-container);
   color: var(--mat-sys-on-tertiary-container);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 6px;
 }
 
 .storage-icon {
   background-color: var(--mat-sys-secondary-container);
   color: var(--mat-sys-on-secondary-container);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 6px;
 }
 
@@ -394,13 +394,13 @@
   margin-bottom: 16px;
 
   .queue-count {
-    font-size: 36px;
+    font-size: var(--text-4xl);
     font-weight: 700;
     color: var(--mat-sys-primary);
   }
 
   .queue-label {
-    font-size: 14px;
+    font-size: var(--text-sm);
     color: var(--mat-sys-on-surface-variant);
   }
 }
@@ -411,7 +411,7 @@
   justify-content: space-between;
   padding-top: 12px;
   border-top: 1px solid var(--mat-sys-outline-variant);
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--mat-sys-on-surface);
 }
 
@@ -426,12 +426,12 @@
   }
 
   .info-label {
-    font-size: 14px;
+    font-size: var(--text-sm);
     color: var(--mat-sys-on-surface-variant);
   }
 
   .info-value {
-    font-size: 14px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--mat-sys-on-surface);
 
@@ -439,7 +439,7 @@
       text-transform: capitalize;
       padding: 4px 12px;
       background-color: var(--mat-sys-surface-container-high);
-      border-radius: 16px;
+      border-radius: var(--radius-lg);
     }
   }
 }

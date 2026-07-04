@@ -14,7 +14,7 @@
   mat-button-toggle-group {
     mat-icon {
       margin-right: 8px;
-      font-size: 18px;
+      font-size: var(--text-lg);
       width: 18px;
       height: 18px;
     }
@@ -27,12 +27,12 @@
   gap: 4px;
 
   .total-label {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
     @apply text-gray-500 dark:text-gray-400;
   }
 
   .total-value {
-    font-size: 1.75rem;
+    font-size: var(--text-3xl);
     font-weight: 700;
 
     &.expense {
@@ -53,11 +53,11 @@
 
   ::ng-deep {
     .mat-expansion-panel {
-      border-radius: 10px !important;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+      border-radius: var(--radius-md) !important;
+      box-shadow: var(--shadow-sm) !important;
 
       &:not(.mat-expanded) {
-        border-radius: 10px !important;
+        border-radius: var(--radius-md) !important;
       }
     }
 
@@ -97,14 +97,14 @@
 .category-icon {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 
   mat-icon {
-    font-size: 16px;
+    font-size: var(--text-base);
     width: 16px;
     height: 16px;
   }
@@ -113,7 +113,7 @@
 .category-name {
   font-weight: 500;
   @apply text-gray-800 dark:text-gray-100;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 .category-count {
@@ -128,7 +128,7 @@
 
   .category-amount {
     font-weight: 600;
-    font-size: 0.8125rem;
+    font-size: var(--text-sm);
     @apply text-gray-800 dark:text-gray-100;
 
     &.desktop-only {
@@ -139,8 +139,8 @@
   .category-percentage {
     padding: 2px 6px;
     @apply bg-gray-100 dark:bg-gray-700;
-    border-radius: 10px;
-    font-size: 0.6875rem;
+    border-radius: var(--radius-md);
+    font-size: var(--text-xs);
     font-weight: 500;
     @apply text-gray-500 dark:text-gray-400;
   }
@@ -156,13 +156,13 @@
 .percentage-bar {
   height: 8px;
   @apply bg-gray-100 dark:bg-gray-700;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
 }
 
 .percentage-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   transition: width 0.3s ease;
 }
 
@@ -178,15 +178,15 @@
   gap: 4px;
   padding: 12px;
   @apply bg-gray-50 dark:bg-gray-700;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 
   .stat-label {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     @apply text-gray-500 dark:text-gray-400;
   }
 
   .stat-value {
-    font-size: 1rem;
+    font-size: var(--text-base);
     font-weight: 600;
     @apply text-gray-800 dark:text-gray-100;
   }
@@ -198,7 +198,7 @@
 }
 
 .section-title {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   @apply text-gray-500 dark:text-gray-400;
   margin: 0 0 12px 0;
@@ -216,7 +216,7 @@
   align-items: center;
   padding: 12px;
   @apply bg-gray-50 dark:bg-gray-700;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .transaction-info {
@@ -225,13 +225,13 @@
   gap: 2px;
 
   .transaction-description {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     @apply text-gray-800 dark:text-gray-100;
   }
 
   .transaction-date {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
     @apply text-gray-400 dark:text-gray-500;
   }
 }
@@ -266,24 +266,24 @@
   .category-icon {
     width: 40px;
     height: 40px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
 
     mat-icon {
-      font-size: 20px;
+      font-size: var(--text-xl);
       width: 20px;
       height: 20px;
     }
   }
 
   .category-name {
-    font-size: 1rem;
+    font-size: var(--text-base);
   }
 
   .category-stats {
     gap: 12px;
 
     .category-amount {
-      font-size: 0.9375rem;
+      font-size: var(--text-base);
 
       &.desktop-only {
         display: inline;
@@ -292,7 +292,7 @@
 
     .category-percentage {
       padding: 2px 8px;
-      font-size: 0.75rem;
+      font-size: var(--text-xs);
     }
   }
 

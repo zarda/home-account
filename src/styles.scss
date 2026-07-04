@@ -60,6 +60,28 @@ html.dark-theme {
   --text-disabled: #9ca3af;
   --text-inverse: #ffffff;
 
+  // Type scale — the same sizes as the Tailwind text-* utilities used in
+  // templates, so SCSS and utility classes share one scale. 12px floor:
+  // micro-text below --text-xs is not part of the system.
+  --text-xs: 0.75rem; // 12px
+  --text-sm: 0.875rem; // 14px
+  --text-base: 1rem; // 16px
+  --text-lg: 1.125rem; // 18px
+  --text-xl: 1.25rem; // 20px
+  --text-2xl: 1.5rem; // 24px
+  --text-3xl: 1.875rem; // 30px
+  --text-4xl: 2.25rem; // 36px
+
+  // Radius scale. --radius-md is the default card/control radius; icon
+  // circles keep border-radius: 50% (geometry, not a design token).
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+  --radius-card: var(--radius-md);
+
   // Brand colors
   --color-primary: #3F51B5;
   --color-primary-light: #eef2ff;
@@ -189,8 +211,26 @@ html, body {
 }
 
 /* Custom utility classes */
+
+/* One elevation recipe app-wide: resting cards pair a hairline border with
+   --shadow-sm; interactive cards raise to --shadow-md on hover. */
 .mat-elevation-soft {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
+}
+
+.elevation-card {
+  border: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.elevation-card-interactive {
+  border: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: var(--shadow-md);
+  }
 }
 
 /* Scrollbar styling */
