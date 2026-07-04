@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
+import { CommonModule, DatePipe } from '@angular/common';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -32,7 +32,6 @@ import { NotificationService } from '../../../core/services/notification.service
     MatChipsModule,
     MatDialogModule,
     EmptyStateComponent,
-    CurrencyPipe,
     DatePipe,
     TranslatePipe,
   ],

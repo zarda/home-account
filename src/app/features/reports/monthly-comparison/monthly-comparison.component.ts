@@ -1,11 +1,16 @@
 import { Component, computed, inject, Input, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { map } from 'rxjs/operators';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTableModule } from '@angular/material/table';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
+
+import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 
 import { Transaction } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
@@ -47,6 +52,7 @@ export class MonthlyComparisonComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private chartTheme = inject(ChartThemeService);
+  private breakpointObserver = inject(BreakpointObserver);
 
   @Input() set transactions(value: Transaction[]) {
     this._transactions.set(value);
@@ -69,8 +75,21 @@ export class MonthlyComparisonComponent {
     return this._currency();
   }
 
-  displayedColumns = ['month', 'income', 'expense', 'balance', 'change'];
   chartType = 'bar' as const;
+
+  // Mobile drops the Trend column so the table fits without a 500px scroll.
+  private isMobile = toSignal(
+    this.breakpointObserver
+      .observe(APP_BREAKPOINTS.mobile)
+      .pipe(map(result => result.matches)),
+    { initialValue: false }
+  );
+
+  displayedColumns = computed(() =>
+    this.isMobile()
+      ? ['month', 'income', 'expense', 'balance']
+      : ['month', 'income', 'expense', 'balance', 'change']
+  );
 
   // Get currency symbol dynamically
   private getCurrencySymbol(): string {

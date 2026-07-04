@@ -5,7 +5,7 @@
 
       <button mat-flat-button color="primary" (click)="openExportDialog()" class="export-btn">
         <mat-icon>download</mat-icon>
-        <span class="desktop-label">{{ 'common.export' | translate }}</span>
+        <span class="export-label">{{ 'common.export' | translate }}</span>
       </button>
     </div>
   </app-page-header>
@@ -23,6 +23,7 @@
         <ng-template mat-tab-label>
           <mat-icon class="tab-icon">show_chart</mat-icon>
           <span class="tab-label">{{ 'reports.spendingAnalysis' | translate }}</span>
+          <span class="tab-label-short">{{ 'reports.tabAnalysis' | translate }}</span>
         </ng-template>
         <div class="tab-content">
           <app-spending-analysis
@@ -38,6 +39,7 @@
         <ng-template mat-tab-label>
           <mat-icon class="tab-icon">pie_chart</mat-icon>
           <span class="tab-label">{{ 'reports.categoryBreakdown' | translate }}</span>
+          <span class="tab-label-short">{{ 'reports.tabCategories' | translate }}</span>
         </ng-template>
         <div class="tab-content">
           <app-category-breakdown
@@ -52,6 +54,7 @@
         <ng-template mat-tab-label>
           <mat-icon class="tab-icon">bar_chart</mat-icon>
           <span class="tab-label">{{ 'reports.monthlyComparison' | translate }}</span>
+          <span class="tab-label-short">{{ 'reports.tabMonthly' | translate }}</span>
         </ng-template>
         <div class="tab-content">
           <app-monthly-comparison

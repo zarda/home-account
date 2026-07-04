@@ -425,7 +425,7 @@ stable — reference them in commit messages (see 10.2).
 - [x] **P4.2** — Transactions pass (§8.2)
 - [x] **P4.3** — Budgets pass (§8.3)
   ([after: summary strip + left-aligned tabs](./ui-audit/after-p4.3-budgets-desktop.png))
-- [ ] **P4.4** — Reports pass (§8.4)
+- [x] **P4.4** — Reports pass (§8.4)
 - [ ] **P4.5** — Settings/Auth/About pass (§8.5)
 - [ ] **P4.6** — AI import flow pass (§8.6)
 

@@ -82,8 +82,9 @@ export class ExportDialogComponent {
   }
 
   get dateRangeLabel(): string {
-    const start = this.data.dateRange.start.toLocaleDateString();
-    const end = this.data.dateRange.end.toLocaleDateString();
+    const locale = this.translationService.getIntlLocale();
+    const start = this.data.dateRange.start.toLocaleDateString(locale);
+    const end = this.data.dateRange.end.toLocaleDateString(locale);
     return `${start} - ${end}`;
   }
 
@@ -154,7 +155,7 @@ export class ExportDialogComponent {
     }
 
     const reportData: ReportData = {
-      title: 'Financial Report',
+      title: this.translationService.t('reports.pdfTitle'),
       period: this.dateRangeLabel,
       transactions: this.data.transactions,
       summary: {

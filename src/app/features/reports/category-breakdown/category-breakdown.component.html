@@ -35,6 +35,13 @@
       [description]="translationService.t('reports.noTransactionsForPeriod', { type: selectedType() })"
     />
   } @else {
+    <!-- Donut: the tab promised a pie chart but rendered none -->
+    <app-spending-chart
+      class="breakdown-chart"
+      [categoryTotals]="chartTotals()"
+      [categories]="chartCategories()"
+    />
+
     <!-- Category Panels -->
     <mat-accordion class="categories-accordion">
       @for (category of categoryBreakdown(); track category.categoryId) {
@@ -52,6 +59,15 @@
                 <span class="category-percentage">{{ category.percentage | number:'1.0-0' }}%</span>
               </div>
             </mat-panel-description>
+
+            <!-- Share bar anchored to the row so proportions read while collapsed -->
+            <div class="row-bar" aria-hidden="true">
+              <div
+                class="row-bar-fill"
+                [style.width.%]="category.percentage"
+                [style.background-color]="category.color"
+              ></div>
+            </div>
           </mat-expansion-panel-header>
 
           <div class="category-details">

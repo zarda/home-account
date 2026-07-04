@@ -26,12 +26,9 @@
   }
 }
 
-.mobile-label {
+// Export keeps its label at every width — an icon-only bar read as broken.
+.export-label {
   display: inline;
-}
-
-.desktop-label {
-  display: none;
 }
 
 // Tabs styling
@@ -63,8 +60,14 @@
   height: 20px;
 }
 
+// Tabs always carry text (icons alone were ambiguous): a short label on
+// mobile, the full label from the tablet breakpoint up.
 .tab-label {
   display: none;
+}
+
+.tab-label-short {
+  display: inline;
 }
 
 .tab-content {
@@ -85,16 +88,12 @@
     gap: 16px;
   }
 
-  .mobile-label {
-    display: none;
-  }
-
-  .desktop-label {
-    display: inline;
-  }
-
   .tab-label {
     display: inline;
+  }
+
+  .tab-label-short {
+    display: none;
   }
 
   .tab-icon {

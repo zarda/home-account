@@ -37,6 +37,15 @@
   }
 }
 
+// Donut: the tab icon is a pie chart, so give it a real one. Constrain the
+// width so it stays a compact centered donut rather than filling the tab.
+.breakdown-chart {
+  display: block;
+  max-width: 360px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 // Categories Accordion
 .categories-accordion {
   display: flex;
@@ -54,6 +63,7 @@
     }
 
     .mat-expansion-panel-header {
+      position: relative;
       padding: 10px 12px;
       min-height: 48px;
     }
@@ -77,6 +87,25 @@
       margin-right: 0;
     }
   }
+}
+
+// Thin share bar hugging the bottom edge of each collapsed row.
+.row-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 3px;
+  border-radius: var(--radius-xs);
+  @apply bg-gray-100 dark:bg-gray-700;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.row-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-xs);
+  transition: width 0.3s ease;
 }
 
 .category-header {
@@ -237,6 +266,11 @@
         padding: 0 20px 20px;
       }
     }
+  }
+
+  .row-bar {
+    left: 20px;
+    right: 20px;
   }
 
   .category-name {
