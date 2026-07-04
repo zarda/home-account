@@ -203,28 +203,16 @@
     // Gemini - Blue/Green gradient
     &.gemini {
       background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
-
-      @media (prefers-color-scheme: dark) {
-        background: linear-gradient(135deg, #669df6 0%, #5bb974 100%);
-      }
     }
 
     // OpenAI - Green gradient
     &.openai {
       background: linear-gradient(135deg, #10a37f 0%, #1a7f64 100%);
-
-      @media (prefers-color-scheme: dark) {
-        background: linear-gradient(135deg, #19c99d 0%, #2ba882 100%);
-      }
     }
 
     // Claude - Orange/Amber gradient
     &.claude {
       background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
-
-      @media (prefers-color-scheme: dark) {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-      }
     }
   }
 

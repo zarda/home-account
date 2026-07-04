@@ -125,11 +125,11 @@
   transition: box-shadow 0.2s, transform 0.2s;
 
   &:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-md);
   }
 
   &.cdk-drag-preview {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--shadow-overlay);
     opacity: 0.9;
   }
 
@@ -249,7 +249,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
+  background: color-mix(in srgb, var(--surface-card) 90%, transparent);
   border-radius: 8px;
   gap: 16px;
   z-index: 10;
@@ -284,15 +284,4 @@
 
 .image-grid.cdk-drop-list-dragging .image-item:not(.cdk-drag-placeholder) {
   transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
-}
-
-// Dark mode support
-:host-context(.dark) {
-  .processing-overlay {
-    background: rgba(0, 0, 0, 0.85);
-  }
-
-  .drag-handle {
-    background: rgba(255, 255, 255, 0.3);
-  }
 }

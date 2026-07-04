@@ -15,7 +15,7 @@
   @apply bg-white dark:bg-gray-800;
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
 }
 
 .mobile-item {
@@ -87,11 +87,11 @@
 }
 
 .amount.income {
-  color: #16a34a;
+  color: var(--color-income-text);
 }
 
 .amount.expense {
-  color: #dc2626;
+  color: var(--color-expense-text);
 }
 
 .amount-converted {
@@ -125,7 +125,7 @@
 .desktop-view {
   @apply bg-white dark:bg-gray-800;
   border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -266,11 +266,11 @@
 }
 
 .amount-text.income {
-  color: #16a34a;
+  color: var(--color-income-text);
 }
 
 .amount-text.expense {
-  color: #dc2626;
+  color: var(--color-expense-text);
 }
 
 .action-btn {

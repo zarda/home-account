@@ -284,18 +284,18 @@
   }
 
   &.has-income .mat-calendar-body-cell-content::after {
-    background-color: #22c55e;
+    background-color: var(--color-income);
   }
 
   &.has-expense .mat-calendar-body-cell-content::after {
-    background-color: #ef4444;
+    background-color: var(--color-expense);
   }
 
   &.has-both .mat-calendar-body-cell-content::after {
     width: 10px;
     height: 4px;
     border-radius: 2px;
-    background: linear-gradient(90deg, #22c55e 45%, transparent 45%, transparent 55%, #ef4444 55%);
+    background: linear-gradient(90deg, var(--color-income) 45%, transparent 45%, transparent 55%, var(--color-expense) 55%);
   }
 }
 

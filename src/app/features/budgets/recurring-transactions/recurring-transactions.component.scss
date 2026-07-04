@@ -125,11 +125,11 @@
   font-size: 1.25rem;
 
   &.expense {
-    color: #dc2626;
+    color: var(--color-expense-text);
   }
 
   &.income {
-    color: #16a34a;
+    color: var(--color-income-text);
   }
 }
 
@@ -157,15 +157,15 @@
 
 .recurring-next {
   font-size: 0.75rem;
-  color: #4f46e5;
+  color: var(--color-primary);
   font-weight: 500;
   margin-top: 4px;
 }
 
 .status-chip {
   &.paused {
-    background: #fef3c7 !important;
-    color: #d97706 !important;
+    background: var(--color-warning-light) !important;
+    color: var(--color-warning-text) !important;
     font-size: 0.7rem;
     min-height: 24px;
     padding: 0 8px;
@@ -173,9 +173,9 @@
 }
 
 .delete-action {
-  color: #dc2626;
+  color: var(--color-error);
 
   mat-icon {
-    color: #dc2626;
+    color: var(--color-error);
   }
 }

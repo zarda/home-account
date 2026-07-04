@@ -55,68 +55,68 @@
       font-weight: 500;
 
       &.positive {
-        color: #22c55e;
+        color: var(--color-income-text);
       }
 
       &.negative {
-        color: #ef4444;
+        color: var(--color-expense-text);
       }
     }
   }
 
   &.income {
     .card-icon {
-      background: rgba(34, 197, 94, 0.1);
+      background: color-mix(in srgb, var(--color-income) 10%, transparent);
 
       mat-icon {
-        color: #22c55e;
+        color: var(--color-income);
       }
     }
 
     .value {
-      color: #22c55e;
+      color: var(--color-income-text);
     }
   }
 
   &.expense {
     .card-icon {
-      background: rgba(239, 68, 68, 0.1);
+      background: color-mix(in srgb, var(--color-expense) 10%, transparent);
 
       mat-icon {
-        color: #ef4444;
+        color: var(--color-expense);
       }
     }
 
     .value {
-      color: #ef4444;
+      color: var(--color-expense-text);
     }
   }
 
   &.positive {
     .card-icon {
-      background: rgba(34, 197, 94, 0.1);
+      background: color-mix(in srgb, var(--color-income) 10%, transparent);
 
       mat-icon {
-        color: #22c55e;
+        color: var(--color-income);
       }
     }
 
     .value {
-      color: #22c55e;
+      color: var(--color-income-text);
     }
   }
 
   &.negative {
     .card-icon {
-      background: rgba(239, 68, 68, 0.1);
+      background: color-mix(in srgb, var(--color-expense) 10%, transparent);
 
       mat-icon {
-        color: #ef4444;
+        color: var(--color-expense);
       }
     }
 
     .value {
-      color: #ef4444;
+      color: var(--color-expense-text);
     }
   }
 }
