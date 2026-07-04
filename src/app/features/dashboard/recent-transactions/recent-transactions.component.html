@@ -24,43 +24,11 @@
     } @else {
       <div class="transaction-list">
         @for (transaction of transactions(); track transaction.id; let last = $last) {
-          <div class="transaction-item"
-               tabindex="0"
-               role="button"
-               (click)="onTransactionClick(transaction)"
-               (keydown.enter)="onTransactionClick(transaction)"
-               (keydown.space)="onTransactionClick(transaction)">
-            <!-- Category Icon -->
-            <div
-              class="category-icon"
-              [style.background-color]="getCategoryColor(transaction.categoryId) + '15'"
-            >
-              <mat-icon [style.color]="getCategoryColor(transaction.categoryId)">
-                {{ getCategoryIcon(transaction.categoryId) }}
-              </mat-icon>
-            </div>
-
-            <!-- Details -->
-            <div class="transaction-details">
-              <span class="transaction-description">{{ transaction.description }}</span>
-              <span class="transaction-category">{{ getCategoryName(transaction.categoryId) }}</span>
-            </div>
-
-            <!-- Amount -->
-            <div class="transaction-amount">
-              <span
-                class="amount"
-                [class.income]="transaction.type === 'income'"
-                [class.expense]="transaction.type === 'expense'"
-              >
-                {{ transaction.type === 'income' ? '+' : '-' }}{{ formatAmount(transaction.amount, transaction.currency) }}
-              </span>
-              @if (convertedAmount(transaction); as converted) {
-                <span class="amount-converted">{{ converted }}</span>
-              }
-              <span class="transaction-date">{{ formatRelativeDate(transaction.date) }}</span>
-            </div>
-          </div>
+          <app-transaction-row
+            [transaction]="transaction"
+            [categories]="categories()"
+            (activate)="onTransactionClick($event)"
+          />
           @if (!last) {
             <div class="divider"></div>
           }

@@ -1,0 +1,42 @@
+<div
+  class="transaction-row"
+  role="button"
+  tabindex="0"
+  (click)="onActivate()"
+  (keydown.enter)="onActivate()"
+  (keydown.space)="$event.preventDefault(); onActivate()"
+>
+  <!-- Category Icon -->
+  <div class="category-icon" [style.background-color]="categoryColor() + '15'">
+    <mat-icon [style.color]="categoryColor()">{{ categoryIcon() }}</mat-icon>
+  </div>
+
+  <!-- Details -->
+  <div class="row-details">
+    <span class="row-description">
+      {{ transaction().description }}
+      @if (transaction().receiptUrl) {
+        <mat-icon class="receipt-indicator">receipt_long</mat-icon>
+      }
+    </span>
+    <span class="row-category">{{ categoryName() }}</span>
+  </div>
+
+  <!-- Amount & Date -->
+  <div class="row-amount">
+    <span
+      class="amount"
+      [class.income]="transaction().type === 'income'"
+      [class.expense]="transaction().type === 'expense'"
+    >
+      {{ transaction().type === 'income' ? '+' : '-' }}{{ formatAmount() }}
+    </span>
+    @if (convertedAmount(); as converted) {
+      <span class="amount-converted">{{ converted }}</span>
+    }
+    <span class="row-date">{{ relativeDate() }}</span>
+  </div>
+
+  <!-- Trailing actions (e.g. overflow menu) -->
+  <ng-content />
+</div>

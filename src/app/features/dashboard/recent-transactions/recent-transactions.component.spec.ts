@@ -61,34 +61,20 @@ describe('RecentTransactionsComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('delegates category lookups to the helper service', () => {
-    expect(component.getCategoryName('c1')).toBe('Food');
-    expect(component.getCategoryIcon('c1')).toBe('restaurant');
-    expect(component.getCategoryColor('c1')).toBe('#fff');
+  // Row anatomy (category chip, amounts, converted line, dates) is covered
+  // by the shared TransactionRowComponent spec; here we assert the rows
+  // are rendered through it.
+  it('renders each transaction through the shared row component', () => {
+    fixture.componentRef.setInput('transactions', [
+      { id: 't1', description: 'Coffee', amount: 5, currency: 'USD', type: 'expense', categoryId: 'c1', date: Timestamp.now() } as Transaction,
+      { id: 't2', description: 'Salary', amount: 100, currency: 'USD', type: 'income', categoryId: 'c1', date: Timestamp.now() } as Transaction,
+    ]);
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('app-transaction-row');
+    expect(rows.length).toBe(2);
     expect(categoryHelper.getCategoryName).toHaveBeenCalledWith('c1', jasmine.any(Map));
-  });
-
-  it('formats amounts and dates through their services', () => {
-    expect(component.formatAmount(20, 'USD')).toBe('USD 20');
-    expect(component.formatDate(Timestamp.now())).toBe('2026-06-15');
-    expect(component.formatRelativeDate(Timestamp.now())).toBe('today');
-  });
-
-  describe('convertedAmount', () => {
-    const foreignRow = {
-      amount: 3800,
-      currency: 'JPY',
-      amountInBaseCurrency: 25.42
-    } as Transaction;
-
-    it('shows the base-currency value for foreign-currency rows', () => {
-      expect(component.convertedAmount(foreignRow)).toBe('≈ USD 25.42');
-    });
-
-    it('returns null for rows already in the base currency', () => {
-      const usdRow = { amount: 10, currency: 'USD', amountInBaseCurrency: 10 } as Transaction;
-      expect(component.convertedAmount(usdRow)).toBeNull();
-    });
+    expect(dateFormat.formatRelativeDate).toHaveBeenCalled();
   });
 
   it('onAddTransaction navigates to the transactions page in add mode', () => {

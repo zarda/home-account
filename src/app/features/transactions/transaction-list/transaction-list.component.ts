@@ -16,6 +16,7 @@ import { CategoryHelperService } from '../../../core/services/category-helper.se
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -23,6 +24,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   selector: 'app-transaction-list',
   standalone: true,
   imports: [
+    TransactionRowComponent,
     MatTableModule,
     MatSortModule,
     MatIconModule,

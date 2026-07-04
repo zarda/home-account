@@ -18,103 +18,6 @@
   box-shadow: var(--shadow-sm);
 }
 
-.mobile-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.mobile-item:hover {
-  @apply bg-gray-50 dark:bg-gray-700;
-}
-
-.mobile-item:active {
-  @apply bg-gray-100 dark:bg-gray-600;
-}
-
-.category-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.category-icon mat-icon {
-  font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
-}
-
-.item-details {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.item-description {
-  font-size: var(--text-base);
-  font-weight: 500;
-  @apply text-gray-900 dark:text-gray-100;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.item-category {
-  font-size: var(--text-sm);
-  @apply text-gray-500 dark:text-gray-400;
-}
-
-.item-amount {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.amount {
-  font-size: var(--text-base);
-  font-weight: 600;
-}
-
-.amount.income {
-  color: var(--color-income-text);
-}
-
-.amount.expense {
-  color: var(--color-expense-text);
-}
-
-.amount-converted {
-  @apply block text-xs text-gray-400 dark:text-gray-500;
-}
-
-.item-date {
-  font-size: var(--text-xs);
-  @apply text-gray-400 dark:text-gray-500;
-}
-
-.mobile-menu-btn {
-  margin-left: -8px;
-  margin-right: -8px;
-  flex-shrink: 0;
-}
-
-.mobile-menu-btn mat-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .mobile-divider {
   height: 1px;
   @apply bg-gray-100 dark:bg-gray-700;
@@ -271,6 +174,19 @@
 
 .amount-text.expense {
   color: var(--color-expense-text);
+}
+
+// Converted secondary line under foreign-currency amounts (desktop table)
+.amount-converted {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+// Trailing overflow button projected into the shared row (mobile list)
+.mobile-menu-btn {
+  flex-shrink: 0;
 }
 
 .action-btn {
