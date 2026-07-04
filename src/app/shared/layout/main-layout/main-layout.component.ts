@@ -1,10 +1,11 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 
 import { RouterOutlet } from '@angular/router';
-import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { A11yModule } from '@angular/cdk/a11y';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
+import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { HeaderComponent } from '../header/header.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
@@ -44,22 +45,20 @@ export class MainLayoutComponent {
     });
   }
 
+  // The app's one breakpoint scale (core/layout/breakpoints.ts):
+  // <600 mobile · 600–1023 tablet (overlay drawer) · ≥1024 docked sidebar.
   private breakpoint$ = this.breakpointObserver.observe([
-    Breakpoints.XSmall,
-    Breakpoints.Small,
-    Breakpoints.Medium,
-    Breakpoints.Large,
-    Breakpoints.XLarge,
+    APP_BREAKPOINTS.mobile,
+    APP_BREAKPOINTS.tablet,
+    APP_BREAKPOINTS.desktop,
   ]);
 
   private breakpointSignal = toSignal(
     this.breakpoint$.pipe(
       map((result) => ({
-        isMobile: result.breakpoints[Breakpoints.XSmall],
-        isTablet:
-          result.breakpoints[Breakpoints.Small] || result.breakpoints[Breakpoints.Medium],
-        isDesktop:
-          result.breakpoints[Breakpoints.Large] || result.breakpoints[Breakpoints.XLarge],
+        isMobile: result.breakpoints[APP_BREAKPOINTS.mobile],
+        isTablet: result.breakpoints[APP_BREAKPOINTS.tablet],
+        isDesktop: result.breakpoints[APP_BREAKPOINTS.desktop],
       }))
     ),
     { initialValue: { isMobile: false, isTablet: false, isDesktop: true } }

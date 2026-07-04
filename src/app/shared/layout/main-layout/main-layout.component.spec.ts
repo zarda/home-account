@@ -1,17 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { BehaviorSubject } from 'rxjs';
-import { BreakpointObserver, BreakpointState, Breakpoints } from '@angular/cdk/layout';
+import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
+import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { MainLayoutComponent } from './main-layout.component';
+
+const MOBILE = APP_BREAKPOINTS.mobile;
+const TABLET = APP_BREAKPOINTS.tablet;
+const DESKTOP = APP_BREAKPOINTS.desktop;
 
 function state(active: string[]): BreakpointState {
   const breakpoints: Record<string, boolean> = {};
-  for (const bp of [
-    Breakpoints.XSmall,
-    Breakpoints.Small,
-    Breakpoints.Medium,
-    Breakpoints.Large,
-    Breakpoints.XLarge,
-  ]) {
+  for (const bp of [MOBILE, TABLET, DESKTOP]) {
     breakpoints[bp] = active.includes(bp);
   }
   return { matches: active.length > 0, breakpoints };
@@ -24,7 +23,7 @@ describe('MainLayoutComponent', () => {
 
   beforeEach(async () => {
     localStorage.removeItem('homeaccount.sidebar-collapsed');
-    breakpoint$ = new BehaviorSubject<BreakpointState>(state([Breakpoints.Large]));
+    breakpoint$ = new BehaviorSubject<BreakpointState>(state([DESKTOP]));
     const observer = { observe: () => breakpoint$.asObservable() };
 
     await TestBed.configureTestingModule({
@@ -58,7 +57,7 @@ describe('MainLayoutComponent', () => {
   });
 
   it('keeps the overlay drawer closed when switching to mobile', () => {
-    breakpoint$.next(state([Breakpoints.XSmall]));
+    breakpoint$.next(state([MOBILE]));
     fixture.detectChanges();
     expect(component.isMobile()).toBeTrue();
     expect(component.isOverlayMode()).toBeTrue();
@@ -67,19 +66,19 @@ describe('MainLayoutComponent', () => {
   });
 
   it('treats tablet breakpoints as overlay mode', () => {
-    breakpoint$.next(state([Breakpoints.Medium]));
+    breakpoint$.next(state([TABLET]));
     fixture.detectChanges();
     expect(component.isTablet()).toBeTrue();
     expect(component.isOverlayMode()).toBeTrue();
   });
 
   it('closes an open overlay drawer when growing into desktop', () => {
-    breakpoint$.next(state([Breakpoints.XSmall]));
+    breakpoint$.next(state([MOBILE]));
     fixture.detectChanges();
     component.toggleSidebar();
     expect(component.sidebarOpen()).toBeTrue();
 
-    breakpoint$.next(state([Breakpoints.Large]));
+    breakpoint$.next(state([DESKTOP]));
     fixture.detectChanges();
     expect(component.sidebarOpen()).toBeFalse();
     expect(component.showDockedSidebar()).toBeTrue();
@@ -87,7 +86,7 @@ describe('MainLayoutComponent', () => {
 
   describe('toggleSidebar', () => {
     it('toggles the overlay drawer in overlay mode', () => {
-      breakpoint$.next(state([Breakpoints.XSmall]));
+      breakpoint$.next(state([MOBILE]));
       fixture.detectChanges();
 
       component.toggleSidebar();
@@ -118,7 +117,7 @@ describe('MainLayoutComponent', () => {
   });
 
   it('closeSidebar always closes the overlay drawer', () => {
-    breakpoint$.next(state([Breakpoints.XSmall]));
+    breakpoint$.next(state([MOBILE]));
     fixture.detectChanges();
     component.toggleSidebar();
     component.closeSidebar();
@@ -131,7 +130,7 @@ describe('MainLayoutComponent', () => {
     expect(component.showDockedSidebar()).toBeTrue();
 
     // Mobile with open drawer: escape closes it.
-    breakpoint$.next(state([Breakpoints.XSmall]));
+    breakpoint$.next(state([MOBILE]));
     fixture.detectChanges();
     component.toggleSidebar();
     component.onEscape();
@@ -144,7 +143,7 @@ describe('MainLayoutComponent', () => {
     expect(component.showDockedSidebar()).toBeTrue();
 
     // Mobile: closes the drawer.
-    breakpoint$.next(state([Breakpoints.XSmall]));
+    breakpoint$.next(state([MOBILE]));
     fixture.detectChanges();
     component.toggleSidebar();
     component.onNavItemClicked();

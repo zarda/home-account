@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: block;
   min-height: 100vh;
@@ -93,7 +95,7 @@
   display: block;
 }
 
-@media (max-width: 768px) {
+@include bp.mobile {
   .content-wrapper {
     padding: 16px;
   }

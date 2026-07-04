@@ -1,0 +1,40 @@
+/* The app's single breakpoint scale — SCSS side. Keep in sync with
+   src/app/core/layout/breakpoints.ts (same ranges, same semantics):
+     mobile  <600px   · bottom nav
+     tablet  600–1023 · overlay drawer
+     desktop ≥1024    · docked sidebar */
+
+$bp-mobile-max: 599.98px;
+$bp-tablet-min: 600px;
+$bp-tablet-max: 1023.98px;
+$bp-desktop-min: 1024px;
+
+@mixin mobile {
+  @media (max-width: $bp-mobile-max) {
+    @content;
+  }
+}
+
+@mixin tablet {
+  @media (min-width: $bp-tablet-min) and (max-width: $bp-tablet-max) {
+    @content;
+  }
+}
+
+@mixin tablet-down {
+  @media (max-width: $bp-tablet-max) {
+    @content;
+  }
+}
+
+@mixin tablet-up {
+  @media (min-width: $bp-tablet-min) {
+    @content;
+  }
+}
+
+@mixin desktop {
+  @media (min-width: $bp-desktop-min) {
+    @content;
+  }
+}
