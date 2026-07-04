@@ -364,6 +364,8 @@
     "dayOfMonth": "Day of Month",
     "everyDay": "Every day",
     "everyNDays": "Every {{n}} days",
+    "everyNWeeks": "Every {{n}} weeks",
+    "everyNMonths": "Every {{n}} months",
     "everyWeekday": "Every {{day}}",
     "everyNWeeksOn": "Every {{n}} weeks on {{day}}",
     "everyMonthOn": "Every month on the {{day}}{{suffix}}",
@@ -412,7 +414,8 @@
     "daily": "Daily",
     "weekly": "Weekly",
     "monthly": "Monthly",
-    "yearly": "Yearly"
+    "yearly": "Yearly",
+    "custom": "Custom"
   },
   "auth": {
     "signInWithGoogle": "Sign in with Google",

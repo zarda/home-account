@@ -364,6 +364,8 @@
     "dayOfMonth": "每月幾號",
     "everyDay": "每天",
     "everyNDays": "每 {{n}} 天",
+    "everyNWeeks": "每 {{n}} 週",
+    "everyNMonths": "每 {{n}} 個月",
     "everyWeekday": "每{{day}}",
     "everyNWeeksOn": "每 {{n}} 週的{{day}}",
     "everyMonthOn": "每月 {{day}} 號",
@@ -412,7 +414,8 @@
     "daily": "每日",
     "weekly": "每週",
     "monthly": "每月",
-    "yearly": "每年"
+    "yearly": "每年",
+    "custom": "自訂"
   },
   "auth": {
     "signInWithGoogle": "使用 Google 登入",

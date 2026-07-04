@@ -355,6 +355,8 @@
     "dayOfMonth": "日",
     "everyDay": "毎日",
     "everyNDays": "{{n}}日ごと",
+    "everyNWeeks": "{{n}}週間ごと",
+    "everyNMonths": "{{n}}ヶ月ごと",
     "everyWeekday": "毎週{{day}}",
     "everyNWeeksOn": "{{n}}週間ごとの{{day}}",
     "everyMonthOn": "毎月{{day}}日",
@@ -412,7 +414,8 @@
     "daily": "毎日",
     "weekly": "毎週",
     "monthly": "毎月",
-    "yearly": "毎年"
+    "yearly": "毎年",
+    "custom": "カスタム"
   },
   "auth": {
     "signInWithGoogle": "Googleでログイン",
@@ -628,7 +631,7 @@
     "noHistoryDescription": "スマートインポートで実行したインポートがここに表示されます。",
     "loadingHistory": "履歴を読み込み中…",
     "startImport": "インポートを開始",
-    "uploadStep": "ファイルをアップロード",
+    "uploadStep": "アップロード",
     "processingStep": "処理中",
     "reviewStep": "確認",
     "confirmStep": "完了",

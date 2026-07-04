@@ -6,6 +6,7 @@ import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
+import { TranslationService } from './translation.service';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -126,13 +127,38 @@ describe('RecurringService', () => {
     mockFirestoreService.dateToTimestamp.and.callFake((date: Date) => Timestamp.fromDate(date));
     installTransactionStub();
 
+    // Minimal English translation stub so getFrequencyText resolves keys.
+    const enFrequency: Record<string, string> = {
+      'frequency.daily': 'Daily',
+      'frequency.weekly': 'Weekly',
+      'frequency.monthly': 'Monthly',
+      'frequency.yearly': 'Yearly',
+      'frequency.custom': 'Custom',
+      'settings.everyNDays': 'Every {{n}} days',
+      'settings.everyNWeeks': 'Every {{n}} weeks',
+      'settings.everyNMonths': 'Every {{n}} months',
+      'settings.everyNYears': 'Every {{n}} years',
+    };
+    const mockTranslationService = {
+      t: (key: string, params?: Record<string, string | number>) => {
+        let out = enFrequency[key] ?? key;
+        if (params) {
+          for (const [k, v] of Object.entries(params)) {
+            out = out.replace(new RegExp(`{{\\s*${k}\\s*}}`, 'g'), String(v));
+          }
+        }
+        return out;
+      },
+    };
+
     TestBed.configureTestingModule({
       providers: [
         RecurringService,
         { provide: FirestoreService, useValue: mockFirestoreService },
         { provide: AuthService, useValue: mockAuthService },
         { provide: BudgetService, useValue: mockBudgetService },
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        { provide: TranslationService, useValue: mockTranslationService }
       ]
     });
 
