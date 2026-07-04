@@ -136,6 +136,10 @@
   },
   "budget": {
     "title": "予算",
+    "recurring": "定期",
+    "totalBudgeted": "予算",
+    "totalSpentLabel": "支出",
+    "overall": "全体",
     "budgets": "予算",
     "budgetsDescription": "カテゴリに支出上限を設定して予算目標を追跡する",
     "createBudget": "予算を作成",

@@ -136,6 +136,10 @@
   },
   "budget": {
     "title": "Budget",
+    "recurring": "Recurring",
+    "totalBudgeted": "Budgeted",
+    "totalSpentLabel": "Spent",
+    "overall": "Overall",
     "budgets": "Budgets",
     "budgetsDescription": "Set spending limits for categories to track your budget goals",
     "createBudget": "Create Budget",

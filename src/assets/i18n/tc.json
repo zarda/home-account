@@ -136,6 +136,10 @@
   },
   "budget": {
     "title": "預算",
+    "recurring": "定期",
+    "totalBudgeted": "預算",
+    "totalSpentLabel": "已花費",
+    "overall": "整體",
     "budgets": "預算",
     "budgetsDescription": "為類別設定支出上限以追蹤預算目標",
     "createBudget": "建立預算",

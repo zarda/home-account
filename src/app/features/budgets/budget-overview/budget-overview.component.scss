@@ -2,6 +2,45 @@
   display: block;
 }
 
+.budget-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-card);
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.summary-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.summary-value {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+
+  &.state-warning {
+    color: var(--color-warning-text);
+  }
+
+  &.state-over {
+    color: var(--color-expense-text);
+  }
+}
+
 .budget-grid {
   display: grid;
   gap: 16px;
