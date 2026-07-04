@@ -82,7 +82,9 @@ describe('SpendingAnalysisComponent', () => {
       ];
       return currencies.find(c => c.code === code);
     },
-    convert: (amount: number) => amount // 1:1 conversion for tests
+    convert: (amount: number) => amount, // 1:1 conversion for tests
+    amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
+      t.amountInBaseCurrency ?? t.amount
   };
 
   const mockTranslationService = {

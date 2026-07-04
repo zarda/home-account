@@ -48,6 +48,10 @@ describe('TransactionService', () => {
       ['EUR', 0.92],
       ['THB', 34.5]
     ]));
+    // Keep the write path's rates-loaded guard from hitting the real
+    // initialization chain (network fetch + default rates would clobber the
+    // seeded map above). Individual specs re-stub this to test the guard.
+    spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
   });
 
   afterEach(() => {
@@ -169,6 +173,38 @@ describe('TransactionService', () => {
       expect(transactionData['exchangeRate']).toBeDefined();
     });
 
+    it('waits for exchange rates before persisting the base-currency snapshot', async () => {
+      // Simulate rates that only become available while the write is in
+      // flight: without awaiting the guard, the snapshot is computed against
+      // the not-yet-loaded table (JPY missing -> 1:1) and the raw foreign
+      // amount is persisted as the base amount.
+      currencyService.exchangeRates.set(new Map([['USD', 1]]));
+      let resolveRates!: () => void;
+      (currencyService.ensureRatesLoaded as jasmine.Spy).and.returnValue(
+        new Promise<void>(resolve => (resolveRates = resolve))
+      );
+
+      const pending = service.addTransaction({
+        type: 'expense',
+        amount: 3800,
+        currency: 'JPY',
+        categoryId: 'food',
+        description: 'Dinner in Tokyo',
+        date: new Date()
+      });
+
+      currencyService.exchangeRates.set(new Map([['USD', 1], ['JPY', 149.5]]));
+      resolveRates();
+      await pending;
+
+      const written = mockFirestore.addDocumentSpy.mostRecent()?.args[1] as {
+        exchangeRate: number;
+        amountInBaseCurrency: number;
+      };
+      expect(written.exchangeRate).toBeCloseTo(1 / 149.5, 6);
+      expect(written.amountInBaseCurrency).toBeCloseTo(3800 / 149.5, 2);
+    });
+
     it('uploads the receipt and persists receiptUrl when a receiptFile is present', async () => {
       const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
 
@@ -239,7 +275,6 @@ describe('TransactionService', () => {
       const budget = createBudget({ id: 'b1', categoryId: 'food' });
       budgetService.budgets.set([budget]);
       mockFirestore.setMockDocument('users/test-user-123/budgets/b1', budget);
-      spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
 
       await service.addTransaction({
         type: 'expense',

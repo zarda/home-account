@@ -120,19 +120,20 @@ export class DashboardComponent implements OnInit {
   // Trailing-window expenses feeding the AI anomaly baseline (see BASELINE_WINDOW_MONTHS)
   historicalExpenses = signal<Transaction[] | null>(null);
 
-  // Compute totals with real-time currency conversion to user's base currency
+  // Totals use the write-time base-currency snapshot (deterministic across
+  // loads), falling back to live conversion only for legacy rows.
   totalIncome = computed(() => {
     const baseCurrency = this.baseCurrency();
     return this.transactions()
       .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, baseCurrency), 0);
+      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
   });
 
   totalExpenses = computed(() => {
     const baseCurrency = this.baseCurrency();
     return this.transactions()
       .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, baseCurrency), 0);
+      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
   });
 
   balance = computed(() => this.totalIncome() - this.totalExpenses());
@@ -145,7 +146,7 @@ export class DashboardComponent implements OnInit {
     const totals = new Map<string, { total: number; count: number }>();
     for (const t of expenseTransactions) {
       const current = totals.get(t.categoryId) || { total: 0, count: 0 };
-      const convertedAmount = this.currencyService.convert(t.amount, t.currency, baseCurrency);
+      const convertedAmount = this.currencyService.amountInBase(t, baseCurrency);
       totals.set(t.categoryId, { total: current.total + convertedAmount, count: current.count + 1 });
     }
 

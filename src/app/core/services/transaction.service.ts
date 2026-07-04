@@ -149,6 +149,10 @@ export class TransactionService {
       if (!userId) throw new Error('User not authenticated');
 
       const baseCurrency = this.authService.currentUser()?.preferences.baseCurrency ?? 'USD';
+      // The persisted base-currency snapshot must never be computed against
+      // the not-yet-loaded default rate table (which silently maps unknown
+      // currencies to 1:1 and stores raw foreign amounts as base amounts).
+      await this.currencyService.ensureRatesLoaded();
       const exchangeRate = this.currencyService.getExchangeRate(data.currency, baseCurrency);
       const amountInBaseCurrency = data.amount * exchangeRate;
 
@@ -242,6 +246,8 @@ export class TransactionService {
           const amount = data.amount ?? currentTransaction.amount;
           const currency = data.currency ?? currentTransaction.currency;
           const baseCurrency = this.authService.currentUser()?.preferences.baseCurrency ?? 'USD';
+          // Same guard as addTransaction: never snapshot against unloaded rates.
+          await this.currencyService.ensureRatesLoaded();
           const exchangeRate = this.currencyService.getExchangeRate(currency, baseCurrency);
 
           updateData.amount = amount;
@@ -383,7 +389,7 @@ export class TransactionService {
     ).pipe(
       map(transactions => {
         const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
-        const toBase = (t: Transaction) => this.currencyService.convert(t.amount, t.currency, baseCurrency);
+        const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
 
         const income = transactions
           .filter(t => t.type === 'income')
@@ -457,7 +463,7 @@ export class TransactionService {
     ).pipe(
       map(transactions => {
         const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
-        const toBase = (t: Transaction) => this.currencyService.convert(t.amount, t.currency, baseCurrency);
+        const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
 
         let income = 0;
         let expense = 0;

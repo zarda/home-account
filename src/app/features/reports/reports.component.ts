@@ -103,9 +103,10 @@ export class ReportsComponent implements OnInit {
     return map;
   });
 
-  // Convert transaction amount to current base currency dynamically
+  // Base-currency value: write-time snapshot first (deterministic), live
+  // conversion only as a legacy fallback.
   private toBaseCurrency(t: Transaction): number {
-    return this.currencyService.convert(t.amount, t.currency, this.baseCurrency());
+    return this.currencyService.amountInBase(t, this.baseCurrency());
   }
 
   // Computed totals (using dynamic conversion)

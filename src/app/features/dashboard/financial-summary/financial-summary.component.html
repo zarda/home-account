@@ -4,7 +4,7 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.totalIncome' | translate }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.totalIncome' | translate }} <span class="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">{{ currency() }}</span></p>
           <p class="text-2xl font-bold text-green-600 dark:text-green-400">
             {{ formatAmount(income()) }}
           </p>
@@ -35,7 +35,7 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.totalExpenses' | translate }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.totalExpenses' | translate }} <span class="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">{{ currency() }}</span></p>
           <p class="text-2xl font-bold text-red-600 dark:text-red-400">
             {{ formatAmount(expenses()) }}
           </p>
@@ -66,7 +66,7 @@
     <mat-card-content class="!p-4">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.netBalance' | translate }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">{{ 'common.netBalance' | translate }} <span class="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase">{{ currency() }}</span></p>
           <p
             class="text-2xl font-bold"
             [class.text-green-600]="balance() >= 0"

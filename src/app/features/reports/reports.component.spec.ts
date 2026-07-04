@@ -33,7 +33,9 @@ describe('ReportsComponent', () => {
 
     const mockCurrencyService = {
       currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
-      getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' })
+      getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
+      amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
+        t.amountInBaseCurrency ?? t.amount
     };
 
     await TestBed.configureTestingModule({

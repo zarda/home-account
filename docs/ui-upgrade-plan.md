@@ -374,7 +374,7 @@ stable — reference them in commit messages (see 10.2).
 
 **Phase 0 — trust & correctness quick wins (§4):**
 
-- [ ] **P0.1** — Deterministic multi-currency totals; base currency shown on summary cards (§4 row 0.1)
+- [x] **P0.1** — Deterministic multi-currency totals; base currency shown on summary cards (§4 row 0.1)
 - [ ] **P0.2** — True budget utilization (>100% shown, no cap) with one state token for bar/%/label (§4 row 0.2)
 - [ ] **P0.3** — Uniform money formatting through one currency pipe (§4 row 0.3)
 - [ ] **P0.4** — Budget alert and Budget Progress card derive from the same period/query (§4 row 0.4)

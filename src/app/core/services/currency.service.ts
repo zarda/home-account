@@ -93,6 +93,20 @@ export class CurrencyService {
     return amount * rate;
   }
 
+  // Base-currency value of a transaction for aggregation. Prefers the
+  // exchange-rate snapshot stored at write time so totals are deterministic
+  // (independent of whether live rates have finished loading); falls back to
+  // a live conversion for legacy rows written before the snapshot existed.
+  amountInBase(
+    transaction: { amount: number; currency: string; amountInBaseCurrency?: number },
+    baseCurrency: string
+  ): number {
+    return (
+      transaction.amountInBaseCurrency ??
+      this.convert(transaction.amount, transaction.currency, baseCurrency)
+    );
+  }
+
   // Refresh exchange rates from ExchangeRate-API (free, no key required)
   async refreshRates(): Promise<void> {
     this.isLoading.set(true);

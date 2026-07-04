@@ -74,9 +74,10 @@ export class MonthlyComparisonComponent {
     return info?.symbol || this._currency();
   }
 
-  // Convert transaction amount to current base currency dynamically
+  // Base-currency value: write-time snapshot first (deterministic), live
+  // conversion only as a legacy fallback.
   private toBaseCurrency(t: Transaction): number {
-    return this.currencyService.convert(t.amount, t.currency, this._currency());
+    return this.currencyService.amountInBase(t, this._currency());
   }
 
   // Chart options as computed signal to prevent re-renders

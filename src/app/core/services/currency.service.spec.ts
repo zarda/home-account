@@ -85,6 +85,29 @@ describe('CurrencyService', () => {
     });
   });
 
+  describe('amountInBase', () => {
+    it('prefers the stored write-time snapshot over live conversion', () => {
+      const result = service.amountInBase(
+        { amount: 3800, currency: 'JPY', amountInBaseCurrency: 25.42 },
+        'USD'
+      );
+      expect(result).toBe(25.42);
+    });
+
+    it('keeps a stored snapshot of zero', () => {
+      const result = service.amountInBase(
+        { amount: 0, currency: 'JPY', amountInBaseCurrency: 0 },
+        'USD'
+      );
+      expect(result).toBe(0);
+    });
+
+    it('falls back to live conversion for legacy rows without a snapshot', () => {
+      const result = service.amountInBase({ amount: 100, currency: 'EUR' }, 'USD');
+      expect(result).toBeCloseTo(100 / 0.92, 1);
+    });
+  });
+
   describe('formatCurrency', () => {
     it('should format USD correctly', () => {
       const result = service.formatCurrency(1234.56, 'USD');

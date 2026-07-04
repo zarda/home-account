@@ -79,7 +79,9 @@ describe('MonthlyComparisonComponent', () => {
     const mockCurrencyService = {
       currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
       getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
-      convert: (amount: number) => amount // 1:1 conversion for tests
+      convert: (amount: number) => amount, // 1:1 conversion for tests
+    amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
+      t.amountInBaseCurrency ?? t.amount
     };
 
     const mockTranslationService = {

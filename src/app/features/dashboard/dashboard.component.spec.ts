@@ -88,8 +88,11 @@ describe('DashboardComponent', () => {
         .and.returnValue(Promise.resolve([])),
     };
     authService = { currentUser: signal<User | null>(createUser({ displayName: 'Ada Lovelace' })) };
-    currencyService = jasmine.createSpyObj('CurrencyService', ['convert']);
+    currencyService = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase']);
     currencyService.convert.and.callFake((amount: number) => amount);
+    currencyService.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
 
     translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => k);
@@ -146,12 +149,27 @@ describe('DashboardComponent', () => {
       ]);
     });
 
-    it('sums income, expenses and balance with currency conversion', () => {
+    it('sums income, expenses and balance in base currency', () => {
       const component = build().componentInstance;
       expect(component.totalIncome()).toBe(1000);
       expect(component.totalExpenses()).toBe(600);
       expect(component.balance()).toBe(400);
-      expect(currencyService.convert).toHaveBeenCalled();
+      expect(currencyService.amountInBase).toHaveBeenCalled();
+    });
+
+    it('uses the stored base-currency snapshot rather than live conversion', () => {
+      transactionService.transactions.set([
+        createTransaction({
+          type: 'income',
+          amount: 3800,
+          currency: 'JPY',
+          amountInBaseCurrency: 25.42,
+        }),
+      ]);
+      // A live conversion would misreport the raw foreign amount when rates
+      // have not loaded yet — the stored snapshot must win.
+      currencyService.convert.and.returnValue(3800);
+      expect(build().componentInstance.totalIncome()).toBeCloseTo(25.42, 2);
     });
 
     it('groups and sorts category totals by amount descending', () => {
