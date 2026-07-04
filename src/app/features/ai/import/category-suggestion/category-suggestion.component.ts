@@ -66,15 +66,15 @@ export class CategorySuggestionComponent {
   });
 
   confidenceTooltip = computed(() => {
+    const percent = this.confidencePercent();
     const level = this.confidenceClass();
-    switch (level) {
-      case 'high-confidence':
-        return 'High confidence - AI is confident about this category';
-      case 'medium-confidence':
-        return 'Medium confidence - You may want to verify this category';
-      default:
-        return 'Low confidence - Please review and select the correct category';
-    }
+    const key =
+      level === 'high-confidence'
+        ? 'import.confidenceHigh'
+        : level === 'medium-confidence'
+          ? 'import.confidenceMedium'
+          : 'import.confidenceLow';
+    return this.translationService.t(key, { percent });
   });
 
   selectCategory(categoryId: string): void {

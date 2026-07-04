@@ -1,4 +1,14 @@
 <div class="category-suggestion">
+  <!-- AI confidence: green/amber/red dot the reviewer scans to decide which
+       suggestions to trust vs. re-check. -->
+  <span
+    class="confidence-dot"
+    [class]="confidenceClass()"
+    [matTooltip]="confidenceTooltip()"
+    matTooltipPosition="above"
+    role="img"
+    [attr.aria-label]="confidenceTooltip()"
+  ></span>
   <button
     mat-stroked-button
     [matMenuTriggerFor]="categoryMenu"

@@ -60,12 +60,23 @@
   padding: 12px 16px;
 }
 
+/* Encode step state: upcoming steps read as muted, the active/completed ones
+   as primary (completed also swaps its number for a checkmark). Previously
+   all four circles were an identical solid fill with no sense of progress. */
 ::ng-deep .modern-stepper .mat-step-icon {
-  background: var(--color-primary);
+  background: var(--surface-hover);
+  color: var(--text-muted);
 }
 
+::ng-deep .modern-stepper .mat-step-icon-selected,
+::ng-deep .modern-stepper .mat-step-icon-state-done,
 ::ng-deep .modern-stepper .mat-step-icon-state-edit {
   background: var(--color-primary);
+  color: #fff;
+}
+
+::ng-deep .modern-stepper .mat-step-label-selected {
+  font-weight: 600;
 }
 
 /* Step Content */
@@ -576,6 +587,20 @@
 }
 
 /* Responsive */
+@media (max-width: 599.98px) {
+  /* Below the mobile breakpoint the four step labels truncate to garbage
+     ("Uplo / Proces / Revie / Impo"); collapse to icon-only headers so the
+     numbered/checked circles carry the progress instead. */
+  ::ng-deep .modern-stepper .mat-step-label {
+    display: none;
+  }
+
+  ::ng-deep .modern-stepper .mat-horizontal-stepper-header {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
 @media (max-width: 768px) {
   .import-wizard {
     padding: 12px 16px 32px;

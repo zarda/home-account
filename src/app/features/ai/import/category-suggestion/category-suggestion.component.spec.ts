@@ -238,25 +238,28 @@ describe('CategorySuggestionComponent', () => {
   });
 
   describe('confidenceTooltip', () => {
-    it('should return high confidence message', () => {
+    // The tooltip is now translated; the real TranslationService returns the
+    // key when the locale bundle isn't loaded in unit tests, so assert on the
+    // per-level key the component picks.
+    it('should return the high confidence key', () => {
       component.confidence = 0.9;
       fixture.detectChanges();
 
-      expect(component.confidenceTooltip()).toContain('High confidence');
+      expect(component.confidenceTooltip()).toContain('confidenceHigh');
     });
 
-    it('should return medium confidence message', () => {
+    it('should return the medium confidence key', () => {
       component.confidence = 0.6;
       fixture.detectChanges();
 
-      expect(component.confidenceTooltip()).toContain('Medium confidence');
+      expect(component.confidenceTooltip()).toContain('confidenceMedium');
     });
 
-    it('should return low confidence message', () => {
+    it('should return the low confidence key', () => {
       component.confidence = 0.3;
       fixture.detectChanges();
 
-      expect(component.confidenceTooltip()).toContain('Low confidence');
+      expect(component.confidenceTooltip()).toContain('confidenceLow');
     });
   });
 

@@ -84,7 +84,8 @@
                 class="notes-input"
                 [(ngModel)]="row.notes"
                 (blur)="updateNotes()"
-                placeholder="Items, details, or notes..."
+                [placeholder]="'import.notesPlaceholder' | translate"
+                [attr.aria-label]="'import.notes' | translate"
                 [attr.rows]="getRowCount(row.notes)"
               ></textarea>
             </div>

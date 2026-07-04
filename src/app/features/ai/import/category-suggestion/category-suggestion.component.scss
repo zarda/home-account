@@ -1,5 +1,30 @@
 .category-suggestion {
   display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+// Confidence dot: a quick-scan traffic light for how much to trust the
+// AI's category guess. Tooltip carries the full explanation.
+.confidence-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-disabled);
+  cursor: help;
+
+  &.high-confidence {
+    background: var(--color-success);
+  }
+
+  &.medium-confidence {
+    background: var(--color-warning);
+  }
+
+  &.low-confidence {
+    background: var(--color-error);
+  }
 }
 
 .category-button {
@@ -25,29 +50,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.confidence-indicator {
-  font-size: var(--text-xs);
-  padding: 2px 6px;
-  border-radius: var(--radius-md);
-  font-weight: 500;
-}
-
-.confidence-indicator.high-confidence {
-  background: var(--color-success-light);
-  color: var(--color-income-text);
-}
-
-.confidence-indicator.medium-confidence {
-  background: var(--color-warning-light);
-  color: var(--color-warning-text);
-}
-
-
-.confidence-indicator.low-confidence {
-  background: var(--color-error-light);
-  color: var(--color-expense-text);
 }
 
 .dropdown-icon {
