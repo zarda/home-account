@@ -223,10 +223,16 @@ describe('BudgetProgressComponent', () => {
       expect(component.getPercentage(budget)).toBe(0);
     });
 
-    it('should cap at 100', () => {
+    it('reports true utilization above 100% instead of capping', () => {
       const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
       setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 200, currency: 'USD' })]);
-      expect(component.getPercentage(budget)).toBe(100);
+      expect(component.getPercentage(budget)).toBe(200);
+    });
+
+    it('clamps only the progress bar value at 100', () => {
+      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
+      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 200, currency: 'USD' })]);
+      expect(component.getBarValue(budget)).toBe(100);
     });
   });
 

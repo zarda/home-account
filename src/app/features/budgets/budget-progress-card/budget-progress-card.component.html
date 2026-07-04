@@ -36,7 +36,7 @@
       </span>
       <span class="percentage" [class]="statusClass()">{{ percentage().toFixed(0) }}%</span>
     </div>
-    <mat-progress-bar [value]="percentage()" [color]="progressColor()"></mat-progress-bar>
+    <mat-progress-bar [value]="barValue()" [color]="progressColor()"></mat-progress-bar>
     <div class="status-row">
       <span class="remaining" [class.over-budget]="isOverBudget()">{{ getRemainingText() }}</span>
       @if (showAlert()) {

@@ -95,9 +95,15 @@ describe('BudgetProgressCardComponent', () => {
       expect(component.percentage()).toBe(0);
     });
 
-    it('should cap percentage at 100', () => {
+    it('reports true utilization above 100% instead of capping', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 300, spent: 350.49 }));
+      expect(component.percentage()).toBeCloseTo(116.83, 1);
+    });
+
+    it('clamps only the progress bar value at 100', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 200 }));
-      expect(component.percentage()).toBe(100);
+      expect(component.percentage()).toBe(200);
+      expect(component.barValue()).toBe(100);
     });
 
     it('should handle decimal percentages', () => {
@@ -146,14 +152,14 @@ describe('BudgetProgressCardComponent', () => {
       expect(component.progressColor()).toBe('primary');
     });
 
-    it('should return accent for 50-79%', () => {
+    it('should return primary while under the alert threshold', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 60 }));
-      expect(component.progressColor()).toBe('accent');
+      expect(component.progressColor()).toBe('primary');
     });
 
-    it('should return warn for 80% and above', () => {
+    it('should return accent from the warning threshold', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
-      expect(component.progressColor()).toBe('warn');
+      expect(component.progressColor()).toBe('accent');
     });
 
     it('should return warn for over budget', () => {
@@ -168,19 +174,41 @@ describe('BudgetProgressCardComponent', () => {
       expect(component.statusClass()).toBe('text-green-600');
     });
 
-    it('should return yellow class for 50-79%', () => {
+    it('should return green class while under the alert threshold', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 60 }));
+      expect(component.statusClass()).toBe('text-green-600');
+    });
+
+    it('should return yellow class in the warning band', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
       expect(component.statusClass()).toBe('text-yellow-600');
     });
 
-    it('should return orange class for 80-99%', () => {
-      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
+    it('should return orange class in the critical band', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 92 }));
       expect(component.statusClass()).toBe('text-orange-500');
     });
 
     it('should return red class with semibold for 100% and over', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 110 }));
       expect(component.statusClass()).toBe('text-red-600 font-semibold');
+    });
+  });
+
+  describe('signal consistency', () => {
+    it('bar, percentage text and chip all agree in the warning band', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 100, spent: 85 }));
+      expect(component.alertSeverity()).toBe('warning');
+      expect(component.progressColor()).toBe('accent');
+      expect(component.statusClass()).toBe('text-yellow-600');
+    });
+
+    it('bar, percentage text and chip all agree when exceeded', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ amount: 300, spent: 350.49 }));
+      expect(component.alertSeverity()).toBe('exceeded');
+      expect(component.progressColor()).toBe('warn');
+      expect(component.statusClass()).toBe('text-red-600 font-semibold');
+      expect(component.percentage()).toBeGreaterThan(100);
     });
   });
 

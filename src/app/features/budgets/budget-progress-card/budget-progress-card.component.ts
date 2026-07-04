@@ -10,10 +10,7 @@ import { MatButtonModule } from '@angular/material/button';
 
 import { Budget, BudgetPeriod } from '../../../models';
 import { Category } from '../../../models';
-import {
-  BUDGET_ALERT_THRESHOLDS,
-  getBudgetAlertSeverity
-} from '../../../core/utils/budget-alert.utils';
+import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -43,12 +40,16 @@ export class BudgetProgressCardComponent {
   edit = output<void>();
   delete = output<void>();
 
-  // Convert getters to computed signals for better performance
+  // True utilization — deliberately uncapped so overspend reads honestly
+  // ("117%" next to "$50.49 over"), with a capped companion for the
+  // progress bar's [value] binding.
   percentage = computed(() => {
     const budget = this.budget();
     if (!budget || budget.amount === 0) return 0;
-    return Math.min((budget.spent / budget.amount) * 100, 100);
+    return (budget.spent / budget.amount) * 100;
   });
+
+  barValue = computed(() => Math.min(this.percentage(), 100));
 
   remaining = computed(() => {
     const budget = this.budget();
@@ -60,24 +61,36 @@ export class BudgetProgressCardComponent {
     return budget.spent > budget.amount;
   });
 
-  progressColor = computed((): 'primary' | 'accent' | 'warn' => {
-    const pct = this.percentage();
-    if (pct >= BUDGET_ALERT_THRESHOLDS.warning) return 'warn';
-    if (pct >= 50) return 'accent';
-    return 'primary';
-  });
-
-  statusClass = computed(() => {
-    const pct = this.percentage();
-    if (pct >= BUDGET_ALERT_THRESHOLDS.exceeded) return 'text-red-600 font-semibold';
-    if (pct >= BUDGET_ALERT_THRESHOLDS.warning) return 'text-orange-500';
-    if (pct >= 50) return 'text-yellow-600';
-    return 'text-green-600';
-  });
-
   alertSeverity = computed(() =>
     getBudgetAlertSeverity(this.percentage(), this.budget().alertThreshold)
   );
+
+  // Bar, percentage text and status chip all derive from the one severity
+  // above so the card can never send mixed signals for a single state.
+  progressColor = computed((): 'primary' | 'accent' | 'warn' => {
+    switch (this.alertSeverity()) {
+      case 'exceeded':
+        return 'warn';
+      case 'critical':
+      case 'warning':
+        return 'accent';
+      default:
+        return 'primary';
+    }
+  });
+
+  statusClass = computed(() => {
+    switch (this.alertSeverity()) {
+      case 'exceeded':
+        return 'text-red-600 font-semibold';
+      case 'critical':
+        return 'text-orange-500';
+      case 'warning':
+        return 'text-yellow-600';
+      default:
+        return 'text-green-600';
+    }
+  });
 
   showAlert = computed(() => this.alertSeverity() !== null);
 

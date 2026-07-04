@@ -6,7 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Budget, Category, Transaction } from '../../../models';
-import { BUDGET_ALERT_THRESHOLDS } from '../../../core/utils/budget-alert.utils';
+import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -60,17 +60,34 @@ export class BudgetProgressComponent {
     return this.currencyService.formatCurrency(amount, currency);
   }
 
+  // True utilization — uncapped so overspend reads honestly; the progress
+  // bar clamps separately via getBarValue.
   getPercentage(budget: Budget): number {
     if (budget.amount === 0) return 0;
     const spent = this.getBudgetSpent(budget);
-    return Math.min((spent / budget.amount) * 100, 100);
+    return (spent / budget.amount) * 100;
+  }
+
+  getBarValue(budget: Budget): number {
+    return Math.min(this.getPercentage(budget), 100);
+  }
+
+  // Bar and percentage text derive from one severity so the row can never
+  // send mixed signals for a single state.
+  private getSeverity(budget: Budget) {
+    return getBudgetAlertSeverity(this.getPercentage(budget), budget.alertThreshold);
   }
 
   getProgressColor(budget: Budget): 'primary' | 'accent' | 'warn' {
-    const percentage = this.getPercentage(budget);
-    if (percentage >= BUDGET_ALERT_THRESHOLDS.exceeded) return 'warn';
-    if (percentage >= BUDGET_ALERT_THRESHOLDS.warning) return 'accent';
-    return 'primary';
+    switch (this.getSeverity(budget)) {
+      case 'exceeded':
+        return 'warn';
+      case 'critical':
+      case 'warning':
+        return 'accent';
+      default:
+        return 'primary';
+    }
   }
 
   getRemainingText(budget: Budget): string {
@@ -84,9 +101,15 @@ export class BudgetProgressComponent {
   }
 
   getPercentageClass(budget: Budget): string {
-    const percentage = this.getPercentage(budget);
-    if (percentage >= BUDGET_ALERT_THRESHOLDS.exceeded) return 'text-red-600';
-    if (percentage >= BUDGET_ALERT_THRESHOLDS.warning) return 'text-yellow-600';
-    return 'text-green-600';
+    switch (this.getSeverity(budget)) {
+      case 'exceeded':
+        return 'text-red-600';
+      case 'critical':
+        return 'text-orange-500';
+      case 'warning':
+        return 'text-yellow-600';
+      default:
+        return 'text-green-600';
+    }
   }
 }
