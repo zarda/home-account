@@ -22,6 +22,14 @@ import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { BudgetAlert, Transaction, User } from '../../models';
 import { createTransaction, createCategory, createUser } from '../../core/services/testing';
+import {
+  PeriodSelection,
+  defaultPeriodSelection,
+} from '../../shared/components/period-selector/period-selector.component';
+
+function selection(option: PeriodSelection['option'], start: Date, end: Date): PeriodSelection {
+  return { option, start, end, label: '' };
+}
 
 // Stands in for the real summary component when the real dashboard template
 // is rendered, capturing exactly what the template binds to each input.
@@ -184,76 +192,6 @@ describe('DashboardComponent', () => {
     });
   });
 
-  describe('custom period label', () => {
-    it('is empty when no custom period is set', () => {
-      expect(build().componentInstance.customPeriodLabel()).toBe('');
-    });
-
-    it('shows the year for a year period', () => {
-      const component = build().componentInstance;
-      component.customPeriod.set({ type: 'year', year: 2025 });
-      expect(component.customPeriodLabel()).toBe('2025');
-    });
-
-    it('shows month and year for a month period', () => {
-      const component = build().componentInstance;
-      component.customPeriod.set({ type: 'month', year: 2025, month: 5 });
-      expect(component.customPeriodLabel()).toBe('Jun 2025');
-    });
-  });
-
-  describe('period selection', () => {
-    it('isCustomPeriod tracks the selected period', () => {
-      const component = build().componentInstance;
-      expect(component.isCustomPeriod()).toBeFalse();
-      component.selectedPeriod = 'custom';
-      expect(component.isCustomPeriod()).toBeTrue();
-    });
-
-    it('onPeriodChange clears the custom period and reloads', () => {
-      const component = build().componentInstance;
-      component.customPeriod.set({ type: 'year', year: 2020 });
-      component.onPeriodChange();
-      expect(component.customPeriod()).toBeNull();
-      expect(transactionService.getByDateRange).toHaveBeenCalled();
-    });
-
-    it('onMonthSelected sets a custom month period and closes the picker', () => {
-      const component = build().componentInstance;
-      const picker = jasmine.createSpyObj('MatDatepicker', ['close', 'open']);
-      component.onMonthSelected(new Date(2025, 2, 10), picker);
-      expect(picker.close).toHaveBeenCalled();
-      expect(component.customPeriod()).toEqual({ type: 'month', year: 2025, month: 2 });
-      expect(component.selectedPeriod).toBe('custom');
-    });
-
-    it('onYearSelected sets a custom year period and closes the picker', () => {
-      const component = build().componentInstance;
-      const picker = jasmine.createSpyObj('MatDatepicker', ['close', 'open']);
-      component.onYearSelected(new Date(2024, 0, 1), picker);
-      expect(picker.close).toHaveBeenCalled();
-      expect(component.customPeriod()).toEqual({ type: 'year', year: 2024 });
-    });
-
-    it('clearCustomPeriod resets to this month', () => {
-      const component = build().componentInstance;
-      component.selectedPeriod = 'custom';
-      component.clearCustomPeriod();
-      expect(component.selectedPeriod).toBe('thisMonth');
-      expect(component.customPeriod()).toBeNull();
-    });
-
-    it('openMonthPicker / openYearPicker delegate to the pickers', () => {
-      const component = build().componentInstance;
-      component.monthPicker = jasmine.createSpyObj('MatDatepicker', ['open']);
-      component.yearPicker = jasmine.createSpyObj('MatDatepicker', ['open']);
-      component.openMonthPicker();
-      component.openYearPicker();
-      expect(component.monthPicker.open).toHaveBeenCalled();
-      expect(component.yearPicker.open).toHaveBeenCalled();
-    });
-  });
-
   describe('loadData / period date ranges', () => {
     function lastRange() {
       const args = transactionService.getByDateRange.calls.mostRecent().args;
@@ -270,22 +208,24 @@ describe('DashboardComponent', () => {
       expect(fixture.componentInstance.isLoading()).toBeFalse();
     });
 
-    it('handles each preset period and a custom month/year', () => {
+    it('reloads with the emitted range on a period selection', () => {
       const component = build().componentInstance;
-      for (const period of ['thisMonth', 'lastMonth', 'last3Months', 'thisYear'] as const) {
-        component.selectedPeriod = period;
-        component.onPeriodChange();
-        expect(lastRange().start instanceof Date).toBeTrue();
-      }
-
-      component.selectedPeriod = 'custom';
-      component.customPeriod.set({ type: 'month', year: 2025, month: 3 });
-      component.onMonthSelected(new Date(2025, 3, 1), jasmine.createSpyObj('p', ['close']));
+      component.onPeriodSelection(selection('custom', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
       expect(lastRange().start).toEqual(new Date(2025, 3, 1));
+      expect(lastRange().end).toEqual(new Date(2025, 3, 30, 23, 59, 59));
+    });
 
-      component.customPeriod.set({ type: 'year', year: 2025 });
-      component.onYearSelected(new Date(2025, 0, 1), jasmine.createSpyObj('p', ['close']));
-      expect(lastRange().start).toEqual(new Date(2025, 0, 1));
+    it('clamps periods extending into the future to end-of-today', () => {
+      const component = build().componentInstance;
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      component.onPeriodSelection(selection('thisMonth', monthStart, monthEnd));
+
+      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      expect(lastRange().start).toEqual(monthStart);
+      expect(lastRange().end.getTime()).toBeLessThanOrEqual(endOfToday.getTime());
+      expect(lastRange().end.getDate()).toBe(now.getDate());
     });
 
     it('stores previous-period comparison data', () => {
@@ -293,25 +233,33 @@ describe('DashboardComponent', () => {
         of({ income: 10, expense: 5, byCategory: [{ categoryId: 'food', total: 5 }] }),
       );
       const component = build().componentInstance;
-      component.selectedPeriod = 'thisMonth';
-      component.onPeriodChange();
+      component.onPeriodSelection(defaultPeriodSelection());
       expect(component.previousPeriodData()).toEqual({ income: 10, expense: 5 });
       expect(component.previousPeriodByCategory()?.length).toBe(1);
     });
 
-    it('clears comparison data when there is no previous period', () => {
+    it('compares a custom month with the month before it', () => {
       const component = build().componentInstance;
-      component.selectedPeriod = 'custom';
-      component.customPeriod.set(null);
-      component.onPeriodChange();
-      expect(component.previousPeriodData()).toBeNull();
+      component.onPeriodSelection(selection('custom', new Date(2025, 0, 1), new Date(2025, 0, 31, 23, 59, 59)));
+
+      const prevArgs = transactionService.getPeriodCategoryTotals.calls.mostRecent().args;
+      expect(prevArgs[0]).toEqual(new Date(2024, 11, 1));
+      expect((prevArgs[1] as Date).getMonth()).toBe(11);
+    });
+
+    it('compares a custom year with the year before it', () => {
+      const component = build().componentInstance;
+      component.onPeriodSelection(selection('custom', new Date(2025, 0, 1), new Date(2025, 11, 31, 23, 59, 59)));
+
+      const prevArgs = transactionService.getPeriodCategoryTotals.calls.mostRecent().args;
+      expect(prevArgs[0]).toEqual(new Date(2024, 0, 1));
+      expect((prevArgs[1] as Date).getFullYear()).toBe(2024);
     });
 
     it('clears comparison data on error', () => {
       transactionService.getPeriodCategoryTotals.and.returnValue(throwError(() => new Error('x')));
       const component = build().componentInstance;
-      component.selectedPeriod = 'thisYear';
-      component.onPeriodChange();
+      component.onPeriodSelection(defaultPeriodSelection());
       expect(component.previousPeriodData()).toBeNull();
     });
   });
@@ -322,7 +270,7 @@ describe('DashboardComponent', () => {
       fixture.detectChanges();
       expect(recurringService.catchUpRecurringTransactions).toHaveBeenCalledTimes(1);
 
-      fixture.componentInstance.onPeriodChange();
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
       expect(recurringService.catchUpRecurringTransactions).toHaveBeenCalledTimes(1);
     });
 
@@ -358,8 +306,8 @@ describe('DashboardComponent', () => {
     it('subscribes to budgets once, not again on each period change', () => {
       const fixture = build();
       fixture.detectChanges();
-      fixture.componentInstance.onPeriodChange();
-      fixture.componentInstance.onPeriodChange();
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
       expect(budgetService.getBudgets).toHaveBeenCalledTimes(1);
     });
 

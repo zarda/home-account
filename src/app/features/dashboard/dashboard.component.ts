@@ -1,13 +1,6 @@
-import { Component, computed, DestroyRef, effect, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
-import { MatMenuModule } from '@angular/material/menu';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { FormsModule } from '@angular/forms';
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
@@ -25,8 +18,11 @@ import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
-
-type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'custom';
+import {
+  PeriodSelectorComponent,
+  PeriodSelection,
+  defaultPeriodSelection,
+} from '../../shared/components/period-selector/period-selector.component';
 
 // Trailing window (in months) used as the baseline for AI spending-anomaly
 // detection. The window always extends back from the current period's end and
@@ -34,24 +30,12 @@ type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'cu
 // to current-period-only behaviour.
 const BASELINE_WINDOW_MONTHS = 6;
 
-interface CustomPeriod {
-  type: 'month' | 'year';
-  year: number;
-  month?: number; // 0-11, only for type 'month'
-}
-
 @Component({
   selector: 'app-dashboard',
   standalone: true,
   imports: [
     PageHeaderComponent,
-    FormsModule,
-    MatButtonToggleModule,
-    MatDatepickerModule,
-    MatNativeDateModule,
-    MatMenuModule,
-    MatIconModule,
-    MatButtonModule,
+    PeriodSelectorComponent,
     FinancialSummaryComponent,
     SpendingChartComponent,
     RecentTransactionsComponent,
@@ -74,29 +58,13 @@ export class DashboardComponent implements OnInit {
   private translationService = inject(TranslationService);
   private destroyRef = inject(DestroyRef);
 
-  selectedPeriod: PeriodOption = 'thisMonth';
   isLoading = signal(true);
 
-  // Custom period selection
-  customPeriod = signal<CustomPeriod | null>(null);
+  // Current selection from the shared period selector (calendar bounds).
+  private currentPeriod = signal<PeriodSelection>(defaultPeriodSelection());
 
-  customPeriodLabel = computed(() => {
-    const cp = this.customPeriod();
-    if (!cp) return '';
-    if (cp.type === 'year') return cp.year.toString();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[cp.month!]} ${cp.year}`;
-  });
-
-  // A method (not a computed) because `selectedPeriod` is a plain property,
-  // not a signal — a computed would cache the initial value and never update.
-  isCustomPeriod(): boolean {
-    return this.selectedPeriod === 'custom';
-  }
-
-  // ViewChild for date pickers
-  @ViewChild('monthPicker') monthPicker!: MatDatepicker<Date>;
-  @ViewChild('yearPicker') yearPicker!: MatDatepicker<Date>;
+  // The option string feeds the AI summary's cache key / prompt context.
+  selectedPeriodOption = computed(() => this.currentPeriod().option);
 
   // User info
   userName = computed(() => {
@@ -197,44 +165,8 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  onPeriodChange(): void {
-    this.customPeriod.set(null); // Clear custom when toggle clicked
-    this.loadData();
-  }
-
-  // Month/Year picker methods
-  openMonthPicker(): void {
-    this.monthPicker.open();
-  }
-
-  openYearPicker(): void {
-    this.yearPicker.open();
-  }
-
-  onMonthSelected(date: Date, picker: MatDatepicker<Date>): void {
-    picker.close();
-    this.customPeriod.set({
-      type: 'month',
-      year: date.getFullYear(),
-      month: date.getMonth()
-    });
-    this.selectedPeriod = 'custom';
-    this.loadData();
-  }
-
-  onYearSelected(date: Date, picker: MatDatepicker<Date>): void {
-    picker.close();
-    this.customPeriod.set({
-      type: 'year',
-      year: date.getFullYear()
-    });
-    this.selectedPeriod = 'custom';
-    this.loadData();
-  }
-
-  clearCustomPeriod(): void {
-    this.customPeriod.set(null);
-    this.selectedPeriod = 'thisMonth';
+  onPeriodSelection(selection: PeriodSelection): void {
+    this.currentPeriod.set(selection);
     this.loadData();
   }
 
@@ -320,31 +252,9 @@ export class DashboardComponent implements OnInit {
 
   private getPreviousPeriodDates(): { start: Date; end: Date } | null {
     const now = new Date();
+    const selection = this.currentPeriod();
 
-    // Handle custom period
-    if (this.selectedPeriod === 'custom') {
-      const cp = this.customPeriod();
-      if (cp) {
-        if (cp.type === 'month') {
-          // Previous month
-          const month = cp.month!;
-          const prevMonth = month === 0 ? 11 : month - 1;
-          const prevYear = month === 0 ? cp.year - 1 : cp.year;
-          return {
-            start: new Date(prevYear, prevMonth, 1),
-            end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59)
-          };
-        } else {
-          // Previous year
-          return {
-            start: new Date(cp.year - 1, 0, 1),
-            end: new Date(cp.year - 1, 11, 31, 23, 59, 59)
-          };
-        }
-      }
-    }
-
-    switch (this.selectedPeriod) {
+    switch (selection.option) {
       case 'thisMonth':
         // Compare with last month
         return {
@@ -373,61 +283,48 @@ export class DashboardComponent implements OnInit {
           end: new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59)
         };
 
+      case 'custom': {
+        const { start, end } = selection;
+        const isFullYear =
+          start.getMonth() === 0 &&
+          start.getDate() === 1 &&
+          end.getMonth() === 11 &&
+          end.getDate() === 31;
+        if (isFullYear) {
+          const prevYear = start.getFullYear() - 1;
+          return {
+            start: new Date(prevYear, 0, 1),
+            end: new Date(prevYear, 11, 31, 23, 59, 59)
+          };
+        }
+        // Custom month: compare with the month before it.
+        const year = start.getFullYear();
+        const month = start.getMonth();
+        const prevMonth = month === 0 ? 11 : month - 1;
+        const prevYear = month === 0 ? year - 1 : year;
+        return {
+          start: new Date(prevYear, prevMonth, 1),
+          end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59)
+        };
+      }
+
       default:
         return null;
     }
   }
 
+  // The selector emits full calendar bounds; the dashboard clamps periods
+  // that extend into the future to end-of-today so period-over-period
+  // deltas compare like-for-like month-to-date windows.
   private getPeriodDates(): { start: Date; end: Date } {
+    const { start, end } = this.currentPeriod();
     const now = new Date();
-
-    // Handle custom period first
-    if (this.selectedPeriod === 'custom') {
-      const cp = this.customPeriod();
-      if (cp) {
-        if (cp.type === 'month') {
-          return {
-            start: new Date(cp.year, cp.month!, 1),
-            end: new Date(cp.year, cp.month! + 1, 0, 23, 59, 59)
-          };
-        } else {
-          // Full year
-          return {
-            start: new Date(cp.year, 0, 1),
-            end: new Date(cp.year, 11, 31, 23, 59, 59)
-          };
-        }
-      }
+    if (end > now) {
+      return {
+        start,
+        end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+      };
     }
-
-    // End of today for current periods
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
-    switch (this.selectedPeriod) {
-      case 'thisMonth':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth(), 1),
-          end: endOfToday
-        };
-
-      case 'lastMonth':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
-        };
-
-      case 'last3Months':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
-          end: endOfToday
-        };
-
-      case 'thisYear':
-      default:
-        return {
-          start: new Date(now.getFullYear(), 0, 1),
-          end: endOfToday
-        };
-    }
+    return { start, end };
   }
 }

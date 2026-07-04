@@ -4,79 +4,7 @@
       {{ 'common.welcome' | translate }}, {{ userName() }}
     </p>
 
-    <div header-actions class="period-controls">
-      <mat-button-toggle-group
-        [value]="isCustomPeriod() ? null : selectedPeriod"
-        (change)="selectedPeriod = $event.value; onPeriodChange()"
-        class="period-toggle bg-white dark:bg-gray-800"
-      >
-        <mat-button-toggle value="thisMonth">
-          <span class="mobile-label">{{ 'dashboard.thisMonthShort' | translate }}</span>
-          <span class="desktop-label">{{ 'dashboard.thisMonth' | translate }}</span>
-        </mat-button-toggle>
-        <mat-button-toggle value="lastMonth">
-          <span class="mobile-label">{{ 'dashboard.lastMonthShort' | translate }}</span>
-          <span class="desktop-label">{{ 'dashboard.lastMonth' | translate }}</span>
-        </mat-button-toggle>
-        <mat-button-toggle value="last3Months">
-          <span class="mobile-label">{{ 'dashboard.last3MonthsShort' | translate }}</span>
-          <span class="desktop-label">{{ 'dashboard.last3Months' | translate }}</span>
-        </mat-button-toggle>
-        <mat-button-toggle value="thisYear">
-          <span class="mobile-label">{{ 'dashboard.thisYearShort' | translate }}</span>
-          <span class="desktop-label">{{ 'dashboard.thisYear' | translate }}</span>
-        </mat-button-toggle>
-      </mat-button-toggle-group>
-
-      <!-- Custom Period Picker -->
-      <div class="custom-period-picker">
-        <button
-          mat-icon-button
-          [matMenuTriggerFor]="periodMenu"
-          [class.active]="isCustomPeriod()"
-          class="picker-btn"
-        >
-          <mat-icon>calendar_month</mat-icon>
-        </button>
-
-        <mat-menu #periodMenu="matMenu">
-          <button mat-menu-item (click)="openMonthPicker()">
-            <mat-icon>event</mat-icon>
-            <span>{{ 'dashboard.selectMonth' | translate }}</span>
-          </button>
-          <button mat-menu-item (click)="openYearPicker()">
-            <mat-icon>date_range</mat-icon>
-            <span>{{ 'dashboard.selectYear' | translate }}</span>
-          </button>
-        </mat-menu>
-
-        <!-- Hidden Month Picker -->
-        <input [matDatepicker]="monthPicker" style="display: none">
-        <mat-datepicker
-          #monthPicker
-          startView="year"
-          (monthSelected)="onMonthSelected($event, monthPicker)"
-        ></mat-datepicker>
-
-        <!-- Hidden Year Picker -->
-        <input [matDatepicker]="yearPicker" style="display: none">
-        <mat-datepicker
-          #yearPicker
-          startView="multi-year"
-          (yearSelected)="onYearSelected($event, yearPicker)"
-        ></mat-datepicker>
-
-        <!-- Selected Period Chip -->
-        @if (isCustomPeriod()) {
-          <div class="period-chip">
-            <span>{{ customPeriodLabel() }}</span>
-            <button mat-icon-button (click)="clearCustomPeriod()" class="clear-btn">
-              <mat-icon>close</mat-icon>
-            </button>
-          </div>
-        }
-      </div>
-    </div>
+    <app-period-selector header-actions (selectionChange)="onPeriodSelection($event)" />
   </app-page-header>
 
   <!-- Budget threshold alerts: inline + dismissible, not a standing snackbar -->
@@ -98,7 +26,7 @@
     <!-- AI Insights -->
     <app-ai-summary
       [transactions]="transactions()"
-      [period]="selectedPeriod"
+      [period]="selectedPeriodOption()"
       [baseCurrency]="baseCurrency()"
       [previousPeriodData]="previousPeriodData()"
       [previousPeriodByCategory]="previousPeriodByCategory()"

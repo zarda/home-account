@@ -1,12 +1,7 @@
-import { Component, computed, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 
 import { MatTabsModule } from '@angular/material/tabs';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
-import { MatMenuModule } from '@angular/material/menu';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -15,36 +10,28 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
-import { TranslationService } from '../../core/services/translation.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
+import {
+  PeriodSelectorComponent,
+  PeriodSelection,
+  defaultPeriodSelection,
+} from '../../shared/components/period-selector/period-selector.component';
 import { SpendingAnalysisComponent } from './spending-analysis/spending-analysis.component';
 import { CategoryBreakdownComponent } from './category-breakdown/category-breakdown.component';
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
 import { Category, Transaction } from '../../models';
 
-type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'custom';
-
-interface CustomPeriod {
-  type: 'month' | 'year';
-  year: number;
-  month?: number;
-}
-
 @Component({
   selector: 'app-reports',
   standalone: true,
   imports: [
     PageHeaderComponent,
+    PeriodSelectorComponent,
     CommonModule,
-    FormsModule,
     MatTabsModule,
-    MatButtonToggleModule,
-    MatDatepickerModule,
-    MatNativeDateModule,
-    MatMenuModule,
     MatIconModule,
     MatButtonModule,
     MatDialogModule,
@@ -62,36 +49,18 @@ export class ReportsComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private authService = inject(AuthService);
   private currencyService = inject(CurrencyService);
-  private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
 
-  selectedPeriod: PeriodOption = 'thisMonth';
   isLoading = signal(true);
   selectedTabIndex = 0;
-
-  // Custom period selection
-  customPeriod = signal<CustomPeriod | null>(null);
-
-  customPeriodLabel = computed(() => {
-    const cp = this.customPeriod();
-    if (!cp) return '';
-    if (cp.type === 'year') return cp.year.toString();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[cp.month!]} ${cp.year}`;
-  });
-
-  isCustomPeriod = computed(() => this.selectedPeriod === 'custom');
-
-  @ViewChild('monthPicker') monthPicker!: MatDatepicker<Date>;
-  @ViewChild('yearPicker') yearPicker!: MatDatepicker<Date>;
 
   // User info
   baseCurrency = computed(() => {
     return this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
   });
 
-  // Date range for child components
-  dateRange = signal<{ start: Date; end: Date }>({ start: new Date(), end: new Date() });
+  // Date range for child components; the shared period selector drives it.
+  dateRange = signal<{ start: Date; end: Date }>(defaultPeriodSelection());
 
   // Transaction data
   transactions = this.transactionService.transactions;
@@ -145,43 +114,8 @@ export class ReportsComponent implements OnInit {
     this.loadData();
   }
 
-  onPeriodChange(): void {
-    this.customPeriod.set(null);
-    this.loadData();
-  }
-
-  openMonthPicker(): void {
-    this.monthPicker.open();
-  }
-
-  openYearPicker(): void {
-    this.yearPicker.open();
-  }
-
-  onMonthSelected(date: Date, picker: MatDatepicker<Date>): void {
-    picker.close();
-    this.customPeriod.set({
-      type: 'month',
-      year: date.getFullYear(),
-      month: date.getMonth()
-    });
-    this.selectedPeriod = 'custom';
-    this.loadData();
-  }
-
-  onYearSelected(date: Date, picker: MatDatepicker<Date>): void {
-    picker.close();
-    this.customPeriod.set({
-      type: 'year',
-      year: date.getFullYear()
-    });
-    this.selectedPeriod = 'custom';
-    this.loadData();
-  }
-
-  clearCustomPeriod(): void {
-    this.customPeriod.set(null);
-    this.selectedPeriod = 'thisMonth';
+  onPeriodSelection(selection: PeriodSelection): void {
+    this.dateRange.set({ start: selection.start, end: selection.end });
     this.loadData();
   }
 
@@ -200,8 +134,7 @@ export class ReportsComponent implements OnInit {
 
   private loadData(): void {
     this.isLoading.set(true);
-    const range = this.getPeriodDates();
-    this.dateRange.set(range);
+    const range = this.dateRange();
 
     this.transactionService.getByDateRange(range.start, range.end).subscribe({
       next: () => this.isLoading.set(false),
@@ -209,53 +142,5 @@ export class ReportsComponent implements OnInit {
     });
 
     this.categoryService.loadCategories().subscribe();
-  }
-
-  private getPeriodDates(): { start: Date; end: Date } {
-    const now = new Date();
-
-    if (this.selectedPeriod === 'custom') {
-      const cp = this.customPeriod();
-      if (cp) {
-        if (cp.type === 'month') {
-          return {
-            start: new Date(cp.year, cp.month!, 1),
-            end: new Date(cp.year, cp.month! + 1, 0, 23, 59, 59)
-          };
-        } else {
-          return {
-            start: new Date(cp.year, 0, 1),
-            end: new Date(cp.year, 11, 31, 23, 59, 59)
-          };
-        }
-      }
-    }
-
-    switch (this.selectedPeriod) {
-      case 'thisMonth':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth(), 1),
-          end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
-        };
-
-      case 'lastMonth':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
-        };
-
-      case 'last3Months':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
-          end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
-        };
-
-      case 'thisYear':
-      default:
-        return {
-          start: new Date(now.getFullYear(), 0, 1),
-          end: new Date(now.getFullYear(), 11, 31, 23, 59, 59)
-        };
-    }
   }
 }

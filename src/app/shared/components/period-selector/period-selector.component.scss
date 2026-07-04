@@ -1,0 +1,96 @@
+@use 'breakpoints' as bp;
+
+.period-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.period-toggle {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--surface-card);
+
+  // Primary-tinted fill for the selected segment in both themes (the
+  // default surface fill was nearly invisible in light mode) and no
+  // redundant checkmark — the fill is the selected signal.
+  --mat-button-toggle-selected-state-background-color: var(--color-primary-light);
+  --mat-button-toggle-selected-state-text-color: var(--color-primary);
+
+  ::ng-deep .mat-button-toggle-checkbox-wrapper {
+    display: none;
+  }
+}
+
+// Custom Period Picker
+.custom-period-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .picker-btn {
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-sm);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &.active {
+      background: var(--color-accent);
+      color: var(--text-inverse);
+      border-color: var(--color-accent);
+    }
+
+    &:hover:not(.active) {
+      background: var(--surface-hover);
+    }
+  }
+}
+
+.period-chip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px 4px 12px;
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-accent-light);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-accent);
+
+  .clear-btn {
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+
+    mat-icon {
+      font-size: var(--text-base);
+      width: 16px;
+      height: 16px;
+      line-height: 16px;
+    }
+  }
+}
+
+.mobile-label {
+  display: inline;
+}
+
+.desktop-label {
+  display: none;
+}
+
+@include bp.tablet-up {
+  .mobile-label {
+    display: none;
+  }
+
+  .desktop-label {
+    display: inline;
+  }
+}
