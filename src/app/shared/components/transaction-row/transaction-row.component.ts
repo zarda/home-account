@@ -7,6 +7,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
+import { CategoryChipComponent } from '../category-chip/category-chip.component';
 
 /**
  * One transaction-row anatomy (category icon chip, description + category,
@@ -17,7 +18,7 @@ import { CategoryHelperService } from '../../../core/services/category-helper.se
 @Component({
   selector: 'app-transaction-row',
   standalone: true,
-  imports: [MatIconModule],
+  imports: [MatIconModule, CategoryChipComponent],
   templateUrl: './transaction-row.component.html',
   styleUrl: './transaction-row.component.scss',
 })

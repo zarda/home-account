@@ -31,9 +31,7 @@
           <mat-icon>drag_indicator</mat-icon>
         </div>
 
-        <div class="category-icon" [style.background-color]="category.color + '20'">
-          <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
-        </div>
+        <app-category-chip appearance="tile" [icon]="category.icon" [color]="category.color" />
 
         <div class="category-info">
           <span class="category-name">{{ category.name | translate }}</span>

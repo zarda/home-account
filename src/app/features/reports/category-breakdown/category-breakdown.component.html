@@ -37,9 +37,7 @@
           <mat-expansion-panel-header>
             <mat-panel-title>
               <div class="category-header">
-                <div class="category-icon" [style.background-color]="category.color + '20'">
-                  <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
-                </div>
+                <app-category-chip appearance="tile" [icon]="category.icon" [color]="category.color" />
                 <span class="category-name">{{ category.name | translate }} <span class="category-count">({{ category.transactionCount }})</span></span>
               </div>
             </mat-panel-title>

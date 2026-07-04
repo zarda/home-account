@@ -1,11 +1,11 @@
 <mat-card class="budget-card">
   <!-- Header: icon, name, menu -->
   <div class="card-header">
-    <div class="category-icon"
-         [style.backgroundColor]="(category()?.color || '#666') + '20'"
-         [style.color]="category()?.color || '#666'">
-      <mat-icon>{{ category()?.icon || 'category' }}</mat-icon>
-    </div>
+    <app-category-chip
+      appearance="tile"
+      [icon]="category()?.icon || 'category'"
+      [color]="category()?.color || '#666'"
+    />
 
     <div class="header-content">
       <h3 class="budget-name">{{ budget().name }}</h3>

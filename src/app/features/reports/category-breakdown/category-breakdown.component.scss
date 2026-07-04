@@ -94,22 +94,6 @@
   min-width: 0;
 }
 
-.category-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-
-  mat-icon {
-    font-size: var(--text-base);
-    width: 16px;
-    height: 16px;
-  }
-}
-
 .category-name {
   font-weight: 500;
   @apply text-gray-800 dark:text-gray-100;
@@ -260,18 +244,6 @@
       .mat-expansion-panel-body {
         padding: 0 20px 20px;
       }
-    }
-  }
-
-  .category-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-md);
-
-    mat-icon {
-      font-size: var(--text-xl);
-      width: 20px;
-      height: 20px;
     }
   }
 

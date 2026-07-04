@@ -60,11 +60,13 @@
           <div class="category-cell">
             <div
               class="category-icon-sm"
-              [style.background-color]="getCategoryColor(transaction.categoryId) + '15'"
             >
-              <mat-icon [style.color]="getCategoryColor(transaction.categoryId)">
-                {{ getCategoryIcon(transaction.categoryId) }}
-              </mat-icon>
+              <app-category-chip
+                appearance="tile"
+                size="sm"
+                [icon]="getCategoryIcon(transaction.categoryId)"
+                [color]="getCategoryColor(transaction.categoryId)"
+              />
             </div>
             <span class="category-name">{{ getCategoryName(transaction.categoryId) }}</span>
           </div>

@@ -11,6 +11,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 
 interface CategoryBreakdown {
   categoryId: string;
@@ -27,6 +28,7 @@ interface CategoryBreakdown {
   selector: 'app-category-breakdown',
   standalone: true,
   imports: [
+    CategoryChipComponent,
     CommonModule,
     MatCardModule,
     MatIconModule,

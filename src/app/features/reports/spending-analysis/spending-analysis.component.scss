@@ -59,21 +59,6 @@
   gap: 12px;
 }
 
-.category-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  mat-icon {
-    font-size: var(--text-xl);
-    width: 20px;
-    height: 20px;
-  }
-}
-
 .category-details {
   display: flex;
   flex-direction: column;

@@ -69,22 +69,6 @@
   }
 }
 
-.category-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-
-  mat-icon {
-    font-size: var(--text-xl);
-    width: 20px;
-    height: 20px;
-  }
-}
-
 .category-info {
   flex: 1;
   display: flex;

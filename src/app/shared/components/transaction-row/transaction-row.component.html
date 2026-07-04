@@ -7,9 +7,7 @@
   (keydown.space)="$event.preventDefault(); onActivate()"
 >
   <!-- Category Icon -->
-  <div class="category-icon" [style.background-color]="categoryColor() + '15'">
-    <mat-icon [style.color]="categoryColor()">{{ categoryIcon() }}</mat-icon>
-  </div>
+  <app-category-chip appearance="tile" [icon]="categoryIcon()" [color]="categoryColor()" />
 
   <!-- Details -->
   <div class="row-details">

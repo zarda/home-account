@@ -17,11 +17,13 @@ import { Category } from '../../../models';
 import { CategoryFormDialogComponent } from './category-form-dialog/category-form-dialog.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 
 @Component({
   selector: 'app-category-manager',
   standalone: true,
   imports: [
+    CategoryChipComponent,
     CommonModule,
     FormsModule,
     DragDropModule,

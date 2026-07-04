@@ -14,11 +14,13 @@ import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 
 @Component({
   selector: 'app-budget-progress-card',
   standalone: true,
   imports: [
+    CategoryChipComponent,
     CommonModule,
     MatCardModule,
     MatProgressBarModule,

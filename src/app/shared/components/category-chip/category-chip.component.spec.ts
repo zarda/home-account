@@ -80,4 +80,39 @@ describe('CategoryChipComponent', () => {
       expect(component.getTextColor('ffffff')).toBe('#ffffff');
     });
   });
+
+  describe('tile appearance', () => {
+    it('renders an icon-only tile with the category color', () => {
+      component.appearance = 'tile';
+      component.icon = 'restaurant';
+      component.color = '#3366CC';
+      fixture.detectChanges();
+
+      const tile: HTMLElement = fixture.nativeElement.querySelector('.tile');
+      expect(tile).not.toBeNull();
+      expect(tile.querySelector('mat-icon')?.textContent).toContain('restaurant');
+      // Tiles never render a text label.
+      expect(tile.textContent).not.toContain('Food');
+    });
+
+    it('applies the size modifier classes', () => {
+      fixture.componentRef.setInput('appearance', 'tile');
+      fixture.componentRef.setInput('color', '#3366CC');
+      fixture.componentRef.setInput('size', 'sm');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.tile')!.classList).toContain('tile-sm');
+
+      fixture.componentRef.setInput('size', 'lg');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.tile')!.classList).toContain('tile-lg');
+    });
+
+    it('falls back to the generic category icon when none is given', () => {
+      component.appearance = 'tile';
+      component.color = '#3366CC';
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.tile mat-icon')?.textContent)
+        .toContain('category');
+    });
+  });
 });
