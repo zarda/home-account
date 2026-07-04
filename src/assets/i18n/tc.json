@@ -168,7 +168,8 @@
     "alertSnackbarExceeded": "{{name}}：已超出預算（已使用 {{percent}}%）",
     "alertSnackbarCritical": "{{name}}：即將達到上限（已使用 {{percent}}%）",
     "alertSnackbarWarning": "{{name}}：接近上限（已使用 {{percent}}%）",
-    "alertSnackbarMore": "另有 {{count}} 個預算提醒"
+    "alertSnackbarMore": "另有 {{count}} 個預算提醒",
+    "viewBudgets": "查看預算"
   },
   "reports": {
     "title": "報表",

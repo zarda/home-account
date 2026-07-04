@@ -1,7 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
-import { Subject } from 'rxjs';
+import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
+import { BehaviorSubject, Subject } from 'rxjs';
 import { HeaderComponent } from './header.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { User } from '../../../models';
@@ -12,6 +13,9 @@ describe('HeaderComponent', () => {
   let routerEvents: Subject<unknown>;
   let mockRouter: { events: Subject<unknown>; navigate: jasmine.Spy };
   let mockAuth: { currentUser: ReturnType<typeof signal<User | null>>; signOut: jasmine.Spy };
+  let viewport$: BehaviorSubject<BreakpointState>;
+
+  const mobileViewport = (matches: boolean): BreakpointState => ({ matches, breakpoints: {} });
 
   function addScrollContainer(): { el: HTMLElement; setScrollTop: (v: number) => void } {
     const el = document.createElement('div');
@@ -33,12 +37,15 @@ describe('HeaderComponent', () => {
       currentUser: signal<User | null>({ id: 'u1', displayName: 'Tester' } as User),
       signOut: jasmine.createSpy('signOut').and.resolveTo(undefined),
     };
+    // Auto-hide only applies on mobile; tests opt in per case.
+    viewport$ = new BehaviorSubject<BreakpointState>(mobileViewport(true));
 
     await TestBed.configureTestingModule({
       imports: [HeaderComponent],
       providers: [
         { provide: Router, useValue: mockRouter },
         { provide: AuthService, useValue: mockAuth },
+        { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
       ],
     })
       .overrideComponent(HeaderComponent, { set: { imports: [], template: '' } })
@@ -78,22 +85,47 @@ describe('HeaderComponent', () => {
     expect(el.scrollTop).toBe(0);
   });
 
-  it('hides on scroll down and shows on scroll up', () => {
+  it('hides on scroll down and shows on scroll up (mobile)', () => {
+    const { setScrollTop } = addScrollContainer();
+    fixture.detectChanges();
+    component.ngAfterViewInit();
+
+    setScrollTop(100);
+    component.evaluateScrollFrame();
+    expect(component.isVisible()).toBeFalse();
+
+    setScrollTop(50);
+    component.evaluateScrollFrame();
+    expect(component.isVisible()).toBeTrue();
+
+    setScrollTop(5);
+    component.evaluateScrollFrame();
+    expect(component.isVisible()).toBeTrue();
+  });
+
+  it('never hides on tablet/desktop viewports', () => {
+    viewport$.next(mobileViewport(false));
+    const { setScrollTop } = addScrollContainer();
+    fixture.detectChanges();
+    component.ngAfterViewInit();
+
+    setScrollTop(500);
+    component.evaluateScrollFrame();
+    expect(component.isVisible()).toBeTrue();
+  });
+
+  it('coalesces bursts of scroll events into one animation frame', () => {
     const { el, setScrollTop } = addScrollContainer();
+    const rafSpy = spyOn(window, 'requestAnimationFrame').and.returnValue(1);
     fixture.detectChanges();
     component.ngAfterViewInit();
 
     setScrollTop(100);
     el.dispatchEvent(new Event('scroll'));
-    expect(component.isVisible()).toBeFalse();
-
-    setScrollTop(50);
     el.dispatchEvent(new Event('scroll'));
-    expect(component.isVisible()).toBeTrue();
-
-    setScrollTop(5);
     el.dispatchEvent(new Event('scroll'));
-    expect(component.isVisible()).toBeTrue();
+
+    expect(rafSpy).toHaveBeenCalledTimes(1);
   });
 
   it('ngAfterViewInit is a no-op when there is no scroll container', () => {

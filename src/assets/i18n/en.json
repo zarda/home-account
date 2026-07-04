@@ -168,7 +168,8 @@
     "alertSnackbarExceeded": "{{name}}: budget exceeded ({{percent}}% used)",
     "alertSnackbarCritical": "{{name}}: almost at limit ({{percent}}% used)",
     "alertSnackbarWarning": "{{name}}: approaching limit ({{percent}}% used)",
-    "alertSnackbarMore": "+{{count}} more budget alerts"
+    "alertSnackbarMore": "+{{count}} more budget alerts",
+    "viewBudgets": "View budgets"
   },
   "reports": {
     "title": "Reports",

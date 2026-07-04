@@ -83,6 +83,9 @@
     </div>
   </div>
 
+  <!-- Budget threshold alerts: inline + dismissible, not a standing snackbar -->
+  <app-budget-alert-banner />
+
   @if (isLoading()) {
     <app-loading-spinner [message]="'dashboard.loadingData' | translate" />
   } @else {

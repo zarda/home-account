@@ -7,7 +7,6 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { FormsModule } from '@angular/forms';
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
@@ -16,12 +15,12 @@ import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
-import { AnnouncerService } from '../../core/services/announcer.service';
-import { Transaction, Category, CategoryTotal, BudgetAlertSeverity } from '../../models';
+import { Transaction, Category, CategoryTotal } from '../../models';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
+import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
@@ -51,11 +50,11 @@ interface CustomPeriod {
     MatMenuModule,
     MatIconModule,
     MatButtonModule,
-    MatSnackBarModule,
     FinancialSummaryComponent,
     SpendingChartComponent,
     RecentTransactionsComponent,
     BudgetProgressComponent,
+    BudgetAlertBannerComponent,
     AiSummaryComponent,
     LoadingSpinnerComponent,
     TranslatePipe
@@ -71,15 +70,10 @@ export class DashboardComponent implements OnInit {
   private authService = inject(AuthService);
   private recurringService = inject(RecurringService);
   private translationService = inject(TranslationService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private destroyRef = inject(DestroyRef);
 
   selectedPeriod: PeriodOption = 'thisMonth';
   isLoading = signal(true);
-
-  // Budget alerts are surfaced at most once per dashboard visit
-  private budgetAlertsNotified = false;
 
   // Custom period selection
   customPeriod = signal<CustomPeriod | null>(null);
@@ -182,16 +176,15 @@ export class DashboardComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    // Load budgets once, then surface any threshold alerts. Deliberately
-    // outside loadData(): getBudgets is an infinite live stream, so period
-    // changes must not stack extra subscriptions, and takeUntilDestroyed
-    // stops destroyed dashboard instances from reacting to later budget
-    // writes made elsewhere in the app.
+    // Load budgets once; the derived budgetAlerts signal feeds the inline
+    // alert banner declaratively. Deliberately outside loadData():
+    // getBudgets is an infinite live stream, so period changes must not
+    // stack extra subscriptions, and takeUntilDestroyed stops destroyed
+    // dashboard instances from reacting to later budget writes made
+    // elsewhere in the app.
     this.budgetService.getBudgets()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => this.maybeShowBudgetAlerts()
-      });
+      .subscribe();
 
     this.loadData();
     // Post recurring occurrences that came due since the app was last open.
@@ -309,36 +302,6 @@ export class DashboardComponent implements OnInit {
         this.historicalExpenses.set(null);
       }
     });
-  }
-
-  // Surface budget alerts once per dashboard visit as a dismissible snackbar.
-  // The guard matters: getBudgets() is a live subscription and loadData()
-  // re-runs on every period change, so without it the alert would re-fire.
-  private maybeShowBudgetAlerts(): void {
-    if (this.budgetAlertsNotified) return;
-
-    const alerts = this.budgetService.budgetAlerts();
-    if (alerts.length === 0) return;
-    this.budgetAlertsNotified = true;
-
-    const keyBySeverity: Record<BudgetAlertSeverity, string> = {
-      exceeded: 'budget.alertSnackbarExceeded',
-      critical: 'budget.alertSnackbarCritical',
-      warning: 'budget.alertSnackbarWarning'
-    };
-    const top = alerts[0];
-    let message = this.translationService.t(keyBySeverity[top.severity], {
-      name: top.budgetName,
-      percent: Math.round(top.percentUsed)
-    });
-    if (alerts.length > 1) {
-      message += ` ${this.translationService.t('budget.alertSnackbarMore', {
-        count: alerts.length - 1
-      })}`;
-    }
-
-    this.snackBar.open(message, this.translationService.t('common.close'), { duration: 8000 });
-    this.announcer.announce(message);
   }
 
   // Trailing baseline window: from BASELINE_WINDOW_MONTHS before the current

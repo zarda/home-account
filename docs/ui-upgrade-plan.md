@@ -401,7 +401,7 @@ stable — reference them in commit messages (see 10.2).
 - [x] **P2.2** — One breakpoint scale (TS + SCSS); close the 600–1279px nav dead zone (§6.2)
 - [x] **P2.3** — Bottom nav labels + active state; single mobile add button (§6.3)
 - [x] **P2.4** — iOS safe-area insets on header/bottom-nav/main/drawer (§6.4)
-- [ ] **P2.5** — Dark toolbar surface + wordmark; inline alert banner replaces standing snackbar; mobile-gated rAF header auto-hide (§6.5)
+- [x] **P2.5** — Dark toolbar surface + wordmark; inline alert banner replaces standing snackbar; mobile-gated rAF header auto-hide (§6.5)
 
 **Phase 3 — shared component system (§7):**
 

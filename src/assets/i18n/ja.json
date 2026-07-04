@@ -168,7 +168,8 @@
     "alertSnackbarExceeded": "{{name}}：予算超過（{{percent}}% 使用）",
     "alertSnackbarCritical": "{{name}}：ほぼ上限に到達（{{percent}}% 使用）",
     "alertSnackbarWarning": "{{name}}：上限に近づいています（{{percent}}% 使用）",
-    "alertSnackbarMore": "他 {{count}} 件の予算アラート"
+    "alertSnackbarMore": "他 {{count}} 件の予算アラート",
+    "viewBudgets": "予算を見る"
   },
   "reports": {
     "title": "レポート",

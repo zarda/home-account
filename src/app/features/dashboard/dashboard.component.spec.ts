@@ -7,6 +7,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
+import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
@@ -354,56 +355,6 @@ describe('DashboardComponent', () => {
       severity: 'exceeded',
     };
 
-    it('does not open a snackbar when no budget crosses a threshold', () => {
-      build().detectChanges();
-      expect(snackBar.open).not.toHaveBeenCalled();
-      expect(announcer.announce).not.toHaveBeenCalled();
-    });
-
-    it('opens a dismissible snackbar when a budget is in warning', () => {
-      budgetService.budgetAlerts.set([warningAlert]);
-      build().detectChanges();
-      expect(snackBar.open).toHaveBeenCalledWith('budget.alertSnackbarWarning', 'common.close', {
-        duration: 8000,
-      });
-      expect(translation.t).toHaveBeenCalledWith('budget.alertSnackbarWarning', {
-        name: 'Food',
-        percent: 85,
-      });
-    });
-
-    it('opens an exceeded snackbar and announces it for an exceeded budget', () => {
-      budgetService.budgetAlerts.set([exceededAlert]);
-      build().detectChanges();
-      expect(snackBar.open).toHaveBeenCalledWith('budget.alertSnackbarExceeded', 'common.close', {
-        duration: 8000,
-      });
-      expect(announcer.announce).toHaveBeenCalledWith('budget.alertSnackbarExceeded');
-      expect(translation.t).toHaveBeenCalledWith('budget.alertSnackbarExceeded', {
-        name: 'Travel',
-        percent: 110,
-      });
-    });
-
-    it('appends a more-count when several budgets alert', () => {
-      budgetService.budgetAlerts.set([exceededAlert, warningAlert]);
-      build().detectChanges();
-      expect(snackBar.open).toHaveBeenCalledWith(
-        'budget.alertSnackbarExceeded budget.alertSnackbarMore',
-        'common.close',
-        { duration: 8000 },
-      );
-      expect(translation.t).toHaveBeenCalledWith('budget.alertSnackbarMore', { count: 1 });
-    });
-
-    it('notifies only once per dashboard visit', () => {
-      budgetService.budgetAlerts.set([warningAlert]);
-      const fixture = build();
-      fixture.detectChanges();
-      fixture.componentInstance.onPeriodChange();
-      expect(snackBar.open).toHaveBeenCalledTimes(1);
-    });
-
     it('subscribes to budgets once, not again on each period change', () => {
       const fixture = build();
       fixture.detectChanges();
@@ -412,29 +363,25 @@ describe('DashboardComponent', () => {
       expect(budgetService.getBudgets).toHaveBeenCalledTimes(1);
     });
 
-    it('alerts on a later emission when a threshold is crossed while alive', () => {
+    it('stops listening to budget emissions once the component is destroyed', () => {
       const budgets$ = new Subject<unknown[]>();
+      const seen: unknown[] = [];
       budgetService.getBudgets.and.returnValue(budgets$);
       const fixture = build();
       fixture.detectChanges();
-      expect(snackBar.open).not.toHaveBeenCalled();
+      expect(budgets$.observed).toBeTrue();
 
-      budgetService.budgetAlerts.set([warningAlert]);
-      budgets$.next([]);
-      expect(snackBar.open).toHaveBeenCalledTimes(1);
+      fixture.destroy();
+      budgets$.next(seen);
+      expect(budgets$.observed).toBeFalse();
     });
 
-    it('stops reacting to budget emissions once the component is destroyed', () => {
-      const budgets$ = new Subject<unknown[]>();
-      budgetService.getBudgets.and.returnValue(budgets$);
-      const fixture = build();
-      fixture.detectChanges();
-      fixture.destroy();
-
-      budgetService.budgetAlerts.set([warningAlert]);
-      budgets$.next([]);
-      expect(snackBar.open).not.toHaveBeenCalled();
-      expect(announcer.announce).not.toHaveBeenCalled();
+    // Alert presentation itself (message, severity, dismissal, announce)
+    // lives in BudgetAlertBannerComponent and is covered by its own spec.
+    it('exposes the alerts signal the banner consumes', () => {
+      budgetService.budgetAlerts.set([warningAlert, exceededAlert]);
+      build().detectChanges();
+      expect(budgetService.budgetAlerts()).toEqual([warningAlert, exceededAlert]);
     });
   });
 
@@ -470,6 +417,7 @@ describe('DashboardComponent', () => {
               BudgetProgressComponent,
               AiSummaryComponent,
               LoadingSpinnerComponent,
+              BudgetAlertBannerComponent,
             ],
           },
           add: { imports: [FinancialSummaryStubComponent], schemas: [NO_ERRORS_SCHEMA] },
