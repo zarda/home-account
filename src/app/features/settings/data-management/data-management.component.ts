@@ -11,7 +11,6 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { ExportService, ImportedTransaction } from '../../../core/services/export.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
-import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -39,7 +38,6 @@ export class DataManagementComponent {
   private exportService = inject(ExportService);
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
-  private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
 
@@ -264,23 +262,6 @@ export class DataManagementComponent {
             }
           }
         });
-      }
-    });
-  }
-
-  signOut(): void {
-    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
-      data: {
-        title: this.t('auth.signOut'),
-        message: this.t('settings.signOutConfirm'),
-        confirmLabel: this.t('auth.signOut'),
-        confirmColor: 'primary'
-      }
-    });
-
-    dialogRef.afterClosed().subscribe((confirmed) => {
-      if (confirmed) {
-        this.authService.signOut();
       }
     });
   }

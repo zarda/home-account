@@ -31,11 +31,24 @@
 }
 
 .theme-toggle {
+  // Cap the width so three options don't stretch edge to edge on desktop.
+  max-width: 480px;
+
   mat-button-toggle {
     flex: 1;
 
     mat-icon {
       margin-right: 8px;
+    }
+  }
+
+  // Primary-tinted selected state reads clearly in both themes.
+  ::ng-deep .mat-button-toggle-checked {
+    background: var(--color-primary-light, color-mix(in srgb, var(--color-accent) 14%, transparent));
+
+    .mat-button-toggle-label-content {
+      color: var(--color-accent);
+      font-weight: 600;
     }
   }
 }
@@ -67,7 +80,9 @@
 }
 
 @media (min-width: 768px) {
+  // Two columns keep the four fields as a tidy 2×2 grid (three columns left
+  // Language orphaned on its own row).
   .settings-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 }

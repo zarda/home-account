@@ -18,6 +18,10 @@
     </button>
   </div>
 
+  @if (isLoading()) {
+    <app-loading-spinner size="sm" [message]="'settings.loadingCategories' | translate" />
+  }
+
   <!-- Categories List with Drag & Drop -->
   <div
     cdkDropList
@@ -61,6 +65,14 @@
   </div>
 
   @if (filteredCategories.length === 0 && !isLoading()) {
-    <app-empty-state icon="category" [title]="'settings.noCategoriesFound' | translate" />
+    <app-empty-state
+      icon="category"
+      size="sm"
+      [title]="'settings.noCategoriesFound' | translate"
+      [description]="'settings.noCategoriesDescription' | translate"
+      [actionLabel]="'settings.addCategory' | translate"
+      actionIcon="add"
+      (action)="openAddDialog()"
+    />
   }
 </div>

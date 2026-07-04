@@ -211,25 +211,4 @@ describe('DataManagementComponent', () => {
       expect(mockDialog.open).toHaveBeenCalled();
     });
   });
-
-  describe('signOut', () => {
-    it('should open confirm dialog', () => {
-      const mockDialogRef = { afterClosed: () => of(false) };
-      mockDialog.open.and.returnValue(mockDialogRef as never);
-
-      component.signOut();
-
-      expect(mockDialog.open).toHaveBeenCalled();
-    });
-
-    it('should call authService.signOut when confirmed', fakeAsync(() => {
-      const mockDialogRef = { afterClosed: () => of(true) };
-      mockDialog.open.and.returnValue(mockDialogRef as never);
-
-      component.signOut();
-      tick();
-
-      expect(mockAuthService.signOut).toHaveBeenCalled();
-    }));
-  });
 });

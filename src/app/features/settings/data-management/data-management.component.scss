@@ -282,8 +282,13 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px;
-  @apply bg-white dark:bg-red-950;
+  // Lift the item off the zone in dark mode — red-950 on red-950 blended into
+  // one flat block before.
+  @apply bg-white dark:bg-red-900/40;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
+
+  @apply dark:border-red-900;
 }
 
 .danger-info {

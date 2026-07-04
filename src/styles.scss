@@ -254,6 +254,14 @@ html, body {
   justify-content: flex-end;
 }
 
+/* Dark mode: the default outlined form-field border is barely visible against
+   the dark surface. Raise the resting/hover outline to a legible contrast;
+   focus and error states keep their own accent colors. */
+.dark-theme {
+  --mdc-outlined-text-field-outline-color: #52525b;
+  --mdc-outlined-text-field-hover-outline-color: #7d7d87;
+}
+
 /* Snackbar tone accents (NotificationService panelClass hooks). A leading
    border tints the transient toast by outcome without changing the default
    dark snackbar surface. */

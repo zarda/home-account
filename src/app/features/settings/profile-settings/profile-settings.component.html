@@ -31,6 +31,7 @@
             <mat-option [value]="format.value">{{ format.label }}</mat-option>
           }
         </mat-select>
+        <mat-hint>{{ 'settings.example' | translate }}: {{ dateFormatExample }}</mat-hint>
       </mat-form-field>
     </div>
 
@@ -50,7 +51,7 @@
   <!-- Theme Selection -->
   <div class="theme-section">
     <span class="section-label" id="theme-label">{{ 'settings.theme' | translate }}</span>
-    <mat-button-toggle-group [(ngModel)]="theme" (change)="onThemeChange()" class="theme-toggle" aria-labelledby="theme-label">
+    <mat-button-toggle-group [(ngModel)]="theme" (change)="onThemeChange()" class="theme-toggle" hideSingleSelectionIndicator="false" aria-labelledby="theme-label">
       <mat-button-toggle value="light">
         <mat-icon>light_mode</mat-icon>
         <span>{{ 'settings.themeLight' | translate }}</span>

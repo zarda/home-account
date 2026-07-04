@@ -17,6 +17,7 @@ import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/compo
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
@@ -24,6 +25,7 @@ import { NotificationService } from '../../../core/services/notification.service
   standalone: true,
   imports: [
     EmptyStateComponent,
+    LoadingSpinnerComponent,
     CategoryChipComponent,
     CommonModule,
     FormsModule,
@@ -84,7 +86,7 @@ export class CategoryManagerComponent implements OnInit {
 
   openAddDialog(): void {
     const dialogRef = this.dialog.open(CategoryFormDialogComponent, {
-      width: '400px',
+      width: 'min(400px, calc(100vw - 32px))',
       data: { type: this.selectedType }
     });
 
@@ -106,7 +108,7 @@ export class CategoryManagerComponent implements OnInit {
 
   openEditDialog(category: Category): void {
     const dialogRef = this.dialog.open(CategoryFormDialogComponent, {
-      width: '400px',
+      width: 'min(400px, calc(100vw - 32px))',
       data: { category, type: this.selectedType }
     });
 

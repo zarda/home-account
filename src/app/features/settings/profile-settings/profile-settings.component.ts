@@ -50,11 +50,17 @@ export class ProfileSettingsComponent {
   dateFormat = this.authService.currentUser()?.preferences?.dateFormat || 'MM/DD/YYYY';
   language: SupportedLocale = (this.authService.currentUser()?.preferences?.language as SupportedLocale) || this.translationService.currentLocale();
 
+  // Pattern-only labels keep the select value from colliding with the arrow;
+  // the worked example moves to helper text below the field.
   dateFormats = [
-    { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (12/31/2024)' },
-    { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (31/12/2024)' },
-    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2024-12-31)' },
+    { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY', example: '12/31/2024' },
+    { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY', example: '31/12/2024' },
+    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD', example: '2024-12-31' },
   ];
+
+  get dateFormatExample(): string {
+    return this.dateFormats.find(f => f.value === this.dateFormat)?.example ?? '';
+  }
 
   languages = this.translationService.languages;
 
