@@ -351,8 +351,98 @@ Phases 0 and 1 can start in parallel. Within Phase 4, pages are independent and 
 across contributors — each page pass should *delete* local styling in favor of Phase 1 tokens
 and Phase 3 components.
 
-**Suggested PR slicing:** one PR per numbered subsection (5.1, 5.2, … 8.1, 8.2 …), each with
-before/after screenshots from the capture harness.
+### 10.1 Execution checklist
+
+One checkbox per numbered plan subsection; each item is sized to one commit/PR. IDs are
+stable — reference them in commit messages (see 10.2).
+
+**Definition of done for every item:**
+
+1. **Unit specs** added/updated for all changed logic — new shared components (Phase 3) each
+   ship with a spec; bug fixes (e.g. PT/P0 items) get a regression spec.
+2. **Test gates green locally**: `npm run lint && npm run test:ci && npm run smoke` — the same
+   three gates CI enforces.
+3. **Before/after screenshots** from the capture harness (§11) for visually observable items.
+
+**Test scaffolding (lands first):**
+
+- [ ] **PT.1** — Route-level UI smoke spec: boot the app against the Firebase emulators
+  (pattern: `src/app/core/services/storage.service.smoke.spec.ts`), render the shell and each
+  main route (dashboard, transactions, budgets, reports, settings), assert each page renders
+  its header/key landmark and throws no errors. Name it `*.smoke.spec.ts` so the existing
+  `npm run smoke` CI step picks it up automatically.
+
+**Phase 0 — trust & correctness quick wins (§4):**
+
+- [ ] **P0.1** — Deterministic multi-currency totals; base currency shown on summary cards (§4 row 0.1)
+- [ ] **P0.2** — True budget utilization (>100% shown, no cap) with one state token for bar/%/label (§4 row 0.2)
+- [ ] **P0.3** — Uniform money formatting through one currency pipe (§4 row 0.3)
+- [ ] **P0.4** — Budget alert and Budget Progress card derive from the same period/query (§4 row 0.4)
+- [ ] **P0.5** — Un-clip the "Currency" label in the Add Transaction dialog (§4 row 0.5)
+- [ ] **P0.6** — Fix `AmountDisplayComponent` reactivity via signal inputs (§4 row 0.6)
+- [ ] **P0.7** — ConfirmDialog i18n fallback + `confirmText`→`confirmLabel` call sites (§4 row 0.7)
+- [ ] **P0.8** — Converted secondary value on foreign-currency rows (§4 row 0.8)
+
+**Phase 1 — token & theming foundation (§5):**
+
+- [ ] **P1.1** — Consolidate color systems: Tailwind→tokens, ~300-hex sweep, income/expense fill-vs-text split (§5.1)
+- [ ] **P1.2** — Material M2→M3 migration (or `--mat-sys-*` bridge block first) (§5.2)
+- [ ] **P1.3** — Reduce dark-mode mechanisms to two; delete dead selectors (§5.3)
+- [ ] **P1.4** — Typography & spacing scale; radius + elevation tokens (§5.4)
+- [ ] **P1.5** — Self-host fonts/icons; fix `theme-color` PWA chrome (§5.5)
+- [ ] **P1.6** — Shared chart-theme helper reacting to theme flips (§5.6)
+- [ ] **P1.7** — Global `:focus-visible` + `prefers-reduced-motion` primitives (§5.7)
+
+**Phase 2 — app shell & navigation (§6):**
+
+- [ ] **P2.1** — Docked desktop sidebar, no auto-open modal, z-index token scale (§6.1)
+- [ ] **P2.2** — One breakpoint scale (TS + SCSS); close the 600–1279px nav dead zone (§6.2)
+- [ ] **P2.3** — Bottom nav labels + active state; single mobile add button (§6.3)
+- [ ] **P2.4** — iOS safe-area insets on header/bottom-nav/main/drawer (§6.4)
+- [ ] **P2.5** — Dark toolbar surface + wordmark; inline alert banner replaces standing snackbar; mobile-gated rAF header auto-hide (§6.5)
+
+**Phase 3 — shared component system (§7):**
+
+- [ ] **P3.1** — Extract `<app-page-header>` (§7)
+- [ ] **P3.2** — Extract `<app-period-selector>` (§7)
+- [ ] **P3.3** — Extract `<app-stat-card>` (§7)
+- [ ] **P3.4** — Extract `<app-transaction-row>` (§7)
+- [ ] **P3.5** — Extend `CategoryChipComponent` with tile appearance; replace 6+ local copies (§7)
+- [ ] **P3.6** — Adopt fixed `AmountDisplayComponent` app-wide (§7; depends on P0.6)
+- [ ] **P3.7** — Dialog defaults (`MAT_DIALOG_DEFAULT_OPTIONS`) + one dialog chrome (§7)
+- [ ] **P3.8** — Adopt `EmptyStateComponent` everywhere; add `size='sm'` (§7)
+- [ ] **P3.9** — Adopt `LoadingSpinnerComponent` for page/section loading (§7)
+- [ ] **P3.10** — Notification service wrapping the uniform snackbar shape (§7)
+- [ ] **P3.11** — Pure/memoized `TranslatePipe` (§7)
+
+**Phase 4 — page passes (§8):**
+
+- [ ] **P4.1** — Dashboard pass (§8.1)
+- [ ] **P4.2** — Transactions pass (§8.2)
+- [ ] **P4.3** — Budgets pass (§8.3)
+- [ ] **P4.4** — Reports pass (§8.4)
+- [ ] **P4.5** — Settings/Auth/About pass (§8.5)
+- [ ] **P4.6** — AI import flow pass (§8.6)
+
+**Phase 5 — hardening (§9):**
+
+- [ ] **P5.1** — Dark-mode surface unification + `dark:` pair audit (§9)
+- [ ] **P5.2** — Accessibility sweep: aria-labels, ≥44px targets, focus, contrast (§9)
+- [ ] **P5.3** — i18n resilience: ja/tc width audit, locale-aware ordinals (§9)
+- [ ] **P5.4** — Motion preferences honored on all animations (§9)
+
+### 10.2 Commit convention — aligning commits to the checklist
+
+- **One commit (or PR) per checklist item**; no commit mixes two items.
+- **Message format:** `<type>(ui): [P2.1] <imperative summary>` — conventional-commit type
+  (`fix`/`feat`/`refactor`/`style`/`docs`), the checklist ID in brackets; the body may
+  reference the plan subsection and before/after screenshots.
+- The commit that completes an item **also checks its checkbox in this file**, so
+  `git log --grep '\[P'` and the checklist always agree.
+- Items too large for one commit (e.g. the P1.1 hex sweep) may use part numbering
+  (`[P1.1 1/3]`); the box is checked in the final part.
+- A box may only be checked when the definition of done holds: unit specs included and
+  `lint` + `test:ci` + `smoke` green (CI re-verifies the same gates).
 
 ---
 
