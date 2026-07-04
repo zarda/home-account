@@ -88,7 +88,8 @@
                   type="button"
                   (click)="moveImageUp(i)"
                   [disabled]="i === 0 || isProcessing()"
-                  title="Move up"
+                  [attr.aria-label]="'common.moveUp' | translate"
+                  [title]="'common.moveUp' | translate"
                 >
                   <mat-icon>arrow_upward</mat-icon>
                 </button>
@@ -97,7 +98,8 @@
                   type="button"
                   (click)="moveImageDown(i)"
                   [disabled]="i === imageCount() - 1 || isProcessing()"
-                  title="Move down"
+                  [attr.aria-label]="'common.moveDown' | translate"
+                  [title]="'common.moveDown' | translate"
                 >
                   <mat-icon>arrow_downward</mat-icon>
                 </button>
@@ -107,7 +109,8 @@
                   type="button"
                   (click)="removeImage(image.id)"
                   [disabled]="isProcessing()"
-                  title="Remove"
+                  [attr.aria-label]="'common.remove' | translate"
+                  [title]="'common.remove' | translate"
                 >
                   <mat-icon>close</mat-icon>
                 </button>

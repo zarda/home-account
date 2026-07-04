@@ -34,7 +34,7 @@
               <span class="recurring-name">{{ recurring.name }}</span>
               <span class="recurring-category">{{ getCategoryName(recurring.categoryId) }}</span>
             </div>
-            <button mat-icon-button [matMenuTriggerFor]="actionMenu" class="action-btn">
+            <button mat-icon-button [matMenuTriggerFor]="actionMenu" class="action-btn" [attr.aria-label]="'common.moreActions' | translate">
               <mat-icon>more_vert</mat-icon>
             </button>
           </div>

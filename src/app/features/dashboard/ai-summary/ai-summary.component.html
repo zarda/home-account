@@ -12,6 +12,7 @@
           (click)="refresh()"
           [disabled]="isLoading() || !hasEnoughData()"
           [title]="'ai.refresh' | translate"
+          [attr.aria-label]="'ai.refresh' | translate"
         >
           <mat-icon [class.spinning]="isLoading()">refresh</mat-icon>
         </button>
