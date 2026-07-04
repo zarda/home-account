@@ -14,11 +14,13 @@ import { AuthService } from '../../../core/services/auth.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
 import { Budget, CategoryTotal, Transaction, MonthlyTotal } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 
 @Component({
   selector: 'app-ai-summary',
   standalone: true,
   imports: [
+    EmptyStateComponent,
     CommonModule,
     MatCardModule,
     MatIconModule,

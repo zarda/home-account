@@ -61,9 +61,6 @@
   </div>
 
   @if (filteredCategories.length === 0 && !isLoading()) {
-    <div class="empty-state">
-      <mat-icon>category</mat-icon>
-      <p>{{ 'settings.noCategoriesFound' | translate }}</p>
-    </div>
+    <app-empty-state icon="category" [title]="'settings.noCategoriesFound' | translate" />
   }
 </div>

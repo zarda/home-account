@@ -285,23 +285,6 @@
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
-  color: var(--text-muted, #999);
-}
-
-.empty-state mat-icon {
-  font-size: 48px;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
 /* Responsive */
 @media (max-width: 600px) {
   .card-top-row {

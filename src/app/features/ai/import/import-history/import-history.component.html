@@ -15,16 +15,13 @@
       <mat-spinner diameter="40"></mat-spinner>
     </div>
   } @else if (importHistory().length === 0) {
-    <mat-card class="empty-state">
-      <mat-card-content>
-        <mat-icon>history</mat-icon>
-        <p>{{ 'import.noHistory' | translate }}</p>
-        <button mat-flat-button color="primary" (click)="goToImport()">
-          <mat-icon>upload</mat-icon>
-          {{ 'import.startImport' | translate }}
-        </button>
-      </mat-card-content>
-    </mat-card>
+    <app-empty-state
+      icon="history"
+      [title]="'import.noHistory' | translate"
+      [actionLabel]="'import.startImport' | translate"
+      actionIcon="upload"
+      (action)="goToImport()"
+    />
   } @else {
     <div class="history-list">
       @for (item of importHistory(); track item.id) {

@@ -18,11 +18,13 @@ import { CategoryFormDialogComponent } from './category-form-dialog/category-for
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 
 @Component({
   selector: 'app-category-manager',
   standalone: true,
   imports: [
+    EmptyStateComponent,
     CategoryChipComponent,
     CommonModule,
     FormsModule,

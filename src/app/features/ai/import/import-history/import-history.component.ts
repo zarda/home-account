@@ -19,11 +19,13 @@ import { ConfirmDialogComponent } from '../../../../shared/components/confirm-di
 import { ImportHistory, ImportStatus } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
+import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 
 @Component({
   selector: 'app-import-history',
   standalone: true,
   imports: [
+    EmptyStateComponent,
     PageHeaderComponent,
     CommonModule,
     MatCardModule,

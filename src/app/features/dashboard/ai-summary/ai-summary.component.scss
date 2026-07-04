@@ -96,27 +96,6 @@ mat-card-content {
 }
 
 // Empty state
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 24px 0;
-  text-align: center;
-  @apply text-gray-400 dark:text-gray-500;
-
-  mat-icon {
-    font-size: var(--text-3xl);
-    width: 32px;
-    height: 32px;
-  }
-
-  span {
-    font-size: var(--text-sm);
-  }
-}
-
 // Error state
 .error-state {
   display: flex;

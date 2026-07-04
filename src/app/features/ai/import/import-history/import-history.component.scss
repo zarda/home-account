@@ -29,25 +29,6 @@
 }
 
 // Empty State
-.empty-state {
-  text-align: center;
-  padding: 48px;
-  @apply bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700;
-
-  mat-icon {
-    font-size: 64px;
-    width: 64px;
-    height: 64px;
-    @apply text-gray-400 dark:text-gray-500;
-    margin-bottom: 16px;
-  }
-
-  p {
-    @apply text-gray-600 dark:text-gray-400;
-    margin-bottom: 24px;
-  }
-}
-
 // History List
 .history-list {
   display: flex;

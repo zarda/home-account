@@ -102,9 +102,6 @@
   </div>
 
   @if (transactions.length === 0) {
-    <div class="empty-state">
-      <mat-icon>inbox</mat-icon>
-      <p>{{ 'import.noTransactions' | translate }}</p>
-    </div>
+    <app-empty-state size="sm" icon="inbox" [title]="'import.noTransactions' | translate" />
   }
 </div>
