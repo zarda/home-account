@@ -415,7 +415,7 @@ stable — reference them in commit messages (see 10.2).
 - [x] **P3.8** — Adopt `EmptyStateComponent` everywhere; add `size='sm'` (§7)
 - [x] **P3.9** — Adopt `LoadingSpinnerComponent` for page/section loading (§7)
 - [x] **P3.10** — Notification service wrapping the uniform snackbar shape (§7)
-- [ ] **P3.11** — Pure/memoized `TranslatePipe` (§7)
+- [x] **P3.11** — Pure/memoized `TranslatePipe` (§7)
 
 **Phase 4 — page passes (§8):**
 
