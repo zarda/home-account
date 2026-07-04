@@ -4,12 +4,14 @@ import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetProgressCardComponent } from './budget-progress-card.component';
 import { TranslationService } from '../../../core/services/translation.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { Budget, Category } from '../../../models';
 
 describe('BudgetProgressCardComponent', () => {
   let component: BudgetProgressCardComponent;
   let fixture: ComponentFixture<BudgetProgressCardComponent>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
+  let mockCurrencyService: { formatCurrency: jasmine.Spy };
 
   const mockTimestamp = {
     seconds: Math.floor(Date.now() / 1000),
@@ -65,11 +67,26 @@ describe('BudgetProgressCardComponent', () => {
       return translations[key] || key;
     });
     mockTranslationService.getIntlLocale.and.returnValue('en-US');
+    // Mirrors CurrencyService.formatCurrency's decimal rules (two decimals
+    // for USD-like currencies) so rendering assertions stay realistic.
+    mockCurrencyService = {
+      formatCurrency: jasmine
+        .createSpy('formatCurrency')
+        .and.callFake((amount: number, code: string) =>
+          new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: code,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          }).format(amount)
+        )
+    };
 
     await TestBed.configureTestingModule({
       imports: [BudgetProgressCardComponent, NoopAnimationsModule],
       providers: [
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        { provide: CurrencyService, useValue: mockCurrencyService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -302,6 +319,18 @@ describe('BudgetProgressCardComponent', () => {
       fixture.componentRef.setInput('budget', createMockBudget({ currency: 'EUR' }));
       const formatted = component.formatCurrency(1234.56);
       expect(formatted).toContain('1,234');
+    });
+
+    it('delegates to the app-wide CurrencyService formatter', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ currency: 'USD' }));
+      component.formatCurrency(93.1);
+      expect(mockCurrencyService.formatCurrency).toHaveBeenCalledWith(93.1, 'USD');
+    });
+
+    it('always renders two decimals for USD-like currencies', () => {
+      fixture.componentRef.setInput('budget', createMockBudget({ currency: 'USD' }));
+      expect(component.formatCurrency(93.1)).toBe('$93.10');
+      expect(component.formatCurrency(506.9)).toBe('$506.90');
     });
   });
 

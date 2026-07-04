@@ -12,6 +12,7 @@ import { Budget, BudgetPeriod } from '../../../models';
 import { Category } from '../../../models';
 import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { TranslationService } from '../../../core/services/translation.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -32,6 +33,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 })
 export class BudgetProgressCardComponent {
   private translationService = inject(TranslationService);
+  private currencyService = inject(CurrencyService);
 
   // Modern Angular 21: signal-based inputs/outputs
   budget = input.required<Budget>();
@@ -146,15 +148,10 @@ export class BudgetProgressCardComponent {
     }
   }
 
+  // Delegates to the app-wide formatter so budget cards can never drift
+  // from the canonical decimal rules ($93.10, never $93.1).
   formatCurrency(amount: number): string {
-    const locale = this.translationService.getIntlLocale();
-    const budget = this.budget();
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: budget.currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2
-    }).format(amount);
+    return this.currencyService.formatCurrency(amount, this.budget().currency);
   }
 
   getRemainingText(): string {
