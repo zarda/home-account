@@ -244,6 +244,16 @@ html, body {
   }
 }
 
+/* One dialog chrome app-wide. app-dialog-header supplies the bordered
+   title row + close-X; this pins the footer with a matching top border so
+   the actions stay visible while mat-dialog-content scrolls between them. */
+.mat-mdc-dialog-actions {
+  padding: 16px 24px;
+  gap: 8px;
+  border-top: 1px solid var(--border-primary);
+  justify-content: flex-end;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

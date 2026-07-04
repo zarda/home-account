@@ -26,6 +26,7 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
 
@@ -38,6 +39,7 @@ interface DialogData {
   selector: 'app-transaction-form',
   standalone: true,
   imports: [
+    DialogHeaderComponent,
     CommonModule,
     ReactiveFormsModule,
     MatDialogModule,

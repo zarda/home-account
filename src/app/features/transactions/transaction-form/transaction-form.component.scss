@@ -133,25 +133,6 @@
   max-height: 90vh;
 }
 
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
-  @apply border-b border-gray-200 dark:border-gray-700;
-}
-
-.dialog-title {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  @apply text-gray-900 dark:text-gray-100;
-  margin: 0;
-}
-
-.close-button {
-  margin: -8px -8px -8px 0;
-}
-
 .dialog-content {
   padding: 24px !important;
   overflow-y: auto !important;
@@ -300,10 +281,6 @@
 }
 
 @media (max-width: 480px) {
-  .dialog-header {
-    padding: 12px 16px;
-  }
-
   .dialog-content {
     padding: 16px !important;
   }

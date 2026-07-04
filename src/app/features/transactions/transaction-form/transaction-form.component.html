@@ -1,13 +1,8 @@
 <div class="dialog-container">
-  <!-- Header -->
-  <div class="dialog-header">
-    <h2 class="dialog-title">
-      {{ data.mode === 'add' ? ('transactions.addTransaction' | translate) : ('transactions.editTransaction' | translate) }}
-    </h2>
-    <button mat-icon-button (click)="onCancel()" class="close-button">
-      <mat-icon>close</mat-icon>
-    </button>
-  </div>
+  <app-dialog-header
+    [titleKey]="data.mode === 'add' ? 'transactions.addTransaction' : 'transactions.editTransaction'"
+    (closed)="onCancel()"
+  />
 
   <form [formGroup]="form" (ngSubmit)="onSubmit()">
     <mat-dialog-content class="dialog-content">

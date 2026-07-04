@@ -9,6 +9,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import { Category } from '../../../../models';
+import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 
 interface DialogData {
   category?: Category;
@@ -33,6 +34,7 @@ const CATEGORY_COLORS = [
   selector: 'app-category-form-dialog',
   standalone: true,
   imports: [
+    DialogHeaderComponent,
     CommonModule,
     FormsModule,
     MatDialogModule,
@@ -57,10 +59,6 @@ export class CategoryFormDialogComponent {
 
   get isEdit(): boolean {
     return !!this.data.category;
-  }
-
-  get title(): string {
-    return this.isEdit ? 'Edit Category' : 'Add Category';
   }
 
   get isValid(): boolean {

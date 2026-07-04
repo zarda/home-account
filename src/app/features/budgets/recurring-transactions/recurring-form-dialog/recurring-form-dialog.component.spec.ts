@@ -184,12 +184,6 @@ describe('RecurringFormDialogComponent', () => {
     });
   });
 
-  describe('title', () => {
-    it('should show Add title when not editing', () => {
-      expect(component.title).toBe('Add Recurring Transaction');
-    });
-  });
-
   describe('isValid', () => {
     it('should be invalid when name is empty', () => {
       component.name = '';

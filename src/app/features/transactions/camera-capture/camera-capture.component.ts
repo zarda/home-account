@@ -15,6 +15,7 @@ import { OfflineQueueService } from '../../../core/services/offline-queue.servic
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
 
 interface CapturedImage {
@@ -28,6 +29,7 @@ interface CapturedImage {
   selector: 'app-camera-capture',
   standalone: true,
   imports: [
+    DialogHeaderComponent,
     CommonModule,
     MatDialogModule,
     MatButtonModule,

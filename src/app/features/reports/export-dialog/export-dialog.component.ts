@@ -14,6 +14,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 
 type ExportFormat = 'csv' | 'pdf' | 'json';
 
@@ -28,6 +29,7 @@ interface ExportDialogData {
   selector: 'app-export-dialog',
   standalone: true,
   imports: [
+    DialogHeaderComponent,
     CommonModule,
     FormsModule,
     MatDialogModule,

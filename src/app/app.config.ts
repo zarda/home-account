@@ -13,6 +13,7 @@ import {
   PersistentTabManager,
 } from '@angular/fire/firestore';
 import { provideStorage, getStorage } from '@angular/fire/storage';
+import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { provideHttpClient } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
@@ -95,6 +96,18 @@ export const appConfig: ApplicationConfig = {
     provideFirestore(() => appFirestoreFactory()),
     provideStorage(() => getStorage()),
     provideCharts(withDefaultRegisterables()),
+    {
+      // One dialog sizing default: a comfortable width that always leaves
+      // a 16px gutter, so a fixed width like 400/500px can never overflow a
+      // 360px phone. Per-open width overrides this but keeps the maxWidth.
+      provide: MAT_DIALOG_DEFAULT_OPTIONS,
+      useValue: {
+        width: 'min(480px, calc(100vw - 32px))',
+        maxWidth: 'calc(100vw - 32px)',
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+      },
+    },
     provideAppInitializer(() => inject(TranslationService).init()),
     provideAppInitializer(() => {
       // Initialize theme service (will apply saved theme once user preferences load)

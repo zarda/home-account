@@ -18,6 +18,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 
 interface DialogData {
   recurring?: RecurringTransaction;
@@ -27,6 +28,7 @@ interface DialogData {
   selector: 'app-recurring-form-dialog',
   standalone: true,
   imports: [
+    DialogHeaderComponent,
     CommonModule,
     FormsModule,
     MatDialogModule,
@@ -102,10 +104,6 @@ export class RecurringFormDialogComponent implements OnInit {
 
   get isEdit(): boolean {
     return !!this.data?.recurring;
-  }
-
-  get title(): string {
-    return this.translationService.t(this.isEdit ? 'settings.editRecurring' : 'settings.addRecurring');
   }
 
   get isValid(): boolean {

@@ -7,3 +7,4 @@ export * from './page-header/page-header.component';
 export * from './stat-card/stat-card.component';
 export * from './period-selector/period-selector.component';
 export * from './transaction-row/transaction-row.component';
+export * from './dialog-header/dialog-header.component';
