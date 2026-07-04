@@ -386,7 +386,7 @@ stable — reference them in commit messages (see 10.2).
 **Phase 1 — token & theming foundation (§5):**
 
 - [x] **P1.1** — Consolidate color systems: Tailwind→tokens, ~300-hex sweep, income/expense fill-vs-text split (§5.1)
-- [ ] **P1.2** — Material M2→M3 migration (or `--mat-sys-*` bridge block first) (§5.2)
+- [x] **P1.2** — Material M2→M3 migration (or `--mat-sys-*` bridge block first) (§5.2)
 - [x] **P1.3** — Reduce dark-mode mechanisms to two; delete dead selectors (§5.3)
 - [ ] **P1.4** — Typography & spacing scale; radius + elevation tokens (§5.4)
 - [ ] **P1.5** — Self-host fonts/icons; fix `theme-color` PWA chrome (§5.5)

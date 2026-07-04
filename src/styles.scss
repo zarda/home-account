@@ -1,110 +1,31 @@
-/* Custom Material Theme */
+/* Material 3 theme. mat.theme() emits the --mat-sys-* system variables as
+   light-dark() pairs; Material components read them directly, so this block
+   replaces the former M2 light theme + duplicated dark emission entirely. */
 @use '@angular/material' as mat;
+@use './theme/theme-colors' as brand;
 
-// Define custom theme colors
-$primary-palette: (
-  50: #E8EAF6,
-  100: #C5CAE9,
-  200: #9FA8DA,
-  300: #7986CB,
-  400: #5C6BC0,
-  500: #3F51B5,
-  600: #3949AB,
-  700: #303F9F,
-  800: #283593,
-  900: #1A237E,
-  A100: #8C9EFF,
-  A200: #536DFE,
-  A400: #3D5AFE,
-  A700: #304FFE,
-  contrast: (
-    50: rgba(0, 0, 0, 0.87),
-    100: rgba(0, 0, 0, 0.87),
-    200: rgba(0, 0, 0, 0.87),
-    300: white,
-    400: white,
-    500: white,
-    600: white,
-    700: white,
-    800: white,
-    900: white,
-    A100: rgba(0, 0, 0, 0.87),
-    A200: white,
-    A400: white,
-    A700: white,
-  )
-);
+html {
+  // Both schemes are declared; ThemeService resolves the user preference
+  // (including 'system') and stamps .light-theme/.dark-theme on <html>,
+  // which forces the scheme for every light-dark() token below.
+  color-scheme: light dark;
 
-$accent-palette: (
-  50: #E0F2F1,
-  100: #B2DFDB,
-  200: #80CBC4,
-  300: #4DB6AC,
-  400: #26A69A,
-  500: #009688,
-  600: #00897B,
-  700: #00796B,
-  800: #00695C,
-  900: #004D40,
-  A100: #A7FFEB,
-  A200: #64FFDA,
-  A400: #1DE9B6,
-  A700: #00BFA5,
-  contrast: (
-    50: rgba(0, 0, 0, 0.87),
-    100: rgba(0, 0, 0, 0.87),
-    200: rgba(0, 0, 0, 0.87),
-    300: rgba(0, 0, 0, 0.87),
-    400: rgba(0, 0, 0, 0.87),
-    500: white,
-    600: white,
-    700: white,
-    800: white,
-    900: white,
-    A100: rgba(0, 0, 0, 0.87),
-    A200: rgba(0, 0, 0, 0.87),
-    A400: rgba(0, 0, 0, 0.87),
-    A700: rgba(0, 0, 0, 0.87),
-  )
-);
+  @include mat.theme((
+    color: brand.$primary-palette,
+    typography: (
+      plain-family: ('PT Sans', system-ui, sans-serif),
+      brand-family: ('PT Sans', system-ui, sans-serif),
+    ),
+    density: 0,
+  ));
+}
 
-// Create the theme
-$home-account-primary: mat.m2-define-palette($primary-palette);
-$home-account-accent: mat.m2-define-palette($accent-palette);
-$home-account-warn: mat.m2-define-palette(mat.$m2-red-palette);
+html.light-theme {
+  color-scheme: light;
+}
 
-$home-account-theme: mat.m2-define-light-theme((
-  color: (
-    primary: $home-account-primary,
-    accent: $home-account-accent,
-    warn: $home-account-warn,
-  ),
-  typography: mat.m2-define-typography-config(
-    $font-family: '"PT Sans", system-ui, sans-serif',
-  ),
-  density: 0,
-));
-
-// Define dark theme
-$home-account-dark-theme: mat.m2-define-dark-theme((
-  color: (
-    primary: $home-account-primary,
-    accent: $home-account-accent,
-    warn: $home-account-warn,
-  ),
-  typography: mat.m2-define-typography-config(
-    $font-family: '"PT Sans", system-ui, sans-serif',
-  ),
-  density: 0,
-));
-
-// Include theme styles
-@include mat.core();
-@include mat.all-component-themes($home-account-theme);
-
-// Apply dark theme colors when dark-theme class is present
-.dark-theme {
-  @include mat.all-component-colors($home-account-dark-theme);
+html.dark-theme {
+  color-scheme: dark;
 }
 
 /* Tailwind CSS v3 */
@@ -167,33 +88,6 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --color-expense-light: #fee2e2;
   --color-expense-text: #b91c1c;
 
-  // M3 system-variable bridge. Several components (camera capture, AI
-  // settings) are written against Material 3 --mat-sys-* variables, which the
-  // legacy M2 theme never emits — they rendered with transparent/inherited
-  // colors. Alias the consumed names to the app tokens until the theme
-  // migrates to mat.theme() (which will emit real values and supersede this).
-  --mat-sys-primary: var(--color-primary);
-  --mat-sys-on-primary: #ffffff;
-  --mat-sys-primary-container: #e8eaf6;
-  --mat-sys-on-primary-container: #1a237e;
-  --mat-sys-secondary-container: #e8eaf6;
-  --mat-sys-on-secondary-container: #283593;
-  --mat-sys-tertiary: var(--color-accent);
-  --mat-sys-on-tertiary: #ffffff;
-  --mat-sys-tertiary-container: #e0e7ff;
-  --mat-sys-on-tertiary-container: #3730a3;
-  --mat-sys-error: var(--color-error);
-  --mat-sys-error-container: var(--color-error-light);
-  --mat-sys-on-error-container: #7f1d1d;
-  --mat-sys-surface: var(--surface-card);
-  --mat-sys-surface-container-low: var(--surface-card);
-  --mat-sys-surface-container: var(--surface-elevated);
-  --mat-sys-surface-container-high: var(--surface-hover);
-  --mat-sys-on-surface: var(--text-primary);
-  --mat-sys-on-surface-variant: var(--text-secondary);
-  --mat-sys-outline: var(--border-secondary);
-  --mat-sys-outline-variant: var(--border-primary);
-
   // Scrollbar
   --scrollbar-track: #f1f1f1;
   --scrollbar-thumb: #c1c1c1;
@@ -249,17 +143,6 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --color-expense: #f87171;
   --color-expense-light: #991b1b;
   --color-expense-text: #f87171;
-
-  // M3 system-variable bridge — dark values (see :root for context).
-  --mat-sys-on-primary: #1a237e;
-  --mat-sys-primary-container: #303f9f;
-  --mat-sys-on-primary-container: #e8eaf6;
-  --mat-sys-secondary-container: #37474f;
-  --mat-sys-on-secondary-container: #c5cae9;
-  --mat-sys-on-tertiary: #1e1b4b;
-  --mat-sys-tertiary-container: #3730a3;
-  --mat-sys-on-tertiary-container: #e0e7ff;
-  --mat-sys-on-error-container: #fecaca;
 
   --scrollbar-track: #2d2d2d;
   --scrollbar-thumb: #4a4a4a;
@@ -330,94 +213,3 @@ html, body {
   background: var(--scrollbar-thumb-hover);
 }
 
-// Material component dark mode overrides
-.dark-theme {
-  // mat-button-toggle styling
-  .mat-button-toggle-group {
-    border-color: var(--border-primary);
-  }
-
-  .mat-button-toggle {
-    background: transparent;
-    color: var(--text-primary);
-
-    &.mat-button-toggle-checked {
-      background: var(--color-accent);
-      color: white;
-    }
-  }
-
-  .mat-button-toggle-appearance-standard .mat-button-toggle-label-content {
-    color: var(--text-primary);
-  }
-
-  // mat-form-field styling for filter forms
-  .mat-mdc-form-field {
-    .mdc-text-field--outlined .mdc-notched-outline__leading,
-    .mdc-text-field--outlined .mdc-notched-outline__notch,
-    .mdc-text-field--outlined .mdc-notched-outline__trailing {
-      border-color: var(--border-primary);
-    }
-
-    .mdc-floating-label {
-      color: var(--text-muted);
-    }
-
-    .mat-mdc-select-value,
-    .mat-mdc-input-element {
-      color: var(--text-primary);
-    }
-  }
-
-  // mat-select dropdown
-  .mat-mdc-select-panel {
-    background: var(--surface-card);
-  }
-
-  .mat-mdc-option {
-    color: var(--text-primary);
-
-    &:hover:not(.mdc-list-item--disabled) {
-      background: var(--surface-hover);
-    }
-  }
-
-  .mat-mdc-optgroup-label {
-    color: var(--text-muted);
-  }
-
-  // mat-datepicker
-  .mat-datepicker-content {
-    background: var(--surface-card);
-    color: var(--text-primary);
-  }
-
-  .mat-calendar-body-cell-content {
-    color: var(--text-primary);
-  }
-
-  .mat-calendar-body-disabled > .mat-calendar-body-cell-content {
-    color: var(--text-disabled);
-  }
-
-  // mat-dialog styling
-  .mat-mdc-dialog-surface {
-    background: var(--surface-card) !important;
-    color: var(--text-primary);
-  }
-
-  .mat-mdc-dialog-container .mdc-dialog__content {
-    color: var(--text-primary);
-  }
-
-  // mat-slider styling
-  .mat-mdc-slider .mdc-slider__track--inactive {
-    background-color: var(--border-primary);
-  }
-
-  // Stroked button styling
-  .mat-mdc-outlined-button:not(:disabled) {
-    border-color: var(--border-primary);
-    color: var(--text-primary);
-  }
-}
