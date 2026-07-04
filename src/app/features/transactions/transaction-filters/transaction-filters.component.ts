@@ -72,7 +72,9 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
           // Show all transactions without any date filter
           this.clearFilters();
         } else {
-          this.setQuickFilter('today');
+          // Default to the current month: "Today" left the desktop canvas
+          // near-empty (often a single row).
+          this.setQuickFilter('thisMonth');
         }
         this.initialFilterApplied = true;
       }

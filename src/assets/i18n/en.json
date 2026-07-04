@@ -106,6 +106,8 @@
     "today": "Today",
     "week": "Week",
     "month": "Month",
+    "custom": "Custom",
+    "pickDay": "Pick a day",
     "type": "Type",
     "all": "All",
     "from": "From",

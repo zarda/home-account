@@ -59,17 +59,33 @@
 }
 
 .quick-btn {
-  padding: 6px 12px;
+  // 40px min touch target (was ~28px).
+  min-height: 40px;
+  padding: 8px 14px;
   @apply border border-gray-200 dark:border-gray-700;
   border-radius: var(--radius-sm);
   @apply bg-white dark:bg-gray-800;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: 500;
   @apply text-gray-500 dark:text-gray-400;
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+// Labeled custom-range control: icon + text.
+.quick-btn.custom-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  mat-icon {
+    font-size: var(--text-lg);
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+  }
 }
 
 .quick-btn:hover {
@@ -81,23 +97,6 @@
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: white;
-}
-
-.quick-btn.date-picker-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 8px;
-}
-
-.quick-btn.date-picker-btn mat-icon {
-  font-size: var(--text-base);
-  width: 16px;
-  height: 16px;
-  line-height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .filter-toggle {

@@ -109,7 +109,7 @@ describe('TransactionFiltersComponent', () => {
       expect(component).toBeTruthy();
     });
 
-    it('should default to today filter on init', fakeAsync(() => {
+    it('should default to the current month on init', fakeAsync(() => {
       // Create a fresh component in fakeAsync zone
       const freshFixture = TestBed.createComponent(TransactionFiltersComponent);
       const freshComponent = freshFixture.componentInstance;
@@ -119,12 +119,13 @@ describe('TransactionFiltersComponent', () => {
       tick(); // Wait for setTimeout in ngOnInit
 
       const now = new Date();
-      expect(freshComponent.filters.startDate?.getDate()).toBe(now.getDate());
+      // This Month starts on the 1st (vs the old Today default).
+      expect(freshComponent.filters.startDate?.getDate()).toBe(1);
       expect(freshComponent.filters.startDate?.getMonth()).toBe(now.getMonth());
       expect(freshComponent.filters.startDate?.getFullYear()).toBe(now.getFullYear());
     }));
 
-    it('should set today as active quick filter', fakeAsync(() => {
+    it('should set thisMonth as active quick filter', fakeAsync(() => {
       // Create a fresh component in fakeAsync zone
       const freshFixture = TestBed.createComponent(TransactionFiltersComponent);
       const freshComponent = freshFixture.componentInstance;
@@ -133,7 +134,7 @@ describe('TransactionFiltersComponent', () => {
       freshFixture.detectChanges();
       tick(); // Wait for setTimeout in ngOnInit
 
-      expect(freshComponent.isQuickFilterActive('today')).toBe(true);
+      expect(freshComponent.isQuickFilterActive('thisMonth')).toBe(true);
     }));
 
     it('should start with expanded as false', () => {

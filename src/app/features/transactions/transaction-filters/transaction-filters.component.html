@@ -18,9 +18,32 @@
         [class.active]="isQuickFilterActive('thisMonth')"
         (click)="setQuickFilter('thisMonth')"
       >{{ 'transactions.month' | translate }}</button>
-      <button class="quick-btn date-picker-btn" (click)="dayPicker.open()">
-        <mat-icon>calendar_today</mat-icon>
+      <!-- One labeled custom-range control replaces the two ambiguous
+           calendar icon buttons (day picker vs month/year menu). -->
+      <button
+        class="quick-btn custom-btn"
+        [matMenuTriggerFor]="customMenu"
+        [attr.aria-label]="'transactions.custom' | translate"
+      >
+        <mat-icon>calendar_month</mat-icon>
+        <span>{{ 'transactions.custom' | translate }}</span>
       </button>
+      <mat-menu #customMenu="matMenu">
+        <button mat-menu-item (click)="dayPicker.open()">
+          <mat-icon>today</mat-icon>
+          <span>{{ 'transactions.pickDay' | translate }}</span>
+        </button>
+        <button mat-menu-item (click)="openMonthPicker()">
+          <mat-icon>event</mat-icon>
+          <span>{{ 'dashboard.selectMonth' | translate }}</span>
+        </button>
+        <button mat-menu-item (click)="openYearPicker()">
+          <mat-icon>date_range</mat-icon>
+          <span>{{ 'dashboard.selectYear' | translate }}</span>
+        </button>
+      </mat-menu>
+
+      <!-- Hidden Day Picker -->
       <input
         [matDatepicker]="dayPicker"
         (dateChange)="setDateFilter($event.value)"
@@ -32,21 +55,6 @@
         (monthSelected)="onCalendarMonthChange($event)"
         (yearSelected)="onCalendarYearChange($event)"
       ></mat-datepicker>
-
-      <!-- Period Picker Menu -->
-      <button class="quick-btn date-picker-btn" [matMenuTriggerFor]="periodMenu">
-        <mat-icon>calendar_month</mat-icon>
-      </button>
-      <mat-menu #periodMenu="matMenu">
-        <button mat-menu-item (click)="openMonthPicker()">
-          <mat-icon>event</mat-icon>
-          <span>{{ 'dashboard.selectMonth' | translate }}</span>
-        </button>
-        <button mat-menu-item (click)="openYearPicker()">
-          <mat-icon>date_range</mat-icon>
-          <span>{{ 'dashboard.selectYear' | translate }}</span>
-        </button>
-      </mat-menu>
 
       <!-- Hidden Month Picker -->
       <input [matDatepicker]="monthPicker" style="display: none">
