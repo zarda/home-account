@@ -87,6 +87,12 @@ html.dark-theme {
   --z-drawer-backdrop: 900;
   --z-drawer: 910;
 
+  // iOS safe areas (viewport-fit=cover is set in index.html). 0 on
+  // devices without notch/home-indicator; shell chrome adds these to its
+  // heights/offsets so fixed elements never sit under system UI.
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
   // Brand colors
   --color-primary: #3F51B5;
   --color-primary-light: #eef2ff;

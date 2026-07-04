@@ -10,7 +10,7 @@
 // no shadow, content shifts right instead of being covered.
 .sidebar-docked {
   position: fixed;
-  top: 64px; // Below header
+  top: calc(64px + var(--safe-top)); // Below header (+ notch)
   left: 0;
   bottom: 0;
   width: 256px;
@@ -39,6 +39,7 @@
   left: 0;
   bottom: 0;
   width: 280px;
+  padding-top: var(--safe-top);
   z-index: var(--z-drawer);
   background: var(--surface-card);
   border-right: 1px solid var(--border-primary);
@@ -64,7 +65,7 @@
   right: 0;
   bottom: 0;
   overflow-y: auto;
-  padding-top: 64px;
+  padding-top: calc(64px + var(--safe-top));
 }
 
 .main-container.with-docked-sidebar {
@@ -72,7 +73,7 @@
 }
 
 .main-container.with-bottom-nav {
-  bottom: 64px;
+  bottom: calc(64px + var(--safe-bottom));
 }
 
 .content-wrapper {
@@ -87,7 +88,9 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 64px;
+  // Home-indicator space below the 64px bar; the nav's own surface
+  // paints the inset (see bottom-nav.component.scss).
+  height: calc(64px + var(--safe-bottom));
   z-index: var(--z-bottom-nav);
 }
 

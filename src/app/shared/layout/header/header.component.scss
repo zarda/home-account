@@ -1,7 +1,9 @@
 :host {
   display: block;
   width: 100%;
-  height: 64px;
+  // Status bar / notch space on top of the 64px toolbar.
+  height: calc(64px + var(--safe-top));
+  padding-top: var(--safe-top);
   position: fixed;
   top: 0;
   left: 0;
