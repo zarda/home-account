@@ -5,7 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { Budget, Category, Transaction } from '../../../models';
+import { Budget, Category } from '../../../models';
 import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
@@ -29,19 +29,17 @@ export class BudgetProgressComponent {
   // Modern Angular 21: signal-based inputs
   budgets = input<Budget[]>([]);
   categories = input<Map<string, Category>>(new Map());
-  transactions = input<Transaction[]>([]);
-  baseCurrency = input<string>('USD');
 
   private currencyService = inject(CurrencyService);
   private categoryHelperService = inject(CategoryHelperService);
 
-  // Calculate spent for a budget based on transactions in the current period
-  // Returns the spent amount in the BUDGET's currency for proper comparison
+  // The card reads the same persisted, budget-period-anchored `spent` figure
+  // that budget alerts are computed from (BudgetService.recalculateBudgetSpent,
+  // already in the budget's currency) — previously it recomputed spend from
+  // the dashboard's selected calendar period, so the alert snackbar could say
+  // "117% used" while this card showed 30% for the same budget.
   getBudgetSpent(budget: Budget): number {
-    // Convert each transaction directly to budget's currency
-    return this.transactions()
-      .filter(t => t.categoryId === budget.categoryId && t.type === 'expense')
-      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, budget.currency), 0);
+    return budget.spent;
   }
 
   getCategoryName(categoryId: string): string {

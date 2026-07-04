@@ -5,7 +5,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { BudgetProgressComponent } from './budget-progress.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
-import { Budget, Category, Transaction } from '../../../models';
+import { Budget, Category } from '../../../models';
 
 describe('BudgetProgressComponent', () => {
   let component: BudgetProgressComponent;
@@ -51,41 +51,15 @@ describe('BudgetProgressComponent', () => {
     ...overrides
   });
 
-  const createMockTransaction = (overrides: Partial<Transaction> = {}): Transaction => ({
-    id: 'tx1',
-    userId: 'user1',
-    type: 'expense',
-    amount: 100,
-    amountInBaseCurrency: 100,
-    exchangeRate: 1,
-    currency: 'USD',
-    categoryId: 'cat1',
-    description: 'Test transaction',
-    date: mockTimestamp,
-    createdAt: mockTimestamp,
-    updatedAt: mockTimestamp,
-    isRecurring: false,
-    ...overrides
-  });
-
   const setCategories = (value: Map<string, Category>) =>
     fixture.componentRef.setInput('categories', value);
   const setBudgets = (value: Budget[]) => fixture.componentRef.setInput('budgets', value);
-  const setTransactions = (value: Transaction[]) =>
-    fixture.componentRef.setInput('transactions', value);
 
   beforeEach(async () => {
-    mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'convert']);
+    mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
     mockCurrencyService.formatCurrency.and.callFake((amount: number, currency: string) =>
       `${currency} ${amount.toFixed(2)}`
     );
-    // Default conversion: USD to EUR at rate 0.92
-    mockCurrencyService.convert.and.callFake((amount: number, from: string, to: string) => {
-      if (from === to) return amount;
-      if (from === 'USD' && to === 'EUR') return amount * 0.92;
-      if (from === 'EUR' && to === 'USD') return amount / 0.92;
-      return amount;
-    });
 
     mockCategoryHelperService = jasmine.createSpyObj('CategoryHelperService', [
       'getCategoryName',
@@ -162,112 +136,70 @@ describe('BudgetProgressComponent', () => {
   });
 
   describe('getBudgetSpent', () => {
-    it('should calculate spent from transactions', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', currency: 'USD' });
-      setTransactions([
-        createMockTransaction({ categoryId: 'cat1', amount: 100, currency: 'USD' }),
-        createMockTransaction({ categoryId: 'cat1', amount: 200, currency: 'USD' }),
-        createMockTransaction({ categoryId: 'cat2', amount: 50, currency: 'USD' }) // different category
-      ]);
-
-      expect(component.getBudgetSpent(budget)).toBe(300);
+    it('reads the persisted, budget-period-anchored spent figure', () => {
+      const budget = createMockBudget({ spent: 351 });
+      expect(component.getBudgetSpent(budget)).toBe(351);
     });
 
-    it('should only count expense transactions', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', currency: 'USD' });
-      setTransactions([
-        createMockTransaction({ categoryId: 'cat1', type: 'expense', amount: 100, currency: 'USD' }),
-        createMockTransaction({ categoryId: 'cat1', type: 'income', amount: 500, currency: 'USD' })
-      ]);
-
-      expect(component.getBudgetSpent(budget)).toBe(100);
-    });
-
-    it('should return 0 when no matching transactions', () => {
-      const budget = createMockBudget({ categoryId: 'cat1' });
-      setTransactions([]);
-
-      expect(component.getBudgetSpent(budget)).toBe(0);
-    });
-
-    it('should convert spent to budget currency when different from transaction currency', () => {
-      // Budget is in EUR, transactions are in USD
-      const budget = createMockBudget({ categoryId: 'cat1', currency: 'EUR' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 100, currency: 'USD' })]);
-
-      // 100 USD * 0.92 = 92 EUR
-      expect(component.getBudgetSpent(budget)).toBe(92);
-      expect(mockCurrencyService.convert).toHaveBeenCalledWith(100, 'USD', 'EUR');
-    });
-
-    it('should not convert when transaction currency matches budget currency', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 100, currency: 'USD' })]);
-
-      expect(component.getBudgetSpent(budget)).toBe(100);
-      // convert is still called but returns same amount (from === to)
-      expect(mockCurrencyService.convert).toHaveBeenCalledWith(100, 'USD', 'USD');
+    it('agrees with the budget-alert utilization for the same budget', () => {
+      // The snackbar alerts compute percentUsed = spent / amount * 100 from
+      // the same persisted field (BudgetService.budgetAlerts) — the card must
+      // report the identical number, whatever period the dashboard shows.
+      const budget = createMockBudget({ amount: 300, spent: 350.49 });
+      const alertPercentUsed = (budget.spent / budget.amount) * 100;
+      expect(component.getPercentage(budget)).toBe(alertPercentUsed);
     });
   });
 
   describe('getPercentage', () => {
     it('should calculate correct percentage', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 1000, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 500, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 1000, spent: 500 });
       expect(component.getPercentage(budget)).toBe(50);
     });
 
     it('should return 0 when amount is 0', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 0, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 100, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 0, spent: 100 });
       expect(component.getPercentage(budget)).toBe(0);
     });
 
     it('reports true utilization above 100% instead of capping', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 200, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 200 });
       expect(component.getPercentage(budget)).toBe(200);
     });
 
     it('clamps only the progress bar value at 100', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 200, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 200 });
       expect(component.getBarValue(budget)).toBe(100);
     });
   });
 
   describe('getProgressColor', () => {
     it('should return primary for under 80%', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 50, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 50 });
       expect(component.getProgressColor(budget)).toBe('primary');
     });
 
     it('should return accent for 80-99%', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 85, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 85 });
       expect(component.getProgressColor(budget)).toBe('accent');
     });
 
     it('should return warn for 100% and over', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 110, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 110 });
       expect(component.getProgressColor(budget)).toBe('warn');
     });
   });
 
   describe('getRemainingText', () => {
     it('should show remaining when under budget', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 1000, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 300, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 1000, spent: 300 });
       const text = component.getRemainingText(budget);
       expect(text).toContain('left');
       expect(mockCurrencyService.formatCurrency).toHaveBeenCalledWith(700, 'USD');
     });
 
     it('should show over when over budget', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 150, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 150 });
       const text = component.getRemainingText(budget);
       expect(text).toContain('over');
       expect(mockCurrencyService.formatCurrency).toHaveBeenCalledWith(50, 'USD');
@@ -276,20 +208,17 @@ describe('BudgetProgressComponent', () => {
 
   describe('getPercentageClass', () => {
     it('should return green for under 80%', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 50, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 50 });
       expect(component.getPercentageClass(budget)).toBe('text-green-600');
     });
 
     it('should return yellow for 80-99%', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 85, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 85 });
       expect(component.getPercentageClass(budget)).toBe('text-yellow-600');
     });
 
     it('should return red for 100% and over', () => {
-      const budget = createMockBudget({ categoryId: 'cat1', amount: 100, currency: 'USD' });
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 110, currency: 'USD' })]);
+      const budget = createMockBudget({ amount: 100, spent: 110 });
       expect(component.getPercentageClass(budget)).toBe('text-red-600');
     });
   });
@@ -300,7 +229,6 @@ describe('BudgetProgressComponent', () => {
       categories.set('cat1', mockCategory);
       setCategories(categories);
       setBudgets([createMockBudget({ categoryId: 'cat1', currency: 'USD' })]);
-      setTransactions([createMockTransaction({ categoryId: 'cat1', amount: 500, currency: 'USD' })]);
       fixture.detectChanges();
     });
 
@@ -324,6 +252,16 @@ describe('BudgetProgressComponent', () => {
     it('should display budget name', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       expect(compiled.textContent).toContain('Food Budget');
+    });
+
+    it("should display the budget's own period label next to the name", () => {
+      const period = fixture.nativeElement.querySelector('.budget-period') as HTMLElement;
+      expect(period).toBeTruthy();
+      // Raw key under Karma (i18n assets not served) or the translated label.
+      expect(
+        period.textContent?.includes('transactions.monthly') ||
+          period.textContent?.includes('Monthly')
+      ).toBe(true);
     });
 
     it('should display progress bar', () => {

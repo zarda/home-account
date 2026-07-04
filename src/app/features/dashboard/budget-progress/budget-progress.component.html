@@ -17,6 +17,7 @@
                 {{ getCategoryIcon(budget.categoryId) }}
               </mat-icon>
               <span class="budget-name">{{ budget.name }}</span>
+              <span class="budget-period">{{ 'transactions.' + budget.period | translate }}</span>
             </div>
             <span class="budget-percentage" [class]="getPercentageClass(budget)">
               {{ getPercentage(budget).toFixed(0) }}%

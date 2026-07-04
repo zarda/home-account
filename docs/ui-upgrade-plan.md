@@ -377,7 +377,7 @@ stable — reference them in commit messages (see 10.2).
 - [x] **P0.1** — Deterministic multi-currency totals; base currency shown on summary cards (§4 row 0.1)
 - [x] **P0.2** — True budget utilization (>100% shown, no cap) with one state token for bar/%/label (§4 row 0.2)
 - [x] **P0.3** — Uniform money formatting through one currency pipe (§4 row 0.3)
-- [ ] **P0.4** — Budget alert and Budget Progress card derive from the same period/query (§4 row 0.4)
+- [x] **P0.4** — Budget alert and Budget Progress card derive from the same period/query (§4 row 0.4)
 - [ ] **P0.5** — Un-clip the "Currency" label in the Add Transaction dialog (§4 row 0.5)
 - [ ] **P0.6** — Fix `AmountDisplayComponent` reactivity via signal inputs (§4 row 0.6)
 - [ ] **P0.7** — ConfirmDialog i18n fallback + `confirmText`→`confirmLabel` call sites (§4 row 0.7)
