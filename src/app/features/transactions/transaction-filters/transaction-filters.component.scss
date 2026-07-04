@@ -1,7 +1,7 @@
 .filters-container {
   @apply bg-white dark:bg-gray-800;
   border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
 
@@ -78,8 +78,8 @@
 }
 
 .quick-btn.active {
-  background: #4f46e5;
-  border-color: #4f46e5;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: white;
 }
 
@@ -119,8 +119,8 @@
 }
 
 .filter-toggle.has-filters {
-  border-color: #4f46e5;
-  color: #4f46e5;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .filter-toggle mat-icon {
@@ -136,7 +136,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #4f46e5;
+  background: var(--color-primary);
   color: white;
   font-size: 0.625rem;
   font-weight: 600;
@@ -152,7 +152,7 @@
   padding: 8px 16px;
   border: none;
   border-radius: 8px;
-  background: #4f46e5;
+  background: var(--color-primary);
   color: white;
   font-size: 0.875rem;
   font-weight: 500;
@@ -161,7 +161,7 @@
 }
 
 .add-btn:hover {
-  background: #4338ca;
+  background: var(--color-primary-dark);
 }
 
 .add-btn mat-icon {
@@ -217,14 +217,14 @@
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #dc2626;
+  color: var(--color-error);
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
 }
 
 .clear-btn:hover {
-  background: #fef2f2;
+  background: var(--color-error-light);
 }
 
 .clear-btn mat-icon {
@@ -282,11 +282,11 @@
   }
 
   &.has-income .mat-calendar-body-cell-content::after {
-    background-color: #22c55e;
+    background-color: var(--color-income);
   }
 
   &.has-expense .mat-calendar-body-cell-content::after {
-    background-color: #ef4444;
+    background-color: var(--color-expense);
   }
 
   // Two separate dots for both income and expense
@@ -294,6 +294,6 @@
     width: 10px;
     height: 4px;
     border-radius: 2px;
-    background: linear-gradient(90deg, #22c55e 45%, transparent 45%, transparent 55%, #ef4444 55%);
+    background: linear-gradient(90deg, var(--color-income) 45%, transparent 45%, transparent 55%, var(--color-expense) 55%);
   }
 }

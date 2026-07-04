@@ -219,10 +219,10 @@
 
 @keyframes glow {
   from {
-    filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.4));
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--color-primary) 40%, transparent));
   }
   to {
-    filter: drop-shadow(0 0 16px rgba(99, 102, 241, 0.8));
+    filter: drop-shadow(0 0 16px color-mix(in srgb, var(--color-primary) 80%, transparent));
   }
 }
 
@@ -293,11 +293,11 @@
 }
 
 .step-indicator.complete {
-  color: #4CAF50;
+  color: var(--color-success);
 }
 
 .step-indicator.complete mat-icon {
-  color: #4CAF50;
+  color: var(--color-success);
 }
 
 /* Success Card */
@@ -309,7 +309,7 @@
   font-size: 72px;
   width: 72px;
   height: 72px;
-  color: #4CAF50;
+  color: var(--color-success);
   animation: scaleIn 0.4s ease-out;
 }
 
@@ -345,7 +345,7 @@
   font-size: 72px;
   width: 72px;
   height: 72px;
-  color: #f44336;
+  color: var(--color-error);
   margin-bottom: 16px;
 }
 
@@ -365,7 +365,7 @@
 .error-hint {
   font-size: 13px;
   color: var(--text-secondary, #666);
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--surface-hover-active);
   border-radius: 8px;
   padding: 10px 14px;
   margin: 0 0 20px;
@@ -379,12 +379,12 @@
   justify-content: center;
 }
 
-.error-rate_limit .error-icon { color: #ff9800; }
-.error-auth .error-icon { color: #f44336; }
-.error-network .error-icon { color: #2196f3; }
+.error-rate_limit .error-icon { color: var(--color-warning); }
+.error-auth .error-icon { color: var(--color-error); }
+.error-network .error-icon { color: var(--color-info); }
 .error-quota .error-icon { color: #e91e63; }
 .error-server .error-icon { color: #9c27b0; }
-.error-timeout .error-icon { color: #ff9800; }
+.error-timeout .error-icon { color: var(--color-warning); }
 
 /* Review Step */
 .review-header {
@@ -458,23 +458,23 @@
 }
 
 .transactions-card mat-icon {
-  background: rgba(99, 102, 241, 0.1);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
   color: var(--color-primary);
 }
 
 .income-card mat-icon {
-  background: rgba(76, 175, 80, 0.1);
-  color: #4CAF50;
+  background: color-mix(in srgb, var(--color-income) 10%, transparent);
+  color: var(--color-income-text);
 }
 
 .expense-card mat-icon {
-  background: rgba(244, 67, 54, 0.1);
-  color: #f44336;
+  background: color-mix(in srgb, var(--color-expense) 10%, transparent);
+  color: var(--color-expense-text);
 }
 
 .skipped-card mat-icon {
-  background: rgba(255, 152, 0, 0.1);
-  color: #ff9800;
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  color: var(--color-warning);
 }
 
 .multi-image-card mat-icon {
@@ -535,15 +535,15 @@
 }
 
 .income-card .card-value {
-  color: #4CAF50;
+  color: var(--color-income-text);
 }
 
 .expense-card .card-value {
-  color: #f44336;
+  color: var(--color-expense-text);
 }
 
 .skipped-card .card-value {
-  color: #ff9800;
+  color: var(--color-warning);
 }
 
 .card-label {

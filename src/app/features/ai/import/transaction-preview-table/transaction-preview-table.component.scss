@@ -5,11 +5,6 @@
   background: var(--surface-card, #fff);
 }
 
-:host-context(.dark-theme) .table-container {
-  border-color: #333;
-  background: #1a1a1a;
-}
-
 .table-header {
   display: flex;
   align-items: center;
@@ -17,11 +12,6 @@
   padding: 14px 20px;
   background: var(--surface-background, #f8f9fa);
   border-bottom: 1px solid var(--border-primary, #e0e0e0);
-}
-
-:host-context(.dark-theme) .table-header {
-  background: #252525;
-  border-bottom-color: #333;
 }
 
 .header-left {
@@ -46,17 +36,7 @@
 }
 
 .selected-badge.has-selection {
-  background: var(--color-primary, #6366f1);
-  color: white;
-}
-
-:host-context(.dark-theme) .selected-badge {
-  background: #333;
-  color: #aaa;
-}
-
-:host-context(.dark-theme) .selected-badge.has-selection {
-  background: var(--color-primary, #6366f1);
+  background: var(--color-primary);
   color: white;
 }
 
@@ -86,31 +66,18 @@
 }
 
 .transaction-card.selected {
-  background: rgba(99, 102, 241, 0.06);
-  border-color: rgba(99, 102, 241, 0.25);
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
 
 .transaction-card.duplicate {
-  background: rgba(255, 152, 0, 0.06);
-  border-color: rgba(255, 152, 0, 0.25);
-}
-
-:host-context(.dark-theme) .transaction-card {
-  background: #222;
-}
-
-:host-context(.dark-theme) .transaction-card:hover {
-  background: #282828;
+  background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 25%, transparent);
 }
 
 :host-context(.dark-theme) .transaction-card.selected {
-  background: rgba(99, 102, 241, 0.12);
-  border-color: rgba(99, 102, 241, 0.35);
-}
-
-:host-context(.dark-theme) .transaction-card.duplicate {
-  background: rgba(255, 152, 0, 0.08);
-  border-color: rgba(255, 152, 0, 0.3);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
 }
 
 .card-select {
@@ -145,8 +112,8 @@
   text-transform: uppercase;
   padding: 2px 7px;
   border-radius: 4px;
-  background: rgba(255, 152, 0, 0.15);
-  color: #e65100;
+  background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+  color: var(--color-warning-text);
   margin-bottom: 4px;
 }
 
@@ -156,10 +123,6 @@
   height: 11px;
 }
 
-:host-context(.dark-theme) .duplicate-badge {
-  background: rgba(255, 152, 0, 0.2);
-  color: #ffb74d;
-}
 
 .description-text {
   display: block;
@@ -171,10 +134,6 @@
   white-space: nowrap;
 }
 
-:host-context(.dark-theme) .description-text {
-  color: #f0f0f0;
-}
-
 .amount-section {
   font-size: 17px;
   font-weight: 700;
@@ -183,11 +142,11 @@
 }
 
 .amount-section.income {
-  color: #4CAF50;
+  color: var(--color-income-text);
 }
 
 .amount-section.expense {
-  color: #ef5350;
+  color: var(--color-expense-text);
 }
 
 .card-bottom-row {
@@ -222,11 +181,6 @@
   height: 13px;
 }
 
-:host-context(.dark-theme) .date-chip {
-  background: #333;
-  color: #aaa;
-}
-
 .type-toggle {
   height: 26px;
   font-size: 11px;
@@ -244,13 +198,13 @@
 }
 
 .type-toggle.income {
-  color: #4CAF50;
-  border-color: #4CAF50;
+  color: var(--color-income-text);
+  border-color: var(--color-income-text);
 }
 
 .type-toggle.expense {
-  color: #ef5350;
-  border-color: #ef5350;
+  color: var(--color-expense-text);
+  border-color: var(--color-expense-text);
 }
 
 .category-section {
@@ -265,10 +219,6 @@
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border-primary, rgba(0, 0, 0, 0.06));
-}
-
-:host-context(.dark-theme) .notes-section {
-  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 .notes-icon {
@@ -299,14 +249,6 @@
   color: var(--text-muted, #bbb);
 }
 
-:host-context(.dark-theme) .notes-input {
-  color: #bbb;
-}
-
-:host-context(.dark-theme) .notes-input::placeholder {
-  color: #666;
-}
-
 .notes-empty {
   border-top: none;
   margin-top: 6px;
@@ -328,9 +270,9 @@
 }
 
 .add-notes-btn:hover {
-  color: var(--color-primary, #6366f1);
-  border-color: var(--color-primary, #6366f1);
-  background: rgba(99, 102, 241, 0.05);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
 }
 
 .add-notes-btn mat-icon {
@@ -339,15 +281,8 @@
   height: 14px;
 }
 
-:host-context(.dark-theme) .add-notes-btn {
-  color: #777;
-  border-color: #444;
-}
-
 :host-context(.dark-theme) .add-notes-btn:hover {
-  color: #818cf8;
-  border-color: #818cf8;
-  background: rgba(99, 102, 241, 0.1);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
 .empty-state {
