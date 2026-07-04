@@ -1,3 +1,5 @@
+@use 'breakpoints' as bp;
+
 .dashboard-container {
   display: flex;
   flex-direction: column;
@@ -14,64 +16,65 @@
   gap: 16px;
 }
 
-.mobile-view {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+// Thin refetch indicator: sits at the top of the content area on period
+// change without displacing anything (content stays mounted below it).
+.refetch-bar {
+  border-radius: var(--radius-full);
 }
 
-.desktop-view {
-  display: none;
-}
-
-.desktop-grid {
+// One grid, reordered per breakpoint. Mobile: single column, recent
+// transactions before the chart (deliberate content order). Desktop:
+// asymmetric two-column — main column (chart + AI insights) beside a
+// narrower right rail (recent + budgets). Rows auto-size so a short recent
+// list leaves no dead zone.
+.dashboard-grid {
   display: grid;
-  grid-template-columns: 1fr;
   gap: 24px;
-}
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    'recent'
+    'chart'
+    'insights'
+    'budgets';
 
-@media (min-width: 768px) and (max-width: 1023px) {
-  // Tablet/Pad mode - ensure cards don't overflow
-  .desktop-grid {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
-  
-  .desktop-grid > * {
+  // Let children shrink below intrinsic content width inside the grid.
+  > * {
     min-width: 0;
-    overflow: hidden;
     max-width: 100%;
   }
 }
 
-@media (min-width: 1024px) {
-  .desktop-grid {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto;
-  }
-  
-  .desktop-grid > * {
-    min-width: 0; // Allow grid items to shrink below content size
-    overflow: hidden; // Prevent content overflow
-    max-width: 100%; // Ensure items don't exceed grid cell width
+@include bp.desktop {
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-areas:
+      'chart    recent'
+      'insights recent'
+      'insights budgets';
+    align-items: start;
   }
 }
 
-@media (min-width: 768px) {
+.area-insights {
+  grid-area: insights;
+}
+
+.area-chart {
+  grid-area: chart;
+}
+
+.area-recent {
+  grid-area: recent;
+}
+
+.area-budgets {
+  grid-area: budgets;
+}
+
+@include bp.tablet-up {
   .header-section {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
-  }
-
-
-  .mobile-view {
-    display: none;
-  }
-
-  .desktop-view {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
   }
 }

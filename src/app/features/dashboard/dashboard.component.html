@@ -10,9 +10,14 @@
   <!-- Budget threshold alerts: inline + dismissible, not a standing snackbar -->
   <app-budget-alert-banner />
 
-  @if (isLoading()) {
+  @if (showInitialSpinner()) {
     <app-loading-spinner [message]="'dashboard.loadingData' | translate" />
   } @else {
+    <!-- Refetch (period change) keeps content mounted; a thin bar signals work -->
+    @if (isRefetching()) {
+      <mat-progress-bar mode="indeterminate" class="refetch-bar" />
+    }
+
     <!-- Financial Summary Cards (shared) -->
     <app-financial-summary
       [income]="totalIncome()"
@@ -23,60 +28,37 @@
       [previousExpenses]="previousPeriodData()?.expense ?? null"
     />
 
-    <!-- AI Insights -->
-    <app-ai-summary
-      [transactions]="transactions()"
-      [period]="selectedPeriodOption()"
-      [baseCurrency]="baseCurrency()"
-      [previousPeriodData]="previousPeriodData()"
-      [previousPeriodByCategory]="previousPeriodByCategory()"
-      [historicalExpenses]="historicalExpenses()"
-      [budgets]="activeBudgets()"
-    />
-
-    <!-- Mobile Layout -->
-    <div class="mobile-view">
-      <!-- Recent Transactions First on Mobile -->
-      <app-recent-transactions
-        [transactions]="recentTransactions()"
-        [categories]="categoriesMap()"
+    <!-- One DOM tree, reordered per breakpoint via grid-template-areas:
+         desktop is an asymmetric main column (chart + AI insights) beside a
+         right rail (recent transactions + budgets); mobile stacks them with
+         recent transactions first. -->
+    <div class="dashboard-grid" [class.has-budgets]="activeBudgets().length > 0">
+      <app-ai-summary
+        class="area-insights"
+        [transactions]="transactions()"
+        [period]="selectedPeriodOption()"
+        [baseCurrency]="baseCurrency()"
+        [previousPeriodData]="previousPeriodData()"
+        [previousPeriodByCategory]="previousPeriodByCategory()"
+        [historicalExpenses]="historicalExpenses()"
+        [budgets]="activeBudgets()"
       />
 
-      <!-- Spending Chart -->
       <app-spending-chart
+        class="area-chart"
         [categoryTotals]="categoryTotals()"
         [categories]="categories()"
       />
 
-      <!-- Budget Progress -->
+      <app-recent-transactions
+        class="area-recent"
+        [transactions]="recentTransactions()"
+        [categories]="categoriesMap()"
+      />
+
       @if (activeBudgets().length > 0) {
         <app-budget-progress
-          [budgets]="activeBudgets()"
-          [categories]="categoriesMap()"
-        />
-      }
-    </div>
-
-    <!-- Desktop Layout -->
-    <div class="desktop-view">
-      <!-- Charts and Recent Transactions Grid -->
-      <div class="desktop-grid">
-        <!-- Spending by Category Chart -->
-        <app-spending-chart
-          [categoryTotals]="categoryTotals()"
-          [categories]="categories()"
-        />
-
-        <!-- Recent Transactions -->
-        <app-recent-transactions
-          [transactions]="recentTransactions()"
-          [categories]="categoriesMap()"
-        />
-      </div>
-
-      <!-- Budget Progress -->
-      @if (activeBudgets().length > 0) {
-        <app-budget-progress
+          class="area-budgets"
           [budgets]="activeBudgets()"
           [categories]="categoriesMap()"
         />

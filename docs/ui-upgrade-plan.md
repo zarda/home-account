@@ -419,7 +419,9 @@ stable — reference them in commit messages (see 10.2).
 
 **Phase 4 — page passes (§8):**
 
-- [ ] **P4.1** — Dashboard pass (§8.1)
+- [x] **P4.1** — Dashboard pass (§8.1)
+  ([after: desktop asymmetric grid](./ui-audit/after-p4.1-dashboard-desktop-grid.png),
+  [mobile](./ui-audit/after-p4.1-dashboard-mobile.png))
 - [ ] **P4.2** — Transactions pass (§8.2)
 - [ ] **P4.3** — Budgets pass (§8.3)
 - [ ] **P4.4** — Reports pass (§8.4)

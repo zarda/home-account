@@ -1,5 +1,6 @@
 import { Component, computed, DestroyRef, effect, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
@@ -34,6 +35,7 @@ const BASELINE_WINDOW_MONTHS = 6;
   selector: 'app-dashboard',
   standalone: true,
   imports: [
+    MatProgressBarModule,
     PageHeaderComponent,
     PeriodSelectorComponent,
     FinancialSummaryComponent,
@@ -59,6 +61,14 @@ export class DashboardComponent implements OnInit {
   private destroyRef = inject(DestroyRef);
 
   isLoading = signal(true);
+  // True once the first load has painted; keeps period-change refetches
+  // from tearing the whole page down to a spinner.
+  private hasLoadedOnce = signal(false);
+
+  /** Full-page spinner only on the very first load. */
+  showInitialSpinner = computed(() => this.isLoading() && !this.hasLoadedOnce());
+  /** Subtle indicator while refetching after content is already painted. */
+  isRefetching = computed(() => this.isLoading() && this.hasLoadedOnce());
 
   // Current selection from the shared period selector (calendar bounds).
   private currentPeriod = signal<PeriodSelection>(defaultPeriodSelection());
@@ -141,6 +151,7 @@ export class DashboardComponent implements OnInit {
       // Don't set loading to true once we have data
       if (!txLoading && !budgetLoading && this.transactionService.transactions().length >= 0) {
         this.isLoading.set(false);
+        this.hasLoadedOnce.set(true);
       }
     });
   }
@@ -178,9 +189,11 @@ export class DashboardComponent implements OnInit {
     this.transactionService.getByDateRange(start, end).subscribe({
       next: () => {
         this.isLoading.set(false);
+        this.hasLoadedOnce.set(true);
       },
       error: () => {
         this.isLoading.set(false);
+        this.hasLoadedOnce.set(true);
       }
     });
 
