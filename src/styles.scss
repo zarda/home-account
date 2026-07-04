@@ -167,6 +167,33 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --color-expense-light: #fee2e2;
   --color-expense-text: #b91c1c;
 
+  // M3 system-variable bridge. Several components (camera capture, AI
+  // settings) are written against Material 3 --mat-sys-* variables, which the
+  // legacy M2 theme never emits — they rendered with transparent/inherited
+  // colors. Alias the consumed names to the app tokens until the theme
+  // migrates to mat.theme() (which will emit real values and supersede this).
+  --mat-sys-primary: var(--color-primary);
+  --mat-sys-on-primary: #ffffff;
+  --mat-sys-primary-container: #e8eaf6;
+  --mat-sys-on-primary-container: #1a237e;
+  --mat-sys-secondary-container: #e8eaf6;
+  --mat-sys-on-secondary-container: #283593;
+  --mat-sys-tertiary: var(--color-accent);
+  --mat-sys-on-tertiary: #ffffff;
+  --mat-sys-tertiary-container: #e0e7ff;
+  --mat-sys-on-tertiary-container: #3730a3;
+  --mat-sys-error: var(--color-error);
+  --mat-sys-error-container: var(--color-error-light);
+  --mat-sys-on-error-container: #7f1d1d;
+  --mat-sys-surface: var(--surface-card);
+  --mat-sys-surface-container-low: var(--surface-card);
+  --mat-sys-surface-container: var(--surface-elevated);
+  --mat-sys-surface-container-high: var(--surface-hover);
+  --mat-sys-on-surface: var(--text-primary);
+  --mat-sys-on-surface-variant: var(--text-secondary);
+  --mat-sys-outline: var(--border-secondary);
+  --mat-sys-outline-variant: var(--border-primary);
+
   // Scrollbar
   --scrollbar-track: #f1f1f1;
   --scrollbar-thumb: #c1c1c1;
@@ -222,6 +249,17 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --color-expense: #f87171;
   --color-expense-light: #991b1b;
   --color-expense-text: #f87171;
+
+  // M3 system-variable bridge — dark values (see :root for context).
+  --mat-sys-on-primary: #1a237e;
+  --mat-sys-primary-container: #303f9f;
+  --mat-sys-on-primary-container: #e8eaf6;
+  --mat-sys-secondary-container: #37474f;
+  --mat-sys-on-secondary-container: #c5cae9;
+  --mat-sys-on-tertiary: #1e1b4b;
+  --mat-sys-tertiary-container: #3730a3;
+  --mat-sys-on-tertiary-container: #e0e7ff;
+  --mat-sys-on-error-container: #fecaca;
 
   --scrollbar-track: #2d2d2d;
   --scrollbar-thumb: #4a4a4a;
