@@ -15,7 +15,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 import { CategoryFormDialogComponent } from './category-form-dialog/category-form-dialog.component';
-import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -128,14 +128,16 @@ export class CategoryManagerComponent implements OnInit {
   }
 
   deleteCategory(category: Category): void {
-    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
-      data: {
-        title: this.translationService.t('settings.deleteCategory'),
-        message: this.translationService.t('settings.deleteCategoryConfirm', { name: this.translationService.t(category.name) }),
-        confirmText: this.translationService.t('common.delete'),
-        confirmColor: 'warn',
-      }
-    });
+    // Typed as ConfirmDialogData so wrong keys (the old confirmText typo,
+    // which silently fell back to a hardcoded English label) fail to compile.
+    const data: ConfirmDialogData = {
+      title: this.translationService.t('settings.deleteCategory'),
+      message: this.translationService.t('settings.deleteCategoryConfirm', { name: this.translationService.t(category.name) }),
+      confirmLabel: this.translationService.t('common.delete'),
+      cancelLabel: this.translationService.t('common.cancel'),
+      confirmColor: 'warn',
+    };
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, { data });
 
     dialogRef.afterClosed().subscribe(confirmed => {
       if (confirmed) {
