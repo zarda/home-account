@@ -203,12 +203,13 @@
 }
 
 .amount-field {
-  flex: 1;
+  flex: 2;
+  min-width: 0;
 }
 
 .currency-field {
-  width: 100px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 110px;
 }
 
 .full-width {
@@ -324,6 +325,7 @@
   }
 
   .currency-field {
+    min-width: 0;
     width: 100%;
   }
 }
