@@ -24,6 +24,7 @@ import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-b
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 
 type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'custom';
 
@@ -43,6 +44,7 @@ interface CustomPeriod {
   selector: 'app-dashboard',
   standalone: true,
   imports: [
+    PageHeaderComponent,
     FormsModule,
     MatButtonToggleModule,
     MatDatepickerModule,

@@ -405,7 +405,7 @@ stable — reference them in commit messages (see 10.2).
 
 **Phase 3 — shared component system (§7):**
 
-- [ ] **P3.1** — Extract `<app-page-header>` (§7)
+- [x] **P3.1** — Extract `<app-page-header>` (§7)
 - [ ] **P3.2** — Extract `<app-period-selector>` (§7)
 - [ ] **P3.3** — Extract `<app-stat-card>` (§7)
 - [ ] **P3.4** — Extract `<app-transaction-row>` (§7)

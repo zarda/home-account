@@ -18,11 +18,13 @@ import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ImportHistory, ImportStatus } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 
 @Component({
   selector: 'app-import-history',
   standalone: true,
   imports: [
+    PageHeaderComponent,
     CommonModule,
     MatCardModule,
     MatListModule,

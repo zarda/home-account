@@ -15,12 +15,14 @@ import { TransactionFiltersComponent } from './transaction-filters/transaction-f
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
 import { CameraCaptureComponent } from './camera-capture/camera-capture.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-transactions',
   standalone: true,
   imports: [
+    PageHeaderComponent,
     MatButtonModule,
     MatIconModule,
     MatMenuModule,

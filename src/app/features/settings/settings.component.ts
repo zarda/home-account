@@ -7,6 +7,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 
 import { AuthService } from '../../core/services/auth.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { ProfileSettingsComponent } from './profile-settings/profile-settings.component';
 import { CategoryManagerComponent } from './category-manager/category-manager.component';
 import { DataManagementComponent } from './data-management/data-management.component';
@@ -15,6 +16,7 @@ import { DataManagementComponent } from './data-management/data-management.compo
   selector: 'app-settings',
   standalone: true,
   imports: [
+    PageHeaderComponent,
     CommonModule,
     RouterLink,
     MatIconModule,

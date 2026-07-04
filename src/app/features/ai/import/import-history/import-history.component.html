@@ -1,10 +1,14 @@
 <div class="import-history">
-  <div class="header">
-    <button mat-icon-button (click)="goBack()">
+  <app-page-header titleKey="import.history" class="header">
+    <button
+      header-leading
+      mat-icon-button
+      (click)="goBack()"
+      [attr.aria-label]="'common.back' | translate"
+    >
       <mat-icon>arrow_back</mat-icon>
     </button>
-    <h1>{{ 'import.history' | translate }}</h1>
-  </div>
+  </app-page-header>
 
   @if (isLoading()) {
     <div class="loading">

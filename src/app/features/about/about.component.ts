@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { environment } from '../../../environments/environment';
 import packageJson from '../../../../package.json';
 
@@ -14,6 +15,7 @@ import packageJson from '../../../../package.json';
   selector: 'app-about',
   standalone: true,
   imports: [
+    PageHeaderComponent,
     CommonModule,
     MatIconModule,
     MatButtonModule,

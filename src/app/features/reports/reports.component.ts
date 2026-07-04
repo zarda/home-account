@@ -18,6 +18,7 @@ import { CurrencyService } from '../../core/services/currency.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { SpendingAnalysisComponent } from './spending-analysis/spending-analysis.component';
 import { CategoryBreakdownComponent } from './category-breakdown/category-breakdown.component';
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
@@ -36,6 +37,7 @@ interface CustomPeriod {
   selector: 'app-reports',
   standalone: true,
   imports: [
+    PageHeaderComponent,
     CommonModule,
     FormsModule,
     MatTabsModule,
