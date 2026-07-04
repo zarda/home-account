@@ -55,7 +55,7 @@
 
 .divider {
   height: 1px;
-  @apply bg-gray-100 dark:bg-gray-700;
+  background: var(--surface-muted);
   margin: 0 16px;
 }
 

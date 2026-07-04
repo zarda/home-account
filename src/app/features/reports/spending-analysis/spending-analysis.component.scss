@@ -85,7 +85,7 @@
 .progress-bar {
   flex: 1;
   height: 8px;
-  @apply bg-gray-100 dark:bg-gray-700;
+  background: var(--surface-strong);
   border-radius: var(--radius-xs);
   overflow: hidden;
 }

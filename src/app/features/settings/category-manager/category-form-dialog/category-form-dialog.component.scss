@@ -33,7 +33,7 @@
   height: 44px;
   @apply border border-gray-200 dark:border-gray-700;
   border-radius: var(--radius-sm);
-  @apply bg-white dark:bg-gray-800;
+  background: var(--surface-card);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -108,7 +108,7 @@
   align-items: center;
   gap: 12px;
   padding: 12px;
-  @apply bg-gray-50 dark:bg-gray-800;
+  background: var(--surface-subtle);
   border-radius: var(--radius-sm);
 }
 

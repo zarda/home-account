@@ -12,7 +12,7 @@
   width: 100%;
   height: 56px;
   @apply border-2 border-dashed border-gray-300 dark:border-gray-600;
-  @apply bg-gray-50 dark:bg-gray-800;
+  background: var(--surface-subtle);
   @apply hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20;
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
@@ -37,7 +37,7 @@
   position: relative;
   border-radius: var(--radius-md);
   overflow: hidden;
-  @apply bg-gray-100 dark:bg-gray-800;
+  background: var(--surface-muted);
   @apply border border-gray-200 dark:border-gray-700;
 
   img {
@@ -51,11 +51,11 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    @apply bg-white dark:bg-gray-800;
+    background: var(--surface-card);
     @apply shadow-md;
 
     &:hover {
-      @apply bg-gray-100 dark:bg-gray-700;
+      background: var(--surface-muted);
     }
   }
 
@@ -98,7 +98,7 @@
 
   &.loading {
     cursor: default;
-    @apply bg-gray-100 dark:bg-gray-800;
+    background: var(--surface-muted);
     @apply border-gray-200 dark:border-gray-700;
 
     mat-spinner {

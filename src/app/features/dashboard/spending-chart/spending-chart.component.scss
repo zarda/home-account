@@ -62,12 +62,12 @@
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   transition: background-color 0.2s ease;
-  @apply bg-gray-50 dark:bg-gray-800/50;
+  background: var(--surface-subtle);
   width: 100%;
   box-sizing: border-box;
 
   &:hover {
-    @apply bg-gray-100 dark:bg-gray-700/50;
+    background: var(--surface-muted);
   }
 }
 
@@ -140,7 +140,7 @@
   height: 4px;
   border-radius: 2px;
   overflow: hidden;
-  @apply bg-gray-200 dark:bg-gray-700;
+  background: var(--surface-strong);
 }
 
 .legend-progress-bar {

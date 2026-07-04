@@ -38,7 +38,8 @@
 
 // Card styles
 .recurring-card {
-  @apply bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700;
+  @apply rounded-lg shadow-sm border border-gray-100 dark:border-gray-700;
+  background: var(--surface-card);
   padding: 16px;
   transition: all 0.2s;
 
@@ -131,7 +132,8 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  @apply bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded;
+  @apply px-2 py-1 rounded;
+  background: var(--surface-muted);
 
   mat-icon {
     font-size: var(--text-sm);

@@ -44,6 +44,14 @@ html.dark-theme {
   --surface-hover-active: #f3f4f6;
   --surface-active: #eef2ff;
 
+  // Nested surface scale — one neutral ramp for fills stacked on a card, so
+  // screens stop mixing three unrelated grays. Light values equal the Tailwind
+  // gray-50/100/200 they replace; dark values are a neutral ramp (§9).
+  --surface-subtle: #f9fafb;  // gray-50 — subtle nested fill
+  --surface-muted: #f3f4f6;   // gray-100 — nested chips / stat tiles
+  --surface-strong: #e5e7eb;  // gray-200 — progress tracks
+  --surface-sunken: #f5f5f5;  // recessed inset below the card
+
   // Border colors
   --border-primary: #e5e7eb;
   --border-secondary: #f3f4f6;
@@ -144,6 +152,13 @@ html.dark-theme {
   --surface-hover: #3d3d3d;
   --surface-hover-active: #2a2a2a;
   --surface-active: #303F9F;
+
+  // Neutral dark ramp for the nested surface tokens (replaces the blue-tinted
+  // Tailwind gray-700/800/900 that clashed with the #1e1e1e card).
+  --surface-subtle: #242424;
+  --surface-muted: #2d2d2d;
+  --surface-strong: #383838;
+  --surface-sunken: #161616;
 
   --border-primary: #3d3d3d;
   --border-secondary: #2d2d2d;

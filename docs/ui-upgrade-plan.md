@@ -431,7 +431,7 @@ stable — reference them in commit messages (see 10.2).
 
 **Phase 5 — hardening (§9):**
 
-- [ ] **P5.1** — Dark-mode surface unification + `dark:` pair audit (§9)
+- [x] **P5.1** — Dark-mode surface unification + `dark:` pair audit (§9)
 - [ ] **P5.2** — Accessibility sweep: aria-labels, ≥44px targets, focus, contrast (§9)
 - [ ] **P5.3** — i18n resilience: ja/tc width audit, locale-aware ordinals (§9)
 - [ ] **P5.4** — Motion preferences honored on all animations (§9)

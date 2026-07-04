@@ -1,5 +1,5 @@
 .filters-container {
-  @apply bg-white dark:bg-gray-800;
+  background: var(--surface-card);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
@@ -17,7 +17,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  @apply bg-gray-100 dark:bg-gray-700;
+  background: var(--surface-muted);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   min-width: 0;
@@ -64,7 +64,7 @@
   padding: 8px 14px;
   @apply border border-gray-200 dark:border-gray-700;
   border-radius: var(--radius-sm);
-  @apply bg-white dark:bg-gray-800;
+  background: var(--surface-card);
   font-size: var(--text-sm);
   font-weight: 500;
   @apply text-gray-500 dark:text-gray-400;
@@ -89,7 +89,7 @@
 }
 
 .quick-btn:hover {
-  @apply bg-gray-50 dark:bg-gray-700;
+  background: var(--surface-muted);
   @apply border-gray-300 dark:border-gray-600;
 }
 
@@ -107,14 +107,14 @@
   height: 40px;
   @apply border border-gray-200 dark:border-gray-700;
   border-radius: var(--radius-sm);
-  @apply bg-white dark:bg-gray-800;
+  background: var(--surface-card);
   cursor: pointer;
   position: relative;
   transition: all 0.15s ease;
 }
 
 .filter-toggle:hover {
-  @apply bg-gray-50 dark:bg-gray-700;
+  background: var(--surface-muted);
 }
 
 .filter-toggle.has-filters {
@@ -176,7 +176,7 @@
 .filter-panel {
   padding: 12px;
   @apply border-t border-gray-100 dark:border-gray-700;
-  @apply bg-gray-50 dark:bg-gray-900;
+  background: var(--surface-sunken);
 
   .search-wrapper {
     margin-bottom: 12px;

@@ -12,7 +12,8 @@
 }
 
 .budget-item {
-  @apply p-2.5 bg-gray-50 dark:bg-gray-800 rounded-lg;
+  @apply p-2.5 rounded-lg;
+  background: var(--surface-subtle);
 
   .budget-header {
     @apply flex items-center justify-between mb-1.5;
