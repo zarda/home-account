@@ -647,3 +647,13 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Gate the looping AI-processing effects for prefers-reduced-motion: the
+   global kill-switch only caps CSS animations to one 0.01ms pass, which can
+   still flash. Stop these decorative infinites outright. */
+@media (prefers-reduced-motion: reduce) {
+  .pulse-ring,
+  .ai-icon {
+    animation: none;
+  }
+}

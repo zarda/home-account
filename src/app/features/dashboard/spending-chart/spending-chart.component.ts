@@ -42,6 +42,7 @@ export class SpendingChartComponent {
     return {
       responsive: true,
       maintainAspectRatio: true,
+      animation: this.chartTheme.animation(),
       plugins: {
         legend: {
           display: false,

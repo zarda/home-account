@@ -212,3 +212,11 @@ mat-spinner {
 mat-card-footer {
   border-top: 1px solid var(--border-secondary) !important;
 }
+
+/* Stop the looping background float and icon pulse under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .bg-shape,
+  .icon-wrapper {
+    animation: none;
+  }
+}

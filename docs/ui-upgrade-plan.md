@@ -434,7 +434,7 @@ stable — reference them in commit messages (see 10.2).
 - [x] **P5.1** — Dark-mode surface unification + `dark:` pair audit (§9)
 - [x] **P5.2** — Accessibility sweep: aria-labels, ≥44px targets, focus, contrast (§9)
 - [x] **P5.3** — i18n resilience: ja/tc width audit, locale-aware ordinals (§9)
-- [ ] **P5.4** — Motion preferences honored on all animations (§9)
+- [x] **P5.4** — Motion preferences honored on all animations (§9)
 
 ### 10.2 Commit convention — aligning commits to the checklist
 

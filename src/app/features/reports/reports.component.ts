@@ -23,6 +23,7 @@ import { CategoryBreakdownComponent } from './category-breakdown/category-breakd
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
 import { Category, Transaction } from '../../models';
+import { tabAnimationDuration } from '../../core/layout/motion';
 
 @Component({
   selector: 'app-reports',
@@ -53,6 +54,9 @@ export class ReportsComponent implements OnInit {
 
   isLoading = signal(true);
   selectedTabIndex = 0;
+
+  // 0ms under prefers-reduced-motion (tab slide bypasses the CSS switch).
+  readonly tabAnimationDuration = tabAnimationDuration();
 
   // User info
   baseCurrency = computed(() => {

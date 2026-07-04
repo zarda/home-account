@@ -112,6 +112,7 @@ export class MonthlyComparisonComponent {
     return {
       responsive: true,
       maintainAspectRatio: false,
+      animation: this.chartTheme.animation(),
       plugins: {
         legend: {
           display: true,

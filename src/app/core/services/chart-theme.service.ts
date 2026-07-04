@@ -52,6 +52,19 @@ export class ChartThemeService {
     return { color: p.text, font: { family: p.fontFamily } };
   }
 
+  /**
+   * Chart.js animation config. Canvas animations run off the main thread and
+   * so are invisible to the global CSS prefers-reduced-motion kill-switch;
+   * disable them here when the user asks for reduced motion.
+   */
+  animation(): false | { duration: number } {
+    return this.prefersReducedMotion() ? false : { duration: 400 };
+  }
+
+  private prefersReducedMotion(): boolean {
+    return this.document.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  }
+
   private readTokens(): ChartPalette {
     const styles = this.document.defaultView?.getComputedStyle(this.document.documentElement);
     const read = (token: string, fallback: string): string => {

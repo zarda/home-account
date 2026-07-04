@@ -94,6 +94,7 @@ export class SpendingAnalysisComponent {
     return {
       responsive: true,
       maintainAspectRatio: false,
+      animation: this.chartTheme.animation(),
       interaction: {
         intersect: false,
         mode: 'index',

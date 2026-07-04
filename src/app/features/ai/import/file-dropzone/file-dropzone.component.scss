@@ -426,3 +426,10 @@
     height: 24px;
   }
 }
+
+/* Stop the looping dropzone icon pulse under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .icon-bg {
+    animation: none;
+  }
+}
