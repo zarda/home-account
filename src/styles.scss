@@ -3,6 +3,7 @@
    replaces the former M2 light theme + duplicated dark emission entirely. */
 @use '@angular/material' as mat;
 @use './theme/theme-colors' as brand;
+@use './theme/fonts';
 
 html {
   // Both schemes are declared; ThemeService resolves the user preference
@@ -32,12 +33,6 @@ html.dark-theme {
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Google Fonts - PT Sans */
-@import url('https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap');
-
-/* Material Icons */
-@import url('https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined');
 
 /* CSS Variables for Theming */
 :root {

@@ -389,7 +389,7 @@ stable — reference them in commit messages (see 10.2).
 - [x] **P1.2** — Material M2→M3 migration (or `--mat-sys-*` bridge block first) (§5.2)
 - [x] **P1.3** — Reduce dark-mode mechanisms to two; delete dead selectors (§5.3)
 - [x] **P1.4** — Typography & spacing scale; radius + elevation tokens (§5.4)
-- [ ] **P1.5** — Self-host fonts/icons; fix `theme-color` PWA chrome (§5.5)
+- [x] **P1.5** — Self-host fonts/icons; fix `theme-color` PWA chrome (§5.5)
 - [ ] **P1.6** — Shared chart-theme helper reacting to theme flips (§5.6)
 - [x] **P1.7** — Global `:focus-visible` + `prefers-reduced-motion` primitives (§5.7)
 

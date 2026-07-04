@@ -6,6 +6,7 @@ describe('ThemeService', () => {
   let service: ThemeService;
   let mockDocument: Document;
   let mockHtmlElement: HTMLElement;
+  let themeColorMetas: { setAttribute: jasmine.Spy }[];
 
   beforeEach(() => {
     mockHtmlElement = {
@@ -15,9 +16,21 @@ describe('ThemeService', () => {
       }
     } as unknown as HTMLElement;
 
+    themeColorMetas = [
+      { setAttribute: jasmine.createSpy('setAttribute') },
+      { setAttribute: jasmine.createSpy('setAttribute') }
+    ];
+
     mockDocument = {
-      documentElement: mockHtmlElement
-    } as Document;
+      documentElement: mockHtmlElement,
+      // Only the theme-color query returns our fakes; other selectors
+      // (e.g. TestBed teardown queries) get an empty list.
+      querySelectorAll: jasmine
+        .createSpy('querySelectorAll')
+        .and.callFake((selector: string) =>
+          selector === 'meta[name="theme-color"]' ? themeColorMetas : []
+        )
+    } as unknown as Document;
 
     TestBed.configureTestingModule({
       providers: [
@@ -99,6 +112,28 @@ describe('ThemeService', () => {
     it('should return false when light theme', () => {
       service.setTheme('light');
       expect(service.isDark()).toBeFalse();
+    });
+  });
+
+  describe('theme-color meta sync', () => {
+    const applyTheme = (theme: 'light' | 'dark') =>
+      (service as unknown as { applyTheme(t: 'light' | 'dark'): void }).applyTheme(theme);
+
+    it('should pin every theme-color meta to the dark surface in dark mode', () => {
+      applyTheme('dark');
+
+      expect(mockDocument.querySelectorAll).toHaveBeenCalledWith('meta[name="theme-color"]');
+      for (const meta of themeColorMetas) {
+        expect(meta.setAttribute).toHaveBeenCalledWith('content', '#121212');
+      }
+    });
+
+    it('should pin every theme-color meta to the brand color in light mode', () => {
+      applyTheme('light');
+
+      for (const meta of themeColorMetas) {
+        expect(meta.setAttribute).toHaveBeenCalledWith('content', '#3F51B5');
+      }
     });
   });
 
