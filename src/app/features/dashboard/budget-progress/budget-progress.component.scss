@@ -7,7 +7,7 @@
   --mdc-linear-progress-track-color: rgba(0, 0, 0, 0.08);
 }
 
-.dark-theme ::ng-deep .mat-mdc-progress-bar {
+:host-context(.dark-theme) ::ng-deep .mat-mdc-progress-bar {
   --mdc-linear-progress-track-color: rgba(255, 255, 255, 0.12);
 }
 
