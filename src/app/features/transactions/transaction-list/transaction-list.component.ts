@@ -20,11 +20,13 @@ import { TransactionRowComponent } from '../../../shared/components/transaction-
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 
 @Component({
   selector: 'app-transaction-list',
   standalone: true,
   imports: [
+    AmountDisplayComponent,
     CategoryChipComponent,
     TransactionRowComponent,
     MatTableModule,

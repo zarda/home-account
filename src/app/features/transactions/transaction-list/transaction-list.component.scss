@@ -164,16 +164,7 @@
 }
 
 .amount-text {
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.amount-text.income {
-  color: var(--color-income-text);
-}
-
-.amount-text.expense {
-  color: var(--color-expense-text);
+  display: inline-flex;
 }
 
 // Converted secondary line under foreign-currency amounts (desktop table)

@@ -121,16 +121,7 @@
 }
 
 .recurring-amount {
-  font-weight: 600;
-  font-size: var(--text-xl);
-
-  &.expense {
-    color: var(--color-expense-text);
-  }
-
-  &.income {
-    color: var(--color-income-text);
-  }
+  display: inline-flex;
 }
 
 .recurring-meta {

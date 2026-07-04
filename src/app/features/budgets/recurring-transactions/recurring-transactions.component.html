@@ -43,9 +43,15 @@
 
           <!-- Card Body -->
           <div class="card-body">
-            <span class="recurring-amount" [class.expense]="recurring.type === 'expense'" [class.income]="recurring.type === 'income'">
-              {{ recurring.type === 'expense' ? '-' : '+' }}{{ recurring.amount | currency:recurring.currency:'symbol':'1.2-2' }}
-            </span>
+            <app-amount-display
+              class="recurring-amount"
+              [amount]="recurring.type === 'expense' ? -recurring.amount : recurring.amount"
+              [currency]="recurring.currency"
+              [type]="recurring.type"
+              [showSign]="true"
+              [bold]="true"
+              size="lg"
+            />
             <div class="recurring-meta">
               <span class="recurring-frequency">
                 <mat-icon>schedule</mat-icon>

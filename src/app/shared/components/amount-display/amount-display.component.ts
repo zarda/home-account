@@ -16,8 +16,8 @@ import { CurrencyService } from '../../../core/services/currency.service';
       [class.text-xl]="size() === 'xl'"
       [class.text-2xl]="size() === '2xl'"
     >
-      @if (showSign() && amount() > 0) {
-        <span>+</span>
+      @if (showSign() && amount() !== 0) {
+        <span>{{ amount() > 0 ? '+' : '-' }}</span>
       }
       {{ formattedAmount() }}
     </span>
@@ -40,12 +40,15 @@ export class AmountDisplayComponent {
     return this.currencyService.formatCurrency(Math.abs(this.amount()), this.currency());
   });
 
+  // Token-backed utilities (tailwind.config.js maps these to the CSS
+  // custom properties), so amounts follow the one income/expense pair
+  // app-wide and adapt to the theme without dark: variants.
   colorClass = computed(() => {
     switch (this.type()) {
       case 'income':
-        return 'text-green-600 dark:text-green-400';
+        return 'text-income-text';
       case 'expense':
-        return 'text-red-600 dark:text-red-400';
+        return 'text-expense-text';
       default:
         return 'text-gray-900 dark:text-gray-100';
     }

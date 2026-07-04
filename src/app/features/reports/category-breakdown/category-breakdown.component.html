@@ -17,9 +17,14 @@
 
     <div class="total-display">
       <span class="total-label">{{ selectedType() === 'expense' ? ('reports.totalExpenses' | translate) : ('reports.totalIncome' | translate) }}</span>
-      <span class="total-value" [class.expense]="selectedType() === 'expense'" [class.income]="selectedType() === 'income'">
-        {{ total() | currency:currencyCode:'symbol':'1.2-2' }}
-      </span>
+      <app-amount-display
+        class="total-value"
+        [amount]="total()"
+        [currency]="currencyCode"
+        [type]="selectedType()"
+        [bold]="true"
+        size="2xl"
+      />
     </div>
   </div>
 

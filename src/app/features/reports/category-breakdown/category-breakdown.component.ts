@@ -12,6 +12,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
+import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 
 interface CategoryBreakdown {
   categoryId: string;
@@ -28,6 +29,7 @@ interface CategoryBreakdown {
   selector: 'app-category-breakdown',
   standalone: true,
   imports: [
+    AmountDisplayComponent,
     CategoryChipComponent,
     CommonModule,
     MatCardModule,

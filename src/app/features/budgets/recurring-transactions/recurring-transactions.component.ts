@@ -18,11 +18,13 @@ import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialo
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 
 @Component({
   selector: 'app-recurring-transactions',
   standalone: true,
   imports: [
+    AmountDisplayComponent,
     CommonModule,
     MatIconModule,
     MatButtonModule,

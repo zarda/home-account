@@ -34,14 +34,6 @@
   .total-value {
     font-size: var(--text-3xl);
     font-weight: 700;
-
-    &.expense {
-      color: #ef4444;
-    }
-
-    &.income {
-      color: #22c55e;
-    }
   }
 }
 

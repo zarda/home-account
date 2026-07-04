@@ -71,11 +71,11 @@ describe('AmountDisplayComponent', () => {
 
     it('recomputes the colour class when type changes', () => {
       const fixture = createComponent({ amount: 1, type: 'income' });
-      expect(fixture.componentInstance.colorClass()).toContain('green');
+      expect(fixture.componentInstance.colorClass()).toContain('income-text');
 
       fixture.componentRef.setInput('type', 'expense');
       fixture.detectChanges();
-      expect(fixture.componentInstance.colorClass()).toContain('red');
+      expect(fixture.componentInstance.colorClass()).toContain('expense-text');
     });
 
     it('updates the rendered DOM when inputs change', () => {
@@ -92,12 +92,12 @@ describe('AmountDisplayComponent', () => {
   describe('colorClass', () => {
     it('returns the income colour', () => {
       const component = createComponent({ amount: 1, type: 'income' }).componentInstance;
-      expect(component.colorClass()).toContain('green');
+      expect(component.colorClass()).toContain('income-text');
     });
 
     it('returns the expense colour', () => {
       const component = createComponent({ amount: 1, type: 'expense' }).componentInstance;
-      expect(component.colorClass()).toContain('red');
+      expect(component.colorClass()).toContain('expense-text');
     });
 
     it('returns the neutral colour by default', () => {

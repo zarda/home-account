@@ -12,6 +12,7 @@ import { RecurringService } from '../../../core/services/recurring.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
+import { CurrencyService } from '../../../core/services/currency.service';
 import { RecurringTransaction, Category } from '../../../models';
 
 describe('RecurringTransactionsComponent', () => {
@@ -109,7 +110,13 @@ describe('RecurringTransactionsComponent', () => {
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: AnnouncerService, useValue: mockAnnouncer }
+        { provide: AnnouncerService, useValue: mockAnnouncer },
+        {
+          provide: CurrencyService,
+          useValue: {
+            formatCurrency: (amount: number, code: string) => `${code} ${amount.toFixed(2)}`,
+          },
+        }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -377,7 +384,16 @@ describe('RecurringTransactionsComponent', () => {
           { provide: MatDialog, useValue: mockDialog },
           { provide: MatSnackBar, useValue: mockSnackBar },
           { provide: TranslationService, useValue: mockTranslationService },
-          { provide: AnnouncerService, useValue: mockAnnouncer }
+          { provide: AnnouncerService, useValue: mockAnnouncer },
+          {
+            // The shared app-amount-display inside the card formats
+            // through CurrencyService; keep the real (Firestore-backed)
+            // service out of the suite.
+            provide: CurrencyService,
+            useValue: {
+              formatCurrency: (amount: number, code: string) => `${code} ${amount.toFixed(2)}`,
+            },
+          }
         ]
       })
         // MatDialogModule/MatSnackBarModule (standalone imports of the
