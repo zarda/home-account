@@ -7,6 +7,8 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Brand indigo ramp — matches the Material $primary-palette in
+        // src/styles.scss. Keep the two in sync if the brand color changes.
         primary: {
           50: '#E8EAF6',
           100: '#C5CAE9',
@@ -19,18 +21,23 @@ module.exports = {
           800: '#283593',
           900: '#1A237E',
         },
-        accent: {
-          50: '#E0F2F1',
-          100: '#B2DFDB',
-          200: '#80CBC4',
-          300: '#4DB6AC',
-          400: '#26A69A',
-          500: '#009688',
-          600: '#00897B',
-          700: '#00796B',
-          800: '#00695C',
-          900: '#004D40',
-        },
+        // Semantic aliases resolved from the CSS custom-property tokens in
+        // src/styles.scss, so these utilities follow the active theme without
+        // dark: pairs. (No alpha modifiers — the vars carry opaque colors.)
+        income: 'var(--color-income)',
+        'income-text': 'var(--color-income-text)',
+        'income-soft': 'var(--color-income-light)',
+        expense: 'var(--color-expense)',
+        'expense-text': 'var(--color-expense-text)',
+        'expense-soft': 'var(--color-expense-light)',
+        success: 'var(--color-success)',
+        'success-soft': 'var(--color-success-light)',
+        error: 'var(--color-error)',
+        'error-soft': 'var(--color-error-light)',
+        warning: 'var(--color-warning)',
+        'warning-soft': 'var(--color-warning-light)',
+        info: 'var(--color-info)',
+        'info-soft': 'var(--color-info-light)',
       },
       fontFamily: {
         sans: ['"PT Sans"', 'system-ui', 'sans-serif'],

@@ -156,11 +156,15 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --color-info: #3b82f6;
   --color-info-light: #dbeafe;
 
-  // Income/Expense colors
+  // Income/Expense colors. The base tokens are fills (charts, bars, tinted
+  // chips); the -text variants are darkened for WCAG AA contrast as running
+  // text on light surfaces (#22c55e on white is only ~2.3:1).
   --color-income: #22c55e;
   --color-income-light: #dcfce7;
+  --color-income-text: #15803d;
   --color-expense: #ef4444;
   --color-expense-light: #fee2e2;
+  --color-expense-text: #b91c1c;
 
   // Scrollbar
   --scrollbar-track: #f1f1f1;
@@ -212,8 +216,10 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
 
   --color-income: #4ade80;
   --color-income-light: #166534;
+  --color-income-text: #4ade80;
   --color-expense: #f87171;
   --color-expense-light: #991b1b;
+  --color-expense-text: #f87171;
 
   --scrollbar-track: #2d2d2d;
   --scrollbar-thumb: #4a4a4a;
