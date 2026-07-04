@@ -6,10 +6,13 @@ describe('AmountDisplayComponent', () => {
   let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
 
   function createComponent(
-    inputs: Partial<AmountDisplayComponent> = {},
+    inputs: Record<string, unknown> = {},
   ): ComponentFixture<AmountDisplayComponent> {
     const fixture = TestBed.createComponent(AmountDisplayComponent);
-    Object.assign(fixture.componentInstance, { amount: 0, ...inputs });
+    const withDefaults = { amount: 0, ...inputs };
+    for (const [key, value] of Object.entries(withDefaults)) {
+      fixture.componentRef.setInput(key, value);
+    }
     fixture.detectChanges();
     return fixture;
   }
@@ -47,6 +50,42 @@ describe('AmountDisplayComponent', () => {
       const component = createComponent({ amount: 5 }).componentInstance;
       component.formattedAmount();
       expect(mockCurrencyService.formatCurrency).toHaveBeenCalledWith(5, 'USD');
+    });
+  });
+
+  describe('input reactivity (regression)', () => {
+    // With plain @Input fields the computeds captured no signal dependencies,
+    // memoized their first value and never updated again.
+    it('recomputes the formatted amount when amount or currency change', () => {
+      const fixture = createComponent({ amount: 100, currency: 'USD' });
+      expect(fixture.componentInstance.formattedAmount()).toBe('USD 100.00');
+
+      fixture.componentRef.setInput('amount', 250);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.formattedAmount()).toBe('USD 250.00');
+
+      fixture.componentRef.setInput('currency', 'EUR');
+      fixture.detectChanges();
+      expect(fixture.componentInstance.formattedAmount()).toBe('EUR 250.00');
+    });
+
+    it('recomputes the colour class when type changes', () => {
+      const fixture = createComponent({ amount: 1, type: 'income' });
+      expect(fixture.componentInstance.colorClass()).toContain('green');
+
+      fixture.componentRef.setInput('type', 'expense');
+      fixture.detectChanges();
+      expect(fixture.componentInstance.colorClass()).toContain('red');
+    });
+
+    it('updates the rendered DOM when inputs change', () => {
+      const fixture = createComponent({ amount: 100, currency: 'USD' });
+      const el = fixture.nativeElement as HTMLElement;
+      expect(el.textContent).toContain('USD 100.00');
+
+      fixture.componentRef.setInput('amount', 7.5);
+      fixture.detectChanges();
+      expect(el.textContent).toContain('USD 7.50');
     });
   });
 
