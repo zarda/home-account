@@ -10,6 +10,7 @@ import { ChartConfiguration, ChartData } from 'chart.js';
 import { Transaction } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -43,6 +44,7 @@ interface MonthlyComparison {
 export class MonthlyComparisonComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private chartTheme = inject(ChartThemeService);
 
   @Input() set transactions(value: Transaction[]) {
     this._transactions.set(value);
@@ -84,6 +86,8 @@ export class MonthlyComparisonComponent {
   chartOptions = computed((): ChartConfiguration<'bar'>['options'] => {
     const symbol = this.getCurrencySymbol();
     const locale = this.translationService.getIntlLocale();
+    const axis = this.chartTheme.axis();
+    const palette = this.chartTheme.palette();
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -91,8 +95,11 @@ export class MonthlyComparisonComponent {
         legend: {
           display: true,
           position: 'top',
+          labels: this.chartTheme.legendLabels(),
         },
         tooltip: {
+          titleFont: { family: palette.fontFamily },
+          bodyFont: { family: palette.fontFamily },
           callbacks: {
             label: (context) => {
               const value = context.parsed.y ?? 0;
@@ -102,9 +109,12 @@ export class MonthlyComparisonComponent {
         },
       },
       scales: {
+        x: axis,
         y: {
           beginAtZero: true,
+          grid: axis.grid,
           ticks: {
+            ...axis.ticks,
             callback: (value) => {
               return `${symbol}${Number(value).toLocaleString(locale)}`;
             },

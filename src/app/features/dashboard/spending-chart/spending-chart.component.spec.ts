@@ -227,19 +227,25 @@ describe('SpendingChartComponent', () => {
 
   describe('chartOptions', () => {
     it('should be responsive', () => {
-      expect(component.chartOptions?.responsive).toBe(true);
+      expect(component.chartOptions()?.responsive).toBe(true);
     });
 
     it('should maintain aspect ratio', () => {
-      expect(component.chartOptions?.maintainAspectRatio).toBe(true);
+      expect(component.chartOptions()?.maintainAspectRatio).toBe(true);
     });
 
     it('should hide legend', () => {
-      expect(component.chartOptions?.plugins?.legend?.display).toBe(false);
+      expect(component.chartOptions()?.plugins?.legend?.display).toBe(false);
     });
 
     it('should have tooltip callback', () => {
-      expect(component.chartOptions?.plugins?.tooltip?.callbacks?.label).toBeDefined();
+      expect(component.chartOptions()?.plugins?.tooltip?.callbacks?.label).toBeDefined();
+    });
+
+    it('should theme tooltip fonts with the app font stack', () => {
+      expect(component.chartOptions()?.plugins?.tooltip?.titleFont).toEqual(
+        jasmine.objectContaining({ family: jasmine.stringContaining('PT Sans') })
+      );
     });
   });
 
