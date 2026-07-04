@@ -1,12 +1,13 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
 import { TransactionFormComponent } from '../../../features/transactions/transaction-form/transaction-form.component';
+import { TranslationService } from '../../../core/services/translation.service';
 
 interface NavItem {
-  label: string;
+  labelKey: string;
   icon: string;
   route: string;
   isAction?: boolean;
@@ -21,14 +22,22 @@ interface NavItem {
 })
 export class BottomNavComponent {
   private dialog = inject(MatDialog);
+  private translationService = inject(TranslationService);
 
-  navItems: NavItem[] = [
-    { label: 'Dashboard', icon: 'dashboard', route: '/dashboard' },
-    { label: 'Transactions', icon: 'receipt_long', route: '/transactions' },
-    { label: 'Add', icon: 'add', route: '', isAction: true },
-    { label: 'Budgets', icon: 'savings', route: '/budgets' },
-    { label: 'Reports', icon: 'bar_chart', route: '/reports' },
+  private navItemsConfig: NavItem[] = [
+    { labelKey: 'nav.dashboard', icon: 'dashboard', route: '/dashboard' },
+    { labelKey: 'nav.transactions', icon: 'receipt_long', route: '/transactions' },
+    { labelKey: 'nav.add', icon: 'add', route: '', isAction: true },
+    { labelKey: 'nav.budgets', icon: 'savings', route: '/budgets' },
+    { labelKey: 'nav.reports', icon: 'bar_chart', route: '/reports' },
   ];
+
+  navItems = computed(() =>
+    this.navItemsConfig.map((item) => ({
+      ...item,
+      label: this.translationService.t(item.labelKey),
+    }))
+  );
 
   openAddTransaction(): void {
     // Open dialog directly - works from any page
