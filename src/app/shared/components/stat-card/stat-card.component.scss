@@ -1,0 +1,143 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface-card);
+  border-radius: var(--radius-card);
+  min-width: 0;
+}
+
+.stat-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+
+  &.tone-neutral {
+    background: var(--color-primary-light);
+    color: var(--color-primary);
+  }
+
+  &.tone-income,
+  &.tone-positive {
+    background: var(--color-income-light);
+    color: var(--color-income-text);
+  }
+
+  &.tone-expense,
+  &.tone-negative {
+    background: var(--color-expense-light);
+    color: var(--color-expense-text);
+  }
+}
+
+.stat-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.stat-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.stat-label-suffix {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-disabled);
+  text-transform: uppercase;
+}
+
+.stat-value {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.tone-neutral {
+    color: var(--text-primary);
+  }
+
+  &.tone-income,
+  &.tone-positive {
+    color: var(--color-income-text);
+  }
+
+  &.tone-expense,
+  &.tone-negative {
+    color: var(--color-expense-text);
+  }
+}
+
+.stat-detail {
+  font-size: var(--text-xs);
+  font-weight: 500;
+
+  &.detail-neutral {
+    color: var(--text-muted);
+  }
+
+  &.detail-positive {
+    color: var(--color-income-text);
+  }
+
+  &.detail-negative {
+    color: var(--color-expense-text);
+  }
+}
+
+.stat-delta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+// Tinted pill via the income/expense fill+text token pairs — the
+// previous bare colored text failed contrast in both themes.
+.delta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+  }
+
+  &.positive {
+    background: var(--color-income-light);
+    color: var(--color-income-text);
+  }
+
+  &.negative {
+    background: var(--color-expense-light);
+    color: var(--color-expense-text);
+  }
+}
+
+.delta-caption {
+  font-size: var(--text-xs);
+  color: var(--text-disabled);
+}

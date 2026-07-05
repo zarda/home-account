@@ -4,6 +4,12 @@ import { DOCUMENT } from '@angular/common';
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type EffectiveTheme = 'light' | 'dark';
 
+/** Browser-chrome colors matching the app's surfaces (see index.html). */
+const THEME_COLOR: Record<EffectiveTheme, string> = {
+  light: '#3F51B5',
+  dark: '#121212',
+};
+
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
   private document = inject(DOCUMENT);
@@ -98,5 +104,19 @@ export class ThemeService {
       htmlElement.classList.add('light-theme');
       htmlElement.classList.remove('dark-theme');
     }
+
+    this.syncThemeColorMeta(theme);
+  }
+
+  /**
+   * Keep browser chrome (address bar / PWA title bar) on the effective
+   * theme's surface color. index.html ships static light/dark tags for
+   * first paint; once the app resolves the preference, every
+   * theme-color meta is pinned to the same effective value so
+   * OS-scheme media variants cannot contradict the in-app toggle.
+   */
+  private syncThemeColorMeta(theme: EffectiveTheme): void {
+    const metas = this.document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+    metas.forEach((meta) => meta.setAttribute('content', THEME_COLOR[theme]));
   }
 }

@@ -1,10 +1,26 @@
+@use 'breakpoints' as bp;
+
 :host {
   display: block;
   min-height: 100vh;
   background-color: var(--surface-background);
 }
 
-// Sidebar backdrop (visible on all screen sizes when sidebar open)
+// Docked sidebar (desktop): a layout column, not an overlay — no backdrop,
+// no shadow, content shifts right instead of being covered.
+.sidebar-docked {
+  position: fixed;
+  top: calc(64px + var(--safe-top)); // Below header (+ notch)
+  left: 0;
+  bottom: 0;
+  width: 256px;
+  z-index: var(--z-docked-sidebar);
+  background: var(--surface-card);
+  border-right: 1px solid var(--border-primary);
+  overflow-y: auto;
+}
+
+// Backdrop for the overlay drawer (tablet/mobile only)
 .sidebar-backdrop {
   position: fixed;
   top: 0;
@@ -12,28 +28,24 @@
   right: 0;
   bottom: 0;
   background: var(--overlay-backdrop);
-  z-index: 1100;
+  z-index: var(--z-drawer-backdrop);
   cursor: pointer;
 }
 
-// Sidebar drawer - overlay mode for all screens
+// Overlay drawer (tablet/mobile only): full height from the top
 .sidebar-drawer {
   position: fixed;
-  top: 64px; // Below header on desktop
+  top: 0;
   left: 0;
   bottom: 0;
-  width: 256px;
-  z-index: 1200;
+  width: 280px;
+  padding-top: var(--safe-top);
+  z-index: var(--z-drawer);
   background: var(--surface-card);
   border-right: 1px solid var(--border-primary);
   box-shadow: var(--shadow-overlay);
   animation: slideIn 0.2s ease-out;
-
-  // Tablet/Mobile: Full height from top
-  &.tablet-mobile {
-    top: 0;
-    width: 280px;
-  }
+  overflow-y: auto;
 }
 
 @keyframes slideIn {
@@ -53,11 +65,15 @@
   right: 0;
   bottom: 0;
   overflow-y: auto;
-  padding-top: 64px;
+  padding-top: calc(64px + var(--safe-top));
+}
+
+.main-container.with-docked-sidebar {
+  left: 256px;
 }
 
 .main-container.with-bottom-nav {
-  bottom: 64px;
+  bottom: calc(64px + var(--safe-bottom));
 }
 
 .content-wrapper {
@@ -72,15 +88,17 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 64px;
-  z-index: 1000;
+  // Home-indicator space below the 64px bar; the nav's own surface
+  // paints the inset (see bottom-nav.component.scss).
+  height: calc(64px + var(--safe-bottom));
+  z-index: var(--z-bottom-nav);
 }
 
 .bottom-nav-container.visible {
   display: block;
 }
 
-@media (max-width: 768px) {
+@include bp.mobile {
   .content-wrapper {
     padding: 16px;
   }

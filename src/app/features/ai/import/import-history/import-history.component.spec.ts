@@ -12,11 +12,13 @@ import { ImportHistoryService } from '../../../../core/services/import-history.s
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { ImportHistory } from '../../../../models';
+import { NotificationService } from '../../../../core/services/notification.service';
 
 describe('ImportHistoryComponent', () => {
   let component: ImportHistoryComponent;
   let fixture: ComponentFixture<ImportHistoryComponent>;
   let mockImportHistoryService: jasmine.SpyObj<ImportHistoryService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
@@ -75,6 +77,7 @@ describe('ImportHistoryComponent', () => {
     mockImportHistoryService.deleteImportHistory.and.returnValue(Promise.resolve());
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     mockTranslationService.t.and.callFake((key: string) => key);
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
@@ -85,6 +88,7 @@ describe('ImportHistoryComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ImportHistoryComponent, NoopAnimationsModule],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: ImportHistoryService, useValue: mockImportHistoryService },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: MatSnackBar, useValue: mockSnackBar },
@@ -98,6 +102,7 @@ describe('ImportHistoryComponent', () => {
         set: {
           template: '<div></div>',
           providers: [
+        { provide: NotificationService, useValue: notifications },
             { provide: MatDialog, useValue: mockDialog },
             { provide: MatSnackBar, useValue: mockSnackBar },
             { provide: TranslationService, useValue: mockTranslationService }
@@ -259,8 +264,7 @@ describe('ImportHistoryComponent', () => {
       tick();
 
       expect(mockImportHistoryService.deleteImportHistory).toHaveBeenCalledWith('import1');
-      expect(mockSnackBar.open).toHaveBeenCalledWith('import.historyDeleted', 'common.close', { duration: 3000 });
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('import.historyDeleted');
+      expect(notifications.success).toHaveBeenCalledWith('import.historyDeleted');
     }));
 
     it('should announce failures assertively', fakeAsync(() => {
@@ -270,7 +274,7 @@ describe('ImportHistoryComponent', () => {
       component.deleteHistory(mockHistory[0]);
       tick();
 
-      expect(mockAnnouncer.announce).toHaveBeenCalledWith('import.deleteHistoryFailed', 'assertive');
+      expect(notifications.error).toHaveBeenCalledWith('import.deleteHistoryFailed');
     }));
   });
 

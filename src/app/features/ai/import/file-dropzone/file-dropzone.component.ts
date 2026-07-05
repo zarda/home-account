@@ -42,6 +42,15 @@ export class FileDropzoneComponent {
     return this.selectedFiles().filter(f => this.isImageFile(f)).length;
   });
 
+  // Only the empty zone acts as a click-to-browse target. Once files are
+  // picked the list of thumbnails must not re-open the OS picker on every
+  // stray click; adding more is done through the explicit "Add more" button.
+  browse(input: HTMLInputElement): void {
+    if (this.selectedFiles().length === 0) {
+      input.click();
+    }
+  }
+
   onDragOver(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();

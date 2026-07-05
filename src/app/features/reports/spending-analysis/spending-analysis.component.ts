@@ -8,8 +8,11 @@ import { ChartConfiguration, ChartData } from 'chart.js';
 
 import { Transaction, Category } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 interface MonthlyData {
@@ -24,6 +27,8 @@ interface MonthlyData {
   selector: 'app-spending-analysis',
   standalone: true,
   imports: [
+    CategoryChipComponent,
+    StatCardComponent,
     CommonModule,
     MatCardModule,
     MatIconModule,
@@ -38,6 +43,7 @@ interface MonthlyData {
 export class SpendingAnalysisComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private chartTheme = inject(ChartThemeService);
 
   @Input() set transactions(value: Transaction[]) {
     this._transactions.set(value);
@@ -73,18 +79,22 @@ export class SpendingAnalysisComponent {
     return info?.symbol || this._currency();
   }
 
-  // Convert transaction amount to current base currency dynamically
+  // Base-currency value: write-time snapshot first (deterministic), live
+  // conversion only as a legacy fallback.
   private toBaseCurrency(t: Transaction): number {
-    return this.currencyService.convert(t.amount, t.currency, this._currency());
+    return this.currencyService.amountInBase(t, this._currency());
   }
 
   // Chart options as computed signal to prevent re-renders
   chartOptions = computed((): ChartConfiguration<'line'>['options'] => {
     const symbol = this.getCurrencySymbol();
     const locale = this.translationService.getIntlLocale();
+    const axis = this.chartTheme.axis();
+    const palette = this.chartTheme.palette();
     return {
       responsive: true,
       maintainAspectRatio: false,
+      animation: this.chartTheme.animation(),
       interaction: {
         intersect: false,
         mode: 'index',
@@ -93,8 +103,11 @@ export class SpendingAnalysisComponent {
         legend: {
           display: true,
           position: 'top',
+          labels: this.chartTheme.legendLabels(),
         },
         tooltip: {
+          titleFont: { family: palette.fontFamily },
+          bodyFont: { family: palette.fontFamily },
           callbacks: {
             label: (context) => {
               const value = context.parsed.y ?? 0;
@@ -104,9 +117,12 @@ export class SpendingAnalysisComponent {
         },
       },
       scales: {
+        x: axis,
         y: {
           beginAtZero: true,
+          grid: axis.grid,
           ticks: {
+            ...axis.ticks,
             callback: (value) => {
               return `${symbol}${Number(value).toLocaleString(locale)}`;
             },
@@ -169,9 +185,75 @@ export class SpendingAnalysisComponent {
       .sort((a, b) => a.monthKey.localeCompare(b.monthKey));
   });
 
+  // Span of the selected range in whole days — drives chart granularity.
+  private daySpan = computed(() => {
+    const r = this._dateRange();
+    return Math.max(0, Math.round((r.end.getTime() - r.start.getTime()) / 86_400_000));
+  });
+
+  // "This Month" (and shorter) charts daily so it reads as a cumulative line
+  // instead of two lone monthly dots; 3M/Year keep the monthly series.
+  granularity = computed<'day' | 'month'>(() => (this.daySpan() <= 45 ? 'day' : 'month'));
+
+  // Daily cumulative buckets across the range. Running totals mean a sparse
+  // month still draws a rising line rather than a scatter of isolated points.
+  private dailyData = computed<MonthlyData[]>(() => {
+    const transactions = this._transactions();
+    const range = this._dateRange();
+    const locale = this.translationService.getIntlLocale();
+
+    const dayMap = new Map<string, { income: number; expense: number }>();
+    const start = new Date(range.start.getFullYear(), range.start.getMonth(), range.start.getDate());
+    const end = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate());
+
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+      dayMap.set(key, { income: 0, expense: 0 });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    for (const t of transactions) {
+      const d = t.date.toDate();
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const bucket = dayMap.get(key);
+      if (bucket) {
+        const amount = this.toBaseCurrency(t);
+        if (t.type === 'income') bucket.income += amount;
+        else bucket.expense += amount;
+      }
+    }
+
+    let cumIncome = 0;
+    let cumExpense = 0;
+    return Array.from(dayMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, data]) => {
+        cumIncome += data.income;
+        cumExpense += data.expense;
+        const [year, month, day] = key.split('-');
+        const dayDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        const label = dayDate.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+        return {
+          month: label,
+          monthKey: key,
+          income: cumIncome,
+          expense: cumExpense,
+          balance: cumIncome - cumExpense,
+        };
+      });
+  });
+
+  // The series actually plotted, resolved from the range's granularity.
+  trendData = computed<MonthlyData[]>(() =>
+    this.granularity() === 'day' ? this.dailyData() : this.monthlyData()
+  );
+
   // Chart data as computed signal to prevent re-renders
   chartData = computed((): ChartData<'line'> => {
-    const data = this.monthlyData();
+    const data = this.trendData();
+    // Drop point markers on the dense daily line; keep them on sparse months.
+    const pointRadius = this.granularity() === 'day' ? 0 : 3;
 
     return {
       labels: data.map(d => d.month),
@@ -183,6 +265,7 @@ export class SpendingAnalysisComponent {
           backgroundColor: 'rgba(34, 197, 94, 0.1)',
           fill: true,
           tension: 0.3,
+          pointRadius,
         },
         {
           label: this.translationService.t('common.totalExpenses'),
@@ -191,6 +274,7 @@ export class SpendingAnalysisComponent {
           backgroundColor: 'rgba(239, 68, 68, 0.1)',
           fill: true,
           tension: 0.3,
+          pointRadius,
         },
       ],
     };

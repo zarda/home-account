@@ -1,0 +1,18 @@
+<header class="page-header">
+  <div class="page-header-main">
+    <ng-content select="[header-leading]" />
+    <div class="page-header-text">
+      <h1 class="page-title">
+        <span>{{ titleKey() | translate }}</span>
+        <ng-content select="[header-title-suffix]" />
+      </h1>
+      @if (subtitleKey(); as key) {
+        <p class="page-subtitle">{{ key | translate }}</p>
+      }
+      <ng-content select="[header-subtitle]" />
+    </div>
+  </div>
+  <div class="page-header-actions">
+    <ng-content select="[header-actions]" />
+  </div>
+</header>

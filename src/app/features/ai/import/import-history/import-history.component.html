@@ -1,26 +1,26 @@
 <div class="import-history">
-  <div class="header">
-    <button mat-icon-button (click)="goBack()">
+  <app-page-header titleKey="import.history" class="header">
+    <button
+      header-leading
+      mat-icon-button
+      (click)="goBack()"
+      [attr.aria-label]="'common.back' | translate"
+    >
       <mat-icon>arrow_back</mat-icon>
     </button>
-    <h1>{{ 'import.history' | translate }}</h1>
-  </div>
+  </app-page-header>
 
   @if (isLoading()) {
-    <div class="loading">
-      <mat-spinner diameter="40"></mat-spinner>
-    </div>
+    <app-loading-spinner [message]="'import.loadingHistory' | translate" />
   } @else if (importHistory().length === 0) {
-    <mat-card class="empty-state">
-      <mat-card-content>
-        <mat-icon>history</mat-icon>
-        <p>{{ 'import.noHistory' | translate }}</p>
-        <button mat-flat-button color="primary" (click)="goToImport()">
-          <mat-icon>upload</mat-icon>
-          {{ 'import.startImport' | translate }}
-        </button>
-      </mat-card-content>
-    </mat-card>
+    <app-empty-state
+      icon="history"
+      [title]="'import.noHistory' | translate"
+      [description]="'import.noHistoryDescription' | translate"
+      [actionLabel]="'import.startImport' | translate"
+      actionIcon="upload"
+      (action)="goToImport()"
+    />
   } @else {
     <div class="history-list">
       @for (item of importHistory(); track item.id) {

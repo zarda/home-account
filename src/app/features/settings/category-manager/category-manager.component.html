@@ -18,6 +18,10 @@
     </button>
   </div>
 
+  @if (isLoading()) {
+    <app-loading-spinner size="sm" [message]="'settings.loadingCategories' | translate" />
+  }
+
   <!-- Categories List with Drag & Drop -->
   <div
     cdkDropList
@@ -31,9 +35,7 @@
           <mat-icon>drag_indicator</mat-icon>
         </div>
 
-        <div class="category-icon" [style.background-color]="category.color + '20'">
-          <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
-        </div>
+        <app-category-chip appearance="tile" [icon]="category.icon" [color]="category.color" />
 
         <div class="category-info">
           <span class="category-name">{{ category.name | translate }}</span>
@@ -42,7 +44,7 @@
           }
         </div>
 
-        <button mat-icon-button [matMenuTriggerFor]="categoryMenu">
+        <button mat-icon-button [matMenuTriggerFor]="categoryMenu" [attr.aria-label]="'common.moreActions' | translate">
           <mat-icon>more_vert</mat-icon>
         </button>
 
@@ -63,9 +65,14 @@
   </div>
 
   @if (filteredCategories.length === 0 && !isLoading()) {
-    <div class="empty-state">
-      <mat-icon>category</mat-icon>
-      <p>{{ 'settings.noCategoriesFound' | translate }}</p>
-    </div>
+    <app-empty-state
+      icon="category"
+      size="sm"
+      [title]="'settings.noCategoriesFound' | translate"
+      [description]="'settings.noCategoriesDescription' | translate"
+      [actionLabel]="'settings.addCategory' | translate"
+      actionIcon="add"
+      (action)="openAddDialog()"
+    />
   }
 </div>

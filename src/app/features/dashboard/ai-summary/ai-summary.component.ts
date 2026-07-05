@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { PreviousPeriodData, isRateLimitMessage } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
@@ -14,16 +13,19 @@ import { AuthService } from '../../../core/services/auth.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
 import { Budget, CategoryTotal, Transaction, MonthlyTotal } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 
 @Component({
   selector: 'app-ai-summary',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
+    EmptyStateComponent,
     CommonModule,
     MatCardModule,
     MatIconModule,
     MatButtonModule,
-    MatProgressSpinnerModule,
     TranslatePipe
   ],
   templateUrl: './ai-summary.component.html',

@@ -28,13 +28,12 @@
 
   .tab-badge {
     @apply ml-1 px-1.5 py-0.5 text-xs font-medium rounded-full;
-    @apply bg-indigo-100 text-indigo-700;
+    // Primary-tinted, self-theming (was a raw indigo pair that drifted from
+    // the app primary and only guessed at a dark value).
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-primary);
     min-width: 20px;
     text-align: center;
-
-    :host-context(.dark) & {
-      @apply bg-indigo-900 text-indigo-300;
-    }
   }
 }
 

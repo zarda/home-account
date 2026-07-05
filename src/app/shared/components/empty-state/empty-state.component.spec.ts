@@ -41,4 +41,15 @@ describe('EmptyStateComponent', () => {
     fixture.nativeElement.querySelector('button').click();
     expect(spy).toHaveBeenCalled();
   });
+
+  it('uses md padding by default and sm padding when size=sm', () => {
+    const root = (): HTMLElement => fixture.nativeElement.querySelector('[role="status"]');
+    expect(root().classList).toContain('py-12');
+    expect(root().classList).not.toContain('py-6');
+
+    fixture.componentRef.setInput('size', 'sm');
+    fixture.detectChanges();
+    expect(root().classList).toContain('py-6');
+    expect(root().classList).not.toContain('py-12');
+  });
 });

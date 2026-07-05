@@ -1,91 +1,23 @@
 <div class="dashboard-container">
-  <!-- Header -->
-  <div class="header-section">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ 'dashboard.title' | translate }}</h1>
-      <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">
-        {{ 'common.welcome' | translate }}, {{ userName() }}
-      </p>
-    </div>
+  <app-page-header titleKey="dashboard.title" class="header-section">
+    <p header-subtitle class="text-gray-500 dark:text-gray-400 text-sm mt-1 mb-0">
+      {{ 'common.welcome' | translate }}, {{ userName() }}
+    </p>
 
-    <div class="period-controls">
-      <mat-button-toggle-group
-        [value]="isCustomPeriod() ? null : selectedPeriod"
-        (change)="selectedPeriod = $event.value; onPeriodChange()"
-        class="period-toggle bg-white dark:bg-gray-800"
-      >
-        <mat-button-toggle value="thisMonth">
-          <span class="mobile-label">{{ 'dashboard.thisMonthShort' | translate }}</span>
-          <span class="desktop-label">{{ 'dashboard.thisMonth' | translate }}</span>
-        </mat-button-toggle>
-        <mat-button-toggle value="lastMonth">
-          <span class="mobile-label">{{ 'dashboard.lastMonthShort' | translate }}</span>
-          <span class="desktop-label">{{ 'dashboard.lastMonth' | translate }}</span>
-        </mat-button-toggle>
-        <mat-button-toggle value="last3Months">
-          <span class="mobile-label">{{ 'dashboard.last3MonthsShort' | translate }}</span>
-          <span class="desktop-label">{{ 'dashboard.last3Months' | translate }}</span>
-        </mat-button-toggle>
-        <mat-button-toggle value="thisYear">
-          <span class="mobile-label">{{ 'dashboard.thisYearShort' | translate }}</span>
-          <span class="desktop-label">{{ 'dashboard.thisYear' | translate }}</span>
-        </mat-button-toggle>
-      </mat-button-toggle-group>
+    <app-period-selector header-actions (selectionChange)="onPeriodSelection($event)" />
+  </app-page-header>
 
-      <!-- Custom Period Picker -->
-      <div class="custom-period-picker">
-        <button
-          mat-icon-button
-          [matMenuTriggerFor]="periodMenu"
-          [class.active]="isCustomPeriod()"
-          class="picker-btn"
-        >
-          <mat-icon>calendar_month</mat-icon>
-        </button>
+  <!-- Budget threshold alerts: inline + dismissible, not a standing snackbar -->
+  <app-budget-alert-banner />
 
-        <mat-menu #periodMenu="matMenu">
-          <button mat-menu-item (click)="openMonthPicker()">
-            <mat-icon>event</mat-icon>
-            <span>{{ 'dashboard.selectMonth' | translate }}</span>
-          </button>
-          <button mat-menu-item (click)="openYearPicker()">
-            <mat-icon>date_range</mat-icon>
-            <span>{{ 'dashboard.selectYear' | translate }}</span>
-          </button>
-        </mat-menu>
-
-        <!-- Hidden Month Picker -->
-        <input [matDatepicker]="monthPicker" style="display: none">
-        <mat-datepicker
-          #monthPicker
-          startView="year"
-          (monthSelected)="onMonthSelected($event, monthPicker)"
-        ></mat-datepicker>
-
-        <!-- Hidden Year Picker -->
-        <input [matDatepicker]="yearPicker" style="display: none">
-        <mat-datepicker
-          #yearPicker
-          startView="multi-year"
-          (yearSelected)="onYearSelected($event, yearPicker)"
-        ></mat-datepicker>
-
-        <!-- Selected Period Chip -->
-        @if (isCustomPeriod()) {
-          <div class="period-chip">
-            <span>{{ customPeriodLabel() }}</span>
-            <button mat-icon-button (click)="clearCustomPeriod()" class="clear-btn">
-              <mat-icon>close</mat-icon>
-            </button>
-          </div>
-        }
-      </div>
-    </div>
-  </div>
-
-  @if (isLoading()) {
+  @if (showInitialSpinner()) {
     <app-loading-spinner [message]="'dashboard.loadingData' | translate" />
   } @else {
+    <!-- Refetch (period change) keeps content mounted; a thin bar signals work -->
+    @if (isRefetching()) {
+      <mat-progress-bar mode="indeterminate" class="refetch-bar" />
+    }
+
     <!-- Financial Summary Cards (shared) -->
     <app-financial-summary
       [income]="totalIncome()"
@@ -96,66 +28,39 @@
       [previousExpenses]="previousPeriodData()?.expense ?? null"
     />
 
-    <!-- AI Insights -->
-    <app-ai-summary
-      [transactions]="transactions()"
-      [period]="selectedPeriod"
-      [baseCurrency]="baseCurrency()"
-      [previousPeriodData]="previousPeriodData()"
-      [previousPeriodByCategory]="previousPeriodByCategory()"
-      [historicalExpenses]="historicalExpenses()"
-      [budgets]="activeBudgets()"
-    />
-
-    <!-- Mobile Layout -->
-    <div class="mobile-view">
-      <!-- Recent Transactions First on Mobile -->
-      <app-recent-transactions
-        [transactions]="recentTransactions()"
-        [categories]="categoriesMap()"
+    <!-- One DOM tree, reordered per breakpoint via grid-template-areas:
+         desktop is an asymmetric main column (chart + AI insights) beside a
+         right rail (recent transactions + budgets); mobile stacks them with
+         recent transactions first. -->
+    <div class="dashboard-grid" [class.has-budgets]="activeBudgets().length > 0">
+      <app-ai-summary
+        class="area-insights"
+        [transactions]="transactions()"
+        [period]="selectedPeriodOption()"
+        [baseCurrency]="baseCurrency()"
+        [previousPeriodData]="previousPeriodData()"
+        [previousPeriodByCategory]="previousPeriodByCategory()"
+        [historicalExpenses]="historicalExpenses()"
+        [budgets]="activeBudgets()"
       />
 
-      <!-- Spending Chart -->
       <app-spending-chart
+        class="area-chart"
         [categoryTotals]="categoryTotals()"
         [categories]="categories()"
       />
 
-      <!-- Budget Progress -->
+      <app-recent-transactions
+        class="area-recent"
+        [transactions]="recentTransactions()"
+        [categories]="categoriesMap()"
+      />
+
       @if (activeBudgets().length > 0) {
         <app-budget-progress
+          class="area-budgets"
           [budgets]="activeBudgets()"
           [categories]="categoriesMap()"
-          [transactions]="transactions()"
-          [baseCurrency]="baseCurrency()"
-        />
-      }
-    </div>
-
-    <!-- Desktop Layout -->
-    <div class="desktop-view">
-      <!-- Charts and Recent Transactions Grid -->
-      <div class="desktop-grid">
-        <!-- Spending by Category Chart -->
-        <app-spending-chart
-          [categoryTotals]="categoryTotals()"
-          [categories]="categories()"
-        />
-
-        <!-- Recent Transactions -->
-        <app-recent-transactions
-          [transactions]="recentTransactions()"
-          [categories]="categoriesMap()"
-        />
-      </div>
-
-      <!-- Budget Progress -->
-      @if (activeBudgets().length > 0) {
-        <app-budget-progress
-          [budgets]="activeBudgets()"
-          [categories]="categoriesMap()"
-          [transactions]="transactions()"
-          [baseCurrency]="baseCurrency()"
         />
       }
     </div>

@@ -1,3 +1,19 @@
+<!-- Summary strip: totals across all budgets in the period -->
+<div class="budget-summary">
+  <div class="summary-item">
+    <span class="summary-label">{{ 'budget.totalBudgeted' | translate }}</span>
+    <span class="summary-value">{{ format(totalBudgeted()) }}</span>
+  </div>
+  <div class="summary-item">
+    <span class="summary-label">{{ 'budget.totalSpentLabel' | translate }}</span>
+    <span class="summary-value">{{ format(totalSpent()) }}</span>
+  </div>
+  <div class="summary-item">
+    <span class="summary-label">{{ 'budget.overall' | translate }}</span>
+    <span class="summary-value" [class]="'state-' + overallState()">{{ overallPercent() }}%</span>
+  </div>
+</div>
+
 <div class="budget-grid">
   @for (budget of budgets(); track budget.id) {
     <app-budget-progress-card

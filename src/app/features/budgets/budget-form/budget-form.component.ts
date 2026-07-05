@@ -21,6 +21,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { Budget, CreateBudgetDTO, BudgetPeriod } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 
 export interface BudgetFormDialogData {
   mode: 'add' | 'edit';
@@ -31,6 +32,7 @@ export interface BudgetFormDialogData {
   selector: 'app-budget-form',
   standalone: true,
   imports: [
+    DialogHeaderComponent,
     CommonModule,
     ReactiveFormsModule,
     MatDialogModule,

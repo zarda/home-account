@@ -1,122 +1,38 @@
-/* Custom Material Theme */
+/* Material 3 theme. mat.theme() emits the --mat-sys-* system variables as
+   light-dark() pairs; Material components read them directly, so this block
+   replaces the former M2 light theme + duplicated dark emission entirely. */
 @use '@angular/material' as mat;
+@use './theme/theme-colors' as brand;
+@use './theme/fonts';
 
-// Define custom theme colors
-$primary-palette: (
-  50: #E8EAF6,
-  100: #C5CAE9,
-  200: #9FA8DA,
-  300: #7986CB,
-  400: #5C6BC0,
-  500: #3F51B5,
-  600: #3949AB,
-  700: #303F9F,
-  800: #283593,
-  900: #1A237E,
-  A100: #8C9EFF,
-  A200: #536DFE,
-  A400: #3D5AFE,
-  A700: #304FFE,
-  contrast: (
-    50: rgba(0, 0, 0, 0.87),
-    100: rgba(0, 0, 0, 0.87),
-    200: rgba(0, 0, 0, 0.87),
-    300: white,
-    400: white,
-    500: white,
-    600: white,
-    700: white,
-    800: white,
-    900: white,
-    A100: rgba(0, 0, 0, 0.87),
-    A200: white,
-    A400: white,
-    A700: white,
-  )
-);
+html {
+  // Both schemes are declared; ThemeService resolves the user preference
+  // (including 'system') and stamps .light-theme/.dark-theme on <html>,
+  // which forces the scheme for every light-dark() token below.
+  color-scheme: light dark;
 
-$accent-palette: (
-  50: #E0F2F1,
-  100: #B2DFDB,
-  200: #80CBC4,
-  300: #4DB6AC,
-  400: #26A69A,
-  500: #009688,
-  600: #00897B,
-  700: #00796B,
-  800: #00695C,
-  900: #004D40,
-  A100: #A7FFEB,
-  A200: #64FFDA,
-  A400: #1DE9B6,
-  A700: #00BFA5,
-  contrast: (
-    50: rgba(0, 0, 0, 0.87),
-    100: rgba(0, 0, 0, 0.87),
-    200: rgba(0, 0, 0, 0.87),
-    300: rgba(0, 0, 0, 0.87),
-    400: rgba(0, 0, 0, 0.87),
-    500: white,
-    600: white,
-    700: white,
-    800: white,
-    900: white,
-    A100: rgba(0, 0, 0, 0.87),
-    A200: rgba(0, 0, 0, 0.87),
-    A400: rgba(0, 0, 0, 0.87),
-    A700: rgba(0, 0, 0, 0.87),
-  )
-);
+  @include mat.theme((
+    color: brand.$primary-palette,
+    typography: (
+      plain-family: ('PT Sans', system-ui, sans-serif),
+      brand-family: ('PT Sans', system-ui, sans-serif),
+    ),
+    density: 0,
+  ));
+}
 
-// Create the theme
-$home-account-primary: mat.m2-define-palette($primary-palette);
-$home-account-accent: mat.m2-define-palette($accent-palette);
-$home-account-warn: mat.m2-define-palette(mat.$m2-red-palette);
+html.light-theme {
+  color-scheme: light;
+}
 
-$home-account-theme: mat.m2-define-light-theme((
-  color: (
-    primary: $home-account-primary,
-    accent: $home-account-accent,
-    warn: $home-account-warn,
-  ),
-  typography: mat.m2-define-typography-config(
-    $font-family: '"PT Sans", system-ui, sans-serif',
-  ),
-  density: 0,
-));
-
-// Define dark theme
-$home-account-dark-theme: mat.m2-define-dark-theme((
-  color: (
-    primary: $home-account-primary,
-    accent: $home-account-accent,
-    warn: $home-account-warn,
-  ),
-  typography: mat.m2-define-typography-config(
-    $font-family: '"PT Sans", system-ui, sans-serif',
-  ),
-  density: 0,
-));
-
-// Include theme styles
-@include mat.core();
-@include mat.all-component-themes($home-account-theme);
-
-// Apply dark theme colors when dark-theme class is present
-.dark-theme {
-  @include mat.all-component-colors($home-account-dark-theme);
+html.dark-theme {
+  color-scheme: dark;
 }
 
 /* Tailwind CSS v3 */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Google Fonts - PT Sans */
-@import url('https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap');
-
-/* Material Icons */
-@import url('https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined');
 
 /* CSS Variables for Theming */
 :root {
@@ -128,6 +44,14 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --surface-hover-active: #f3f4f6;
   --surface-active: #eef2ff;
 
+  // Nested surface scale — one neutral ramp for fills stacked on a card, so
+  // screens stop mixing three unrelated grays. Light values equal the Tailwind
+  // gray-50/100/200 they replace; dark values are a neutral ramp (§9).
+  --surface-subtle: #f9fafb;  // gray-50 — subtle nested fill
+  --surface-muted: #f3f4f6;   // gray-100 — nested chips / stat tiles
+  --surface-strong: #e5e7eb;  // gray-200 — progress tracks
+  --surface-sunken: #f5f5f5;  // recessed inset below the card
+
   // Border colors
   --border-primary: #e5e7eb;
   --border-secondary: #f3f4f6;
@@ -138,6 +62,44 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --text-muted: #6b7280;
   --text-disabled: #9ca3af;
   --text-inverse: #ffffff;
+
+  // Type scale — the same sizes as the Tailwind text-* utilities used in
+  // templates, so SCSS and utility classes share one scale. 12px floor:
+  // micro-text below --text-xs is not part of the system.
+  --text-xs: 0.75rem; // 12px
+  --text-sm: 0.875rem; // 14px
+  --text-base: 1rem; // 16px
+  --text-lg: 1.125rem; // 18px
+  --text-xl: 1.25rem; // 20px
+  --text-2xl: 1.5rem; // 24px
+  --text-3xl: 1.875rem; // 30px
+  --text-4xl: 2.25rem; // 36px
+
+  // Radius scale. --radius-md is the default card/control radius; icon
+  // circles keep border-radius: 50% (geometry, not a design token).
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+  --radius-card: var(--radius-md);
+
+  // Z-index scale for the app shell. Everything sits below the CDK
+  // overlay container (z-index 1000) so Material menus, dialogs, and
+  // snackbars always render above shell chrome — previously the drawer
+  // (1200) could cover open dialogs.
+  --z-header: 800;
+  --z-bottom-nav: 850;
+  --z-docked-sidebar: 790;
+  --z-drawer-backdrop: 900;
+  --z-drawer: 910;
+
+  // iOS safe areas (viewport-fit=cover is set in index.html). 0 on
+  // devices without notch/home-indicator; shell chrome adds these to its
+  // heights/offsets so fixed elements never sit under system UI.
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 
   // Brand colors
   --color-primary: #3F51B5;
@@ -153,14 +115,19 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --color-error-light: #fee2e2;
   --color-warning: #eab308;
   --color-warning-light: #fef9c3;
+  --color-warning-text: #b45309;
   --color-info: #3b82f6;
   --color-info-light: #dbeafe;
 
-  // Income/Expense colors
+  // Income/Expense colors. The base tokens are fills (charts, bars, tinted
+  // chips); the -text variants are darkened for WCAG AA contrast as running
+  // text on light surfaces (#22c55e on white is only ~2.3:1).
   --color-income: #22c55e;
   --color-income-light: #dcfce7;
+  --color-income-text: #15803d;
   --color-expense: #ef4444;
   --color-expense-light: #fee2e2;
+  --color-expense-text: #b91c1c;
 
   // Scrollbar
   --scrollbar-track: #f1f1f1;
@@ -186,6 +153,13 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --surface-hover-active: #2a2a2a;
   --surface-active: #303F9F;
 
+  // Neutral dark ramp for the nested surface tokens (replaces the blue-tinted
+  // Tailwind gray-700/800/900 that clashed with the #1e1e1e card).
+  --surface-subtle: #242424;
+  --surface-muted: #2d2d2d;
+  --surface-strong: #383838;
+  --surface-sunken: #161616;
+
   --border-primary: #3d3d3d;
   --border-secondary: #2d2d2d;
 
@@ -207,13 +181,16 @@ $home-account-dark-theme: mat.m2-define-dark-theme((
   --color-error-light: #991b1b;
   --color-warning: #facc15;
   --color-warning-light: #854d0e;
+  --color-warning-text: #fbbf24;
   --color-info: #60a5fa;
   --color-info-light: #1e40af;
 
   --color-income: #4ade80;
   --color-income-light: #166534;
+  --color-income-text: #4ade80;
   --color-expense: #f87171;
   --color-expense-light: #991b1b;
+  --color-expense-text: #f87171;
 
   --scrollbar-track: #2d2d2d;
   --scrollbar-thumb: #4a4a4a;
@@ -236,9 +213,83 @@ html, body {
   color: var(--text-primary);
 }
 
+/* Keyboard focus: one visible, token-driven ring app-wide. Material
+   components keep their own focus treatment; this covers hand-rolled
+   interactive elements (drawer links, dropzones, custom rows) that
+   previously stripped or never defined an outline. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Respect the user's reduced-motion preference everywhere: collapse
+   animations/transitions to a frame instead of removing them, so
+   animation-end hooks still fire. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Custom utility classes */
+
+/* One elevation recipe app-wide: resting cards pair a hairline border with
+   --shadow-sm; interactive cards raise to --shadow-md on hover. */
 .mat-elevation-soft {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-sm);
+}
+
+.elevation-card {
+  border: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.elevation-card-interactive {
+  border: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease;
+
+  &:hover {
+    box-shadow: var(--shadow-md);
+  }
+}
+
+/* One dialog chrome app-wide. app-dialog-header supplies the bordered
+   title row + close-X; this pins the footer with a matching top border so
+   the actions stay visible while mat-dialog-content scrolls between them. */
+.mat-mdc-dialog-actions {
+  padding: 16px 24px;
+  gap: 8px;
+  border-top: 1px solid var(--border-primary);
+  justify-content: flex-end;
+}
+
+/* Dark mode: the default outlined form-field border is barely visible against
+   the dark surface. Raise the resting/hover outline to a legible contrast;
+   focus and error states keep their own accent colors. */
+.dark-theme {
+  --mdc-outlined-text-field-outline-color: #52525b;
+  --mdc-outlined-text-field-hover-outline-color: #7d7d87;
+}
+
+/* Snackbar tone accents (NotificationService panelClass hooks). A leading
+   border tints the transient toast by outcome without changing the default
+   dark snackbar surface. */
+.snackbar-success .mdc-snackbar__surface {
+  border-inline-start: 4px solid var(--color-income);
+}
+
+.snackbar-error .mdc-snackbar__surface {
+  border-inline-start: 4px solid var(--color-expense);
+}
+
+.snackbar-info .mdc-snackbar__surface {
+  border-inline-start: 4px solid var(--color-info);
 }
 
 /* Scrollbar styling */
@@ -261,94 +312,3 @@ html, body {
   background: var(--scrollbar-thumb-hover);
 }
 
-// Material component dark mode overrides
-.dark-theme {
-  // mat-button-toggle styling
-  .mat-button-toggle-group {
-    border-color: var(--border-primary);
-  }
-
-  .mat-button-toggle {
-    background: transparent;
-    color: var(--text-primary);
-
-    &.mat-button-toggle-checked {
-      background: var(--color-accent);
-      color: white;
-    }
-  }
-
-  .mat-button-toggle-appearance-standard .mat-button-toggle-label-content {
-    color: var(--text-primary);
-  }
-
-  // mat-form-field styling for filter forms
-  .mat-mdc-form-field {
-    .mdc-text-field--outlined .mdc-notched-outline__leading,
-    .mdc-text-field--outlined .mdc-notched-outline__notch,
-    .mdc-text-field--outlined .mdc-notched-outline__trailing {
-      border-color: var(--border-primary);
-    }
-
-    .mdc-floating-label {
-      color: var(--text-muted);
-    }
-
-    .mat-mdc-select-value,
-    .mat-mdc-input-element {
-      color: var(--text-primary);
-    }
-  }
-
-  // mat-select dropdown
-  .mat-mdc-select-panel {
-    background: var(--surface-card);
-  }
-
-  .mat-mdc-option {
-    color: var(--text-primary);
-
-    &:hover:not(.mdc-list-item--disabled) {
-      background: var(--surface-hover);
-    }
-  }
-
-  .mat-mdc-optgroup-label {
-    color: var(--text-muted);
-  }
-
-  // mat-datepicker
-  .mat-datepicker-content {
-    background: var(--surface-card);
-    color: var(--text-primary);
-  }
-
-  .mat-calendar-body-cell-content {
-    color: var(--text-primary);
-  }
-
-  .mat-calendar-body-disabled > .mat-calendar-body-cell-content {
-    color: var(--text-disabled);
-  }
-
-  // mat-dialog styling
-  .mat-mdc-dialog-surface {
-    background: var(--surface-card) !important;
-    color: var(--text-primary);
-  }
-
-  .mat-mdc-dialog-container .mdc-dialog__content {
-    color: var(--text-primary);
-  }
-
-  // mat-slider styling
-  .mat-mdc-slider .mdc-slider__track--inactive {
-    background-color: var(--border-primary);
-  }
-
-  // Stroked button styling
-  .mat-mdc-outlined-button:not(:disabled) {
-    border-color: var(--border-primary);
-    color: var(--text-primary);
-  }
-}

@@ -17,9 +17,14 @@
 
     <div class="total-display">
       <span class="total-label">{{ selectedType() === 'expense' ? ('reports.totalExpenses' | translate) : ('reports.totalIncome' | translate) }}</span>
-      <span class="total-value" [class.expense]="selectedType() === 'expense'" [class.income]="selectedType() === 'income'">
-        {{ total() | currency:currencyCode:'symbol':'1.2-2' }}
-      </span>
+      <app-amount-display
+        class="total-value"
+        [amount]="total()"
+        [currency]="currencyCode"
+        [type]="selectedType()"
+        [bold]="true"
+        size="2xl"
+      />
     </div>
   </div>
 
@@ -30,6 +35,13 @@
       [description]="translationService.t('reports.noTransactionsForPeriod', { type: selectedType() })"
     />
   } @else {
+    <!-- Donut: the tab promised a pie chart but rendered none -->
+    <app-spending-chart
+      class="breakdown-chart"
+      [categoryTotals]="chartTotals()"
+      [categories]="chartCategories()"
+    />
+
     <!-- Category Panels -->
     <mat-accordion class="categories-accordion">
       @for (category of categoryBreakdown(); track category.categoryId) {
@@ -37,9 +49,7 @@
           <mat-expansion-panel-header>
             <mat-panel-title>
               <div class="category-header">
-                <div class="category-icon" [style.background-color]="category.color + '20'">
-                  <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
-                </div>
+                <app-category-chip appearance="tile" [icon]="category.icon" [color]="category.color" />
                 <span class="category-name">{{ category.name | translate }} <span class="category-count">({{ category.transactionCount }})</span></span>
               </div>
             </mat-panel-title>
@@ -49,6 +59,15 @@
                 <span class="category-percentage">{{ category.percentage | number:'1.0-0' }}%</span>
               </div>
             </mat-panel-description>
+
+            <!-- Share bar anchored to the row so proportions read while collapsed -->
+            <div class="row-bar" aria-hidden="true">
+              <div
+                class="row-bar-fill"
+                [style.width.%]="category.percentage"
+                [style.background-color]="category.color"
+              ></div>
+            </div>
           </mat-expansion-panel-header>
 
           <div class="category-details">

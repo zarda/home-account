@@ -47,4 +47,36 @@ describe('ConfirmDialogComponent', () => {
     component.onCancel();
     expect(dialogRef.close).toHaveBeenCalledWith(false);
   });
+
+  it('renders the provided action labels', () => {
+    const buttons = fixture.nativeElement.querySelectorAll('mat-dialog-actions button');
+    expect(buttons[0].textContent).toContain('Keep');
+    expect(buttons[1].textContent).toContain('Delete');
+  });
+
+  describe('label fallbacks', () => {
+    // Regression: the fallbacks were hardcoded English 'Cancel'/'Confirm',
+    // which leaked into ja/tc locales whenever a caller omitted a label.
+    // They now go through the translation pipe (raw keys render under Karma
+    // because i18n assets are not served in tests).
+    it('falls back to translated common.cancel / common.confirm keys', async () => {
+      TestBed.resetTestingModule();
+      const bareData: ConfirmDialogData = { title: 'T', message: 'M' };
+      await TestBed.configureTestingModule({
+        imports: [ConfirmDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: dialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: bareData },
+        ],
+      }).compileComponents();
+      const bareFixture = TestBed.createComponent(ConfirmDialogComponent);
+      bareFixture.detectChanges();
+
+      const buttons = bareFixture.nativeElement.querySelectorAll('mat-dialog-actions button');
+      expect(buttons[0].textContent).toContain('common.cancel');
+      expect(buttons[1].textContent).toContain('common.confirm');
+      expect(buttons[0].textContent).not.toContain('Cancel');
+      expect(buttons[1].textContent).not.toContain('Confirm');
+    });
+  });
 });

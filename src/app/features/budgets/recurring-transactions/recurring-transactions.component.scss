@@ -20,15 +20,9 @@
 }
 
 .section-description {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   @apply text-gray-500 dark:text-gray-400;
   margin: 0;
-}
-
-.loading-state {
-  display: flex;
-  justify-content: center;
-  padding: 32px;
 }
 
 // Recurring Grid Layout
@@ -44,7 +38,8 @@
 
 // Card styles
 .recurring-card {
-  @apply bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700;
+  @apply rounded-lg shadow-sm border border-gray-100 dark:border-gray-700;
+  background: var(--surface-card);
   padding: 16px;
   transition: all 0.2s;
 
@@ -67,14 +62,14 @@
 .recurring-icon {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 
   mat-icon {
-    font-size: 20px;
+    font-size: var(--text-xl);
     width: 20px;
     height: 20px;
   }
@@ -90,7 +85,7 @@
 
 .recurring-name {
   font-weight: 500;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   @apply text-gray-800 dark:text-gray-100;
   white-space: nowrap;
   overflow: hidden;
@@ -98,7 +93,7 @@
 }
 
 .recurring-category {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   @apply text-gray-500 dark:text-gray-400;
 }
 
@@ -121,16 +116,7 @@
 }
 
 .recurring-amount {
-  font-weight: 600;
-  font-size: 1.25rem;
-
-  &.expense {
-    color: #dc2626;
-  }
-
-  &.income {
-    color: #16a34a;
-  }
+  display: inline-flex;
 }
 
 .recurring-meta {
@@ -138,7 +124,7 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   @apply text-gray-500 dark:text-gray-400;
 }
 
@@ -146,36 +132,37 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  @apply bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded;
+  @apply px-2 py-1 rounded;
+  background: var(--surface-muted);
 
   mat-icon {
-    font-size: 14px;
+    font-size: var(--text-sm);
     width: 14px;
     height: 14px;
   }
 }
 
 .recurring-next {
-  font-size: 0.75rem;
-  color: #4f46e5;
+  font-size: var(--text-xs);
+  color: var(--color-primary);
   font-weight: 500;
   margin-top: 4px;
 }
 
 .status-chip {
   &.paused {
-    background: #fef3c7 !important;
-    color: #d97706 !important;
-    font-size: 0.7rem;
+    background: var(--color-warning-light) !important;
+    color: var(--color-warning-text) !important;
+    font-size: var(--text-xs);
     min-height: 24px;
     padding: 0 8px;
   }
 }
 
 .delete-action {
-  color: #dc2626;
+  color: var(--color-error);
 
   mat-icon {
-    color: #dc2626;
+    color: var(--color-error);
   }
 }

@@ -5,6 +5,7 @@ import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
+import { TranslationService } from './translation.service';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -27,6 +28,7 @@ export class RecurringService {
   private authService = inject(AuthService);
   private budgetService = inject(BudgetService);
   private currencyService = inject(CurrencyService);
+  private translationService = inject(TranslationService);
 
   // Signals
   recurringTransactions = signal<RecurringTransaction[]>([]);
@@ -523,22 +525,25 @@ export class RecurringService {
     return next;
   }
 
-  // Helper: Get frequency display text
+  // Helper: Get frequency display text (localized). Previously hardcoded
+  // English ("Every 2 months"), which leaked into ja/tc; now every branch
+  // routes through the translation catalog.
   getFrequencyText(frequency: RecurringFrequency): string {
     const interval = frequency.interval;
-    const suffix = interval > 1 ? 's' : '';
+    const t = (key: string, params?: Record<string, string | number>) =>
+      this.translationService.t(key, params);
 
     switch (frequency.type) {
       case 'daily':
-        return interval === 1 ? 'Daily' : `Every ${interval} day${suffix}`;
+        return interval === 1 ? t('frequency.daily') : t('settings.everyNDays', { n: interval });
       case 'weekly':
-        return interval === 1 ? 'Weekly' : `Every ${interval} week${suffix}`;
+        return interval === 1 ? t('frequency.weekly') : t('settings.everyNWeeks', { n: interval });
       case 'monthly':
-        return interval === 1 ? 'Monthly' : `Every ${interval} month${suffix}`;
+        return interval === 1 ? t('frequency.monthly') : t('settings.everyNMonths', { n: interval });
       case 'yearly':
-        return interval === 1 ? 'Yearly' : `Every ${interval} year${suffix}`;
+        return interval === 1 ? t('frequency.yearly') : t('settings.everyNYears', { n: interval });
       default:
-        return 'Custom';
+        return t('frequency.custom');
     }
   }
 }

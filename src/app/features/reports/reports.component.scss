@@ -20,89 +20,21 @@
   gap: 12px;
 }
 
-.period-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.period-toggle {
-  align-self: flex-start;
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-// Custom Period Picker
-.custom-period-picker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  .picker-btn {
-    border: 1px solid var(--border-primary);
-    border-radius: 8px;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    &.active {
-      background: var(--color-accent);
-      color: var(--text-inverse);
-      border-color: var(--color-accent);
-    }
-
-    &:hover:not(.active) {
-      background: var(--surface-hover);
-    }
-  }
-}
-
-.period-chip {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 4px 4px 12px;
-  background: var(--color-primary-light);
-  border: 1px solid var(--color-accent-light);
-  border-radius: 16px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-accent);
-
-  .clear-btn {
-    width: 24px;
-    height: 24px;
-    line-height: 24px;
-
-    mat-icon {
-      font-size: 16px;
-      width: 16px;
-      height: 16px;
-    }
-  }
-}
-
 .export-btn {
   mat-icon {
     margin-right: 4px;
   }
 }
 
-.mobile-label {
+// Export keeps its label at every width — an icon-only bar read as broken.
+.export-label {
   display: inline;
-}
-
-.desktop-label {
-  display: none;
 }
 
 // Tabs styling
 .reports-tabs {
   background: var(--surface-card);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 
@@ -123,13 +55,19 @@
 
 .tab-icon {
   margin-right: 8px;
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
 
+// Tabs always carry text (icons alone were ambiguous): a short label on
+// mobile, the full label from the tablet breakpoint up.
 .tab-label {
   display: none;
+}
+
+.tab-label-short {
+  display: inline;
 }
 
 .tab-content {
@@ -150,22 +88,12 @@
     gap: 16px;
   }
 
-  .period-toggle {
-    align-self: auto;
-    max-width: none;
-    overflow-x: visible;
-  }
-
-  .mobile-label {
-    display: none;
-  }
-
-  .desktop-label {
-    display: inline;
-  }
-
   .tab-label {
     display: inline;
+  }
+
+  .tab-label-short {
+    display: none;
   }
 
   .tab-icon {

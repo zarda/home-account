@@ -7,7 +7,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -19,12 +18,12 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
 import { TEXT_MODELS, VISION_MODELS, OPENAI_MODELS, CLAUDE_MODELS, DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../../../core/config/ai-models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
   selector: 'app-ai-settings-page',
@@ -37,7 +36,6 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatSlideToggleModule,
     MatProgressBarModule,
     MatProgressSpinnerModule,
-    MatSnackBarModule,
     MatCardModule,
     MatFormFieldModule,
     MatInputModule,
@@ -49,6 +47,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   styleUrl: './ai-settings-page.component.scss',
 })
 export class AiSettingsPageComponent implements OnInit {
+  private notifications = inject(NotificationService);
   private strategyService = inject(AIStrategyService);
   private pwaService = inject(PwaService);
   private offlineQueue = inject(OfflineQueueService);
@@ -56,8 +55,6 @@ export class AiSettingsPageComponent implements OnInit {
   private translationService = inject(TranslationService);
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private authService = inject(AuthService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private location = inject(Location);
 
   // Form state
@@ -162,8 +159,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.strategyService.updatePreferences({ openaiModel: modelId });
     const modelName = this.openaiModels.find(m => m.id === modelId)?.name || modelId;
     const message = this.translationService.t('aiPage.openaiModelUpdated', { model: modelName });
-    this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-    this.announcer.announce(message);
+    this.notifications.success(message);
   }
 
   onClaudeModelChange(modelId: string): void {
@@ -174,8 +170,7 @@ export class AiSettingsPageComponent implements OnInit {
     this.strategyService.updatePreferences({ claudeModel: modelId });
     const modelName = this.claudeModels.find(m => m.id === modelId)?.name || modelId;
     const message = this.translationService.t('aiPage.claudeModelUpdated', { model: modelName });
-    this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-    this.announcer.announce(message);
+    this.notifications.success(message);
   }
 
   private loadApiKeys(): void {
@@ -202,8 +197,7 @@ export class AiSettingsPageComponent implements OnInit {
     // Validate model ID
     if (!this.textModels.some(m => m.id === modelId)) {
       const message = this.translationService.t('aiPage.invalidModelSelection');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
       return;
     }
 
@@ -212,19 +206,11 @@ export class AiSettingsPageComponent implements OnInit {
       this.strategyService.updatePreferences({ textModel: modelId });
       const modelName = this.textModels.find(m => m.id === modelId)?.name || modelId;
       const message = this.translationService.t('aiPage.textModelUpdated', { model: modelName });
-      this.snackBar.open(message, this.translationService.t('common.close'), {
-        duration: 2000,
-        panelClass: 'success-snackbar'
-      });
-      this.announcer.announce(message);
+      this.notifications.success(message);
     } catch (error) {
       console.error('[AI Settings] Failed to change text model:', error);
       const message = this.translationService.t('aiPage.textModelUpdateFailed');
-      this.snackBar.open(message, this.translationService.t('common.tryAgain'), {
-        duration: 4000,
-        panelClass: 'error-snackbar'
-      });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
       // Reload from preferences
       this.loadModelSelection();
     }
@@ -234,8 +220,7 @@ export class AiSettingsPageComponent implements OnInit {
     // Validate model ID
     if (!this.visionModels.some(m => m.id === modelId)) {
       const message = this.translationService.t('aiPage.invalidModelSelection');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
       return;
     }
 
@@ -244,19 +229,11 @@ export class AiSettingsPageComponent implements OnInit {
       this.strategyService.updatePreferences({ visionModel: modelId });
       const modelName = this.visionModels.find(m => m.id === modelId)?.name || modelId;
       const message = this.translationService.t('aiPage.visionModelUpdated', { model: modelName });
-      this.snackBar.open(message, this.translationService.t('common.close'), {
-        duration: 2000,
-        panelClass: 'success-snackbar'
-      });
-      this.announcer.announce(message);
+      this.notifications.success(message);
     } catch (error) {
       console.error('[AI Settings] Failed to change vision model:', error);
       const message = this.translationService.t('aiPage.visionModelUpdateFailed');
-      this.snackBar.open(message, this.translationService.t('common.tryAgain'), {
-        duration: 4000,
-        panelClass: 'error-snackbar'
-      });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
       // Reload from preferences
       this.loadModelSelection();
     }
@@ -374,11 +351,7 @@ export class AiSettingsPageComponent implements OnInit {
       });
     } catch {
       const message = this.translationService.t('common.error');
-      this.snackBar.open(message, this.translationService.t('common.close'), {
-        duration: 3000,
-        horizontalPosition: 'center',
-      });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     }
   }
 
@@ -393,8 +366,7 @@ export class AiSettingsPageComponent implements OnInit {
       this.showToast('aiPage.queueSynced');
     } catch {
       const message = this.translationService.t('aiPage.queueSyncFailed');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     }
   }
 
@@ -404,8 +376,7 @@ export class AiSettingsPageComponent implements OnInit {
       this.showToast('aiPage.queueCleared');
     } catch {
       const message = this.translationService.t('aiPage.queueClearFailed');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     }
   }
 
@@ -414,9 +385,6 @@ export class AiSettingsPageComponent implements OnInit {
   }
 
   private showToast(key: string): void {
-    const message = this.translationService.t(key);
-    const okText = this.translationService.t('common.close') || 'OK';
-    this.snackBar.open(message, okText, { duration: 3000 });
-    this.announcer.announce(message);
+    this.notifications.success(this.translationService.t(key));
   }
 }

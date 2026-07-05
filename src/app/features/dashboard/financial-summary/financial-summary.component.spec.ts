@@ -116,7 +116,7 @@ describe('FinancialSummaryComponent', () => {
       expect(component.balanceChange()).toBeNull();
     });
 
-    it('renders change-indicator chips with direction classes and formatted percentages', () => {
+    it('renders shared stat-card delta chips with direction classes and formatted percentages', () => {
       setPeriodInputs({
         income: 1200,
         expenses: 300,
@@ -126,8 +126,7 @@ describe('FinancialSummaryComponent', () => {
       });
       fixture.detectChanges();
 
-      const chips: NodeListOf<HTMLElement> =
-        fixture.nativeElement.querySelectorAll('.change-indicator');
+      const chips: NodeListOf<HTMLElement> = fixture.nativeElement.querySelectorAll('.delta-chip');
       expect(chips.length).toBe(3);
 
       const [incomeChip, expensesChip, balanceChip] = Array.from(chips);
@@ -148,17 +147,17 @@ describe('FinancialSummaryComponent', () => {
       setPeriodInputs({ expenses: 500, previousExpenses: 400 });
       fixture.detectChanges();
 
-      const chip: HTMLElement = fixture.nativeElement.querySelector('.change-indicator');
+      const chip: HTMLElement = fixture.nativeElement.querySelector('.delta-chip');
       expect(chip.classList.contains('negative')).toBeTrue();
       expect(chip.classList.contains('positive')).toBeFalse();
       expect(chip.querySelector('mat-icon')?.textContent).toContain('arrow_upward');
       expect(chip.textContent).toContain('25.0%');
     });
 
-    it('falls back to decorative icons when there is no previous period data', () => {
+    it('keeps the semantic icon tiles regardless of delta presence', () => {
       fixture.detectChanges();
 
-      expect(fixture.nativeElement.querySelectorAll('.change-indicator').length).toBe(0);
+      expect(fixture.nativeElement.querySelectorAll('.delta-chip').length).toBe(0);
       const text = fixture.nativeElement.textContent;
       expect(text).toContain('trending_up');
       expect(text).toContain('trending_down');
@@ -176,7 +175,7 @@ describe('FinancialSummaryComponent', () => {
       fixture.detectChanges();
 
       const captions: NodeListOf<HTMLElement> =
-        fixture.nativeElement.querySelectorAll('.chip-caption');
+        fixture.nativeElement.querySelectorAll('.delta-caption');
       expect(captions.length).toBe(3);
       expect(captions[0].textContent).toContain('dashboard.vsPreviousPeriod');
     });

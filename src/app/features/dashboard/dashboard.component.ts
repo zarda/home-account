@@ -1,14 +1,7 @@
-import { Component, computed, DestroyRef, effect, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
-import { MatMenuModule } from '@angular/material/menu';
-import { MatIconModule } from '@angular/material/icon';
-import { MatButtonModule } from '@angular/material/button';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { FormsModule } from '@angular/forms';
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
@@ -16,17 +9,21 @@ import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
-import { AnnouncerService } from '../../core/services/announcer.service';
-import { Transaction, Category, CategoryTotal, BudgetAlertSeverity } from '../../models';
+import { Transaction, Category, CategoryTotal } from '../../models';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
+import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-
-type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'custom';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
+import {
+  PeriodSelectorComponent,
+  PeriodSelection,
+  defaultPeriodSelection,
+} from '../../shared/components/period-selector/period-selector.component';
 
 // Trailing window (in months) used as the baseline for AI spending-anomaly
 // detection. The window always extends back from the current period's end and
@@ -34,28 +31,18 @@ type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'cu
 // to current-period-only behaviour.
 const BASELINE_WINDOW_MONTHS = 6;
 
-interface CustomPeriod {
-  type: 'month' | 'year';
-  year: number;
-  month?: number; // 0-11, only for type 'month'
-}
-
 @Component({
   selector: 'app-dashboard',
   standalone: true,
   imports: [
-    FormsModule,
-    MatButtonToggleModule,
-    MatDatepickerModule,
-    MatNativeDateModule,
-    MatMenuModule,
-    MatIconModule,
-    MatButtonModule,
-    MatSnackBarModule,
+    MatProgressBarModule,
+    PageHeaderComponent,
+    PeriodSelectorComponent,
     FinancialSummaryComponent,
     SpendingChartComponent,
     RecentTransactionsComponent,
     BudgetProgressComponent,
+    BudgetAlertBannerComponent,
     AiSummaryComponent,
     LoadingSpinnerComponent,
     TranslatePipe
@@ -71,36 +58,23 @@ export class DashboardComponent implements OnInit {
   private authService = inject(AuthService);
   private recurringService = inject(RecurringService);
   private translationService = inject(TranslationService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private destroyRef = inject(DestroyRef);
 
-  selectedPeriod: PeriodOption = 'thisMonth';
   isLoading = signal(true);
+  // True once the first load has painted; keeps period-change refetches
+  // from tearing the whole page down to a spinner.
+  private hasLoadedOnce = signal(false);
 
-  // Budget alerts are surfaced at most once per dashboard visit
-  private budgetAlertsNotified = false;
+  /** Full-page spinner only on the very first load. */
+  showInitialSpinner = computed(() => this.isLoading() && !this.hasLoadedOnce());
+  /** Subtle indicator while refetching after content is already painted. */
+  isRefetching = computed(() => this.isLoading() && this.hasLoadedOnce());
 
-  // Custom period selection
-  customPeriod = signal<CustomPeriod | null>(null);
+  // Current selection from the shared period selector (calendar bounds).
+  private currentPeriod = signal<PeriodSelection>(defaultPeriodSelection());
 
-  customPeriodLabel = computed(() => {
-    const cp = this.customPeriod();
-    if (!cp) return '';
-    if (cp.type === 'year') return cp.year.toString();
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[cp.month!]} ${cp.year}`;
-  });
-
-  // A method (not a computed) because `selectedPeriod` is a plain property,
-  // not a signal — a computed would cache the initial value and never update.
-  isCustomPeriod(): boolean {
-    return this.selectedPeriod === 'custom';
-  }
-
-  // ViewChild for date pickers
-  @ViewChild('monthPicker') monthPicker!: MatDatepicker<Date>;
-  @ViewChild('yearPicker') yearPicker!: MatDatepicker<Date>;
+  // The option string feeds the AI summary's cache key / prompt context.
+  selectedPeriodOption = computed(() => this.currentPeriod().option);
 
   // User info
   userName = computed(() => {
@@ -120,19 +94,20 @@ export class DashboardComponent implements OnInit {
   // Trailing-window expenses feeding the AI anomaly baseline (see BASELINE_WINDOW_MONTHS)
   historicalExpenses = signal<Transaction[] | null>(null);
 
-  // Compute totals with real-time currency conversion to user's base currency
+  // Totals use the write-time base-currency snapshot (deterministic across
+  // loads), falling back to live conversion only for legacy rows.
   totalIncome = computed(() => {
     const baseCurrency = this.baseCurrency();
     return this.transactions()
       .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, baseCurrency), 0);
+      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
   });
 
   totalExpenses = computed(() => {
     const baseCurrency = this.baseCurrency();
     return this.transactions()
       .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, baseCurrency), 0);
+      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
   });
 
   balance = computed(() => this.totalIncome() - this.totalExpenses());
@@ -145,7 +120,7 @@ export class DashboardComponent implements OnInit {
     const totals = new Map<string, { total: number; count: number }>();
     for (const t of expenseTransactions) {
       const current = totals.get(t.categoryId) || { total: 0, count: 0 };
-      const convertedAmount = this.currencyService.convert(t.amount, t.currency, baseCurrency);
+      const convertedAmount = this.currencyService.amountInBase(t, baseCurrency);
       totals.set(t.categoryId, { total: current.total + convertedAmount, count: current.count + 1 });
     }
 
@@ -176,21 +151,21 @@ export class DashboardComponent implements OnInit {
       // Don't set loading to true once we have data
       if (!txLoading && !budgetLoading && this.transactionService.transactions().length >= 0) {
         this.isLoading.set(false);
+        this.hasLoadedOnce.set(true);
       }
     });
   }
 
   ngOnInit(): void {
-    // Load budgets once, then surface any threshold alerts. Deliberately
-    // outside loadData(): getBudgets is an infinite live stream, so period
-    // changes must not stack extra subscriptions, and takeUntilDestroyed
-    // stops destroyed dashboard instances from reacting to later budget
-    // writes made elsewhere in the app.
+    // Load budgets once; the derived budgetAlerts signal feeds the inline
+    // alert banner declaratively. Deliberately outside loadData():
+    // getBudgets is an infinite live stream, so period changes must not
+    // stack extra subscriptions, and takeUntilDestroyed stops destroyed
+    // dashboard instances from reacting to later budget writes made
+    // elsewhere in the app.
     this.budgetService.getBudgets()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: () => this.maybeShowBudgetAlerts()
-      });
+      .subscribe();
 
     this.loadData();
     // Post recurring occurrences that came due since the app was last open.
@@ -201,44 +176,8 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  onPeriodChange(): void {
-    this.customPeriod.set(null); // Clear custom when toggle clicked
-    this.loadData();
-  }
-
-  // Month/Year picker methods
-  openMonthPicker(): void {
-    this.monthPicker.open();
-  }
-
-  openYearPicker(): void {
-    this.yearPicker.open();
-  }
-
-  onMonthSelected(date: Date, picker: MatDatepicker<Date>): void {
-    picker.close();
-    this.customPeriod.set({
-      type: 'month',
-      year: date.getFullYear(),
-      month: date.getMonth()
-    });
-    this.selectedPeriod = 'custom';
-    this.loadData();
-  }
-
-  onYearSelected(date: Date, picker: MatDatepicker<Date>): void {
-    picker.close();
-    this.customPeriod.set({
-      type: 'year',
-      year: date.getFullYear()
-    });
-    this.selectedPeriod = 'custom';
-    this.loadData();
-  }
-
-  clearCustomPeriod(): void {
-    this.customPeriod.set(null);
-    this.selectedPeriod = 'thisMonth';
+  onPeriodSelection(selection: PeriodSelection): void {
+    this.currentPeriod.set(selection);
     this.loadData();
   }
 
@@ -250,9 +189,11 @@ export class DashboardComponent implements OnInit {
     this.transactionService.getByDateRange(start, end).subscribe({
       next: () => {
         this.isLoading.set(false);
+        this.hasLoadedOnce.set(true);
       },
       error: () => {
         this.isLoading.set(false);
+        this.hasLoadedOnce.set(true);
       }
     });
 
@@ -310,36 +251,6 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  // Surface budget alerts once per dashboard visit as a dismissible snackbar.
-  // The guard matters: getBudgets() is a live subscription and loadData()
-  // re-runs on every period change, so without it the alert would re-fire.
-  private maybeShowBudgetAlerts(): void {
-    if (this.budgetAlertsNotified) return;
-
-    const alerts = this.budgetService.budgetAlerts();
-    if (alerts.length === 0) return;
-    this.budgetAlertsNotified = true;
-
-    const keyBySeverity: Record<BudgetAlertSeverity, string> = {
-      exceeded: 'budget.alertSnackbarExceeded',
-      critical: 'budget.alertSnackbarCritical',
-      warning: 'budget.alertSnackbarWarning'
-    };
-    const top = alerts[0];
-    let message = this.translationService.t(keyBySeverity[top.severity], {
-      name: top.budgetName,
-      percent: Math.round(top.percentUsed)
-    });
-    if (alerts.length > 1) {
-      message += ` ${this.translationService.t('budget.alertSnackbarMore', {
-        count: alerts.length - 1
-      })}`;
-    }
-
-    this.snackBar.open(message, this.translationService.t('common.close'), { duration: 8000 });
-    this.announcer.announce(message);
-  }
-
   // Trailing baseline window: from BASELINE_WINDOW_MONTHS before the current
   // period's end up to that end, but never starting after the current period's
   // start — so the window always covers the whole current period.
@@ -354,31 +265,9 @@ export class DashboardComponent implements OnInit {
 
   private getPreviousPeriodDates(): { start: Date; end: Date } | null {
     const now = new Date();
+    const selection = this.currentPeriod();
 
-    // Handle custom period
-    if (this.selectedPeriod === 'custom') {
-      const cp = this.customPeriod();
-      if (cp) {
-        if (cp.type === 'month') {
-          // Previous month
-          const month = cp.month!;
-          const prevMonth = month === 0 ? 11 : month - 1;
-          const prevYear = month === 0 ? cp.year - 1 : cp.year;
-          return {
-            start: new Date(prevYear, prevMonth, 1),
-            end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59)
-          };
-        } else {
-          // Previous year
-          return {
-            start: new Date(cp.year - 1, 0, 1),
-            end: new Date(cp.year - 1, 11, 31, 23, 59, 59)
-          };
-        }
-      }
-    }
-
-    switch (this.selectedPeriod) {
+    switch (selection.option) {
       case 'thisMonth':
         // Compare with last month
         return {
@@ -407,61 +296,48 @@ export class DashboardComponent implements OnInit {
           end: new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59)
         };
 
+      case 'custom': {
+        const { start, end } = selection;
+        const isFullYear =
+          start.getMonth() === 0 &&
+          start.getDate() === 1 &&
+          end.getMonth() === 11 &&
+          end.getDate() === 31;
+        if (isFullYear) {
+          const prevYear = start.getFullYear() - 1;
+          return {
+            start: new Date(prevYear, 0, 1),
+            end: new Date(prevYear, 11, 31, 23, 59, 59)
+          };
+        }
+        // Custom month: compare with the month before it.
+        const year = start.getFullYear();
+        const month = start.getMonth();
+        const prevMonth = month === 0 ? 11 : month - 1;
+        const prevYear = month === 0 ? year - 1 : year;
+        return {
+          start: new Date(prevYear, prevMonth, 1),
+          end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59)
+        };
+      }
+
       default:
         return null;
     }
   }
 
+  // The selector emits full calendar bounds; the dashboard clamps periods
+  // that extend into the future to end-of-today so period-over-period
+  // deltas compare like-for-like month-to-date windows.
   private getPeriodDates(): { start: Date; end: Date } {
+    const { start, end } = this.currentPeriod();
     const now = new Date();
-
-    // Handle custom period first
-    if (this.selectedPeriod === 'custom') {
-      const cp = this.customPeriod();
-      if (cp) {
-        if (cp.type === 'month') {
-          return {
-            start: new Date(cp.year, cp.month!, 1),
-            end: new Date(cp.year, cp.month! + 1, 0, 23, 59, 59)
-          };
-        } else {
-          // Full year
-          return {
-            start: new Date(cp.year, 0, 1),
-            end: new Date(cp.year, 11, 31, 23, 59, 59)
-          };
-        }
-      }
+    if (end > now) {
+      return {
+        start,
+        end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+      };
     }
-
-    // End of today for current periods
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
-    switch (this.selectedPeriod) {
-      case 'thisMonth':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth(), 1),
-          end: endOfToday
-        };
-
-      case 'lastMonth':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
-        };
-
-      case 'last3Months':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
-          end: endOfToday
-        };
-
-      case 'thisYear':
-      default:
-        return {
-          start: new Date(now.getFullYear(), 0, 1),
-          end: endOfToday
-        };
-    }
+    return { start, end };
   }
 }

@@ -8,52 +8,38 @@
   <div class="monthly-comparison">
     <!-- Summary Stats -->
     <div class="summary-stats">
-      <div class="stat-card">
-        <div class="stat-icon avg-income">
-          <mat-icon>trending_up</mat-icon>
-        </div>
-        <div class="stat-content">
-          <span class="stat-label">{{ 'reports.avgMonthlyIncome' | translate }}</span>
-          <span class="stat-value income">{{ averageIncome() | currency:currencyCode:'symbol':'1.2-2' }}</span>
-        </div>
-      </div>
+      <app-stat-card
+        [label]="'reports.avgMonthlyIncome' | translate"
+        [value]="(averageIncome() | currency:currencyCode:'symbol':'1.2-2') ?? ''"
+        icon="trending_up"
+        tone="income"
+      />
 
-      <div class="stat-card">
-        <div class="stat-icon avg-expense">
-          <mat-icon>trending_down</mat-icon>
-        </div>
-        <div class="stat-content">
-          <span class="stat-label">{{ 'reports.avgMonthlyExpenses' | translate }}</span>
-          <span class="stat-value expense">{{ averageExpense() | currency:currencyCode:'symbol':'1.2-2' }}</span>
-        </div>
-      </div>
+      <app-stat-card
+        [label]="'reports.avgMonthlyExpenses' | translate"
+        [value]="(averageExpense() | currency:currencyCode:'symbol':'1.2-2') ?? ''"
+        icon="trending_down"
+        tone="expense"
+      />
 
-      @if (bestMonth()) {
-        <div class="stat-card">
-          <div class="stat-icon best">
-            <mat-icon>emoji_events</mat-icon>
-          </div>
-          <div class="stat-content">
-            <span class="stat-label">{{ 'reports.bestMonth' | translate }}</span>
-            <span class="stat-value">{{ bestMonth()?.month }}</span>
-            <span class="stat-detail positive">+{{ bestMonth()?.balance | currency:currencyCode:'symbol':'1.2-2' }}</span>
-          </div>
-        </div>
+      @if (bestMonth(); as best) {
+        <app-stat-card
+          [label]="'reports.bestMonth' | translate"
+          [value]="best.month"
+          icon="emoji_events"
+          [detail]="'+' + (best.balance | currency:currencyCode:'symbol':'1.2-2')"
+          detailTone="positive"
+        />
       }
 
-      @if (worstMonth()) {
-        <div class="stat-card">
-          <div class="stat-icon worst">
-            <mat-icon>warning</mat-icon>
-          </div>
-          <div class="stat-content">
-            <span class="stat-label">{{ 'reports.worstMonth' | translate }}</span>
-            <span class="stat-value">{{ worstMonth()?.month }}</span>
-            <span class="stat-detail" [class.negative]="worstMonth()!.balance < 0" [class.positive]="worstMonth()!.balance >= 0">
-              {{ worstMonth()!.balance >= 0 ? '+' : '' }}{{ worstMonth()?.balance | currency:currencyCode:'symbol':'1.2-2' }}
-            </span>
-          </div>
-        </div>
+      @if (worstMonth(); as worst) {
+        <app-stat-card
+          [label]="'reports.worstMonth' | translate"
+          [value]="worst.month"
+          icon="warning"
+          [detail]="(worst.balance >= 0 ? '+' : '') + (worst.balance | currency:currencyCode:'symbol':'1.2-2')"
+          [detailTone]="worst.balance >= 0 ? 'positive' : 'negative'"
+        />
       }
     </div>
 
@@ -142,8 +128,8 @@
               </td>
             </ng-container>
 
-            <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-            <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+            <tr mat-header-row *matHeaderRowDef="displayedColumns()"></tr>
+            <tr mat-row *matRowDef="let row; columns: displayedColumns();"></tr>
           </table>
         </div>
       </mat-card-content>

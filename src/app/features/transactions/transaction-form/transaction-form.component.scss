@@ -12,9 +12,9 @@
   width: 100%;
   height: 56px;
   @apply border-2 border-dashed border-gray-300 dark:border-gray-600;
-  @apply bg-gray-50 dark:bg-gray-800;
+  background: var(--surface-subtle);
   @apply hover:border-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   transition: all 0.2s ease;
 
   mat-icon {
@@ -35,9 +35,9 @@
 
 .receipt-preview {
   position: relative;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  @apply bg-gray-100 dark:bg-gray-800;
+  background: var(--surface-muted);
   @apply border border-gray-200 dark:border-gray-700;
 
   img {
@@ -51,11 +51,11 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    @apply bg-white dark:bg-gray-800;
+    background: var(--surface-card);
     @apply shadow-md;
 
     &:hover {
-      @apply bg-gray-100 dark:bg-gray-700;
+      background: var(--surface-muted);
     }
   }
 
@@ -98,7 +98,7 @@
 
   &.loading {
     cursor: default;
-    @apply bg-gray-100 dark:bg-gray-800;
+    background: var(--surface-muted);
     @apply border-gray-200 dark:border-gray-700;
 
     mat-spinner {
@@ -107,7 +107,7 @@
   }
 
   .ai-icon {
-    font-size: 16px;
+    font-size: var(--text-base);
     width: 16px;
     height: 16px;
     margin-right: 4px;
@@ -115,7 +115,7 @@
   }
 
   mat-icon:not(.ai-icon) {
-    font-size: 18px;
+    font-size: var(--text-lg);
     width: 18px;
     height: 18px;
     margin-right: 6px;
@@ -133,25 +133,6 @@
   max-height: 90vh;
 }
 
-.dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
-  @apply border-b border-gray-200 dark:border-gray-700;
-}
-
-.dialog-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  @apply text-gray-900 dark:text-gray-100;
-  margin: 0;
-}
-
-.close-button {
-  margin: -8px -8px -8px 0;
-}
-
 .dialog-content {
   padding: 24px !important;
   overflow-y: auto !important;
@@ -166,7 +147,7 @@
 .type-toggle {
   width: 100%;
   max-width: 320px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -203,12 +184,13 @@
 }
 
 .amount-field {
-  flex: 1;
+  flex: 2;
+  min-width: 0;
 }
 
 .currency-field {
-  width: 100px;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 110px;
 }
 
 .full-width {
@@ -223,7 +205,7 @@
 }
 
 .category-option mat-icon {
-  font-size: 20px;
+  font-size: var(--text-xl);
   width: 20px;
   height: 20px;
 }
@@ -256,7 +238,7 @@
 }
 
 ::ng-deep .mat-mdc-dialog-surface {
-  border-radius: 16px !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 // Calendar date highlighting (must use ::ng-deep as datepicker renders in overlay)
@@ -283,26 +265,22 @@
   }
 
   &.has-income .mat-calendar-body-cell-content::after {
-    background-color: #22c55e;
+    background-color: var(--color-income);
   }
 
   &.has-expense .mat-calendar-body-cell-content::after {
-    background-color: #ef4444;
+    background-color: var(--color-expense);
   }
 
   &.has-both .mat-calendar-body-cell-content::after {
     width: 10px;
     height: 4px;
     border-radius: 2px;
-    background: linear-gradient(90deg, #22c55e 45%, transparent 45%, transparent 55%, #ef4444 55%);
+    background: linear-gradient(90deg, var(--color-income) 45%, transparent 45%, transparent 55%, var(--color-expense) 55%);
   }
 }
 
 @media (max-width: 480px) {
-  .dialog-header {
-    padding: 12px 16px;
-  }
-
   .dialog-content {
     padding: 16px !important;
   }
@@ -324,6 +302,7 @@
   }
 
   .currency-field {
+    min-width: 0;
     width: 100%;
   }
 }

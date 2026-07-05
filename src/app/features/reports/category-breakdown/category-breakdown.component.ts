@@ -11,6 +11,9 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
+import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { SpendingChartComponent } from '../../dashboard/spending-chart/spending-chart.component';
 
 interface CategoryBreakdown {
   categoryId: string;
@@ -27,6 +30,9 @@ interface CategoryBreakdown {
   selector: 'app-category-breakdown',
   standalone: true,
   imports: [
+    AmountDisplayComponent,
+    CategoryChipComponent,
+    SpendingChartComponent,
     CommonModule,
     MatCardModule,
     MatIconModule,
@@ -123,4 +129,16 @@ export class CategoryBreakdownComponent {
   }
 
   hasData = computed(() => this.filteredTransactions().length > 0);
+
+  // Feed the reused donut: map breakdown rows into the CategoryTotal shape it
+  // expects, and pass the raw categories through so it can resolve names/colors.
+  chartTotals = computed(() =>
+    this.categoryBreakdown().map(c => ({
+      categoryId: c.categoryId,
+      total: c.total,
+      count: c.transactionCount,
+    }))
+  );
+
+  chartCategories = computed(() => this._categories());
 }

@@ -98,7 +98,10 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
         { provide: Firestore, useValue: firestore },
         { provide: PwaService, useValue: pwa },
         { provide: AuthService, useValue: authMock },
-        { provide: CurrencyService, useValue: { getExchangeRate: () => 1 } },
+        {
+          provide: CurrencyService,
+          useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
+        },
         { provide: StorageService, useValue: jasmine.createSpyObj('StorageService', ['uploadReceipt', 'deleteReceipt']) },
         { provide: AIStrategyService, useValue: jasmine.createSpyObj('AIStrategyService', ['processReceipt']) },
       ],

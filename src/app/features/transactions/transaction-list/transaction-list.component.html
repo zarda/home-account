@@ -9,51 +9,18 @@
   <div class="mobile-view">
     <div class="mobile-list">
       @for (transaction of sortedTransactions(); track transaction.id; let last = $last) {
-        <div
-          class="mobile-item"
-          role="button"
-          tabindex="0"
-          (click)="edit.emit(transaction)"
-          (keydown.enter)="edit.emit(transaction)">
-          <!-- Category Icon -->
-          <div
-            class="category-icon"
-            [style.background-color]="getCategoryColor(transaction.categoryId) + '15'"
-          >
-            <mat-icon [style.color]="getCategoryColor(transaction.categoryId)">
-              {{ getCategoryIcon(transaction.categoryId) }}
-            </mat-icon>
-          </div>
-
-          <!-- Details -->
-          <div class="item-details">
-            <span class="item-description">
-              {{ transaction.description }}
-              @if (transaction.receiptUrl) {
-                <mat-icon class="receipt-indicator">receipt_long</mat-icon>
-              }
-            </span>
-            <span class="item-category">{{ getCategoryName(transaction.categoryId) }}</span>
-          </div>
-
-          <!-- Amount & Date -->
-          <div class="item-amount">
-            <span
-              class="amount"
-              [class.income]="transaction.type === 'income'"
-              [class.expense]="transaction.type === 'expense'"
-            >
-              {{ transaction.type === 'income' ? '+' : '-' }}{{ formatAmount(transaction.amount, transaction.currency) }}
-            </span>
-            <span class="item-date">{{ formatRelativeDate(transaction.date) }}</span>
-          </div>
-
-          <!-- Mobile Actions -->
+        <app-transaction-row
+          [transaction]="transaction"
+          [categories]="categories()"
+          (activate)="edit.emit(transaction)"
+        >
+          <!-- Trailing overflow actions -->
           <button
             mat-icon-button
             class="mobile-menu-btn"
             [matMenuTriggerFor]="mobileMenu"
             (click)="$event.stopPropagation()"
+            [attr.aria-label]="'common.moreActions' | translate"
           >
             <mat-icon>more_vert</mat-icon>
           </button>
@@ -67,7 +34,7 @@
               <span class="text-red-500">{{ 'common.delete' | translate }}</span>
             </button>
           </mat-menu>
-        </div>
+        </app-transaction-row>
         @if (!last) {
           <div class="mobile-divider"></div>
         }
@@ -93,11 +60,13 @@
           <div class="category-cell">
             <div
               class="category-icon-sm"
-              [style.background-color]="getCategoryColor(transaction.categoryId) + '15'"
             >
-              <mat-icon [style.color]="getCategoryColor(transaction.categoryId)">
-                {{ getCategoryIcon(transaction.categoryId) }}
-              </mat-icon>
+              <app-category-chip
+                appearance="tile"
+                size="sm"
+                [icon]="getCategoryIcon(transaction.categoryId)"
+                [color]="getCategoryColor(transaction.categoryId)"
+              />
             </div>
             <span class="category-name">{{ getCategoryName(transaction.categoryId) }}</span>
           </div>
@@ -131,13 +100,18 @@
       <ng-container matColumnDef="amount">
         <th mat-header-cell *matHeaderCellDef mat-sort-header class="col-amount">{{ 'transactions.amount' | translate }}</th>
         <td mat-cell *matCellDef="let transaction" class="col-amount">
-          <span
+          <app-amount-display
             class="amount-text"
-            [class.income]="transaction.type === 'income'"
-            [class.expense]="transaction.type === 'expense'"
-          >
-            {{ transaction.type === 'income' ? '+' : '-' }}{{ formatAmount(transaction.amount, transaction.currency) }}
-          </span>
+            [amount]="transaction.type === 'income' ? transaction.amount : -transaction.amount"
+            [currency]="transaction.currency"
+            [type]="transaction.type"
+            [showSign]="true"
+            [bold]="true"
+            size="sm"
+          />
+          @if (convertedAmount(transaction); as converted) {
+            <span class="amount-converted">{{ converted }}</span>
+          }
         </td>
       </ng-container>
 
@@ -145,7 +119,7 @@
       <ng-container matColumnDef="actions">
         <th mat-header-cell *matHeaderCellDef class="col-actions"></th>
         <td mat-cell *matCellDef="let transaction" class="col-actions">
-          <button mat-icon-button class="action-btn" [matMenuTriggerFor]="menu" (click)="$event.stopPropagation()">
+          <button mat-icon-button class="action-btn" [matMenuTriggerFor]="menu" (click)="$event.stopPropagation()" [attr.aria-label]="'common.moreActions' | translate">
             <mat-icon>more_vert</mat-icon>
           </button>
           <mat-menu #menu="matMenu">

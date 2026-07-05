@@ -1,0 +1,23 @@
+@if (visible()) {
+  <div
+    class="alert-banner"
+    [class.severity-warning]="severity() === 'warning'"
+    [class.severity-critical]="severity() === 'critical'"
+    [class.severity-exceeded]="severity() === 'exceeded'"
+    role="status"
+  >
+    <mat-icon class="banner-icon">{{ severity() === 'warning' ? 'warning_amber' : 'error_outline' }}</mat-icon>
+    <span class="banner-message">{{ message() }}</span>
+    <span class="banner-actions">
+      <a mat-button routerLink="/budgets" class="view-link">{{ 'budget.viewBudgets' | translate }}</a>
+      <button
+        mat-icon-button
+        class="dismiss-button"
+        (click)="dismiss()"
+        [attr.aria-label]="'common.close' | translate"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
+    </span>
+  </div>
+}

@@ -9,9 +9,7 @@
   </div>
 
   @if (isLoading()) {
-    <div class="loading-state">
-      <mat-spinner diameter="32"></mat-spinner>
-    </div>
+    <app-loading-spinner />
   } @else if (recurringTransactions().length === 0) {
     <app-empty-state
       icon="repeat"
@@ -36,16 +34,22 @@
               <span class="recurring-name">{{ recurring.name }}</span>
               <span class="recurring-category">{{ getCategoryName(recurring.categoryId) }}</span>
             </div>
-            <button mat-icon-button [matMenuTriggerFor]="actionMenu" class="action-btn">
+            <button mat-icon-button [matMenuTriggerFor]="actionMenu" class="action-btn" [attr.aria-label]="'common.moreActions' | translate">
               <mat-icon>more_vert</mat-icon>
             </button>
           </div>
 
           <!-- Card Body -->
           <div class="card-body">
-            <span class="recurring-amount" [class.expense]="recurring.type === 'expense'" [class.income]="recurring.type === 'income'">
-              {{ recurring.type === 'expense' ? '-' : '+' }}{{ recurring.amount | currency:recurring.currency:'symbol':'1.2-2' }}
-            </span>
+            <app-amount-display
+              class="recurring-amount"
+              [amount]="recurring.type === 'expense' ? -recurring.amount : recurring.amount"
+              [currency]="recurring.currency"
+              [type]="recurring.type"
+              [showSign]="true"
+              [bold]="true"
+              size="lg"
+            />
             <div class="recurring-meta">
               <span class="recurring-frequency">
                 <mat-icon>schedule</mat-icon>

@@ -71,7 +71,7 @@ describe('ExportDialogComponent', () => {
     mockExportService.exportToPDF.and.returnValue(Promise.resolve(new Blob(['pdf'], { type: 'application/pdf' })));
     mockExportService.downloadBlobWithPicker = jasmine.createSpy('downloadBlobWithPicker').and.returnValue(Promise.resolve(true));
 
-    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
+    mockTranslationService = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
     mockTranslationService.t.and.callFake((key: string) => {
       const translations: Record<string, string> = {
         'reports.csvDescription': 'Export as spreadsheet',
@@ -80,6 +80,7 @@ describe('ExportDialogComponent', () => {
       };
       return translations[key] || key;
     });
+    mockTranslationService.getIntlLocale.and.returnValue('en-US');
 
     mockCurrencyService = jasmine.createSpyObj('CurrencyService', ['convert']);
     mockCurrencyService.convert.and.callFake((amount: number) => amount);

@@ -8,6 +8,7 @@ import { Category } from '../../../models';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -28,6 +29,7 @@ export class SpendingChartComponent {
   private translationService = inject(TranslationService);
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
+  private chartTheme = inject(ChartThemeService);
 
   // Modern Angular 21: signal-based inputs
   categoryTotals = input<CategoryTotal[]>([]);
@@ -35,27 +37,33 @@ export class SpendingChartComponent {
 
   chartType = 'doughnut' as const;
 
-  chartOptions: ChartConfiguration<'doughnut'>['options'] = {
-    responsive: true,
-    maintainAspectRatio: true,
-    plugins: {
-      legend: {
-        display: false,
-      },
-      tooltip: {
-        callbacks: {
-          label: (context) => {
-            const value = context.parsed;
-            const data = context.dataset.data as number[];
-            const total = data.reduce((a, b) => a + b, 0);
-            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-            return `${context.label}: ${percentage}%`;
+  chartOptions = computed((): ChartConfiguration<'doughnut'>['options'] => {
+    const palette = this.chartTheme.palette();
+    return {
+      responsive: true,
+      maintainAspectRatio: true,
+      animation: this.chartTheme.animation(),
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          titleFont: { family: palette.fontFamily },
+          bodyFont: { family: palette.fontFamily },
+          callbacks: {
+            label: (context) => {
+              const value = context.parsed;
+              const data = context.dataset.data as number[];
+              const total = data.reduce((a, b) => a + b, 0);
+              const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
+              return `${context.label}: ${percentage}%`;
+            },
           },
         },
       },
-    },
-    cutout: '60%',
-  };
+      cutout: '60%',
+    };
+  });
 
   topCategories = computed(() => {
     return this.categoryTotals().slice(0, 6);

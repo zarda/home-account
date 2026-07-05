@@ -11,116 +11,6 @@
   gap: 16px;
 }
 
-.summary-card {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 20px;
-  @apply bg-white dark:bg-gray-800;
-  border-radius: 12px;
-  @apply border border-gray-200 dark:border-gray-700;
-
-  .card-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    mat-icon {
-      font-size: 24px;
-      width: 24px;
-      height: 24px;
-    }
-  }
-
-  .card-content {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-
-    .label {
-      font-size: 0.875rem;
-      @apply text-gray-500 dark:text-gray-400;
-    }
-
-    .value {
-      font-size: 1.5rem;
-      font-weight: 600;
-    }
-
-    .rate {
-      font-size: 0.875rem;
-      font-weight: 500;
-
-      &.positive {
-        color: #22c55e;
-      }
-
-      &.negative {
-        color: #ef4444;
-      }
-    }
-  }
-
-  &.income {
-    .card-icon {
-      background: rgba(34, 197, 94, 0.1);
-
-      mat-icon {
-        color: #22c55e;
-      }
-    }
-
-    .value {
-      color: #22c55e;
-    }
-  }
-
-  &.expense {
-    .card-icon {
-      background: rgba(239, 68, 68, 0.1);
-
-      mat-icon {
-        color: #ef4444;
-      }
-    }
-
-    .value {
-      color: #ef4444;
-    }
-  }
-
-  &.positive {
-    .card-icon {
-      background: rgba(34, 197, 94, 0.1);
-
-      mat-icon {
-        color: #22c55e;
-      }
-    }
-
-    .value {
-      color: #22c55e;
-    }
-  }
-
-  &.negative {
-    .card-icon {
-      background: rgba(239, 68, 68, 0.1);
-
-      mat-icon {
-        color: #ef4444;
-      }
-    }
-
-    .value {
-      color: #ef4444;
-    }
-  }
-}
-
 // Chart Card
 .chart-card {
   mat-card-header {
@@ -128,7 +18,7 @@
   }
 
   mat-card-title {
-    font-size: 1.125rem;
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 }
@@ -146,7 +36,7 @@
   }
 
   mat-card-title {
-    font-size: 1.125rem;
+    font-size: var(--text-lg);
     font-weight: 600;
   }
 }
@@ -169,21 +59,6 @@
   gap: 12px;
 }
 
-.category-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  mat-icon {
-    font-size: 20px;
-    width: 20px;
-    height: 20px;
-  }
-}
-
 .category-details {
   display: flex;
   flex-direction: column;
@@ -196,7 +71,7 @@
   }
 
   .category-amount {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
     @apply text-gray-500 dark:text-gray-400;
   }
 }
@@ -210,21 +85,21 @@
 .progress-bar {
   flex: 1;
   height: 8px;
-  @apply bg-gray-100 dark:bg-gray-700;
-  border-radius: 4px;
+  background: var(--surface-strong);
+  border-radius: var(--radius-xs);
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   transition: width 0.3s ease;
 }
 
 .percentage-text {
   min-width: 50px;
   text-align: right;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   @apply text-gray-500 dark:text-gray-400;
 }

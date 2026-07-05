@@ -10,9 +10,11 @@ import { OfflineQueueService } from '../../../core/services/offline-queue.servic
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ImportResult } from '../../../models';
+import { NotificationService } from '../../../core/services/notification.service';
 
 describe('CameraCaptureComponent', () => {
   let importService: jasmine.SpyObj<AIImportService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let strategyService: jasmine.SpyObj<AIStrategyService>;
   let pwaService: jasmine.SpyObj<PwaService>;
   let offlineQueue: jasmine.SpyObj<OfflineQueueService>;
@@ -43,6 +45,7 @@ describe('CameraCaptureComponent', () => {
     spyOn(URL, 'revokeObjectURL');
 
     importService = jasmine.createSpyObj('AIImportService', ['importFromImage', 'importFromMultipleImages']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     importService.importFromImage.and.resolveTo(importResult);
     importService.importFromMultipleImages.and.resolveTo(importResult);
     strategyService = jasmine.createSpyObj('AIStrategyService', [
@@ -69,6 +72,7 @@ describe('CameraCaptureComponent', () => {
     await TestBed.configureTestingModule({
       imports: [CameraCaptureComponent],
       providers: [
+        { provide: NotificationService, useValue: notifications },
         { provide: AIImportService, useValue: importService },
         { provide: AIStrategyService, useValue: strategyService },
         { provide: PwaService, useValue: pwaService },
@@ -209,7 +213,7 @@ describe('CameraCaptureComponent', () => {
       expect(offlineQueue.queueImage).toHaveBeenCalledTimes(2);
       expect(dialogRef.close).toHaveBeenCalledWith(jasmine.objectContaining({ queued: true }));
       expect(translationService.t).toHaveBeenCalledWith('import.queuedForLater', { count: 2 });
-      expect(announcer.announce).toHaveBeenCalledWith('import.queuedForLater');
+      expect(notifications.success).toHaveBeenCalledWith('import.queuedForLater');
     });
 
     it('shows an error when no AI provider is available', async () => {

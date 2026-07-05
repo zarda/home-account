@@ -14,7 +14,7 @@ nav {
 
 .nav-item {
   margin: 0 8px 4px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .nav-item:hover {

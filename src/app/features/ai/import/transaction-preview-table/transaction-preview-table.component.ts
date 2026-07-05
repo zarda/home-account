@@ -7,11 +7,13 @@ import { FormsModule } from '@angular/forms';
 import { Category, CategorizedImportTransaction } from '../../../../models';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 
 @Component({
   selector: 'app-transaction-preview-table',
   standalone: true,
   imports: [
+    EmptyStateComponent,
     CommonModule,
     MatCheckboxModule,
     MatIconModule,

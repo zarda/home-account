@@ -8,14 +8,13 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { ThemeService, ThemePreference } from '../../../core/services/theme.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { SUPPORTED_CURRENCIES } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
   selector: 'app-profile-settings',
@@ -29,16 +28,14 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatButtonModule,
     MatIconModule,
     MatButtonToggleModule,
-    MatSnackBarModule,
     TranslatePipe,
   ],
   templateUrl: './profile-settings.component.html',
   styleUrl: './profile-settings.component.scss',
 })
 export class ProfileSettingsComponent {
+  private notifications = inject(NotificationService);
   private authService = inject(AuthService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
 
@@ -53,11 +50,17 @@ export class ProfileSettingsComponent {
   dateFormat = this.authService.currentUser()?.preferences?.dateFormat || 'MM/DD/YYYY';
   language: SupportedLocale = (this.authService.currentUser()?.preferences?.language as SupportedLocale) || this.translationService.currentLocale();
 
+  // Pattern-only labels keep the select value from colliding with the arrow;
+  // the worked example moves to helper text below the field.
   dateFormats = [
-    { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (12/31/2024)' },
-    { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (31/12/2024)' },
-    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2024-12-31)' },
+    { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY', example: '12/31/2024' },
+    { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY', example: '31/12/2024' },
+    { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD', example: '2024-12-31' },
   ];
+
+  get dateFormatExample(): string {
+    return this.dateFormats.find(f => f.value === this.dateFormat)?.example ?? '';
+  }
 
   languages = this.translationService.languages;
 
@@ -75,11 +78,7 @@ export class ProfileSettingsComponent {
     } catch {
       this.displayName = current;
       const message = this.translationService.t('common.error');
-      this.snackBar.open(message, this.translationService.t('common.close'), {
-        duration: 3000,
-        horizontalPosition: 'center',
-      });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     }
   }
 
@@ -110,11 +109,7 @@ export class ProfileSettingsComponent {
       });
     } catch {
       const message = this.translationService.t('common.error');
-      this.snackBar.open(message, this.translationService.t('common.close'), {
-        duration: 3000,
-        horizontalPosition: 'center',
-      });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     }
   }
 }

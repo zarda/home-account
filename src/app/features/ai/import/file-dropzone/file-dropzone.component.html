@@ -6,12 +6,12 @@
   (dragover)="onDragOver($event)"
   (dragleave)="onDragLeave($event)"
   (drop)="onDrop($event)"
-  (click)="fileInput.click()"
-  (keydown.enter)="fileInput.click()"
-  (keydown.space)="fileInput.click(); $event.preventDefault()"
-  tabindex="0"
-  role="button"
-  [attr.aria-label]="'import.dropzoneTitle' | translate"
+  (click)="browse(fileInput)"
+  (keydown.enter)="browse(fileInput)"
+  (keydown.space)="browse(fileInput); $event.preventDefault()"
+  [attr.tabindex]="selectedFiles().length === 0 ? 0 : null"
+  [attr.role]="selectedFiles().length === 0 ? 'button' : null"
+  [attr.aria-label]="selectedFiles().length === 0 ? ('import.dropzoneTitle' | translate) : null"
 >
   <input
     #fileInput

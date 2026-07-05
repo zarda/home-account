@@ -7,21 +7,26 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatMenuModule } from '@angular/material/menu';
 
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { Category } from '../../../models';
 import { CategoryFormDialogComponent } from './category-form-dialog/category-form-dialog.component';
-import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { NotificationService } from '../../../core/services/notification.service';
 
 @Component({
   selector: 'app-category-manager',
   standalone: true,
   imports: [
+    EmptyStateComponent,
+    LoadingSpinnerComponent,
+    CategoryChipComponent,
     CommonModule,
     FormsModule,
     DragDropModule,
@@ -29,7 +34,6 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatButtonModule,
     MatButtonToggleModule,
     MatDialogModule,
-    MatSnackBarModule,
     MatMenuModule,
     TranslatePipe,
   ],
@@ -37,11 +41,10 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   styleUrl: './category-manager.component.scss',
 })
 export class CategoryManagerComponent implements OnInit {
+  private notifications = inject(NotificationService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
 
   selectedType: 'expense' | 'income' = 'expense';
   categories = signal<Category[]>([]);
@@ -76,15 +79,14 @@ export class CategoryManagerComponent implements OnInit {
     const ids = categories.map(c => c.id);
     this.categoryService.reorderCategories(ids).then(() => {
       const message = this.translationService.t('settings.categoriesReordered');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-      this.announcer.announce(message);
+      this.notifications.success(message);
       this.loadCategories();
     });
   }
 
   openAddDialog(): void {
     const dialogRef = this.dialog.open(CategoryFormDialogComponent, {
-      width: '400px',
+      width: 'min(400px, calc(100vw - 32px))',
       data: { type: this.selectedType }
     });
 
@@ -97,8 +99,7 @@ export class CategoryManagerComponent implements OnInit {
           type: this.selectedType,
         }).then(() => {
           const message = this.translationService.t('settings.categoryCreated');
-          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
           this.loadCategories();
         });
       }
@@ -107,7 +108,7 @@ export class CategoryManagerComponent implements OnInit {
 
   openEditDialog(category: Category): void {
     const dialogRef = this.dialog.open(CategoryFormDialogComponent, {
-      width: '400px',
+      width: 'min(400px, calc(100vw - 32px))',
       data: { category, type: this.selectedType }
     });
 
@@ -119,8 +120,7 @@ export class CategoryManagerComponent implements OnInit {
           color: result.color,
         }).then(() => {
           const message = this.translationService.t('settings.categoryUpdated');
-          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
           this.loadCategories();
         });
       }
@@ -128,21 +128,22 @@ export class CategoryManagerComponent implements OnInit {
   }
 
   deleteCategory(category: Category): void {
-    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
-      data: {
-        title: this.translationService.t('settings.deleteCategory'),
-        message: this.translationService.t('settings.deleteCategoryConfirm', { name: this.translationService.t(category.name) }),
-        confirmText: this.translationService.t('common.delete'),
-        confirmColor: 'warn',
-      }
-    });
+    // Typed as ConfirmDialogData so wrong keys (the old confirmText typo,
+    // which silently fell back to a hardcoded English label) fail to compile.
+    const data: ConfirmDialogData = {
+      title: this.translationService.t('settings.deleteCategory'),
+      message: this.translationService.t('settings.deleteCategoryConfirm', { name: this.translationService.t(category.name) }),
+      confirmLabel: this.translationService.t('common.delete'),
+      cancelLabel: this.translationService.t('common.cancel'),
+      confirmColor: 'warn',
+    };
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, { data });
 
     dialogRef.afterClosed().subscribe(confirmed => {
       if (confirmed) {
         this.categoryService.deleteCategory(category.id).then(() => {
           const message = this.translationService.t('settings.categoryDeleted');
-          this.snackBar.open(message, this.translationService.t('common.close'), { duration: 2000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
           this.loadCategories();
         });
       }

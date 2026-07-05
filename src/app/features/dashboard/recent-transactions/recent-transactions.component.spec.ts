@@ -1,13 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter, Router } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 import { RecentTransactionsComponent } from './recent-transactions.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction } from '../../../models';
+import { createUser } from '../../../core/services/testing';
 
 describe('RecentTransactionsComponent', () => {
   let component: RecentTransactionsComponent;
@@ -17,7 +20,10 @@ describe('RecentTransactionsComponent', () => {
   let router: Router;
 
   beforeEach(async () => {
-    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
     currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
     categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
       'getCategoryName',
@@ -38,6 +44,7 @@ describe('RecentTransactionsComponent', () => {
       providers: [
         provideRouter([]),
         { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
         { provide: DateFormatService, useValue: dateFormat },
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
@@ -54,17 +61,20 @@ describe('RecentTransactionsComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('delegates category lookups to the helper service', () => {
-    expect(component.getCategoryName('c1')).toBe('Food');
-    expect(component.getCategoryIcon('c1')).toBe('restaurant');
-    expect(component.getCategoryColor('c1')).toBe('#fff');
-    expect(categoryHelper.getCategoryName).toHaveBeenCalledWith('c1', jasmine.any(Map));
-  });
+  // Row anatomy (category chip, amounts, converted line, dates) is covered
+  // by the shared TransactionRowComponent spec; here we assert the rows
+  // are rendered through it.
+  it('renders each transaction through the shared row component', () => {
+    fixture.componentRef.setInput('transactions', [
+      { id: 't1', description: 'Coffee', amount: 5, currency: 'USD', type: 'expense', categoryId: 'c1', date: Timestamp.now() } as Transaction,
+      { id: 't2', description: 'Salary', amount: 100, currency: 'USD', type: 'income', categoryId: 'c1', date: Timestamp.now() } as Transaction,
+    ]);
+    fixture.detectChanges();
 
-  it('formats amounts and dates through their services', () => {
-    expect(component.formatAmount(20, 'USD')).toBe('USD 20');
-    expect(component.formatDate(Timestamp.now())).toBe('2026-06-15');
-    expect(component.formatRelativeDate(Timestamp.now())).toBe('today');
+    const rows = fixture.nativeElement.querySelectorAll('app-transaction-row');
+    expect(rows.length).toBe(2);
+    expect(categoryHelper.getCategoryName).toHaveBeenCalledWith('c1', jasmine.any(Map));
+    expect(dateFormat.formatRelativeDate).toHaveBeenCalled();
   });
 
   it('onAddTransaction navigates to the transactions page in add mode', () => {

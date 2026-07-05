@@ -7,30 +7,32 @@ import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ImportHistory, ImportStatus } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
+import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
+import { LoadingSpinnerComponent } from '../../../../shared/components/loading-spinner/loading-spinner.component';
+import { NotificationService } from '../../../../core/services/notification.service';
 
 @Component({
   selector: 'app-import-history',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
+    EmptyStateComponent,
+    PageHeaderComponent,
     CommonModule,
     MatCardModule,
     MatListModule,
     MatIconModule,
     MatButtonModule,
     MatChipsModule,
-    MatProgressSpinnerModule,
-    MatSnackBarModule,
     MatDialogModule,
     TranslatePipe
   ],
@@ -38,10 +40,9 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
   styleUrl: './import-history.component.scss'
 })
 export class ImportHistoryComponent implements OnInit, OnDestroy {
+  private notifications = inject(NotificationService);
   private importHistoryService = inject(ImportHistoryService);
   private translationService = inject(TranslationService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private dialog = inject(MatDialog);
   private router = inject(Router);
 
@@ -155,12 +156,10 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
         try {
           await this.importHistoryService.deleteImportHistory(item.id);
           const message = this.t('import.historyDeleted');
-          this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-          this.announcer.announce(message);
+          this.notifications.success(message);
         } catch {
           const message = this.t('import.deleteHistoryFailed');
-          this.snackBar.open(message, this.t('common.close'), { duration: 3000 });
-          this.announcer.announce(message, 'assertive');
+          this.notifications.error(message);
         }
       }
     });

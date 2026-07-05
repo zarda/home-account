@@ -1,12 +1,14 @@
 :host {
   display: block;
   width: 100%;
-  height: 64px;
+  // Status bar / notch space on top of the 64px toolbar.
+  height: calc(64px + var(--safe-top));
+  padding-top: var(--safe-top);
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1000;
+  z-index: var(--z-header);
   background: var(--surface-card);
   transition: transform 0.3s ease-in-out;
 
@@ -17,6 +19,10 @@
 
 .header-toolbar {
   height: 64px;
+  // Pin the toolbar to the app surface scale: Material's own toolbar
+  // surface is a slightly different gray in dark mode.
+  background: var(--surface-card);
+  color: var(--text-primary);
   border-bottom: 1px solid var(--border-primary);
   box-shadow: var(--shadow-sm);
   padding: 0 16px;
@@ -27,9 +33,15 @@
 }
 
 .app-title {
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   color: var(--color-primary);
+}
+
+// Brighter wordmark on dark surfaces: the light-mode brand indigo reads
+// almost black on #1e1e1e.
+:host-context(.dark-theme) .app-title {
+  color: var(--color-accent-light);
 }
 
 .spacer {
@@ -71,7 +83,7 @@ button[aria-label="User menu"] {
 }
 
 .user-email {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 4px 0 0 0;
 }

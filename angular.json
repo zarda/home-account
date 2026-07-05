@@ -78,7 +78,12 @@
             "externalDependencies": [
               "node:fs",
               "node:path"
-            ]
+            ],
+            "stylePreprocessorOptions": {
+              "includePaths": [
+                "src/theme"
+              ]
+            }
           },
           "configurations": {
             "production": {
@@ -169,7 +174,12 @@
             "externalDependencies": [
               "node:fs",
               "node:path"
-            ]
+            ],
+            "stylePreprocessorOptions": {
+              "includePaths": [
+                "src/theme"
+              ]
+            }
           }
         },
         "lint": {

@@ -16,13 +16,16 @@ import { BudgetFormComponent, BudgetFormDialogData } from './budget-form/budget-
 import { RecurringTransactionsComponent } from './recurring-transactions/recurring-transactions.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
+import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { tabAnimationDuration } from '../../core/layout/motion';
 
 @Component({
   selector: 'app-budgets',
   standalone: true,
   imports: [
+    PageHeaderComponent,
     CommonModule,
     MatButtonModule,
     MatIconModule,
@@ -56,6 +59,10 @@ export class BudgetsComponent implements OnInit, OnDestroy {
   });
 
   budgetCount = computed(() => this.budgets().length);
+
+  // 0ms when the user prefers reduced motion (Material tab slide runs via the
+  // Web Animations API, which the global CSS switch can't reach).
+  readonly tabAnimationDuration = tabAnimationDuration();
 
   private budgetsSub?: Subscription;
   private categoriesSub?: Subscription;

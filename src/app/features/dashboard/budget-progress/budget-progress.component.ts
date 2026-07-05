@@ -5,8 +5,8 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { Budget, Category, Transaction } from '../../../models';
-import { BUDGET_ALERT_THRESHOLDS } from '../../../core/utils/budget-alert.utils';
+import { Budget, Category } from '../../../models';
+import { getBudgetAlertSeverity } from '../../../core/utils/budget-alert.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -29,19 +29,17 @@ export class BudgetProgressComponent {
   // Modern Angular 21: signal-based inputs
   budgets = input<Budget[]>([]);
   categories = input<Map<string, Category>>(new Map());
-  transactions = input<Transaction[]>([]);
-  baseCurrency = input<string>('USD');
 
   private currencyService = inject(CurrencyService);
   private categoryHelperService = inject(CategoryHelperService);
 
-  // Calculate spent for a budget based on transactions in the current period
-  // Returns the spent amount in the BUDGET's currency for proper comparison
+  // The card reads the same persisted, budget-period-anchored `spent` figure
+  // that budget alerts are computed from (BudgetService.recalculateBudgetSpent,
+  // already in the budget's currency) — previously it recomputed spend from
+  // the dashboard's selected calendar period, so the alert snackbar could say
+  // "117% used" while this card showed 30% for the same budget.
   getBudgetSpent(budget: Budget): number {
-    // Convert each transaction directly to budget's currency
-    return this.transactions()
-      .filter(t => t.categoryId === budget.categoryId && t.type === 'expense')
-      .reduce((sum, t) => sum + this.currencyService.convert(t.amount, t.currency, budget.currency), 0);
+    return budget.spent;
   }
 
   getCategoryName(categoryId: string): string {
@@ -60,17 +58,34 @@ export class BudgetProgressComponent {
     return this.currencyService.formatCurrency(amount, currency);
   }
 
+  // True utilization — uncapped so overspend reads honestly; the progress
+  // bar clamps separately via getBarValue.
   getPercentage(budget: Budget): number {
     if (budget.amount === 0) return 0;
     const spent = this.getBudgetSpent(budget);
-    return Math.min((spent / budget.amount) * 100, 100);
+    return (spent / budget.amount) * 100;
+  }
+
+  getBarValue(budget: Budget): number {
+    return Math.min(this.getPercentage(budget), 100);
+  }
+
+  // Bar and percentage text derive from one severity so the row can never
+  // send mixed signals for a single state.
+  private getSeverity(budget: Budget) {
+    return getBudgetAlertSeverity(this.getPercentage(budget), budget.alertThreshold);
   }
 
   getProgressColor(budget: Budget): 'primary' | 'accent' | 'warn' {
-    const percentage = this.getPercentage(budget);
-    if (percentage >= BUDGET_ALERT_THRESHOLDS.exceeded) return 'warn';
-    if (percentage >= BUDGET_ALERT_THRESHOLDS.warning) return 'accent';
-    return 'primary';
+    switch (this.getSeverity(budget)) {
+      case 'exceeded':
+        return 'warn';
+      case 'critical':
+      case 'warning':
+        return 'accent';
+      default:
+        return 'primary';
+    }
   }
 
   getRemainingText(budget: Budget): string {
@@ -84,9 +99,15 @@ export class BudgetProgressComponent {
   }
 
   getPercentageClass(budget: Budget): string {
-    const percentage = this.getPercentage(budget);
-    if (percentage >= BUDGET_ALERT_THRESHOLDS.exceeded) return 'text-red-600';
-    if (percentage >= BUDGET_ALERT_THRESHOLDS.warning) return 'text-yellow-600';
-    return 'text-green-600';
+    switch (this.getSeverity(budget)) {
+      case 'exceeded':
+        return 'text-red-600';
+      case 'critical':
+        return 'text-orange-500';
+      case 'warning':
+        return 'text-yellow-600';
+      default:
+        return 'text-green-600';
+    }
   }
 }

@@ -6,10 +6,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { Timestamp } from '@angular/fire/firestore';
 import { Transaction, Category } from '../../../models';
-import { CurrencyService } from '../../../core/services/currency.service';
-import { DateFormatService } from '../../../core/services/date-format.service';
-import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -21,6 +19,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatIconModule,
     MatButtonModule,
     EmptyStateComponent,
+    TransactionRowComponent,
     TranslatePipe
   ],
   templateUrl: './recent-transactions.component.html',
@@ -32,33 +31,6 @@ export class RecentTransactionsComponent {
   categories = input<Map<string, Category>>(new Map());
 
   private router = inject(Router);
-  private currencyService = inject(CurrencyService);
-  private dateFormatService = inject(DateFormatService);
-  private categoryHelperService = inject(CategoryHelperService);
-
-  getCategoryName(categoryId: string): string {
-    return this.categoryHelperService.getCategoryName(categoryId, this.categories());
-  }
-
-  getCategoryIcon(categoryId: string): string {
-    return this.categoryHelperService.getCategoryIcon(categoryId, this.categories());
-  }
-
-  getCategoryColor(categoryId: string): string {
-    return this.categoryHelperService.getCategoryColor(categoryId, this.categories());
-  }
-
-  formatAmount(amount: number, currency: string): string {
-    return this.currencyService.formatCurrency(amount, currency);
-  }
-
-  formatDate(date: Date | Timestamp): string {
-    return this.dateFormatService.formatDate(date);
-  }
-
-  formatRelativeDate(date: Date | Timestamp): string {
-    return this.dateFormatService.formatRelativeDate(date);
-  }
 
   onAddTransaction(): void {
     // Navigate to transactions page with add mode (SPA navigation, no full reload)

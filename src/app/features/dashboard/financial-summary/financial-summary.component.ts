@@ -1,15 +1,13 @@
 import { Component, computed, inject, input } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
 
-import { MatCardModule } from '@angular/material/card';
-import { MatIconModule } from '@angular/material/icon';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
   selector: 'app-financial-summary',
   standalone: true,
-  imports: [DecimalPipe, MatCardModule, MatIconModule, TranslatePipe],
+  imports: [StatCardComponent, TranslatePipe],
   templateUrl: './financial-summary.component.html',
   styleUrl: './financial-summary.component.scss',
 })

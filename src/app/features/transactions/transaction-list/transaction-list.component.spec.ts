@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatDialog } from '@angular/material/dialog';
 import { Sort } from '@angular/material/sort';
@@ -10,8 +11,9 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { Transaction } from '../../../models';
-import { createTransaction } from '../../../core/services/testing';
+import { createTransaction, createUser } from '../../../core/services/testing';
 
 describe('TransactionListComponent', () => {
   let component: TransactionListComponent;
@@ -27,7 +29,10 @@ describe('TransactionListComponent', () => {
   ];
 
   beforeEach(async () => {
-    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency']);
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
     currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
     const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
     dateFormat.formatDate.and.returnValue('date');
@@ -47,6 +52,7 @@ describe('TransactionListComponent', () => {
       imports: [TransactionListComponent, NoopAnimationsModule],
       providers: [
         { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
         { provide: DateFormatService, useValue: dateFormat },
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
@@ -117,6 +123,22 @@ describe('TransactionListComponent', () => {
       fixture.componentRef.setInput('transactions', [...txns]);
       fixture.detectChanges();
       expect(announcer.announce).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('convertedAmount', () => {
+    it('shows the base-currency value for foreign-currency rows', () => {
+      const foreign = createTransaction({
+        amount: 3800,
+        currency: 'JPY',
+        amountInBaseCurrency: 25.42
+      });
+      expect(component.convertedAmount(foreign)).toBe('≈ USD 25.42');
+    });
+
+    it('returns null for rows already in the base currency', () => {
+      const usd = createTransaction({ amount: 10, currency: 'USD' });
+      expect(component.convertedAmount(usd)).toBeNull();
     });
   });
 

@@ -11,31 +11,63 @@
   height: 100%;
   background: var(--surface-card);
   border-top: 1px solid var(--border-primary);
-  padding: 0 8px;
+  // Keep items in the 64px band; the surface itself covers the
+  // home-indicator inset below.
+  padding: 0 8px var(--safe-bottom);
 }
 
+// Icon + label column. The whole 48px-tall link is the touch target.
 .nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  max-width: 88px;
+  height: 52px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.icon-pill {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
-  max-width: 72px;
-  height: 48px;
-  color: var(--text-muted);
-  text-decoration: none;
-  border-radius: 8px;
+  width: 48px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  transition: background-color 0.15s ease;
+
+  mat-icon {
+    font-size: 22px;
+    width: 22px;
+    height: 22px;
+    line-height: 22px;
+  }
 }
 
-.nav-item:hover {
+.nav-label {
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+.nav-item:hover .icon-pill {
   background-color: var(--surface-hover);
 }
 
+// Active: M3-style tonal pill behind the icon + emphasized label.
 .nav-item.active {
-  color: var(--color-accent);
-}
+  color: var(--color-primary);
 
-.nav-item.active mat-icon {
-  color: var(--color-accent);
+  .icon-pill {
+    background-color: var(--color-primary-light);
+  }
+
+  .nav-label {
+    font-weight: 700;
+  }
 }
 
 .action-button {

@@ -1,5 +1,8 @@
 import { Component, computed, inject, Input, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { map } from 'rxjs/operators';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -7,9 +10,13 @@ import { MatTableModule } from '@angular/material/table';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
 
+import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+
 import { Transaction } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -27,6 +34,7 @@ interface MonthlyComparison {
   selector: 'app-monthly-comparison',
   standalone: true,
   imports: [
+    StatCardComponent,
     CommonModule,
     MatCardModule,
     MatIconModule,
@@ -43,6 +51,8 @@ interface MonthlyComparison {
 export class MonthlyComparisonComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private chartTheme = inject(ChartThemeService);
+  private breakpointObserver = inject(BreakpointObserver);
 
   @Input() set transactions(value: Transaction[]) {
     this._transactions.set(value);
@@ -65,8 +75,21 @@ export class MonthlyComparisonComponent {
     return this._currency();
   }
 
-  displayedColumns = ['month', 'income', 'expense', 'balance', 'change'];
   chartType = 'bar' as const;
+
+  // Mobile drops the Trend column so the table fits without a 500px scroll.
+  private isMobile = toSignal(
+    this.breakpointObserver
+      .observe(APP_BREAKPOINTS.mobile)
+      .pipe(map(result => result.matches)),
+    { initialValue: false }
+  );
+
+  displayedColumns = computed(() =>
+    this.isMobile()
+      ? ['month', 'income', 'expense', 'balance']
+      : ['month', 'income', 'expense', 'balance', 'change']
+  );
 
   // Get currency symbol dynamically
   private getCurrencySymbol(): string {
@@ -74,24 +97,31 @@ export class MonthlyComparisonComponent {
     return info?.symbol || this._currency();
   }
 
-  // Convert transaction amount to current base currency dynamically
+  // Base-currency value: write-time snapshot first (deterministic), live
+  // conversion only as a legacy fallback.
   private toBaseCurrency(t: Transaction): number {
-    return this.currencyService.convert(t.amount, t.currency, this._currency());
+    return this.currencyService.amountInBase(t, this._currency());
   }
 
   // Chart options as computed signal to prevent re-renders
   chartOptions = computed((): ChartConfiguration<'bar'>['options'] => {
     const symbol = this.getCurrencySymbol();
     const locale = this.translationService.getIntlLocale();
+    const axis = this.chartTheme.axis();
+    const palette = this.chartTheme.palette();
     return {
       responsive: true,
       maintainAspectRatio: false,
+      animation: this.chartTheme.animation(),
       plugins: {
         legend: {
           display: true,
           position: 'top',
+          labels: this.chartTheme.legendLabels(),
         },
         tooltip: {
+          titleFont: { family: palette.fontFamily },
+          bodyFont: { family: palette.fontFamily },
           callbacks: {
             label: (context) => {
               const value = context.parsed.y ?? 0;
@@ -101,9 +131,12 @@ export class MonthlyComparisonComponent {
         },
       },
       scales: {
+        x: axis,
         y: {
           beginAtZero: true,
+          grid: axis.grid,
           ticks: {
+            ...axis.ticks,
             callback: (value) => {
               return `${symbol}${Number(value).toLocaleString(locale)}`;
             },

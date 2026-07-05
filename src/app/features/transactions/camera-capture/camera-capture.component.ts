@@ -5,17 +5,18 @@ import { MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 
 import { AIImportService } from '../../../core/services/ai-import.service';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { NotificationService } from '../../../core/services/notification.service';
 
 interface CapturedImage {
   id: string;
@@ -28,12 +29,13 @@ interface CapturedImage {
   selector: 'app-camera-capture',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
+    DialogHeaderComponent,
     CommonModule,
     MatDialogModule,
     MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
-    MatSnackBarModule,
     DragDropModule,
     TranslatePipe,
   ],
@@ -41,13 +43,12 @@ interface CapturedImage {
   styleUrl: './camera-capture.component.scss',
 })
 export class CameraCaptureComponent implements OnInit, OnDestroy {
+  private notifications = inject(NotificationService);
   private dialogRef = inject(MatDialogRef<CameraCaptureComponent>);
   private importService = inject(AIImportService);
   private strategyService = inject(AIStrategyService);
   private pwaService = inject(PwaService);
   private offlineQueue = inject(OfflineQueueService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private translationService = inject(TranslationService);
   private router = inject(Router);
 
@@ -314,8 +315,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       }
 
       const message = this.translationService.t('import.queuedForLater', { count: files.length });
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 4000 });
-      this.announcer.announce(message);
+      this.notifications.success(message);
 
       this.dialogRef.close({ success: true, queued: true, count: files.length });
     } catch {

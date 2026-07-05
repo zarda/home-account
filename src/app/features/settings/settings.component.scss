@@ -17,7 +17,7 @@
   gap: 16px;
   padding: 20px;
   background: var(--surface-card);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
 }
 
@@ -38,7 +38,7 @@
   justify-content: center;
 
   mat-icon {
-    font-size: 32px;
+    font-size: var(--text-3xl);
     width: 32px;
     height: 32px;
     color: var(--text-disabled);
@@ -49,16 +49,39 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  flex: 1;
 
   .user-name {
-    font-size: 1.125rem;
+    font-size: var(--text-lg);
     font-weight: 600;
     color: var(--text-primary);
   }
 
   .user-email {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
     color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.sign-out-btn {
+  flex-shrink: 0;
+
+  mat-icon {
+    margin-right: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  // Keep the sign-out affordance but drop its label to an icon on narrow cards.
+  .sign-out-label {
+    display: none;
+  }
+
+  .sign-out-btn mat-icon {
+    margin-right: 0;
   }
 }
 
@@ -70,12 +93,12 @@
 
   ::ng-deep {
     .mat-expansion-panel {
-      border-radius: 12px !important;
+      border-radius: var(--radius-md) !important;
       box-shadow: var(--shadow-sm) !important;
       background: var(--surface-card);
 
       &:not(.mat-expanded) {
-        border-radius: 12px !important;
+        border-radius: var(--radius-md) !important;
       }
 
       &::before {
@@ -100,7 +123,7 @@
 
     .mat-expansion-panel-header-description {
       color: var(--text-muted);
-      font-size: 0.875rem;
+      font-size: var(--text-sm);
     }
   }
 }
@@ -119,7 +142,7 @@
   gap: 16px;
   padding: 20px;
   background: var(--surface-card);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -138,14 +161,14 @@
   .link-card-icon {
     width: 48px;
     height: 48px;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
 
     mat-icon {
-      font-size: 28px;
+      font-size: var(--text-3xl);
       width: 28px;
       height: 28px;
       color: white;
@@ -163,13 +186,13 @@
     gap: 4px;
 
     .link-card-title {
-      font-size: 1rem;
+      font-size: var(--text-base);
       font-weight: 600;
       color: var(--text-primary);
     }
 
     .link-card-description {
-      font-size: 0.875rem;
+      font-size: var(--text-sm);
       color: var(--text-muted);
     }
   }

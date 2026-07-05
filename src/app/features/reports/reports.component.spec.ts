@@ -9,6 +9,16 @@ import { CategoryService } from '../../core/services/category.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
 
+import {
+  PeriodSelection,
+  defaultPeriodSelection,
+} from '../../shared/components/period-selector/period-selector.component';
+
+function selection(option: PeriodSelection['option'], start: Date, end: Date): PeriodSelection {
+  return { option, start, end, label: '' };
+}
+
+
 describe('ReportsComponent', () => {
   let component: ReportsComponent;
   let fixture: ComponentFixture<ReportsComponent>;
@@ -33,7 +43,9 @@ describe('ReportsComponent', () => {
 
     const mockCurrencyService = {
       currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
-      getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' })
+      getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
+      amountInBase: (t: { amount: number; amountInBaseCurrency?: number }) =>
+        t.amountInBaseCurrency ?? t.amount
     };
 
     await TestBed.configureTestingModule({
@@ -61,8 +73,10 @@ describe('ReportsComponent', () => {
   });
 
   describe('initialization', () => {
-    it('should start with thisMonth as selected period', () => {
-      expect(component.selectedPeriod).toBe('thisMonth');
+    it('should start on the default This Month range', () => {
+      const expected = defaultPeriodSelection();
+      expect(component.dateRange().start.getTime()).toBe(expected.start.getTime());
+      expect(component.dateRange().end.getTime()).toBe(expected.end.getTime());
     });
 
     it('should load data on init', () => {
@@ -76,30 +90,15 @@ describe('ReportsComponent', () => {
   });
 
   describe('period selection', () => {
-    it('should update date range when period changes', () => {
-      const initialRange = component.dateRange();
-
-      component.selectedPeriod = 'lastMonth';
-      component.onPeriodChange();
-
-      expect(component.dateRange()).not.toEqual(initialRange);
-    });
-
-    it('should clear custom period when changing to preset period', () => {
-      component.customPeriod.set({ type: 'month', year: 2024, month: 5 });
-      component.selectedPeriod = 'thisMonth';
-      component.onPeriodChange();
-
-      expect(component.customPeriod()).toBeNull();
-    });
-
-    it('should reload data when period changes', () => {
+    it('should update the date range and reload from a selector emission', () => {
       mockTransactionService.getByDateRange.calls.reset();
+      const start = new Date(2024, 5, 1);
+      const end = new Date(2024, 5, 30, 23, 59, 59);
 
-      component.selectedPeriod = 'thisYear';
-      component.onPeriodChange();
+      component.onPeriodSelection(selection('custom', start, end));
 
-      expect(mockTransactionService.getByDateRange).toHaveBeenCalled();
+      expect(component.dateRange()).toEqual({ start, end });
+      expect(mockTransactionService.getByDateRange).toHaveBeenCalledWith(start, end);
     });
   });
 
@@ -121,27 +120,4 @@ describe('ReportsComponent', () => {
     });
   });
 
-  describe('custom period', () => {
-    it('should compute empty label when no custom period', () => {
-      expect(component.customPeriodLabel()).toBe('');
-    });
-
-    it('should compute year label for year custom period', () => {
-      component.customPeriod.set({ type: 'year', year: 2024 });
-      expect(component.customPeriodLabel()).toBe('2024');
-    });
-
-    it('should compute month/year label for month custom period', () => {
-      component.customPeriod.set({ type: 'month', year: 2024, month: 5 });
-      expect(component.customPeriodLabel()).toBe('Jun 2024');
-    });
-
-    it('should clear custom period correctly', () => {
-      component.customPeriod.set({ type: 'year', year: 2024 });
-      component.clearCustomPeriod();
-
-      expect(component.customPeriod()).toBeNull();
-      expect(component.selectedPeriod).toBe('thisMonth');
-    });
-  });
 });

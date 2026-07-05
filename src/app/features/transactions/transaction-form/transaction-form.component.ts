@@ -16,18 +16,19 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
+import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { NotificationService } from '../../../core/services/notification.service';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -38,6 +39,8 @@ interface DialogData {
   selector: 'app-transaction-form',
   standalone: true,
   imports: [
+    LoadingSpinnerComponent,
+    DialogHeaderComponent,
     CommonModule,
     ReactiveFormsModule,
     MatDialogModule,
@@ -52,7 +55,6 @@ interface DialogData {
     MatProgressSpinnerModule,
     MatChipsModule,
     MatTooltipModule,
-    MatSnackBarModule,
     TranslatePipe,
     CdkTextareaAutosize
   ],
@@ -60,6 +62,7 @@ interface DialogData {
   styleUrl: './transaction-form.component.scss',
 })
 export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestroy {
+  private notifications = inject(NotificationService);
   private fb = inject(FormBuilder);
   private dialogRef = inject(MatDialogRef<TransactionFormComponent>);
   data: DialogData = inject(MAT_DIALOG_DATA);
@@ -69,8 +72,6 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private geminiService = inject(GeminiService);
-  private snackBar = inject(MatSnackBar);
-  private announcer = inject(AnnouncerService);
   private cdr = inject(ChangeDetectorRef);
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
@@ -318,8 +319,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     // Validate file type
     if (!file.type.startsWith('image/')) {
       const message = this.translationService.t('ai.invalidFileType');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
       return;
     }
 
@@ -341,8 +341,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     };
     reader.onerror = () => {
       const message = this.translationService.t('ai.readError');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     };
     reader.readAsDataURL(receipt);
   }
@@ -373,14 +372,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
       // Show success message
       const message = this.translationService.t('ai.scanSuccess');
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 3000 });
-      this.announcer.announce(message);
+      this.notifications.success(message);
     } catch (error) {
       console.error('Receipt scan error:', error);
       const message = this.translationService.t('ai.scanError');
       this.scanError.set(message);
-      this.snackBar.open(message, this.translationService.t('common.close'), { duration: 4000 });
-      this.announcer.announce(message, 'assertive');
+      this.notifications.error(message);
     } finally {
       this.isScanning.set(false);
     }

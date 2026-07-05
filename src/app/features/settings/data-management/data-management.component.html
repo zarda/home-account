@@ -99,8 +99,7 @@
           hidden
         />
         @if (isImporting()) {
-          <mat-spinner diameter="32"></mat-spinner>
-          <span>{{ 'settings.processingFile' | translate }}</span>
+          <app-loading-spinner [message]="'settings.processingFile' | translate" />
         } @else {
           <mat-icon>cloud_upload</mat-icon>
           <span class="dropzone-text">{{ 'settings.uploadPrompt' | translate }}</span>
@@ -170,16 +169,6 @@
         </div>
         <button mat-stroked-button color="warn" (click)="deleteAllTransactions()">
           {{ 'settings.deleteAll' | translate }}
-        </button>
-      </div>
-
-      <div class="danger-item">
-        <div class="danger-info">
-          <span class="danger-title">{{ 'auth.signOut' | translate }}</span>
-          <span class="danger-desc">{{ 'settings.signOutDescription' | translate }}</span>
-        </div>
-        <button mat-stroked-button (click)="signOut()">
-          {{ 'auth.signOut' | translate }}
         </button>
       </div>
     </div>

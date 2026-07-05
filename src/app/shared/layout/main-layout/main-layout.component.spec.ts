@@ -1,17 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { BehaviorSubject } from 'rxjs';
-import { BreakpointObserver, BreakpointState, Breakpoints } from '@angular/cdk/layout';
+import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
+import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { MainLayoutComponent } from './main-layout.component';
+
+const MOBILE = APP_BREAKPOINTS.mobile;
+const TABLET = APP_BREAKPOINTS.tablet;
+const DESKTOP = APP_BREAKPOINTS.desktop;
 
 function state(active: string[]): BreakpointState {
   const breakpoints: Record<string, boolean> = {};
-  for (const bp of [
-    Breakpoints.XSmall,
-    Breakpoints.Small,
-    Breakpoints.Medium,
-    Breakpoints.Large,
-    Breakpoints.XLarge,
-  ]) {
+  for (const bp of [MOBILE, TABLET, DESKTOP]) {
     breakpoints[bp] = active.includes(bp);
   }
   return { matches: active.length > 0, breakpoints };
@@ -23,7 +22,8 @@ describe('MainLayoutComponent', () => {
   let breakpoint$: BehaviorSubject<BreakpointState>;
 
   beforeEach(async () => {
-    breakpoint$ = new BehaviorSubject<BreakpointState>(state([Breakpoints.Large]));
+    localStorage.removeItem('homeaccount.sidebar-collapsed');
+    breakpoint$ = new BehaviorSubject<BreakpointState>(state([DESKTOP]));
     const observer = { observe: () => breakpoint$.asObservable() };
 
     await TestBed.configureTestingModule({
@@ -39,55 +39,113 @@ describe('MainLayoutComponent', () => {
     fixture.detectChanges();
   });
 
+  afterEach(() => {
+    localStorage.removeItem('homeaccount.sidebar-collapsed');
+  });
+
   it('should create', () => {
     expect(component).toBeTruthy();
   });
 
-  it('opens the sidebar on desktop via the effect', () => {
+  it('docks the sidebar on desktop without opening a modal drawer', () => {
     expect(component.isDesktop()).toBeTrue();
     expect(component.isOverlayMode()).toBeFalse();
-    expect(component.sidebarOpen()).toBeTrue();
+    // The single highest-impact layout fix: no auto-opened overlay on load.
+    expect(component.sidebarOpen()).toBeFalse();
+    expect(component.showDockedSidebar()).toBeTrue();
+    expect(component.sidebarVisible()).toBeTrue();
   });
 
-  it('closes the sidebar when switching to mobile (overlay mode)', () => {
-    breakpoint$.next(state([Breakpoints.XSmall]));
+  it('keeps the overlay drawer closed when switching to mobile', () => {
+    breakpoint$.next(state([MOBILE]));
     fixture.detectChanges();
     expect(component.isMobile()).toBeTrue();
     expect(component.isOverlayMode()).toBeTrue();
     expect(component.sidebarOpen()).toBeFalse();
+    expect(component.showDockedSidebar()).toBeFalse();
   });
 
   it('treats tablet breakpoints as overlay mode', () => {
-    breakpoint$.next(state([Breakpoints.Medium]));
+    breakpoint$.next(state([TABLET]));
     fixture.detectChanges();
     expect(component.isTablet()).toBeTrue();
     expect(component.isOverlayMode()).toBeTrue();
   });
 
-  it('toggleSidebar flips the open state', () => {
-    component.sidebarOpen.set(false);
+  it('closes an open overlay drawer when growing into desktop', () => {
+    breakpoint$.next(state([MOBILE]));
+    fixture.detectChanges();
     component.toggleSidebar();
     expect(component.sidebarOpen()).toBeTrue();
-    component.toggleSidebar();
+
+    breakpoint$.next(state([DESKTOP]));
+    fixture.detectChanges();
     expect(component.sidebarOpen()).toBeFalse();
+    expect(component.showDockedSidebar()).toBeTrue();
   });
 
-  it('closeSidebar always closes', () => {
-    component.sidebarOpen.set(true);
+  describe('toggleSidebar', () => {
+    it('toggles the overlay drawer in overlay mode', () => {
+      breakpoint$.next(state([MOBILE]));
+      fixture.detectChanges();
+
+      component.toggleSidebar();
+      expect(component.sidebarOpen()).toBeTrue();
+      component.toggleSidebar();
+      expect(component.sidebarOpen()).toBeFalse();
+    });
+
+    it('collapses/expands the docked sidebar on desktop and persists the choice', () => {
+      component.toggleSidebar();
+      expect(component.sidebarCollapsed()).toBeTrue();
+      expect(component.showDockedSidebar()).toBeFalse();
+      expect(localStorage.getItem('homeaccount.sidebar-collapsed')).toBe('true');
+
+      component.toggleSidebar();
+      expect(component.showDockedSidebar()).toBeTrue();
+      expect(localStorage.getItem('homeaccount.sidebar-collapsed')).toBe('false');
+    });
+  });
+
+  it('restores the persisted collapse preference on creation', () => {
+    localStorage.setItem('homeaccount.sidebar-collapsed', 'true');
+    const collapsedFixture = TestBed.createComponent(MainLayoutComponent);
+    collapsedFixture.detectChanges();
+
+    expect(collapsedFixture.componentInstance.sidebarCollapsed()).toBeTrue();
+    expect(collapsedFixture.componentInstance.showDockedSidebar()).toBeFalse();
+  });
+
+  it('closeSidebar always closes the overlay drawer', () => {
+    breakpoint$.next(state([MOBILE]));
+    fixture.detectChanges();
+    component.toggleSidebar();
     component.closeSidebar();
     expect(component.sidebarOpen()).toBeFalse();
   });
 
-  it('onNavItemClicked closes the sidebar only in overlay mode', () => {
-    // Desktop: stays open.
-    component.sidebarOpen.set(true);
-    component.onNavItemClicked();
-    expect(component.sidebarOpen()).toBeTrue();
+  it('onEscape closes the overlay drawer but leaves the docked sidebar alone', () => {
+    // Desktop: escape is a no-op for the docked sidebar.
+    component.onEscape();
+    expect(component.showDockedSidebar()).toBeTrue();
 
-    // Mobile: closes.
-    breakpoint$.next(state([Breakpoints.XSmall]));
+    // Mobile with open drawer: escape closes it.
+    breakpoint$.next(state([MOBILE]));
     fixture.detectChanges();
-    component.sidebarOpen.set(true);
+    component.toggleSidebar();
+    component.onEscape();
+    expect(component.sidebarOpen()).toBeFalse();
+  });
+
+  it('onNavItemClicked closes the drawer only in overlay mode', () => {
+    // Desktop: docked sidebar unaffected.
+    component.onNavItemClicked();
+    expect(component.showDockedSidebar()).toBeTrue();
+
+    // Mobile: closes the drawer.
+    breakpoint$.next(state([MOBILE]));
+    fixture.detectChanges();
+    component.toggleSidebar();
     component.onNavItemClicked();
     expect(component.sidebarOpen()).toBeFalse();
   });

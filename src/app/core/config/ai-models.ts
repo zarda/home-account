@@ -36,11 +36,11 @@ export const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
 
 // Anthropic Claude models (multimodal)
 export const CLAUDE_MODELS: AIModelOption[] = [
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Recommended)' },
+  { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Recommended)' },
   { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
   { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
 ];
-export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-6';
+export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5';
 
 /** Languages requested from Vision OCR for receipt recognition. */
 export const OCR_LANGUAGES = ['en-US', 'ja-JP', 'zh-Hant'];
