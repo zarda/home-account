@@ -14,6 +14,14 @@ describe('formatReceiptItemLines', () => {
     const lines = formatReceiptItemLines([{ name: 'おにぎり', amount: 1151 }], 'JPY');
     expect(lines).toBe('おにぎり — JPY 1,151');
   });
+
+  it('keeps the name only for items without a numeric amount and drops nameless items', () => {
+    const lines = formatReceiptItemLines(
+      [{ name: 'Latte', amount: 5 }, { name: 'Point discount' }, { amount: 3 }],
+      'USD'
+    );
+    expect(lines).toBe('Latte — USD 5.00\nPoint discount');
+  });
 });
 
 describe('consolidateReceiptItems', () => {
@@ -59,6 +67,26 @@ describe('consolidateReceiptItems', () => {
     expect(merged.confidence).toBeCloseTo(0.8);
     expect(merged.wasMerged).toBeTrue();
     expect(merged.mergedFromImages).toEqual([0, 1]);
+  });
+
+  it('subtracts refund/credit lines from the merged total', () => {
+    const result = consolidateReceiptItems([
+      item({ description: 'Purchase', amount: 10, type: 'expense', receiptId: 1 }),
+      item({ description: 'Refund', amount: 5, type: 'income', receiptId: 1 }),
+    ]);
+    expect(result.length).toBe(1);
+    expect(result[0].amount).toBe(5);
+    expect(result[0].type).toBe('expense');
+  });
+
+  it('marks a merged group as income when credits outweigh purchases', () => {
+    const result = consolidateReceiptItems([
+      item({ description: 'Refund A', amount: 20, type: 'income', receiptId: 1 }),
+      item({ description: 'Refund B', amount: 5, type: 'income', receiptId: 1 }),
+    ]);
+    expect(result.length).toBe(1);
+    expect(result[0].amount).toBe(25);
+    expect(result[0].type).toBe('income');
   });
 
   it('prefers the full AI receiptDetails over the generated item list', () => {

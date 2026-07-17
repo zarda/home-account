@@ -3,14 +3,19 @@ import { MultiImageExtractedTransaction } from '../services/gemini.service';
 /**
  * Format receipt line items as "name — CURRENCY amount", one per line.
  * JPY amounts are whole numbers; other currencies keep two decimals.
+ * Items without a numeric amount (e.g. free or discount-label lines from
+ * the AI) keep their name only; nameless items are dropped.
  */
 export function formatReceiptItemLines(
-  items: { name: string; amount: number }[],
+  items: { name?: string; amount?: number }[],
   currency: string
 ): string {
   const fractionDigits = currency === 'JPY' ? 0 : 2;
   return items
-    .map(item => `${item.name} — ${currency} ${item.amount.toLocaleString('en', { minimumFractionDigits: fractionDigits })}`)
+    .filter(item => item?.name)
+    .map(item => Number.isFinite(item.amount)
+      ? `${item.name} — ${currency} ${(item.amount as number).toLocaleString('en', { minimumFractionDigits: fractionDigits })}`
+      : String(item.name))
     .join('\n');
 }
 
@@ -42,12 +47,17 @@ export function consolidateReceiptItems(
       const only = groupItems[0];
       result.push(only.receiptDetails ? { ...only, details: only.receiptDetails } : only);
     } else {
-      // Multiple items from same receipt — merge into one transaction
+      // Multiple items from same receipt — merge into one transaction.
+      // Amounts are absolute values, so refund/credit lines (type 'income')
+      // must reduce the total rather than inflate it
       const first = groupItems[0];
       const currency = first.currency || 'JPY';
       const merchant = first.merchant || groupItems.find(i => i.merchant)?.merchant || 'Receipt';
       const category = first.category || groupItems.find(i => i.category)?.category;
-      const totalAmount = groupItems.reduce((sum, item) => sum + item.amount, 0);
+      const netAmount = groupItems.reduce(
+        (sum, item) => sum + (item.type === 'income' ? -item.amount : item.amount),
+        0
+      );
 
       // Prefer full receipt details from AI, fall back to item list
       const receiptDetailsFromAI = groupItems.find(i => i.receiptDetails)?.receiptDetails;
@@ -60,8 +70,8 @@ export function consolidateReceiptItems(
       result.push({
         date: first.date,
         description: merchant,
-        amount: totalAmount,
-        type: 'expense',
+        amount: Math.abs(netAmount),
+        type: netAmount < 0 ? 'income' : 'expense',
         currency,
         category,
         merchant,
