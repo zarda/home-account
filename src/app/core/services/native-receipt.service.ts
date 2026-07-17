@@ -130,6 +130,10 @@ export class NativeReceiptService {
       currency: parsed.currency,
       confidence: ocrResult.confidence,
       source: 'native',
+      // The regex parser cannot itemize, but the recognized text IS the
+      // receipt's line-by-line content — record it so item details reach
+      // the transaction note
+      notes: ocrResult.text?.trim() || undefined,
     };
   }
 }

@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { AIStrategyService, ProcessingResult } from './ai-strategy.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
+import { consolidateReceiptItems } from '../utils/receipt-consolidation';
 import {
   ImportResult,
   ImportWarning,
@@ -233,7 +234,7 @@ export class AIImportService {
       this.processingProgress.set(60);
 
       // Consolidate line items into a single receipt transaction
-      const consolidated = this.consolidateReceiptItems(extractedTransactions);
+      const consolidated = consolidateReceiptItems(extractedTransactions);
 
       // Convert to CategorizedImportTransaction format with image metadata
       const categorized = await this.categorizeMultiImageTransactions(consolidated);
@@ -256,68 +257,6 @@ export class AIImportService {
     } finally {
       this.isProcessing.set(false);
     }
-  }
-
-  /**
-   * Consolidate line items by receipt group.
-   * Items sharing the same receiptId are merged into one transaction (items become notes).
-   * Items with unique receiptIds stay as standalone transactions.
-   */
-  private consolidateReceiptItems(
-    items: MultiImageExtractedTransaction[]
-  ): MultiImageExtractedTransaction[] {
-    if (items.length === 0) return [];
-
-    // Group items by receiptId (default to 1 if not set)
-    const groups = new Map<number, MultiImageExtractedTransaction[]>();
-    for (const item of items) {
-      const rid = item.receiptId ?? 1;
-      if (!groups.has(rid)) groups.set(rid, []);
-      groups.get(rid)!.push(item);
-    }
-
-    const result: MultiImageExtractedTransaction[] = [];
-
-    for (const [, groupItems] of groups) {
-      if (groupItems.length === 1) {
-        // Single item — keep as standalone transaction
-        result.push(groupItems[0]);
-      } else {
-        // Multiple items from same receipt — merge into one transaction
-        const first = groupItems[0];
-        const currency = first.currency || 'JPY';
-        const merchant = first.merchant || groupItems.find(i => i.merchant)?.merchant || 'Receipt';
-        const category = first.category || groupItems.find(i => i.category)?.category;
-        const totalAmount = groupItems.reduce((sum, item) => sum + item.amount, 0);
-
-        // Prefer full receipt details from AI, fall back to item list
-        const receiptDetailsFromAI = groupItems.find(i => i.receiptDetails)?.receiptDetails;
-        const fractionDigits = currency === 'JPY' ? 0 : 2;
-        const details = receiptDetailsFromAI
-          || groupItems
-            .map(item => `${item.description} — ${currency} ${item.amount.toLocaleString('en', { minimumFractionDigits: fractionDigits })}`)
-            .join('\n');
-
-        result.push({
-          date: first.date,
-          description: merchant,
-          amount: totalAmount,
-          type: 'expense',
-          currency,
-          category,
-          merchant,
-          details,
-          imageIndex: 0,
-          positionInImage: 'middle',
-          confidence: groupItems.reduce((sum, i) => sum + i.confidence, 0) / groupItems.length,
-          receiptId: first.receiptId,
-          wasMerged: true,
-          mergedFromImages: [...new Set(groupItems.map(i => i.imageIndex))],
-        });
-      }
-    }
-
-    return result;
   }
 
   /**

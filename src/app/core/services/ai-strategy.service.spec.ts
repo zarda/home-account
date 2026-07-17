@@ -230,15 +230,17 @@ describe('AIStrategyService', () => {
   });
 
   describe('processMultipleImages', () => {
-    it('should map cloud extractions to transactions', async () => {
+    it('should map cloud extractions to transactions, one per receipt', async () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
           date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
           currency: 'USD', details: 'set menu', imageIndex: 0, positionInImage: 'top', confidence: 0.8,
+          receiptId: 1,
         },
         {
           date: '2026-01-16', description: 'Snack', amount: 5, type: 'expense',
           currency: 'USD', imageIndex: 1, positionInImage: 'top', confidence: 0.6,
+          receiptId: 2,
         },
       ];
       cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
@@ -250,6 +252,51 @@ describe('AIStrategyService', () => {
       expect(result.transactions[0].notes).toBe('set menu');
       expect(result.confidence).toBeCloseTo(0.7);
       expect(result.source).toBe('cloud');
+    });
+
+    it('should merge line items of one receipt and record them in the notes', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          confidence: 0.8, receiptId: 1,
+        },
+        {
+          date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
+          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          receiptId: 1,
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].description).toBe('Diner');
+      expect(result.transactions[0].amount).toBe(15);
+      expect(result.transactions[0].notes).toBe('Lunch — USD 10.00\nSnack — USD 5.00');
+    });
+
+    it('should prefer the full receipt details from the AI for merged notes', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
+          currency: 'USD', imageIndex: 0, positionInImage: 'top', confidence: 0.8, receiptId: 1,
+        },
+        {
+          date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
+          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6, receiptId: 1,
+          receiptDetails: 'Lunch — 10.00\nSnack — 5.00\nTax 1.20\nTotal 16.20',
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].notes).toBe('Lunch — 10.00\nSnack — 5.00\nTax 1.20\nTotal 16.20');
     });
 
     it('should process with the native pipeline on iOS', async () => {

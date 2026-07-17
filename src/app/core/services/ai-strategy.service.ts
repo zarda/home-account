@@ -9,6 +9,7 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { NativeReceiptService } from './native-receipt.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
+import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { LLMProvider } from '../../models';
 
@@ -275,7 +276,12 @@ export class AIStrategyService {
 
     const extracted = await this.cloudLLMProvider.extractTransactionsFromMultipleImages(imageBase64Array);
 
-    const transactions: ProcessedTransaction[] = extracted.map(t => ({
+    // Merge line items belonging to the same receipt into one transaction so
+    // the itemized list is recorded in the note instead of scattering items
+    // across separate transactions
+    const consolidated = consolidateReceiptItems(extracted);
+
+    const transactions: ProcessedTransaction[] = consolidated.map(t => ({
       date: new Date(t.date),
       description: t.description,
       amount: t.amount,
@@ -284,6 +290,7 @@ export class AIStrategyService {
       confidence: t.confidence,
       source: 'cloud' as const,
       notes: t.details,
+      suggestedCategoryId: t.category,
     }));
 
     const avgConfidence = transactions.length > 0
@@ -317,7 +324,7 @@ export class AIStrategyService {
       confidence: receipt.confidence,
       source: 'cloud',
       notes: receipt.receiptDetails
-        || receipt.items?.map(item => `${item.name} — ${receipt.currency} ${item.amount.toLocaleString('en', { minimumFractionDigits: receipt.currency === 'JPY' ? 0 : 2 })}`).join('\n')
+        || (receipt.items?.length ? formatReceiptItemLines(receipt.items, receipt.currency) : '')
         || '',
       suggestedCategoryId: receipt.suggestedCategory,
     };

@@ -26,6 +26,7 @@ import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../..
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage } from '../../../shared/utils/image-compression';
+import { formatReceiptItemLines } from '../../../core/utils/receipt-consolidation';
 import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -360,6 +361,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         description: result.merchant || '',
         date: result.date || new Date(),
       });
+
+      // Record the itemized receipt content in the note field
+      const receiptNote = result.receiptDetails
+        || (result.items?.length ? formatReceiptItemLines(result.items, result.currency) : '');
+      if (receiptNote) {
+        this.form.patchValue({ note: receiptNote });
+      }
 
       // Set category if suggested
       if (result.suggestedCategory) {

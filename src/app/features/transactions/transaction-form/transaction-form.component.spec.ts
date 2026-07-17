@@ -225,6 +225,33 @@ describe('TransactionFormComponent', () => {
       expect(notifications.success).toHaveBeenCalledWith('ai.scanSuccess');
     });
 
+    it('scanReceipt records the full receipt details in the note field', async () => {
+      gemini.parseReceipt.and.resolveTo({
+        amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1),
+        suggestedCategory: 'food', receiptDetails: 'Latte — 5.00\nBagel — 7.00\nTotal 12.00',
+      } as never);
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+      expect(component.form.get('note')?.value).toBe('Latte — 5.00\nBagel — 7.00\nTotal 12.00');
+    });
+
+    it('scanReceipt falls back to the itemized list for the note field', async () => {
+      gemini.parseReceipt.and.resolveTo({
+        amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1),
+        suggestedCategory: 'food', items: [{ name: 'Latte', amount: 5 }, { name: 'Bagel', amount: 7 }],
+      } as never);
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+      expect(component.form.get('note')?.value).toBe('Latte — USD 5.00\nBagel — USD 7.00');
+    });
+
+    it('scanReceipt leaves an existing note untouched when no details were extracted', async () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ note: 'my note' });
+      await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+      expect(component.form.get('note')?.value).toBe('my note');
+    });
+
     it('scanReceipt records an error on failure', async () => {
       gemini.parseReceipt.and.rejectWith(new Error('bad'));
       const component = build().componentInstance;
