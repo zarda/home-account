@@ -127,16 +127,16 @@
 
   .ai-icon {
     font-size: var(--text-base);
-    width: 16px;
-    height: 16px;
+    width: 1em;
+    height: 1em;
     margin-right: 4px;
     @apply text-primary-500;
   }
 
   mat-icon:not(.ai-icon) {
     font-size: var(--text-lg);
-    width: 18px;
-    height: 18px;
+    width: 1em;
+    height: 1em;
     margin-right: 6px;
   }
 
@@ -225,8 +225,8 @@
 
 .category-option mat-icon {
   font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
 }
 
 .dialog-actions {

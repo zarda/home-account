@@ -26,8 +26,8 @@
 .search-icon {
   @apply text-gray-400 dark:text-gray-500;
   font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
   flex-shrink: 0;
 }
 
@@ -82,9 +82,9 @@
 
   mat-icon {
     font-size: var(--text-lg);
-    width: 18px;
-    height: 18px;
-    line-height: 18px;
+    width: 1em;
+    height: 1em;
+    line-height: 1em;
   }
 }
 
@@ -124,8 +124,8 @@
 
 .filter-toggle mat-icon {
   font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
 }
 
 .filter-badge {
@@ -165,8 +165,8 @@
 
 .add-btn mat-icon {
   font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
 }
 
 .add-label {
@@ -228,8 +228,8 @@
 
 .clear-btn mat-icon {
   font-size: var(--text-base);
-  width: 16px;
-  height: 16px;
+  width: 1em;
+  height: 1em;
 }
 
 @media (min-width: 640px) {
