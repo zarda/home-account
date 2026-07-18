@@ -36,7 +36,9 @@ import { ThemeService } from '../../../core/services/theme.service';
           [style.background-color]="getBackgroundColor(color)"
           [style.color]="getTextColor(color)"
         >
-          <mat-icon class="!text-base !w-4 !h-4">{{ resolvedIcon() }}</mat-icon>
+          <!-- Box sizing comes from the global mat-icon 1em rule, so the
+               glyph stays contained at any browser font size -->
+          <mat-icon class="!text-base">{{ resolvedIcon() }}</mat-icon>
           @if (showLabel && resolvedLabel(); as chipLabel) {
             <span class="font-medium">{{ chipLabel | translate }}</span>
           }
@@ -60,9 +62,9 @@ import { ThemeService } from '../../../core/services/theme.service';
 
       mat-icon {
         font-size: var(--text-xl);
-        width: 20px;
-        height: 20px;
-        line-height: 20px;
+        width: 1em;
+        height: 1em;
+        line-height: 1;
       }
     }
 
@@ -73,9 +75,9 @@ import { ThemeService } from '../../../core/services/theme.service';
 
       mat-icon {
         font-size: var(--text-lg);
-        width: 18px;
-        height: 18px;
-        line-height: 18px;
+        width: 1em;
+        height: 1em;
+        line-height: 1;
       }
     }
 
@@ -85,9 +87,9 @@ import { ThemeService } from '../../../core/services/theme.service';
 
       mat-icon {
         font-size: var(--text-2xl);
-        width: 24px;
-        height: 24px;
-        line-height: 24px;
+        width: 1em;
+        height: 1em;
+        line-height: 1;
       }
     }
   `,
