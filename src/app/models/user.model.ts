@@ -23,7 +23,11 @@ export interface UserSubscription {
   tier: SubscriptionTier;
 }
 
-/** Maximum stored receipt images for free-tier (general) users. */
+/**
+ * Default maximum stored receipt images for free-tier (general) users.
+ * Tunable at runtime via Remote Config (docs/remote-config.md); this
+ * constant is the in-app fallback when no remote value is available.
+ */
 export const FREE_TIER_RECEIPT_IMAGE_LIMIT = 200;
 
 export type LLMProvider = 'gemini' | 'openai' | 'claude';

@@ -1,8 +1,10 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
+import { RemoteConfigService } from './remote-config.service';
 import { MockAuthService, createMockUser } from './testing';
 import { FREE_TIER_RECEIPT_IMAGE_LIMIT } from '../../models';
 
@@ -10,16 +12,26 @@ describe('ReceiptQuotaService', () => {
   let service: ReceiptQuotaService;
   let firestoreMock: jasmine.SpyObj<FirestoreService>;
   let authMock: MockAuthService;
+  // Signals stand in for the RemoteConfigService computeds
+  let freeLimit: ReturnType<typeof signal<number>>;
+  let premiumLimit: ReturnType<typeof signal<number>>;
 
   beforeEach(() => {
     firestoreMock = jasmine.createSpyObj<FirestoreService>('FirestoreService', ['countDocuments']);
     firestoreMock.countDocuments.and.resolveTo(0);
+
+    freeLimit = signal(FREE_TIER_RECEIPT_IMAGE_LIMIT);
+    premiumLimit = signal(Number.POSITIVE_INFINITY);
 
     TestBed.configureTestingModule({
       providers: [
         ReceiptQuotaService,
         { provide: FirestoreService, useValue: firestoreMock },
         { provide: AuthService, useClass: MockAuthService },
+        {
+          provide: RemoteConfigService,
+          useValue: { freeTierReceiptImageLimit: freeLimit, premiumReceiptImageLimit: premiumLimit },
+        },
       ],
     });
 
@@ -40,6 +52,28 @@ describe('ReceiptQuotaService', () => {
     expect(service.tier()).toBe('premium');
     expect(service.hasUnlimitedImages()).toBeTrue();
     expect(service.isAtLimit()).toBeFalse();
+  });
+
+  it('honors a remotely tuned free-tier limit', async () => {
+    freeLimit.set(2);
+    firestoreMock.countDocuments.and.resolveTo(2);
+
+    expect(await service.canAddImage()).toBeFalse();
+    expect(service.isAtLimit()).toBeTrue();
+
+    // Raising the remote value immediately lifts the limit
+    freeLimit.set(5);
+    expect(service.isAtLimit()).toBeFalse();
+    expect(service.remaining()).toBe(3);
+  });
+
+  it('honors a remotely tuned premium limit', async () => {
+    authMock.setMockUser(createMockUser('u1', { subscription: { tier: 'premium' } }));
+    premiumLimit.set(3);
+    firestoreMock.countDocuments.and.resolveTo(3);
+
+    expect(service.hasUnlimitedImages()).toBeFalse();
+    expect(await service.canAddImage()).toBeFalse();
   });
 
   it('counts stored images via a receiptUrl aggregation query', async () => {

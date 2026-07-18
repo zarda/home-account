@@ -1,13 +1,14 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
-import { FREE_TIER_RECEIPT_IMAGE_LIMIT, SubscriptionTier, Transaction } from '../../models';
+import { RemoteConfigService } from './remote-config.service';
+import { SubscriptionTier, Transaction } from '../../models';
 
 /**
  * Tracks how many receipt images a user has stored and enforces the
- * per-tier limit. General (free) users may keep up to
- * FREE_TIER_RECEIPT_IMAGE_LIMIT images; the premium tier (a paid upgrade
- * offered in a future release) lifts the limit.
+ * per-tier limit. General (free) users may keep up to the free-tier limit
+ * (200 by default, tunable via Remote Config); the premium tier (a paid
+ * upgrade offered in a future release) lifts the limit.
  *
  * The count is a server-side aggregation over transactions with a
  * receiptUrl, loaded lazily and kept in sync locally as images are added
@@ -17,6 +18,7 @@ import { FREE_TIER_RECEIPT_IMAGE_LIMIT, SubscriptionTier, Transaction } from '..
 export class ReceiptQuotaService {
   private firestoreService = inject(FirestoreService);
   private authService = inject(AuthService);
+  private remoteConfigService = inject(RemoteConfigService);
 
   private _imageCount = signal<number | null>(null);
   private countedForUserId: string | null = null;
@@ -28,9 +30,11 @@ export class ReceiptQuotaService {
     this.authService.currentUser()?.subscription?.tier ?? 'free'
   );
 
-  /** Image limit for the current tier; premium is unlimited. */
+  /** Image limit for the current tier, tunable via Remote Config. */
   imageLimit = computed(() =>
-    this.tier() === 'premium' ? Number.POSITIVE_INFINITY : FREE_TIER_RECEIPT_IMAGE_LIMIT
+    this.tier() === 'premium'
+      ? this.remoteConfigService.premiumReceiptImageLimit()
+      : this.remoteConfigService.freeTierReceiptImageLimit()
   );
 
   hasUnlimitedImages = computed(() => !Number.isFinite(this.imageLimit()));
