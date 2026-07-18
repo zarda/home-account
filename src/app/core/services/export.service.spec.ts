@@ -30,6 +30,11 @@ describe('ExportService', () => {
   let currencyService: CurrencyService;
 
   beforeEach(() => {
+    // The real CurrencyService starts a rates refresh in its constructor; on
+    // CI runners the fetch can succeed and write cached rates through the
+    // Firestore mock mid-test. Reject it so specs stay deterministic.
+    spyOn(window, 'fetch').and.rejectWith(new Error('network disabled in specs'));
+
     TestBed.configureTestingModule({
       providers: [
         ExportService,

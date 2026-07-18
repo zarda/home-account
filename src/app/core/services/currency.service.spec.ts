@@ -9,6 +9,12 @@ describe('CurrencyService', () => {
   let mockFirestore: MockFirestoreService;
 
   beforeEach(() => {
+    // The constructor starts a rates refresh; on CI runners the fetch can
+    // succeed and overwrite the seeded rate table below with live values
+    // (and write cached rates through the Firestore mock) mid-test.
+    // Reject it so specs stay deterministic.
+    spyOn(window, 'fetch').and.rejectWith(new Error('network disabled in specs'));
+
     TestBed.configureTestingModule({
       providers: [
         CurrencyService,

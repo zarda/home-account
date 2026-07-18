@@ -30,6 +30,13 @@ describe('TransactionService', () => {
     ]);
     mockQuota.canAddImage.and.resolveTo(true);
 
+    // The real CurrencyService starts a rates refresh in its constructor.
+    // On CI runners that fetch can actually succeed and then write cached
+    // rates through the Firestore mock mid-test (a phantom setDocument on
+    // 'currencies/rates') and clobber the seeded rate table with live
+    // values. Reject it so specs stay deterministic.
+    spyOn(window, 'fetch').and.rejectWith(new Error('network disabled in specs'));
+
     TestBed.configureTestingModule({
       providers: [
         TransactionService,
