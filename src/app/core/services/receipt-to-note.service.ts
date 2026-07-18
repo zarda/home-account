@@ -10,6 +10,12 @@ import { Transaction } from '../../models';
 export const RECEIPT_TO_NOTE_AI_UNAVAILABLE = 'RECEIPT_TO_NOTE_AI_UNAVAILABLE';
 /** Thrown when the AI could not extract any detail from the image. */
 export const RECEIPT_TO_NOTE_NO_DETAILS = 'RECEIPT_TO_NOTE_NO_DETAILS';
+/**
+ * Thrown when the image bytes could not be downloaded at all. The usual
+ * cause is a storage bucket without CORS configuration — browsers then
+ * block every in-browser download (see docs/storage-cors-setup.md).
+ */
+export const RECEIPT_TO_NOTE_DOWNLOAD_FAILED = 'RECEIPT_TO_NOTE_DOWNLOAD_FAILED';
 
 /**
  * Converts a transaction's stored receipt image into detailed note text:
@@ -74,7 +80,12 @@ export class ReceiptToNoteService {
       if (!userId) throw new Error('User not authenticated');
       blob = await this.storageService.downloadReceipt(userId, transaction.id);
     } catch {
-      blob = await this.fetchImageBlob(transaction.receiptUrl!);
+      try {
+        blob = await this.fetchImageBlob(transaction.receiptUrl!);
+      } catch (error) {
+        console.error('[ReceiptToNote] Image download failed on both paths:', error);
+        throw new Error(RECEIPT_TO_NOTE_DOWNLOAD_FAILED);
+      }
     }
 
     // The AI providers strip/parse a data:image/... prefix; a blob served

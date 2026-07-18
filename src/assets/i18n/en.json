@@ -811,6 +811,7 @@
     "converted": "Receipt details saved to the note and the image was removed",
     "convertFailedNoAi": "No AI provider is configured. Add an API key in Profile Settings to convert images.",
     "convertFailedNoDetails": "No details could be read from this image, so it was kept.",
+    "convertFailedDownload": "The image could not be downloaded. If this keeps happening, the storage bucket needs a one-time CORS setup — see docs/storage-cors-setup.md.",
     "convertFailed": "Converting the image failed, so it was kept.",
     "empty": "No stored receipt images."
   }

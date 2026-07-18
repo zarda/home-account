@@ -835,6 +835,7 @@
     "converted": "已將收據詳細內容儲存到備註並刪除圖片",
     "convertFailedNoAi": "尚未設定 AI 供應商。請在個人資料設定中新增 API 金鑰以轉換圖片。",
     "convertFailedNoDetails": "無法從此圖片讀取詳細內容，圖片已保留。",
+    "convertFailedDownload": "無法下載圖片。若持續發生，儲存空間值區需要一次性的 CORS 設定（請參閱 docs/storage-cors-setup.md）。",
     "convertFailed": "圖片轉換失敗，圖片已保留。",
     "empty": "沒有已儲存的收據圖片。"
   }

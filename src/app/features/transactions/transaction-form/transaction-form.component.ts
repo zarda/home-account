@@ -22,6 +22,7 @@ import {
   ReceiptToNoteService,
   RECEIPT_TO_NOTE_AI_UNAVAILABLE,
   RECEIPT_TO_NOTE_NO_DETAILS,
+  RECEIPT_TO_NOTE_DOWNLOAD_FAILED,
 } from '../../../core/services/receipt-to-note.service';
 import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -485,6 +486,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         this.notifications.error(this.translationService.t('receiptImages.convertFailedNoAi'));
       } else if (message === RECEIPT_TO_NOTE_NO_DETAILS) {
         this.notifications.error(this.translationService.t('receiptImages.convertFailedNoDetails'));
+      } else if (message === RECEIPT_TO_NOTE_DOWNLOAD_FAILED) {
+        this.notifications.error(this.translationService.t('receiptImages.convertFailedDownload'));
       } else {
         this.notifications.error(this.translationService.t('receiptImages.convertFailed'));
       }

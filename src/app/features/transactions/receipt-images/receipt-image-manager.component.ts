@@ -13,6 +13,7 @@ import {
   ReceiptToNoteService,
   RECEIPT_TO_NOTE_AI_UNAVAILABLE,
   RECEIPT_TO_NOTE_NO_DETAILS,
+  RECEIPT_TO_NOTE_DOWNLOAD_FAILED,
 } from '../../../core/services/receipt-to-note.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -140,6 +141,9 @@ export class ReceiptImageManagerComponent implements OnInit {
     }
     if (message === RECEIPT_TO_NOTE_NO_DETAILS) {
       return this.translationService.t('receiptImages.convertFailedNoDetails');
+    }
+    if (message === RECEIPT_TO_NOTE_DOWNLOAD_FAILED) {
+      return this.translationService.t('receiptImages.convertFailedDownload');
     }
     return this.translationService.t('receiptImages.convertFailed');
   }

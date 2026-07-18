@@ -835,6 +835,7 @@
     "converted": "レシートの詳細をメモに保存し、画像を削除しました",
     "convertFailedNoAi": "AIプロバイダーが設定されていません。プロフィール設定でAPIキーを追加すると画像を変換できます。",
     "convertFailedNoDetails": "この画像から詳細を読み取れなかったため、画像は保持されました。",
+    "convertFailedDownload": "画像をダウンロードできませんでした。繰り返し発生する場合は、ストレージバケットに一度だけCORS設定が必要です（docs/storage-cors-setup.md 参照）。",
     "convertFailed": "画像の変換に失敗したため、画像は保持されました。",
     "empty": "保存されたレシート画像はありません。"
   }

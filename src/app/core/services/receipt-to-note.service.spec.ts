@@ -4,6 +4,7 @@ import {
   ReceiptToNoteService,
   RECEIPT_TO_NOTE_AI_UNAVAILABLE,
   RECEIPT_TO_NOTE_NO_DETAILS,
+  RECEIPT_TO_NOTE_DOWNLOAD_FAILED,
 } from './receipt-to-note.service';
 import { TransactionService } from './transaction.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
@@ -140,12 +141,12 @@ describe('ReceiptToNoteService', () => {
     expect(transactionMock.removeReceipt).not.toHaveBeenCalled();
   });
 
-  it('rejects when both download paths fail', async () => {
+  it('rejects with the download error when both download paths fail', async () => {
     storageMock.downloadReceipt.and.rejectWith(new Error('storage/object-not-found'));
     fetchSpy.and.resolveTo(new Response(null, { status: 404 }));
 
     await expectAsync(service.convertReceiptToNote(transactionWithReceipt()))
-      .toBeRejectedWithError(/Failed to download/);
+      .toBeRejectedWithError(RECEIPT_TO_NOTE_DOWNLOAD_FAILED);
     expect(transactionMock.removeReceipt).not.toHaveBeenCalled();
   });
 
