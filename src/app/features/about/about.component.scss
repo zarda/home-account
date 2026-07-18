@@ -87,11 +87,15 @@
   gap: 16px;
 }
 
+// A mat-icon clips its glyph to the width/height box, so an overridden
+// font-size needs a matching box and line-height: 1 — otherwise the
+// inherited text line-height pushes the glyph down and cuts it off
 .copyright-icon {
   color: var(--text-muted);
   font-size: var(--text-2xl);
-  width: 24px;
-  height: 24px;
+  width: var(--text-2xl);
+  height: var(--text-2xl);
+  line-height: 1;
 }
 
 .copyright-text {
@@ -144,8 +148,9 @@
 
   mat-icon {
     font-size: var(--text-3xl);
-    width: 28px;
-    height: 28px;
+    width: var(--text-3xl);
+    height: var(--text-3xl);
+    line-height: 1;
     color: white;
   }
 }
@@ -181,8 +186,9 @@
 
   mat-icon {
     font-size: var(--text-xl);
-    width: 20px;
-    height: 20px;
+    width: var(--text-xl);
+    height: var(--text-xl);
+    line-height: 1;
   }
 }
 
@@ -226,8 +232,9 @@
   mat-icon {
     color: var(--color-accent);
     font-size: var(--text-xl);
-    width: 20px;
-    height: 20px;
+    width: var(--text-xl);
+    height: var(--text-xl);
+    line-height: 1;
   }
 
   span {
