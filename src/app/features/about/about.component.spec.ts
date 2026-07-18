@@ -3,6 +3,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Capacitor } from '@capacitor/core';
 import { AboutComponent } from './about.component';
 import { TranslationService } from '../../core/services/translation.service';
+import packageJson from '../../../../package.json';
 
 describe('AboutComponent', () => {
   let component: AboutComponent;
@@ -23,8 +24,24 @@ describe('AboutComponent', () => {
 
   it('should create with version metadata', () => {
     expect(component).toBeTruthy();
-    expect(component.appVersion).toMatch(/\d+\.\d+\.\d+/);
+    expect(component.appVersion).toBe(packageJson.version);
     expect(component.currentYear).toBe(new Date().getFullYear());
+  });
+
+  it('derives the Built With Angular version from the installed dependency', () => {
+    const expectedMajor = parseInt(
+      packageJson.dependencies['@angular/core'].replace(/^[^\d]*/, ''),
+      10
+    );
+    expect(component.angularMajorVersion).toBe(expectedMajor);
+    expect(component.angularMajorVersion).toBeGreaterThanOrEqual(22);
+  });
+
+  it('shows the real launcher icon in the app info card', () => {
+    fixture.detectChanges();
+    const icon = fixture.nativeElement.querySelector('.app-icon img') as HTMLImageElement;
+    expect(icon).toBeTruthy();
+    expect(icon.getAttribute('src')).toBe('assets/icons/icon-128x128.png');
   });
 
   it('shows the donate section on web', () => {

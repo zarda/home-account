@@ -6,7 +6,7 @@
     <mat-card-content>
       <div class="app-info">
         <div class="app-icon">
-          <mat-icon>account_balance_wallet</mat-icon>
+          <img src="assets/icons/icon-128x128.png" [alt]="'app.title' | translate" />
         </div>
         <div class="app-details">
           <h2 class="app-name">{{ 'app.title' | translate }}</h2>
@@ -63,7 +63,7 @@
       <div class="tech-list">
         <div class="tech-item">
           <mat-icon>code</mat-icon>
-          <span>Angular 21</span>
+          <span>Angular {{ angularMajorVersion }}</span>
         </div>
         <div class="tech-item">
           <mat-icon>cloud</mat-icon>
