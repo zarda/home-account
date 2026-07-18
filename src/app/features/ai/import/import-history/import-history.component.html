@@ -8,6 +8,17 @@
     >
       <mat-icon>arrow_back</mat-icon>
     </button>
+    @if (importHistory().length > 0) {
+      <button
+        header-actions
+        mat-stroked-button
+        color="warn"
+        (click)="clearHistory()"
+      >
+        <mat-icon>delete_sweep</mat-icon>
+        {{ 'import.clearHistory' | translate }}
+      </button>
+    }
   </app-page-header>
 
   @if (isLoading()) {

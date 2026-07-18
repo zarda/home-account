@@ -165,6 +165,28 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
     });
   }
 
+  clearHistory(): void {
+    const dialogRef = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: this.t('import.clearHistory'),
+        message: this.t('import.clearHistoryConfirm'),
+        confirmLabel: this.t('common.delete'),
+        confirmColor: 'warn'
+      }
+    });
+
+    dialogRef.afterClosed().subscribe(async (confirmed) => {
+      if (confirmed) {
+        try {
+          await this.importHistoryService.clearImportHistory();
+          this.notifications.success(this.t('import.historyCleared'));
+        } catch {
+          this.notifications.error(this.t('import.clearHistoryFailed'));
+        }
+      }
+    });
+  }
+
   goBack(): void {
     this.router.navigate(['/settings']);
   }

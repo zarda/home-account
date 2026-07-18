@@ -76,6 +76,25 @@
   }
 }
 
+// Actions under the stored receipt thumbnail (edit mode)
+.existing-receipt-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+
+  button {
+    flex: 1;
+
+    mat-icon {
+      margin-right: 6px;
+    }
+  }
+
+  .remove-receipt-btn {
+    @apply text-red-600 dark:text-red-400;
+  }
+}
+
 // AI Category Suggestion
 .ai-suggestion-container {
   margin-top: -8px;
@@ -108,16 +127,16 @@
 
   .ai-icon {
     font-size: var(--text-base);
-    width: 16px;
-    height: 16px;
+    width: 1em;
+    height: 1em;
     margin-right: 4px;
     @apply text-primary-500;
   }
 
   mat-icon:not(.ai-icon) {
     font-size: var(--text-lg);
-    width: 18px;
-    height: 18px;
+    width: 1em;
+    height: 1em;
     margin-right: 6px;
   }
 
@@ -206,8 +225,8 @@
 
 .category-option mat-icon {
   font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
 }
 
 .dialog-actions {
@@ -241,23 +260,20 @@
   border-radius: var(--radius-lg) !important;
 }
 
-// Calendar date highlighting (must use ::ng-deep as datepicker renders in overlay)
-::ng-deep .mat-calendar-body-cell-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  padding-top: 6px;
-}
-
+// Calendar date highlighting (must use ::ng-deep as datepicker renders in overlay).
+// The marker is an absolute overlay pinned to the bottom of the cell circle:
+// stacking it under the date in a flex column relied on spare row height the
+// datepicker popup doesn't have, which pushed the dot out of view.
 ::ng-deep .mat-calendar-body-cell {
   &.has-income,
   &.has-expense,
   &.has-both {
     .mat-calendar-body-cell-content::after {
       content: '';
-      display: block;
-      margin-top: 2px;
+      position: absolute;
+      bottom: 3px;
+      left: 50%;
+      transform: translateX(-50%);
       width: 4px;
       height: 4px;
       border-radius: 50%;

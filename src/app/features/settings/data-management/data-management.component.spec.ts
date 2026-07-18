@@ -8,6 +8,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { DataManagementComponent } from './data-management.component';
 import { ExportService } from '../../../core/services/export.service';
 import { TransactionService } from '../../../core/services/transaction.service';
+import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -64,6 +65,15 @@ describe('DataManagementComponent', () => {
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslationService.t.and.callFake((key: string) => key);
 
+    const mockReceiptQuota = jasmine.createSpyObj(
+      'ReceiptQuotaService',
+      ['refreshCount', 'hasUnlimitedImages', 'imageLimit'],
+      { imageCount: signal<number | null>(null) }
+    );
+    mockReceiptQuota.refreshCount.and.resolveTo(0);
+    mockReceiptQuota.hasUnlimitedImages.and.returnValue(false);
+    mockReceiptQuota.imageLimit.and.returnValue(200);
+
     await TestBed.configureTestingModule({
       imports: [DataManagementComponent, NoopAnimationsModule],
       providers: [
@@ -75,7 +85,8 @@ describe('DataManagementComponent', () => {
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: AnnouncerService, useValue: mockAnnouncer }
+        { provide: AnnouncerService, useValue: mockAnnouncer },
+        { provide: ReceiptQuotaService, useValue: mockReceiptQuota }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -86,7 +97,8 @@ describe('DataManagementComponent', () => {
         { provide: NotificationService, useValue: notifications },
             { provide: MatDialog, useValue: mockDialog },
             { provide: MatSnackBar, useValue: mockSnackBar },
-            { provide: TranslationService, useValue: mockTranslationService }
+            { provide: TranslationService, useValue: mockTranslationService },
+            { provide: ReceiptQuotaService, useValue: mockReceiptQuota }
           ]
         }
       })

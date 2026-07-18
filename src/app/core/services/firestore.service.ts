@@ -14,6 +14,7 @@ import {
   orderBy,
   limit,
   startAfter,
+  getCountFromServer,
   QueryConstraint,
   DocumentData,
   CollectionReference,
@@ -72,6 +73,16 @@ export class FirestoreService {
       id: doc.id,
       ...doc.data()
     })) as T[];
+  }
+
+  // Count documents matching a query without downloading them
+  // (server-side aggregation, billed as one read per 1000 matches)
+  async countDocuments(collectionPath: string, options?: QueryOptions): Promise<number> {
+    const collectionRef = collection(this.firestore, collectionPath);
+    const constraints = this.buildQueryConstraints(options);
+    const q = query(collectionRef, ...constraints);
+    const snapshot = await getCountFromServer(q);
+    return snapshot.data().count;
   }
 
   // Real-time subscription to a collection

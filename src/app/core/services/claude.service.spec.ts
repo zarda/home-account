@@ -628,6 +628,11 @@ describe('ClaudeService', () => {
               confidence: 0.9,
               wasMerged: true,
               mergedFromImages: [0, 1],
+              receiptId: 2,
+              merchant: 'Store',
+              category: 'Restaurants',
+              details: '×2',
+              receiptDetails: 'Item ×2 — 10.00\nTotal 10.00',
             },
           ])
         )
@@ -642,6 +647,13 @@ describe('ClaudeService', () => {
       expect(result[0].amount).toBe(10);
       expect(result[0].imageIndex).toBe(1);
       expect(result[0].wasMerged).toBeTrue();
+      // The receipt-detail fields must survive normalisation so line items
+      // can be consolidated and recorded in the transaction note
+      expect(result[0].receiptId).toBe(2);
+      expect(result[0].merchant).toBe('Store');
+      expect(result[0].category).toBe('food');
+      expect(result[0].details).toBe('×2');
+      expect(result[0].receiptDetails).toBe('Item ×2 — 10.00\nTotal 10.00');
       // Two image blocks then a trailing text block.
       const content = fake.messages.create.calls.mostRecent().args[0].messages[0].content;
       expect(content.length).toBe(3);
@@ -659,6 +671,8 @@ describe('ClaudeService', () => {
       expect(result[0].positionInImage).toBe('middle');
       expect(result[0].confidence).toBe(0.7);
       expect(result[0].wasMerged).toBeFalse();
+      expect(result[0].receiptId).toBe(1);
+      expect(result[0].category).toBeUndefined();
     });
 
     it('returns empty and records the error on failure', async () => {

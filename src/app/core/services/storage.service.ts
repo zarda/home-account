@@ -4,6 +4,7 @@ import {
   ref,
   uploadBytes,
   getDownloadURL,
+  getBlob,
   deleteObject
 } from '@angular/fire/storage';
 
@@ -38,6 +39,18 @@ export class StorageService {
     const storageRef = ref(this.storage, this.receiptPath(userId, transactionId));
     await uploadBytes(storageRef, file, { contentType: file.type || 'image/jpeg' });
     return getDownloadURL(storageRef);
+  }
+
+  /**
+   * Download a transaction's receipt image through the Storage SDK.
+   * Unlike fetch()ing the public download URL, this authenticates via
+   * headers and uses a token-less URL, so it can't collide with the
+   * browser's cached <img> responses (which lack CORS headers and make a
+   * plain fetch fail with a CORS error).
+   */
+  downloadReceipt(userId: string, transactionId: string): Promise<Blob> {
+    const storageRef = ref(this.storage, this.receiptPath(userId, transactionId));
+    return getBlob(storageRef);
   }
 
   /**

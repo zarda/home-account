@@ -3,7 +3,7 @@ import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { CommonModule } from '@angular/common';
 
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -16,7 +16,16 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { TransactionService } from '../../../core/services/transaction.service';
+import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from '../../../core/services/transaction.service';
+import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
+import {
+  ReceiptToNoteService,
+  RECEIPT_TO_NOTE_AI_UNAVAILABLE,
+  RECEIPT_TO_NOTE_NO_DETAILS,
+  RECEIPT_TO_NOTE_DOWNLOAD_FAILED,
+} from '../../../core/services/receipt-to-note.service';
+import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
+import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -26,6 +35,7 @@ import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../..
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage } from '../../../shared/utils/image-compression';
+import { formatReceiptItemLines } from '../../../core/utils/receipt-consolidation';
 import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -72,6 +82,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private geminiService = inject(GeminiService);
+  private receiptQuota = inject(ReceiptQuotaService);
+  private receiptToNote = inject(ReceiptToNoteService);
+  private dialog = inject(MatDialog);
   private cdr = inject(ChangeDetectorRef);
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
@@ -88,8 +101,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   // Compressed receipt image to upload alongside the transaction.
   receiptFile = signal<File | null>(null);
 
-  // Existing stored receipt (edit mode) — read-only thumbnail.
+  // Existing stored receipt (edit mode). Cleared locally after the user
+  // removes it or converts it into note text.
+  private existingReceiptGone = signal(false);
+  isConvertingReceipt = signal(false);
+
   get existingReceiptUrl(): string | null {
+    if (this.existingReceiptGone()) return null;
     return this.data.transaction?.receiptUrl ?? null;
   }
 
@@ -294,11 +312,21 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       }
 
       this.dialogRef.close(true);
-    } catch {
-      // Save failed - could add snackbar notification here
+    } catch (error) {
+      if (error instanceof Error && error.message === RECEIPT_IMAGE_LIMIT_ERROR) {
+        this.openLimitDialog();
+      }
+      // Other save failures - could add snackbar notification here
     } finally {
       this.isSubmitting.set(false);
     }
+  }
+
+  private openLimitDialog(): void {
+    this.dialog.open(ReceiptLimitDialogComponent, {
+      maxWidth: '95vw',
+      autoFocus: false,
+    });
   }
 
   onCancel(): void {
@@ -320,6 +348,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (!file.type.startsWith('image/')) {
       const message = this.translationService.t('ai.invalidFileType');
       this.notifications.error(message);
+      return;
+    }
+
+    // Storing this image consumes a quota slot unless the item already
+    // has one to replace — at the limit, offer cleanup/upgrade instead
+    if (!this.existingReceiptUrl && !(await this.receiptQuota.canAddImage())) {
+      this.openLimitDialog();
       return;
     }
 
@@ -361,6 +396,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         date: result.date || new Date(),
       });
 
+      // Record the itemized receipt content in the note field
+      const receiptNote = result.receiptDetails
+        || (result.items?.length ? formatReceiptItemLines(result.items, result.currency) : '');
+      if (receiptNote) {
+        this.form.patchValue({ note: receiptNote });
+      }
+
       // Set category if suggested
       if (result.suggestedCategory) {
         const category = this.filteredCategories().find(c => c.id === result.suggestedCategory);
@@ -387,6 +429,71 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.receiptPreview.set(null);
     this.scanError.set(null);
     this.receiptFile.set(null);
+  }
+
+  /**
+   * Remove the stored receipt image from the item being edited,
+   * freeing one slot of the receipt-image quota.
+   */
+  async removeExistingReceipt(): Promise<void> {
+    const transaction = this.data.transaction;
+    if (!transaction?.receiptUrl) return;
+
+    const data: ConfirmDialogData = {
+      title: this.translationService.t('receiptImages.removeConfirmTitle'),
+      message: this.translationService.t('receiptImages.removeConfirmMessage'),
+      confirmLabel: this.translationService.t('common.remove'),
+      confirmColor: 'warn',
+      icon: 'delete',
+    };
+    const confirmed = await new Promise<boolean>(resolve => {
+      this.dialog.open(ConfirmDialogComponent, { data }).afterClosed()
+        .subscribe(result => resolve(!!result));
+    });
+    if (!confirmed) return;
+
+    try {
+      await this.transactionService.removeReceipt(transaction.id);
+      this.existingReceiptGone.set(true);
+      this.notifications.success(this.translationService.t('receiptImages.removed'));
+    } catch {
+      this.notifications.error(this.translationService.t('common.error'));
+    }
+  }
+
+  /**
+   * Convert the stored receipt image into detailed note text and remove
+   * the image. The note control picks up the new text so the form stays
+   * consistent with what was persisted.
+   */
+  async convertExistingReceiptToNote(): Promise<void> {
+    const transaction = this.data.transaction;
+    if (!transaction?.receiptUrl || this.isConvertingReceipt()) return;
+
+    this.isConvertingReceipt.set(true);
+    try {
+      // Convert against the note currently in the form, not the stored one
+      const note = await this.receiptToNote.convertReceiptToNote({
+        ...transaction,
+        note: this.form.get('note')?.value || transaction.note,
+      });
+      this.form.patchValue({ note });
+      this.existingReceiptGone.set(true);
+      this.notifications.success(this.translationService.t('receiptImages.converted'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (message === RECEIPT_TO_NOTE_AI_UNAVAILABLE) {
+        this.notifications.error(this.translationService.t('receiptImages.convertFailedNoAi'));
+      } else if (message === RECEIPT_TO_NOTE_NO_DETAILS) {
+        this.notifications.error(this.translationService.t('receiptImages.convertFailedNoDetails'));
+      } else if (message === RECEIPT_TO_NOTE_DOWNLOAD_FAILED) {
+        this.notifications.error(this.translationService.t('receiptImages.convertFailedDownload'));
+      } else {
+        this.notifications.error(this.translationService.t('receiptImages.convertFailed'));
+      }
+    } finally {
+      this.isConvertingReceipt.set(false);
+    }
   }
 
   // === AI Category Suggestion Methods ===

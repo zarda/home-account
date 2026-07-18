@@ -105,8 +105,8 @@
 
 .action-button mat-icon {
   font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
 }
 
 .count-badge {
@@ -222,8 +222,8 @@
 
 .ai-icon {
   font-size: 48px;
-  width: 48px;
-  height: 48px;
+  width: 1em;
+  height: 1em;
   color: var(--color-primary);
   animation: glow 1.5s ease-in-out infinite alternate;
 }
@@ -294,8 +294,8 @@
 
 .step-indicator mat-icon {
   font-size: var(--text-lg);
-  width: 18px;
-  height: 18px;
+  width: 1em;
+  height: 1em;
 }
 
 .step-indicator.active {
@@ -318,8 +318,8 @@
 
 .success-icon {
   font-size: 72px;
-  width: 72px;
-  height: 72px;
+  width: 1em;
+  height: 1em;
   color: var(--color-success);
   animation: scaleIn 0.4s ease-out;
 }
@@ -354,8 +354,8 @@
 /* Error Card */
 .error-icon {
   font-size: 72px;
-  width: 72px;
-  height: 72px;
+  width: 1em;
+  height: 1em;
   color: var(--color-error);
   margin-bottom: 16px;
 }
@@ -425,8 +425,8 @@
 
 .summary-icon {
   font-size: var(--text-3xl);
-  width: 32px;
-  height: 32px;
+  width: 1em;
+  height: 1em;
   color: var(--color-primary);
 }
 
@@ -462,8 +462,11 @@
 
 .summary-card mat-icon {
   font-size: var(--text-3xl);
-  width: 28px;
-  height: 28px;
+  // content-box keeps the glyph area exactly 1em; the padding decorates
+  // around it (border-box would shrink the glyph area and clip the glyph)
+  box-sizing: content-box;
+  width: 1em;
+  height: 1em;
   padding: 12px;
   border-radius: var(--radius-md);
 }
@@ -519,8 +522,8 @@
   mat-icon {
     color: #9c27b0;
     font-size: var(--text-xl);
-    width: 20px;
-    height: 20px;
+    width: 1em;
+    height: 1em;
   }
 
   .merged-badge {

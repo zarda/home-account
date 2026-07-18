@@ -10,6 +10,7 @@ import { ThemeService } from '../../../core/services/theme.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { TransactionService } from '../../../core/services/transaction.service';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
@@ -21,6 +22,7 @@ describe('ProfileSettingsComponent', () => {
   let mockThemeService: jasmine.SpyObj<ThemeService>;
   let mockGeminiService: jasmine.SpyObj<GeminiService>;
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
+  let mockTransactionService: jasmine.SpyObj<TransactionService>;
 
   const mockUser = {
     displayName: 'Test User',
@@ -62,6 +64,9 @@ describe('ProfileSettingsComponent', () => {
 
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
+    mockTransactionService = jasmine.createSpyObj('TransactionService', ['resnapshotBaseCurrency']);
+    mockTransactionService.resnapshotBaseCurrency.and.returnValue(Promise.resolve(0));
+
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
@@ -71,7 +76,8 @@ describe('ProfileSettingsComponent', () => {
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: ThemeService, useValue: mockThemeService },
         { provide: GeminiService, useValue: mockGeminiService },
-        { provide: AnnouncerService, useValue: mockAnnouncer }
+        { provide: AnnouncerService, useValue: mockAnnouncer },
+        { provide: TransactionService, useValue: mockTransactionService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -129,6 +135,22 @@ describe('ProfileSettingsComponent', () => {
       expect(mockAuthService.updateUserPreferences).toHaveBeenCalled();
     });
 
+    it('should resnapshot stored transaction amounts against the new base currency', async () => {
+      component.baseCurrency = 'TWD';
+      await component.onCurrencyChange();
+
+      expect(mockTransactionService.resnapshotBaseCurrency).toHaveBeenCalledWith('TWD');
+      expect(notifications.success).toHaveBeenCalledWith('settings.amountsRecalculated');
+    });
+
+    it('should notify when resnapshotting fails', async () => {
+      mockTransactionService.resnapshotBaseCurrency.and.returnValue(Promise.reject(new Error('offline')));
+      component.baseCurrency = 'TWD';
+      await component.onCurrencyChange();
+
+      expect(notifications.error).toHaveBeenCalledWith('settings.amountsRecalculateFailed');
+    });
+
     it('should save theme preference on change', async () => {
       component.theme = 'dark';
       await component.onThemeChange();
@@ -156,6 +178,13 @@ describe('ProfileSettingsComponent', () => {
       await component.onCurrencyChange();
 
       expect(notifications.error).toHaveBeenCalledWith('common.error');
+    });
+
+    it('should not resnapshot amounts when the preference save fails', async () => {
+      mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('fail')));
+      await component.onCurrencyChange();
+
+      expect(mockTransactionService.resnapshotBaseCurrency).not.toHaveBeenCalled();
     });
   });
 

@@ -26,8 +26,8 @@ mat-card-header {
 .ai-icon {
   @apply text-primary-500;
   font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
 }
 
 .title {
@@ -48,8 +48,8 @@ mat-card-header {
 
   mat-icon {
     font-size: var(--text-lg);
-    width: 18px;
-    height: 18px;
+    width: 1em;
+    height: 1em;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -94,8 +94,8 @@ mat-card-content {
 
   mat-icon {
     font-size: var(--text-xl);
-    width: 20px;
-    height: 20px;
+    width: 1em;
+    height: 1em;
   }
 
   span {
@@ -130,8 +130,8 @@ mat-card-content {
 
   mat-icon {
     font-size: var(--text-lg);
-    width: 18px;
-    height: 18px;
+    width: 1em;
+    height: 1em;
     @apply text-amber-500;
   }
 

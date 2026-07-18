@@ -106,6 +106,49 @@ describe('CurrencyService', () => {
       const result = service.amountInBase({ amount: 100, currency: 'EUR' }, 'USD');
       expect(result).toBeCloseTo(100 / 0.92, 1);
     });
+
+    it('keeps a snapshot stamped against the current base currency', () => {
+      const result = service.amountInBase(
+        { amount: 3800, currency: 'JPY', amountInBaseCurrency: 25.42, exchangeRate: 1 / 149.5, baseCurrency: 'USD' },
+        'USD'
+      );
+      expect(result).toBe(25.42);
+    });
+
+    it('reconverts live when the snapshot was stamped against another base', () => {
+      // Written while base was USD, then the user switched base to JPY.
+      const result = service.amountInBase(
+        { amount: 100, currency: 'USD', amountInBaseCurrency: 100, exchangeRate: 1, baseCurrency: 'USD' },
+        'JPY'
+      );
+      expect(result).toBeCloseTo(100 * 149.5, 0);
+    });
+
+    it('reconverts a corrupt cross-currency snapshot with a 1:1 rate', () => {
+      // Written against unloaded rates: USD row snapshotted 1:1 into a JPY base.
+      const result = service.amountInBase(
+        { amount: 100, currency: 'USD', amountInBaseCurrency: 100, exchangeRate: 1 },
+        'JPY'
+      );
+      expect(result).toBeCloseTo(100 * 149.5, 0);
+    });
+
+    it('reconverts a corrupt unstamped snapshot equal to the raw amount', () => {
+      // No exchangeRate field either — detect via snapshot === amount.
+      const result = service.amountInBase(
+        { amount: 3800, currency: 'JPY', amountInBaseCurrency: 3800 },
+        'USD'
+      );
+      expect(result).toBeCloseTo(3800 / 149.5, 1);
+    });
+
+    it('keeps a same-currency snapshot equal to the raw amount', () => {
+      const result = service.amountInBase(
+        { amount: 100, currency: 'USD', amountInBaseCurrency: 100, exchangeRate: 1 },
+        'USD'
+      );
+      expect(result).toBe(100);
+    });
   });
 
   describe('formatCurrency', () => {

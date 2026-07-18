@@ -34,6 +34,28 @@ html.dark-theme {
 @tailwind components;
 @tailwind utilities;
 
+/* Icon glyphs are exactly 1em square, so a mat-icon's box must be sized in
+   the same unit as its font-size. Sizing the box in em keeps them equal at
+   any browser default font size — rem-based font-size tokens paired with px
+   boxes clip the glyph bottom-right whenever the root font size isn't 16px.
+   mat-icon.mat-icon outranks the component-injected .mat-icon { 24px } rule;
+   styles that deliberately need a decorated box larger than the glyph
+   (badge tiles) must flex-center the glyph instead. */
+mat-icon.mat-icon {
+  width: 1em;
+  height: 1em;
+  line-height: 1;
+}
+
+/* Icon buttons: center the icon geometrically. By default the icon sits on
+   the button's text baseline, so it drifts below center as the browser root
+   font size (and with it the button's line box) grows. */
+button.mat-mdc-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* CSS Variables for Theming */
 :root {
   // Surface colors

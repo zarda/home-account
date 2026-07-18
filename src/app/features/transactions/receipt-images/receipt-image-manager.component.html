@@ -1,0 +1,79 @@
+<app-dialog-header
+  titleKey="receiptImages.title"
+  icon="collections"
+  (closed)="close()"
+/>
+
+<mat-dialog-content class="manager-content">
+  <p class="usage-line" [class.at-limit]="quota.isAtLimit()">
+    <mat-icon class="usage-icon">photo_library</mat-icon>
+    <span>{{ usageText() }}</span>
+  </p>
+
+  @if (isLoading()) {
+    <app-loading-spinner [message]="'common.loading' | translate" />
+  } @else if (transactions().length === 0) {
+    <p class="empty-message">{{ 'receiptImages.empty' | translate }}</p>
+  } @else {
+    <ul class="receipt-list">
+      @for (transaction of transactions(); track transaction.id) {
+        <li class="receipt-item">
+          <a
+            class="thumbnail-link"
+            [href]="transaction.receiptUrl"
+            target="_blank"
+            rel="noopener"
+            [matTooltip]="'receiptImages.viewImage' | translate"
+          >
+            <img
+              class="thumbnail"
+              [src]="transaction.receiptUrl"
+              [alt]="'transactions.receipt' | translate"
+              loading="lazy"
+            />
+          </a>
+
+          <div class="item-info">
+            <span class="item-description">{{ transaction.description }}</span>
+            <span class="item-meta">
+              {{ dateOf(transaction) | date: 'mediumDate' }}
+              · {{ transaction.currency }} {{ transaction.amount | number: '1.0-2' }}
+            </span>
+          </div>
+
+          <div class="item-actions">
+            @if (isBusy(transaction.id)) {
+              <mat-spinner diameter="24" />
+            } @else {
+              <button
+                mat-icon-button
+                type="button"
+                (click)="convertToNote(transaction)"
+                [matTooltip]="'receiptImages.convertToNote' | translate"
+                [attr.aria-label]="'receiptImages.convertToNote' | translate"
+              >
+                <mat-icon>notes</mat-icon>
+              </button>
+              <button
+                mat-icon-button
+                type="button"
+                class="remove-btn"
+                (click)="removeImage(transaction)"
+                [matTooltip]="'receiptImages.removeImage' | translate"
+                [attr.aria-label]="'receiptImages.removeImage' | translate"
+              >
+                <mat-icon>delete</mat-icon>
+              </button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">
+    {{ 'common.close' | translate }}
+  </button>
+</mat-dialog-actions>

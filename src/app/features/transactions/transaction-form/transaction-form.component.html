@@ -54,7 +54,7 @@
         </div>
       }
 
-      <!-- Existing receipt (edit mode): read-only thumbnail linking to full image -->
+      <!-- Existing receipt (edit mode): thumbnail plus quota housekeeping actions -->
       @if (data.mode === 'edit' && existingReceiptUrl) {
         <div class="receipt-scanner-section">
           <a
@@ -65,7 +65,34 @@
             [matTooltip]="'transactions.viewReceipt' | translate"
           >
             <img [src]="existingReceiptUrl" [alt]="'transactions.receipt' | translate" />
+            @if (isConvertingReceipt()) {
+              <div class="scanning-overlay">
+                <app-loading-spinner [message]="'receiptImages.converting' | translate" />
+              </div>
+            }
           </a>
+          <div class="existing-receipt-actions">
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="convertExistingReceiptToNote()"
+              [disabled]="isConvertingReceipt()"
+              [matTooltip]="'receiptImages.convertToNoteHint' | translate"
+            >
+              <mat-icon>notes</mat-icon>
+              <span>{{ 'receiptImages.convertToNote' | translate }}</span>
+            </button>
+            <button
+              mat-stroked-button
+              type="button"
+              class="remove-receipt-btn"
+              (click)="removeExistingReceipt()"
+              [disabled]="isConvertingReceipt()"
+            >
+              <mat-icon>delete</mat-icon>
+              <span>{{ 'receiptImages.removeImage' | translate }}</span>
+            </button>
+          </div>
         </div>
       }
 

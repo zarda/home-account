@@ -11,6 +11,8 @@ export interface Transaction {
   currency: string;              // ISO 4217 code
   amountInBaseCurrency: number;  // Converted amount for reporting
   exchangeRate: number;          // Rate at time of transaction
+  baseCurrency?: string;         // Base the snapshot was computed against
+                                 // (absent on rows written before stamping)
   categoryId: string;
   description: string;
   note?: string;

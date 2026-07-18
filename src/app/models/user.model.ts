@@ -8,7 +8,27 @@ export interface User {
   createdAt: Timestamp;
   lastLoginAt: Timestamp;
   preferences: UserPreferences;
+  subscription?: UserSubscription; // Absent = free tier
 }
+
+export type SubscriptionTier = 'free' | 'premium';
+
+/**
+ * Subscription state. General (free) users can store up to
+ * FREE_TIER_RECEIPT_IMAGE_LIMIT receipt images; a paid premium upgrade
+ * that lifts the limit will be offered in a future release, so billing
+ * metadata (renewal, payment reference) will be added here when it lands.
+ */
+export interface UserSubscription {
+  tier: SubscriptionTier;
+}
+
+/**
+ * Default maximum stored receipt images for free-tier (general) users.
+ * Tunable at runtime via Remote Config (docs/remote-config.md); this
+ * constant is the in-app fallback when no remote value is available.
+ */
+export const FREE_TIER_RECEIPT_IMAGE_LIMIT = 200;
 
 export type LLMProvider = 'gemini' | 'openai' | 'claude';
 

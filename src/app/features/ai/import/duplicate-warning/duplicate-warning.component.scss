@@ -41,8 +41,8 @@
   color: var(--color-warning);
   margin-right: 8px;
   font-size: var(--text-xl);
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
 }
 
 mat-panel-title {
@@ -94,8 +94,8 @@ mat-panel-title {
 
 .item-header mat-icon {
   font-size: var(--text-base);
-  width: 16px;
-  height: 16px;
+  width: 1em;
+  height: 1em;
 }
 
 .match-exact {
@@ -173,7 +173,7 @@ mat-panel-title {
 
 .actions button mat-icon {
   font-size: var(--text-base);
-  width: 16px;
-  height: 16px;
+  width: 1em;
+  height: 1em;
   margin-right: 4px;
 }

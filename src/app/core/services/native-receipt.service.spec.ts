@@ -82,6 +82,8 @@ describe('NativeReceiptService', () => {
       expect(transaction.currency).toBe('USD');
       expect(transaction.type).toBe('expense');
       expect(transaction.source).toBe('native');
+      // The recognized receipt text is recorded as the note so item details survive
+      expect(transaction.notes).toBe(ocrResult.text);
     });
 
     it('should pass the recognized image to Vision OCR as base64', async () => {

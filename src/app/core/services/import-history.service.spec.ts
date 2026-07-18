@@ -40,6 +40,7 @@ describe('ImportHistoryService', () => {
     mockFirestoreService = jasmine.createSpyObj('FirestoreService', [
       'subscribeToCollection',
       'subscribeToDocument',
+      'getCollection',
       'addDocument',
       'updateDocument',
       'deleteDocument',
@@ -51,6 +52,7 @@ describe('ImportHistoryService', () => {
     });
 
     mockFirestoreService.subscribeToCollection.and.returnValue(of(mockHistory));
+    mockFirestoreService.getCollection.and.returnValue(Promise.resolve(mockHistory));
     mockFirestoreService.subscribeToDocument.and.returnValue(of(mockHistory[0]));
     mockFirestoreService.addDocument.and.returnValue(Promise.resolve('new-import-id'));
     mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
@@ -218,6 +220,43 @@ describe('ImportHistoryService', () => {
       mockFirestoreService.deleteDocument.and.returnValue(Promise.reject(new Error('fail')));
 
       await expectAsync(service.deleteImportHistory('import1')).toBeRejected();
+      expect(service.isLoading()).toBeFalse();
+    });
+  });
+
+  describe('clearImportHistory', () => {
+    it('should delete every import record for the user', async () => {
+      await service.clearImportHistory();
+
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(
+        'users/user123/imports'
+      );
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(3);
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(
+        'users/user123/imports/import1'
+      );
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(
+        'users/user123/imports/import3'
+      );
+    });
+
+    it('should delete nothing when there is no history', async () => {
+      mockFirestoreService.getCollection.and.returnValue(Promise.resolve([]));
+
+      await service.clearImportHistory();
+
+      expect(mockFirestoreService.deleteDocument).not.toHaveBeenCalled();
+    });
+
+    it('should reset isLoading to false after clearing', async () => {
+      await service.clearImportHistory();
+      expect(service.isLoading()).toBeFalse();
+    });
+
+    it('should reset isLoading to false even when a deletion fails', async () => {
+      mockFirestoreService.deleteDocument.and.returnValue(Promise.reject(new Error('fail')));
+
+      await expectAsync(service.clearImportHistory()).toBeRejected();
       expect(service.isLoading()).toBeFalse();
     });
   });

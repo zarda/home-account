@@ -28,6 +28,11 @@ import packageJson from '../../../../package.json';
 export class AboutComponent {
   currentYear = new Date().getFullYear();
   appVersion = packageJson.version;
+  // Derived from the dependency range so the "Built With" list can't go stale
+  angularMajorVersion = parseInt(
+    packageJson.dependencies['@angular/core'].replace(/^[^\d]*/, ''),
+    10
+  );
   donationUrl = (environment as { donationUrlPaypal?: string }).donationUrlPaypal || '';
 
   // Hide donate link on native apps (iOS/Android) - only show on web

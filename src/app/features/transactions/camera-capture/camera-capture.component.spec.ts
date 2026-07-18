@@ -233,6 +233,26 @@ describe('CameraCaptureComponent', () => {
       expect(router.navigate).toHaveBeenCalledWith(['/import/file'], jasmine.any(Object));
     });
 
+    it('carries item notes and suggested category into the review payload', async () => {
+      strategyService.processReceipt.and.resolveTo({
+        transactions: [{
+          description: 'Cafe', amount: 1200, currency: 'JPY', date: new Date(), type: 'expense',
+          confidence: 0.9, notes: 'Latte — JPY 500\nMocha — JPY 700', suggestedCategoryId: 'food_coffee_&_drinks',
+        }],
+        confidence: 0.9,
+      } as never);
+      const component = build().componentInstance;
+      withImages(component, 1);
+      await component.processImage();
+
+      const navState = (router.navigate.calls.mostRecent().args[1] as {
+        state: { importResult: ImportResult };
+      }).state;
+      const transaction = navState.importResult.transactions[0];
+      expect(transaction.notes).toBe('Latte — JPY 500\nMocha — JPY 700');
+      expect(transaction.suggestedCategoryId).toBe('food_coffee_&_drinks');
+    });
+
     it('falls back to the import service when strategy yields nothing', async () => {
       strategyService.processReceipt.and.resolveTo({ transactions: [], confidence: 0 } as never);
       const component = build().componentInstance;

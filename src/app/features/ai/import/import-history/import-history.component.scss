@@ -33,7 +33,16 @@
   @apply border border-gray-100 dark:border-gray-700;
   background: var(--surface-card);
 
-  mat-card-avatar {
+  // The status mat-icon doubles as the card avatar: keep Material's 40px
+  // avatar box and flex-center the glyph in it. (The previous bare
+  // `mat-card-avatar` type selector matched nothing — the attribute lives
+  // on the mat-icon element.)
+  mat-icon[mat-card-avatar] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
     font-size: var(--text-2xl);
 
     &.completed {

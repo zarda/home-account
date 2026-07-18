@@ -119,8 +119,8 @@
 
 .duplicate-badge mat-icon {
   font-size: var(--text-xs);
-  width: 11px;
-  height: 11px;
+  width: 1em;
+  height: 1em;
 }
 
 
@@ -177,8 +177,8 @@
 
 .date-chip mat-icon {
   font-size: var(--text-sm);
-  width: 13px;
-  height: 13px;
+  width: 1em;
+  height: 1em;
 }
 
 .type-toggle {
@@ -193,8 +193,8 @@
 
 .type-toggle mat-icon {
   font-size: var(--text-sm);
-  width: 14px;
-  height: 14px;
+  width: 1em;
+  height: 1em;
   margin-right: 3px;
 }
 
@@ -224,8 +224,8 @@
 
 .notes-icon {
   font-size: var(--text-base);
-  width: 15px;
-  height: 15px;
+  width: 1em;
+  height: 1em;
   color: var(--text-muted, #999);
   margin-top: 3px;
   flex-shrink: 0;
@@ -285,8 +285,8 @@
 
 .add-notes-btn mat-icon {
   font-size: var(--text-sm);
-  width: 14px;
-  height: 14px;
+  width: 1em;
+  height: 1em;
 }
 
 :host-context(.dark-theme) .add-notes-btn:hover {

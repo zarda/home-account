@@ -82,8 +82,8 @@
 
     mat-icon {
       font-size: var(--text-3xl);
-      width: 28px;
-      height: 28px;
+      width: 1em;
+      height: 1em;
     }
   }
 
@@ -121,8 +121,8 @@
 
     mat-icon {
       font-size: var(--text-base);
-      width: 16px;
-      height: 16px;
+      width: 1em;
+      height: 1em;
     }
   }
 }
@@ -193,8 +193,8 @@
 
     mat-icon {
       font-size: var(--text-2xl);
-      width: 24px;
-      height: 24px;
+      width: 1em;
+      height: 1em;
       color: white;
       position: relative;
       z-index: 1;
@@ -224,8 +224,8 @@
 
     mat-icon {
       font-size: var(--text-base);
-      width: 16px;
-      height: 16px;
+      width: 1em;
+      height: 1em;
     }
   }
 
@@ -308,8 +308,8 @@
 
   mat-icon {
     font-size: var(--text-lg);
-    width: 18px;
-    height: 18px;
+    width: 1em;
+    height: 1em;
   }
 }
 
@@ -326,17 +326,32 @@
 
   mat-icon {
     font-size: var(--text-xl);
-    width: 20px;
-    height: 20px;
+    width: 1em;
+    height: 1em;
   }
+}
+
+// Card avatar tiles: the mat-icon itself is the mat-card-avatar, so the
+// decorated 40px box is larger than the glyph and must flex-center it —
+// border-box padding on the icon would shrink the glyph area below 1em
+// and clip the glyph.
+.preferences-icon,
+.queue-icon,
+.storage-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  font-size: var(--text-2xl);
 }
 
 // Provider Preferences
 .preferences-icon {
   background-color: var(--mat-sys-secondary-container);
   color: var(--mat-sys-on-secondary-container);
-  border-radius: var(--radius-md);
-  padding: 6px;
 }
 
 .provider-preferences-grid {
@@ -376,15 +391,11 @@
 .queue-icon {
   background-color: var(--mat-sys-tertiary-container);
   color: var(--mat-sys-on-tertiary-container);
-  border-radius: var(--radius-md);
-  padding: 6px;
 }
 
 .storage-icon {
   background-color: var(--mat-sys-secondary-container);
   color: var(--mat-sys-on-secondary-container);
-  border-radius: var(--radius-md);
-  padding: 6px;
 }
 
 .queue-display {

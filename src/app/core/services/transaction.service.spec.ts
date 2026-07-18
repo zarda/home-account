@@ -1,10 +1,11 @@
 import { TestBed } from '@angular/core/testing';
-import { TransactionService } from './transaction.service';
+import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
+import { ReceiptQuotaService } from './receipt-quota.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import { MockStorageService } from './testing/mock-storage.service';
@@ -20,16 +21,23 @@ describe('TransactionService', () => {
   let mockFirestore: MockFirestoreService;
   let mockAuth: MockAuthService;
   let mockStorage: MockStorageService;
+  let mockQuota: jasmine.SpyObj<ReceiptQuotaService>;
   let currencyService: CurrencyService;
 
   beforeEach(() => {
+    mockQuota = jasmine.createSpyObj<ReceiptQuotaService>('ReceiptQuotaService', [
+      'canAddImage', 'noteImageAdded', 'noteImageRemoved', 'invalidateCount',
+    ]);
+    mockQuota.canAddImage.and.resolveTo(true);
+
     TestBed.configureTestingModule({
       providers: [
         TransactionService,
         CurrencyService,
         { provide: FirestoreService, useClass: MockFirestoreService },
         { provide: AuthService, useClass: MockAuthService },
-        { provide: StorageService, useClass: MockStorageService }
+        { provide: StorageService, useClass: MockStorageService },
+        { provide: ReceiptQuotaService, useValue: mockQuota }
       ]
     });
 
@@ -108,6 +116,64 @@ describe('TransactionService', () => {
       service.transactions.set([...service.transactions(), newIncome]);
 
       expect(service.balance()).toBe(initialBalance + 1000);
+    });
+  });
+
+  describe('resnapshotBaseCurrency', () => {
+    it('rewrites stale snapshots against the new base currency', async () => {
+      currencyService.exchangeRates.set(new Map([['USD', 1], ['TWD', 31.5]]));
+      // Written while base was USD; user switches base to TWD.
+      mockFirestore.setMockCollection('users/test-user-123/transactions', [
+        createTransaction({
+          id: 'txn-usd',
+          amount: 100,
+          currency: 'USD',
+          amountInBaseCurrency: 100,
+          exchangeRate: 1,
+          baseCurrency: 'USD'
+        })
+      ]);
+
+      const updated = await service.resnapshotBaseCurrency('TWD');
+
+      expect(updated).toBe(1);
+      const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
+      expect(updateArgs[0]).toBe('users/test-user-123/transactions/txn-usd');
+      const written = updateArgs[1] as {
+        exchangeRate: number;
+        amountInBaseCurrency: number;
+        baseCurrency: string;
+      };
+      expect(written.exchangeRate).toBeCloseTo(31.5, 5);
+      expect(written.amountInBaseCurrency).toBeCloseTo(3150, 2);
+      expect(written.baseCurrency).toBe('TWD');
+    });
+
+    it('skips rows already snapshotted against the requested base', async () => {
+      currencyService.exchangeRates.set(new Map([['USD', 1], ['TWD', 31.5]]));
+      mockFirestore.setMockCollection('users/test-user-123/transactions', [
+        createTransaction({
+          id: 'txn-current',
+          amount: 100,
+          currency: 'USD',
+          amountInBaseCurrency: 3150,
+          exchangeRate: 31.5,
+          baseCurrency: 'TWD'
+        })
+      ]);
+
+      const updated = await service.resnapshotBaseCurrency('TWD');
+
+      expect(updated).toBe(0);
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('waits for exchange rates before recomputing', async () => {
+      mockFirestore.setMockCollection('users/test-user-123/transactions', []);
+
+      await service.resnapshotBaseCurrency('TWD');
+
+      expect(currencyService.ensureRatesLoaded).toHaveBeenCalled();
     });
   });
 
@@ -200,9 +266,13 @@ describe('TransactionService', () => {
       const written = mockFirestore.addDocumentSpy.mostRecent()?.args[1] as {
         exchangeRate: number;
         amountInBaseCurrency: number;
+        baseCurrency: string;
       };
       expect(written.exchangeRate).toBeCloseTo(1 / 149.5, 6);
       expect(written.amountInBaseCurrency).toBeCloseTo(3800 / 149.5, 2);
+      // The snapshot is stamped with the base it was computed against, so a
+      // later base-currency change can invalidate it.
+      expect(written.baseCurrency).toBe('USD');
     });
 
     it('uploads the receipt and persists receiptUrl when a receiptFile is present', async () => {
@@ -230,6 +300,28 @@ describe('TransactionService', () => {
       const setArgs = mockFirestore.setDocumentSpy.mostRecent()?.args ?? [];
       const savedDoc = setArgs[1] as Record<string, unknown>;
       expect(savedDoc['receiptUrl']).toBe(mockStorage.uploadResult);
+
+      // The new image is recorded against the quota.
+      expect(mockQuota.noteImageAdded).toHaveBeenCalled();
+    });
+
+    it('rejects a receipt upload when the image quota is exhausted', async () => {
+      mockQuota.canAddImage.and.resolveTo(false);
+      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+      await expectAsync(service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Over quota',
+        date: new Date(),
+        receiptFile
+      })).toBeRejectedWithError(RECEIPT_IMAGE_LIMIT_ERROR);
+
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+      expect(mockQuota.noteImageAdded).not.toHaveBeenCalled();
     });
 
     it('does not upload when no receiptFile is provided', async () => {
@@ -329,6 +421,67 @@ describe('TransactionService', () => {
       const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
       const updateData = updateArgs[1] as Record<string, unknown>;
       expect(updateData['receiptUrl']).toBe(mockStorage.uploadResult);
+      expect(mockQuota.noteImageAdded).toHaveBeenCalled();
+    });
+
+    it('rejects a first-time receipt upload when the quota is exhausted', async () => {
+      mockQuota.canAddImage.and.resolveTo(false);
+      mockFirestore.setMockDocument('users/test-user-123/transactions/txn-1', createTransaction({ id: 'txn-1' }));
+      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+      await expectAsync(service.updateTransaction('txn-1', { receiptFile }))
+        .toBeRejectedWithError(RECEIPT_IMAGE_LIMIT_ERROR);
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
+    });
+
+    it('allows replacing an existing receipt even at the quota limit', async () => {
+      mockQuota.canAddImage.and.resolveTo(false);
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', receiptUrl: 'https://storage.example.com/old.jpg' })
+      );
+      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+      await service.updateTransaction('txn-1', { receiptFile });
+
+      // Replacement reuses the existing quota slot.
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(1);
+      expect(mockQuota.noteImageAdded).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeReceipt', () => {
+    it('deletes the stored image, clears receiptUrl, and frees a quota slot', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', receiptUrl: 'https://storage.example.com/receipt.jpg' })
+      );
+
+      await service.removeReceipt('txn-1');
+
+      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(1);
+      const deleteArgs = mockStorage.deleteReceiptSpy.mostRecent()?.args ?? [];
+      expect(deleteArgs[0]).toBe('test-user-123');
+      expect(deleteArgs[1]).toBe('txn-1');
+
+      const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
+      expect(updateArgs[0]).toBe('users/test-user-123/transactions/txn-1');
+      expect('receiptUrl' in (updateArgs[1] as object)).toBeTrue();
+
+      expect(mockQuota.noteImageRemoved).toHaveBeenCalled();
+    });
+
+    it('is a no-op for a transaction without a stored image', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1' })
+      );
+
+      await service.removeReceipt('txn-1');
+
+      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(0);
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+      expect(mockQuota.noteImageRemoved).not.toHaveBeenCalled();
     });
   });
 
@@ -361,6 +514,7 @@ describe('TransactionService', () => {
       const args = mockStorage.deleteReceiptSpy.mostRecent()?.args ?? [];
       expect(args[0]).toBe('test-user-123');
       expect(args[1]).toBe('txn-1');
+      expect(mockQuota.noteImageRemoved).toHaveBeenCalled();
     });
 
     it('does not call storage cleanup when there is no receipt', async () => {

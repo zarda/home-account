@@ -50,7 +50,8 @@
     "description": "説明",
     "amount": "金額",
     "type": "種類",
-    "category": "カテゴリ"
+    "category": "カテゴリ",
+    "loading": "読み込み中..."
   },
   "nav": {
     "dashboard": "ダッシュボード",
@@ -308,6 +309,8 @@
     "deleteAllTransactions": "すべての取引を削除",
     "deleteAllDescription": "すべての取引履歴を完全に削除",
     "deleteAll": "すべて削除",
+    "amountsRecalculated": "新しい通貨で金額を再計算しました",
+    "amountsRecalculateFailed": "新しい通貨での金額の再計算に失敗しました",
     "signOutDescription": "アカウントからログアウト",
     "backupExported": "バックアップをエクスポートしました",
     "backupExportFailed": "バックアップのエクスポートに失敗しました",
@@ -702,6 +705,10 @@
     "deleteHistoryConfirm": "このインポート履歴を削除してもよろしいですか？",
     "historyDeleted": "インポート履歴を削除しました",
     "deleteHistoryFailed": "インポート履歴の削除に失敗しました",
+    "clearHistory": "すべて削除",
+    "clearHistoryConfirm": "すべてのインポート履歴を削除してもよろしいですか？この操作は元に戻せません。",
+    "historyCleared": "インポート履歴をすべて削除しました",
+    "clearHistoryFailed": "インポート履歴の全削除に失敗しました",
     "importFromFile": "ファイルからインポート",
     "importFromCamera": "カメラからインポート",
     "takePhoto": "写真を撮る",
@@ -812,5 +819,30 @@
     "donateDescription": "このアプリが役に立つと思われる場合は、寄付で開発をサポートすることをご検討ください。ご寄付は、アプリケーションの維持と改善に役立ちます。",
     "donateButton": "寄付する",
     "techStack": "使用技術"
+  },
+  "receiptImages": {
+    "title": "レシート画像",
+    "settingsDescription": "レシート画像の使用状況を確認し、空き容量を確保できます。",
+    "usage": "レシート画像 {{limit}} 枚中 {{used}} 枚使用中",
+    "usageUnlimited": "レシート画像 {{used}} 枚保存中（無制限）",
+    "limitTitle": "レシート画像の上限に達しました",
+    "limitMessage": "無料アカウントで保存できるレシート画像は最大 {{limit}} 枚で、すべて使用済みです。",
+    "freeUpSpace": "新しい画像を追加するには、既存の画像を削除するか、画像を詳細なメモに変換してください。",
+    "upgradeComingSoon": "画像の上限を引き上げる有料サブスクリプションのアップグレードは近日提供予定です。",
+    "manage": "レシート画像を管理",
+    "viewImage": "画像を表示",
+    "convertToNote": "メモに変換",
+    "convertToNoteHint": "レシートの詳細内容をメモに保存してから画像を削除します",
+    "converting": "変換中...",
+    "removeImage": "画像を削除",
+    "removeConfirmTitle": "レシート画像を削除しますか？",
+    "removeConfirmMessage": "画像は完全に削除されます。取引自体は残ります。",
+    "removed": "レシート画像を削除しました",
+    "converted": "レシートの詳細をメモに保存し、画像を削除しました",
+    "convertFailedNoAi": "AIプロバイダーが設定されていません。プロフィール設定でAPIキーを追加すると画像を変換できます。",
+    "convertFailedNoDetails": "この画像から詳細を読み取れなかったため、画像は保持されました。",
+    "convertFailedDownload": "画像をダウンロードできませんでした。繰り返し発生する場合は、ストレージバケットに一度だけCORS設定が必要です（docs/storage-cors-setup.md 参照）。",
+    "convertFailed": "画像の変換に失敗したため、画像は保持されました。",
+    "empty": "保存されたレシート画像はありません。"
   }
 }

@@ -13,6 +13,7 @@ import {
   PersistentTabManager,
 } from '@angular/fire/firestore';
 import { provideStorage, getStorage } from '@angular/fire/storage';
+import { provideRemoteConfig, getRemoteConfig } from '@angular/fire/remote-config';
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog';
 import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
 import { provideHttpClient } from '@angular/common/http';
@@ -95,6 +96,10 @@ export const appConfig: ApplicationConfig = {
     }),
     provideFirestore(() => appFirestoreFactory()),
     provideStorage(() => getStorage()),
+    // Remote-tunable app parameters (e.g. receipt image limits). Fetch
+    // policy, in-app defaults, and typed accessors live in
+    // RemoteConfigService — see docs/remote-config.md.
+    provideRemoteConfig(() => getRemoteConfig()),
     provideCharts(withDefaultRegisterables()),
     {
       // One dialog sizing default: a comfortable width that always leaves

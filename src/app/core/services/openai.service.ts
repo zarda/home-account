@@ -525,6 +525,8 @@ For each transaction found, extract:
 - amount: as a positive number
 - type: "income" for credits/deposits, "expense" for debits/withdrawals
 - currency: detected currency code (default to USD if unclear)
+- merchant: store/business name (optional)
+- details: for receipts, reproduce the FULL receipt content line by line — every item with its price, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the original language. (optional)
 
 Return ONLY a valid JSON array with this structure (no markdown, no explanation):
 [
@@ -533,7 +535,9 @@ Return ONLY a valid JSON array with this structure (no markdown, no explanation)
     "description": "AMAZON.COM",
     "amount": 45.99,
     "type": "expense",
-    "currency": "USD"
+    "currency": "USD",
+    "merchant": "AMAZON.COM",
+    "details": "USB Cable — 12.99\\nBook — 32.00\\nSubtotal 44.99\\nTax 1.00\\nTotal 45.99"
   }
 ]
 
@@ -599,10 +603,14 @@ Only include confirmed transactions, not pending ones.`;
     this.lastError.set(null);
 
     try {
-      const prompt = `You are analyzing ${imageBase64Array.length} sequential photos of a SINGLE receipt or financial document.
-The images are ordered from TOP to BOTTOM of the receipt.
+      const prompt = `You are analyzing ${imageBase64Array.length} photos of receipts or financial documents. They may be:
+- Multiple photos of ONE receipt (overlapping pages, ordered top to bottom) → items share the same receiptId
+- Photos of DIFFERENT receipts → each receipt gets a different receiptId
+- A mix of both
 
-IMPORTANT: These photos likely have OVERLAPPING content at the edges.
+FIRST: Determine which photos belong to the same receipt (same merchant, date, style) vs different receipts.
+
+IMPORTANT: Photos of the same receipt likely have OVERLAPPING content at the edges.
 - The BOTTOM portion of Image N likely overlaps with the TOP portion of Image N+1
 - You MUST identify and DEDUPLICATE overlapping items
 - Return each unique item ONLY ONCE, preferring the clearer/more complete instance
@@ -613,10 +621,16 @@ For each UNIQUE transaction/line item found, extract:
 - amount: FINAL amount after any discounts applied (as a positive number)
 - type: "income" for credits/refunds, "expense" for purchases/debits
 - currency: detected currency code (default to USD if unclear)
+- receiptId: integer grouping items from the same receipt (1, 2, 3...)
 - imageIndex: which image this item appears in (0-based)
 - positionInImage: "top", "middle", or "bottom" based on vertical position
 - confidence: your confidence in the extraction accuracy (0.0 to 1.0)
+- merchant: store name (optional)
+- category: transaction category like Restaurants, Groceries, Shopping (optional)
+- details: full context for this item — quantity, size, flavor, discount, tax info (optional)
 - wasMerged: true if this item appeared in multiple images and was deduplicated
+
+For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items with prices, discounts, subtotals, tax, service charges, payment method, change, etc. Keep the original language.
 
 Return ONLY a valid JSON array (no markdown):
 [
@@ -626,10 +640,14 @@ Return ONLY a valid JSON array (no markdown):
     "amount": 10.99,
     "type": "expense",
     "currency": "USD",
+    "receiptId": 1,
     "imageIndex": 0,
     "positionInImage": "middle",
     "confidence": 0.95,
-    "wasMerged": false
+    "merchant": "Store name",
+    "details": "×1",
+    "wasMerged": false,
+    "receiptDetails": "Item name ×1 — 10.99\\nSubtotal 10.99\\nTax 0.88\\nTotal 11.87"
   }
 ]
 
@@ -663,9 +681,14 @@ If no transactions can be extracted, return an empty array: []`;
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
         currency: t.currency || 'USD',
+        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+        merchant: t.merchant,
+        details: t.details,
         imageIndex: t.imageIndex ?? 0,
         positionInImage: t.positionInImage || 'middle',
         confidence: t.confidence ?? 0.7,
+        receiptId: t.receiptId ?? 1,
+        receiptDetails: t.receiptDetails,
         wasMerged: t.wasMerged || false,
         mergedFromImages: t.mergedFromImages,
       }));

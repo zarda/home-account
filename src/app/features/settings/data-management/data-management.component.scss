@@ -26,8 +26,8 @@
 .section-icon {
   color: var(--color-primary);
   font-size: var(--text-2xl);
-  width: 24px;
-  height: 24px;
+  width: 1em;
+  height: 1em;
   margin-top: 2px;
 
   &.danger {
@@ -61,8 +61,8 @@
   mat-icon {
     color: var(--color-primary);
     font-size: var(--text-2xl);
-    width: 24px;
-    height: 24px;
+    width: 1em;
+    height: 1em;
   }
 
   .btn-content {
@@ -120,8 +120,8 @@
   mat-icon {
     color: #8b5cf6;
     font-size: var(--text-lg);
-    width: 18px;
-    height: 18px;
+    width: 1em;
+    height: 1em;
   }
 }
 
@@ -151,8 +151,8 @@
 
   mat-icon {
     font-size: 40px;
-    width: 40px;
-    height: 40px;
+    width: 1em;
+    height: 1em;
     @apply text-gray-400 dark:text-gray-500;
   }
 
@@ -305,6 +305,14 @@
 .danger-desc {
   font-size: var(--text-xs);
   @apply text-gray-500 dark:text-gray-400;
+}
+
+// Receipt images section
+.receipt-usage {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  min-height: 1.25em;
 }
 
 @media (max-width: 640px) {

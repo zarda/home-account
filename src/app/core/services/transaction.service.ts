@@ -1,10 +1,17 @@
 import { Injectable, inject, signal, computed, Injector } from '@angular/core';
-import { Timestamp } from '@angular/fire/firestore';
+import { Timestamp, deleteField } from '@angular/fire/firestore';
 import { Observable, map, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
+import { ReceiptQuotaService } from './receipt-quota.service';
+
+/**
+ * Thrown when storing a receipt image would exceed the user's tier limit.
+ * Callers surface the quota dialog instead of a generic error message.
+ */
+export const RECEIPT_IMAGE_LIMIT_ERROR = 'RECEIPT_IMAGE_LIMIT_REACHED';
 import {
   Transaction,
   TransactionFilters,
@@ -19,6 +26,7 @@ export class TransactionService {
   private authService = inject(AuthService);
   private currencyService = inject(CurrencyService);
   private storageService = inject(StorageService);
+  private receiptQuota = inject(ReceiptQuotaService);
   private injector = inject(Injector);
 
   // Helper to update budgets after transaction changes
@@ -33,18 +41,22 @@ export class TransactionService {
   transactions = signal<Transaction[]>([]);
   isLoading = signal<boolean>(false);
 
-  // Computed signals
-  totalIncome = computed(() =>
-    this.transactions()
+  // Computed signals. Totals go through amountInBase so rows whose stored
+  // snapshot is stale (base currency changed) or corrupt (written against
+  // unloaded rates) are converted live instead of summed as raw amounts.
+  totalIncome = computed(() => {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    return this.transactions()
       .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amountInBaseCurrency, 0)
-  );
+      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
+  });
 
-  totalExpense = computed(() =>
-    this.transactions()
+  totalExpense = computed(() => {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    return this.transactions()
       .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amountInBaseCurrency, 0)
-  );
+      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
+  });
 
   balance = computed(() => this.totalIncome() - this.totalExpense());
 
@@ -163,6 +175,7 @@ export class TransactionService {
         currency: data.currency,
         amountInBaseCurrency,
         exchangeRate,
+        baseCurrency,
         categoryId: data.categoryId,
         description: data.description,
         date: this.firestoreService.dateToTimestamp(data.date),
@@ -178,6 +191,10 @@ export class TransactionService {
 
       let id: string;
       if (data.receiptFile) {
+        // A new transaction always stores a NEW image — enforce the tier quota
+        if (!(await this.receiptQuota.canAddImage())) {
+          throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
+        }
         // Pre-generate the id so the receipt's storage object and the
         // Firestore document share the same key, then upload before saving.
         id = this.firestoreService.generateId(this.userTransactionsPath);
@@ -190,6 +207,7 @@ export class TransactionService {
           `${this.userTransactionsPath}/${id}`,
           transaction
         );
+        this.receiptQuota.noteImageAdded();
       } else if (options?.id) {
         // Caller-supplied deterministic id (recurring engine idempotency):
         // posting the same occurrence twice overwrites one document instead
@@ -254,6 +272,7 @@ export class TransactionService {
           updateData.currency = currency;
           updateData.exchangeRate = exchangeRate;
           updateData.amountInBaseCurrency = amount * exchangeRate;
+          updateData.baseCurrency = baseCurrency;
         }
       }
 
@@ -261,11 +280,20 @@ export class TransactionService {
       if (data.receiptFile) {
         const userId = this.authService.userId();
         if (userId) {
+          // Replacing an existing image reuses its quota slot; only a
+          // transaction without a stored receipt consumes a new one
+          const isNewImage = !currentTransaction?.receiptUrl;
+          if (isNewImage && !(await this.receiptQuota.canAddImage())) {
+            throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
+          }
           updateData.receiptUrl = await this.storageService.uploadReceipt(
             userId,
             id,
             data.receiptFile
           );
+          if (isNewImage) {
+            this.receiptQuota.noteImageAdded();
+          }
         }
       }
 
@@ -298,6 +326,28 @@ export class TransactionService {
     }
   }
 
+  /**
+   * Remove a transaction's stored receipt image, freeing one quota slot.
+   * Deletes the storage object and clears the receiptUrl field; the
+   * transaction itself is untouched.
+   */
+  async removeReceipt(id: string): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) throw new Error('User not authenticated');
+
+    const transaction = await this.firestoreService.getDocument<Transaction>(
+      `${this.userTransactionsPath}/${id}`
+    );
+    if (!transaction?.receiptUrl) return;
+
+    await this.storageService.deleteReceipt(userId, id);
+    await this.firestoreService.updateDocument(
+      `${this.userTransactionsPath}/${id}`,
+      { receiptUrl: deleteField() }
+    );
+    this.receiptQuota.noteImageRemoved();
+  }
+
   // Delete a transaction
   async deleteTransaction(id: string): Promise<void> {
     this.isLoading.set(true);
@@ -322,12 +372,55 @@ export class TransactionService {
             // Don't fail the transaction delete if receipt cleanup fails.
           }
         }
+        // The document is gone either way, so the image no longer counts
+        // against the quota
+        this.receiptQuota.noteImageRemoved();
       }
 
       // Update affected budget if this was an expense
       if (transaction?.type === 'expense') {
         await this.updateAffectedBudgets(transaction.categoryId);
       }
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  /**
+   * Rewrite every transaction's stored base-currency snapshot against the
+   * given base currency. Run after the user changes their base currency so
+   * stored aggregates and the per-row "≈" conversions match the new base
+   * (the snapshots are otherwise permanently frozen against the old one).
+   * Returns the number of rows that needed rewriting.
+   */
+  async resnapshotBaseCurrency(baseCurrency: string): Promise<number> {
+    this.isLoading.set(true);
+
+    try {
+      await this.currencyService.ensureRatesLoaded();
+      const transactions = await this.firestoreService.getCollection<Transaction>(
+        this.userTransactionsPath
+      );
+
+      let updated = 0;
+      for (const t of transactions) {
+        const exchangeRate = this.currencyService.getExchangeRate(t.currency, baseCurrency);
+        const amountInBaseCurrency = t.amount * exchangeRate;
+
+        const alreadyCurrent =
+          t.baseCurrency === baseCurrency &&
+          t.exchangeRate === exchangeRate &&
+          t.amountInBaseCurrency === amountInBaseCurrency;
+        if (alreadyCurrent) continue;
+
+        await this.firestoreService.updateDocument(
+          `${this.userTransactionsPath}/${t.id}`,
+          { exchangeRate, amountInBaseCurrency, baseCurrency }
+        );
+        updated++;
+      }
+
+      return updated;
     } finally {
       this.isLoading.set(false);
     }
@@ -356,6 +449,9 @@ export class TransactionService {
           }
         }
       }
+
+      // Everything is gone — force a quota recount on next check
+      this.receiptQuota.invalidateCount();
     } finally {
       this.isLoading.set(false);
     }
@@ -414,13 +510,16 @@ export class TransactionService {
 
     return this.getByDateRange(startDate, endDate).pipe(
       map(transactions => {
+        const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+        const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
+
         const income = transactions
           .filter(t => t.type === 'income')
-          .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+          .reduce((sum, t) => sum + toBase(t), 0);
 
         const expense = transactions
           .filter(t => t.type === 'expense')
-          .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+          .reduce((sum, t) => sum + toBase(t), 0);
 
         const byCategory = this.groupByCategory(transactions);
 
@@ -517,13 +616,14 @@ export class TransactionService {
   }
 
   private groupByCategory(transactions: Transaction[]): CategoryTotal[] {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
     const categoryMap = new Map<string, number>();
 
     for (const transaction of transactions) {
       const current = categoryMap.get(transaction.categoryId) ?? 0;
       categoryMap.set(
         transaction.categoryId,
-        current + transaction.amountInBaseCurrency
+        current + this.currencyService.amountInBase(transaction, baseCurrency)
       );
     }
 
@@ -543,6 +643,24 @@ export class TransactionService {
       {
         orderBy: [{ field: 'date', direction: 'desc' }]
       }
+    );
+  }
+
+  // Get every transaction with a stored receipt image, newest first.
+  // Backs the receipt image manager (quota housekeeping).
+  getTransactionsWithReceipts(): Observable<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return of([]);
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      // Matches non-empty receiptUrl values; ordering on the inequality
+      // field is implicit, so sort by date client-side instead
+      { where: [{ field: 'receiptUrl', op: '>', value: '' }] }
+    ).pipe(
+      map(transactions =>
+        [...transactions].sort((a, b) => b.date.toMillis() - a.date.toMillis())
+      )
     );
   }
 

@@ -79,6 +79,32 @@
     </div>
   </div>
 
+  <!-- Receipt Images Section -->
+  <div class="section">
+    <div class="section-header">
+      <mat-icon class="section-icon">photo_library</mat-icon>
+      <div>
+        <h3>{{ 'receiptImages.title' | translate }}</h3>
+        <p class="section-description">{{ 'receiptImages.settingsDescription' | translate }}</p>
+      </div>
+    </div>
+
+    <p class="receipt-usage">
+      @if (receiptQuota.imageCount() !== null) {
+        @if (receiptQuota.hasUnlimitedImages()) {
+          {{ 'receiptImages.usageUnlimited' | translate:{ used: receiptQuota.imageCount() ?? 0 } }}
+        } @else {
+          {{ 'receiptImages.usage' | translate:{ used: receiptQuota.imageCount() ?? 0, limit: receiptQuota.imageLimit() } }}
+        }
+      }
+    </p>
+
+    <button mat-stroked-button (click)="openReceiptImageManager()">
+      <mat-icon>collections</mat-icon>
+      {{ 'receiptImages.manage' | translate }}
+    </button>
+  </div>
+
   <!-- Simple Import Section -->
   <div class="section">
     <div class="section-header">
