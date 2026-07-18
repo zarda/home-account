@@ -462,6 +462,9 @@
 
 .summary-card mat-icon {
   font-size: var(--text-3xl);
+  // content-box keeps the glyph area exactly 1em; the padding decorates
+  // around it (border-box would shrink the glyph area and clip the glyph)
+  box-sizing: content-box;
   width: 1em;
   height: 1em;
   padding: 12px;

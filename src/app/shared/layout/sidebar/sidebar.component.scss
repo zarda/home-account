@@ -3,6 +3,12 @@
   width: 100%;
   height: 100%;
   background: var(--surface-card);
+
+  // Material fixes the leading list icon at 24px while the labels are
+  // rem-based, so at larger device font sizes the text outgrows the icon
+  // and the row reads as misaligned. Sizing the icon token in rem keeps
+  // icon and label proportional at any root font size.
+  --mat-list-list-item-leading-icon-size: var(--text-2xl);
 }
 
 nav {

@@ -260,23 +260,20 @@
   border-radius: var(--radius-lg) !important;
 }
 
-// Calendar date highlighting (must use ::ng-deep as datepicker renders in overlay)
-::ng-deep .mat-calendar-body-cell-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  padding-top: 6px;
-}
-
+// Calendar date highlighting (must use ::ng-deep as datepicker renders in overlay).
+// The marker is an absolute overlay pinned to the bottom of the cell circle:
+// stacking it under the date in a flex column relied on spare row height the
+// datepicker popup doesn't have, which pushed the dot out of view.
 ::ng-deep .mat-calendar-body-cell {
   &.has-income,
   &.has-expense,
   &.has-both {
     .mat-calendar-body-cell-content::after {
       content: '';
-      display: block;
-      margin-top: 2px;
+      position: absolute;
+      bottom: 3px;
+      left: 50%;
+      transform: translateX(-50%);
       width: 4px;
       height: 4px;
       border-radius: 50%;
