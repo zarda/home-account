@@ -41,18 +41,22 @@ export class TransactionService {
   transactions = signal<Transaction[]>([]);
   isLoading = signal<boolean>(false);
 
-  // Computed signals
-  totalIncome = computed(() =>
-    this.transactions()
+  // Computed signals. Totals go through amountInBase so rows whose stored
+  // snapshot is stale (base currency changed) or corrupt (written against
+  // unloaded rates) are converted live instead of summed as raw amounts.
+  totalIncome = computed(() => {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    return this.transactions()
       .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amountInBaseCurrency, 0)
-  );
+      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
+  });
 
-  totalExpense = computed(() =>
-    this.transactions()
+  totalExpense = computed(() => {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    return this.transactions()
       .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amountInBaseCurrency, 0)
-  );
+      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
+  });
 
   balance = computed(() => this.totalIncome() - this.totalExpense());
 
@@ -171,6 +175,7 @@ export class TransactionService {
         currency: data.currency,
         amountInBaseCurrency,
         exchangeRate,
+        baseCurrency,
         categoryId: data.categoryId,
         description: data.description,
         date: this.firestoreService.dateToTimestamp(data.date),
@@ -267,6 +272,7 @@ export class TransactionService {
           updateData.currency = currency;
           updateData.exchangeRate = exchangeRate;
           updateData.amountInBaseCurrency = amount * exchangeRate;
+          updateData.baseCurrency = baseCurrency;
         }
       }
 
@@ -380,6 +386,46 @@ export class TransactionService {
     }
   }
 
+  /**
+   * Rewrite every transaction's stored base-currency snapshot against the
+   * given base currency. Run after the user changes their base currency so
+   * stored aggregates and the per-row "≈" conversions match the new base
+   * (the snapshots are otherwise permanently frozen against the old one).
+   * Returns the number of rows that needed rewriting.
+   */
+  async resnapshotBaseCurrency(baseCurrency: string): Promise<number> {
+    this.isLoading.set(true);
+
+    try {
+      await this.currencyService.ensureRatesLoaded();
+      const transactions = await this.firestoreService.getCollection<Transaction>(
+        this.userTransactionsPath
+      );
+
+      let updated = 0;
+      for (const t of transactions) {
+        const exchangeRate = this.currencyService.getExchangeRate(t.currency, baseCurrency);
+        const amountInBaseCurrency = t.amount * exchangeRate;
+
+        const alreadyCurrent =
+          t.baseCurrency === baseCurrency &&
+          t.exchangeRate === exchangeRate &&
+          t.amountInBaseCurrency === amountInBaseCurrency;
+        if (alreadyCurrent) continue;
+
+        await this.firestoreService.updateDocument(
+          `${this.userTransactionsPath}/${t.id}`,
+          { exchangeRate, amountInBaseCurrency, baseCurrency }
+        );
+        updated++;
+      }
+
+      return updated;
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
   // Delete all transactions (danger zone)
   async deleteAllTransactions(): Promise<void> {
     this.isLoading.set(true);
@@ -464,13 +510,16 @@ export class TransactionService {
 
     return this.getByDateRange(startDate, endDate).pipe(
       map(transactions => {
+        const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+        const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
+
         const income = transactions
           .filter(t => t.type === 'income')
-          .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+          .reduce((sum, t) => sum + toBase(t), 0);
 
         const expense = transactions
           .filter(t => t.type === 'expense')
-          .reduce((sum, t) => sum + t.amountInBaseCurrency, 0);
+          .reduce((sum, t) => sum + toBase(t), 0);
 
         const byCategory = this.groupByCategory(transactions);
 
@@ -567,13 +616,14 @@ export class TransactionService {
   }
 
   private groupByCategory(transactions: Transaction[]): CategoryTotal[] {
+    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
     const categoryMap = new Map<string, number>();
 
     for (const transaction of transactions) {
       const current = categoryMap.get(transaction.categoryId) ?? 0;
       categoryMap.set(
         transaction.categoryId,
-        current + transaction.amountInBaseCurrency
+        current + this.currencyService.amountInBase(transaction, baseCurrency)
       );
     }
 

@@ -403,6 +403,7 @@ export class RecurringService {
       currency: rule.currency,
       amountInBaseCurrency: rule.amount * exchangeRate,
       exchangeRate,
+      baseCurrency,
       categoryId: rule.categoryId,
       description: rule.description,
       date: this.firestoreService.dateToTimestamp(occurrenceDate),

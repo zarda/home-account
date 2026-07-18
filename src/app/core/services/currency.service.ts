@@ -95,16 +95,40 @@ export class CurrencyService {
 
   // Base-currency value of a transaction for aggregation. Prefers the
   // exchange-rate snapshot stored at write time so totals are deterministic
-  // (independent of whether live rates have finished loading); falls back to
-  // a live conversion for legacy rows written before the snapshot existed.
+  // (independent of whether live rates have finished loading), but only when
+  // the snapshot is trustworthy; otherwise converts live:
+  //  - no snapshot (legacy rows written before it existed);
+  //  - snapshot stamped against a different base currency (the preference
+  //    changed since the row was written);
+  //  - corrupt cross-currency snapshot: a 1:1 rate between two different
+  //    currencies can only come from unloaded rates at write time or a
+  //    since-changed base currency, never from a real market rate.
   amountInBase(
-    transaction: { amount: number; currency: string; amountInBaseCurrency?: number },
+    transaction: {
+      amount: number;
+      currency: string;
+      amountInBaseCurrency?: number;
+      exchangeRate?: number;
+      baseCurrency?: string;
+    },
     baseCurrency: string
   ): number {
-    return (
-      transaction.amountInBaseCurrency ??
-      this.convert(transaction.amount, transaction.currency, baseCurrency)
-    );
+    const snapshot = transaction.amountInBaseCurrency;
+    const liveConvert = () =>
+      this.convert(transaction.amount, transaction.currency, baseCurrency);
+
+    if (snapshot == null) return liveConvert();
+
+    const stampMismatch =
+      transaction.baseCurrency != null && transaction.baseCurrency !== baseCurrency;
+
+    const looksUnconverted =
+      transaction.exchangeRate != null
+        ? transaction.exchangeRate === 1
+        : snapshot === transaction.amount;
+    const corrupt = transaction.currency !== baseCurrency && looksUnconverted;
+
+    return stampMismatch || corrupt ? liveConvert() : snapshot;
   }
 
   // Refresh exchange rates from ExchangeRate-API (free, no key required)

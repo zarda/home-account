@@ -119,6 +119,64 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('resnapshotBaseCurrency', () => {
+    it('rewrites stale snapshots against the new base currency', async () => {
+      currencyService.exchangeRates.set(new Map([['USD', 1], ['TWD', 31.5]]));
+      // Written while base was USD; user switches base to TWD.
+      mockFirestore.setMockCollection('users/test-user-123/transactions', [
+        createTransaction({
+          id: 'txn-usd',
+          amount: 100,
+          currency: 'USD',
+          amountInBaseCurrency: 100,
+          exchangeRate: 1,
+          baseCurrency: 'USD'
+        })
+      ]);
+
+      const updated = await service.resnapshotBaseCurrency('TWD');
+
+      expect(updated).toBe(1);
+      const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
+      expect(updateArgs[0]).toBe('users/test-user-123/transactions/txn-usd');
+      const written = updateArgs[1] as {
+        exchangeRate: number;
+        amountInBaseCurrency: number;
+        baseCurrency: string;
+      };
+      expect(written.exchangeRate).toBeCloseTo(31.5, 5);
+      expect(written.amountInBaseCurrency).toBeCloseTo(3150, 2);
+      expect(written.baseCurrency).toBe('TWD');
+    });
+
+    it('skips rows already snapshotted against the requested base', async () => {
+      currencyService.exchangeRates.set(new Map([['USD', 1], ['TWD', 31.5]]));
+      mockFirestore.setMockCollection('users/test-user-123/transactions', [
+        createTransaction({
+          id: 'txn-current',
+          amount: 100,
+          currency: 'USD',
+          amountInBaseCurrency: 3150,
+          exchangeRate: 31.5,
+          baseCurrency: 'TWD'
+        })
+      ]);
+
+      const updated = await service.resnapshotBaseCurrency('TWD');
+
+      expect(updated).toBe(0);
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('waits for exchange rates before recomputing', async () => {
+      mockFirestore.setMockCollection('users/test-user-123/transactions', []);
+
+      await service.resnapshotBaseCurrency('TWD');
+
+      expect(currencyService.ensureRatesLoaded).toHaveBeenCalled();
+    });
+  });
+
   describe('addTransaction', () => {
     it('should throw error when user not authenticated', async () => {
       mockAuth.setAuthenticated(false);
@@ -208,9 +266,13 @@ describe('TransactionService', () => {
       const written = mockFirestore.addDocumentSpy.mostRecent()?.args[1] as {
         exchangeRate: number;
         amountInBaseCurrency: number;
+        baseCurrency: string;
       };
       expect(written.exchangeRate).toBeCloseTo(1 / 149.5, 6);
       expect(written.amountInBaseCurrency).toBeCloseTo(3800 / 149.5, 2);
+      // The snapshot is stamped with the base it was computed against, so a
+      // later base-currency change can invalidate it.
+      expect(written.baseCurrency).toBe('USD');
     });
 
     it('uploads the receipt and persists receiptUrl when a receiptFile is present', async () => {

@@ -12,6 +12,7 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { ThemeService, ThemePreference } from '../../../core/services/theme.service';
+import { TransactionService } from '../../../core/services/transaction.service';
 import { SUPPORTED_CURRENCIES } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -38,6 +39,7 @@ export class ProfileSettingsComponent {
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
+  private transactionService = inject(TransactionService);
 
   currencies = SUPPORTED_CURRENCIES;
 
@@ -83,7 +85,22 @@ export class ProfileSettingsComponent {
   }
 
   async onCurrencyChange(): Promise<void> {
-    await this.savePreference({ baseCurrency: this.baseCurrency });
+    const saved = await this.savePreference({ baseCurrency: this.baseCurrency });
+    if (!saved) return;
+
+    // Stored per-transaction snapshots (amountInBaseCurrency/exchangeRate)
+    // are frozen against the old base; rewrite them so lists, totals, and
+    // budgets convert against the newly chosen currency.
+    try {
+      await this.transactionService.resnapshotBaseCurrency(this.baseCurrency);
+      this.notifications.success(
+        this.translationService.t('settings.amountsRecalculated')
+      );
+    } catch {
+      this.notifications.error(
+        this.translationService.t('settings.amountsRecalculateFailed')
+      );
+    }
   }
 
   async onDateFormatChange(): Promise<void> {
@@ -101,15 +118,17 @@ export class ProfileSettingsComponent {
     await this.savePreference({ language: this.language });
   }
 
-  private async savePreference(pref: Record<string, unknown>): Promise<void> {
+  private async savePreference(pref: Record<string, unknown>): Promise<boolean> {
     try {
       await this.authService.updateUserPreferences({
         ...this.authService.currentUser()?.preferences,
         ...pref,
       });
+      return true;
     } catch {
       const message = this.translationService.t('common.error');
       this.notifications.error(message);
+      return false;
     }
   }
 }
