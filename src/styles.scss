@@ -47,6 +47,15 @@ mat-icon.mat-icon {
   line-height: 1;
 }
 
+/* Icon buttons: center the icon geometrically. By default the icon sits on
+   the button's text baseline, so it drifts below center as the browser root
+   font size (and with it the button's line box) grows. */
+button.mat-mdc-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* CSS Variables for Theming */
 :root {
   // Surface colors
