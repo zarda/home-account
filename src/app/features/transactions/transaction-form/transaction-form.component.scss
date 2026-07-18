@@ -76,6 +76,25 @@
   }
 }
 
+// Actions under the stored receipt thumbnail (edit mode)
+.existing-receipt-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+
+  button {
+    flex: 1;
+
+    mat-icon {
+      margin-right: 6px;
+    }
+  }
+
+  .remove-receipt-btn {
+    @apply text-red-600 dark:text-red-400;
+  }
+}
+
 // AI Category Suggestion
 .ai-suggestion-container {
   margin-top: -8px;

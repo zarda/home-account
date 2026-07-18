@@ -1,10 +1,17 @@
 import { Injectable, inject, signal, computed, Injector } from '@angular/core';
-import { Timestamp } from '@angular/fire/firestore';
+import { Timestamp, deleteField } from '@angular/fire/firestore';
 import { Observable, map, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
+import { ReceiptQuotaService } from './receipt-quota.service';
+
+/**
+ * Thrown when storing a receipt image would exceed the user's tier limit.
+ * Callers surface the quota dialog instead of a generic error message.
+ */
+export const RECEIPT_IMAGE_LIMIT_ERROR = 'RECEIPT_IMAGE_LIMIT_REACHED';
 import {
   Transaction,
   TransactionFilters,
@@ -19,6 +26,7 @@ export class TransactionService {
   private authService = inject(AuthService);
   private currencyService = inject(CurrencyService);
   private storageService = inject(StorageService);
+  private receiptQuota = inject(ReceiptQuotaService);
   private injector = inject(Injector);
 
   // Helper to update budgets after transaction changes
@@ -178,6 +186,10 @@ export class TransactionService {
 
       let id: string;
       if (data.receiptFile) {
+        // A new transaction always stores a NEW image — enforce the tier quota
+        if (!(await this.receiptQuota.canAddImage())) {
+          throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
+        }
         // Pre-generate the id so the receipt's storage object and the
         // Firestore document share the same key, then upload before saving.
         id = this.firestoreService.generateId(this.userTransactionsPath);
@@ -190,6 +202,7 @@ export class TransactionService {
           `${this.userTransactionsPath}/${id}`,
           transaction
         );
+        this.receiptQuota.noteImageAdded();
       } else if (options?.id) {
         // Caller-supplied deterministic id (recurring engine idempotency):
         // posting the same occurrence twice overwrites one document instead
@@ -261,11 +274,20 @@ export class TransactionService {
       if (data.receiptFile) {
         const userId = this.authService.userId();
         if (userId) {
+          // Replacing an existing image reuses its quota slot; only a
+          // transaction without a stored receipt consumes a new one
+          const isNewImage = !currentTransaction?.receiptUrl;
+          if (isNewImage && !(await this.receiptQuota.canAddImage())) {
+            throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
+          }
           updateData.receiptUrl = await this.storageService.uploadReceipt(
             userId,
             id,
             data.receiptFile
           );
+          if (isNewImage) {
+            this.receiptQuota.noteImageAdded();
+          }
         }
       }
 
@@ -298,6 +320,28 @@ export class TransactionService {
     }
   }
 
+  /**
+   * Remove a transaction's stored receipt image, freeing one quota slot.
+   * Deletes the storage object and clears the receiptUrl field; the
+   * transaction itself is untouched.
+   */
+  async removeReceipt(id: string): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) throw new Error('User not authenticated');
+
+    const transaction = await this.firestoreService.getDocument<Transaction>(
+      `${this.userTransactionsPath}/${id}`
+    );
+    if (!transaction?.receiptUrl) return;
+
+    await this.storageService.deleteReceipt(userId, id);
+    await this.firestoreService.updateDocument(
+      `${this.userTransactionsPath}/${id}`,
+      { receiptUrl: deleteField() }
+    );
+    this.receiptQuota.noteImageRemoved();
+  }
+
   // Delete a transaction
   async deleteTransaction(id: string): Promise<void> {
     this.isLoading.set(true);
@@ -322,6 +366,9 @@ export class TransactionService {
             // Don't fail the transaction delete if receipt cleanup fails.
           }
         }
+        // The document is gone either way, so the image no longer counts
+        // against the quota
+        this.receiptQuota.noteImageRemoved();
       }
 
       // Update affected budget if this was an expense
@@ -356,6 +403,9 @@ export class TransactionService {
           }
         }
       }
+
+      // Everything is gone — force a quota recount on next check
+      this.receiptQuota.invalidateCount();
     } finally {
       this.isLoading.set(false);
     }
@@ -543,6 +593,24 @@ export class TransactionService {
       {
         orderBy: [{ field: 'date', direction: 'desc' }]
       }
+    );
+  }
+
+  // Get every transaction with a stored receipt image, newest first.
+  // Backs the receipt image manager (quota housekeeping).
+  getTransactionsWithReceipts(): Observable<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return of([]);
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      // Matches non-empty receiptUrl values; ordering on the inequality
+      // field is implicit, so sort by date client-side instead
+      { where: [{ field: 'receiptUrl', op: '>', value: '' }] }
+    ).pipe(
+      map(transactions =>
+        [...transactions].sort((a, b) => b.date.toMillis() - a.date.toMillis())
+      )
     );
   }
 

@@ -307,6 +307,14 @@
   @apply text-gray-500 dark:text-gray-400;
 }
 
+// Receipt images section
+.receipt-usage {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  min-height: 1.25em;
+}
+
 @media (max-width: 640px) {
   .danger-item {
     flex-direction: column;

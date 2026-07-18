@@ -10,6 +10,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
 import { ExportService, ImportedTransaction } from '../../../core/services/export.service';
 import { TransactionService } from '../../../core/services/transaction.service';
+import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -40,9 +41,26 @@ export class DataManagementComponent {
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
+  receiptQuota = inject(ReceiptQuotaService);
+
+  constructor() {
+    // Best-effort usage load for the receipt images section
+    this.receiptQuota.refreshCount().catch(() => undefined);
+  }
 
   private t(key: string, params?: Record<string, string | number>): string {
     return this.translationService.t(key, params);
+  }
+
+  async openReceiptImageManager(): Promise<void> {
+    const { ReceiptImageManagerComponent } = await import(
+      '../../transactions/receipt-images/receipt-image-manager.component'
+    );
+    this.dialog.open(ReceiptImageManagerComponent, {
+      width: '560px',
+      maxWidth: '95vw',
+      autoFocus: false,
+    });
   }
 
   isExporting = signal(false);

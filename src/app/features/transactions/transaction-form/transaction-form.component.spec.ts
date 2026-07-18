@@ -1,12 +1,15 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
-import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFormComponent } from './transaction-form.component';
-import { TransactionService } from '../../../core/services/transaction.service';
+import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from '../../../core/services/transaction.service';
+import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
+import { ReceiptToNoteService } from '../../../core/services/receipt-to-note.service';
+import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -30,6 +33,9 @@ describe('TransactionFormComponent', () => {
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let announcer: jasmine.SpyObj<AnnouncerService>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<TransactionFormComponent>>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+  let receiptQuota: jasmine.SpyObj<ReceiptQuotaService>;
+  let receiptToNote: jasmine.SpyObj<ReceiptToNoteService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
 
   const expense = createCategory({ id: 'food', type: 'expense' });
@@ -44,10 +50,11 @@ describe('TransactionFormComponent', () => {
 
   beforeEach(async () => {
     transactionService = jasmine.createSpyObj('TransactionService', [
-      'addTransaction', 'updateTransaction', 'getTransactionDatesForMonth',
+      'addTransaction', 'updateTransaction', 'removeReceipt', 'getTransactionDatesForMonth',
     ]);
     transactionService.addTransaction.and.resolveTo('new-id');
     transactionService.updateTransaction.and.resolveTo(undefined);
+    transactionService.removeReceipt.and.resolveTo(undefined);
     transactionService.getTransactionDatesForMonth.and.returnValue(of(new Map()));
 
     categoryService = {
@@ -64,6 +71,11 @@ describe('TransactionFormComponent', () => {
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+    receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImage']);
+    receiptQuota.canAddImage.and.resolveTo(true);
+    receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
     currentUser = signal<User | null>(createUser());
 
     const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies']);
@@ -84,6 +96,9 @@ describe('TransactionFormComponent', () => {
         { provide: MatSnackBar, useValue: snackBar },
         { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialogRef, useValue: dialogRef },
+        { provide: MatDialog, useValue: dialog },
+        { provide: ReceiptQuotaService, useValue: receiptQuota },
+        { provide: ReceiptToNoteService, useValue: receiptToNote },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     })
@@ -195,11 +210,67 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
       expect(component.isSubmitting()).toBeFalse();
     });
+
+    it('opens the quota dialog when saving rejects with the image limit error', async () => {
+      transactionService.addTransaction.and.rejectWith(new Error(RECEIPT_IMAGE_LIMIT_ERROR));
+      const component = build().componentInstance;
+      validForm(component);
+      await component.onSubmit();
+      expect(dialog.open).toHaveBeenCalledWith(ReceiptLimitDialogComponent, jasmine.any(Object));
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
   });
 
   it('onCancel closes the dialog with false', () => {
     build().componentInstance.onCancel();
     expect(dialogRef.close).toHaveBeenCalledWith(false);
+  });
+
+  describe('existing receipt housekeeping (edit mode)', () => {
+    const txnWithReceipt = () =>
+      createTransaction({ id: 'e1', receiptUrl: 'https://storage.example.com/r.jpg' });
+
+    it('removes the stored image after confirmation', async () => {
+      const component = build({ mode: 'edit', transaction: txnWithReceipt() }).componentInstance;
+
+      await component.removeExistingReceipt();
+
+      expect(transactionService.removeReceipt).toHaveBeenCalledWith('e1');
+      expect(component.existingReceiptUrl).toBeNull();
+      expect(notifications.success).toHaveBeenCalledWith('receiptImages.removed');
+    });
+
+    it('keeps the image when the confirmation is declined', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+      const component = build({ mode: 'edit', transaction: txnWithReceipt() }).componentInstance;
+
+      await component.removeExistingReceipt();
+
+      expect(transactionService.removeReceipt).not.toHaveBeenCalled();
+      expect(component.existingReceiptUrl).not.toBeNull();
+    });
+
+    it('converts the stored image into the note field', async () => {
+      receiptToNote.convertReceiptToNote.and.resolveTo('Latte — 5.00\nTotal 5.00');
+      const component = build({ mode: 'edit', transaction: txnWithReceipt() }).componentInstance;
+
+      await component.convertExistingReceiptToNote();
+
+      expect(receiptToNote.convertReceiptToNote).toHaveBeenCalled();
+      expect(component.form.get('note')?.value).toBe('Latte — 5.00\nTotal 5.00');
+      expect(component.existingReceiptUrl).toBeNull();
+      expect(notifications.success).toHaveBeenCalledWith('receiptImages.converted');
+    });
+
+    it('keeps the image and reports a conversion failure', async () => {
+      receiptToNote.convertReceiptToNote.and.rejectWith(new Error('RECEIPT_TO_NOTE_NO_DETAILS'));
+      const component = build({ mode: 'edit', transaction: txnWithReceipt() }).componentInstance;
+
+      await component.convertExistingReceiptToNote();
+
+      expect(component.existingReceiptUrl).not.toBeNull();
+      expect(notifications.error).toHaveBeenCalledWith('receiptImages.convertFailedNoDetails');
+    });
   });
 
   describe('receipt scanning', () => {
@@ -214,6 +285,15 @@ describe('TransactionFormComponent', () => {
       const component = build().componentInstance;
       component.onReceiptSelected({ target: { files: [], value: '' } } as unknown as Event);
       expect(notifications.error).not.toHaveBeenCalled();
+    });
+
+    it('blocks attaching a new image at the quota limit and shows the limit dialog', async () => {
+      receiptQuota.canAddImage.and.resolveTo(false);
+      const component = build().componentInstance;
+      const file = new File(['x'], 'r.jpg', { type: 'image/jpeg' });
+      await component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
+      expect(dialog.open).toHaveBeenCalledWith(ReceiptLimitDialogComponent, jasmine.any(Object));
+      expect(component.receiptFile()).toBeNull();
     });
 
     it('scanReceipt fills the form on success', async () => {

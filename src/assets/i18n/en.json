@@ -50,7 +50,8 @@
     "description": "Description",
     "amount": "Amount",
     "type": "Type",
-    "category": "Category"
+    "category": "Category",
+    "loading": "Loading..."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -788,5 +789,29 @@
     "donateDescription": "If you find this app helpful, consider supporting its development with a donation. Your contribution helps maintain and improve the application.",
     "donateButton": "Donate",
     "techStack": "Built With"
+  },
+  "receiptImages": {
+    "title": "Receipt images",
+    "settingsDescription": "See how much of your receipt image storage is used and free up space.",
+    "usage": "{{used}} of {{limit}} receipt images used",
+    "usageUnlimited": "{{used}} receipt images stored (unlimited)",
+    "limitTitle": "Receipt image limit reached",
+    "limitMessage": "Free accounts can store up to {{limit}} receipt images, and you have used them all.",
+    "freeUpSpace": "To add a new image, remove an existing one or convert it into detailed note text.",
+    "upgradeComingSoon": "A paid subscription upgrade with a higher image limit is coming soon.",
+    "manage": "Manage receipt images",
+    "viewImage": "View image",
+    "convertToNote": "Convert to note",
+    "convertToNoteHint": "Save the receipt's detailed content into the note, then remove the image",
+    "converting": "Converting...",
+    "removeImage": "Remove image",
+    "removeConfirmTitle": "Remove receipt image?",
+    "removeConfirmMessage": "The image will be deleted permanently. The transaction itself is kept.",
+    "removed": "Receipt image removed",
+    "converted": "Receipt details saved to the note and the image was removed",
+    "convertFailedNoAi": "No AI provider is configured. Add an API key in Profile Settings to convert images.",
+    "convertFailedNoDetails": "No details could be read from this image, so it was kept.",
+    "convertFailed": "Converting the image failed, so it was kept.",
+    "empty": "No stored receipt images."
   }
 }
