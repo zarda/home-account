@@ -71,10 +71,12 @@ describe('ImportHistoryComponent', () => {
   beforeEach(async () => {
     mockImportHistoryService = jasmine.createSpyObj('ImportHistoryService', [
       'getImportHistory',
-      'deleteImportHistory'
+      'deleteImportHistory',
+      'clearImportHistory'
     ]);
     mockImportHistoryService.getImportHistory.and.returnValue(of(mockHistory));
     mockImportHistoryService.deleteImportHistory.and.returnValue(Promise.resolve());
+    mockImportHistoryService.clearImportHistory.and.returnValue(Promise.resolve());
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
@@ -275,6 +277,41 @@ describe('ImportHistoryComponent', () => {
       tick();
 
       expect(notifications.error).toHaveBeenCalledWith('import.deleteHistoryFailed');
+    }));
+  });
+
+  describe('clearHistory', () => {
+    beforeEach(() => {
+      fixture.detectChanges();
+    });
+
+    it('should clear all history when confirmed', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.clearHistory();
+      tick();
+
+      expect(mockImportHistoryService.clearImportHistory).toHaveBeenCalled();
+      expect(notifications.success).toHaveBeenCalledWith('import.historyCleared');
+    }));
+
+    it('should not clear history when cancelled', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+
+      component.clearHistory();
+      tick();
+
+      expect(mockImportHistoryService.clearImportHistory).not.toHaveBeenCalled();
+    }));
+
+    it('should notify when clearing fails', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      mockImportHistoryService.clearImportHistory.and.returnValue(Promise.reject(new Error('fail')));
+
+      component.clearHistory();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith('import.clearHistoryFailed');
     }));
   });
 

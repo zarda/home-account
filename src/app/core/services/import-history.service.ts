@@ -116,6 +116,27 @@ export class ImportHistoryService {
   }
 
   /**
+   * Delete every import history record for the current user
+   */
+  async clearImportHistory(): Promise<void> {
+    this.isLoading.set(true);
+
+    try {
+      const history = await this.firestoreService.getCollection<ImportHistory>(
+        this.userImportsPath
+      );
+
+      for (const item of history) {
+        await this.firestoreService.deleteDocument(
+          `${this.userImportsPath}/${item.id}`
+        );
+      }
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  /**
    * Create a pending import history record (before processing starts)
    */
   async createPendingImport(
