@@ -10,11 +10,15 @@
   // column wraps below it when the card is too narrow to fit both.
   flex-wrap: wrap;
   align-items: center;
+  align-content: center;
   gap: 12px;
   padding: 16px;
   background: var(--surface-card);
   border-radius: var(--radius-card);
   min-width: 0;
+  // Fill the host so cards in one grid row keep equal backgrounds even
+  // when only some of them wrap the delta onto a second line.
+  height: 100%;
 }
 
 .stat-icon {
@@ -54,6 +58,13 @@
   // overflowing the rounded corners.
   max-width: 100%;
   flex: 1;
+}
+
+// With an icon tile in the row, the cap must also leave room for the tile
+// (40px) and the gap (12px) — a plain 100% would let the body's minimum
+// exceed the space next to the icon and push it onto a row of its own.
+.stat-icon + .stat-body {
+  max-width: calc(100% - 52px);
 }
 
 .stat-label {
