@@ -286,10 +286,32 @@ describe('AIImportService', () => {
       await expectAsync(service.importFromMultipleImages([])).toBeRejectedWithError(/No image files/);
     });
 
-    it('should delegate to single image import for a single file', async () => {
-      spyOn(service, 'importFromImage').and.returnValue(Promise.resolve({ source: 'image' } as never));
-      await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
-      expect(service.importFromImage).toHaveBeenCalled();
+    it('should run a single file through the receipt-aware extraction, not importFromImage', async () => {
+      spyOn(service, 'importFromImage');
+      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Solo item', amount: 5, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+      ]));
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(service.importFromImage).not.toHaveBeenCalled();
+      expect(geminiService.extractTransactionsFromMultipleImages).toHaveBeenCalled();
+      expect(result.transactions.length).toBe(1);
+    });
+
+    it('should split one photo containing two receipts into two transactions with their groups', async () => {
+      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop A' },
+        { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'bottom', confidence: 0.8, receiptId: 2, merchant: 'Shop B' }
+      ]));
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions.length).toBe(2);
+      expect(result.transactions.map(t => t.imageMetadata?.receiptId)).toEqual([1, 2]);
     });
 
     it('should throw when gemini is unavailable', async () => {

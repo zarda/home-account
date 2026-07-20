@@ -22,6 +22,7 @@ import { OfflineQueueService } from '../../../core/services/offline-queue.servic
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 
 describe('CameraCaptureComponent offline queue (smoke test)', () => {
   let queue: OfflineQueueService;
@@ -57,6 +58,10 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate']) },
+        {
+          provide: DuplicateDetectionService,
+          useValue: jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']),
+        },
       ],
     })
       .overrideComponent(CameraCaptureComponent, { set: { imports: [], template: '' } })

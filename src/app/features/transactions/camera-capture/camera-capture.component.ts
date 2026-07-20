@@ -12,6 +12,7 @@ import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
@@ -50,6 +51,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   private pwaService = inject(PwaService);
   private offlineQueue = inject(OfflineQueueService);
   private translationService = inject(TranslationService);
+  private duplicateService = inject(DuplicateDetectionService);
   private router = inject(Router);
 
   // Support for multiple captured images
@@ -255,54 +257,34 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         return;
       }
 
-      // Show processing mode
+      // One receiptId-aware pipeline for any photo count: several photos may
+      // form one receipt, and a single photo may hold several receipts —
+      // the dedicated single-image path had no receipt grouping.
       const modeLabel = this.getProcessingModeLabel();
-      
-      if (files.length === 1) {
-        // Single image processing
-        this.processingStatus.set(`Analyzing image (${modeLabel})...`);
-        
-        try {
-          const strategyResult = await this.strategyService.processReceipt(files[0]);
-          
-          if (strategyResult.transactions.length === 0) {
-            // Fall back to import service
-            const result = await this.importService.importFromImage(files[0]);
-            this.handleImportResult(result, false);
-            return;
-          }
+      const multiImage = files.length > 1;
+      this.processingStatus.set(
+        multiImage
+          ? `Processing ${files.length} images (${modeLabel})...`
+          : `Analyzing image (${modeLabel})...`
+      );
 
-          // Convert strategy result to import result format
-          const importResult = this.convertStrategyResult(strategyResult, files);
-          this.handleImportResult(importResult, false);
-        } catch (strategyErr) {
-          console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
-          // Fall back to original import service
-          const result = await this.importService.importFromImage(files[0]);
-          this.handleImportResult(result, false);
-        }
-      } else {
-        // Multiple images processing
-        this.processingStatus.set(`Processing ${files.length} images (${modeLabel})...`);
+      try {
+        const strategyResult = await this.strategyService.processMultipleImages(files);
 
-        try {
-          const strategyResult = await this.strategyService.processMultipleImages(files);
-          
-          if (strategyResult.transactions.length === 0) {
-            // Fall back to import service
-            const result = await this.importService.importFromMultipleImages(files);
-            this.handleImportResult(result, true);
-            return;
-          }
-
-          const importResult = this.convertStrategyResult(strategyResult, files);
-          this.handleImportResult(importResult, true);
-        } catch (strategyErr) {
-          console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
-          // Fall back to original import service
+        if (strategyResult.transactions.length === 0) {
+          // Fall back to import service
           const result = await this.importService.importFromMultipleImages(files);
-          this.handleImportResult(result, true);
+          this.handleImportResult(result, multiImage);
+          return;
         }
+
+        const importResult = await this.convertStrategyResult(strategyResult, files);
+        this.handleImportResult(importResult, multiImage);
+      } catch (strategyErr) {
+        console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
+        // Fall back to original import service
+        const result = await this.importService.importFromMultipleImages(files);
+        this.handleImportResult(result, multiImage);
       }
     } catch (err) {
       this.error.set(
@@ -359,31 +341,47 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   /**
    * Convert strategy service result to import result format.
    */
-  private convertStrategyResult(
+  private async convertStrategyResult(
     strategyResult: import('../../../core/services/ai-strategy.service').ProcessingResult,
     files: File[]
-  ): import('../../../models').ImportResult {
+  ): Promise<import('../../../models').ImportResult> {
+    const transactions = strategyResult.transactions.map((tx, index) => ({
+      id: `strategy_${index}_${Date.now()}`,
+      description: tx.description,
+      amount: tx.amount,
+      currency: tx.currency,
+      date: tx.date,
+      type: tx.type,
+      suggestedCategoryId: tx.suggestedCategoryId || 'other_expense',
+      categoryConfidence: tx.confidence,
+      notes: tx.notes,
+      isDuplicate: false,
+      selected: true,
+      // The cloud strategy path carries the receipt grouping; native results
+      // have none, and the review table renders nothing without it.
+      imageMetadata: tx.receiptId != null ? {
+        imageIndex: 0,
+        imageId: 'image_0',
+        positionInImage: 'middle' as const,
+        confidenceScore: tx.confidence,
+        receiptId: tx.receiptId,
+      } : undefined,
+    }));
+
+    // The strategy path bypasses AIImportService, so run the same duplicate
+    // check the wizard-upload path applies before review.
+    const duplicates = await this.duplicateService.checkDuplicates(transactions);
+    const marked = this.duplicateService.markDuplicates(transactions, duplicates);
+
     return {
       source: 'image',
       fileType: 'receipt_image',
       fileName: files.length === 1 ? files[0].name : `${files.length} images`,
       fileSize: files.reduce((sum, f) => sum + f.size, 0),
-      transactions: strategyResult.transactions.map((tx, index) => ({
-        id: `strategy_${index}_${Date.now()}`,
-        description: tx.description,
-        amount: tx.amount,
-        currency: tx.currency,
-        date: tx.date,
-        type: tx.type,
-        suggestedCategoryId: tx.suggestedCategoryId || 'other_expense',
-        categoryConfidence: tx.confidence,
-        notes: tx.notes,
-        isDuplicate: false,
-        selected: true,
-      })),
+      transactions: marked,
       confidence: strategyResult.confidence,
       warnings: [],
-      duplicates: [],
+      duplicates,
     };
   }
 

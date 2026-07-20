@@ -187,18 +187,15 @@ export class AIImportService {
   }
 
   /**
-   * Import transactions from multiple images of a single receipt.
+   * Import transactions from one or more receipt photos.
    * Images should be ordered top-to-bottom as they appear on the receipt.
-   * Uses AI-powered position-aware deduplication to handle overlapping photos.
+   * Every count goes through receiptId-aware extraction + consolidation, so
+   * a single photo holding several receipts still yields one transaction
+   * per receipt (importFromImage has no receipt grouping).
    */
   async importFromMultipleImages(files: File[]): Promise<ImportResult> {
     if (files.length === 0) {
       throw new Error('No image files provided');
-    }
-
-    // If only one file, use regular single-image import
-    if (files.length === 1) {
-      return this.importFromImage(files[0]);
     }
 
     if (!this.geminiService.isAvailable()) {
@@ -313,6 +310,8 @@ export class AIImportService {
           positionInImage: original.positionInImage,
           confidenceScore: original.confidence,
           wasMerged: original.wasMerged,
+          mergedFromImages: original.mergedFromImages,
+          receiptId: original.receiptId,
         }
       };
     });

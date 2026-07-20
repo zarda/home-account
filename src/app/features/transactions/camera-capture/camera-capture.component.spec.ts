@@ -11,6 +11,7 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ImportResult } from '../../../models';
 import { NotificationService } from '../../../core/services/notification.service';
+import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 
 describe('CameraCaptureComponent', () => {
   let importService: jasmine.SpyObj<AIImportService>;
@@ -23,6 +24,7 @@ describe('CameraCaptureComponent', () => {
   let translationService: jasmine.SpyObj<TranslationService>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<CameraCaptureComponent>>;
   let router: jasmine.SpyObj<Router>;
+  let duplicateService: jasmine.SpyObj<DuplicateDetectionService>;
 
   const importResult: ImportResult = {
     source: 'image', fileType: 'receipt_image', fileName: 'a.jpg', fileSize: 1,
@@ -68,6 +70,9 @@ describe('CameraCaptureComponent', () => {
     translationService.t.and.callFake((key: string) => key);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
     router = jasmine.createSpyObj('Router', ['navigate']);
+    duplicateService = jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']);
+    duplicateService.checkDuplicates.and.resolveTo([]);
+    duplicateService.markDuplicates.and.callFake(transactions => transactions);
 
     await TestBed.configureTestingModule({
       imports: [CameraCaptureComponent],
@@ -82,6 +87,7 @@ describe('CameraCaptureComponent', () => {
         { provide: TranslationService, useValue: translationService },
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: Router, useValue: router },
+        { provide: DuplicateDetectionService, useValue: duplicateService },
       ],
     })
       .overrideComponent(CameraCaptureComponent, { set: { imports: [], template: '' } })
@@ -227,7 +233,7 @@ describe('CameraCaptureComponent', () => {
     it('returns early when there are no images', async () => {
       const component = build().componentInstance;
       await component.processImage();
-      expect(strategyService.processReceipt).not.toHaveBeenCalled();
+      expect(strategyService.processMultipleImages).not.toHaveBeenCalled();
     });
 
     it('queues images when offline', async () => {
@@ -250,16 +256,17 @@ describe('CameraCaptureComponent', () => {
       expect(component.error()).toContain('AI service is not available');
     });
 
-    it('processes a single image and navigates to review', async () => {
+    it('processes a single image through the multi-image pipeline and navigates to review', async () => {
       const component = build().componentInstance;
       withImages(component, 1);
       await component.processImage();
-      expect(strategyService.processReceipt).toHaveBeenCalled();
+      expect(strategyService.processMultipleImages).toHaveBeenCalled();
+      expect(strategyService.processReceipt).not.toHaveBeenCalled();
       expect(router.navigate).toHaveBeenCalledWith(['/import/file'], jasmine.any(Object));
     });
 
     it('carries item notes and suggested category into the review payload', async () => {
-      strategyService.processReceipt.and.resolveTo({
+      strategyService.processMultipleImages.and.resolveTo({
         transactions: [{
           description: 'Cafe', amount: 1200, currency: 'JPY', date: new Date(), type: 'expense',
           confidence: 0.9, notes: 'Latte — JPY 500\nMocha — JPY 700', suggestedCategoryId: 'food_coffee_&_drinks',
@@ -278,20 +285,40 @@ describe('CameraCaptureComponent', () => {
       expect(transaction.suggestedCategoryId).toBe('food_coffee_&_drinks');
     });
 
-    it('falls back to the import service when strategy yields nothing', async () => {
-      strategyService.processReceipt.and.resolveTo({ transactions: [], confidence: 0 } as never);
+    it('runs duplicate detection on strategy results and keeps receipt groups', async () => {
+      strategyService.processMultipleImages.and.resolveTo({
+        transactions: [
+          { description: 'Store A', amount: 10, currency: 'USD', date: new Date(), type: 'expense', confidence: 0.9, receiptId: 1 },
+          { description: 'Store B', amount: 20, currency: 'USD', date: new Date(), type: 'expense', confidence: 0.8, receiptId: 2 },
+        ],
+        confidence: 0.85,
+      } as never);
       const component = build().componentInstance;
       withImages(component, 1);
       await component.processImage();
-      expect(importService.importFromImage).toHaveBeenCalled();
+
+      expect(duplicateService.checkDuplicates).toHaveBeenCalled();
+      const navState = (router.navigate.calls.mostRecent().args[1] as {
+        state: { importResult: ImportResult };
+      }).state;
+      const metas = navState.importResult.transactions.map(t => t.imageMetadata?.receiptId);
+      expect(metas).toEqual([1, 2]);
+    });
+
+    it('falls back to the import service when strategy yields nothing', async () => {
+      strategyService.processMultipleImages.and.resolveTo({ transactions: [], confidence: 0 } as never);
+      const component = build().componentInstance;
+      withImages(component, 1);
+      await component.processImage();
+      expect(importService.importFromMultipleImages).toHaveBeenCalled();
     });
 
     it('falls back to the import service when strategy throws', async () => {
-      strategyService.processReceipt.and.rejectWith(new Error('boom'));
+      strategyService.processMultipleImages.and.rejectWith(new Error('boom'));
       const component = build().componentInstance;
       withImages(component, 1);
       await component.processImage();
-      expect(importService.importFromImage).toHaveBeenCalled();
+      expect(importService.importFromMultipleImages).toHaveBeenCalled();
     });
 
     it('processes multiple images', async () => {
@@ -310,8 +337,8 @@ describe('CameraCaptureComponent', () => {
     });
 
     it('surfaces an error when no transactions are found', async () => {
-      strategyService.processReceipt.and.resolveTo({ transactions: [], confidence: 0 } as never);
-      importService.importFromImage.and.resolveTo({ ...importResult, transactions: [] });
+      strategyService.processMultipleImages.and.resolveTo({ transactions: [], confidence: 0 } as never);
+      importService.importFromMultipleImages.and.resolveTo({ ...importResult, transactions: [] });
       const component = build().componentInstance;
       withImages(component, 1);
       await component.processImage();

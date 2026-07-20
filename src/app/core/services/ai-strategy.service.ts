@@ -291,6 +291,7 @@ export class AIStrategyService {
       source: 'cloud' as const,
       notes: t.details,
       suggestedCategoryId: t.category,
+      receiptId: t.receiptId,
     }));
 
     const avgConfidence = transactions.length > 0
