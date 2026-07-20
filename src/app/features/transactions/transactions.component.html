@@ -21,6 +21,10 @@
             <mat-icon>add</mat-icon>
             <span>{{ 'transactions.addTransaction' | translate }}</span>
           </button>
+          <button mat-menu-item (click)="openCameraDialog()">
+            <mat-icon>photo_camera</mat-icon>
+            <span>{{ 'import.importFromCamera' | translate }}</span>
+          </button>
           <button mat-menu-item (click)="navigateToImportFile()">
             <mat-icon>upload_file</mat-icon>
             <span>{{ 'import.importFromFile' | translate }}</span>
