@@ -10,6 +10,7 @@ import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from '../../../core/ser
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { ReceiptToNoteService } from '../../../core/services/receipt-to-note.service';
 import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
+import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -70,7 +71,8 @@ describe('TransactionFormComponent', () => {
     gemini.suggestCategory.and.resolveTo('food');
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
-    dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+    dialogRef = jasmine.createSpyObj('MatDialogRef', ['close', 'afterClosed']);
+    dialogRef.afterClosed.and.returnValue(of(undefined) as never);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
     receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImage']);
@@ -224,6 +226,19 @@ describe('TransactionFormComponent', () => {
   it('onCancel closes the dialog with false', () => {
     build().componentInstance.onCancel();
     expect(dialogRef.close).toHaveBeenCalledWith(false);
+  });
+
+  it('openLongReceiptCapture opens the camera dialog only after this dialog closes', () => {
+    const closed$ = new Subject<unknown>();
+    dialogRef.afterClosed.and.returnValue(closed$.asObservable() as never);
+    const component = build().componentInstance;
+
+    component.openLongReceiptCapture();
+    expect(dialogRef.close).toHaveBeenCalledWith(false);
+    expect(dialog.open).not.toHaveBeenCalled();
+
+    closed$.next(undefined);
+    expect(dialog.open).toHaveBeenCalledWith(CameraCaptureComponent, jasmine.any(Object));
   });
 
   describe('existing receipt housekeeping (edit mode)', () => {

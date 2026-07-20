@@ -50,6 +50,17 @@
               <mat-icon>photo_camera</mat-icon>
               <span>{{ 'ai.scanReceipt' | translate }}</span>
             </button>
+            <!-- Long receipt: hands off to the multi-photo capture dialog -->
+            <button
+              mat-button
+              type="button"
+              class="long-receipt-btn"
+              (click)="openLongReceiptCapture()"
+              [disabled]="isScanning()"
+            >
+              <mat-icon>burst_mode</mat-icon>
+              <span>{{ 'ai.longReceipt' | translate }}</span>
+            </button>
           }
         </div>
       }

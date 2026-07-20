@@ -34,6 +34,7 @@ import { GeminiService } from '../../../core/services/gemini.service';
 import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
+import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { formatReceiptItemLines } from '../../../core/utils/receipt-consolidation';
 import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
@@ -334,6 +335,19 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   // === AI Receipt Scanner Methods ===
+
+  openLongReceiptCapture(): void {
+    // Subscribe before closing: the capture dialog must open only after
+    // this dialog's overlay is fully disposed, regardless of which page
+    // opened the form.
+    this.dialogRef.afterClosed().subscribe(() => {
+      this.dialog.open(CameraCaptureComponent, {
+        width: '500px',
+        maxWidth: '95vw',
+      });
+    });
+    this.dialogRef.close(false);
+  }
 
   async onReceiptSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
