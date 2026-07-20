@@ -162,6 +162,31 @@ describe('CameraCaptureComponent', () => {
       expect(component.imageCount()).toBe(0);
     });
 
+    it('onImageCaptured adds every file of a multi-selection in order', async () => {
+      const component = build().componentInstance;
+      spyOn(component as unknown as { compressImage: (f: File) => Promise<File> }, 'compressImage')
+        .and.callFake((f: File) => Promise.resolve(f));
+      await component.onImageCaptured({
+        target: { files: [file('a.jpg'), file('b.jpg'), file('c.jpg')], value: '' },
+      } as unknown as Event);
+      expect(component.imageCount()).toBe(3);
+      expect(component.capturedImages().map(i => i.file.name)).toEqual(['a.jpg', 'b.jpg', 'c.jpg']);
+      expect(component.error()).toBeNull();
+    });
+
+    it('onImageCaptured truncates at the photo cap and reports it', async () => {
+      const component = build().componentInstance;
+      spyOn(component as unknown as { compressImage: (f: File) => Promise<File> }, 'compressImage')
+        .and.callFake((f: File) => Promise.resolve(f));
+      withImages(component, 9);
+      await component.onImageCaptured({
+        target: { files: [file('a.jpg'), file('b.jpg')], value: '' },
+      } as unknown as Event);
+      expect(component.imageCount()).toBe(10);
+      expect(component.error()).toBe('import.maxPhotosReached');
+      expect(translationService.t).toHaveBeenCalledWith('import.maxPhotosReached', { count: 10 });
+    });
+
     it('removeImage removes by id and revokes its url', () => {
       const component = build().componentInstance;
       withImages(component, 2);

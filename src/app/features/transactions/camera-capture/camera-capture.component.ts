@@ -66,7 +66,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   // Computed signals
   hasImages = computed(() => this.capturedImages().length > 0);
   imageCount = computed(() => this.capturedImages().length);
-  canAddMore = computed(() => this.capturedImages().length < 10); // Max 10 images
+  canAddMore = computed(() => this.capturedImages().length < this.MAX_IMAGES);
 
   // AI processing mode indicator
   processingMode = computed(() => {
@@ -97,6 +97,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   });
 
   // Image compression settings for iOS
+  readonly MAX_IMAGES = 10;
   private readonly MAX_IMAGE_SIZE = 1920; // Max dimension
   private readonly JPEG_QUALITY = 0.85;   // Compression quality
 
@@ -127,41 +128,51 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
 
   async onImageCaptured(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
+    // The library input allows multi-select; the camera input yields one shot
+    const files = Array.from(input.files ?? []);
 
-    if (file) {
-      this.processingStatus.set('Optimizing image...');
-      
-      try {
-        // Compress image for better performance, especially on iOS
-        const compressedFile = await this.compressImage(file);
-        
-        const newImage: CapturedImage = {
-          id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          file: compressedFile,
-          previewUrl: URL.createObjectURL(compressedFile),
-          compressedFile,
-        };
+    if (files.length > 0) {
+      const room = Math.max(0, this.MAX_IMAGES - this.capturedImages().length);
+      const accepted = files.slice(0, room);
+      this.error.set(
+        accepted.length < files.length
+          ? this.translationService.t('import.maxPhotosReached', { count: this.MAX_IMAGES })
+          : null
+      );
 
-        this.capturedImages.update(images => [...images, newImage]);
-        this.error.set(null);
-        this.processingStatus.set('');
-      } catch (err) {
-        console.error('Image compression error:', err);
-        // Fall back to original file
-        const newImage: CapturedImage = {
-          id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          file,
-          previewUrl: URL.createObjectURL(file),
-        };
-        this.capturedImages.update(images => [...images, newImage]);
-        this.error.set(null);
+      if (accepted.length > 0) {
+        this.processingStatus.set('Optimizing image...');
+        for (const file of accepted) {
+          await this.addCapturedImage(file);
+        }
         this.processingStatus.set('');
       }
     }
 
     // Reset input so the same file can be selected again
     input.value = '';
+  }
+
+  private async addCapturedImage(file: File): Promise<void> {
+    const id = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    try {
+      // Compress image for better performance, especially on iOS
+      const compressedFile = await this.compressImage(file);
+      this.capturedImages.update(images => [...images, {
+        id,
+        file: compressedFile,
+        previewUrl: URL.createObjectURL(compressedFile),
+        compressedFile,
+      }]);
+    } catch (err) {
+      console.error('Image compression error:', err);
+      // Fall back to original file
+      this.capturedImages.update(images => [...images, {
+        id,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }]);
+    }
   }
 
   /**
