@@ -819,6 +819,7 @@ Empty array [] if no transactions found. Only posted/confirmed transactions.`;
 - Multiple photos of ONE receipt (overlapping pages) → items share the same receiptId
 - Photos of DIFFERENT receipts → each receipt gets a different receiptId
 - A mix of both
+A single photo may also show SEVERAL receipts side by side → give each its own receiptId.
 
 FIRST: Determine which photos belong to the same receipt (same merchant, date, style) vs different receipts.
 Then: Extract EVERY line item. Items from the same receipt share the same receiptId (starting from 1).
@@ -935,6 +936,8 @@ Return ONLY valid JSON array:`;
     try {
       const prompt = `Extract EVERY individual product/item from this receipt image.
 
+The photo may contain MORE THAN ONE receipt (e.g. several laid side by side). Give the items of each receipt their own receiptId (1, 2, 3...).
+
 Return each item as a SEPARATE JSON object in an array.
 Do NOT include total, subtotal, tax, or service charge as items.
 
@@ -944,18 +947,19 @@ FIELDS PER ITEM:
 - amount: individual item price
 - type: "expense"
 - currency: JPY, USD, TWD, CNY, etc
+- receiptId: Integer grouping items from the same receipt (1, 2, 3...)
 - positionInImage: "top", "middle", "bottom"
 - confidence: 0.0-1.0
 - category: Restaurants, Groceries, Coffee & Drinks, Fast Food, Shopping, Other (optional)
 - merchant: store name (optional)
 - details: quantity, size, flavor, discount if any (optional)
 
-For the LAST item, include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep original language.
+For the LAST item of each receipt (receiptId group), include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep original language.
 
 Example:
 [
-  {"date":"2024-04-11","description":"おにぎり","amount":151,"type":"expense","currency":"JPY","positionInImage":"middle","confidence":0.95,"merchant":"セブン"},
-  {"date":"2024-04-11","description":"コーヒー L","amount":330,"type":"expense","currency":"JPY","positionInImage":"bottom","confidence":0.90,"merchant":"セブン","receiptDetails":"おにぎり ×1 — 151\nコーヒー L ×1 — 330\n小計 481\n内税(8%) 36\n合計 481\n現金 500\nお釣り 19"}
+  {"date":"2024-04-11","description":"おにぎり","amount":151,"type":"expense","currency":"JPY","receiptId":1,"positionInImage":"middle","confidence":0.95,"merchant":"セブン"},
+  {"date":"2024-04-11","description":"コーヒー L","amount":330,"type":"expense","currency":"JPY","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"セブン","receiptDetails":"おにぎり ×1 — 151\nコーヒー L ×1 — 330\n小計 481\n内税(8%) 36\n合計 481\n現金 500\nお釣り 19"}
 ]
 
 Output ONLY JSON array. Nothing else.`;
@@ -997,6 +1001,7 @@ Output ONLY JSON array. Nothing else.`;
         imageIndex: imageIndex,
         positionInImage: t.positionInImage || 'middle',
         confidence: t.confidence ?? 0.7,
+        receiptId: t.receiptId ?? 1,
         receiptDetails: t.receiptDetails,
         wasMerged: false,
       }));

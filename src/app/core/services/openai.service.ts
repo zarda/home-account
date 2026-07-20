@@ -607,6 +607,7 @@ Only include confirmed transactions, not pending ones.`;
 - Multiple photos of ONE receipt (overlapping pages, ordered top to bottom) → items share the same receiptId
 - Photos of DIFFERENT receipts → each receipt gets a different receiptId
 - A mix of both
+A single photo may also show SEVERAL receipts side by side → give each its own receiptId.
 
 FIRST: Determine which photos belong to the same receipt (same merchant, date, style) vs different receipts.
 
