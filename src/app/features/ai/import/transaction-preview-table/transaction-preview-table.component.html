@@ -41,7 +41,7 @@
                   {{ 'import.duplicate' | translate }}
                 </span>
               }
-              @if (row.imageMetadata?.receiptId != null) {
+              @if (row.imageMetadata?.receiptId !== undefined) {
                 <span class="receipt-badge">
                   <mat-icon>receipt_long</mat-icon>
                   {{ 'import.receiptPhotoBadge' | translate:{ receipt: row.imageMetadata!.receiptId!, photos: receiptPhotos(row) } }}
