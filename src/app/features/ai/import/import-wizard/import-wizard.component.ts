@@ -134,6 +134,14 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.multiImageMetadata() !== null && (this.multiImageMetadata()?.totalImages ?? 0) > 1;
   });
 
+  // Independent of the photo count: a single photo can hold several receipts
+  receiptsDetectedCount = computed(() => {
+    const ids = this.extractedTransactions()
+      .map(t => t.imageMetadata?.receiptId)
+      .filter((id): id is number => id != null);
+    return new Set(ids).size;
+  });
+
   sourceImagesCount = computed(() => {
     return this.multiImageMetadata()?.totalImages ?? 0;
   });

@@ -31,6 +31,10 @@
       </span>
     </div>
 
+    @if (isOnline() && willUseNativeAI()) {
+      <p class="mode-limitation-hint">{{ 'import.multiReceiptNativeHint' | translate }}</p>
+    }
+
     @if (!hasImages()) {
       <!-- Initial capture area -->
       <div class="capture-area">

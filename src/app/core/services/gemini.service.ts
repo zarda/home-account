@@ -23,6 +23,7 @@ export interface ParsedReceipt {
   receiptDetails?: string;          // Full receipt content reproduced line by line
   suggestedCategory: string;
   confidence: number;
+  receiptCount?: number;            // Distinct receipts visible in the photo (defaults to 1)
 }
 
 export interface ReceiptItem {
@@ -202,11 +203,13 @@ Analyze this receipt image and extract into this JSON structure (no markdown, no
   "date": "YYYY-MM-DD format",
   "items": [{"name": "item name", "amount": item price as number}],
   "receiptDetails": "full receipt content line by line",
-  "suggestedCategory": "one of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other"
+  "suggestedCategory": "one of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other",
+  "receiptCount": number of distinct receipts visible in the photo
 }
 
 IMPORTANT:
 - "amount" is the TOTAL amount paid (bottom of receipt).
+- If MORE THAN ONE receipt is visible, extract the LARGEST/primary receipt into the fields above and set receiptCount to how many receipts are visible.
 - "items" array: each purchased item with its individual price.
 - "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep original language.
 - If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.
@@ -251,7 +254,8 @@ Return ONLY the JSON, nothing else.`;
           items: parsed.items || [],
           receiptDetails: parsed.receiptDetails,
           suggestedCategory: categoryId,
-          confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5
+          confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
+          receiptCount: Number(parsed.receiptCount) || 1
         };
       } catch (error) {
         lastError = error;

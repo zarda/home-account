@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatDialog, MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { Router } from '@angular/router';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
@@ -31,6 +32,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { GeminiService } from '../../../core/services/gemini.service';
+import { AIImportService } from '../../../core/services/ai-import.service';
 import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
@@ -86,6 +88,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private receiptQuota = inject(ReceiptQuotaService);
   private receiptToNote = inject(ReceiptToNoteService);
   private dialog = inject(MatDialog);
+  private router = inject(Router);
+  private aiImportService = inject(AIImportService);
   private cdr = inject(ChangeDetectorRef);
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
@@ -398,6 +402,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private async scanReceipt(base64Image: string): Promise<void> {
     this.isScanning.set(true);
     this.scanError.set(null);
+    let receiptCount = 1;
 
     try {
       const result = await this.geminiService.parseReceipt(base64Image);
@@ -429,11 +434,55 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // Show success message
       const message = this.translationService.t('ai.scanSuccess');
       this.notifications.success(message);
+      receiptCount = result.receiptCount ?? 1;
     } catch (error) {
       console.error('Receipt scan error:', error);
       const message = this.translationService.t('ai.scanError');
       this.scanError.set(message);
       this.notifications.error(message);
+    } finally {
+      this.isScanning.set(false);
+    }
+
+    if (receiptCount > 1) {
+      await this.offerMultiReceiptReview(receiptCount);
+    }
+  }
+
+  /**
+   * A single-shot scan spotted several receipts in the photo. The form can
+   * hold only the primary one, so offer the receipt-aware import review;
+   * declining keeps the already-patched form.
+   */
+  private async offerMultiReceiptReview(count: number): Promise<void> {
+    const file = this.receiptFile();
+    if (!file) return;
+
+    const data: ConfirmDialogData = {
+      title: this.translationService.t('ai.multipleReceiptsTitle'),
+      message: this.translationService.t('ai.multipleReceiptsMessage', { count }),
+      confirmLabel: this.translationService.t('ai.reviewSeparately'),
+      cancelLabel: this.translationService.t('ai.keepSingle'),
+      icon: 'receipt_long',
+    };
+    const confirmed = await new Promise<boolean>(resolve => {
+      this.dialog.open(ConfirmDialogComponent, { data }).afterClosed()
+        .subscribe(result => resolve(!!result));
+    });
+    if (!confirmed) return;
+
+    this.isScanning.set(true);
+    try {
+      const importResult = await this.aiImportService.importFromMultipleImages([file]);
+      // Close before navigating so the wizard reads the completed
+      // navigation's history state
+      this.dialogRef.close(false);
+      this.router.navigate(['/import/file'], {
+        state: { importResult, fromCamera: true, multiImage: false },
+      });
+    } catch (error) {
+      console.error('Multi-receipt import error:', error);
+      this.notifications.error(this.translationService.t('ai.scanError'));
     } finally {
       this.isScanning.set(false);
     }

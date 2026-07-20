@@ -189,7 +189,10 @@ export class AIStrategyService {
   }
 
   /**
-   * Process multiple images of a receipt.
+   * Process one or more receipt photos.
+   * Splitting several receipts found in one photo happens only on the cloud
+   * path (receiptId grouping); native OCR reads one receipt per photo, so a
+   * cloud→native fallback loses the split rather than failing.
    */
   async processMultipleImages(imageFiles: File[]): Promise<ProcessingResult> {
     return this.runProcessing(

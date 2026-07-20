@@ -137,6 +137,16 @@
               </div>
             }
 
+            <!-- Several receipts recognized (possibly within one photo) -->
+            @if (receiptsDetectedCount() > 1) {
+              <div class="multi-image-info">
+                <mat-icon>receipt_long</mat-icon>
+                <span>
+                  {{ 'import.receiptsDetected' | translate:{ count: receiptsDetectedCount() } }}
+                </span>
+              </div>
+            }
+
             <button mat-flat-button color="primary" class="action-button" (click)="stepper.next()">
               {{ 'common.continue' | translate }}
               <mat-icon>arrow_forward</mat-icon>

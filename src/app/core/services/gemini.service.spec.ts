@@ -256,6 +256,22 @@ describe('GeminiService', () => {
   // ----------------------------------------------------------------
   // suggestCategory
   // ----------------------------------------------------------------
+  describe('parseReceipt receiptCount', () => {
+    it('maps a reported multi-receipt count and defaults a missing one to 1', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        merchant: 'Store A', amount: 10, currency: 'USD', date: '2026-07-01',
+        suggestedCategory: 'Groceries', receiptCount: 3,
+      })));
+      expect((await service.parseReceipt('AAA')).receiptCount).toBe(3);
+
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        merchant: 'Store B', amount: 5, currency: 'USD', date: '2026-07-01',
+        suggestedCategory: 'Groceries',
+      })));
+      expect((await service.parseReceipt('AAA')).receiptCount).toBe(1);
+    });
+  });
+
   describe('extractTransactionsFromMultipleImages (single image)', () => {
     it('normalizes a missing receiptId to 1 and keeps explicit ids', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
