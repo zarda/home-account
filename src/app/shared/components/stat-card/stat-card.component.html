@@ -12,7 +12,7 @@
         <span class="stat-label-suffix">{{ labelSuffix() }}</span>
       }
     </span>
-    <span class="stat-value" [class]="'tone-' + tone()">{{ value() }}</span>
+    <span class="stat-value" [class]="'tone-' + tone()">{{ displayValue() }}</span>
     @if (detail()) {
       <span class="stat-detail" [class]="'detail-' + detailTone()">{{ detail() }}</span>
     }

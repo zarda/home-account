@@ -84,8 +84,9 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   // A truncated amount reads as a different number, so never ellipsize.
-  // Intl currency strings contain no break opportunities; break-word only
-  // engages once the amount alone exceeds the card width.
+  // Amount strings have no break opportunities (displayValue pins the one
+  // after a leading minus); break-word only engages once the amount alone
+  // no longer fits beside the icon.
   overflow-wrap: break-word;
 
   &.tone-neutral {

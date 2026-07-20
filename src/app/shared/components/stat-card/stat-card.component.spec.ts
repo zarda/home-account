@@ -9,7 +9,7 @@ import { StatCardComponent } from './stat-card.component';
     <app-stat-card
       [label]="'Total Income'"
       [labelSuffix]="'USD'"
-      [value]="'$1,234.00'"
+      [value]="value()"
       [icon]="'trending_up'"
       [tone]="'income'"
       [delta]="delta()"
@@ -21,6 +21,7 @@ import { StatCardComponent } from './stat-card.component';
   `,
 })
 class HostComponent {
+  value = signal('$1,234.00');
   delta = signal<number | null>(null);
   invert = signal(false);
   detail = signal('');
@@ -73,6 +74,16 @@ describe('StatCardComponent', () => {
     host.delta.set(-5);
     fixture.detectChanges();
     expect(el('.delta-chip')!.classList).toContain('positive');
+  });
+
+  it('pins a word joiner after a leading minus so the sign cannot wrap alone', () => {
+    host.value.set('-$1,234.00');
+    fixture.detectChanges();
+    expect(el('.stat-value')!.textContent).toContain('-\u2060$1,234.00');
+
+    host.value.set('$1,234.00');
+    fixture.detectChanges();
+    expect(el('.stat-value')!.textContent).not.toContain('\u2060');
   });
 
   it('renders the toned detail line when provided', () => {
