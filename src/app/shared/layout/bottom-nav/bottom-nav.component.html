@@ -2,12 +2,26 @@
   @for (item of navItems(); track item.route) {
     @if (item.isAction) {
       <button
-        (click)="openAddTransaction()"
+        [matMenuTriggerFor]="addMenu"
         class="action-button"
         [attr.aria-label]="item.label"
       >
         <mat-icon>{{ item.icon }}</mat-icon>
       </button>
+      <mat-menu #addMenu="matMenu" yPosition="above" class="add-menu-above">
+        <button mat-menu-item (click)="openAddTransaction()">
+          <mat-icon>edit</mat-icon>
+          <span>{{ 'transactions.addManually' | translate }}</span>
+        </button>
+        <button mat-menu-item (click)="openScanReceipt()">
+          <mat-icon>photo_camera</mat-icon>
+          <span>{{ 'ai.scanReceipt' | translate }}</span>
+        </button>
+        <button mat-menu-item (click)="openImportPhotos()">
+          <mat-icon>photo_library</mat-icon>
+          <span>{{ 'import.importPhotos' | translate }}</span>
+        </button>
+      </mat-menu>
     } @else {
       <a
         [routerLink]="item.route"

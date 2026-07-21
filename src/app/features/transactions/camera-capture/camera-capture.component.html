@@ -31,6 +31,10 @@
       </span>
     </div>
 
+    @if (isOnline() && willUseNativeAI()) {
+      <p class="mode-limitation-hint">{{ 'import.multiReceiptNativeHint' | translate }}</p>
+    }
+
     @if (!hasImages()) {
       <!-- Initial capture area -->
       <div class="capture-area">
@@ -39,6 +43,17 @@
           type="file"
           accept="image/*"
           capture="environment"
+          (change)="onImageCaptured($event)"
+          hidden
+        />
+        <!-- Separate library input: `multiple` and `capture` don't combine
+             reliably on mobile browsers, so the camera stays single-shot and
+             multi-select lives on the picker without a capture attribute. -->
+        <input
+          #libraryInput
+          type="file"
+          accept="image/*"
+          multiple
           (change)="onImageCaptured($event)"
           hidden
         />
@@ -53,7 +68,18 @@
           <span>{{ 'import.takePhoto' | translate }}</span>
         </button>
 
+        <button
+          mat-stroked-button
+          color="primary"
+          class="library-button"
+          (click)="libraryInput.click()"
+        >
+          <mat-icon>photo_library</mat-icon>
+          <span>{{ 'import.selectFromLibrary' | translate }}</span>
+        </button>
+
         <p class="capture-hint">{{ 'import.cameraHint' | translate }}</p>
+        <p class="capture-hint multi-snap-hint">{{ 'import.multiSnapHint' | translate }}</p>
 
         <!-- iOS-specific hint for better camera access -->
         @if (isIOS() && !isStandalone()) {
@@ -133,6 +159,14 @@
               (change)="onImageCaptured($event)"
               hidden
             />
+            <input
+              #addMoreLibraryInput
+              type="file"
+              accept="image/*"
+              multiple
+              (change)="onImageCaptured($event)"
+              hidden
+            />
             <button
               mat-stroked-button
               color="primary"
@@ -141,6 +175,15 @@
             >
               <mat-icon>add_a_photo</mat-icon>
               <span>{{ 'import.addAnotherPhoto' | translate }}</span>
+            </button>
+            <button
+              mat-stroked-button
+              color="primary"
+              (click)="addMoreLibraryInput.click()"
+              [disabled]="isProcessing()"
+            >
+              <mat-icon>photo_library</mat-icon>
+              <span>{{ 'import.selectFromLibrary' | translate }}</span>
             </button>
           </div>
         }

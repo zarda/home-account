@@ -1,10 +1,13 @@
 import { Component, computed, inject } from '@angular/core';
 
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
+import { MatMenuModule } from '@angular/material/menu';
 import { TransactionFormComponent } from '../../../features/transactions/transaction-form/transaction-form.component';
+import { CameraCaptureComponent } from '../../../features/transactions/camera-capture/camera-capture.component';
 import { TranslationService } from '../../../core/services/translation.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 interface NavItem {
   labelKey: string;
@@ -16,12 +19,13 @@ interface NavItem {
 @Component({
   selector: 'app-bottom-nav',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, MatIconModule],
+  imports: [RouterLink, RouterLinkActive, MatIconModule, MatMenuModule, TranslatePipe],
   templateUrl: './bottom-nav.component.html',
   styleUrl: './bottom-nav.component.scss',
 })
 export class BottomNavComponent {
   private dialog = inject(MatDialog);
+  private router = inject(Router);
   private translationService = inject(TranslationService);
 
   private navItemsConfig: NavItem[] = [
@@ -47,5 +51,17 @@ export class BottomNavComponent {
       disableClose: true,
       data: { mode: 'add' },
     });
+  }
+
+  openScanReceipt(): void {
+    // Same dialog config as the transactions page camera entry
+    this.dialog.open(CameraCaptureComponent, {
+      width: '500px',
+      maxWidth: '95vw',
+    });
+  }
+
+  openImportPhotos(): void {
+    this.router.navigate(['/import/file']);
   }
 }

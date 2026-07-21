@@ -256,6 +256,47 @@ describe('GeminiService', () => {
   // ----------------------------------------------------------------
   // suggestCategory
   // ----------------------------------------------------------------
+  describe('parseReceipt receiptCount', () => {
+    it('maps a reported multi-receipt count and defaults a missing one to 1', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        merchant: 'Store A', amount: 10, currency: 'USD', date: '2026-07-01',
+        suggestedCategory: 'Groceries', receiptCount: 3,
+      })));
+      expect((await service.parseReceipt('AAA')).receiptCount).toBe(3);
+
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        merchant: 'Store B', amount: 5, currency: 'USD', date: '2026-07-01',
+        suggestedCategory: 'Groceries',
+      })));
+      expect((await service.parseReceipt('AAA')).receiptCount).toBe(1);
+    });
+  });
+
+  describe('extractTransactionsFromMultipleImages (single image)', () => {
+    it('normalizes a missing receiptId to 1 and keeps explicit ids', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { date: '2026-07-01', description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD', positionInImage: 'top', confidence: 0.9 },
+        { date: '2026-07-01', description: 'Bread', amount: 2, type: 'expense', currency: 'USD', positionInImage: 'bottom', confidence: 0.9, receiptId: 2 },
+      ])));
+
+      const result = await service.extractTransactionsFromMultipleImages(['AAA']);
+
+      expect(result.length).toBe(2);
+      expect(result[0].receiptId).toBe(1);
+      expect(result[1].receiptId).toBe(2);
+      expect(result[0].imageIndex).toBe(0);
+    });
+
+    it('tells the model a single photo may contain several receipts', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult('[]'));
+      await service.extractTransactionsFromMultipleImages(['AAA']);
+
+      const sent = JSON.stringify(visionModel.generateContent.calls.mostRecent().args[0]);
+      expect(sent).toContain('MORE THAN ONE receipt');
+      expect(sent).toContain('receiptId');
+    });
+  });
+
   describe('suggestCategory', () => {
     it('throws when the text model is not available', async () => {
       (service as unknown as { textModel: unknown }).textModel = null;

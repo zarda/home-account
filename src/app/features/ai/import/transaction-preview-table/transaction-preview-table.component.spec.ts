@@ -68,6 +68,36 @@ describe('TransactionPreviewTableComponent', () => {
     component = fixture.componentInstance;
   });
 
+  // The template is overridden above, so the badge markup itself is covered
+  // by the import-wizard smoke test; these pin the label's photo numbering.
+  describe('receiptPhotos', () => {
+    it('lists 1-based merge sources for a merged row', () => {
+      const row = {
+        ...createMockTransactions()[0],
+        imageMetadata: {
+          imageIndex: 0, imageId: 'image_0', positionInImage: 'middle' as const,
+          confidenceScore: 0.9, receiptId: 2, mergedFromImages: [0, 1],
+        },
+      };
+      expect(component.receiptPhotos(row)).toBe('1–2');
+    });
+
+    it('falls back to the row image index when no merge sources exist', () => {
+      const row = {
+        ...createMockTransactions()[0],
+        imageMetadata: {
+          imageIndex: 2, imageId: 'image_2', positionInImage: 'top' as const,
+          confidenceScore: 0.8, receiptId: 1,
+        },
+      };
+      expect(component.receiptPhotos(row)).toBe('3');
+    });
+
+    it('tolerates rows without metadata', () => {
+      expect(component.receiptPhotos(createMockTransactions()[0])).toBe('1');
+    });
+  });
+
   it('should create', () => {
     fixture.detectChanges();
     expect(component).toBeTruthy();

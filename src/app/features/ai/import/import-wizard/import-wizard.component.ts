@@ -134,6 +134,14 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.multiImageMetadata() !== null && (this.multiImageMetadata()?.totalImages ?? 0) > 1;
   });
 
+  // Independent of the photo count: a single photo can hold several receipts
+  receiptsDetectedCount = computed(() => {
+    const ids = this.extractedTransactions()
+      .map(t => t.imageMetadata?.receiptId)
+      .filter((id): id is number => id != null);
+    return new Set(ids).size;
+  });
+
   sourceImagesCount = computed(() => {
     return this.multiImageMetadata()?.totalImages ?? 0;
   });
@@ -224,22 +232,15 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       const files = this.selectedFiles();
 
-      // If multiple image files, treat as multi-photo receipt
       const imageFiles = files.filter(f => f.type.startsWith('image/'));
       const nonImageFiles = files.filter(f => !f.type.startsWith('image/'));
 
-      if (imageFiles.length > 1) {
-        // Process multiple images as a single receipt
+      if (imageFiles.length >= 1) {
+        // One receiptId-aware pipeline for any photo count: several photos
+        // may form one receipt, and one photo may hold several receipts
         const result = await this.importService.importFromMultipleImages(imageFiles);
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
-      } else {
-        // Process image files individually
-        for (const file of imageFiles) {
-          const result = await this.importService.importFromFile(file);
-          this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
-          this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
-        }
       }
 
       // Process non-image files individually

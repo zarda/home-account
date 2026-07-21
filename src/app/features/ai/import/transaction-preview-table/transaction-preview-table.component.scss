@@ -102,6 +102,23 @@
   min-width: 0;
 }
 
+.receipt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+
+  mat-icon {
+    font-size: var(--text-xs);
+  }
+}
+
 .duplicate-badge {
   display: inline-flex;
   align-items: center;

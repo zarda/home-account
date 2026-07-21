@@ -37,6 +37,7 @@ export interface ImagePositionMetadata {
   confidenceScore: number;         // OCR/extraction confidence (0-1)
   wasMerged?: boolean;             // True if this item was deduplicated from multiple images
   mergedFromImages?: number[];     // Source image indices this item was merged from
+  receiptId?: number;              // AI-assigned receipt group across the processed photos
 }
 
 export interface CategorizedImportTransaction {

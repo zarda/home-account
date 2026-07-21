@@ -38,6 +38,13 @@ export class TransactionPreviewTableComponent {
     return this.transactions.filter(t => t.selected).length;
   }
 
+  /** 1-based photo list for the receipt badge, e.g. "1–3" for a merged row. */
+  receiptPhotos(row: CategorizedImportTransaction): string {
+    const meta = row.imageMetadata;
+    const sources = meta?.mergedFromImages?.length ? meta.mergedFromImages : [meta?.imageIndex ?? 0];
+    return sources.map(i => i + 1).join('–');
+  }
+
   allSelected(): boolean {
     const nonDuplicates = this.transactions.filter(t => !t.isDuplicate);
     return nonDuplicates.length > 0 && nonDuplicates.every(t => t.selected);

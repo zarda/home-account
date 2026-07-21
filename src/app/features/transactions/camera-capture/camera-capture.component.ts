@@ -12,6 +12,7 @@ import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
@@ -50,6 +51,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   private pwaService = inject(PwaService);
   private offlineQueue = inject(OfflineQueueService);
   private translationService = inject(TranslationService);
+  private duplicateService = inject(DuplicateDetectionService);
   private router = inject(Router);
 
   // Support for multiple captured images
@@ -66,7 +68,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   // Computed signals
   hasImages = computed(() => this.capturedImages().length > 0);
   imageCount = computed(() => this.capturedImages().length);
-  canAddMore = computed(() => this.capturedImages().length < 10); // Max 10 images
+  canAddMore = computed(() => this.capturedImages().length < this.MAX_IMAGES);
 
   // AI processing mode indicator
   processingMode = computed(() => {
@@ -97,6 +99,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   });
 
   // Image compression settings for iOS
+  readonly MAX_IMAGES = 10;
   private readonly MAX_IMAGE_SIZE = 1920; // Max dimension
   private readonly JPEG_QUALITY = 0.85;   // Compression quality
 
@@ -127,41 +130,51 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
 
   async onImageCaptured(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
+    // The library input allows multi-select; the camera input yields one shot
+    const files = Array.from(input.files ?? []);
 
-    if (file) {
-      this.processingStatus.set('Optimizing image...');
-      
-      try {
-        // Compress image for better performance, especially on iOS
-        const compressedFile = await this.compressImage(file);
-        
-        const newImage: CapturedImage = {
-          id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          file: compressedFile,
-          previewUrl: URL.createObjectURL(compressedFile),
-          compressedFile,
-        };
+    if (files.length > 0) {
+      const room = Math.max(0, this.MAX_IMAGES - this.capturedImages().length);
+      const accepted = files.slice(0, room);
+      this.error.set(
+        accepted.length < files.length
+          ? this.translationService.t('import.maxPhotosReached', { count: this.MAX_IMAGES })
+          : null
+      );
 
-        this.capturedImages.update(images => [...images, newImage]);
-        this.error.set(null);
-        this.processingStatus.set('');
-      } catch (err) {
-        console.error('Image compression error:', err);
-        // Fall back to original file
-        const newImage: CapturedImage = {
-          id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          file,
-          previewUrl: URL.createObjectURL(file),
-        };
-        this.capturedImages.update(images => [...images, newImage]);
-        this.error.set(null);
+      if (accepted.length > 0) {
+        this.processingStatus.set('Optimizing image...');
+        for (const file of accepted) {
+          await this.addCapturedImage(file);
+        }
         this.processingStatus.set('');
       }
     }
 
     // Reset input so the same file can be selected again
     input.value = '';
+  }
+
+  private async addCapturedImage(file: File): Promise<void> {
+    const id = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    try {
+      // Compress image for better performance, especially on iOS
+      const compressedFile = await this.compressImage(file);
+      this.capturedImages.update(images => [...images, {
+        id,
+        file: compressedFile,
+        previewUrl: URL.createObjectURL(compressedFile),
+        compressedFile,
+      }]);
+    } catch (err) {
+      console.error('Image compression error:', err);
+      // Fall back to original file
+      this.capturedImages.update(images => [...images, {
+        id,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }]);
+    }
   }
 
   /**
@@ -244,54 +257,34 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         return;
       }
 
-      // Show processing mode
+      // One receiptId-aware pipeline for any photo count: several photos may
+      // form one receipt, and a single photo may hold several receipts —
+      // the dedicated single-image path had no receipt grouping.
       const modeLabel = this.getProcessingModeLabel();
-      
-      if (files.length === 1) {
-        // Single image processing
-        this.processingStatus.set(`Analyzing image (${modeLabel})...`);
-        
-        try {
-          const strategyResult = await this.strategyService.processReceipt(files[0]);
-          
-          if (strategyResult.transactions.length === 0) {
-            // Fall back to import service
-            const result = await this.importService.importFromImage(files[0]);
-            this.handleImportResult(result, false);
-            return;
-          }
+      const multiImage = files.length > 1;
+      this.processingStatus.set(
+        multiImage
+          ? `Processing ${files.length} images (${modeLabel})...`
+          : `Analyzing image (${modeLabel})...`
+      );
 
-          // Convert strategy result to import result format
-          const importResult = this.convertStrategyResult(strategyResult, files);
-          this.handleImportResult(importResult, false);
-        } catch (strategyErr) {
-          console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
-          // Fall back to original import service
-          const result = await this.importService.importFromImage(files[0]);
-          this.handleImportResult(result, false);
-        }
-      } else {
-        // Multiple images processing
-        this.processingStatus.set(`Processing ${files.length} images (${modeLabel})...`);
+      try {
+        const strategyResult = await this.strategyService.processMultipleImages(files);
 
-        try {
-          const strategyResult = await this.strategyService.processMultipleImages(files);
-          
-          if (strategyResult.transactions.length === 0) {
-            // Fall back to import service
-            const result = await this.importService.importFromMultipleImages(files);
-            this.handleImportResult(result, true);
-            return;
-          }
-
-          const importResult = this.convertStrategyResult(strategyResult, files);
-          this.handleImportResult(importResult, true);
-        } catch (strategyErr) {
-          console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
-          // Fall back to original import service
+        if (strategyResult.transactions.length === 0) {
+          // Fall back to import service
           const result = await this.importService.importFromMultipleImages(files);
-          this.handleImportResult(result, true);
+          this.handleImportResult(result, multiImage);
+          return;
         }
+
+        const importResult = await this.convertStrategyResult(strategyResult, files);
+        this.handleImportResult(importResult, multiImage);
+      } catch (strategyErr) {
+        console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
+        // Fall back to original import service
+        const result = await this.importService.importFromMultipleImages(files);
+        this.handleImportResult(result, multiImage);
       }
     } catch (err) {
       this.error.set(
@@ -348,31 +341,47 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   /**
    * Convert strategy service result to import result format.
    */
-  private convertStrategyResult(
+  private async convertStrategyResult(
     strategyResult: import('../../../core/services/ai-strategy.service').ProcessingResult,
     files: File[]
-  ): import('../../../models').ImportResult {
+  ): Promise<import('../../../models').ImportResult> {
+    const transactions = strategyResult.transactions.map((tx, index) => ({
+      id: `strategy_${index}_${Date.now()}`,
+      description: tx.description,
+      amount: tx.amount,
+      currency: tx.currency,
+      date: tx.date,
+      type: tx.type,
+      suggestedCategoryId: tx.suggestedCategoryId || 'other_expense',
+      categoryConfidence: tx.confidence,
+      notes: tx.notes,
+      isDuplicate: false,
+      selected: true,
+      // The cloud strategy path carries the receipt grouping; native results
+      // have none, and the review table renders nothing without it.
+      imageMetadata: tx.receiptId != null ? {
+        imageIndex: 0,
+        imageId: 'image_0',
+        positionInImage: 'middle' as const,
+        confidenceScore: tx.confidence,
+        receiptId: tx.receiptId,
+      } : undefined,
+    }));
+
+    // The strategy path bypasses AIImportService, so run the same duplicate
+    // check the wizard-upload path applies before review.
+    const duplicates = await this.duplicateService.checkDuplicates(transactions);
+    const marked = this.duplicateService.markDuplicates(transactions, duplicates);
+
     return {
       source: 'image',
       fileType: 'receipt_image',
       fileName: files.length === 1 ? files[0].name : `${files.length} images`,
       fileSize: files.reduce((sum, f) => sum + f.size, 0),
-      transactions: strategyResult.transactions.map((tx, index) => ({
-        id: `strategy_${index}_${Date.now()}`,
-        description: tx.description,
-        amount: tx.amount,
-        currency: tx.currency,
-        date: tx.date,
-        type: tx.type,
-        suggestedCategoryId: tx.suggestedCategoryId || 'other_expense',
-        categoryConfidence: tx.confidence,
-        notes: tx.notes,
-        isDuplicate: false,
-        selected: true,
-      })),
+      transactions: marked,
       confidence: strategyResult.confidence,
       warnings: [],
-      duplicates: [],
+      duplicates,
     };
   }
 

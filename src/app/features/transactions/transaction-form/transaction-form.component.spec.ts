@@ -10,6 +10,10 @@ import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from '../../../core/ser
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { ReceiptToNoteService } from '../../../core/services/receipt-to-note.service';
 import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
+import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
+import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { AIImportService } from '../../../core/services/ai-import.service';
+import { Router } from '@angular/router';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -30,6 +34,8 @@ describe('TransactionFormComponent', () => {
     loadCategories: jasmine.Spy;
   };
   let gemini: jasmine.SpyObj<GeminiService>;
+  let aiImport: jasmine.SpyObj<AIImportService>;
+  let router: jasmine.SpyObj<Router>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let announcer: jasmine.SpyObj<AnnouncerService>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<TransactionFormComponent>>;
@@ -64,13 +70,16 @@ describe('TransactionFormComponent', () => {
       loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
     };
     gemini = jasmine.createSpyObj('GeminiService', ['isAvailable', 'parseReceipt', 'suggestCategory']);
+    aiImport = jasmine.createSpyObj('AIImportService', ['importFromMultipleImages']);
+    router = jasmine.createSpyObj('Router', ['navigate']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     gemini.isAvailable.and.returnValue(true);
     gemini.parseReceipt.and.resolveTo({ amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1), suggestedCategory: 'food' } as never);
     gemini.suggestCategory.and.resolveTo('food');
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
-    dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+    dialogRef = jasmine.createSpyObj('MatDialogRef', ['close', 'afterClosed']);
+    dialogRef.afterClosed.and.returnValue(of(undefined) as never);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
     receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImage']);
@@ -93,6 +102,8 @@ describe('TransactionFormComponent', () => {
         { provide: AuthService, useValue: { currentUser } },
         { provide: TranslationService, useValue: translation },
         { provide: GeminiService, useValue: gemini },
+        { provide: AIImportService, useValue: aiImport },
+        { provide: Router, useValue: router },
         { provide: MatSnackBar, useValue: snackBar },
         { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialogRef, useValue: dialogRef },
@@ -226,6 +237,19 @@ describe('TransactionFormComponent', () => {
     expect(dialogRef.close).toHaveBeenCalledWith(false);
   });
 
+  it('openLongReceiptCapture opens the camera dialog only after this dialog closes', () => {
+    const closed$ = new Subject<unknown>();
+    dialogRef.afterClosed.and.returnValue(closed$.asObservable() as never);
+    const component = build().componentInstance;
+
+    component.openLongReceiptCapture();
+    expect(dialogRef.close).toHaveBeenCalledWith(false);
+    expect(dialog.open).not.toHaveBeenCalled();
+
+    closed$.next(undefined);
+    expect(dialog.open).toHaveBeenCalledWith(CameraCaptureComponent, jasmine.any(Object));
+  });
+
   describe('existing receipt housekeeping (edit mode)', () => {
     const txnWithReceipt = () =>
       createTransaction({ id: 'e1', receiptUrl: 'https://storage.example.com/r.jpg' });
@@ -338,6 +362,68 @@ describe('TransactionFormComponent', () => {
       await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
       expect(component.scanError()).toBe('ai.scanError');
       expect(notifications.error).toHaveBeenCalledWith('ai.scanError');
+    });
+
+    describe('multi-receipt chooser', () => {
+      const scan = (component: TransactionFormComponent) =>
+        (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+
+      function primeMultiReceiptScan(count = 2) {
+        gemini.parseReceipt.and.resolveTo({
+          amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1),
+          suggestedCategory: 'food', receiptCount: count,
+        } as never);
+        const component = build().componentInstance;
+        component.receiptFile.set(new File(['x'], 'r.jpg', { type: 'image/jpeg' }));
+        return component;
+      }
+
+      it('does not offer the chooser for a single-receipt photo', async () => {
+        const component = build().componentInstance;
+        component.receiptFile.set(new File(['x'], 'r.jpg', { type: 'image/jpeg' }));
+        await scan(component);
+        expect(dialog.open).not.toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.any(Object));
+      });
+
+      it('declining keeps the patched form and skips the pipeline', async () => {
+        const component = primeMultiReceiptScan();
+        dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+
+        await scan(component);
+
+        expect(dialog.open).toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.any(Object));
+        expect(aiImport.importFromMultipleImages).not.toHaveBeenCalled();
+        expect(component.form.get('description')?.value).toBe('Cafe');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+      });
+
+      it('confirming routes the photo through the import pipeline to the wizard', async () => {
+        const component = primeMultiReceiptScan(3);
+        dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+        const importResult = { source: 'image', transactions: [] } as never;
+        aiImport.importFromMultipleImages.and.resolveTo(importResult);
+
+        await scan(component);
+
+        expect(aiImport.importFromMultipleImages).toHaveBeenCalledWith([component.receiptFile()!]);
+        expect(dialogRef.close).toHaveBeenCalledWith(false);
+        expect(router.navigate).toHaveBeenCalledWith(['/import/file'], {
+          state: { importResult, fromCamera: true, multiImage: false },
+        });
+      });
+
+      it('a pipeline failure reports the error and keeps the form open', async () => {
+        const component = primeMultiReceiptScan();
+        dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+        aiImport.importFromMultipleImages.and.rejectWith(new Error('bad'));
+
+        await scan(component);
+
+        expect(notifications.error).toHaveBeenCalledWith('ai.scanError');
+        expect(dialogRef.close).not.toHaveBeenCalled();
+        expect(router.navigate).not.toHaveBeenCalled();
+        expect(component.isScanning()).toBeFalse();
+      });
     });
 
     it('clearReceipt resets preview, error and captured file', () => {

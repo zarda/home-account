@@ -11,6 +11,7 @@ export interface ProcessedTransaction {
   source: 'cloud' | 'native';
   notes?: string;
   suggestedCategoryId?: string;
+  receiptId?: number;
 }
 
 export interface ProcessingResult {

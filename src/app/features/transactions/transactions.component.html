@@ -2,9 +2,8 @@
   <app-page-header titleKey="transactions.title">
     <span header-title-suffix class="text-base font-normal text-gray-400 dark:text-gray-500 leading-none">({{ transactionCount() }})</span>
 
-    <!-- Add Menu Button. Hidden on mobile: the bottom-nav center FAB is the
-         single add affordance there (receipt scanning lives inside the form,
-         file import under the AI section). -->
+    <!-- Add Menu Button. Hidden on mobile: the bottom-nav center FAB opens
+         the same three entries (manual add, camera capture, photo import). -->
     <ng-container ngProjectAs="[header-actions]">
       @if (!deviceService.isMobile()) {
         <button
@@ -20,6 +19,10 @@
           <button mat-menu-item (click)="openAddDialog()">
             <mat-icon>add</mat-icon>
             <span>{{ 'transactions.addTransaction' | translate }}</span>
+          </button>
+          <button mat-menu-item (click)="openCameraDialog()">
+            <mat-icon>photo_camera</mat-icon>
+            <span>{{ 'import.importFromCamera' | translate }}</span>
           </button>
           <button mat-menu-item (click)="navigateToImportFile()">
             <mat-icon>upload_file</mat-icon>
