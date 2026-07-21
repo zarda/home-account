@@ -5,12 +5,20 @@
 
 .stat-card {
   display: flex;
+  // The value is a currency amount and must never be clipped: the body's
+  // min-content width keeps the full amount on one line, and the delta
+  // column wraps below it when the card is too narrow to fit both.
+  flex-wrap: wrap;
   align-items: center;
+  align-content: center;
   gap: 12px;
   padding: 16px;
   background: var(--surface-card);
   border-radius: var(--radius-card);
   min-width: 0;
+  // Fill the host so cards in one grid row keep equal backgrounds even
+  // when only some of them wrap the delta onto a second line.
+  height: 100%;
 }
 
 .stat-icon {
@@ -44,8 +52,19 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
+  // max-width (not min-width: 0) caps the automatic minimum size at the
+  // card's width: the value can't be squeezed while the delta still fits
+  // beside it, yet a value wider than the whole card wraps instead of
+  // overflowing the rounded corners.
+  max-width: 100%;
   flex: 1;
+}
+
+// With an icon tile in the row, the cap must also leave room for the tile
+// (40px) and the gap (12px) — a plain 100% would let the body's minimum
+// exceed the space next to the icon and push it onto a row of its own.
+.stat-icon + .stat-body {
+  max-width: calc(100% - 52px);
 }
 
 .stat-label {
@@ -64,9 +83,11 @@
   font-size: var(--text-2xl);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  // A truncated amount reads as a different number, so never ellipsize.
+  // Amount strings have no break opportunities (displayValue pins the one
+  // after a leading minus); break-word only engages once the amount alone
+  // no longer fits beside the icon.
+  overflow-wrap: break-word;
 
   &.tone-neutral {
     color: var(--text-primary);
@@ -106,6 +127,8 @@
   align-items: flex-end;
   gap: 2px;
   flex-shrink: 0;
+  // Keeps the column on the right edge after it wraps onto its own row.
+  margin-left: auto;
 }
 
 // Tinted pill via the income/expense fill+text token pairs — the

@@ -48,4 +48,16 @@ export class StatCardComponent {
     const risingIsGood = !this.invertDelta();
     return delta >= 0 ? risingIsGood : !risingIsGood;
   });
+
+  /**
+   * Value with a WORD JOINER pinned after a leading minus. UAX-14 permits a
+   * line break between a sign and a currency symbol ("-" + "$"), so when a
+   * long negative amount wraps, WebKit can strand the sign on its own line
+   * and the amount below reads as positive. Chromium tailors that break
+   * away; the joiner closes it everywhere.
+   */
+  displayValue = computed(() => {
+    const value = this.value();
+    return /^[-\u2212]/.test(value) ? `${value[0]}\u2060${value.slice(1)}` : value;
+  });
 }
