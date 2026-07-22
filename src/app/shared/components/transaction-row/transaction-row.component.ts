@@ -1,4 +1,4 @@
-import { Component, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 
 import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
@@ -21,6 +21,7 @@ import { CategoryChipComponent } from '../category-chip/category-chip.component'
   imports: [MatIconModule, CategoryChipComponent],
   templateUrl: './transaction-row.component.html',
   styleUrl: './transaction-row.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TransactionRowComponent {
   transaction = input.required<Transaction>();

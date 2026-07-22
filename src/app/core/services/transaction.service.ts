@@ -19,6 +19,19 @@ import {
   MonthlyTotal,
   CategoryTotal
 } from '../../models';
+import {
+  applyClientTransactionFilters,
+  buildTransactionWhere
+} from '../utils/transaction-query.utils';
+
+export interface TransactionMutation {
+  kind: 'add' | 'update' | 'delete';
+  id: string;
+  // Where the affected row now lives in date order; absent for deletes and
+  // for updates that did not touch the date.
+  date?: Timestamp;
+  seq: number;
+}
 
 @Injectable({ providedIn: 'root' })
 export class TransactionService {
@@ -40,6 +53,16 @@ export class TransactionService {
   // Signals
   transactions = signal<Transaction[]>([]);
   isLoading = signal<boolean>(false);
+
+  // Last successful write, for consumers that read via one-shot windowed
+  // queries instead of a live subscription (the transactions page). The seq
+  // makes back-to-back writes to the same document distinct signal values.
+  lastMutation = signal<TransactionMutation | null>(null);
+  private mutationSeq = 0;
+
+  private noteMutation(kind: TransactionMutation['kind'], id: string, date?: Timestamp): void {
+    this.lastMutation.set({ kind, id, date, seq: ++this.mutationSeq });
+  }
 
   // Computed signals. Totals go through amountInBase so rows whose stored
   // snapshot is stale (base currency changed) or corrupt (written against
@@ -75,40 +98,8 @@ export class TransactionService {
       orderBy: [{ field: 'date', direction: 'desc' }]
     };
 
-    const whereConditions: NonNullable<typeof options>['where'] = [];
-
-    if (filters?.type) {
-      whereConditions.push({ field: 'type', op: '==', value: filters.type });
-    }
-
-    if (filters?.categoryId) {
-      whereConditions.push({ field: 'categoryId', op: '==', value: filters.categoryId });
-    }
-
-    if (filters?.startDate) {
-      whereConditions.push({
-        field: 'date',
-        op: '>=',
-        value: Timestamp.fromDate(filters.startDate)
-      });
-    }
-
-    if (filters?.endDate) {
-      // Set end date to end of day (23:59:59.999) to make it inclusive
-      const endOfDay = new Date(filters.endDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      whereConditions.push({
-        field: 'date',
-        op: '<=',
-        value: Timestamp.fromDate(endOfDay)
-      });
-    }
-
-    if (filters?.currency) {
-      whereConditions.push({ field: 'currency', op: '==', value: filters.currency });
-    }
-
-    if (whereConditions.length > 0) {
+    const whereConditions = buildTransactionWhere(filters);
+    if (whereConditions) {
       options.where = whereConditions;
     }
 
@@ -117,26 +108,9 @@ export class TransactionService {
       options
     ).pipe(
       map(transactions => {
-        let result = transactions;
-
-        // Client-side filtering for amount range (Firestore limitation)
-        if (filters?.minAmount !== undefined) {
-          result = result.filter(t => t.amount >= filters.minAmount!);
-        }
-
-        if (filters?.maxAmount !== undefined) {
-          result = result.filter(t => t.amount <= filters.maxAmount!);
-        }
-
-        // Client-side search query
-        if (filters?.searchQuery) {
-          const query = filters.searchQuery.toLowerCase();
-          result = result.filter(t =>
-            t.description.toLowerCase().includes(query) ||
-            t.note?.toLowerCase().includes(query) ||
-            t.tags?.some(tag => tag.toLowerCase().includes(query))
-          );
-        }
+        // Amount range and text search cannot be expressed on this Firestore
+        // query, so they are applied after fetch.
+        const result = applyClientTransactionFilters(transactions, filters);
 
         // Update the signal
         this.transactions.set(result);
@@ -229,6 +203,7 @@ export class TransactionService {
         await this.updateAffectedBudgets(data.categoryId);
       }
 
+      this.noteMutation('add', id, transaction.date);
       return id;
     } finally {
       this.isLoading.set(false);
@@ -321,6 +296,8 @@ export class TransactionService {
           }
         }
       }
+
+      this.noteMutation('update', id, updateData.date ?? currentTransaction?.date);
     } finally {
       this.isLoading.set(false);
     }
@@ -381,6 +358,8 @@ export class TransactionService {
       if (transaction?.type === 'expense') {
         await this.updateAffectedBudgets(transaction.categoryId);
       }
+
+      this.noteMutation('delete', id);
     } finally {
       this.isLoading.set(false);
     }

@@ -35,6 +35,7 @@ export class MockFirestoreService {
   // Spies for verifying calls
   private _getDocumentSpy = new SimpleSpy();
   private _getCollectionSpy = new SimpleSpy();
+  private _getPageSpy = new SimpleSpy();
   private _addDocumentSpy = new SimpleSpy();
   private _setDocumentSpy = new SimpleSpy();
   private _updateDocumentSpy = new SimpleSpy();
@@ -42,6 +43,7 @@ export class MockFirestoreService {
 
   get getDocumentSpy() { return this._getDocumentSpy; }
   get getCollectionSpy() { return this._getCollectionSpy; }
+  get getPageSpy() { return this._getPageSpy; }
   get addDocumentSpy() { return this._addDocumentSpy; }
   get setDocumentSpy() { return this._setDocumentSpy; }
   get updateDocumentSpy() { return this._updateDocumentSpy; }
@@ -63,6 +65,7 @@ export class MockFirestoreService {
     this.mockCollections.clear();
     this._getDocumentSpy.reset();
     this._getCollectionSpy.reset();
+    this._getPageSpy.reset();
     this._addDocumentSpy.reset();
     this._setDocumentSpy.reset();
     this._updateDocumentSpy.reset();
@@ -77,6 +80,65 @@ export class MockFirestoreService {
   async getCollection<T>(collectionPath: string, options?: unknown): Promise<T[]> {
     this._getCollectionSpy.call(collectionPath, options);
     return (this.mockCollections.get(collectionPath) as T[]) ?? [];
+  }
+
+  async countDocuments(collectionPath: string, options?: unknown): Promise<number> {
+    this._getCollectionSpy.call(collectionPath, options);
+    return (this.mockCollections.get(collectionPath) ?? []).length;
+  }
+
+  // Cursor-paged reads over a collection seeded in query order via
+  // setMockCollection. Snapshot "cursors" are {id} stubs — callers must treat
+  // snapshots as opaque, so identity by id is enough here.
+  async getPage<T>(
+    collectionPath: string,
+    options: {
+      orderBy?: { field: string; direction?: 'asc' | 'desc' }[];
+      limit: number;
+      startAfterDoc?: { id: string };
+      endBeforeDoc?: { id: string };
+      startAtValues?: unknown[];
+    }
+  ): Promise<{ items: T[]; snapshots: { id: string }[] }> {
+    this._getPageSpy.call(collectionPath, options);
+    const all = (this.mockCollections.get(collectionPath) as ({ id: string } & Record<string, unknown>)[]) ?? [];
+
+    let slice: typeof all;
+    if (options.endBeforeDoc) {
+      const cursor = options.endBeforeDoc;
+      const i = all.findIndex(d => d.id === cursor.id);
+      const end = i === -1 ? 0 : i;
+      slice = all.slice(Math.max(0, end - options.limit), end);
+    } else {
+      let start = 0;
+      if (options.startAfterDoc) {
+        const cursor = options.startAfterDoc;
+        const i = all.findIndex(d => d.id === cursor.id);
+        start = i === -1 ? all.length : i + 1;
+      } else if (options.startAtValues) {
+        const order = options.orderBy?.[0];
+        const field = order?.field ?? 'id';
+        const desc = order?.direction === 'desc';
+        const target = this.normalizeCursorValue(options.startAtValues[0]);
+        start = all.findIndex(d => {
+          const v = this.normalizeCursorValue(d[field]);
+          return desc ? v <= target : v >= target;
+        });
+        if (start === -1) start = all.length;
+      }
+      slice = all.slice(start, start + options.limit);
+    }
+
+    return {
+      items: slice as T[],
+      snapshots: slice.map(d => ({ id: d.id }))
+    };
+  }
+
+  private normalizeCursorValue(value: unknown): number | string {
+    const maybeTimestamp = value as { toMillis?: () => number };
+    if (typeof maybeTimestamp?.toMillis === 'function') return maybeTimestamp.toMillis();
+    return value as number | string;
   }
 
   subscribeToCollection<T>(collectionPath: string, options?: unknown): Observable<T[]> {
