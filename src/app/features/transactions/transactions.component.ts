@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnDestroy, OnInit, signal, untracked } from '@angular/core';
 
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -6,7 +6,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDialog } from '@angular/material/dialog';
 import { Subscription } from 'rxjs';
-import { TransactionService } from '../../core/services/transaction.service';
+import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
+import { TransactionWindowService, WindowSortDirection } from '../../core/services/transaction-window.service';
 import { CategoryService } from '../../core/services/category.service';
 import { DeviceService } from '../../core/services/device.service';
 import { Transaction, TransactionFilters, Category } from '../../models';
@@ -17,6 +18,8 @@ import { CameraCaptureComponent } from './camera-capture/camera-capture.componen
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { TranslationService } from '../../core/services/translation.service';
+import { AnnouncerService } from '../../core/services/announcer.service';
 
 @Component({
   selector: 'app-transactions',
@@ -33,19 +36,41 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
   ],
   templateUrl: './transactions.component.html',
   styleUrl: './transactions.component.scss',
+  // Page-scoped: window state (cursors, loaded range) resets on every visit
+  // and is shared with the child list component through the injector.
+  providers: [TransactionWindowService],
 })
 export class TransactionsComponent implements OnInit, OnDestroy {
   private transactionService = inject(TransactionService);
+  readonly windowSource = inject(TransactionWindowService);
   private categoryService = inject(CategoryService);
   readonly deviceService = inject(DeviceService);
   private dialog = inject(MatDialog);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private translationService = inject(TranslationService);
+  private announcer = inject(AnnouncerService);
 
-  transactions = this.transactionService.transactions;
-  isLoading = this.transactionService.isLoading;
+  transactions = this.windowSource.visibleWindow;
+  isInitialLoading = this.windowSource.isInitialLoading;
 
-  transactionCount = computed(() => this.transactions().length);
+  // Header count: the server-side total of the filtered set when it is exact,
+  // otherwise the loaded count with a "+" while more pages remain (client-only
+  // filters shrink rows per fetched page, so no exact total exists for them).
+  transactionCount = computed(() => {
+    const filters = this.currentFilters();
+    const hasClientOnlyFilter =
+      filters.minAmount !== undefined || filters.maxAmount !== undefined || !!filters.searchQuery;
+
+    if (!hasClientOnlyFilter) {
+      const total = this.windowSource.totalCount();
+      if (total !== null) return `${total}`;
+    }
+
+    const loaded = this.transactions().length;
+    const complete = this.windowSource.reachedStart() && this.windowSource.reachedEnd();
+    return complete ? `${loaded}` : `${loaded}+`;
+  });
 
   expenseCategories = this.categoryService.expenseCategories;
   incomeCategories = this.categoryService.incomeCategories;
@@ -60,11 +85,36 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   });
 
   private currentFilters = signal<TransactionFilters>({});
-  private transactionsSub?: Subscription;
+  sortDirection = signal<WindowSortDirection>('desc');
   private categoriesSub?: Subscription;
 
   initialDate = signal<Date | undefined>(undefined);
   showAll = signal<boolean>(false);
+
+  constructor() {
+    // React to writes made anywhere in the app while this page is open
+    // (form dialog, bottom-nav quick add, camera import): update the window
+    // based on whether the mutated row falls inside the loaded range.
+    const initialSeq = this.transactionService.lastMutation()?.seq ?? 0;
+    effect(() => {
+      const mutation = this.transactionService.lastMutation();
+      if (!mutation || mutation.seq <= initialSeq) return;
+      untracked(() => void this.onTransactionMutated(mutation));
+    });
+
+    // Announce result counts to assistive technology once per filter/sort
+    // change (resetSeq), not per scrolled page.
+    effect(() => {
+      const seq = this.windowSource.resetSeq();
+      if (seq === 0) return;
+      untracked(() => {
+        const count = this.transactions().length;
+        this.announcer.announce(
+          this.translationService.t('transactions.resultCountAnnouncement', { count })
+        );
+      });
+    });
+  }
 
   ngOnInit(): void {
     // Check for showAll query param (from "View All" link)
@@ -85,8 +135,10 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     // Load categories (only once)
     this.categoriesSub = this.categoryService.loadCategories().subscribe();
 
-    // Load transactions (real-time subscription - only once)
-    this.loadTransactions();
+    // No transaction load here: the filters component always emits its initial
+    // filter set (thisMonth / cleared / initialDate) right after init, and
+    // onFiltersChanged seeds the window from it. isInitialLoading starts true
+    // so the spinner covers the gap.
 
     // Check for add action in query params
     this.route.queryParams.subscribe(params => {
@@ -97,49 +149,65 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.transactionsSub?.unsubscribe();
     this.categoriesSub?.unsubscribe();
   }
 
   onFiltersChanged(filters: TransactionFilters): void {
     this.currentFilters.set(filters);
-    // Unsubscribe from previous and create new subscription with new filters
-    this.transactionsSub?.unsubscribe();
-    this.loadTransactions(filters);
+    void this.windowSource.reset(filters, this.sortDirection());
+    this.scrollToTop();
   }
 
-  private loadTransactions(filters?: TransactionFilters): void {
-    this.transactionsSub = this.transactionService.getTransactions(filters).subscribe();
+  onDateSortChange(direction: WindowSortDirection): void {
+    if (direction === this.sortDirection()) return;
+    this.sortDirection.set(direction);
+    void this.windowSource.reset(this.currentFilters(), direction);
+    this.scrollToTop();
+  }
+
+  private async onTransactionMutated(mutation: TransactionMutation): Promise<void> {
+    const { kind, id, date } = mutation;
+
+    if ((kind === 'add' || kind === 'update') && date && !this.windowSource.isInLoadedRange(date)) {
+      // The row landed outside the loaded range: jump the window to it.
+      await this.windowSource.jumpTo(date);
+    } else {
+      await this.windowSource.refresh();
+    }
+
+    if (kind !== 'delete') {
+      this.windowSource.requestScrollTo(id);
+    }
+  }
+
+  private scrollToTop(): void {
+    // The app scrolls inside .main-container (see main-layout), not the window.
+    document.querySelector('.main-container')?.scrollTo({ top: 0 });
   }
 
   openAddDialog(): void {
-    const dialogRef = this.dialog.open(TransactionFormComponent, {
+    // The window updates via the service's lastMutation signal on save.
+    this.dialog.open(TransactionFormComponent, {
       width: '500px',
       maxWidth: '95vw',
       disableClose: true,
       data: { mode: 'add' },
     });
-
-    // No need to reload - real-time subscription auto-updates
-    dialogRef.afterClosed().subscribe();
   }
 
   openEditDialog(transaction: Transaction): void {
-    const dialogRef = this.dialog.open(TransactionFormComponent, {
+    this.dialog.open(TransactionFormComponent, {
       width: '500px',
       maxWidth: '95vw',
       disableClose: true,
       data: { mode: 'edit', transaction },
     });
-
-    // No need to reload - real-time subscription auto-updates
-    dialogRef.afterClosed().subscribe();
   }
 
   async onDeleteTransaction(transaction: Transaction): Promise<void> {
     try {
       await this.transactionService.deleteTransaction(transaction.id);
-      // No need to reload - real-time subscription auto-updates
+      // The lastMutation effect refreshes the window.
     } catch {
       // Error handled silently - snackbar could be added here
     }

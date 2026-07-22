@@ -43,12 +43,14 @@
   />
 
   <!-- Transaction List -->
-  @if (isLoading()) {
+  @if (isInitialLoading()) {
     <app-loading-spinner [message]="'transactions.loading' | translate" />
   } @else {
     <app-transaction-list
       [transactions]="transactions()"
       [categories]="categoriesMap()"
+      [dateSortDirection]="sortDirection()"
+      (dateSortChange)="onDateSortChange($event)"
       (edit)="openEditDialog($event)"
       (delete)="onDeleteTransaction($event)"
     />

@@ -13,9 +13,13 @@ import {
   where,
   orderBy,
   limit,
+  limitToLast,
   startAfter,
+  startAt,
+  endBefore,
   getCountFromServer,
   QueryConstraint,
+  QueryDocumentSnapshot,
   DocumentData,
   CollectionReference,
   DocumentReference,
@@ -32,6 +36,25 @@ export interface QueryOptions {
   orderBy?: { field: string; direction?: 'asc' | 'desc' }[];
   limit?: number;
   startAfter?: unknown;
+}
+
+// Options for cursor-based page fetches (getPage). Exactly one cursor mode is
+// honored, in this precedence order: endBeforeDoc (backward page), then
+// startAfterDoc (forward page), then startAtValues (re-anchor by field values),
+// else the page starts at the beginning of the query.
+export interface PageQueryOptions {
+  where?: QueryOptions['where'];
+  orderBy?: QueryOptions['orderBy'];
+  limit: number;
+  startAfterDoc?: QueryDocumentSnapshot<DocumentData>;
+  endBeforeDoc?: QueryDocumentSnapshot<DocumentData>;
+  startAtValues?: unknown[];
+}
+
+export interface PageResult<T> {
+  items: T[];
+  // Raw snapshots parallel to items, for use as cursors in subsequent pages.
+  snapshots: QueryDocumentSnapshot<DocumentData>[];
 }
 
 type WhereFilterOp = '<' | '<=' | '==' | '!=' | '>=' | '>' | 'array-contains' | 'array-contains-any' | 'in' | 'not-in';
@@ -73,6 +96,40 @@ export class FirestoreService {
       id: doc.id,
       ...doc.data()
     })) as T[];
+  }
+
+  // One-shot page fetch for cursor-based windowed lists. Returns the raw
+  // document snapshots alongside the mapped items so callers can page from
+  // exact document cursors — these disambiguate equal orderBy values via the
+  // implicit document-ID tiebreaker, which value cursors cannot do.
+  async getPage<T>(collectionPath: string, options: PageQueryOptions): Promise<PageResult<T>> {
+    const collectionRef = collection(this.firestore, collectionPath);
+    const constraints: QueryConstraint[] = [];
+
+    for (const w of options.where ?? []) {
+      constraints.push(where(w.field, w.op, w.value));
+    }
+    for (const o of options.orderBy ?? []) {
+      constraints.push(orderBy(o.field, o.direction ?? 'asc'));
+    }
+
+    if (options.endBeforeDoc) {
+      // Backward page: the `limit` docs immediately preceding the cursor,
+      // still returned in query order (no client-side reversal needed).
+      constraints.push(endBefore(options.endBeforeDoc), limitToLast(options.limit));
+    } else if (options.startAfterDoc) {
+      constraints.push(startAfter(options.startAfterDoc), limit(options.limit));
+    } else if (options.startAtValues) {
+      constraints.push(startAt(...options.startAtValues), limit(options.limit));
+    } else {
+      constraints.push(limit(options.limit));
+    }
+
+    const querySnap = await getDocs(query(collectionRef, ...constraints));
+    return {
+      items: querySnap.docs.map(d => ({ id: d.id, ...d.data() })) as T[],
+      snapshots: querySnap.docs
+    };
   }
 
   // Count documents matching a query without downloading them
