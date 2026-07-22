@@ -54,8 +54,41 @@ export interface UserPreferences {
   openaiApiKey?: string;         // Optional user-provided OpenAI API key
   claudeApiKey?: string;         // Optional user-provided Claude/Anthropic API key
   llmProviderPreferences?: LLMProviderPreferences; // Per-feature LLM provider selection
-  enableRagInsights?: boolean;   // Master RAG toggle: ground AI insights in retrieved
-                                 // transaction details (absent/undefined = OFF)
+  enableRagInsights?: boolean;   // Legacy on/off RAG toggle. Kept and dual-written on save so
+                                 // older installed clients keep working; never read directly —
+                                 // use effectiveRagLevel().
+  ragInsightsLevel?: RagInsightsLevel; // Tiered RAG grounding depth. Absent = derive from the
+                                       // legacy boolean (true→'standard', else 'off').
+}
+
+/** Detail-grounding depth for AI insights — a token/latency vs. detail trade-off. */
+export type RagInsightsLevel = 'off' | 'light' | 'standard' | 'deep';
+
+export const RAG_INSIGHTS_LEVELS: readonly RagInsightsLevel[] = ['off', 'light', 'standard', 'deep'];
+
+export interface RagTierConfig {
+  topExpenses: number;          // cap for the "Top expenses" section
+  anomalies: number;            // cap for "Unusual amounts"; 0 = omit the section entirely
+  categoryDeltas: number;       // cap for "Category changes"
+  baselineWindowMonths: number; // trailing anomaly-baseline window; 0 = no history query needed
+}
+
+export const RAG_TIER_CONFIGS: Record<Exclude<RagInsightsLevel, 'off'>, RagTierConfig> = {
+  light:    { topExpenses: 3,  anomalies: 0,  categoryDeltas: 5,  baselineWindowMonths: 0 },
+  standard: { topExpenses: 10, anomalies: 5,  categoryDeltas: 5,  baselineWindowMonths: 6 },
+  deep:     { topExpenses: 20, anomalies: 10, categoryDeltas: 10, baselineWindowMonths: 12 },
+};
+
+/**
+ * Resolve the RAG level from preferences, tolerating unknown stored values
+ * and migrating the legacy boolean (true→'standard', otherwise 'off').
+ */
+export function effectiveRagLevel(prefs: UserPreferences | null | undefined): RagInsightsLevel {
+  const level = prefs?.ragInsightsLevel;
+  if (level && RAG_INSIGHTS_LEVELS.includes(level)) {
+    return level;
+  }
+  return prefs?.enableRagInsights ? 'standard' : 'off';
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {

@@ -10,8 +10,12 @@ import { stripAdviceArtifacts } from '../../../core/utils/llm-text.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
-import { Budget, CategoryTotal, Transaction, MonthlyTotal } from '../../../models';
+import {
+  Budget, CategoryTotal, Transaction, MonthlyTotal,
+  RAG_TIER_CONFIGS, effectiveRagLevel,
+} from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
@@ -36,6 +40,7 @@ export class AiSummaryComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private authService = inject(AuthService);
+  private categoryService = inject(CategoryService);
   private ragContextService = inject(RagContextService);
   private sanitizer = inject(DomSanitizer);
 
@@ -56,18 +61,20 @@ export class AiSummaryComponent {
   isLoading = signal(false);
   hasError = signal(false);
 
-  // Whether the user opted into RAG-grounded insights (persisted in Firestore)
-  private ragEnabled = computed(() =>
-    this.authService.currentUser()?.preferences?.enableRagInsights ?? false
+  // The user's RAG grounding depth (persisted in Firestore; legacy boolean migrated)
+  private ragLevel = computed(() =>
+    effectiveRagLevel(this.authService.currentUser()?.preferences)
   );
 
   // Cache key for sessionStorage (includes locale for language-specific
-  // caching, and the RAG flag so toggling regenerates instead of serving
-  // a stale cached summary)
+  // caching, and the RAG level so changing tiers regenerates instead of
+  // serving a stale cached summary). This computed is read synchronously
+  // inside the constructor effect's call stack, which is what makes the
+  // effect re-run when the level or provider preference changes.
   private cacheKey = computed(() => {
     const txIds = this.transactions().map(t => t.id).sort().join(',');
     const locale = this.translationService.currentLocale();
-    const grounding = this.ragEnabled() ? 'rag' : 'std';
+    const grounding = this.ragLevel();
     const provider = this.authService.currentUser()?.preferences?.llmProviderPreferences?.insights ?? 'gemini';
     return `ai-summary-${this.period()}-${locale}-${grounding}-${provider}-${txIds.slice(0, 100)}`;
   });
@@ -77,6 +84,12 @@ export class AiSummaryComponent {
 
   // Minimum transactions required for insights
   hasEnoughData = computed(() => this.transactions().length >= 3);
+
+  // Prompt category names resolve through the categories signal (in the
+  // providers and RagContextService). Generating before it loads would label
+  // every category "Other" and cache that summary for an hour, so generation
+  // waits until the merged defaults+user list has arrived.
+  private categoriesReady = computed(() => this.categoryService.categories().length > 0);
 
   constructor() {
     // React to transaction, period, and locale changes
@@ -90,14 +103,15 @@ export class AiSummaryComponent {
         transactionCount: txns.length,
         period,
         isAvailable: this.isAvailable(),
-        hasEnoughData: txns.length >= 3
+        hasEnoughData: txns.length >= 3,
+        categoriesReady: this.categoriesReady()
       });
 
-      if (txns.length >= 3 && this.isAvailable()) {
+      if (txns.length >= 3 && this.isAvailable() && this.categoriesReady()) {
         console.log('[AiSummary] Loading insights...');
         this.loadInsights(txns, period);
       } else {
-        console.log('[AiSummary] Skipping - not enough data or AI unavailable');
+        console.log('[AiSummary] Skipping - not enough data, AI unavailable, or categories not loaded');
       }
     });
   }
@@ -121,7 +135,7 @@ export class AiSummaryComponent {
   }
 
   private async generateInsights(transactions: Transaction[], period: string): Promise<void> {
-    if (!this.cloudLLMProvider.hasAnyCloudProvider() || transactions.length < 3) {
+    if (!this.cloudLLMProvider.hasAnyCloudProvider() || transactions.length < 3 || !this.categoriesReady()) {
       return;
     }
 
@@ -129,6 +143,10 @@ export class AiSummaryComponent {
     this.hasError.set(false);
 
     try {
+      // Rates must be loaded before any live conversion; otherwise foreign
+      // amounts fall back 1:1 and wrong numbers get cached for an hour.
+      await this.currencyService.ensureRatesLoaded();
+
       const currency = this.baseCurrency();
       const periodTotal = this.calculatePeriodTotal(transactions);
       const readablePeriod = this.formatPeriod(period);
@@ -139,14 +157,16 @@ export class AiSummaryComponent {
       let summaryFailed = false;
       let adviceFailed = false;
 
-      // When the user opted into RAG grounding, retrieve notable activity
-      // (top expenses, anomalies, category deltas) for the prompt
-      const ragContext = this.ragEnabled()
+      // At any level above off, retrieve notable activity (top expenses,
+      // anomalies, category deltas) for the prompt, sized by the tier.
+      const level = this.ragLevel();
+      const ragContext = level !== 'off'
         ? this.ragContextService.buildSummaryGrounding({
             transactions,
             previousByCategory: this.previousPeriodByCategory(),
             baseCurrency: currency,
             historicalExpenses: this.historicalExpenses(),
+            config: RAG_TIER_CONFIGS[level],
           })
         : undefined;
 

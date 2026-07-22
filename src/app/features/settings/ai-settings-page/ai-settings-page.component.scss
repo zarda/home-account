@@ -336,6 +336,7 @@
 // border-box padding on the icon would shrink the glyph area below 1em
 // and clip the glyph.
 .preferences-icon,
+.insights-icon,
 .queue-icon,
 .storage-icon {
   display: flex;
@@ -352,6 +353,41 @@
 .preferences-icon {
   background-color: var(--mat-sys-secondary-container);
   color: var(--mat-sys-on-secondary-container);
+}
+
+// AI Insights
+.insights-icon {
+  background-color: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
+}
+
+// AI Insights card: stacked setting — name, muted description, the level
+// select sized so its full label fits, and the per-level hint tied to it.
+.rag-setting {
+  display: flex;
+  flex-direction: column;
+
+  .rag-setting-name {
+    font-weight: 600;
+    color: var(--mat-sys-on-surface);
+  }
+
+  .rag-setting-description {
+    margin: 4px 0 16px;
+    font-size: var(--text-sm);
+    color: var(--mat-sys-on-surface-variant);
+  }
+
+  .rag-level-field {
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .rag-level-hint {
+    margin: 8px 0 0;
+    font-size: var(--text-sm);
+    color: var(--mat-sys-on-surface-variant);
+  }
 }
 
 .provider-preferences-grid {

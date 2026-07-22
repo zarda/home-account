@@ -363,26 +363,25 @@
 
     <!-- AI Insights Section -->
     <section class="settings-section">
-      <div class="section-header">
-        <mat-icon class="section-icon">insights</mat-icon>
-        <div>
-          <h2>{{ 'aiPage.insightsSettings' | translate }}</h2>
-          <p class="section-description">{{ 'aiPage.insightsSettingsHint' | translate }}</p>
-        </div>
-      </div>
-
       <mat-card appearance="outlined">
+        <mat-card-header>
+          <mat-icon mat-card-avatar class="insights-icon">insights</mat-icon>
+          <mat-card-title>{{ 'aiPage.insightsSettings' | translate }}</mat-card-title>
+          <mat-card-subtitle>{{ 'aiPage.insightsSettingsHint' | translate }}</mat-card-subtitle>
+        </mat-card-header>
         <mat-card-content>
-          <div class="auto-sync-row">
-            <div>
-              <span>{{ 'aiPage.ragInsights' | translate }}</span>
-              <p class="section-description">{{ 'aiPage.ragInsightsDescription' | translate }}</p>
-            </div>
-            <mat-slide-toggle
-              [checked]="enableRagInsights()"
-              (change)="onRagInsightsChange($event.checked)"
-              color="primary">
-            </mat-slide-toggle>
+          <div class="rag-setting">
+            <span class="rag-setting-name">{{ 'aiPage.ragInsights' | translate }}</span>
+            <p class="rag-setting-description">{{ 'aiPage.ragInsightsDescription' | translate }}</p>
+            <mat-form-field appearance="outline" class="rag-level-field" subscriptSizing="dynamic">
+              <mat-label>{{ 'aiPage.ragLevelLabel' | translate }}</mat-label>
+              <mat-select [value]="ragInsightsLevel()" (selectionChange)="onRagLevelChange($event.value)">
+                @for (level of ragLevels; track level) {
+                  <mat-option [value]="level">{{ 'aiPage.ragLevel_' + level | translate }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <p class="rag-level-hint">{{ 'aiPage.ragLevelDescription_' + ragInsightsLevel() | translate }}</p>
           </div>
         </mat-card-content>
       </mat-card>

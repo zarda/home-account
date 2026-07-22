@@ -7,7 +7,8 @@ import {
   CurrencyInfo,
   ExchangeRates,
   CachedRates,
-  SUPPORTED_CURRENCIES
+  SUPPORTED_CURRENCIES,
+  ZERO_DECIMAL_CURRENCIES
 } from '../../models';
 
 const CACHE_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -165,19 +166,28 @@ export class CurrencyService {
   formatCurrency(amount: number, currencyCode: string): string {
     const currency = this.currencies().find(c => c.code === currencyCode);
     const locale = this.translationService.getIntlLocale();
+    const digits = ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : 2;
 
     try {
       return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: currencyCode,
-        minimumFractionDigits: currencyCode === 'JPY' || currencyCode === 'KRW' ? 0 : 2,
-        maximumFractionDigits: currencyCode === 'JPY' || currencyCode === 'KRW' ? 0 : 2
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
       }).format(amount);
     } catch {
       // Fallback formatting
       const symbol = currency?.symbol ?? currencyCode;
-      return `${symbol}${amount.toFixed(2)}`;
+      return `${symbol}${amount.toFixed(digits)}`;
     }
+  }
+
+  /**
+   * Plain-digit amount for machine-facing text (LLM prompts, exports): no
+   * symbol, no grouping; sub-digits only for currencies that use them.
+   */
+  formatAmount(amount: number, currencyCode: string): string {
+    return amount.toFixed(ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : 2);
   }
 
   // Get currency info by code
