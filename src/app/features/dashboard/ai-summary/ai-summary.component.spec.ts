@@ -6,15 +6,17 @@ import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provid
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
-import { RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
-import { createTransaction, createUser } from '../../../core/services/testing';
+import { Category, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
+import { createCategory, createTransaction, createUser } from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
   let cloudLLM: jasmine.SpyObj<CloudLLMProviderService>;
   let ragContext: jasmine.SpyObj<RagContextService>;
   let currency: jasmine.SpyObj<CurrencyService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
+  let categories: ReturnType<typeof signal<Category[]>>;
 
   function build() {
     const fixture = TestBed.createComponent(AiSummaryComponent);
@@ -41,6 +43,7 @@ describe('AiSummaryComponent', () => {
     ragContext = jasmine.createSpyObj('RagContextService', ['buildSummaryGrounding']);
     ragContext.buildSummaryGrounding.and.returnValue('GROUNDING');
     currentUser = signal<User | null>(createUser());
+    categories = signal<Category[]>([createCategory()]);
     const sanitizer = jasmine.createSpyObj('DomSanitizer', ['sanitize', 'bypassSecurityTrustHtml']);
     sanitizer.sanitize.and.callFake((_ctx: number, val: string) => `sanitized:${val}`);
     sanitizer.bypassSecurityTrustHtml.and.callFake((val: string) => val);
@@ -52,6 +55,7 @@ describe('AiSummaryComponent', () => {
         { provide: CurrencyService, useValue: currency },
         { provide: TranslationService, useValue: translation },
         { provide: AuthService, useValue: { currentUser } },
+        { provide: CategoryService, useValue: { categories } },
         { provide: RagContextService, useValue: ragContext },
         { provide: DomSanitizer, useValue: sanitizer },
       ],
@@ -213,6 +217,28 @@ describe('AiSummaryComponent', () => {
       fixture.componentRef.setInput('transactions', txns);
       const component = fixture.componentInstance;
       await component.refresh();
+      expect(cloudLLM.generateSpendingSummary).toHaveBeenCalled();
+    });
+
+    it('does not generate while categories are still loading', async () => {
+      // Prompt category names resolve through the categories signal; running
+      // before it loads would label everything "Other" and cache that for 1h.
+      categories.set([]);
+      await generate(build().componentInstance);
+      expect(cloudLLM.generateSpendingSummary).not.toHaveBeenCalled();
+    });
+
+    it('generates once categories arrive after the transactions', async () => {
+      categories.set([]);
+      const fixture = build();
+      fixture.componentRef.setInput('transactions', txns);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(cloudLLM.generateSpendingSummary).not.toHaveBeenCalled();
+
+      categories.set([createCategory()]);
+      fixture.detectChanges();
+      await fixture.whenStable();
       expect(cloudLLM.generateSpendingSummary).toHaveBeenCalled();
     });
   });

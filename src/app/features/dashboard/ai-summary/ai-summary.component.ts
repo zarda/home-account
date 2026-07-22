@@ -10,6 +10,7 @@ import { stripAdviceArtifacts } from '../../../core/utils/llm-text.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
 import {
   Budget, CategoryTotal, Transaction, MonthlyTotal,
@@ -39,6 +40,7 @@ export class AiSummaryComponent {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private authService = inject(AuthService);
+  private categoryService = inject(CategoryService);
   private ragContextService = inject(RagContextService);
   private sanitizer = inject(DomSanitizer);
 
@@ -83,6 +85,12 @@ export class AiSummaryComponent {
   // Minimum transactions required for insights
   hasEnoughData = computed(() => this.transactions().length >= 3);
 
+  // Prompt category names resolve through the categories signal (in the
+  // providers and RagContextService). Generating before it loads would label
+  // every category "Other" and cache that summary for an hour, so generation
+  // waits until the merged defaults+user list has arrived.
+  private categoriesReady = computed(() => this.categoryService.categories().length > 0);
+
   constructor() {
     // React to transaction, period, and locale changes
     effect(() => {
@@ -95,14 +103,15 @@ export class AiSummaryComponent {
         transactionCount: txns.length,
         period,
         isAvailable: this.isAvailable(),
-        hasEnoughData: txns.length >= 3
+        hasEnoughData: txns.length >= 3,
+        categoriesReady: this.categoriesReady()
       });
 
-      if (txns.length >= 3 && this.isAvailable()) {
+      if (txns.length >= 3 && this.isAvailable() && this.categoriesReady()) {
         console.log('[AiSummary] Loading insights...');
         this.loadInsights(txns, period);
       } else {
-        console.log('[AiSummary] Skipping - not enough data or AI unavailable');
+        console.log('[AiSummary] Skipping - not enough data, AI unavailable, or categories not loaded');
       }
     });
   }
@@ -126,7 +135,7 @@ export class AiSummaryComponent {
   }
 
   private async generateInsights(transactions: Transaction[], period: string): Promise<void> {
-    if (!this.cloudLLMProvider.hasAnyCloudProvider() || transactions.length < 3) {
+    if (!this.cloudLLMProvider.hasAnyCloudProvider() || transactions.length < 3 || !this.categoriesReady()) {
       return;
     }
 
