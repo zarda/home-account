@@ -370,12 +370,10 @@
           <mat-card-subtitle>{{ 'aiPage.insightsSettingsHint' | translate }}</mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>
-          <div class="auto-sync-row">
-            <div>
-              <span>{{ 'aiPage.ragInsights' | translate }}</span>
-              <p class="section-description">{{ 'aiPage.ragInsightsDescription' | translate }}</p>
-            </div>
-            <mat-form-field appearance="outline" class="model-field">
+          <div class="rag-setting">
+            <span class="rag-setting-name">{{ 'aiPage.ragInsights' | translate }}</span>
+            <p class="rag-setting-description">{{ 'aiPage.ragInsightsDescription' | translate }}</p>
+            <mat-form-field appearance="outline" class="rag-level-field" subscriptSizing="dynamic">
               <mat-label>{{ 'aiPage.ragLevelLabel' | translate }}</mat-label>
               <mat-select [value]="ragInsightsLevel()" (selectionChange)="onRagLevelChange($event.value)">
                 @for (level of ragLevels; track level) {
@@ -383,8 +381,8 @@
                 }
               </mat-select>
             </mat-form-field>
+            <p class="rag-level-hint">{{ 'aiPage.ragLevelDescription_' + ragInsightsLevel() | translate }}</p>
           </div>
-          <p class="section-description">{{ 'aiPage.ragLevelDescription_' + ragInsightsLevel() | translate }}</p>
         </mat-card-content>
       </mat-card>
     </section>

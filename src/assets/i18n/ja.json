@@ -820,7 +820,7 @@
     "openaiModelUpdated": "OpenAIモデルを{{model}}に更新しました",
     "claudeModelUpdated": "Claudeモデルを{{model}}に更新しました",
     "ragInsights": "明細に基づくインサイト（RAG）",
-    "ragInsightsDescription": "取引明細（高額支出、異常な金額、カテゴリの変化）をどこまでAIプロバイダーに送信してインサイトの根拠にするかを選択します。詳細にするほど分析は深まりますが、共有するデータが増え、生成も遅く・高コストになります。",
+    "ragInsightsDescription": "取引明細（高額支出、異常な金額、カテゴリの変化）をどこまでAIプロバイダーと共有してインサイトの根拠にするかを選択します。レベルが高いほど分析は充実しますが、共有するデータが増え、生成にも時間がかかります。",
     "ragLevelLabel": "明細レベル",
     "ragLevel_off": "オフ",
     "ragLevel_light": "ライト",

@@ -820,7 +820,7 @@
     "openaiModelUpdated": "OpenAI 模型已更新為 {{model}}",
     "claudeModelUpdated": "Claude 模型已更新為 {{model}}",
     "ragInsights": "以明細為依據的洞察（RAG）",
-    "ragInsightsDescription": "選擇要將多少交易明細（最大支出、異常金額、類別變化）傳送給您的 AI 服務作為洞察依據。明細越多，分析越深入，但共享的資料也越多，產生速度較慢、成本較高。",
+    "ragInsightsDescription": "選擇要與您的 AI 服務分享多少交易明細（最大支出、異常金額、類別變化）作為洞察依據。層級越高，分析越深入，但分享的資料越多，產生時間也越長。",
     "ragLevelLabel": "明細程度",
     "ragLevel_off": "關閉",
     "ragLevel_light": "精簡",
