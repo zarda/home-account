@@ -5,6 +5,7 @@ import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { Category, Transaction, MonthlyTotal, Budget } from '../../models';
 import { createTransaction, createCategory } from './testing/test-data';
+import { environment } from '../../../environments/environment';
 
 /**
  * A fake generative model that records the request it was called with and
@@ -34,6 +35,27 @@ describe('GeminiService', () => {
 
   let textModel: FakeModel;
   let visionModel: FakeModel;
+
+  // The local (gitignored) environment may carry a real geminiApiKey, which
+  // initializeGemini falls back to when no explicit key is given. Blank it for
+  // this suite so "no key" tests cannot accidentally initialize, and so the
+  // constructor's fire-and-forget init resolves synchronously instead of
+  // racing test bodies. Restored afterwards for the rest of the test run.
+  const env = environment as { geminiApiKey?: string };
+  let savedGeminiApiKey: string | undefined;
+  let hadGeminiApiKey = false;
+
+  beforeAll(() => {
+    hadGeminiApiKey = 'geminiApiKey' in env;
+    savedGeminiApiKey = env.geminiApiKey;
+    delete env.geminiApiKey;
+  });
+
+  afterAll(() => {
+    if (hadGeminiApiKey) {
+      env.geminiApiKey = savedGeminiApiKey;
+    }
+  });
 
   const categories: Category[] = [
     createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense' }),
