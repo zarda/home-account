@@ -336,6 +336,7 @@
 // border-box padding on the icon would shrink the glyph area below 1em
 // and clip the glyph.
 .preferences-icon,
+.insights-icon,
 .queue-icon,
 .storage-icon {
   display: flex;
@@ -352,6 +353,12 @@
 .preferences-icon {
   background-color: var(--mat-sys-secondary-container);
   color: var(--mat-sys-on-secondary-container);
+}
+
+// AI Insights
+.insights-icon {
+  background-color: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
 }
 
 .provider-preferences-grid {

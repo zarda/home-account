@@ -363,15 +363,12 @@
 
     <!-- AI Insights Section -->
     <section class="settings-section">
-      <div class="section-header">
-        <mat-icon class="section-icon">insights</mat-icon>
-        <div>
-          <h2>{{ 'aiPage.insightsSettings' | translate }}</h2>
-          <p class="section-description">{{ 'aiPage.insightsSettingsHint' | translate }}</p>
-        </div>
-      </div>
-
       <mat-card appearance="outlined">
+        <mat-card-header>
+          <mat-icon mat-card-avatar class="insights-icon">insights</mat-icon>
+          <mat-card-title>{{ 'aiPage.insightsSettings' | translate }}</mat-card-title>
+          <mat-card-subtitle>{{ 'aiPage.insightsSettingsHint' | translate }}</mat-card-subtitle>
+        </mat-card-header>
         <mat-card-content>
           <div class="auto-sync-row">
             <div>
