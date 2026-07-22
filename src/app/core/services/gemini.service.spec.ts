@@ -3,7 +3,7 @@ import { GeminiService, isRateLimitMessage } from './gemini.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
-import { Category, Transaction, MonthlyTotal, Budget } from '../../models';
+import { Category, Transaction, MonthlyTotal, Budget, ZERO_DECIMAL_CURRENCIES } from '../../models';
 import { createTransaction, createCategory } from './testing/test-data';
 
 /**
@@ -64,7 +64,9 @@ describe('GeminiService', () => {
     categoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
     categoryService.categories.and.returnValue(categories);
 
-    currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert']);
+    currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert', 'formatAmount']);
+    currencyService.formatAmount.and.callFake(
+      (amount: number, code: string) => amount.toFixed(ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2));
     // Identity conversion keeps amounts predictable in assertions.
     currencyService.convert.and.callFake((amount: number) => amount);
 
@@ -427,6 +429,14 @@ describe('GeminiService', () => {
       expect(prompt).toContain('Income change: N/A%');
     });
 
+    it('writes whole amounts for zero-decimal base currencies', async () => {
+      textModel.generateContent.and.resolveTo(makeResult('## Spending Pattern\nText.'));
+      await service.generateSpendingSummary(txns, 'June', 'JPY');
+      const prompt = textModel.generateContent.calls.mostRecent().args[0].contents[0].parts[0].text;
+      expect(prompt).toContain('Total Expenses: 150 JPY');
+      expect(prompt).not.toMatch(/\.\d{2} JPY/);
+    });
+
     it('drops a truncated trailing line when the token limit was hit', async () => {
       textModel.generateContent.and.resolveTo(makeResult(
         '## Spending Pattern\n- Complete point.\n- Truncated mid sen',
@@ -471,6 +481,14 @@ describe('GeminiService', () => {
       textModel.generateContent.and.resolveTo(makeResult('You are doing well. Keep saving.'));
       const result = await service.getFinancialAdvice(summary, 'USD', 'this month');
       expect(result).toContain('Keep saving');
+    });
+
+    it('writes whole amounts for zero-decimal base currencies', async () => {
+      textModel.generateContent.and.resolveTo(makeResult('Advice.'));
+      await service.getFinancialAdvice(summary, 'JPY', 'this month');
+      const prompt = textModel.generateContent.calls.mostRecent().args[0].contents[0].parts[0].text;
+      expect(prompt).toContain('Income: 1000 JPY');
+      expect(prompt).not.toMatch(/\.\d{2} JPY/);
     });
 
     it('generates advice for a deficit (low savings) scenario', async () => {

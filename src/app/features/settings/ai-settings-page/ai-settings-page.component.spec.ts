@@ -136,6 +136,59 @@ describe('AiSettingsPageComponent', () => {
     });
   });
 
+  describe('RAG insights level', () => {
+    function setPreferences(preferences: Record<string, unknown>): void {
+      authServiceMock.currentUser.and.returnValue({
+        preferences: {
+          baseCurrency: 'USD',
+          language: 'en',
+          dateFormat: 'MM/DD/YYYY',
+          theme: 'system',
+          defaultCategories: [],
+          ...preferences,
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      component.ngOnInit();
+    }
+
+    it('loads off when the user has no RAG preferences', () => {
+      expect(component.ragInsightsLevel()).toBe('off');
+    });
+
+    it('loads standard for the legacy boolean', () => {
+      setPreferences({ enableRagInsights: true });
+      expect(component.ragInsightsLevel()).toBe('standard');
+    });
+
+    it('loads an explicitly stored level', () => {
+      setPreferences({ ragInsightsLevel: 'deep' });
+      expect(component.ragInsightsLevel()).toBe('deep');
+    });
+
+    it('dual-writes the level and the legacy boolean on change', async () => {
+      await component.onRagLevelChange('light');
+
+      expect(component.ragInsightsLevel()).toBe('light');
+      expect(authServiceMock.updateUserPreferences).toHaveBeenCalledWith(
+        jasmine.objectContaining({ ragInsightsLevel: 'light', enableRagInsights: true }));
+    });
+
+    it('maps off to a disabled legacy boolean', async () => {
+      await component.onRagLevelChange('off');
+
+      expect(authServiceMock.updateUserPreferences).toHaveBeenCalledWith(
+        jasmine.objectContaining({ ragInsightsLevel: 'off', enableRagInsights: false }));
+    });
+
+    it('ignores unknown levels without saving', async () => {
+      await component.onRagLevelChange('bogus' as never);
+
+      expect(authServiceMock.updateUserPreferences).not.toHaveBeenCalled();
+      expect(component.ragInsightsLevel()).toBe('off');
+    });
+  });
+
   describe('formatBytes', () => {
     it('should format 0 bytes', () => {
       expect(component.formatBytes(0)).toBe('0 Bytes');

@@ -3,7 +3,7 @@ import { OpenAIService } from './openai.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Category, Transaction, MonthlyTotal, Budget } from '../../models';
+import { Category, Transaction, MonthlyTotal, Budget, ZERO_DECIMAL_CURRENCIES } from '../../models';
 import { createCategory, createTransaction } from './testing';
 import { RawTransaction, PreviousPeriodData } from './gemini.service';
 
@@ -64,7 +64,9 @@ describe('OpenAIService', () => {
 
   beforeEach(() => {
     mockCategoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
-    mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert']);
+    mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert', 'formatAmount']);
+    mockCurrencyService.formatAmount.and.callFake(
+      (amount: number, code: string) => amount.toFixed(ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2));
     mockTranslationService = jasmine.createSpyObj<TranslationService>('TranslationService', [
       't',
       'currentLocale',
@@ -406,6 +408,18 @@ describe('OpenAIService', () => {
       expect(result).toBe('## Spending Pattern\nGood');
     });
 
+    it('writes whole amounts for zero-decimal base currencies', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(responseWith('summary'));
+      setClient(fake);
+
+      await service.generateSpendingSummary(expenseTxns, 'June', 'JPY');
+
+      const prompt = fake.responses.create.calls.mostRecent().args[0].input as string;
+      expect(prompt).toContain('Total Expenses: 150 JPY');
+      expect(prompt).not.toMatch(/\.\d{2} JPY/);
+    });
+
     it('builds the prompt with historical, budget and rag sections', async () => {
       const fake = makeFakeClient();
       fake.responses.create.and.resolveTo(responseWith('summary'));
@@ -531,6 +545,18 @@ describe('OpenAIService', () => {
 
       const result = await service.getFinancialAdvice(summary, 'USD', 'May');
       expect(result).toBe('Save more');
+    });
+
+    it('writes whole amounts for zero-decimal base currencies', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(responseWith('advice'));
+      setClient(fake);
+
+      await service.getFinancialAdvice(summary, 'JPY', 'May');
+
+      const prompt = fake.responses.create.calls.mostRecent().args[0].input as string;
+      expect(prompt).toContain('Income: 1000 JPY');
+      expect(prompt).not.toMatch(/\.\d{2} JPY/);
     });
 
     it('handles a zero-income summary (savings rate 0)', async () => {

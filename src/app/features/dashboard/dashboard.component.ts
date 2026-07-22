@@ -1,4 +1,4 @@
-import { Component, computed, DestroyRef, effect, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, OnInit, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
@@ -9,7 +9,7 @@ import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { TranslationService } from '../../core/services/translation.service';
-import { Transaction, Category, CategoryTotal } from '../../models';
+import { Transaction, Category, CategoryTotal, RAG_TIER_CONFIGS, effectiveRagLevel } from '../../models';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
@@ -24,12 +24,6 @@ import {
   PeriodSelection,
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
-
-// Trailing window (in months) used as the baseline for AI spending-anomaly
-// detection. The window always extends back from the current period's end and
-// includes the whole current period, so sparse history transparently degrades
-// to current-period-only behaviour.
-const BASELINE_WINDOW_MONTHS = 6;
 
 @Component({
   selector: 'app-dashboard',
@@ -91,8 +85,19 @@ export class DashboardComponent implements OnInit {
   recentTransactions = signal<Transaction[]>([]);
   previousPeriodData = signal<{ income: number; expense: number } | null>(null);
   previousPeriodByCategory = signal<CategoryTotal[] | null>(null);
-  // Trailing-window expenses feeding the AI anomaly baseline (see BASELINE_WINDOW_MONTHS)
+  // Trailing-window expenses feeding the AI anomaly baseline (window sized by tier)
   historicalExpenses = signal<Transaction[] | null>(null);
+
+  // RAG grounding depth; sizes the anomaly-baseline window below.
+  private ragLevel = computed(() => effectiveRagLevel(this.authService.currentUser()?.preferences));
+
+  // Trailing window (in months) for the AI spending-anomaly baseline. 0 means
+  // the tier needs no history (off has no grounding; light has no anomaly
+  // section), so the Firestore query is skipped entirely.
+  private baselineWindowMonths = computed(() => {
+    const level = this.ragLevel();
+    return level === 'off' ? 0 : RAG_TIER_CONFIGS[level].baselineWindowMonths;
+  });
 
   // Totals use the write-time base-currency snapshot (deterministic across
   // loads), falling back to live conversion only for legacy rows.
@@ -154,6 +159,20 @@ export class DashboardComponent implements OnInit {
         this.hasLoadedOnce.set(true);
       }
     });
+
+    // Keep the anomaly-baseline window in sync with both the selected period
+    // and the RAG tier, so a mid-session tier change refetches the right
+    // span (the ai-summary cache key includes the tier, so insights
+    // regenerate immediately and must not ground on a stale window).
+    effect(() => {
+      this.currentPeriod();
+      const months = this.baselineWindowMonths();
+      if (months === 0) {
+        this.historicalExpenses.set(null);
+        return;
+      }
+      untracked(() => this.loadHistoricalBaseline(months));
+    });
   }
 
   ngOnInit(): void {
@@ -204,11 +223,10 @@ export class DashboardComponent implements OnInit {
       }
     });
 
-    // Load previous period data for AI comparison
+    // Load previous period data for AI comparison. (The trailing historical
+    // window for the anomaly baseline is loaded by the constructor effect,
+    // which also reacts to period changes via currentPeriod.)
     this.loadPreviousPeriodData();
-
-    // Load the trailing historical window that feeds the AI anomaly baseline
-    this.loadHistoricalBaseline();
 
     // Load categories
     this.categoryService.loadCategories().subscribe();
@@ -236,8 +254,8 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  private loadHistoricalBaseline(): void {
-    const { start, end } = this.getBaselineWindowDates();
+  private loadHistoricalBaseline(months: number): void {
+    const { start, end } = this.getBaselineWindowDates(months);
 
     // Non-mutating query so the current-period transactions signal is untouched;
     // the trailing window only feeds the RAG anomaly baseline for insights.
@@ -251,12 +269,12 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  // Trailing baseline window: from BASELINE_WINDOW_MONTHS before the current
-  // period's end up to that end, but never starting after the current period's
-  // start — so the window always covers the whole current period.
-  private getBaselineWindowDates(): { start: Date; end: Date } {
+  // Trailing baseline window: from `months` before the current period's end up
+  // to that end, but never starting after the current period's start — so the
+  // window always covers the whole current period.
+  private getBaselineWindowDates(months: number): { start: Date; end: Date } {
     const { start: periodStart, end } = this.getPeriodDates();
-    const windowStart = new Date(end.getFullYear(), end.getMonth() - BASELINE_WINDOW_MONTHS, 1);
+    const windowStart = new Date(end.getFullYear(), end.getMonth() - months, 1);
     return {
       start: windowStart < periodStart ? windowStart : periodStart,
       end

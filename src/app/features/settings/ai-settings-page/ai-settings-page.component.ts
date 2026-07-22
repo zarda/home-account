@@ -20,7 +20,10 @@ import { GeminiService } from '../../../core/services/gemini.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
-import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
+import {
+  LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES,
+  RagInsightsLevel, RAG_INSIGHTS_LEVELS, effectiveRagLevel,
+} from '../../../models';
 import { TEXT_MODELS, VISION_MODELS, OPENAI_MODELS, CLAUDE_MODELS, DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../../../core/config/ai-models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -59,7 +62,8 @@ export class AiSettingsPageComponent implements OnInit {
 
   // Form state
   autoSync = signal<boolean>(true);
-  enableRagInsights = signal<boolean>(false);
+  ragInsightsLevel = signal<RagInsightsLevel>('off');
+  ragLevels = RAG_INSIGHTS_LEVELS;
   selectedTextModel = signal<string>(DEFAULT_TEXT_MODEL);
   selectedVisionModel = signal<string>(DEFAULT_VISION_MODEL);
   selectedOpenaiModel = signal<string>(DEFAULT_OPENAI_MODEL);
@@ -179,12 +183,17 @@ export class AiSettingsPageComponent implements OnInit {
     this.openaiApiKey = user?.preferences?.openaiApiKey || '';
     this.claudeApiKey = user?.preferences?.claudeApiKey || '';
     this.llmProviderPreferences = user?.preferences?.llmProviderPreferences || DEFAULT_LLM_PROVIDER_PREFERENCES;
-    this.enableRagInsights.set(user?.preferences?.enableRagInsights ?? false);
+    this.ragInsightsLevel.set(effectiveRagLevel(user?.preferences));
   }
 
-  async onRagInsightsChange(enabled: boolean): Promise<void> {
-    this.enableRagInsights.set(enabled);
-    await this.savePreference({ enableRagInsights: enabled });
+  async onRagLevelChange(level: RagInsightsLevel): Promise<void> {
+    if (!RAG_INSIGHTS_LEVELS.includes(level)) {
+      return;
+    }
+    this.ragInsightsLevel.set(level);
+    // Dual-write: keep the legacy boolean in sync so older installed
+    // clients (which only read enableRagInsights) behave sensibly.
+    await this.savePreference({ ragInsightsLevel: level, enableRagInsights: level !== 'off' });
   }
 
   // Check if provider is available

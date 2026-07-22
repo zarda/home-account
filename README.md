@@ -23,6 +23,7 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Budgets** - Period-based budget limits with recurring transactions management
 - **Reports** - Financial analytics with CSV and PDF export
 - **AI Import** - Import transactions from receipt images with intelligent category suggestions
+- **AI Insights** - Spending summaries and advice with selectable detail-grounding levels (Off/Light/Standard/Deep) that trade token cost and speed for detail; transaction details are only shared with your configured AI provider when enabled — see [docs/rag-insights.md](docs/rag-insights.md)
 - **Camera Capture** - Take photos directly from the app for receipt scanning
 - **Dark Mode** - Light/dark/system theme support
 - **Multi-language** - English, Traditional Chinese, Japanese

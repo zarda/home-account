@@ -7,12 +7,13 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
-import { Transaction, User } from '../../../models';
+import { RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
 import { createTransaction, createUser } from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
   let cloudLLM: jasmine.SpyObj<CloudLLMProviderService>;
   let ragContext: jasmine.SpyObj<RagContextService>;
+  let currency: jasmine.SpyObj<CurrencyService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
 
   function build() {
@@ -31,8 +32,9 @@ describe('AiSummaryComponent', () => {
     cloudLLM.generateSpendingSummary.and.resolveTo('Summary text');
     cloudLLM.getFinancialAdvice.and.resolveTo('Advice text');
 
-    const currency = jasmine.createSpyObj('CurrencyService', ['convert']);
+    currency = jasmine.createSpyObj('CurrencyService', ['convert', 'ensureRatesLoaded']);
     currency.convert.and.callFake((a: number) => a);
+    currency.ensureRatesLoaded.and.resolveTo(undefined);
     const translation = jasmine.createSpyObj('TranslationService', ['t', 'currentLocale']);
     translation.t.and.callFake((k: string) => k);
     translation.currentLocale.and.returnValue('en');
@@ -149,10 +151,47 @@ describe('AiSummaryComponent', () => {
       expect(cloudLLM.generateSpendingSummary).not.toHaveBeenCalled();
     });
 
-    it('includes RAG grounding when the user opted in', async () => {
+    it('migrates the legacy boolean to the standard tier config', async () => {
       currentUser.set(createUser({ preferences: { enableRagInsights: true } as User['preferences'] }));
       await generate(build().componentInstance);
-      expect(ragContext.buildSummaryGrounding).toHaveBeenCalled();
+      expect(ragContext.buildSummaryGrounding).toHaveBeenCalledWith(
+        jasmine.objectContaining({ config: RAG_TIER_CONFIGS.standard }));
+    });
+
+    it('threads the explicit tier config into the grounding build', async () => {
+      currentUser.set(createUser({ preferences: { ragInsightsLevel: 'deep' } as User['preferences'] }));
+      await generate(build().componentInstance);
+      expect(ragContext.buildSummaryGrounding).toHaveBeenCalledWith(
+        jasmine.objectContaining({ config: RAG_TIER_CONFIGS.deep }));
+    });
+
+    it('never builds grounding at level off, even with the legacy boolean on', async () => {
+      currentUser.set(createUser({
+        preferences: { ragInsightsLevel: 'off', enableRagInsights: true } as User['preferences'],
+      }));
+      await generate(build().componentInstance);
+      expect(ragContext.buildSummaryGrounding).not.toHaveBeenCalled();
+      const args = cloudLLM.generateSpendingSummary.calls.mostRecent().args;
+      expect(args[5]).toBeUndefined();
+    });
+
+    it('waits for exchange rates before building the grounding', async () => {
+      currentUser.set(createUser({ preferences: { ragInsightsLevel: 'standard' } as User['preferences'] }));
+      await generate(build().componentInstance);
+      expect(currency.ensureRatesLoaded).toHaveBeenCalledBefore(ragContext.buildSummaryGrounding);
+    });
+
+    it('regenerates instead of serving the cache when the tier changes', async () => {
+      currentUser.set(createUser({ preferences: { ragInsightsLevel: 'light' } as User['preferences'] }));
+      const component = build().componentInstance;
+      await generate(component);
+      expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(1);
+
+      currentUser.set(createUser({ preferences: { ragInsightsLevel: 'deep' } as User['preferences'] }));
+      await (component as unknown as {
+        loadInsights: (t: Transaction[], p: string) => Promise<void>;
+      }).loadInsights(txns, 'thisMonth');
+      expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(2);
     });
 
     it('shows a fallback message when summary generation fails', async () => {

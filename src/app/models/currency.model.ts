@@ -41,6 +41,14 @@ export const SUPPORTED_CURRENCIES: CurrencyInfo[] = [
   { code: 'NZD', nameKey: 'currencies.nzd', symbol: 'NZ$' },
 ];
 
+/**
+ * Currencies conventionally written without sub-units ("1500 JPY", never
+ * "1500.00 JPY"). TWD/IDR are ISO two-decimal but whole amounts in practice.
+ */
+export const ZERO_DECIMAL_CURRENCIES: ReadonlySet<string> = new Set([
+  'JPY', 'KRW', 'TWD', 'VND', 'IDR',
+]);
+
 export type ExchangeRates = Record<string, number>;
 
 export interface CachedRates {

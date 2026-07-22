@@ -378,12 +378,16 @@
               <span>{{ 'aiPage.ragInsights' | translate }}</span>
               <p class="section-description">{{ 'aiPage.ragInsightsDescription' | translate }}</p>
             </div>
-            <mat-slide-toggle
-              [checked]="enableRagInsights()"
-              (change)="onRagInsightsChange($event.checked)"
-              color="primary">
-            </mat-slide-toggle>
+            <mat-form-field appearance="outline" class="model-field">
+              <mat-label>{{ 'aiPage.ragLevelLabel' | translate }}</mat-label>
+              <mat-select [value]="ragInsightsLevel()" (selectionChange)="onRagLevelChange($event.value)">
+                @for (level of ragLevels; track level) {
+                  <mat-option [value]="level">{{ 'aiPage.ragLevel_' + level | translate }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
           </div>
+          <p class="section-description">{{ 'aiPage.ragLevelDescription_' + ragInsightsLevel() | translate }}</p>
         </mat-card-content>
       </mat-card>
     </section>
