@@ -80,6 +80,7 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     txn('txn-bus', { description: 'Bus ticket', hoursAgo: 1 }),
     txn('txn-market', { description: 'Fruit', hoursAgo: 2, location: { name: 'Aoyama Market' } }),
     txn('txn-salary', { description: 'Salary', categoryId: 'cat-salary', type: 'income', hoursAgo: 3 }),
+    txn('txn-toffee', { description: 'Toffee crisps', hoursAgo: 4 }),
     txn('txn-old', { description: 'Old espresso machine', hoursAgo: 24 * 40 })
   ];
 
@@ -162,8 +163,21 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
       'txn-bus',
       'txn-market',
       'txn-salary',
+      'txn-toffee',
       'txn-old'
     ]);
+  });
+
+  it('falls back to typo-tolerant matching when nothing matches exactly', async () => {
+    await service.reset({ searchQuery: 'espreso' });
+    expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso', 'txn-old']);
+  });
+
+  it('suppresses fuzzy near-misses when an exact match exists', async () => {
+    // "coffee" hits txn-espresso exactly through its category name; the
+    // one-edit-away "Toffee crisps" row must not ride along.
+    await service.reset({ searchQuery: 'coffee' });
+    expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
   });
 
   it('matches transactions by their category display name', async () => {
@@ -185,10 +199,10 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     });
 
     // txn-old (out of range) and txn-salary (income) are excluded server-side;
-    // search narrows the rest to the espresso purchase.
+    // search narrows the remaining four to the espresso purchase.
     expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
 
     await Promise.resolve();
-    expect(service.totalCount()).toBe(3);
+    expect(service.totalCount()).toBe(4);
   });
 });

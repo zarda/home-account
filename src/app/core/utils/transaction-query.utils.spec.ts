@@ -85,6 +85,63 @@ describe('applyClientTransactionFilters', () => {
     });
   });
 
+  describe('searchQuery fuzzy fallback', () => {
+    const transactions = [
+      createTransaction({ id: 't1', description: 'Coffee at Starbucks' }),
+      createTransaction({ id: 't2', description: 'Toffee crisps' }),
+      createTransaction({ id: 't3', description: 'Dinner' })
+    ];
+
+    it('surfaces typo matches when the exact pass finds nothing', () => {
+      const result = applyClientTransactionFilters(transactions, { searchQuery: 'Starbcks' });
+      expect(result.map(t => t.id)).toEqual(['t1']);
+    });
+
+    it('never runs when any exact match exists', () => {
+      // "toffee" is within one edit of "coffee", but the exact hit wins alone.
+      const result = applyClientTransactionFilters(transactions, { searchQuery: 'coffee' });
+      expect(result.map(t => t.id)).toEqual(['t1']);
+    });
+
+    it('does not run for queries under 3 characters', () => {
+      const result = applyClientTransactionFilters(transactions, { searchQuery: 'gm' });
+      expect(result).toEqual([]);
+    });
+
+    it('reaches location and category names', () => {
+      const rows = [
+        createTransaction({
+          id: 't1',
+          description: 'Fruit',
+          location: { name: 'Aoyama Market' }
+        }),
+        createTransaction({ id: 't2', description: 'Espresso', categoryId: 'cat-coffee' })
+      ];
+      const categoryNames = new Map([['cat-coffee', 'Coffee & Tea']]);
+
+      expect(
+        applyClientTransactionFilters(rows, { searchQuery: 'Aoyma' }).map(t => t.id)
+      ).toEqual(['t1']);
+      expect(
+        applyClientTransactionFilters(rows, { searchQuery: 'cofee' }, { categoryNames }).map(
+          t => t.id
+        )
+      ).toEqual(['t2']);
+    });
+
+    it('keeps the amount filters applied to fuzzy results', () => {
+      const rows = [
+        createTransaction({ id: 't1', amount: 10, description: 'Starbucks small' }),
+        createTransaction({ id: 't2', amount: 500, description: 'Starbucks machine' })
+      ];
+      const result = applyClientTransactionFilters(rows, {
+        searchQuery: 'starbcks',
+        maxAmount: 100
+      });
+      expect(result.map(t => t.id)).toEqual(['t1']);
+    });
+  });
+
   describe('amount filters', () => {
     const transactions = [
       createTransaction({ id: 't1', amount: 10 }),

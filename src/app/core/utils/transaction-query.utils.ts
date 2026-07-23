@@ -1,6 +1,11 @@
 import { Timestamp } from '@angular/fire/firestore';
 import { Transaction, TransactionFilters } from '../../models';
 import { QueryOptions } from '../services/firestore.service';
+import { fuzzyQueryMatches } from './fuzzy-match.utils';
+
+// Below this length the fuzzy pass adds nothing over the exact substring
+// test (short tokens get no edit budget), so skip it entirely.
+const MIN_FUZZY_QUERY_LENGTH = 3;
 
 // Server-side filter conditions shared by the live list query and the
 // windowed page queries. Keep both paths building identical constraints so
@@ -82,9 +87,20 @@ export function applyClientTransactionFilters(
 
   if (filters?.searchQuery) {
     const query = filters.searchQuery.toLowerCase();
-    result = result.filter(t =>
+    const beforeSearch = result;
+    result = beforeSearch.filter(t =>
       searchableFields(t, context).some(f => f.toLowerCase().includes(query))
     );
+
+    // Typo fallback: only when the exact pass found nothing, so exact matches
+    // are never diluted or demoted and rows keep their server date order.
+    // Evaluated per loaded window — as more rows stream in, a late exact match
+    // supersedes fuzzy-only rows; the brief swap is accepted.
+    if (result.length === 0 && query.trim().length >= MIN_FUZZY_QUERY_LENGTH) {
+      result = beforeSearch.filter(t =>
+        fuzzyQueryMatches(query, searchableFields(t, context).join(' '))
+      );
+    }
   }
 
   return result;
