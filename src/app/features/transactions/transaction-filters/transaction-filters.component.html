@@ -99,9 +99,91 @@
           [(ngModel)]="filters.searchQuery"
           (input)="onSearchInput()"
           (keydown.enter)="flushSearch()"
-          (blur)="flushSearch()"
+          (focus)="onSearchFocus()"
+          (blur)="onSearchBlur()"
         >
+        @if (filters.searchQuery) {
+          <button
+            mat-icon-button
+            type="button"
+            class="save-search-button"
+            [attr.aria-label]="'transactions.saveSearch' | translate"
+            (click)="toggleSaveMode()"
+          >
+            <mat-icon>bookmark_add</mat-icon>
+          </button>
+        }
+
+        <!-- mousedown preventDefault keeps clicks inside the panel from
+             blurring the input before their own handlers run -->
+        @if (showSearchPanel()) {
+          <div class="search-suggestions" (mousedown)="$event.preventDefault()">
+            @if (searchHistory.savedSearches().length > 0) {
+              <div class="suggestion-heading">{{ 'transactions.savedSearches' | translate }}</div>
+              @for (item of searchHistory.savedSearches(); track item.id) {
+                <div class="suggestion-row">
+                  <button type="button" class="suggestion-apply" (click)="applySearch(item)">
+                    <mat-icon class="suggestion-icon">bookmark</mat-icon>
+                    <span class="suggestion-text">{{ item.label || item.query }}</span>
+                  </button>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    class="suggestion-remove"
+                    [attr.aria-label]="'transactions.removeSearch' | translate"
+                    (click)="removeSearch(item, $event)"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </div>
+              }
+            }
+            @if (searchHistory.recentSearches().length > 0) {
+              <div class="suggestion-heading">{{ 'transactions.recentSearches' | translate }}</div>
+              @for (item of searchHistory.recentSearches(); track item.id) {
+                <div class="suggestion-row">
+                  <button type="button" class="suggestion-apply" (click)="applySearch(item)">
+                    <mat-icon class="suggestion-icon">history</mat-icon>
+                    <span class="suggestion-text">{{ item.query }}</span>
+                  </button>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    class="suggestion-remove"
+                    [attr.aria-label]="'transactions.removeSearch' | translate"
+                    (click)="removeSearch(item, $event)"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </div>
+              }
+            }
+          </div>
+        }
       </div>
+
+      @if (saveMode()) {
+        <div class="save-search-row">
+          <input
+            type="text"
+            class="save-label-input"
+            [placeholder]="'transactions.searchLabelPlaceholder' | translate"
+            [(ngModel)]="saveLabel"
+            (keydown.enter)="confirmSaveSearch()"
+          >
+          <button
+            mat-icon-button
+            type="button"
+            [attr.aria-label]="'transactions.saveSearch' | translate"
+            (click)="confirmSaveSearch()"
+          >
+            <mat-icon>check</mat-icon>
+          </button>
+          <button mat-icon-button type="button" (click)="saveMode.set(false)">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+      }
 
       <div class="filter-grid">
         <!-- Type -->

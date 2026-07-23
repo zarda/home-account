@@ -46,6 +46,11 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
 
+      // Saved & recent searches subcollection
+      match /savedSearches/{searchId} {
+        allow read, write: if isOwner(userId);
+      }
+
       // Any other subcollections under user
       match /{subcollection}/{docId} {
         allow read, write: if isOwner(userId);

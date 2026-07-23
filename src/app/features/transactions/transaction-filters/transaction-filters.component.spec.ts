@@ -1,12 +1,14 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { of } from 'rxjs';
+import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFiltersComponent } from './transaction-filters.component';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
-import { Category } from '../../../models';
+import { SearchHistoryService } from '../../../core/services/search-history.service';
+import { Category, SavedSearch } from '../../../models';
 
 describe('TransactionFiltersComponent', () => {
   let component: TransactionFiltersComponent;
@@ -16,6 +18,24 @@ describe('TransactionFiltersComponent', () => {
   };
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
+  let mockSearchHistory: {
+    savedSearches: ReturnType<typeof signal<SavedSearch[]>>;
+    recentSearches: ReturnType<typeof signal<SavedSearch[]>>;
+    loadSearches: jasmine.Spy;
+    recordRecent: jasmine.Spy;
+    saveSearch: jasmine.Spy;
+    touch: jasmine.Spy;
+    deleteSearch: jasmine.Spy;
+  };
+
+  const savedSearch = (id: string, query: string, overrides: Partial<SavedSearch> = {}): SavedSearch => ({
+    id,
+    userId: 'user123',
+    query,
+    pinned: false,
+    lastUsedAt: Timestamp.fromMillis(1_800_000_000_000),
+    ...overrides
+  });
 
   const mockCategories: Category[] = [
     {
@@ -87,12 +107,23 @@ describe('TransactionFiltersComponent', () => {
       { code: 'EUR', nameKey: 'currencies.eur', symbol: '€' }
     ]);
 
+    mockSearchHistory = {
+      savedSearches: signal<SavedSearch[]>([]),
+      recentSearches: signal<SavedSearch[]>([]),
+      loadSearches: jasmine.createSpy('loadSearches').and.returnValue(of([])),
+      recordRecent: jasmine.createSpy('recordRecent').and.resolveTo(),
+      saveSearch: jasmine.createSpy('saveSearch').and.resolveTo('saved-id'),
+      touch: jasmine.createSpy('touch').and.resolveTo(),
+      deleteSearch: jasmine.createSpy('deleteSearch').and.resolveTo()
+    };
+
     await TestBed.configureTestingModule({
       imports: [TransactionFiltersComponent, NoopAnimationsModule],
       providers: [
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        { provide: SearchHistoryService, useValue: mockSearchHistory }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -376,6 +407,91 @@ describe('TransactionFiltersComponent', () => {
       fresh.onFilterChange();
       expect(emitSpy).toHaveBeenCalledTimes(1);
     }));
+  });
+
+  describe('recent and saved searches', () => {
+    it('loads the search history on init', () => {
+      expect(mockSearchHistory.loadSearches).toHaveBeenCalled();
+    });
+
+    it('shows the panel only when focused, empty, and there is something to show', () => {
+      expect(component.showSearchPanel()).toBeFalse();
+
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      component.onSearchFocus();
+      expect(component.showSearchPanel()).toBeTrue();
+
+      component.filters.searchQuery = 'gym';
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('stays hidden with no history to show', () => {
+      component.onSearchFocus();
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('applies a remembered search in one tap', () => {
+      spyOn(component.filtersChanged, 'emit');
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      component.onSearchFocus();
+
+      component.applySearch(savedSearch('r1', 'starbucks'));
+
+      expect(component.filters.searchQuery).toBe('starbucks');
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent().args[0];
+      expect(emitted.searchQuery).toBe('starbucks');
+      expect(mockSearchHistory.touch).toHaveBeenCalledWith('r1');
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('records a committed query exactly once', fakeAsync(() => {
+      component.filters.searchQuery = 'starbucks';
+      component.flushSearch();
+      component.flushSearch();
+      tick();
+
+      expect(mockSearchHistory.recordRecent).toHaveBeenCalledTimes(1);
+      expect(mockSearchHistory.recordRecent).toHaveBeenCalledWith('starbucks');
+    }));
+
+    it('does not re-record a query applied from the panel', () => {
+      component.applySearch(savedSearch('r1', 'starbucks'));
+      component.flushSearch();
+
+      expect(mockSearchHistory.recordRecent).not.toHaveBeenCalled();
+    });
+
+    it('removes an entry without emitting filters', () => {
+      spyOn(component.filtersChanged, 'emit');
+      const event = new Event('click');
+      spyOn(event, 'stopPropagation');
+
+      component.removeSearch(savedSearch('r1', 'gym'), event);
+
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(mockSearchHistory.deleteSearch).toHaveBeenCalledWith('r1');
+      expect(component.filtersChanged.emit).not.toHaveBeenCalled();
+    });
+
+    it('saves the current query with a label', () => {
+      component.filters.searchQuery = 'utilities';
+      component.toggleSaveMode();
+      expect(component.saveMode()).toBeTrue();
+      expect(component.saveLabel).toBe('utilities');
+
+      component.saveLabel = 'Bills';
+      component.confirmSaveSearch();
+
+      expect(mockSearchHistory.saveSearch).toHaveBeenCalledWith('utilities', 'Bills');
+      expect(component.saveMode()).toBeFalse();
+    });
+
+    it('ignores save confirmation without a query', () => {
+      component.filters.searchQuery = '';
+      component.confirmSaveSearch();
+
+      expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+    });
   });
 
   describe('clearFilters', () => {

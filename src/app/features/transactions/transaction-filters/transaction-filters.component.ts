@@ -10,9 +10,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { Subject, Subscription, debounceTime } from 'rxjs';
-import { Category, CurrencyInfo, TransactionFilters } from '../../../models';
+import { Category, CurrencyInfo, SavedSearch, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { SearchHistoryService } from '../../../core/services/search-history.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -37,6 +38,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);
   private currencyService = inject(CurrencyService);
+  searchHistory = inject(SearchHistoryService);
 
   @ViewChild('dayPicker') dayPicker!: MatDatepicker<Date>;
   @ViewChild('startPicker') startPicker!: MatDatepicker<Date>;
@@ -69,14 +71,24 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   private static readonly SEARCH_DEBOUNCE_MS = 250;
   private searchInput$ = new Subject<void>();
   private searchSub?: Subscription;
+  private searchHistorySub?: Subscription;
   // Last searchQuery included in any emission; a pending debounce tick whose
   // value already went out (via Enter, blur, or another filter change) no-ops.
   private lastEmittedSearch = '';
+  // Last query written to search history, so a repeated flush of the same
+  // text records it once.
+  private lastRecordedQuery = '';
+
+  searchFocused = signal(false);
+  saveMode = signal(false);
+  saveLabel = '';
 
   ngOnInit(): void {
     this.searchSub = this.searchInput$
       .pipe(debounceTime(TransactionFiltersComponent.SEARCH_DEBOUNCE_MS))
       .subscribe(() => this.commitSearch());
+
+    this.searchHistorySub = this.searchHistory.loadSearches().subscribe();
 
     // Default filter will be applied in ngOnChanges or after a tick if no initialDate
     setTimeout(() => {
@@ -111,6 +123,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   ngOnDestroy(): void {
     this.datesSubs.forEach(sub => sub.unsubscribe());
     this.searchSub?.unsubscribe();
+    this.searchHistorySub?.unsubscribe();
     this.searchInput$.complete();
   }
 
@@ -119,14 +132,71 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   }
 
   // Enter or blur commits the search immediately instead of waiting out the
-  // debounce.
+  // debounce, and remembers the settled query.
   flushSearch(): void {
     this.commitSearch();
+    this.recordSearch();
   }
 
   private commitSearch(): void {
     if ((this.filters.searchQuery ?? '') === this.lastEmittedSearch) return;
     this.onFilterChange();
+  }
+
+  private recordSearch(): void {
+    const query = (this.filters.searchQuery ?? '').trim();
+    if (!query || query === this.lastRecordedQuery) return;
+    this.lastRecordedQuery = query;
+    void this.searchHistory.recordRecent(query);
+  }
+
+  // The recents/saved dropdown renders under a focused, still-empty search box.
+  showSearchPanel(): boolean {
+    return (
+      this.searchFocused() &&
+      !this.filters.searchQuery &&
+      (this.searchHistory.savedSearches().length > 0 ||
+        this.searchHistory.recentSearches().length > 0)
+    );
+  }
+
+  onSearchFocus(): void {
+    this.searchFocused.set(true);
+  }
+
+  onSearchBlur(): void {
+    this.searchFocused.set(false);
+    this.flushSearch();
+  }
+
+  // One tap on a remembered search: apply it immediately (no debounce wait)
+  // and refresh its recency instead of re-recording it.
+  applySearch(item: SavedSearch): void {
+    this.filters.searchQuery = item.query;
+    this.lastRecordedQuery = item.query;
+    this.searchFocused.set(false);
+    this.onFilterChange();
+    void this.searchHistory.touch(item.id);
+  }
+
+  removeSearch(item: SavedSearch, event: Event): void {
+    event.stopPropagation();
+    void this.searchHistory.deleteSearch(item.id);
+  }
+
+  toggleSaveMode(): void {
+    this.saveMode.update(open => !open);
+    if (this.saveMode()) {
+      this.saveLabel = this.filters.searchQuery ?? '';
+    }
+  }
+
+  confirmSaveSearch(): void {
+    const query = (this.filters.searchQuery ?? '').trim();
+    if (!query) return;
+    const label = this.saveLabel.trim() || query;
+    void this.searchHistory.saveSearch(query, label);
+    this.saveMode.set(false);
   }
 
   private setupDatepickerListeners(picker: MatDatepicker<Date>): void {
