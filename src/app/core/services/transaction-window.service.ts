@@ -2,6 +2,8 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { QueryDocumentSnapshot, DocumentData, Timestamp } from '@angular/fire/firestore';
 import { FirestoreService, PageQueryOptions, PageResult } from './firestore.service';
 import { AuthService } from './auth.service';
+import { CategoryService } from './category.service';
+import { TranslationService } from './translation.service';
 import { Transaction, TransactionFilters } from '../../models';
 import {
   applyClientTransactionFilters,
@@ -37,6 +39,8 @@ type PageCursor = QueryDocumentSnapshot<DocumentData>;
 export class TransactionWindowService {
   private firestoreService = inject(FirestoreService);
   private authService = inject(AuthService);
+  private categoryService = inject(CategoryService);
+  private translationService = inject(TranslationService);
 
   // Parallel arrays: items[i] corresponds to snaps[i], so after any trim the
   // boundary cursors are always the snapshots of the boundary items.
@@ -58,10 +62,21 @@ export class TransactionWindowService {
 
   // Raw fetched rows in server query order.
   readonly window = signal<Transaction[]>([]);
+  // categoryId -> display name as rendered, so search can match what the user
+  // sees. Tracks late category loads and locale switches.
+  private categoryNames = computed(() => {
+    const names = new Map<string, string>();
+    for (const category of this.categoryService.categories()) {
+      names.set(category.id, this.translationService.t(category.name));
+    }
+    return names;
+  });
   // What the list renders: the window minus client-only filters. Cursors always
   // operate on the raw rows, so paging never skips server documents.
   readonly visibleWindow = computed(() =>
-    applyClientTransactionFilters(this.window(), this.filters())
+    applyClientTransactionFilters(this.window(), this.filters(), {
+      categoryNames: this.categoryNames()
+    })
   );
 
   // Starts true: the page renders before the filter bar emits its initial

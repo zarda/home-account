@@ -297,6 +297,87 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  describe('search debounce', () => {
+    // Fresh component inside the fakeAsync zone so the ngOnInit setTimeout
+    // (initial filter emission) is consumed by tick() before spying.
+    function createSettledComponent(): TransactionFiltersComponent {
+      const freshFixture = TestBed.createComponent(TransactionFiltersComponent);
+      const fresh = freshFixture.componentInstance;
+      fresh.categories = mockCategories;
+      fresh.incomeCategories = mockIncomeCategories;
+      freshFixture.detectChanges();
+      tick();
+      return fresh;
+    }
+
+    it('emits once after typing pauses for 250ms', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.searchQuery = 'c';
+      fresh.onSearchInput();
+      tick(100);
+      fresh.filters.searchQuery = 'co';
+      fresh.onSearchInput();
+      tick(100);
+      fresh.filters.searchQuery = 'cof';
+      fresh.onSearchInput();
+
+      tick(249);
+      expect(emitSpy).not.toHaveBeenCalled();
+
+      tick(1);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect(emitSpy.calls.mostRecent().args[0]?.searchQuery).toBe('cof');
+    }));
+
+    it('flushes immediately on Enter/blur without a later duplicate', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.searchQuery = 'coffee';
+      fresh.onSearchInput();
+      tick(50);
+      fresh.flushSearch();
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+
+      // The still-pending debounce tick sees the query already emitted.
+      tick(300);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+    }));
+
+    it('absorbs a pending debounce when another filter emits first', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.searchQuery = 'abc';
+      fresh.onSearchInput();
+      tick(50);
+      fresh.setQuickFilter('today');
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+
+      tick(300);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+    }));
+
+    it('does not emit when the flushed query equals the last emitted one', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.flushSearch();
+      expect(emitSpy).not.toHaveBeenCalled();
+    }));
+
+    it('keeps non-search filter changes synchronous', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.type = 'expense';
+      fresh.onFilterChange();
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+    }));
+  });
+
   describe('clearFilters', () => {
     it('should clear all filters', () => {
       component.filters = {

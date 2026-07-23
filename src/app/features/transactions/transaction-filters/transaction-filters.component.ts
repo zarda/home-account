@@ -9,7 +9,7 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
-import { Subscription } from 'rxjs';
+import { Subject, Subscription, debounceTime } from 'rxjs';
 import { Category, CurrencyInfo, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -64,7 +64,20 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   private initialFilterApplied = false;
 
+  // Search input is debounced so a filter pass (and window refetch) runs once
+  // typing pauses, not per keystroke. Every other control emits immediately.
+  private static readonly SEARCH_DEBOUNCE_MS = 250;
+  private searchInput$ = new Subject<void>();
+  private searchSub?: Subscription;
+  // Last searchQuery included in any emission; a pending debounce tick whose
+  // value already went out (via Enter, blur, or another filter change) no-ops.
+  private lastEmittedSearch = '';
+
   ngOnInit(): void {
+    this.searchSub = this.searchInput$
+      .pipe(debounceTime(TransactionFiltersComponent.SEARCH_DEBOUNCE_MS))
+      .subscribe(() => this.commitSearch());
+
     // Default filter will be applied in ngOnChanges or after a tick if no initialDate
     setTimeout(() => {
       if (!this.initialFilterApplied) {
@@ -97,6 +110,23 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   ngOnDestroy(): void {
     this.datesSubs.forEach(sub => sub.unsubscribe());
+    this.searchSub?.unsubscribe();
+    this.searchInput$.complete();
+  }
+
+  onSearchInput(): void {
+    this.searchInput$.next();
+  }
+
+  // Enter or blur commits the search immediately instead of waiting out the
+  // debounce.
+  flushSearch(): void {
+    this.commitSearch();
+  }
+
+  private commitSearch(): void {
+    if ((this.filters.searchQuery ?? '') === this.lastEmittedSearch) return;
+    this.onFilterChange();
   }
 
   private setupDatepickerListeners(picker: MatDatepicker<Date>): void {
@@ -265,6 +295,8 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   }
 
   private emitFilters(): void {
+    this.lastEmittedSearch = this.filters.searchQuery ?? '';
+
     // Clean up undefined values
     const cleanFilters: TransactionFilters = {};
 

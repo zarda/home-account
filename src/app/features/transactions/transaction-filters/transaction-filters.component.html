@@ -97,7 +97,9 @@
           class="search-input"
           [placeholder]="'transactions.searchPlaceholder' | translate"
           [(ngModel)]="filters.searchQuery"
-          (input)="onFilterChange()"
+          (input)="onSearchInput()"
+          (keydown.enter)="flushSearch()"
+          (blur)="flushSearch()"
         >
       </div>
 

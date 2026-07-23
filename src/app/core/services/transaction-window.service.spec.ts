@@ -8,7 +8,9 @@ import {
 } from './transaction-window.service';
 import { FirestoreService, PageResult } from './firestore.service';
 import { AuthService } from './auth.service';
-import { MockAuthService, MockFirestoreService, createTransaction } from './testing';
+import { CategoryService } from './category.service';
+import { TranslationService } from './translation.service';
+import { MockAuthService, MockFirestoreService, createCategory, createTransaction } from './testing';
 import { Transaction } from '../../models';
 
 const PATH = 'users/test-user-123/transactions';
@@ -34,12 +36,19 @@ describe('TransactionWindowService', () => {
     return transactions;
   }
 
+  // Category names resolve through translation; keys map like the real tables.
+  const TRANSLATIONS: Record<string, string> = {
+    'categoryNames.coffee': 'Coffee & Tea',
+    'categoryNames.transport': 'Transportation'
+  };
+
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
         TransactionWindowService,
         { provide: FirestoreService, useClass: MockFirestoreService },
-        { provide: AuthService, useClass: MockAuthService }
+        { provide: AuthService, useClass: MockAuthService },
+        { provide: TranslationService, useValue: { t: (key: string) => TRANSLATIONS[key] ?? key } }
       ]
     });
     service = TestBed.inject(TransactionWindowService);
@@ -322,6 +331,65 @@ describe('TransactionWindowService', () => {
       await service.fetchNext(); // reachedEnd true
       const older = Timestamp.fromMillis(seeded[59].date.toMillis() - 5000);
       expect(service.isInLoadedRange(older)).toBeTrue();
+    });
+  });
+
+  describe('search by category and location name', () => {
+    function seedSearchRows(): void {
+      const base = new Date(2026, 5, 30, 12).getTime();
+      mockFirestore.setMockCollection(PATH, [
+        createTransaction({
+          id: 'txn-espresso',
+          date: Timestamp.fromMillis(base),
+          description: 'Morning espresso',
+          categoryId: 'cat-coffee'
+        }),
+        createTransaction({
+          id: 'txn-bus',
+          date: Timestamp.fromMillis(base - 1000),
+          description: 'Bus ticket',
+          categoryId: 'cat-transport'
+        }),
+        createTransaction({
+          id: 'txn-market',
+          date: Timestamp.fromMillis(base - 2000),
+          description: 'Fruit',
+          categoryId: 'cat-transport',
+          location: { name: 'Aoyama Market' }
+        })
+      ]);
+    }
+
+    function seedCategories(): void {
+      TestBed.inject(CategoryService).categories.set([
+        createCategory({ id: 'cat-coffee', name: 'categoryNames.coffee' }),
+        createCategory({ id: 'cat-transport', name: 'categoryNames.transport' })
+      ]);
+    }
+
+    it('matches rows whose translated category name contains the query', async () => {
+      seedSearchRows();
+      seedCategories();
+      await service.reset({ searchQuery: 'coffee' });
+
+      expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
+    });
+
+    it('matches rows by location name', async () => {
+      seedSearchRows();
+      seedCategories();
+      await service.reset({ searchQuery: 'aoyama' });
+
+      expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-market']);
+    });
+
+    it('re-evaluates the visible window when categories load after reset', async () => {
+      seedSearchRows();
+      await service.reset({ searchQuery: 'coffee' });
+      expect(service.visibleWindow()).toEqual([]);
+
+      seedCategories();
+      expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
     });
   });
 

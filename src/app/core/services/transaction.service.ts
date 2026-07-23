@@ -513,11 +513,6 @@ export class TransactionService {
     );
   }
 
-  // Search transactions
-  searchTransactions(query: string): Observable<Transaction[]> {
-    return this.getTransactions({ searchQuery: query });
-  }
-
   // Helper to group transactions by category
   /**
    * Non-mutating period totals with a per-category expense breakdown
