@@ -12,6 +12,11 @@ import {
   protectDecimalPoints,
   restoreDecimalPoints,
 } from '../utils/llm-text.utils';
+import {
+  applyCategorizations,
+  buildCategoryPromptCatalog,
+  mapCategoryNameToId,
+} from '../utils/categorization.utils';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -334,10 +339,10 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
 
     try {
       const categories = this.categoryService.categories();
-      const categoryList = categories
-        .filter(c => !c.parentId && c.isActive)
-        .map(c => `${c.id}: ${this.translateCategoryName(c.name)}`)
-        .join('\n');
+      const categoryList = buildCategoryPromptCatalog(
+        categories,
+        name => this.translateCategoryName(name)
+      );
 
       const transactionList = transactions
         .map((t, i) => `${i}: "${t.description}" (${t.amount})`)
@@ -351,13 +356,15 @@ ${categoryList}
 Transactions:
 ${transactionList}
 
-Return ONLY a valid JSON array with objects containing "index" and "categoryId":
-[{"index": 0, "categoryId": "food"}, {"index": 1, "categoryId": "transport"}]`;
+Pick the most specific category that fits (a "Parent / Child" entry when one matches). "confidence" is your certainty from 0 to 1.
+
+Return ONLY a valid JSON array with objects containing "index", "categoryId" and "confidence":
+[{"index": 0, "categoryId": "food_groceries", "confidence": 0.9}, {"index": 1, "categoryId": "transport", "confidence": 0.6}]`;
 
       const result = await this.textModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 500,
+          maxOutputTokens: 800,
           temperature: 0.05,
           topP: 0.6,
         }
@@ -366,14 +373,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
       const cleanedJson = this.extractJson(responseText);
       const categorizations = JSON.parse(cleanedJson);
 
-      return transactions.map((t, i) => {
-        const match = categorizations.find((c: { index: number }) => c.index === i);
-        return {
-          ...t,
-          suggestedCategoryId: match?.categoryId ?? 'other_expense',
-          confidence: match ? 0.8 : 0.3
-        };
-      });
+      return applyCategorizations(transactions, categorizations, categories);
     } catch (error) {
       console.error('Batch categorization error:', error);
       // Return with default category if AI fails
@@ -1413,47 +1413,10 @@ Return ONLY valid JSON (no thinking, no explanation):
   }
 
   private mapCategoryNameToId(categoryName: string): string {
-    const categories = this.categoryService.categories();
-    const normalizedName = categoryName.toLowerCase().trim();
-
-    // Category names may be stored as i18n keys (e.g. categoryNames.groceries),
-    // while the model sees and returns translated names — match against both
-    const namesOf = (c: Category) => [
-      c.name.toLowerCase(),
-      this.translateCategoryName(c.name).toLowerCase(),
-    ];
-
-    // Try exact match first
-    const exactMatch = categories.find(
-      c => namesOf(c).includes(normalizedName)
+    return mapCategoryNameToId(
+      categoryName,
+      this.categoryService.categories(),
+      name => this.translateCategoryName(name)
     );
-    if (exactMatch) return exactMatch.id;
-
-    // Try partial match
-    const partialMatch = categories.find(
-      c => namesOf(c).some(n => n.includes(normalizedName) || normalizedName.includes(n))
-    );
-    if (partialMatch) return partialMatch.id;
-
-    // Default based on common keywords
-    const keywordMap: Record<string, string> = {
-      restaurant: 'food_restaurants',
-      grocery: 'food_groceries',
-      coffee: 'food_coffee_&_drinks',
-      food: 'food',
-      transport: 'transport',
-      gas: 'transport_fuel_&_gas',
-      shopping: 'shopping',
-      pharmacy: 'health_pharmacy_&_medicine',
-      health: 'health'
-    };
-
-    for (const [keyword, categoryId] of Object.entries(keywordMap)) {
-      if (normalizedName.includes(keyword)) {
-        return categoryId;
-      }
-    }
-
-    return 'other_expense';
   }
 }

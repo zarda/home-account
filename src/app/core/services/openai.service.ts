@@ -14,6 +14,11 @@ import {
   MultiImageExtractedTransaction,
   CSVColumnMapping,
 } from './gemini.service';
+import {
+  applyCategorizations,
+  buildCategoryPromptCatalog,
+  mapCategoryNameToId,
+} from '../utils/categorization.utils';
 
 @Injectable({ providedIn: 'root' })
 export class OpenAIService {
@@ -229,10 +234,10 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
 
     try {
       const categories = this.categoryService.categories();
-      const categoryList = categories
-        .filter((c) => !c.parentId && c.isActive)
-        .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
-        .join('\n');
+      const categoryList = buildCategoryPromptCatalog(
+        categories,
+        (name) => this.translateCategoryName(name)
+      );
 
       const transactionList = transactions
         .map((t, i) => `${i}: "${t.description}" (${t.amount})`)
@@ -246,13 +251,15 @@ ${categoryList}
 Transactions:
 ${transactionList}
 
-Return ONLY a valid JSON array with objects containing "index" and "categoryId":
-[{"index": 0, "categoryId": "food"}, {"index": 1, "categoryId": "transport"}]`;
+Pick the most specific category that fits (a "Parent / Child" entry when one matches). "confidence" is your certainty from 0 to 1.
+
+Return ONLY a valid JSON array with objects containing "index", "categoryId" and "confidence":
+[{"index": 0, "categoryId": "food_groceries", "confidence": 0.9}, {"index": 1, "categoryId": "transport", "confidence": 0.6}]`;
 
       const response = await this.client.responses.create({
         model: this.model,
         input: prompt,
-        max_output_tokens: 500,
+        max_output_tokens: 800,
         store: false,
       });
 
@@ -260,14 +267,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
       const cleanedJson = this.extractJson(responseText);
       const categorizations = JSON.parse(cleanedJson);
 
-      return transactions.map((t, i) => {
-        const match = categorizations.find((c: { index: number }) => c.index === i);
-        return {
-          ...t,
-          suggestedCategoryId: match?.categoryId ?? 'other_expense',
-          confidence: match ? 0.8 : 0.3,
-        };
-      });
+      return applyCategorizations(transactions, categorizations, categories);
     } catch (error) {
       console.error('OpenAI batch categorization error:', error);
       return transactions.map((t) => ({
@@ -800,41 +800,10 @@ Return ONLY valid JSON with this structure:
 
   // Helper: Map category name to ID
   private mapCategoryNameToId(categoryName: string): string {
-    const categories = this.categoryService.categories();
-    const normalizedName = categoryName.toLowerCase().trim();
-
-    // Match against both the stored name (possibly an i18n key) and its translation
-    const namesOf = (c: Category) => [
-      c.name.toLowerCase(),
-      this.translateCategoryName(c.name).toLowerCase(),
-    ];
-
-    const exactMatch = categories.find((c) => namesOf(c).includes(normalizedName));
-    if (exactMatch) return exactMatch.id;
-
-    const partialMatch = categories.find(
-      (c) => namesOf(c).some((n) => n.includes(normalizedName) || normalizedName.includes(n))
+    return mapCategoryNameToId(
+      categoryName,
+      this.categoryService.categories(),
+      (name) => this.translateCategoryName(name)
     );
-    if (partialMatch) return partialMatch.id;
-
-    const keywordMap: Record<string, string> = {
-      restaurant: 'food_restaurants',
-      grocery: 'food_groceries',
-      coffee: 'food_coffee_&_drinks',
-      food: 'food',
-      transport: 'transport',
-      gas: 'transport_fuel_&_gas',
-      shopping: 'shopping',
-      pharmacy: 'health_pharmacy_&_medicine',
-      health: 'health',
-    };
-
-    for (const [keyword, categoryId] of Object.entries(keywordMap)) {
-      if (normalizedName.includes(keyword)) {
-        return categoryId;
-      }
-    }
-
-    return 'other_expense';
   }
 }

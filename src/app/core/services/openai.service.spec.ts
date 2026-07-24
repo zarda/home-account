@@ -370,6 +370,39 @@ describe('OpenAIService', () => {
       expect(result[1].confidence).toBe(0.3);
     });
 
+    it('passes the model confidence through and coerces invalid category IDs', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(
+        responseWith(
+          JSON.stringify([
+            { index: 0, categoryId: 'food_child', confidence: 0.6 },
+            { index: 1, categoryId: 'not_a_real_id', confidence: 0.95 },
+          ])
+        )
+      );
+      setClient(fake);
+
+      const result = await service.categorizeTransactions(txns);
+
+      expect(result[0].suggestedCategoryId).toBe('food_child');
+      expect(result[0].confidence).toBe(0.6);
+      expect(result[1].suggestedCategoryId).toBe('other_expense');
+      expect(result[1].confidence).toBe(0.3);
+    });
+
+    it('offers sub-categories and asks for confidence in the prompt', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(responseWith('[]'));
+      setClient(fake);
+
+      await service.categorizeTransactions(txns);
+
+      const request = fake.responses.create.calls.mostRecent().args[0] as { input: string };
+      expect(request.input).toContain('food_child: Restaurants / Child');
+      expect(request.input).toContain('"confidence"');
+      expect(request.input).not.toContain('inactive');
+    });
+
     it('returns safe defaults for every transaction on error', async () => {
       const errorSpy = spyOn(console, 'error');
       const fake = makeFakeClient();
