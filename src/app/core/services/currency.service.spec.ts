@@ -182,9 +182,44 @@ describe('CurrencyService', () => {
       expect(result).toContain('₩');
     });
 
+    it('should format TWD without decimals', () => {
+      const result = service.formatCurrency(1234, 'TWD');
+      expect(result).not.toContain('.');
+      expect(result).toContain('1,234');
+    });
+
+    it('should format VND without decimals', () => {
+      const result = service.formatCurrency(1234, 'VND');
+      expect(result).not.toContain('.');
+      expect(result).toContain('1,234');
+    });
+
     it('should handle zero amount', () => {
       const result = service.formatCurrency(0, 'USD');
       expect(result).toContain('0');
+    });
+  });
+
+  describe('formatAmount', () => {
+    it('drops sub-digits for zero-decimal currencies', () => {
+      expect(service.formatAmount(1500, 'JPY')).toBe('1500');
+      expect(service.formatAmount(1500, 'TWD')).toBe('1500');
+      expect(service.formatAmount(1500, 'KRW')).toBe('1500');
+    });
+
+    it('rounds fractional amounts in zero-decimal currencies', () => {
+      expect(service.formatAmount(1500.4, 'JPY')).toBe('1500');
+      expect(service.formatAmount(1500.6, 'TWD')).toBe('1501');
+    });
+
+    it('keeps two decimals for decimal currencies', () => {
+      expect(service.formatAmount(12.34, 'USD')).toBe('12.34');
+      expect(service.formatAmount(1234.5, 'EUR')).toBe('1234.50');
+    });
+
+    it('emits plain digits with no symbol or grouping', () => {
+      expect(service.formatAmount(1234567, 'JPY')).toBe('1234567');
+      expect(service.formatAmount(1234567.891, 'USD')).toBe('1234567.89');
     });
   });
 

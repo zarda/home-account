@@ -2,14 +2,17 @@ import { Injectable, inject } from '@angular/core';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { CategoryTotal, Transaction } from '../../models';
+import { CategoryTotal, RAG_TIER_CONFIGS, RagTierConfig, Transaction } from '../../models';
 
 /**
  * Retrieval helpers for RAG-grounded AI features. Builds compact, factual
  * context blocks from the user's own data so LLM insights can cite real,
  * notable activity instead of generic patterns.
  *
- * Gated by the `enableRagInsights` user preference (the caller checks it).
+ * Depth is driven by the `ragInsightsLevel` user preference: the caller
+ * resolves the level (via effectiveRagLevel) and passes the matching
+ * RagTierConfig; this service stays a pure transformer over the data and
+ * caps it is given.
  */
 @Injectable({ providedIn: 'root' })
 export class RagContextService {
@@ -26,39 +29,48 @@ export class RagContextService {
     previousByCategory: CategoryTotal[] | null;
     baseCurrency: string;
     /**
-     * Trailing-window expenses (typically the last ~6 months, including the
-     * current period) used as the baseline for anomaly detection. When omitted
-     * or empty, the baseline collapses to the current period — reproducing the
-     * original current-period-only behaviour.
+     * Trailing-window expenses (including the current period) used as the
+     * baseline for anomaly detection. When omitted or empty, the baseline
+     * collapses to the current period.
      */
     historicalExpenses?: Transaction[] | null;
+    /** Per-tier section caps; omitted = the standard tier. */
+    config?: RagTierConfig;
   }): string {
     const { transactions, previousByCategory, baseCurrency } = opts;
+    const config = opts.config ?? RAG_TIER_CONFIGS.standard;
     const expenses = transactions.filter(t => t.type === 'expense');
     if (expenses.length === 0) {
       return '';
     }
 
-    const toBase = (t: Transaction) => this.currencyService.convert(t.amount, t.currency, baseCurrency);
+    // Snapshot-preferring conversion: deterministic even before live
+    // exchange rates finish loading.
+    const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
+    const amount = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
     const sections: string[] = [];
 
-    const topExpenses = this.buildTopExpenses(expenses, toBase, baseCurrency);
+    const topExpenses = this.buildTopExpenses(expenses, toBase, amount, baseCurrency, config.topExpenses);
     if (topExpenses) {
       sections.push(topExpenses);
     }
 
-    // Prefer a longer historical baseline when supplied; otherwise fall back to
-    // the current period's expenses so behaviour is unchanged without history.
-    const baselineExpenses = opts.historicalExpenses?.length
-      ? opts.historicalExpenses.filter(t => t.type === 'expense')
-      : expenses;
+    if (config.anomalies > 0) {
+      // Prefer a longer historical baseline when supplied; otherwise fall back
+      // to the current period's expenses.
+      const baselineExpenses = opts.historicalExpenses?.length
+        ? opts.historicalExpenses.filter(t => t.type === 'expense')
+        : expenses;
 
-    const anomalies = this.buildAmountAnomalies(expenses, baselineExpenses, toBase, baseCurrency);
-    if (anomalies) {
-      sections.push(anomalies);
+      const anomalies = this.buildAmountAnomalies(
+        expenses, baselineExpenses, toBase, amount, baseCurrency, config.anomalies);
+      if (anomalies) {
+        sections.push(anomalies);
+      }
     }
 
-    const deltas = this.buildCategoryDeltas(expenses, previousByCategory, toBase, baseCurrency);
+    const deltas = this.buildCategoryDeltas(
+      expenses, previousByCategory, toBase, amount, baseCurrency, config.categoryDeltas);
     if (deltas) {
       sections.push(deltas);
     }
@@ -66,16 +78,18 @@ export class RagContextService {
     return sections.join('\n\n');
   }
 
-  /** Top ~10 expenses by amount: `description — amount (category, date)`. */
+  /** Top expenses by amount: `description — amount (category, date)`. */
   private buildTopExpenses(
     expenses: Transaction[],
     toBase: (t: Transaction) => number,
+    amount: (value: number) => string,
     baseCurrency: string,
+    cap: number,
   ): string {
     const lines = [...expenses]
       .sort((a, b) => toBase(b) - toBase(a))
-      .slice(0, 10)
-      .map(t => `- ${t.description} — ${toBase(t).toFixed(2)} ${baseCurrency} (${this.categoryName(t.categoryId)}, ${this.formatDate(t.date)})`);
+      .slice(0, cap)
+      .map(t => `- ${t.description} — ${amount(toBase(t))} ${baseCurrency} (${this.categoryName(t.categoryId)}, ${this.formatDate(t.date)})`);
 
     return lines.length > 0 ? `Top expenses:\n${lines.join('\n')}` : '';
   }
@@ -84,17 +98,19 @@ export class RagContextService {
    * Flag current-period transactions far above their category's typical amount
    * (above mean + 2*stddev, in categories with at least 4 baseline samples).
    * The baseline distribution is drawn from `baselineExpenses` — a trailing
-   * window (e.g. the last ~6 months) that includes the current period — so the
-   * detector works early in a period and reflects month-over-month norms.
-   * Only `expenses` (the current period) are eligible to be flagged; when no
-   * history is supplied `baselineExpenses` equals `expenses` and this reduces
-   * to the original current-period-only behaviour.
+   * window that includes the current period — so the detector works early in
+   * a period and reflects month-over-month norms. Only `expenses` (the current
+   * period) are eligible to be flagged; when no history is supplied
+   * `baselineExpenses` equals `expenses` and this reduces to a
+   * current-period-only baseline.
    */
   private buildAmountAnomalies(
     expenses: Transaction[],
     baselineExpenses: Transaction[],
     toBase: (t: Transaction) => number,
+    amount: (value: number) => string,
     baseCurrency: string,
+    cap: number,
   ): string {
     const baselineByCategory = new Map<string, number[]>();
     for (const t of baselineExpenses) {
@@ -110,7 +126,7 @@ export class RagContextService {
       candidatesByCategory.set(t.categoryId, list);
     }
 
-    const anomalies: { transaction: Transaction; amount: number; typical: number }[] = [];
+    const anomalies: { transaction: Transaction; value: number; typical: number }[] = [];
     for (const [categoryId, candidates] of candidatesByCategory) {
       const baseline = baselineByCategory.get(categoryId) ?? [];
       if (baseline.length < 4) {
@@ -121,18 +137,18 @@ export class RagContextService {
       const threshold = mean + 2 * Math.sqrt(variance);
 
       for (const transaction of candidates) {
-        const amount = toBase(transaction);
-        if (amount > threshold) {
-          anomalies.push({ transaction, amount, typical: mean });
+        const value = toBase(transaction);
+        if (value > threshold) {
+          anomalies.push({ transaction, value, typical: mean });
         }
       }
     }
 
     const lines = anomalies
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5)
-      .map(({ transaction, amount, typical }) =>
-        `- ${transaction.description} — ${amount.toFixed(2)} ${baseCurrency} is unusually high for ${this.categoryName(transaction.categoryId)} (typical: ${typical.toFixed(2)} ${baseCurrency})`);
+      .sort((a, b) => b.value - a.value)
+      .slice(0, cap)
+      .map(({ transaction, value, typical }) =>
+        `- ${transaction.description} — ${amount(value)} ${baseCurrency} is unusually high for ${this.categoryName(transaction.categoryId)} (typical: ${amount(typical)} ${baseCurrency})`);
 
     return lines.length > 0 ? `Unusual amounts:\n${lines.join('\n')}` : '';
   }
@@ -142,7 +158,9 @@ export class RagContextService {
     expenses: Transaction[],
     previousByCategory: CategoryTotal[] | null,
     toBase: (t: Transaction) => number,
+    amount: (value: number) => string,
     baseCurrency: string,
+    cap: number,
   ): string {
     if (!previousByCategory || previousByCategory.length === 0) {
       return '';
@@ -163,12 +181,12 @@ export class RagContextService {
       })
       .filter(d => Math.abs(d.change) > 0.005)
       .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
-      .slice(0, 5);
+      .slice(0, cap);
 
     const lines = deltas.map(({ categoryId, current, previous, change }) => {
       const direction = change > 0 ? 'up' : 'down';
       const percent = previous > 0 ? ` (${direction} ${(Math.abs(change) / previous * 100).toFixed(0)}%)` : ' (new this period)';
-      return `- ${this.categoryName(categoryId)}: ${previous.toFixed(2)} → ${current.toFixed(2)} ${baseCurrency}${percent}`;
+      return `- ${this.categoryName(categoryId)}: ${amount(previous)} → ${amount(current)} ${baseCurrency}${percent}`;
     });
 
     return lines.length > 0 ? `Category changes vs. previous period:\n${lines.join('\n')}` : '';

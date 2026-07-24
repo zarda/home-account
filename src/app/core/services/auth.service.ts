@@ -23,6 +23,28 @@ import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService, ThemePreference } from './theme.service';
 
+/**
+ * First-sign-in user document built from the Firebase auth profile.
+ *
+ * Optional profile fields are omitted rather than copied as-is: Firestore
+ * rejects undefined field values, and a provider account without a profile
+ * photo (photoURL null) would otherwise make the very first setDoc — and so
+ * the whole sign-in — fail. Exported as a pure seam for the spec.
+ */
+export function buildNewUserProfile(firebaseUser: FirebaseUser): Omit<User, 'id'> {
+  const profile: Omit<User, 'id'> = {
+    email: firebaseUser.email ?? '',
+    displayName: firebaseUser.displayName ?? 'User',
+    createdAt: Timestamp.now(),
+    lastLoginAt: Timestamp.now(),
+    preferences: DEFAULT_USER_PREFERENCES
+  };
+  if (firebaseUser.photoURL) {
+    profile.photoURL = firebaseUser.photoURL;
+  }
+  return profile;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private auth = inject(Auth);
@@ -104,14 +126,7 @@ export class AuthService {
     }
 
     // Create new user document
-    const newUser: Omit<User, 'id'> = {
-      email: firebaseUser.email ?? '',
-      displayName: firebaseUser.displayName ?? 'User',
-      photoURL: firebaseUser.photoURL ?? undefined,
-      createdAt: Timestamp.now(),
-      lastLoginAt: Timestamp.now(),
-      preferences: DEFAULT_USER_PREFERENCES
-    };
+    const newUser = buildNewUserProfile(firebaseUser);
 
     await setDoc(userRef, newUser);
     return { id: firebaseUser.uid, ...newUser };

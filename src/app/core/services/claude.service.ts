@@ -306,6 +306,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
 
       const toBaseCurrency = (amount: number, currency: string) =>
         this.currencyService.convert(amount, currency, baseCurrency);
+      // Prompt amounts: plain digits, no sub-digits for zero-decimal currencies
+      const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
 
       const byCategory = new Map<string, { name: string; total: number; count: number }>();
       for (const t of transactions) {
@@ -331,7 +333,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
       const categoryBreakdown = Array.from(byCategory.values())
         .sort((a, b) => b.total - a.total)
         .slice(0, 5)
-        .map((c) => `${c.name}: ${c.total.toFixed(2)} ${baseCurrency} (${c.count} transactions)`)
+        .map((c) => `${c.name}: ${fmt(c.total)} ${baseCurrency} (${c.count} transactions)`)
         .join('\n');
 
       const expenseTransactions = transactions.filter((t) => t.type === 'expense');
@@ -342,7 +344,7 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
         .slice(0, 5)
         .map((t) => {
           const cat = categories.find((c) => c.id === t.categoryId);
-          return `- ${t.description}: ${toBaseCurrency(t.amount, t.currency).toFixed(2)} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
+          return `- ${t.description}: ${fmt(toBaseCurrency(t.amount, t.currency))} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
         })
         .join('\n');
 
@@ -364,8 +366,8 @@ Return ONLY a valid JSON array with objects containing "index" and "categoryId":
             : 'N/A';
         historicalSection = `
 Previous period comparison:
-- Previous income: ${previousPeriodData.income.toFixed(2)} ${baseCurrency}
-- Previous expenses: ${previousPeriodData.expense.toFixed(2)} ${baseCurrency}
+- Previous income: ${fmt(previousPeriodData.income)} ${baseCurrency}
+- Previous expenses: ${fmt(previousPeriodData.expense)} ${baseCurrency}
 - Income change: ${incomeChange}%
 - Expense change: ${expenseChange}%
 `;
@@ -391,7 +393,7 @@ Previous period comparison:
                 : percentUsed >= 80
                   ? '⚠️ Near limit'
                   : '✓';
-            return `- ${b.name}: ${categorySpent.toFixed(2)}/${budgetAmountInBaseCurrency.toFixed(2)} ${baseCurrency} (${percentUsed.toFixed(0)}%) ${status}`;
+            return `- ${b.name}: ${fmt(categorySpent)}/${fmt(budgetAmountInBaseCurrency)} ${baseCurrency} (${percentUsed.toFixed(0)}%) ${status}`;
           })
           .join('\n');
         budgetSection = `
@@ -400,7 +402,7 @@ ${budgetLines}
 `;
       }
 
-    // Optional RAG grounding block (enableRagInsights preference)
+    // Optional RAG grounding block (ragInsightsLevel preference)
     const ragSection = ragContext?.trim()
       ? `\nNotable activity (retrieved from your transactions):\n${ragContext.trim()}\n`
       : '';
@@ -408,9 +410,9 @@ ${budgetLines}
       const prompt = `Generate a brief, helpful spending summary for ${period}.
 
 Financial data (all amounts in ${baseCurrency}):
-- Total Income: ${totalIncome.toFixed(2)} ${baseCurrency}
-- Total Expenses: ${totalExpense.toFixed(2)} ${baseCurrency}
-- Net: ${(totalIncome - totalExpense).toFixed(2)} ${baseCurrency}
+- Total Income: ${fmt(totalIncome)} ${baseCurrency}
+- Total Expenses: ${fmt(totalExpense)} ${baseCurrency}
+- Net: ${fmt(totalIncome - totalExpense)} ${baseCurrency}
 - Transaction count: ${transactions.length}
 
 Top spending categories:
@@ -474,12 +476,13 @@ Write the "##" section headings in the same language as the response.`;
         summary.income > 0
           ? ((summary.income - summary.expense) / summary.income) * 100
           : 0;
+      const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
 
       const prompt = `Provide brief financial advice based on this summary for ${period} (amounts in ${baseCurrency}):
 
-- Income: ${summary.income.toFixed(2)} ${baseCurrency}
-- Expenses: ${summary.expense.toFixed(2)} ${baseCurrency}
-- Balance: ${summary.balance.toFixed(2)} ${baseCurrency}
+- Income: ${fmt(summary.income)} ${baseCurrency}
+- Expenses: ${fmt(summary.expense)} ${baseCurrency}
+- Balance: ${fmt(summary.balance)} ${baseCurrency}
 - Savings Rate: ${savingsRate.toFixed(1)}%
 - Transaction Count: ${summary.transactionCount}
 

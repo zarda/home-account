@@ -264,6 +264,80 @@ describe('DashboardComponent', () => {
     });
   });
 
+  describe('historical baseline window', () => {
+    function baselineRange() {
+      const args = transactionService.getExpensesInRange.calls.mostRecent().args;
+      return { start: args[0] as Date, end: args[1] as Date };
+    }
+
+    function setLevel(preferences: Partial<User['preferences']>) {
+      authService.currentUser.set(createUser({ preferences: preferences as User['preferences'] }));
+    }
+
+    it('skips the query entirely at level off', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getExpensesInRange).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.historicalExpenses()).toBeNull();
+    });
+
+    it('skips the query at level light, which has no anomaly section', () => {
+      setLevel({ ragInsightsLevel: 'light' });
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getExpensesInRange).not.toHaveBeenCalled();
+    });
+
+    it('queries a 6-month window at standard, including for the legacy boolean', () => {
+      setLevel({ enableRagInsights: true });
+      const fixture = build();
+      fixture.detectChanges();
+      const now = new Date();
+      expect(baselineRange().start).toEqual(new Date(now.getFullYear(), now.getMonth() - 6, 1));
+    });
+
+    it('queries a 12-month window at deep', () => {
+      setLevel({ ragInsightsLevel: 'deep' });
+      const fixture = build();
+      fixture.detectChanges();
+      const now = new Date();
+      expect(baselineRange().start).toEqual(new Date(now.getFullYear(), now.getMonth() - 12, 1));
+    });
+
+    it('refetches with the new window when the tier changes mid-session', () => {
+      setLevel({ ragInsightsLevel: 'light' });
+      const fixture = build();
+      fixture.detectChanges();
+      expect(transactionService.getExpensesInRange).not.toHaveBeenCalled();
+
+      setLevel({ ragInsightsLevel: 'deep' });
+      fixture.detectChanges();
+      expect(transactionService.getExpensesInRange).toHaveBeenCalled();
+      const now = new Date();
+      expect(baselineRange().start).toEqual(new Date(now.getFullYear(), now.getMonth() - 12, 1));
+    });
+
+    it('reloads the baseline when the period changes', () => {
+      setLevel({ ragInsightsLevel: 'standard' });
+      const fixture = build();
+      fixture.detectChanges();
+      transactionService.getExpensesInRange.calls.reset();
+
+      fixture.componentInstance.onPeriodSelection(
+        selection('custom', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+      fixture.detectChanges();
+      expect(baselineRange().end).toEqual(new Date(2025, 3, 30, 23, 59, 59));
+    });
+
+    it('clears the baseline when the query fails', () => {
+      setLevel({ ragInsightsLevel: 'standard' });
+      transactionService.getExpensesInRange.and.returnValue(throwError(() => new Error('x')));
+      const fixture = build();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.historicalExpenses()).toBeNull();
+    });
+  });
+
   describe('recurring catch-up', () => {
     it('triggers the catch-up once on init, not again on period changes', () => {
       const fixture = build();
