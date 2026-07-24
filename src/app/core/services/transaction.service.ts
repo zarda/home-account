@@ -109,7 +109,10 @@ export class TransactionService {
     ).pipe(
       map(transactions => {
         // Amount range and text search cannot be expressed on this Firestore
-        // query, so they are applied after fetch.
+        // query, so they are applied after fetch. No context is passed: no
+        // caller of this path searches, so category-name matching (supplied
+        // by TransactionWindowService for the transactions page) is not
+        // wired here — wire it up before routing a searchQuery through this.
         const result = applyClientTransactionFilters(transactions, filters);
 
         // Update the signal

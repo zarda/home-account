@@ -1,4 +1,6 @@
-<div class="filters-container">
+<!-- suggestions-open lifts the container's corner clipping so the search
+     dropdown is never cut off at the container's bottom edge -->
+<div class="filters-container" [class.suggestions-open]="showSearchPanel()">
   <!-- Toolbar Row -->
   <div class="toolbar">
     <!-- Quick Filters -->
@@ -90,7 +92,7 @@
   @if (expanded()) {
     <div class="filter-panel">
       <!-- Search -->
-      <div class="search-wrapper">
+      <div class="search-wrapper" (focusout)="onSearchAreaFocusout($event)">
         <mat-icon class="search-icon">search</mat-icon>
         <input
           type="text"
@@ -98,9 +100,10 @@
           [placeholder]="'transactions.searchPlaceholder' | translate"
           [(ngModel)]="filters.searchQuery"
           (input)="onSearchInput()"
-          (keydown.enter)="flushSearch()"
+          (keydown.enter)="onSearchEnter($event)"
+          (keydown.escape)="onSearchEscape()"
+          (keydown.arrowdown)="onSearchArrowDown($event)"
           (focus)="onSearchFocus()"
-          (blur)="onSearchBlur()"
         >
         @if (filters.searchQuery) {
           <button
@@ -114,14 +117,15 @@
           </button>
         }
 
-        <!-- mousedown preventDefault keeps clicks inside the panel from
-             blurring the input before their own handlers run -->
+        <!-- row-level mousedown preventDefault keeps a click from blurring
+             the input before the row's own handler runs (the panel body stays
+             free of it so its scrollbar remains draggable) -->
         @if (showSearchPanel()) {
-          <div class="search-suggestions" (mousedown)="$event.preventDefault()">
+          <div class="search-suggestions">
             @if (searchHistory.savedSearches().length > 0) {
               <div class="suggestion-heading">{{ 'transactions.savedSearches' | translate }}</div>
               @for (item of searchHistory.savedSearches(); track item.id) {
-                <div class="suggestion-row">
+                <div class="suggestion-row" (mousedown)="$event.preventDefault()">
                   <button type="button" class="suggestion-apply" (click)="applySearch(item)">
                     <mat-icon class="suggestion-icon">bookmark</mat-icon>
                     <span class="suggestion-text">{{ item.label || item.query }}</span>
@@ -141,7 +145,7 @@
             @if (searchHistory.recentSearches().length > 0) {
               <div class="suggestion-heading">{{ 'transactions.recentSearches' | translate }}</div>
               @for (item of searchHistory.recentSearches(); track item.id) {
-                <div class="suggestion-row">
+                <div class="suggestion-row" (mousedown)="$event.preventDefault()">
                   <button type="button" class="suggestion-apply" (click)="applySearch(item)">
                     <mat-icon class="suggestion-icon">history</mat-icon>
                     <span class="suggestion-text">{{ item.query }}</span>
@@ -169,7 +173,7 @@
             class="save-label-input"
             [placeholder]="'transactions.searchLabelPlaceholder' | translate"
             [(ngModel)]="saveLabel"
-            (keydown.enter)="confirmSaveSearch()"
+            (keydown.enter)="onSaveLabelEnter($event)"
           >
           <button
             mat-icon-button
@@ -179,7 +183,12 @@
           >
             <mat-icon>check</mat-icon>
           </button>
-          <button mat-icon-button type="button" (click)="saveMode.set(false)">
+          <button
+            mat-icon-button
+            type="button"
+            [attr.aria-label]="'common.cancel' | translate"
+            (click)="saveMode.set(false)"
+          >
             <mat-icon>close</mat-icon>
           </button>
         </div>

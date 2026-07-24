@@ -36,7 +36,12 @@ export class SearchHistoryService {
 
   loadSearches(): Observable<SavedSearch[]> {
     const userId = this.authService.userId();
-    if (!userId) return of([]);
+    if (!userId) {
+      // Root-provided service: drop the previous account's entries so they
+      // can never flash for the next sign-in on a shared device.
+      this.allSearches.set([]);
+      return of([]);
+    }
 
     return this.firestoreService
       .subscribeToCollection<SavedSearch>(this.userSearchesPath, {
@@ -66,7 +71,7 @@ export class SearchHistoryService {
       return;
     }
 
-    await this.firestoreService.addDocument(this.userSearchesPath, {
+    const newId = await this.firestoreService.addDocument(this.userSearchesPath, {
       userId,
       query: trimmed,
       pinned: false,
@@ -74,7 +79,10 @@ export class SearchHistoryService {
     });
 
     // The new entry occupies one recent slot; drop the oldest beyond the cap.
-    const recents = this.allSearches().filter(s => !s.pinned);
+    // Exclude the new doc explicitly: with a live subscription, the local
+    // write's snapshot lands in the signal before addDocument resolves, and
+    // counting it again here would prune one entry too many.
+    const recents = this.allSearches().filter(s => !s.pinned && s.id !== newId);
     const overflow = recents.length + 1 - MAX_RECENT_SEARCHES;
     if (overflow > 0) {
       await Promise.all(

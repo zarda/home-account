@@ -407,6 +407,21 @@ describe('TransactionFiltersComponent', () => {
       fresh.onFilterChange();
       expect(emitSpy).toHaveBeenCalledTimes(1);
     }));
+
+    it('ignores Enter pressed to confirm an IME composition', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.searchQuery = 'スタ';
+      fresh.onSearchEnter(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      expect(emitSpy).not.toHaveBeenCalled();
+      expect(mockSearchHistory.recordRecent).not.toHaveBeenCalled();
+
+      fresh.onSearchEnter(new KeyboardEvent('keydown', { key: 'Enter' }));
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+
+      flush();
+    }));
   });
 
   describe('recent and saved searches', () => {
@@ -492,6 +507,127 @@ describe('TransactionFiltersComponent', () => {
 
       expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
     });
+
+    it('ignores an IME-composition Enter on the save-label input', () => {
+      component.filters.searchQuery = 'utilities';
+      component.toggleSaveMode();
+      component.onSaveLabelEnter(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+
+      component.onSaveLabelEnter(new KeyboardEvent('keydown', { key: 'Enter' }));
+      expect(mockSearchHistory.saveSearch).toHaveBeenCalled();
+    });
+
+    it('keeps the panel open while focus moves inside the search area', () => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      component.onSearchFocus();
+      expect(component.showSearchPanel()).toBeTrue();
+
+      const wrapper = document.createElement('div');
+      const inside = document.createElement('button');
+      wrapper.appendChild(inside);
+      const event = { currentTarget: wrapper, relatedTarget: inside } as unknown as FocusEvent;
+      component.onSearchAreaFocusout(event);
+      expect(component.showSearchPanel()).toBeTrue();
+
+      const outsideEvent = { currentTarget: wrapper, relatedTarget: document.body } as unknown as FocusEvent;
+      component.onSearchAreaFocusout(outsideEvent);
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('closes the panel on Escape', () => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      component.onSearchFocus();
+      expect(component.showSearchPanel()).toBeTrue();
+
+      component.onSearchEscape();
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('regains panel visibility when typing resumes after a panel tap', () => {
+      // applySearch drops the focused flag while real DOM focus stays on the
+      // input; the next input event must resync it so clearing the query can
+      // reopen the panel.
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      component.applySearch(savedSearch('r1', 'gym'));
+      expect(component.showSearchPanel()).toBeFalse();
+
+      component.filters.searchQuery = '';
+      component.onSearchInput();
+      expect(component.showSearchPanel()).toBeTrue();
+    });
+  });
+
+  describe('search template wiring', () => {
+    function renderExpanded(): { input: HTMLInputElement; root: HTMLElement } {
+      component.expanded.set(true);
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      const input = root.querySelector<HTMLInputElement>('.search-input')!;
+      expect(input).withContext('search input').toBeTruthy();
+      return { input, root };
+    }
+
+    it('debounces real input events into one emission', fakeAsync(() => {
+      const { input } = renderExpanded();
+      tick();
+      const emitSpy = spyOn(component.filtersChanged, 'emit');
+
+      input.value = 'cof';
+      input.dispatchEvent(new Event('input'));
+      input.value = 'coff';
+      input.dispatchEvent(new Event('input'));
+
+      tick(249);
+      expect(emitSpy).not.toHaveBeenCalled();
+      tick(1);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect(emitSpy.calls.mostRecent().args[0]?.searchQuery).toBe('coff');
+    }));
+
+    it('renders the panel on focus and applies a suggestion on click', fakeAsync(() => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      const { input, root } = renderExpanded();
+      tick();
+      const emitSpy = spyOn(component.filtersChanged, 'emit');
+
+      input.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      const apply = root.querySelector<HTMLButtonElement>('.suggestion-apply');
+      expect(apply).withContext('suggestion row').toBeTruthy();
+      apply!.click();
+
+      expect(emitSpy.calls.mostRecent().args[0]?.searchQuery).toBe('starbucks');
+      expect(mockSearchHistory.touch).toHaveBeenCalledWith('r1');
+      flush();
+    }));
+
+    it('moves focus into the panel on ArrowDown', fakeAsync(() => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      const { input, root } = renderExpanded();
+      tick();
+
+      input.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+
+      expect(document.activeElement).toBe(root.querySelector('.suggestion-apply'));
+      flush();
+    }));
+
+    it('does not flush on an IME-composition Enter dispatched to the input', fakeAsync(() => {
+      const { input } = renderExpanded();
+      tick();
+      const emitSpy = spyOn(component.filtersChanged, 'emit');
+
+      input.value = 'スタ';
+      input.dispatchEvent(new Event('input'));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      expect(emitSpy).not.toHaveBeenCalled();
+
+      flush();
+    }));
   });
 
   describe('clearFilters', () => {

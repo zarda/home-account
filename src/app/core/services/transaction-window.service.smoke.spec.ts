@@ -174,10 +174,10 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
   });
 
   it('suppresses fuzzy near-misses when an exact match exists', async () => {
-    // "coffee" hits txn-espresso exactly through its category name; the
-    // one-edit-away "Toffee crisps" row must not ride along.
-    await service.reset({ searchQuery: 'coffee' });
-    expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
+    // "toffee" hits txn-toffee exactly; the one-edit-away category name
+    // "Coffee & Tea" must not pull txn-espresso in via the fuzzy fallback.
+    await service.reset({ searchQuery: 'toffee' });
+    expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-toffee']);
   });
 
   it('matches transactions by their category display name', async () => {
@@ -202,7 +202,12 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     // search narrows the remaining four to the espresso purchase.
     expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
 
-    await Promise.resolve();
+    // reset() fires the aggregate count without awaiting it; give the
+    // emulator round trip a bounded window instead of racing it.
+    const deadline = Date.now() + 5000;
+    while (service.totalCount() === null && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
     expect(service.totalCount()).toBe(4);
   });
 });

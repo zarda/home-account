@@ -129,6 +129,21 @@ describe('applyClientTransactionFilters', () => {
       ).toEqual(['t2']);
     });
 
+    it('matches multi-token typo queries across different fields of one row', () => {
+      const rows = [
+        createTransaction({
+          id: 't1',
+          description: 'Coffee at Starbucks',
+          tags: ['health'],
+          location: { name: 'Aoyama Market' }
+        }),
+        createTransaction({ id: 't2', description: 'Coffee at Starbucks' })
+      ];
+      // "starbcks" lands on the description, "helth" only on t1's tag.
+      const result = applyClientTransactionFilters(rows, { searchQuery: 'starbcks helth' });
+      expect(result.map(t => t.id)).toEqual(['t1']);
+    });
+
     it('keeps the amount filters applied to fuzzy results', () => {
       const rows = [
         createTransaction({ id: 't1', amount: 10, description: 'Starbucks small' }),

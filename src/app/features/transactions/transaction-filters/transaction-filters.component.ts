@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectorRef, Component, EventEmitter, inject, Input, OnChanges, OnDestroy, OnInit, Output, signal, SimpleChanges, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, EventEmitter, inject, Input, OnChanges, OnDestroy, OnInit, Output, signal, SimpleChanges, ViewChild } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -38,6 +38,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);
   private currencyService = inject(CurrencyService);
+  private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   searchHistory = inject(SearchHistoryService);
 
   @ViewChild('dayPicker') dayPicker!: MatDatepicker<Date>;
@@ -128,14 +129,27 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   }
 
   onSearchInput(): void {
+    // Input events only come from a focused input; resync the flag in case a
+    // panel tap dropped it while DOM focus stayed on the input.
+    this.searchFocused.set(true);
     this.searchInput$.next();
   }
 
-  // Enter or blur commits the search immediately instead of waiting out the
-  // debounce, and remembers the settled query.
+  // Enter or leaving the search area commits the search immediately instead
+  // of waiting out the debounce, and remembers the settled query.
   flushSearch(): void {
     this.commitSearch();
     this.recordSearch();
+  }
+
+  onSearchEnter(event: Event): void {
+    if (isImeComposition(event)) return;
+    this.flushSearch();
+  }
+
+  onSaveLabelEnter(event: Event): void {
+    if (isImeComposition(event)) return;
+    this.confirmSaveSearch();
   }
 
   private commitSearch(): void {
@@ -164,9 +178,27 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     this.searchFocused.set(true);
   }
 
-  onSearchBlur(): void {
+  // Fired on the whole search wrapper: focus moving between the input and the
+  // suggestion buttons keeps the panel alive (Tab is how keyboard users reach
+  // it); leaving the area closes it and commits the query.
+  onSearchAreaFocusout(event: FocusEvent): void {
+    const wrapper = event.currentTarget as HTMLElement;
+    if (event.relatedTarget instanceof Node && wrapper.contains(event.relatedTarget)) {
+      return;
+    }
     this.searchFocused.set(false);
     this.flushSearch();
+  }
+
+  onSearchEscape(): void {
+    this.searchFocused.set(false);
+  }
+
+  onSearchArrowDown(event: Event): void {
+    const first = this.elementRef.nativeElement.querySelector<HTMLElement>('.suggestion-apply');
+    if (!first) return;
+    event.preventDefault();
+    first.focus();
   }
 
   // One tap on a remembered search: apply it immediately (no debounce wait)
@@ -381,4 +413,12 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
     this.filtersChanged.emit(cleanFilters);
   }
+}
+
+// Enter that confirms an IME composition (ja/tc input) reaches keydown
+// handlers with isComposing set (keyCode 229 on older engines); treating it
+// as submit would commit and record half-typed queries.
+function isImeComposition(event: Event): boolean {
+  const keyboard = event as KeyboardEvent;
+  return keyboard.isComposing || keyboard.keyCode === 229;
 }

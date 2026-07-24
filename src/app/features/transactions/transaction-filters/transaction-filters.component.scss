@@ -3,6 +3,13 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+
+  // The search dropdown is absolutely positioned inside this container;
+  // while it is open the corner clipping has to yield or the panel gets cut
+  // off at the container's bottom edge on short layouts.
+  &.suggestions-open {
+    overflow: visible;
+  }
 }
 
 .toolbar {

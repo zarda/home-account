@@ -95,6 +95,17 @@ describe('SearchHistoryService', () => {
       const options = mockFirestoreService.subscribeToCollection.calls.mostRecent().args[1];
       expect(options?.orderBy).toEqual([{ field: 'lastUsedAt', direction: 'desc' }]);
     });
+
+    it('clears stale entries when loading without a signed-in user', () => {
+      seed([entry('s1', 'coffee'), entry('s2', 'gym', { pinned: true })]);
+      expect(service.recentSearches().length).toBe(1);
+
+      userIdSpy.and.returnValue(null);
+      service.loadSearches().subscribe();
+
+      expect(service.recentSearches()).toEqual([]);
+      expect(service.savedSearches()).toEqual([]);
+    });
   });
 
   describe('recordRecent', () => {
@@ -141,6 +152,30 @@ describe('SearchHistoryService', () => {
       await service.recordRecent('a brand new query');
 
       expect(mockFirestoreService.addDocument).toHaveBeenCalled();
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(1);
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(
+        `${PATH}/r${MAX_RECENT_SEARCHES - 1}`
+      );
+    });
+
+    it('does not over-prune when the live snapshot already delivered the new doc', async () => {
+      // In production a persistent subscription is active, and the local
+      // write's latency-compensated snapshot lands before addDocument's
+      // promise resolves — so the signal already contains the new entry.
+      const full = Array.from({ length: MAX_RECENT_SEARCHES }, (_, i) =>
+        entry(`r${i}`, `query ${i}`, {}, i)
+      );
+      seed(full);
+      mockFirestoreService.addDocument.and.callFake((path: string, data: object) => {
+        seed([
+          entry('new-search-id', (data as { query: string }).query, {}, -1),
+          ...full
+        ]);
+        return Promise.resolve('new-search-id');
+      });
+
+      await service.recordRecent('a brand new query');
+
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(1);
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(
         `${PATH}/r${MAX_RECENT_SEARCHES - 1}`
