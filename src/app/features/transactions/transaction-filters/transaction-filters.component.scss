@@ -3,6 +3,13 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+
+  // The search dropdown is absolutely positioned inside this container;
+  // while it is open the corner clipping has to yield or the panel gets cut
+  // off at the container's bottom edge on short layouts.
+  &.suggestions-open {
+    overflow: visible;
+  }
 }
 
 .toolbar {
@@ -13,6 +20,7 @@
 }
 
 .search-wrapper {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -21,6 +29,94 @@
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   min-width: 0;
+}
+
+.save-search-button {
+  flex-shrink: 0;
+}
+
+.search-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--surface-card);
+  border: 1px solid var(--surface-muted);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg, 0 4px 16px rgba(0, 0, 0, 0.15));
+  padding: 4px 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.suggestion-heading {
+  @apply text-gray-500 dark:text-gray-400;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 12px 2px;
+}
+
+.suggestion-row {
+  display: flex;
+  align-items: center;
+
+  &:hover {
+    background: var(--surface-muted);
+  }
+}
+
+.suggestion-apply {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  min-width: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.suggestion-icon {
+  @apply text-gray-400 dark:text-gray-500;
+  font-size: var(--text-lg);
+  width: 1em;
+  height: 1em;
+}
+
+.suggestion-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestion-remove {
+  flex-shrink: 0;
+}
+
+.save-search-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  padding: 4px 4px 4px 12px;
+}
+
+.save-label-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
+  color: inherit;
 }
 
 .search-icon {

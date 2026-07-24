@@ -1,9 +1,44 @@
 import { TestBed } from '@angular/core/testing';
-import { Auth } from '@angular/fire/auth';
+import { Auth, User as FirebaseUser } from '@angular/fire/auth';
 import { Firestore, Timestamp } from '@angular/fire/firestore';
-import { AuthService } from './auth.service';
+import { AuthService, buildNewUserProfile } from './auth.service';
 import { TranslationService } from './translation.service';
 import { ThemeService } from './theme.service';
+
+describe('buildNewUserProfile', () => {
+  const firebaseUser = (overrides: Partial<FirebaseUser>): FirebaseUser =>
+    ({
+      uid: 'user-1',
+      email: 'someone@example.com',
+      displayName: 'Someone',
+      photoURL: 'https://example.com/avatar.png',
+      ...overrides
+    }) as FirebaseUser;
+
+  it('copies the full profile when every field is present', () => {
+    const profile = buildNewUserProfile(firebaseUser({}));
+
+    expect(profile.email).toBe('someone@example.com');
+    expect(profile.displayName).toBe('Someone');
+    expect(profile.photoURL).toBe('https://example.com/avatar.png');
+    expect(profile.preferences).toBeDefined();
+  });
+
+  it('omits photoURL entirely for a photo-less account', () => {
+    // Firestore rejects undefined field values, so the key must be absent —
+    // not present with an undefined value.
+    const profile = buildNewUserProfile(firebaseUser({ photoURL: null }));
+
+    expect('photoURL' in profile).toBeFalse();
+  });
+
+  it('defaults null email and display name', () => {
+    const profile = buildNewUserProfile(firebaseUser({ email: null, displayName: null }));
+
+    expect(profile.email).toBe('');
+    expect(profile.displayName).toBe('User');
+  });
+});
 
 describe('AuthService', () => {
   let service: AuthService;

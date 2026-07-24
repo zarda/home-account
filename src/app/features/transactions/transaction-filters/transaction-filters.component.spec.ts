@@ -1,12 +1,14 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { of } from 'rxjs';
+import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFiltersComponent } from './transaction-filters.component';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
-import { Category } from '../../../models';
+import { SearchHistoryService } from '../../../core/services/search-history.service';
+import { Category, SavedSearch } from '../../../models';
 
 describe('TransactionFiltersComponent', () => {
   let component: TransactionFiltersComponent;
@@ -16,6 +18,24 @@ describe('TransactionFiltersComponent', () => {
   };
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockCurrencyService: jasmine.SpyObj<CurrencyService>;
+  let mockSearchHistory: {
+    savedSearches: ReturnType<typeof signal<SavedSearch[]>>;
+    recentSearches: ReturnType<typeof signal<SavedSearch[]>>;
+    loadSearches: jasmine.Spy;
+    recordRecent: jasmine.Spy;
+    saveSearch: jasmine.Spy;
+    touch: jasmine.Spy;
+    deleteSearch: jasmine.Spy;
+  };
+
+  const savedSearch = (id: string, query: string, overrides: Partial<SavedSearch> = {}): SavedSearch => ({
+    id,
+    userId: 'user123',
+    query,
+    pinned: false,
+    lastUsedAt: Timestamp.fromMillis(1_800_000_000_000),
+    ...overrides
+  });
 
   const mockCategories: Category[] = [
     {
@@ -87,12 +107,23 @@ describe('TransactionFiltersComponent', () => {
       { code: 'EUR', nameKey: 'currencies.eur', symbol: '€' }
     ]);
 
+    mockSearchHistory = {
+      savedSearches: signal<SavedSearch[]>([]),
+      recentSearches: signal<SavedSearch[]>([]),
+      loadSearches: jasmine.createSpy('loadSearches').and.returnValue(of([])),
+      recordRecent: jasmine.createSpy('recordRecent').and.resolveTo(),
+      saveSearch: jasmine.createSpy('saveSearch').and.resolveTo('saved-id'),
+      touch: jasmine.createSpy('touch').and.resolveTo(),
+      deleteSearch: jasmine.createSpy('deleteSearch').and.resolveTo()
+    };
+
     await TestBed.configureTestingModule({
       imports: [TransactionFiltersComponent, NoopAnimationsModule],
       providers: [
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: TranslationService, useValue: mockTranslationService },
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        { provide: SearchHistoryService, useValue: mockSearchHistory }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -295,6 +326,308 @@ describe('TransactionFiltersComponent', () => {
 
       expect(component.filtersChanged.emit).toHaveBeenCalled();
     });
+  });
+
+  describe('search debounce', () => {
+    // Fresh component inside the fakeAsync zone so the ngOnInit setTimeout
+    // (initial filter emission) is consumed by tick() before spying.
+    function createSettledComponent(): TransactionFiltersComponent {
+      const freshFixture = TestBed.createComponent(TransactionFiltersComponent);
+      const fresh = freshFixture.componentInstance;
+      fresh.categories = mockCategories;
+      fresh.incomeCategories = mockIncomeCategories;
+      freshFixture.detectChanges();
+      tick();
+      return fresh;
+    }
+
+    it('emits once after typing pauses for 250ms', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.searchQuery = 'c';
+      fresh.onSearchInput();
+      tick(100);
+      fresh.filters.searchQuery = 'co';
+      fresh.onSearchInput();
+      tick(100);
+      fresh.filters.searchQuery = 'cof';
+      fresh.onSearchInput();
+
+      tick(249);
+      expect(emitSpy).not.toHaveBeenCalled();
+
+      tick(1);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect(emitSpy.calls.mostRecent().args[0]?.searchQuery).toBe('cof');
+    }));
+
+    it('flushes immediately on Enter/blur without a later duplicate', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.searchQuery = 'coffee';
+      fresh.onSearchInput();
+      tick(50);
+      fresh.flushSearch();
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+
+      // The still-pending debounce tick sees the query already emitted.
+      tick(300);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+    }));
+
+    it('absorbs a pending debounce when another filter emits first', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.searchQuery = 'abc';
+      fresh.onSearchInput();
+      tick(50);
+      fresh.setQuickFilter('today');
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+
+      tick(300);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+    }));
+
+    it('does not emit when the flushed query equals the last emitted one', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.flushSearch();
+      expect(emitSpy).not.toHaveBeenCalled();
+    }));
+
+    it('keeps non-search filter changes synchronous', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.type = 'expense';
+      fresh.onFilterChange();
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+    }));
+
+    it('ignores Enter pressed to confirm an IME composition', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.searchQuery = 'スタ';
+      fresh.onSearchEnter(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      expect(emitSpy).not.toHaveBeenCalled();
+      expect(mockSearchHistory.recordRecent).not.toHaveBeenCalled();
+
+      fresh.onSearchEnter(new KeyboardEvent('keydown', { key: 'Enter' }));
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+
+      flush();
+    }));
+  });
+
+  describe('recent and saved searches', () => {
+    it('loads the search history on init', () => {
+      expect(mockSearchHistory.loadSearches).toHaveBeenCalled();
+    });
+
+    it('shows the panel only when focused, empty, and there is something to show', () => {
+      expect(component.showSearchPanel()).toBeFalse();
+
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      component.onSearchFocus();
+      expect(component.showSearchPanel()).toBeTrue();
+
+      component.filters.searchQuery = 'gym';
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('stays hidden with no history to show', () => {
+      component.onSearchFocus();
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('applies a remembered search in one tap', () => {
+      spyOn(component.filtersChanged, 'emit');
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      component.onSearchFocus();
+
+      component.applySearch(savedSearch('r1', 'starbucks'));
+
+      expect(component.filters.searchQuery).toBe('starbucks');
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent().args[0];
+      expect(emitted.searchQuery).toBe('starbucks');
+      expect(mockSearchHistory.touch).toHaveBeenCalledWith('r1');
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('records a committed query exactly once', fakeAsync(() => {
+      component.filters.searchQuery = 'starbucks';
+      component.flushSearch();
+      component.flushSearch();
+      tick();
+
+      expect(mockSearchHistory.recordRecent).toHaveBeenCalledTimes(1);
+      expect(mockSearchHistory.recordRecent).toHaveBeenCalledWith('starbucks');
+    }));
+
+    it('does not re-record a query applied from the panel', () => {
+      component.applySearch(savedSearch('r1', 'starbucks'));
+      component.flushSearch();
+
+      expect(mockSearchHistory.recordRecent).not.toHaveBeenCalled();
+    });
+
+    it('removes an entry without emitting filters', () => {
+      spyOn(component.filtersChanged, 'emit');
+      const event = new Event('click');
+      spyOn(event, 'stopPropagation');
+
+      component.removeSearch(savedSearch('r1', 'gym'), event);
+
+      expect(event.stopPropagation).toHaveBeenCalled();
+      expect(mockSearchHistory.deleteSearch).toHaveBeenCalledWith('r1');
+      expect(component.filtersChanged.emit).not.toHaveBeenCalled();
+    });
+
+    it('saves the current query with a label', () => {
+      component.filters.searchQuery = 'utilities';
+      component.toggleSaveMode();
+      expect(component.saveMode()).toBeTrue();
+      expect(component.saveLabel).toBe('utilities');
+
+      component.saveLabel = 'Bills';
+      component.confirmSaveSearch();
+
+      expect(mockSearchHistory.saveSearch).toHaveBeenCalledWith('utilities', 'Bills');
+      expect(component.saveMode()).toBeFalse();
+    });
+
+    it('ignores save confirmation without a query', () => {
+      component.filters.searchQuery = '';
+      component.confirmSaveSearch();
+
+      expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+    });
+
+    it('ignores an IME-composition Enter on the save-label input', () => {
+      component.filters.searchQuery = 'utilities';
+      component.toggleSaveMode();
+      component.onSaveLabelEnter(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      expect(mockSearchHistory.saveSearch).not.toHaveBeenCalled();
+
+      component.onSaveLabelEnter(new KeyboardEvent('keydown', { key: 'Enter' }));
+      expect(mockSearchHistory.saveSearch).toHaveBeenCalled();
+    });
+
+    it('keeps the panel open while focus moves inside the search area', () => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      component.onSearchFocus();
+      expect(component.showSearchPanel()).toBeTrue();
+
+      const wrapper = document.createElement('div');
+      const inside = document.createElement('button');
+      wrapper.appendChild(inside);
+      const event = { currentTarget: wrapper, relatedTarget: inside } as unknown as FocusEvent;
+      component.onSearchAreaFocusout(event);
+      expect(component.showSearchPanel()).toBeTrue();
+
+      const outsideEvent = { currentTarget: wrapper, relatedTarget: document.body } as unknown as FocusEvent;
+      component.onSearchAreaFocusout(outsideEvent);
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('closes the panel on Escape', () => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      component.onSearchFocus();
+      expect(component.showSearchPanel()).toBeTrue();
+
+      component.onSearchEscape();
+      expect(component.showSearchPanel()).toBeFalse();
+    });
+
+    it('regains panel visibility when typing resumes after a panel tap', () => {
+      // applySearch drops the focused flag while real DOM focus stays on the
+      // input; the next input event must resync it so clearing the query can
+      // reopen the panel.
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'gym')]);
+      component.applySearch(savedSearch('r1', 'gym'));
+      expect(component.showSearchPanel()).toBeFalse();
+
+      component.filters.searchQuery = '';
+      component.onSearchInput();
+      expect(component.showSearchPanel()).toBeTrue();
+    });
+  });
+
+  describe('search template wiring', () => {
+    function renderExpanded(): { input: HTMLInputElement; root: HTMLElement } {
+      component.expanded.set(true);
+      fixture.detectChanges();
+      const root = fixture.nativeElement as HTMLElement;
+      const input = root.querySelector<HTMLInputElement>('.search-input')!;
+      expect(input).withContext('search input').toBeTruthy();
+      return { input, root };
+    }
+
+    it('debounces real input events into one emission', fakeAsync(() => {
+      const { input } = renderExpanded();
+      tick();
+      const emitSpy = spyOn(component.filtersChanged, 'emit');
+
+      input.value = 'cof';
+      input.dispatchEvent(new Event('input'));
+      input.value = 'coff';
+      input.dispatchEvent(new Event('input'));
+
+      tick(249);
+      expect(emitSpy).not.toHaveBeenCalled();
+      tick(1);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect(emitSpy.calls.mostRecent().args[0]?.searchQuery).toBe('coff');
+    }));
+
+    it('renders the panel on focus and applies a suggestion on click', fakeAsync(() => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      const { input, root } = renderExpanded();
+      tick();
+      const emitSpy = spyOn(component.filtersChanged, 'emit');
+
+      input.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      const apply = root.querySelector<HTMLButtonElement>('.suggestion-apply');
+      expect(apply).withContext('suggestion row').toBeTruthy();
+      apply!.click();
+
+      expect(emitSpy.calls.mostRecent().args[0]?.searchQuery).toBe('starbucks');
+      expect(mockSearchHistory.touch).toHaveBeenCalledWith('r1');
+      flush();
+    }));
+
+    it('moves focus into the panel on ArrowDown', fakeAsync(() => {
+      mockSearchHistory.recentSearches.set([savedSearch('r1', 'starbucks')]);
+      const { input, root } = renderExpanded();
+      tick();
+
+      input.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+
+      expect(document.activeElement).toBe(root.querySelector('.suggestion-apply'));
+      flush();
+    }));
+
+    it('does not flush on an IME-composition Enter dispatched to the input', fakeAsync(() => {
+      const { input } = renderExpanded();
+      tick();
+      const emitSpy = spyOn(component.filtersChanged, 'emit');
+
+      input.value = 'スタ';
+      input.dispatchEvent(new Event('input'));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      expect(emitSpy).not.toHaveBeenCalled();
+
+      flush();
+    }));
   });
 
   describe('clearFilters', () => {

@@ -631,20 +631,19 @@ describe('TransactionService', () => {
     });
   });
 
-  describe('searchTransactions', () => {
+  describe('getTransactions with a search query', () => {
     beforeEach(() => {
       const transactions = [
-        createTransaction({ description: 'Coffee at Starbucks' }),
-        createTransaction({ description: 'Groceries at Walmart' }),
-        createTransaction({ description: 'Dinner' })
+        createTransaction({ id: 'txn-coffee', description: 'Coffee at Starbucks' }),
+        createTransaction({ id: 'txn-groceries', description: 'Groceries at Walmart' }),
+        createTransaction({ id: 'txn-dinner', description: 'Dinner' })
       ];
       mockFirestore.setMockCollection('users/test-user-123/transactions', transactions);
     });
 
-    it('should filter by search query', (done) => {
-      service.searchTransactions('coffee').subscribe(() => {
-        // The mock returns all, but the service should filter
-        expect(mockFirestore.getCollectionSpy.calls.length).toBeGreaterThan(0);
+    it('narrows the emitted rows to matches', (done) => {
+      service.getTransactions({ searchQuery: 'coffee' }).subscribe(result => {
+        expect(result.map(t => t.id)).toEqual(['txn-coffee']);
         done();
       });
     });

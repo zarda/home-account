@@ -1,6 +1,11 @@
 import { Timestamp } from '@angular/fire/firestore';
 import { Transaction, TransactionFilters } from '../../models';
 import { QueryOptions } from '../services/firestore.service';
+import { fuzzyQueryMatches } from './fuzzy-match.utils';
+
+// Below this length the fuzzy pass adds nothing over the exact substring
+// test (short tokens get no edit budget), so skip it entirely.
+const MIN_FUZZY_QUERY_LENGTH = 3;
 
 // Server-side filter conditions shared by the live list query and the
 // windowed page queries. Keep both paths building identical constraints so
@@ -46,11 +51,29 @@ export function buildTransactionWhere(
   return whereConditions.length > 0 ? whereConditions : undefined;
 }
 
+// Cross-field data the search needs but a Transaction row doesn't carry.
+export interface ClientFilterContext {
+  // categoryId -> display name as the user currently sees it (translated).
+  categoryNames?: Map<string, string>;
+}
+
+// Every text the search query is tested against for one transaction.
+function searchableFields(t: Transaction, context?: ClientFilterContext): string[] {
+  const fields = [t.description];
+  if (t.note) fields.push(t.note);
+  if (t.tags) fields.push(...t.tags);
+  if (t.location?.name) fields.push(t.location.name);
+  const categoryName = context?.categoryNames?.get(t.categoryId);
+  if (categoryName) fields.push(categoryName);
+  return fields;
+}
+
 // Filters Firestore cannot express on this query (amount range would need a
 // second inequality field; search is substring matching). Applied after fetch.
 export function applyClientTransactionFilters(
   transactions: Transaction[],
-  filters?: TransactionFilters
+  filters?: TransactionFilters,
+  context?: ClientFilterContext
 ): Transaction[] {
   let result = transactions;
 
@@ -64,11 +87,20 @@ export function applyClientTransactionFilters(
 
   if (filters?.searchQuery) {
     const query = filters.searchQuery.toLowerCase();
-    result = result.filter(t =>
-      t.description.toLowerCase().includes(query) ||
-      t.note?.toLowerCase().includes(query) ||
-      t.tags?.some(tag => tag.toLowerCase().includes(query))
+    const beforeSearch = result;
+    result = beforeSearch.filter(t =>
+      searchableFields(t, context).some(f => f.toLowerCase().includes(query))
     );
+
+    // Typo fallback: only when the exact pass found nothing, so exact matches
+    // are never diluted or demoted and rows keep their server date order.
+    // Evaluated per loaded window — as more rows stream in, a late exact match
+    // supersedes fuzzy-only rows; the brief swap is accepted.
+    if (result.length === 0 && query.trim().length >= MIN_FUZZY_QUERY_LENGTH) {
+      result = beforeSearch.filter(t =>
+        fuzzyQueryMatches(query, searchableFields(t, context).join(' '))
+      );
+    }
   }
 
   return result;
