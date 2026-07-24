@@ -41,7 +41,8 @@
   left: 0;
   right: 0;
   z-index: 10;
-  background: var(--surface);
+  background: var(--surface-card);
+  border: 1px solid var(--surface-muted);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg, 0 4px 16px rgba(0, 0, 0, 0.15));
   padding: 4px 0;
