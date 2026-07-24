@@ -50,6 +50,12 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   @Input() categories: Category[] = [];
   @Input() incomeCategories: Category[] = [];
   @Input() initialDate?: Date;
+  /**
+   * Filters applied from outside the panel (insight chips, smart search).
+   * Each new object reference replaces the whole filter set and is emitted,
+   * so the panel UI always reflects what was applied externally.
+   */
+  @Input() presetFilters?: TransactionFilters;
   @Input() showAll = false;
   @Output() filtersChanged = new EventEmitter<TransactionFilters>();
 
@@ -111,6 +117,13 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (changes['initialDate'] && changes['initialDate'].currentValue) {
       this.setDateFilter(changes['initialDate'].currentValue);
       this.initialFilterApplied = true;
+    }
+
+    if (changes['presetFilters'] && changes['presetFilters'].currentValue) {
+      this.filters = { ...(changes['presetFilters'].currentValue as TransactionFilters) };
+      this.activeQuickFilter.set(null);
+      this.initialFilterApplied = true;
+      this.emitFilters();
     }
   }
 

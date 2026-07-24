@@ -38,9 +38,13 @@
     [categories]="expenseCategories()"
     [incomeCategories]="incomeCategories()"
     [initialDate]="initialDate()"
+    [presetFilters]="externalFilters()"
     [showAll]="showAll()"
     (filtersChanged)="onFiltersChanged($event)"
   />
+
+  <!-- Notable-spending shortcuts computed from this month's data -->
+  <app-insight-chips (chipSelected)="applyExternalFilters($event)" />
 
   <!-- Transaction List -->
   @if (isInitialLoading()) {

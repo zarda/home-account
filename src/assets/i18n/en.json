@@ -147,7 +147,11 @@
     "viewReceipt": "View receipt",
     "resultCountAnnouncement": "{{count}} transactions shown",
     "loadMoreError": "Couldn't load transactions",
-    "sortNeedsFullList": "Load the complete filtered list to sort by this column"
+    "sortNeedsFullList": "Load the complete filtered list to sort by this column",
+    "insightChipsLabel": "Notable spending this month",
+    "chipUnusual": "Unusual: {{category}}",
+    "chipNewCategory": "New this month: {{category}}",
+    "chipTopCategory": "Top: {{category}}"
   },
   "budget": {
     "title": "Budget",

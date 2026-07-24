@@ -1,0 +1,10 @@
+@if (chips().length > 0) {
+  <div class="insight-chips" role="group" [attr.aria-label]="'transactions.insightChipsLabel' | translate">
+    @for (chip of chips(); track chip.id) {
+      <button type="button" class="insight-chip" (click)="onChipClick(chip)">
+        <mat-icon aria-hidden="true">{{ chip.icon }}</mat-icon>
+        <span>{{ chip.labelKey | translate: chip.labelParams }}</span>
+      </button>
+    }
+  </div>
+}

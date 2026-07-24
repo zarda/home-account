@@ -147,7 +147,11 @@
     "viewReceipt": "查看收據",
     "resultCountAnnouncement": "顯示 {{count}} 筆交易",
     "loadMoreError": "無法載入交易",
-    "sortNeedsFullList": "需載入完整的篩選清單才能依此欄位排序"
+    "sortNeedsFullList": "需載入完整的篩選清單才能依此欄位排序",
+    "insightChipsLabel": "本月值得注意的支出",
+    "chipUnusual": "異常: {{category}}",
+    "chipNewCategory": "本月新增: {{category}}",
+    "chipTopCategory": "最高: {{category}}"
   },
   "budget": {
     "title": "預算",

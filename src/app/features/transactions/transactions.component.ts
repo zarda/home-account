@@ -13,6 +13,7 @@ import { DeviceService } from '../../core/services/device.service';
 import { Transaction, TransactionFilters, Category } from '../../models';
 import { TransactionListComponent } from './transaction-list/transaction-list.component';
 import { TransactionFiltersComponent } from './transaction-filters/transaction-filters.component';
+import { InsightChipsComponent } from './insight-chips/insight-chips.component';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
 import { CameraCaptureComponent } from './camera-capture/camera-capture.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
@@ -31,6 +32,7 @@ import { AnnouncerService } from '../../core/services/announcer.service';
     MatMenuModule,
     TransactionListComponent,
     TransactionFiltersComponent,
+    InsightChipsComponent,
     LoadingSpinnerComponent,
     TranslatePipe
   ],
@@ -90,6 +92,11 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   initialDate = signal<Date | undefined>(undefined);
   showAll = signal<boolean>(false);
+
+  // Filters pushed from outside the filters panel (insight chips, smart
+  // search). Always set with a fresh object so the panel's ngOnChanges fires
+  // even when the same filter set is applied twice.
+  externalFilters = signal<TransactionFilters | undefined>(undefined);
 
   constructor() {
     // React to writes made anywhere in the app while this page is open
@@ -156,6 +163,10 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     this.currentFilters.set(filters);
     void this.windowSource.reset(filters, this.sortDirection());
     this.scrollToTop();
+  }
+
+  applyExternalFilters(filters: TransactionFilters): void {
+    this.externalFilters.set({ ...filters });
   }
 
   onDateSortChange(direction: WindowSortDirection): void {

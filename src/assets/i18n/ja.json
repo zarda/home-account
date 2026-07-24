@@ -147,7 +147,11 @@
     "viewReceipt": "レシートを表示",
     "resultCountAnnouncement": "{{count}}件の取引を表示しています",
     "loadMoreError": "取引を読み込めませんでした",
-    "sortNeedsFullList": "この列で並べ替えるには、絞り込んだ一覧をすべて読み込んでください"
+    "sortNeedsFullList": "この列で並べ替えるには、絞り込んだ一覧をすべて読み込んでください",
+    "insightChipsLabel": "今月の注目すべき支出",
+    "chipUnusual": "異常値: {{category}}",
+    "chipNewCategory": "今月新規: {{category}}",
+    "chipTopCategory": "最多: {{category}}"
   },
   "budget": {
     "title": "予算",
