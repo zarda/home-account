@@ -10,6 +10,7 @@ import { TransactionService, TransactionMutation } from '../../core/services/tra
 import { TransactionWindowService, WindowSortDirection } from '../../core/services/transaction-window.service';
 import { CategoryService } from '../../core/services/category.service';
 import { DeviceService } from '../../core/services/device.service';
+import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, TransactionFilters, Category } from '../../models';
 import { TransactionListComponent } from './transaction-list/transaction-list.component';
 import { TransactionFiltersComponent } from './transaction-filters/transaction-filters.component';
@@ -52,6 +53,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private translationService = inject(TranslationService);
   private announcer = inject(AnnouncerService);
+  private pendingFilters = inject(PendingFiltersService);
 
   transactions = this.windowSource.visibleWindow;
   isInitialLoading = this.windowSource.isInitialLoading;
@@ -119,6 +121,19 @@ export class TransactionsComponent implements OnInit, OnDestroy {
         this.announcer.announce(
           this.translationService.t('transactions.resultCountAnnouncement', { count })
         );
+      });
+    });
+
+    // Filters handed off from the smart-search dialog: works both when this
+    // page is freshly created by the navigation and when it was already open.
+    effect(() => {
+      const pending = this.pendingFilters.pending();
+      if (!pending) return;
+      untracked(() => {
+        const filters = this.pendingFilters.consume();
+        if (filters) {
+          this.applyExternalFilters(filters);
+        }
       });
     });
   }

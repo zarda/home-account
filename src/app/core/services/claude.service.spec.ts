@@ -394,6 +394,41 @@ describe('ClaudeService', () => {
     });
   });
 
+  describe('interpretSearchQuery', () => {
+    const context = {
+      today: '2026-07-24',
+      baseCurrency: 'USD',
+      categories: [{ id: 'food', name: 'Restaurants', type: 'expense' as const }],
+    };
+
+    it('throws when the client is unavailable', async () => {
+      await expectAsync(service.interpretSearchQuery('coffee', context))
+        .toBeRejectedWithError('Claude client not available');
+    });
+
+    it('parses the model response into a validated intent', async () => {
+      const fake = makeFakeClient();
+      fake.messages.create.and.resolveTo(
+        responseWith('{"kind":"aggregate","operation":"sum","filters":{"categoryId":"food"},"limit":3}'));
+      setClient(fake);
+
+      const intent = await service.interpretSearchQuery('total food', context);
+
+      expect(intent.kind).toBe('aggregate');
+      if (intent.kind === 'aggregate') {
+        expect(intent.operation).toBe('sum');
+        expect(intent.filters.categoryId).toBe('food');
+      }
+    });
+
+    it('rejects when the response is not usable JSON', async () => {
+      const fake = makeFakeClient();
+      fake.messages.create.and.resolveTo(responseWith('cannot help with that'));
+      setClient(fake);
+      await expectAsync(service.interpretSearchQuery('x', context)).toBeRejected();
+    });
+  });
+
   describe('generateSpendingSummary', () => {
     const txns: Transaction[] = [
       createTransaction({ type: 'expense', amount: 100, currency: 'USD', categoryId: 'food' }),

@@ -1,0 +1,102 @@
+<h2 mat-dialog-title class="dialog-title">
+  <mat-icon aria-hidden="true">travel_explore</mat-icon>
+  {{ 'aiSearch.title' | translate }}
+</h2>
+
+<mat-dialog-content>
+  <div class="search-row">
+    <mat-form-field appearance="outline" class="search-field" subscriptSizing="dynamic">
+      <input
+        matInput
+        cdkFocusInitial
+        [(ngModel)]="query"
+        [placeholder]="'aiSearch.placeholder' | translate"
+        [disabled]="isLoading()"
+        (keydown.enter)="onEnter($event)"
+      />
+    </mat-form-field>
+    <button
+      mat-flat-button
+      color="primary"
+      class="search-submit"
+      (click)="submit()"
+      [disabled]="isLoading() || !query.trim()"
+    >
+      {{ 'aiSearch.searchAction' | translate }}
+    </button>
+  </div>
+  <p class="hint">{{ 'aiSearch.examplesHint' | translate }}</p>
+
+  @if (isLoading()) {
+    <div class="loading" role="status">
+      <mat-spinner diameter="28" />
+      <span>{{ 'aiSearch.interpreting' | translate }}</span>
+    </div>
+  }
+
+  @if (filterResult(); as filter) {
+    <div class="result-block">
+      <p class="result-label">{{ 'aiSearch.interpretedAs' | translate }}</p>
+      <div class="summary-chips">
+        @for (part of describeFilters(filter.filters); track part) {
+          <span class="summary-chip">{{ part }}</span>
+        }
+      </div>
+      <button mat-flat-button color="primary" (click)="applyFilters(filter.filters)">
+        <mat-icon>filter_list</mat-icon>
+        {{ 'aiSearch.apply' | translate }}
+      </button>
+    </div>
+  }
+
+  @if (answerResult(); as answer) {
+    <div class="result-block">
+      <p class="result-label">{{ answerLabel(answer) }}</p>
+      @if (answer.transactionCount === 0) {
+        <p class="answer-empty">{{ 'aiSearch.noMatches' | translate }}</p>
+      } @else {
+        <p class="answer-value">{{ answerValue(answer) }}</p>
+        @if (answer.extremeTransaction; as extreme) {
+          <p class="answer-detail">{{ extreme.description }}</p>
+        }
+        @if (answer.groups; as groups) {
+          <ul class="answer-groups">
+            @for (group of groups; track group.categoryId) {
+              <li>
+                <span>{{ categoryName(group.categoryId) }}</span>
+                <span class="group-total">{{ formatMoney(group.total, answer.currency) }}</span>
+              </li>
+            }
+          </ul>
+        }
+        <p class="answer-detail">
+          {{ 'aiSearch.matchCount' | translate: { count: answer.transactionCount } }}
+        </p>
+      }
+      <p class="answer-scope">{{ periodLabel(answer.scope) }}</p>
+      <button mat-stroked-button (click)="applyFilters(answer.scope)">
+        <mat-icon>filter_list</mat-icon>
+        {{ 'aiSearch.viewTransactions' | translate }}
+      </button>
+    </div>
+  }
+
+  @if (fallbackResult(); as fallback) {
+    <div class="result-block fallback">
+      <p class="fallback-notice">
+        <mat-icon aria-hidden="true">info</mat-icon>
+        {{ fallbackNoticeKey(fallback.reason) | translate }}
+      </p>
+      @if (fallback.filters.searchQuery) {
+        <button mat-stroked-button (click)="applyFilters(fallback.filters)">
+          <mat-icon>search</mat-icon>
+          {{ 'aiSearch.applyKeyword' | translate }}
+        </button>
+      }
+    </div>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close>{{ 'common.close' | translate }}</button>
+</mat-dialog-actions>

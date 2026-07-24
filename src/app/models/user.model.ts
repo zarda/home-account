@@ -36,12 +36,14 @@ export interface LLMProviderPreferences {
   receiptScanning: LLMProvider;
   categorization: LLMProvider;
   insights: LLMProvider;
+  search: LLMProvider;
 }
 
 export const DEFAULT_LLM_PROVIDER_PREFERENCES: LLMProviderPreferences = {
   receiptScanning: 'gemini',
   categorization: 'gemini',
   insights: 'gemini',
+  search: 'gemini',
 };
 
 export interface UserPreferences {

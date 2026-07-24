@@ -442,6 +442,43 @@ describe('GeminiService', () => {
   });
 
   // ----------------------------------------------------------------
+  // interpretSearchQuery
+  // ----------------------------------------------------------------
+  describe('interpretSearchQuery', () => {
+    const context = {
+      today: '2026-07-24',
+      baseCurrency: 'USD',
+      categories: [{ id: 'food_groceries', name: 'Groceries', type: 'expense' as const }],
+    };
+
+    it('throws when the text model is not available', async () => {
+      (service as unknown as { textModel: unknown }).textModel = null;
+      await expectAsync(service.interpretSearchQuery('coffee', context))
+        .toBeRejectedWithError('Gemini text model not available');
+    });
+
+    it('parses a fenced model response into a validated intent', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(
+        '```json\n{"kind":"filter","filters":{"categoryId":"food_groceries","startDate":"2026-06-01"}}\n```'));
+
+      const intent = await service.interpretSearchQuery('groceries in june', context);
+
+      expect(intent.kind).toBe('filter');
+      expect(intent.filters.categoryId).toBe('food_groceries');
+      expect(intent.filters.startDate).toEqual(new Date(2026, 5, 1));
+      const request = textModel.generateContent.calls.mostRecent().args[0] as {
+        contents: { parts: { text: string }[] }[];
+      };
+      expect(request.contents[0].parts[0].text).toContain('"groceries in june"');
+    });
+
+    it('rejects when the response is not usable JSON', async () => {
+      textModel.generateContent.and.resolveTo(makeResult('cannot help with that'));
+      await expectAsync(service.interpretSearchQuery('x', context)).toBeRejected();
+    });
+  });
+
+  // ----------------------------------------------------------------
   // generateSpendingSummary
   // ----------------------------------------------------------------
   describe('generateSpendingSummary', () => {

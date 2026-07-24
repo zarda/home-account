@@ -19,6 +19,8 @@ import {
   buildCategoryPromptCatalog,
   mapCategoryNameToId,
 } from '../utils/categorization.utils';
+import { buildSearchPrompt, parseSearchIntent } from '../utils/nl-search.utils';
+import { SearchIntent, SearchQueryContext } from '../../models';
 
 @Injectable({ providedIn: 'root' })
 export class OpenAIService {
@@ -275,6 +277,30 @@ Return ONLY a valid JSON array with objects containing "index", "categoryId" and
         suggestedCategoryId: 'other_expense',
         confidence: 0.1,
       }));
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  // Interpret a natural-language transaction search query. Throws on any
+  // failure so the caller can fall back to plain keyword search.
+  async interpretSearchQuery(query: string, context: SearchQueryContext): Promise<SearchIntent> {
+    if (!this.client) {
+      throw new Error('OpenAI client not available');
+    }
+
+    this.isProcessing.set(true);
+
+    try {
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: buildSearchPrompt(query, context),
+        max_output_tokens: 400,
+        store: false,
+      });
+
+      const cleanedJson = this.extractJson(response.output_text || '');
+      return parseSearchIntent(JSON.parse(cleanedJson), context);
     } finally {
       this.isProcessing.set(false);
     }
