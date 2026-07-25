@@ -32,6 +32,28 @@ export const FREE_TIER_RECEIPT_IMAGE_LIMIT = 200;
 
 export type LLMProvider = 'gemini' | 'openai' | 'claude';
 
+/**
+ * Per-provider API keys. Stored at users/{uid}/secrets/providers rather than
+ * on UserPreferences, so they no longer ride along in every snapshot of the
+ * broadly-subscribed user document. Field names match LLMProvider so
+ * secrets[provider] type-checks.
+ */
+export interface ProviderSecrets {
+  gemini?: string;
+  openai?: string;
+  claude?: string;
+}
+
+/**
+ * How older builds stored the keys on the preferences map. Read only by the
+ * one-time migration in ProviderKeyService.
+ */
+export interface LegacyProviderApiKeys {
+  geminiApiKey?: string;
+  openaiApiKey?: string;
+  claudeApiKey?: string;
+}
+
 export interface LLMProviderPreferences {
   receiptScanning: LLMProvider;
   categorization: LLMProvider;
@@ -50,9 +72,6 @@ export interface UserPreferences {
   dateFormat: string;            // 'MM/DD/YYYY', 'DD/MM/YYYY'
   theme: 'light' | 'dark' | 'system';
   defaultCategories: string[];   // Category IDs to show first
-  geminiApiKey?: string;         // Optional user-provided Gemini API key
-  openaiApiKey?: string;         // Optional user-provided OpenAI API key
-  claudeApiKey?: string;         // Optional user-provided Claude/Anthropic API key
   llmProviderPreferences?: LLMProviderPreferences; // Per-feature LLM provider selection
   enableRagInsights?: boolean;   // Legacy on/off RAG toggle. Kept and dual-written on save so
                                  // older installed clients keep working; never read directly —

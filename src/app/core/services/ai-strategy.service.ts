@@ -91,11 +91,15 @@ export class AIStrategyService {
   // Computed: Available cloud providers
   availableCloudProviders = computed(() => this.cloudLLMProvider.availableProviders());
 
+  /** Account the cloud providers were last brought up for. */
+  private providersInitializedFor = signal<string | null>(null);
+
   constructor() {
-    // Initialize cloud providers from user preferences, applying the stored
-    // model selection so startup honors the user's choice from AI settings
-    console.log('[AIStrategy] Initializing from user preferences on app start');
-    this.initializeCloudProviders();
+    // Apply the stored model selection at startup so the first request honors
+    // the user's choice from AI settings. Keys, if any, arrive with the effect
+    // below once the account resolves.
+    console.log('[AIStrategy] Applying stored model selection on app start');
+    void this.initializeCloudProviders();
 
     // Probe native capabilities (Mac environment, Apple Intelligence)
     if (this.canUseNative()) {
@@ -103,37 +107,31 @@ export class AIStrategyService {
       this.appleIntelligence.detectAvailability();
     }
 
-    // Reinitialize cloud providers when user data changes (e.g., API key updated)
+    // Bring the cloud providers up once per signed-in account. The keys are
+    // no longer part of the user document, so there is nothing else on `user`
+    // worth watching — a key the user edits in settings is applied directly by
+    // the settings page.
     effect(() => {
-      const user = this.authService.currentUser();
-      if (user) {
-        console.log('[AIStrategy] User loaded, checking for API keys');
-        if (user.preferences?.geminiApiKey) {
-          console.log('[AIStrategy] Found Gemini API key, reinitializing');
-          this.initializeCloudProviders();
-        }
-        if (user.preferences?.openaiApiKey) {
-          console.log('[AIStrategy] Found OpenAI API key, reinitializing');
-          this.initializeCloudProviders();
-        }
-        if (user.preferences?.claudeApiKey) {
-          console.log('[AIStrategy] Found Claude API key, reinitializing');
-          this.initializeCloudProviders();
-        }
-      } else {
-        console.log('[AIStrategy] No user loaded yet');
+      const userId = this.authService.userId();
+      if (!userId) {
+        this.providersInitializedFor.set(null);
+        return;
       }
+      if (this.providersInitializedFor() === userId) return;
+
+      this.providersInitializedFor.set(userId);
+      void this.initializeCloudProviders();
     });
   }
 
   /**
    * (Re)initialize cloud providers with the persisted model selection.
    */
-  private initializeCloudProviders(): void {
+  private async initializeCloudProviders(): Promise<void> {
     const prefs = this._preferences();
-    this.cloudLLMProvider.initializeFromUserPreferences(prefs.textModel, prefs.visionModel);
     this.cloudLLMProvider.setOpenAIModel(prefs.openaiModel ?? DEFAULT_OPENAI_MODEL);
     this.cloudLLMProvider.setClaudeModel(prefs.claudeModel ?? DEFAULT_CLAUDE_MODEL);
+    await this.cloudLLMProvider.initializeProviders(prefs.textModel, prefs.visionModel);
   }
 
   /**

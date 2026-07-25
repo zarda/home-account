@@ -14,12 +14,18 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteField,
   Timestamp
 } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
+import {
+  User,
+  UserPreferences,
+  LegacyProviderApiKeys,
+  DEFAULT_USER_PREFERENCES
+} from '../../models';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService, ThemePreference } from './theme.service';
 import { SecurityLogService } from './security-log.service';
@@ -242,6 +248,34 @@ export class AuthService {
       ...user,
       preferences: updatedPreferences
     });
+  }
+
+  /**
+   * Drop the provider API keys older builds stored on the preferences map.
+   *
+   * Field-level deletes rather than a whole-map rewrite, so a preference edit
+   * racing in from another device is not clobbered. The local signal is
+   * stripped too: updateUserPreferences rewrites the whole map from the
+   * in-memory copy, which would otherwise put the keys straight back.
+   */
+  async clearStoredProviderApiKeys(): Promise<void> {
+    const user = this.currentUser();
+    if (!user) {
+      throw new Error('No authenticated user');
+    }
+
+    const userRef = doc(this.firestore, 'users', user.id);
+    await updateDoc(userRef, {
+      'preferences.geminiApiKey': deleteField(),
+      'preferences.openaiApiKey': deleteField(),
+      'preferences.claudeApiKey': deleteField()
+    });
+
+    const preferences = { ...user.preferences } as UserPreferences & LegacyProviderApiKeys;
+    delete preferences.geminiApiKey;
+    delete preferences.openaiApiKey;
+    delete preferences.claudeApiKey;
+    this.currentUser.set({ ...user, preferences });
   }
 
   async updateUserProfile(data: { displayName?: string; photoURL?: string }): Promise<void> {

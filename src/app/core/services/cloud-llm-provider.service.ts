@@ -3,6 +3,7 @@ import { GeminiService, ParsedReceipt, RawTransaction, ExtractedTransaction, Cat
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
+import { ProviderKeyService } from './provider-key.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, MonthlyTotal } from '../../models';
 
 export type AIFeatureType = 'receiptScanning' | 'categorization' | 'insights';
@@ -19,6 +20,7 @@ export class CloudLLMProviderService {
   private openaiService = inject(OpenAIService);
   private claudeService = inject(ClaudeService);
   private authService = inject(AuthService);
+  private providerKeys = inject(ProviderKeyService);
 
   // Provider availability is fully reactive: it flips when a provider's
   // lazily-loaded SDK finishes initializing, instead of relying on
@@ -44,31 +46,29 @@ export class CloudLLMProviderService {
   });
 
   /**
-   * Initialize all providers with their respective API keys from user
-   * preferences. Pass the model ids selected in AI settings so Gemini does
-   * not silently revert to the catalog defaults.
+   * Initialize all providers with their respective API keys. Pass the model
+   * ids selected in AI settings so Gemini does not silently revert to the
+   * catalog defaults.
+   *
+   * Async because the keys are now a separate document rather than part of
+   * the already-loaded user preferences; ProviderKeyService reads it once per
+   * session, so this costs one read at startup and none afterwards.
    */
-  initializeFromUserPreferences(textModelId?: string, visionModelId?: string): void {
-    const user = this.authService.currentUser();
-    if (user?.preferences) {
-      const { geminiApiKey, openaiApiKey, claudeApiKey } = user.preferences;
+  async initializeProviders(textModelId?: string, visionModelId?: string): Promise<void> {
+    const { gemini, openai, claude } = await this.providerKeys.resolve();
 
-      if (geminiApiKey) {
-        this.geminiService.reinitialize(geminiApiKey, textModelId, visionModelId);
-        console.log(`[CloudLLMProvider] Gemini initialized with API key${textModelId ? ` (text: ${textModelId}, vision: ${visionModelId})` : ''}`);
-      }
-      if (openaiApiKey) {
-        this.openaiService.reinitialize(openaiApiKey);
-        console.log('[CloudLLMProvider] OpenAI initialized with API key');
-      }
-      if (claudeApiKey) {
-        this.claudeService.reinitialize(claudeApiKey);
-        console.log('[CloudLLMProvider] Claude initialized with API key');
-      }
-    } else {
-      console.warn('[CloudLLMProvider] No user or preferences found');
+    if (gemini) {
+      await this.geminiService.reinitialize(gemini, textModelId, visionModelId);
+      console.log(`[CloudLLMProvider] Gemini initialized with API key${textModelId ? ` (text: ${textModelId}, vision: ${visionModelId})` : ''}`);
     }
-
+    if (openai) {
+      await this.openaiService.reinitialize(openai);
+      console.log('[CloudLLMProvider] OpenAI initialized with API key');
+    }
+    if (claude) {
+      await this.claudeService.reinitialize(claude);
+      console.log('[CloudLLMProvider] Claude initialized with API key');
+    }
   }
 
   /**
@@ -103,10 +103,9 @@ export class CloudLLMProviderService {
   /**
    * Reinitialize Gemini with new models.
    */
-  reinitializeGemini(textModelId?: string, visionModelId?: string): void {
-    const user = this.authService.currentUser();
-    const apiKey = user?.preferences?.geminiApiKey;
-    this.geminiService.reinitialize(apiKey, textModelId, visionModelId);
+  async reinitializeGemini(textModelId?: string, visionModelId?: string): Promise<void> {
+    const apiKey = await this.providerKeys.getKey('gemini');
+    await this.geminiService.reinitialize(apiKey, textModelId, visionModelId);
   }
 
 

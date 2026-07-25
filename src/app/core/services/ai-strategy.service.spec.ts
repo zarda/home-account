@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 
 import { AIStrategyService } from './ai-strategy.service';
@@ -72,7 +73,9 @@ describe('AIStrategyService', () => {
     pwaMock = jasmine.createSpyObj('PwaService', ['isOnline']);
     pwaMock.isOnline.and.returnValue(true);
 
-    authMock = jasmine.createSpyObj('AuthService', ['currentUser']);
+    authMock = jasmine.createSpyObj('AuthService', ['currentUser'], {
+      userId: signal<string | null>(null),
+    });
     authMock.currentUser.and.returnValue(null);
 
     visionMock = jasmine.createSpyObj('VisionOcrService', [

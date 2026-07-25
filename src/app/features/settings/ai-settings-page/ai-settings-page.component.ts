@@ -20,6 +20,7 @@ import { GeminiService } from '../../../core/services/gemini.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import {
   LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES,
   RagInsightsLevel, RAG_INSIGHTS_LEVELS, effectiveRagLevel,
@@ -58,6 +59,7 @@ export class AiSettingsPageComponent implements OnInit {
   private translationService = inject(TranslationService);
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private authService = inject(AuthService);
+  private providerKeys = inject(ProviderKeyService);
   private location = inject(Location);
 
   // Form state
@@ -134,7 +136,7 @@ export class AiSettingsPageComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadPreferences();
-    this.loadApiKeys();
+    void this.loadApiKeys();
     this.loadModelSelection();
   }
 
@@ -177,13 +179,17 @@ export class AiSettingsPageComponent implements OnInit {
     this.notifications.success(message);
   }
 
-  private loadApiKeys(): void {
+  private async loadApiKeys(): Promise<void> {
     const user = this.authService.currentUser();
-    this.geminiApiKey = user?.preferences?.geminiApiKey || '';
-    this.openaiApiKey = user?.preferences?.openaiApiKey || '';
-    this.claudeApiKey = user?.preferences?.claudeApiKey || '';
     this.llmProviderPreferences = user?.preferences?.llmProviderPreferences || DEFAULT_LLM_PROVIDER_PREFERENCES;
     this.ragInsightsLevel.set(effectiveRagLevel(user?.preferences));
+
+    // Keys live outside the user document now, so this is the one place that
+    // reads them for display.
+    const secrets = await this.providerKeys.resolve();
+    this.geminiApiKey = secrets.gemini ?? '';
+    this.openaiApiKey = secrets.openai ?? '';
+    this.claudeApiKey = secrets.claude ?? '';
   }
 
   async onRagLevelChange(level: RagInsightsLevel): Promise<void> {
@@ -251,8 +257,8 @@ export class AiSettingsPageComponent implements OnInit {
   // Gemini API Key handling
   async onGeminiApiKeyChange(): Promise<void> {
     this.geminiTestResult = null;
-    await this.savePreference({ geminiApiKey: this.geminiApiKey || undefined });
-    this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey || undefined);
+    await this.providerKeys.setKey('gemini', this.geminiApiKey || undefined);
+    await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey || undefined);
   }
 
   async testGeminiApiKey(): Promise<void> {
@@ -284,8 +290,8 @@ export class AiSettingsPageComponent implements OnInit {
   // OpenAI API Key handling
   async onOpenaiApiKeyChange(): Promise<void> {
     this.openaiTestResult = null;
-    await this.savePreference({ openaiApiKey: this.openaiApiKey || undefined });
-    this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey || undefined);
+    await this.providerKeys.setKey('openai', this.openaiApiKey || undefined);
+    await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey || undefined);
   }
 
   async testOpenaiApiKey(): Promise<void> {
@@ -317,8 +323,8 @@ export class AiSettingsPageComponent implements OnInit {
   // Claude API Key handling
   async onClaudeApiKeyChange(): Promise<void> {
     this.claudeTestResult = null;
-    await this.savePreference({ claudeApiKey: this.claudeApiKey || undefined });
-    this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey || undefined);
+    await this.providerKeys.setKey('claude', this.claudeApiKey || undefined);
+    await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey || undefined);
   }
 
   async testClaudeApiKey(): Promise<void> {

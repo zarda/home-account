@@ -469,6 +469,54 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('provider secrets', () => {
+    it('accepts a well-formed key document', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, `users/${uid}/secrets/providers`), { gemini: 'g-key' }),
+        'valid create'
+      );
+    });
+
+    it('accepts all three providers at once', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, `users/${uid}/secrets/providers`), {
+          gemini: 'g-key',
+          openai: 'o-key',
+          claude: 'c-key'
+        }),
+        'all providers'
+      );
+    });
+
+    it('rejects a key that is not a string', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, `users/${uid}/secrets/providers`), { gemini: 42 }),
+        'numeric key'
+      );
+    });
+
+    it('rejects fields outside the closed set', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, `users/${uid}/secrets/providers`), { gemini: 'g', smuggled: 'x' }),
+        'extra field'
+      );
+    });
+
+    it("denies reading another user's keys", async () => {
+      await expectDenied(
+        getDoc(doc(firestore, `users/${otherUid}/secrets/providers`)),
+        "read of stranger's keys"
+      );
+    });
+
+    it("denies writing another user's keys", async () => {
+      await expectDenied(
+        setDoc(doc(firestore, `users/${otherUid}/secrets/providers`), { gemini: 'g-key' }),
+        "write to stranger's keys"
+      );
+    });
+  });
+
   describe('securityEvents (append-only)', () => {
     const validEvent = (overrides: Record<string, unknown> = {}) => ({
       userId: uid,
@@ -588,7 +636,7 @@ describe('firestore.rules (emulator smoke test)', () => {
     // field validator above becomes decorative.
     const validated = [
       'transactions', 'budgets', 'categories',
-      'recurring', 'savedSearches', 'imports', 'securityEvents'
+      'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets'
     ];
 
     for (const collection of validated) {

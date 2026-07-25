@@ -386,6 +386,19 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      // Provider API keys, kept out of the broadly-subscribed user document.
+      // Closed field set for the same reason as securityEvents: the
+      // collection cannot predate its own rule, so there are no legacy
+      // documents to tolerate, and this one holds credentials.
+      match /secrets/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['gemini', 'openai', 'claude', 'updatedAt'])
+          && (!('gemini' in request.resource.data) || request.resource.data.gemini is string)
+          && (!('openai' in request.resource.data) || request.resource.data.openai is string)
+          && (!('claude' in request.resource.data) || request.resource.data.claude is string);
+      }
+
       // Sign-in history. Append-only on purpose: this log is what a user
       // checks after a suspected compromise, so a client that holds the
       // credentials must not be able to rewrite or erase it. The closed field
@@ -411,7 +424,7 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow write: if isOwner(userId) && !(subcollection in [
           'transactions', 'budgets', 'categories',
-          'recurring', 'savedSearches', 'imports', 'securityEvents'
+          'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets'
         ]);
       }
     }
