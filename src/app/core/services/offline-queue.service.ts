@@ -532,7 +532,10 @@ export class OfflineQueueService implements OnDestroy {
   }
 
   /**
-   * Clear old sync log entries.
+   * Clear sync log entries at least `olderThanDays` old. The comparison is
+   * inclusive: an entry stamped in the same millisecond as the cutoff counts
+   * as old, so clearOldLogs(0) reliably empties the log even when the write
+   * and the cutoff land on the same clock tick.
    */
   async clearOldLogs(olderThanDays = 7): Promise<void> {
     if (!this.db) return;
@@ -541,7 +544,7 @@ export class OfflineQueueService implements OnDestroy {
     const all = await this.db.getAll('sync-log');
 
     for (const entry of all) {
-      if (entry.timestamp < cutoff) {
+      if (entry.timestamp <= cutoff) {
         await this.db.delete('sync-log', entry.id);
       }
     }
