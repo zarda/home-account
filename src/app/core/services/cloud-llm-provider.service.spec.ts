@@ -25,6 +25,7 @@ function makeProviderSpy(name: string): jasmine.SpyObj<GeminiService> {
     'suggestCategory',
     'categorizeTransactions',
     'detectCSVMapping',
+    'interpretSearchQuery',
     'generateSpendingSummary',
     'getFinancialAdvice',
   ]);
@@ -216,7 +217,7 @@ describe('CloudLLMProviderService', () => {
 
     it('returns the user-configured provider per feature', () => {
       const prefs: LLMProviderPreferences = {
-        receiptScanning: 'openai', categorization: 'claude', insights: 'gemini',
+        receiptScanning: 'openai', categorization: 'claude', insights: 'gemini', search: 'claude',
       };
       auth.currentUser.and.returnValue(createMockUser('u', {
         preferences: { ...createMockUser().preferences, llmProviderPreferences: prefs },
@@ -224,6 +225,61 @@ describe('CloudLLMProviderService', () => {
       expect(service.getPreferredProvider('receiptScanning')).toBe('openai');
       expect(service.getPreferredProvider('categorization')).toBe('claude');
       expect(service.getPreferredProvider('insights')).toBe('gemini');
+      expect(service.getPreferredProvider('search')).toBe('claude');
+    });
+
+    it('merges defaults for stored preference objects that predate a feature', () => {
+      // A user object saved before the search feature existed has no
+      // `search` key; the default must fill it in.
+      const legacyPrefs = {
+        receiptScanning: 'openai', categorization: 'openai', insights: 'openai',
+      } as LLMProviderPreferences;
+      auth.currentUser.and.returnValue(createMockUser('u', {
+        preferences: { ...createMockUser().preferences, llmProviderPreferences: legacyPrefs },
+      }));
+      expect(service.getPreferredProvider('search')).toBe('gemini');
+      expect(service.getPreferredProvider('insights')).toBe('openai');
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Search delegation
+  // ----------------------------------------------------------------
+  describe('interpretSearchQuery', () => {
+    const context = { today: '2026-07-24', baseCurrency: 'USD', categories: [] };
+
+    it('routes to the preferred provider', async () => {
+      gemini.isAvailableSignal.and.returnValue(true);
+      (claude as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
+      const prefs: LLMProviderPreferences = {
+        receiptScanning: 'gemini', categorization: 'gemini', insights: 'gemini', search: 'claude',
+      };
+      auth.currentUser.and.returnValue(createMockUser('u', {
+        preferences: { ...createMockUser().preferences, llmProviderPreferences: prefs },
+      }));
+      const intent = { kind: 'filter' as const, filters: {} };
+      (claude as unknown as jasmine.SpyObj<GeminiService>).interpretSearchQuery.and.resolveTo(intent);
+
+      const result = await service.interpretSearchQuery('coffee', context);
+
+      expect(result).toBe(intent);
+      expect((claude as unknown as jasmine.SpyObj<GeminiService>).interpretSearchQuery)
+        .toHaveBeenCalledWith('coffee', context);
+      expect(gemini.interpretSearchQuery).not.toHaveBeenCalled();
+    });
+
+    it('falls back through the provider order when the preferred one is down', async () => {
+      (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
+      const intent = { kind: 'filter' as const, filters: {} };
+      (openai as unknown as jasmine.SpyObj<GeminiService>).interpretSearchQuery.and.resolveTo(intent);
+
+      const result = await service.interpretSearchQuery('coffee', context);
+      expect(result).toBe(intent);
+    });
+
+    it('throws when no provider is available', async () => {
+      await expectAsync(service.interpretSearchQuery('coffee', context))
+        .toBeRejectedWithError(/No cloud AI provider available for search/);
     });
   });
 
@@ -266,7 +322,7 @@ describe('CloudLLMProviderService', () => {
     function setPreference(feature: AIFeatureType, provider: LLMProvider): void {
       const base = createMockUser().preferences;
       const prefs: LLMProviderPreferences = {
-        receiptScanning: 'gemini', categorization: 'gemini', insights: 'gemini',
+        receiptScanning: 'gemini', categorization: 'gemini', insights: 'gemini', search: 'gemini',
         [feature]: provider,
       };
       auth.currentUser.and.returnValue(createMockUser('u', {
@@ -335,7 +391,7 @@ describe('CloudLLMProviderService', () => {
       auth.currentUser.and.returnValue(createMockUser('u', {
         preferences: {
           ...createMockUser().preferences,
-          llmProviderPreferences: { receiptScanning: 'claude', categorization: 'gemini', insights: 'gemini' },
+          llmProviderPreferences: { receiptScanning: 'claude', categorization: 'gemini', insights: 'gemini', search: 'gemini' },
         },
       }));
       await service.parseReceipt('img');
@@ -408,7 +464,7 @@ describe('CloudLLMProviderService', () => {
       auth.currentUser.and.returnValue(createMockUser('u', {
         preferences: {
           ...createMockUser().preferences,
-          llmProviderPreferences: { receiptScanning: 'openai', categorization: 'gemini', insights: 'gemini' },
+          llmProviderPreferences: { receiptScanning: 'openai', categorization: 'gemini', insights: 'gemini', search: 'gemini' },
         },
       }));
       gemini.extractTransactionsFromPDF.and.resolveTo(rows);

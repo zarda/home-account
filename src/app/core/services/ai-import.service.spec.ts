@@ -4,6 +4,7 @@ import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { AIImportService } from './ai-import.service';
 import { GeminiService } from './gemini.service';
+import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
@@ -23,6 +24,7 @@ import {
 describe('AIImportService', () => {
   let service: AIImportService;
   let geminiService: jasmine.SpyObj<GeminiService>;
+  let cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService>;
   let exportService: jasmine.SpyObj<ExportService>;
   let duplicateService: jasmine.SpyObj<DuplicateDetectionService>;
   let importHistoryService: jasmine.SpyObj<ImportHistoryService>;
@@ -47,6 +49,10 @@ describe('AIImportService', () => {
       'extractTransactionsFromMultipleImages',
       'categorizeTransactions'
     ]);
+    cloudLLMProvider = jasmine.createSpyObj('CloudLLMProviderService', [
+      'hasAnyCloudProvider',
+      'categorizeTransactions'
+    ]);
     exportService = jasmine.createSpyObj('ExportService', ['importFromCSV']);
     duplicateService = jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']);
     importHistoryService = jasmine.createSpyObj('ImportHistoryService', [
@@ -69,7 +75,8 @@ describe('AIImportService', () => {
 
     // Sensible defaults
     geminiService.isAvailable.and.returnValue(true);
-    geminiService.categorizeTransactions.and.callFake(async (raws) =>
+    cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+    cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
       raws.map(r => ({ ...r, suggestedCategoryId: 'food', confidence: 0.8 }))
     );
     duplicateService.checkDuplicates.and.callFake(async (txns) => noDuplicates(txns));
@@ -82,6 +89,7 @@ describe('AIImportService', () => {
       providers: [
         AIImportService,
         { provide: GeminiService, useValue: geminiService },
+        { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
         { provide: ExportService, useValue: exportService },
         { provide: DuplicateDetectionService, useValue: duplicateService },
         { provide: ImportHistoryService, useValue: importHistoryService },
@@ -393,7 +401,7 @@ describe('AIImportService', () => {
         { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
           imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 }
       ]));
-      geminiService.categorizeTransactions.and.returnValue(Promise.reject(new Error('cat failed')));
+      cloudLLMProvider.categorizeTransactions.and.returnValue(Promise.reject(new Error('cat failed')));
 
       const result = await service.importFromMultipleImages([
         makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')

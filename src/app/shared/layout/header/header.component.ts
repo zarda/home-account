@@ -19,10 +19,12 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../../core/services/auth.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+import { AiSearchDialogComponent } from '../../components/ai-search-dialog/ai-search-dialog.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { filter, map, Subscription } from 'rxjs';
 
@@ -49,6 +51,7 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
   private router = inject(Router);
   private ngZone = inject(NgZone);
   private breakpointObserver = inject(BreakpointObserver);
+  private dialog = inject(MatDialog);
   private lastScrollY = 0;
   private routerSubscription?: Subscription;
   private scrollContainer: HTMLElement | null = null;
@@ -144,6 +147,13 @@ export class HeaderComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.scrollContainer && this.scrollHandler) {
       this.scrollContainer.removeEventListener('scroll', this.scrollHandler);
     }
+  }
+
+  openSearchDialog(): void {
+    this.dialog.open(AiSearchDialogComponent, {
+      width: '520px',
+      maxWidth: '95vw',
+    });
   }
 
   async logout(): Promise<void> {

@@ -1,0 +1,40 @@
+// Mirrors the quick-filter buttons in transaction-filters so the two rows
+// read as one control family.
+.insight-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.insight-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 14px;
+  @apply border border-gray-200 dark:border-gray-700;
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  @apply text-gray-500 dark:text-gray-400;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  white-space: nowrap;
+
+  mat-icon {
+    font-size: var(--text-lg);
+    width: 1em;
+    height: 1em;
+    line-height: 1em;
+    color: var(--color-primary);
+  }
+
+  &:hover {
+    background: var(--surface-muted);
+    @apply border-gray-300 dark:border-gray-600;
+  }
+}

@@ -3,6 +3,11 @@ import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { CategoryTotal, RAG_TIER_CONFIGS, RagTierConfig, Transaction } from '../../models';
+import {
+  computeAmountAnomalies,
+  computeCategoryDeltas,
+  computeTopExpenses,
+} from '../utils/spending-insight.utils';
 
 /**
  * Retrieval helpers for RAG-grounded AI features. Builds compact, factual
@@ -86,10 +91,8 @@ export class RagContextService {
     baseCurrency: string,
     cap: number,
   ): string {
-    const lines = [...expenses]
-      .sort((a, b) => toBase(b) - toBase(a))
-      .slice(0, cap)
-      .map(t => `- ${t.description} — ${amount(toBase(t))} ${baseCurrency} (${this.categoryName(t.categoryId)}, ${this.formatDate(t.date)})`);
+    const lines = computeTopExpenses(expenses, toBase, cap)
+      .map(({ transaction: t, value }) => `- ${t.description} — ${amount(value)} ${baseCurrency} (${this.categoryName(t.categoryId)}, ${this.formatDate(t.date)})`);
 
     return lines.length > 0 ? `Top expenses:\n${lines.join('\n')}` : '';
   }
@@ -112,41 +115,7 @@ export class RagContextService {
     baseCurrency: string,
     cap: number,
   ): string {
-    const baselineByCategory = new Map<string, number[]>();
-    for (const t of baselineExpenses) {
-      const list = baselineByCategory.get(t.categoryId) ?? [];
-      list.push(toBase(t));
-      baselineByCategory.set(t.categoryId, list);
-    }
-
-    const candidatesByCategory = new Map<string, Transaction[]>();
-    for (const t of expenses) {
-      const list = candidatesByCategory.get(t.categoryId) ?? [];
-      list.push(t);
-      candidatesByCategory.set(t.categoryId, list);
-    }
-
-    const anomalies: { transaction: Transaction; value: number; typical: number }[] = [];
-    for (const [categoryId, candidates] of candidatesByCategory) {
-      const baseline = baselineByCategory.get(categoryId) ?? [];
-      if (baseline.length < 4) {
-        continue;
-      }
-      const mean = baseline.reduce((sum, a) => sum + a, 0) / baseline.length;
-      const variance = baseline.reduce((sum, a) => sum + (a - mean) ** 2, 0) / baseline.length;
-      const threshold = mean + 2 * Math.sqrt(variance);
-
-      for (const transaction of candidates) {
-        const value = toBase(transaction);
-        if (value > threshold) {
-          anomalies.push({ transaction, value, typical: mean });
-        }
-      }
-    }
-
-    const lines = anomalies
-      .sort((a, b) => b.value - a.value)
-      .slice(0, cap)
+    const lines = computeAmountAnomalies(expenses, baselineExpenses, toBase, cap)
       .map(({ transaction, value, typical }) =>
         `- ${transaction.description} — ${amount(value)} ${baseCurrency} is unusually high for ${this.categoryName(transaction.categoryId)} (typical: ${amount(typical)} ${baseCurrency})`);
 
@@ -162,30 +131,11 @@ export class RagContextService {
     baseCurrency: string,
     cap: number,
   ): string {
-    if (!previousByCategory || previousByCategory.length === 0) {
-      return '';
-    }
+    const deltas = computeCategoryDeltas(expenses, previousByCategory, toBase, cap);
 
-    const currentTotals = new Map<string, number>();
-    for (const t of expenses) {
-      currentTotals.set(t.categoryId, (currentTotals.get(t.categoryId) ?? 0) + toBase(t));
-    }
-    const previousTotals = new Map(previousByCategory.map(c => [c.categoryId, c.total]));
-
-    const categoryIds = new Set([...currentTotals.keys(), ...previousTotals.keys()]);
-    const deltas = [...categoryIds]
-      .map(categoryId => {
-        const current = currentTotals.get(categoryId) ?? 0;
-        const previous = previousTotals.get(categoryId) ?? 0;
-        return { categoryId, current, previous, change: current - previous };
-      })
-      .filter(d => Math.abs(d.change) > 0.005)
-      .sort((a, b) => Math.abs(b.change) - Math.abs(a.change))
-      .slice(0, cap);
-
-    const lines = deltas.map(({ categoryId, current, previous, change }) => {
+    const lines = deltas.map(({ categoryId, current, previous, change, isNew }) => {
       const direction = change > 0 ? 'up' : 'down';
-      const percent = previous > 0 ? ` (${direction} ${(Math.abs(change) / previous * 100).toFixed(0)}%)` : ' (new this period)';
+      const percent = isNew ? ' (new this period)' : ` (${direction} ${(Math.abs(change) / previous * 100).toFixed(0)}%)`;
       return `- ${this.categoryName(categoryId)}: ${amount(previous)} → ${amount(current)} ${baseCurrency}${percent}`;
     });
 

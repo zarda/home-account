@@ -370,6 +370,39 @@ describe('OpenAIService', () => {
       expect(result[1].confidence).toBe(0.3);
     });
 
+    it('passes the model confidence through and coerces invalid category IDs', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(
+        responseWith(
+          JSON.stringify([
+            { index: 0, categoryId: 'food_child', confidence: 0.6 },
+            { index: 1, categoryId: 'not_a_real_id', confidence: 0.95 },
+          ])
+        )
+      );
+      setClient(fake);
+
+      const result = await service.categorizeTransactions(txns);
+
+      expect(result[0].suggestedCategoryId).toBe('food_child');
+      expect(result[0].confidence).toBe(0.6);
+      expect(result[1].suggestedCategoryId).toBe('other_expense');
+      expect(result[1].confidence).toBe(0.3);
+    });
+
+    it('offers sub-categories and asks for confidence in the prompt', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(responseWith('[]'));
+      setClient(fake);
+
+      await service.categorizeTransactions(txns);
+
+      const request = fake.responses.create.calls.mostRecent().args[0] as { input: string };
+      expect(request.input).toContain('food_child: Restaurants / Child');
+      expect(request.input).toContain('"confidence"');
+      expect(request.input).not.toContain('inactive');
+    });
+
     it('returns safe defaults for every transaction on error', async () => {
       const errorSpy = spyOn(console, 'error');
       const fake = makeFakeClient();
@@ -382,6 +415,39 @@ describe('OpenAIService', () => {
       expect(result.every((t) => t.suggestedCategoryId === 'other_expense')).toBeTrue();
       expect(result.every((t) => t.confidence === 0.1)).toBeTrue();
       expect(errorSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('interpretSearchQuery', () => {
+    const context = {
+      today: '2026-07-24',
+      baseCurrency: 'USD',
+      categories: [{ id: 'food', name: 'Restaurants', type: 'expense' as const }],
+    };
+
+    it('throws when the client is unavailable', async () => {
+      await expectAsync(service.interpretSearchQuery('coffee', context))
+        .toBeRejectedWithError('OpenAI client not available');
+    });
+
+    it('parses the model response into a validated intent', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(
+        responseWith('{"kind":"filter","filters":{"categoryId":"food","minAmount":50}}'));
+      setClient(fake);
+
+      const intent = await service.interpretSearchQuery('food over 50', context);
+
+      expect(intent.kind).toBe('filter');
+      expect(intent.filters.categoryId).toBe('food');
+      expect(intent.filters.minAmount).toBe(50);
+    });
+
+    it('rejects when the response is not usable JSON', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(responseWith('cannot help with that'));
+      setClient(fake);
+      await expectAsync(service.interpretSearchQuery('x', context)).toBeRejected();
     });
   });
 

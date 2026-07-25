@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, SimpleChange, signal } from '@angular/core';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFiltersComponent } from './transaction-filters.component';
@@ -8,7 +8,7 @@ import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
-import { Category, SavedSearch } from '../../../models';
+import { Category, SavedSearch, TransactionFilters } from '../../../models';
 
 describe('TransactionFiltersComponent', () => {
   let component: TransactionFiltersComponent;
@@ -860,6 +860,78 @@ describe('TransactionFiltersComponent', () => {
       const compiled = fixture.nativeElement as HTMLElement;
       const filterPanel = compiled.querySelector('.filter-panel');
       expect(filterPanel).toBeFalsy();
+    });
+  });
+
+  describe('presetFilters input', () => {
+    const preset = (): TransactionFilters => ({
+      type: 'expense',
+      categoryId: 'cat1',
+      startDate: new Date(2026, 6, 1),
+      endDate: new Date(2026, 6, 31, 23, 59, 59, 999),
+    });
+
+    function applyPreset(filters: TransactionFilters): void {
+      component.presetFilters = filters;
+      component.ngOnChanges({
+        presetFilters: new SimpleChange(undefined, filters, false),
+      });
+    }
+
+    it('replaces the current filters and emits them once', () => {
+      const emitSpy = spyOn(component.filtersChanged, 'emit');
+      component.filters = { searchQuery: 'old', minAmount: 5 };
+
+      applyPreset(preset());
+
+      expect(component.filters.categoryId).toBe('cat1');
+      expect(component.filters.searchQuery).toBeUndefined();
+      expect(component.filters.minAmount).toBeUndefined();
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect(emitSpy.calls.mostRecent().args[0]).toEqual(jasmine.objectContaining({
+        type: 'expense',
+        categoryId: 'cat1',
+      }));
+    });
+
+    it('clears the active quick filter', () => {
+      component.setQuickFilter('thisMonth');
+      expect(component.activeQuickFilter()).toBe('thisMonth');
+
+      applyPreset(preset());
+
+      expect(component.activeQuickFilter()).toBeNull();
+    });
+
+    it('suppresses the delayed default month filter', fakeAsync(() => {
+      const freshFixture = TestBed.createComponent(TransactionFiltersComponent);
+      const freshComponent = freshFixture.componentInstance;
+      freshComponent.categories = mockCategories;
+      freshComponent.incomeCategories = mockIncomeCategories;
+      const emitSpy = spyOn(freshComponent.filtersChanged, 'emit');
+      freshFixture.detectChanges();
+
+      freshComponent.presetFilters = preset();
+      freshComponent.ngOnChanges({
+        presetFilters: new SimpleChange(undefined, freshComponent.presetFilters, true),
+      });
+      tick();
+
+      // Only the preset emission — the ngOnInit setTimeout default must not fire.
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect(emitSpy.calls.mostRecent().args[0]).toEqual(jasmine.objectContaining({
+        categoryId: 'cat1',
+      }));
+      flush();
+    }));
+
+    it('re-emits when the same filter content arrives as a new reference', () => {
+      const emitSpy = spyOn(component.filtersChanged, 'emit');
+
+      applyPreset(preset());
+      applyPreset(preset());
+
+      expect(emitSpy).toHaveBeenCalledTimes(2);
     });
   });
 });
