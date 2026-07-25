@@ -56,6 +56,54 @@ export function clearPinRecord(userId: string): void {
   }
 }
 
+/** Failed-attempt state, kept across reloads. */
+export interface AttemptState {
+  failed: number;
+  blockedUntil: number;
+}
+
+const EMPTY_ATTEMPTS: AttemptState = { failed: 0, blockedUntil: 0 };
+
+function attemptStorageKey(userId: string): string {
+  return `${appLockStorageKey(userId)}.attempts`;
+}
+
+/**
+ * Without persistence the backoff is reset by a page reload or an app
+ * relaunch, which is a control the person holding the device already has —
+ * so the whole rate limit would be bypassable without any tooling.
+ */
+export function readAttemptState(userId: string): AttemptState {
+  try {
+    const raw = localStorage.getItem(attemptStorageKey(userId));
+    if (!raw) return { ...EMPTY_ATTEMPTS };
+
+    const parsed = JSON.parse(raw) as Partial<AttemptState>;
+    const failed = typeof parsed?.failed === 'number' && parsed.failed >= 0 ? parsed.failed : 0;
+    const blockedUntil =
+      typeof parsed?.blockedUntil === 'number' && parsed.blockedUntil >= 0 ? parsed.blockedUntil : 0;
+    return { failed, blockedUntil };
+  } catch {
+    return { ...EMPTY_ATTEMPTS };
+  }
+}
+
+export function writeAttemptState(userId: string, state: AttemptState): void {
+  try {
+    localStorage.setItem(attemptStorageKey(userId), JSON.stringify(state));
+  } catch {
+    // Storage refusing the write only costs the cross-reload backoff.
+  }
+}
+
+export function clearAttemptState(userId: string): void {
+  try {
+    localStorage.removeItem(attemptStorageKey(userId));
+  } catch {
+    // Nothing to do.
+  }
+}
+
 /** True when the app sat in the background longer than the configured delay. */
 export function shouldRelock(
   backgroundedAt: number | null,

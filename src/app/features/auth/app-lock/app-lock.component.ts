@@ -82,8 +82,17 @@ export class AppLockComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Always available: the lock must never become a state the user cannot leave. */
+  /**
+   * Always available: the lock must never become a state the user cannot leave.
+   *
+   * Clearing the device credential is what makes that true. Neither the stored
+   * PIN nor the enableAppLock preference is touched by signing out, so without
+   * this the user signs back in and lands straight back here with the same
+   * forgotten PIN — and the settings screen that could remove it sits behind
+   * the very lock they cannot pass. Recovery has to happen from this screen.
+   */
   async signOut(): Promise<void> {
+    this.appLock.clearCredential();
     await this.authService.signOut();
     await this.router.navigate(['/login']);
   }

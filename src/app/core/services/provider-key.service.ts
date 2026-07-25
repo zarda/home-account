@@ -42,6 +42,7 @@ export class ProviderKeyService {
   private cachedUserId = signal<string | null>(null);
   private failed = signal<boolean>(false);
   private inFlight: Promise<ProviderSecrets> | null = null;
+  private inFlightFor: string | null = null;
 
   /** Last loaded keys, or null before the first load / after an account switch. */
   readonly keys = computed<ProviderSecrets | null>(() =>
@@ -66,13 +67,22 @@ export class ProviderKeyService {
     const cached = this.keys();
     if (cached) return cached;
 
-    // Dedupe concurrent AI calls racing a cold cache.
-    if (this.inFlight) return this.inFlight;
+    // Dedupe concurrent AI calls racing a cold cache, but only for the account
+    // that started the load: on a shared device the previous user's load can
+    // still be pending when the next one signs in, and handing them that
+    // promise would initialize the providers with someone else's key.
+    if (this.inFlight && this.inFlightFor === userId) return this.inFlight;
 
-    this.inFlight = this.load(userId).finally(() => {
-      this.inFlight = null;
+    const pending = this.load(userId);
+    this.inFlight = pending;
+    this.inFlightFor = userId;
+    void pending.finally(() => {
+      if (this.inFlight === pending) {
+        this.inFlight = null;
+        this.inFlightFor = null;
+      }
     });
-    return this.inFlight;
+    return pending;
   }
 
   private async load(userId: string): Promise<ProviderSecrets> {
@@ -115,7 +125,16 @@ export class ProviderKeyService {
       true
     );
 
-    const next = { ...(this.keys() ?? {}) };
+    const known = this.keys();
+    if (!known) {
+      // Never had an authoritative read, so one saved key says nothing about
+      // the others. Inventing a cache here would make the rest look unset and
+      // let a later blur delete a key that was only ever unread.
+      this.clearCache();
+      return;
+    }
+
+    const next = { ...known };
     if (value) {
       next[provider] = value;
     } else {
@@ -166,6 +185,7 @@ export class ProviderKeyService {
     this.cache.set(null);
     this.cachedUserId.set(null);
     this.inFlight = null;
+    this.inFlightFor = null;
     this.failed.set(false);
   }
 }

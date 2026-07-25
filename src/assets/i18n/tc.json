@@ -847,7 +847,8 @@
     "ragLevelDescription_standard": "前 10 大支出、以 6 個月為基準的異常金額，以及類別變化。",
     "ragLevelDescription_deep": "前 20 大支出、以 12 個月為基準的更多異常金額檢查，以及前 10 大類別變化。",
     "insightsSettings": "AI 洞察",
-    "insightsSettingsHint": "設定消費洞察的產生方式"
+    "insightsSettingsHint": "設定消費洞察的產生方式",
+    "keysUnavailable": "無法載入已儲存的 API 金鑰。請重新連線後再開啟此頁面。"
   },
   "about": {
     "title": "關於",
@@ -892,7 +893,7 @@
     "pinLabel": "PIN 碼",
     "unlock": "解鎖",
     "wrongPin": "PIN 碼不正確",
-    "tooManyAttempts": "嘗試次數過多。請登出後重新登入。",
+    "tooManyAttempts": "嘗試次數過多。登出即可清除此裝置的 PIN 碼。",
     "tryAgainIn": "{{seconds}} 秒後可再試",
     "signOut": "改為登出",
     "settingsTitle": "應用程式鎖定",
@@ -911,6 +912,7 @@
     "pinSaved": "已儲存 PIN 碼",
     "pinRemoved": "已移除 PIN 碼",
     "pinSaveFailed": "無法在此裝置儲存 PIN 碼",
-    "disclaimer": "PIN 碼以裝置為單位設定，用於限制應用程式存取，並不會加密您儲存的資料。"
+    "disclaimer": "PIN 碼以裝置為單位設定，用於限制應用程式存取，並不會加密您儲存的資料。",
+    "timeoutMinute": "1 分鐘"
   }
 }

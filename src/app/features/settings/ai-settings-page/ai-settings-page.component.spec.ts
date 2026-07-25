@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
@@ -25,6 +26,7 @@ describe('AiSettingsPageComponent', () => {
   let cloudLLMProviderMock: jasmine.SpyObj<CloudLLMProviderService>;
   let authServiceMock: jasmine.SpyObj<AuthService>;
   let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
+  let providerKeysLoadFailed: ReturnType<typeof signal<boolean>>;
   let announcerMock: jasmine.SpyObj<AnnouncerService>;
 
   beforeEach(async () => {
@@ -76,11 +78,12 @@ describe('AiSettingsPageComponent', () => {
     ]);
     cloudLLMProviderMock.isProviderAvailable.and.returnValue(false);
 
-    providerKeysMock = jasmine.createSpyObj<ProviderKeyService>('ProviderKeyService', [
-      'resolve',
-      'getKey',
-      'setKey',
-    ]);
+    providerKeysLoadFailed = signal(false);
+    providerKeysMock = jasmine.createSpyObj<ProviderKeyService>(
+      'ProviderKeyService',
+      ['resolve', 'getKey', 'setKey'],
+      { loadFailed: providerKeysLoadFailed }
+    );
     providerKeysMock.resolve.and.resolveTo({});
     providerKeysMock.getKey.and.resolveTo(undefined);
     providerKeysMock.setKey.and.resolveTo(undefined);
@@ -329,6 +332,27 @@ describe('AiSettingsPageComponent', () => {
       await component.onClaudeApiKeyChange();
 
       expect(providerKeysMock.setKey).toHaveBeenCalledWith('claude', undefined);
+    });
+
+    // The fields render blank when the keys could not be read, so accepting a
+    // save here would write that blankness over the stored keys.
+    it('saves nothing until the stored keys have actually been read', async () => {
+      component.keysLoaded.set(false);
+      component.geminiApiKey = '';
+
+      await component.onGeminiApiKeyChange();
+
+      expect(providerKeysMock.setKey).not.toHaveBeenCalled();
+    });
+
+    it('reports a failed load instead of showing empty fields as truth', async () => {
+      providerKeysMock.resolve.and.resolveTo({});
+      providerKeysLoadFailed.set(true);
+
+      await component['loadApiKeys']();
+
+      expect(component.keysLoaded()).toBe(false);
+      expect(notifications.error).toHaveBeenCalled();
     });
   });
 });

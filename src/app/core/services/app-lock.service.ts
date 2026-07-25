@@ -4,10 +4,13 @@ import { Router } from '@angular/router';
 import { AuthService } from './auth.service';
 import {
   MAX_PIN_ATTEMPTS,
+  clearAttemptState,
   clearPinRecord,
+  readAttemptState,
   readPinRecord,
   shouldRelock,
   unlockBackoffMs,
+  writeAttemptState,
   writePinRecord
 } from '../utils/app-lock.utils';
 import { derivePinRecord, verifyPin } from '../utils/pin-hash.utils';
@@ -75,12 +78,15 @@ export class AppLockService {
       void this.router.navigate(['/lock']);
     });
 
-    // Never carry one account's unlocked state into the next.
+    // Never carry one account's unlocked state into the next. The throttle is
+    // restored from storage rather than reset, so a reload cannot clear it.
     effect(() => {
-      this.auth.userId();
+      const userId = this.auth.userId();
       this.unlockedAt.set(null);
-      this.failed.set(0);
-      this.blockedUntil.set(0);
+
+      const attempts = userId ? readAttemptState(userId) : { failed: 0, blockedUntil: 0 };
+      this.failed.set(attempts.failed);
+      this.blockedUntil.set(attempts.blockedUntil);
     });
   }
 
@@ -127,6 +133,9 @@ export class AppLockService {
     this.unlockedAt.set(Date.now());
     this.failed.set(0);
     this.blockedUntil.set(0);
+
+    const userId = this.auth.userId();
+    if (userId) clearAttemptState(userId);
   }
 
   /** Remaining backoff in milliseconds, for the lock screen countdown. */
@@ -138,7 +147,9 @@ export class AppLockService {
     if (this.blockedForMs() > 0) return false;
 
     const userId = this.auth.userId();
-    const record = userId ? readPinRecord(userId) : null;
+    if (!userId) return false;
+
+    const record = readPinRecord(userId);
     if (!record) return false;
 
     if (await verifyPin(pin, record)) {
@@ -147,8 +158,10 @@ export class AppLockService {
     }
 
     const attempts = this.failed() + 1;
+    const blockedUntil = Date.now() + unlockBackoffMs(attempts);
     this.failed.set(attempts);
-    this.blockedUntil.set(Date.now() + unlockBackoffMs(attempts));
+    this.blockedUntil.set(blockedUntil);
+    writeAttemptState(userId, { failed: attempts, blockedUntil });
     return false;
   }
 
@@ -167,7 +180,12 @@ export class AppLockService {
 
   clearCredential(): void {
     const userId = this.auth.userId();
-    if (userId) clearPinRecord(userId);
+    if (userId) {
+      clearPinRecord(userId);
+      clearAttemptState(userId);
+    }
+    this.failed.set(0);
+    this.blockedUntil.set(0);
     this.credentialVersion.update(v => v + 1);
   }
 

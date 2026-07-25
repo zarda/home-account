@@ -847,7 +847,8 @@
     "ragLevelDescription_standard": "上位10件の支出、6か月基準の異常金額チェック、カテゴリの変化。",
     "ragLevelDescription_deep": "上位20件の支出、12か月基準のより多くの異常金額チェック、上位10件のカテゴリ変化。",
     "insightsSettings": "AIインサイト",
-    "insightsSettingsHint": "支出インサイトの生成方法を設定します"
+    "insightsSettingsHint": "支出インサイトの生成方法を設定します",
+    "keysUnavailable": "保存されたAPIキーを読み込めませんでした。再接続してからこの画面を開き直してください。"
   },
   "about": {
     "title": "について",
@@ -892,7 +893,7 @@
     "pinLabel": "PIN",
     "unlock": "ロック解除",
     "wrongPin": "PINが正しくありません",
-    "tooManyAttempts": "試行回数が上限に達しました。サインアウトして再度サインインしてください。",
+    "tooManyAttempts": "入力に何度も失敗しました。サインアウトするとこのデバイスのPINを削除できます。",
     "tryAgainIn": "{{seconds}}秒後に再試行できます",
     "signOut": "サインアウトする",
     "settingsTitle": "アプリロック",
@@ -911,6 +912,7 @@
     "pinSaved": "PINを保存しました",
     "pinRemoved": "PINを削除しました",
     "pinSaveFailed": "このデバイスにPINを保存できませんでした",
-    "disclaimer": "PINはデバイスごとに設定され、アプリへのアクセスを制限します。保存されたデータの暗号化は行いません。"
+    "disclaimer": "PINはデバイスごとに設定され、アプリへのアクセスを制限します。保存されたデータの暗号化は行いません。",
+    "timeoutMinute": "1分後"
   }
 }

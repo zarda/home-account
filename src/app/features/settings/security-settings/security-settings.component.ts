@@ -119,8 +119,8 @@ export class SecuritySettingsComponent {
   }
 
   timeoutLabel(minutes: number): string {
-    return minutes === 0
-      ? this.translation.t('appLock.timeoutImmediately')
-      : this.translation.t('appLock.timeoutMinutes', { minutes });
+    if (minutes === 0) return this.translation.t('appLock.timeoutImmediately');
+    if (minutes === 1) return this.translation.t('appLock.timeoutMinute');
+    return this.translation.t('appLock.timeoutMinutes', { minutes });
   }
 }

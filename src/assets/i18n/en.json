@@ -823,7 +823,8 @@
     "ragLevelDescription_standard": "Top 10 expenses, unusual amounts against a 6-month baseline, and category changes.",
     "ragLevelDescription_deep": "Top 20 expenses, more unusual-amount checks against a 12-month baseline, and the top 10 category changes.",
     "insightsSettings": "AI Insights",
-    "insightsSettingsHint": "Configure how your spending insights are generated"
+    "insightsSettingsHint": "Configure how your spending insights are generated",
+    "keysUnavailable": "Could not load your saved API keys. Reconnect and reopen this page before editing them."
   },
   "about": {
     "title": "About",
@@ -868,7 +869,7 @@
     "pinLabel": "PIN",
     "unlock": "Unlock",
     "wrongPin": "Incorrect PIN",
-    "tooManyAttempts": "Too many attempts. Sign out and sign back in to regain access.",
+    "tooManyAttempts": "Too many incorrect attempts. Sign out to clear the PIN on this device.",
     "tryAgainIn": "Try again in {{seconds}}s",
     "signOut": "Sign out instead",
     "settingsTitle": "App Lock",
@@ -887,6 +888,7 @@
     "pinSaved": "PIN saved",
     "pinRemoved": "PIN removed",
     "pinSaveFailed": "Could not save the PIN on this device",
-    "disclaimer": "The PIN is set per device and controls access to the app. It does not encrypt your stored data."
+    "disclaimer": "The PIN is set per device and controls access to the app. It does not encrypt your stored data.",
+    "timeoutMinute": "1 minute"
   }
 }

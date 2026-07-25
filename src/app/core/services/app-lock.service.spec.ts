@@ -4,7 +4,7 @@ import { Router } from '@angular/router';
 
 import { AppLockService } from './app-lock.service';
 import { AuthService } from './auth.service';
-import { appLockStorageKey, MAX_PIN_ATTEMPTS } from '../utils/app-lock.utils';
+import { appLockStorageKey, clearAttemptState, MAX_PIN_ATTEMPTS } from '../utils/app-lock.utils';
 import { derivePinRecord } from '../utils/pin-hash.utils';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 import { createMockUser } from './testing/mock-auth.service';
@@ -34,6 +34,8 @@ describe('AppLockService', () => {
 
   beforeEach(() => {
     localStorage.removeItem(appLockStorageKey('user-1'));
+    clearAttemptState('user-1');
+    clearAttemptState('user-2');
 
     userId = signal<string | null>('user-1');
     currentUser = signal<User | null>(
@@ -61,6 +63,8 @@ describe('AppLockService', () => {
 
   afterEach(() => {
     localStorage.removeItem(appLockStorageKey('user-1'));
+    clearAttemptState('user-1');
+    clearAttemptState('user-2');
   });
 
   describe('engagement', () => {
@@ -185,6 +189,79 @@ describe('AppLockService', () => {
 
       expect(service.isLocked()).toBe(false); // user-2 has no PIN on this device
       expect(service.method()).toBe('none');
+    });
+  });
+
+  describe('recovery from a forgotten PIN', () => {
+    // Signing out is the only recovery reachable from the lock screen: the
+    // settings screen that removes a PIN sits behind the lock itself.
+    it('clearing the credential unlocks the next sign-in', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      expect(service.isLocked()).toBe(true);
+
+      service.clearCredential();
+
+      expect(service.method()).toBe('none');
+      expect(service.isLocked()).toBe(false);
+    });
+
+    it('leaves nothing behind that would re-lock the account', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      await service.unlockWithPin('000000');
+
+      service.clearCredential();
+
+      expect(service.failedAttempts()).toBe(0);
+      expect(service.blockedForMs()).toBe(0);
+    });
+  });
+
+  describe('throttle persistence', () => {
+    // A reload is a control the person holding the device already has, so an
+    // in-memory backoff would be no rate limit at all.
+    it('survives a service restart', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      await service.unlockWithPin('000000');
+      await service.unlockWithPin('000000');
+      await service.unlockWithPin('000000');
+      expect(service.blockedForMs()).toBeGreaterThan(0);
+
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          AppLockService,
+          { provide: AuthService, useValue: auth },
+          { provide: Router, useValue: router },
+        ],
+      });
+      const fresh = TestBed.inject(AppLockService);
+      TestBed.tick();
+
+      expect(fresh.failedAttempts()).toBe(3);
+      expect(fresh.blockedForMs()).toBeGreaterThan(0);
+    });
+
+    it('is cleared by a successful unlock', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      await service.unlockWithPin('000000');
+      await service.unlockWithPin(PIN);
+
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          AppLockService,
+          { provide: AuthService, useValue: auth },
+          { provide: Router, useValue: router },
+        ],
+      });
+      const fresh = TestBed.inject(AppLockService);
+      TestBed.tick();
+
+      expect(fresh.failedAttempts()).toBe(0);
     });
   });
 

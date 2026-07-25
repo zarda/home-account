@@ -20,7 +20,7 @@ describe('AppLockComponent', () => {
     attemptsExhausted = signal(false);
     appLock = jasmine.createSpyObj<AppLockService>(
       'AppLockService',
-      ['unlockWithPin', 'consumeRedirect', 'blockedForMs'],
+      ['unlockWithPin', 'consumeRedirect', 'blockedForMs', 'clearCredential'],
       { attemptsExhausted }
     );
     appLock.unlockWithPin.and.resolveTo(true);
@@ -106,6 +106,15 @@ describe('AppLockComponent', () => {
 
     expect(auth.signOut).toHaveBeenCalled();
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  // Signing out is the only recovery reachable from here — the settings screen
+  // that removes a PIN is behind the lock. Without clearing the credential the
+  // user signs back in and lands straight back on this screen.
+  it('clears the device credential when signing out', async () => {
+    await component.signOut();
+
+    expect(appLock.clearCredential).toHaveBeenCalled();
   });
 
   it('blocks submission while throttled', () => {

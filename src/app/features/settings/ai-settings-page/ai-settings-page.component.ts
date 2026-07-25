@@ -82,6 +82,13 @@ export class AiSettingsPageComponent implements OnInit {
   openaiApiKey = '';
   claudeApiKey = '';
 
+  /**
+   * Whether the stored keys were actually read. The fields are blank before
+   * that, and saving a blank field deletes the stored key — so no key write is
+   * accepted until a real read has happened.
+   */
+  keysLoaded = signal<boolean>(false);
+
   // Provider preferences
   llmProviderPreferences: LLMProviderPreferences = DEFAULT_LLM_PROVIDER_PREFERENCES;
 
@@ -187,9 +194,18 @@ export class AiSettingsPageComponent implements OnInit {
     // Keys live outside the user document now, so this is the one place that
     // reads them for display.
     const secrets = await this.providerKeys.resolve();
+    if (this.providerKeys.loadFailed()) {
+      // The fields would render empty even though keys are stored, and a stray
+      // blur would then save that emptiness over them.
+      this.keysLoaded.set(false);
+      this.notifications.error(this.translationService.t('aiPage.keysUnavailable'));
+      return;
+    }
+
     this.geminiApiKey = secrets.gemini ?? '';
     this.openaiApiKey = secrets.openai ?? '';
     this.claudeApiKey = secrets.claude ?? '';
+    this.keysLoaded.set(true);
   }
 
   async onRagLevelChange(level: RagInsightsLevel): Promise<void> {
@@ -257,6 +273,7 @@ export class AiSettingsPageComponent implements OnInit {
   // Gemini API Key handling
   async onGeminiApiKeyChange(): Promise<void> {
     this.geminiTestResult = null;
+    if (!this.keysLoaded()) return;
     await this.providerKeys.setKey('gemini', this.geminiApiKey || undefined);
     await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey || undefined);
   }
@@ -290,6 +307,7 @@ export class AiSettingsPageComponent implements OnInit {
   // OpenAI API Key handling
   async onOpenaiApiKeyChange(): Promise<void> {
     this.openaiTestResult = null;
+    if (!this.keysLoaded()) return;
     await this.providerKeys.setKey('openai', this.openaiApiKey || undefined);
     await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey || undefined);
   }
@@ -323,6 +341,7 @@ export class AiSettingsPageComponent implements OnInit {
   // Claude API Key handling
   async onClaudeApiKeyChange(): Promise<void> {
     this.claudeTestResult = null;
+    if (!this.keysLoaded()) return;
     await this.providerKeys.setKey('claude', this.claudeApiKey || undefined);
     await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey || undefined);
   }

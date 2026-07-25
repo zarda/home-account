@@ -130,6 +130,28 @@ describe('ProviderKeyService', () => {
       expect(service.loadFailed()).toBe(false);
     });
 
+    // A shared device: the previous user's load can still be pending when the
+    // next signs in, and reusing it would key the providers with their key.
+    it('does not hand an in-flight load to a different account', async () => {
+      let releaseFirst: (value: Record<string, unknown>) => void = () => undefined;
+      firestore.getDocument.and.returnValue(
+        new Promise(resolve => {
+          releaseFirst = resolve as (value: Record<string, unknown>) => void;
+        })
+      );
+
+      const firstUserLoad = service.resolve();
+
+      userId.set('user-2');
+      currentUser.set(createMockUser('user-2', { preferences: {} as UserPreferences }));
+      firestore.getDocument.and.resolveTo({ gemini: 'user-2-key' });
+
+      await expectAsync(service.resolve()).toBeResolvedTo({ gemini: 'user-2-key' });
+
+      releaseFirst({ gemini: 'user-1-key' });
+      await firstUserLoad;
+    });
+
     it('does not serve one account keys to the next', async () => {
       firestore.getDocument.and.resolveTo({ gemini: 'g-key' });
       await service.resolve();
@@ -180,6 +202,27 @@ describe('ProviderKeyService', () => {
       userId.set(null);
 
       await expectAsync(service.setKey('gemini', 'g')).toBeRejected();
+    });
+
+    // Saving one key says nothing about the others. Treating the result as a
+    // complete cache would make the unread ones look unset, and a later blur
+    // on an empty field would then delete a key that was only ever unread.
+    it('does not fabricate a cache when the keys were never read', async () => {
+      spyOn(console, 'warn');
+      firestore.getDocument.and.rejectWith(new Error('unavailable'));
+      await service.resolve();
+      expect(service.keys()).toBeNull();
+
+      await service.setKey('gemini', 'g-key');
+
+      expect(service.keys()).toBeNull();
+
+      // The next resolve goes back to Firestore rather than trusting a
+      // one-key cache.
+      firestore.getDocument.calls.reset();
+      firestore.getDocument.and.resolveTo({ gemini: 'g-key', openai: 'o-key' });
+      await expectAsync(service.resolve()).toBeResolvedTo({ gemini: 'g-key', openai: 'o-key' });
+      expect(firestore.getDocument).toHaveBeenCalled();
     });
   });
 

@@ -271,11 +271,17 @@ export class AuthService {
       'preferences.claudeApiKey': deleteField()
     });
 
-    const preferences = { ...user.preferences } as UserPreferences & LegacyProviderApiKeys;
+    // Re-read rather than reusing the snapshot taken before the await: a
+    // preference the user changed while the delete was in flight would
+    // otherwise be reverted in the signal.
+    const latest = this.currentUser();
+    if (!latest) return;
+
+    const preferences = { ...latest.preferences } as UserPreferences & LegacyProviderApiKeys;
     delete preferences.geminiApiKey;
     delete preferences.openaiApiKey;
     delete preferences.claudeApiKey;
-    this.currentUser.set({ ...user, preferences });
+    this.currentUser.set({ ...latest, preferences });
   }
 
   async updateUserProfile(data: { displayName?: string; photoURL?: string }): Promise<void> {

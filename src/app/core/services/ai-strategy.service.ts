@@ -91,7 +91,7 @@ export class AIStrategyService {
   // Computed: Available cloud providers
   availableCloudProviders = computed(() => this.cloudLLMProvider.availableProviders());
 
-  /** Account the cloud providers were last brought up for. */
+  /** Account and connectivity state the cloud providers were last brought up for. */
   private providersInitializedFor = signal<string | null>(null);
 
   constructor() {
@@ -113,13 +113,21 @@ export class AIStrategyService {
     // the settings page.
     effect(() => {
       const userId = this.authService.userId();
+      // Connectivity is a dependency on purpose: the keys are a separate
+      // document now, so a load that fails offline would otherwise leave the
+      // providers un-keyed for the rest of the session with nothing to retry
+      // it. Re-running on reconnect is cheap — the key read is cached and
+      // reinitialize() is a no-op when the key has not changed.
+      const online = this.pwaService.isOnline();
       if (!userId) {
         this.providersInitializedFor.set(null);
         return;
       }
-      if (this.providersInitializedFor() === userId) return;
 
-      this.providersInitializedFor.set(userId);
+      const attempt = `${userId}:${online}`;
+      if (this.providersInitializedFor() === attempt) return;
+
+      this.providersInitializedFor.set(attempt);
       void this.initializeCloudProviders();
     });
   }
