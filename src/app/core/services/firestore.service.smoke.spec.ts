@@ -97,7 +97,17 @@ describe('FirestoreService.getPage (emulator smoke test)', () => {
         setDoc(doc(firestore, `${path}/${id}`), {
           date: Timestamp.fromMillis(base - Math.floor(i / TIES_PER_DATE) * 86_400_000),
           index: i,
-          userId: uid
+          userId: uid,
+          // firestore.rules validates transaction shape on create; only
+          // date/index carry meaning here, the rest just makes the row legal.
+          type: 'expense',
+          amount: 1,
+          currency: 'USD',
+          amountInBaseCurrency: 1,
+          exchangeRate: 1,
+          categoryId: 'smoke',
+          description: 'page smoke',
+          isRecurring: false
         })
       )
     );

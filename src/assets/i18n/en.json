@@ -330,6 +330,7 @@
     "invalidBackupFormat": "Invalid backup file format",
     "fileReadFailed": "Failed to read file",
     "transactionsImported": "{{count}} transactions imported",
+    "transactionsImportedPartial": "{{count}} transactions imported, {{skipped}} skipped",
     "allTransactionsDeleted": "All transactions deleted",
     "deleteTransactionsFailed": "Failed to delete transactions",
     "confirmImport": "Confirm Import",

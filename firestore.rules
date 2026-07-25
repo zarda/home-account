@@ -13,47 +13,389 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Currencies collection (shared exchange rates cache)
+    // Fields the write actually changes. Updates are validated per changed
+    // field because the services issue partial updates ({ isActive: false },
+    // { order: index }, { spent }, { lastLoginAt }), and because rows written
+    // before these rules existed may be missing — or may hold values that
+    // predate — constraints the update never touches.
+    function touched(field) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny([field]);
+    }
+
+    // The owner stamp can never be repointed at another account. Absence is
+    // tolerated because older rows predate the field.
+    function ownerKept(userId) {
+      return !('userId' in request.resource.data)
+        || request.resource.data.userId == userId;
+    }
+
+    function isPositive(value) {
+      return value is number && value > 0;
+    }
+
+    // ---- transactions ----
+
+    function txOptionalsValid(d) {
+      return (!('baseCurrency' in d) || d.baseCurrency is string)
+        && (!('note' in d) || d.note is string)
+        && (!('tags' in d) || d.tags is list)
+        && (!('receiptUrl' in d) || d.receiptUrl is string)
+        && (!('recurringId' in d) || d.recurringId is string)
+        && (!('location' in d) || d.location is map)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function txCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasAll([
+             'userId', 'type', 'amount', 'currency', 'amountInBaseCurrency',
+             'exchangeRate', 'categoryId', 'description', 'date', 'isRecurring'
+           ])
+        && d.type in ['income', 'expense']
+        && isPositive(d.amount)
+        && d.currency is string
+        && d.amountInBaseCurrency is number
+        && d.exchangeRate is number
+        && d.categoryId is string
+        && d.description is string
+        && d.date is timestamp
+        && d.isRecurring is bool
+        && txOptionalsValid(d);
+    }
+
+    function txUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        && (!touched('type') || ('type' in d && d.type in ['income', 'expense']))
+        && (!touched('amount') || ('amount' in d && isPositive(d.amount)))
+        && (!touched('currency') || ('currency' in d && d.currency is string))
+        && (!touched('amountInBaseCurrency')
+            || ('amountInBaseCurrency' in d && d.amountInBaseCurrency is number))
+        && (!touched('exchangeRate') || ('exchangeRate' in d && d.exchangeRate is number))
+        && (!touched('categoryId') || ('categoryId' in d && d.categoryId is string))
+        && (!touched('description') || ('description' in d && d.description is string))
+        && (!touched('date') || ('date' in d && d.date is timestamp))
+        && (!touched('isRecurring') || ('isRecurring' in d && d.isRecurring is bool))
+        && txOptionalsValid(d);
+    }
+
+    // ---- budgets ----
+
+    function budgetOptionalsValid(d) {
+      return (!('endDate' in d) || d.endDate is timestamp)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function budgetCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasAll([
+             'userId', 'categoryId', 'name', 'amount', 'currency', 'period',
+             'startDate', 'spent', 'isActive', 'alertThreshold'
+           ])
+        && d.categoryId is string
+        && d.name is string
+        && isPositive(d.amount)
+        && d.currency is string
+        && d.period in ['weekly', 'monthly', 'yearly']
+        && d.startDate is timestamp
+        && d.spent is number
+        && d.isActive is bool
+        && d.alertThreshold is number
+        && budgetOptionalsValid(d);
+    }
+
+    function budgetUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        && (!touched('categoryId') || ('categoryId' in d && d.categoryId is string))
+        && (!touched('name') || ('name' in d && d.name is string))
+        && (!touched('amount') || ('amount' in d && isPositive(d.amount)))
+        && (!touched('currency') || ('currency' in d && d.currency is string))
+        && (!touched('period')
+            || ('period' in d && d.period in ['weekly', 'monthly', 'yearly']))
+        && (!touched('startDate') || ('startDate' in d && d.startDate is timestamp))
+        && (!touched('spent') || ('spent' in d && d.spent is number))
+        && (!touched('isActive') || ('isActive' in d && d.isActive is bool))
+        && (!touched('alertThreshold')
+            || ('alertThreshold' in d && d.alertThreshold is number))
+        && budgetOptionalsValid(d);
+    }
+
+    // ---- categories ----
+
+    // `id` is tolerated because initializeDefaultCategories copies the
+    // document id into the body, and those seeded rows carry no createdAt.
+    function categoryOptionalsValid(d) {
+      return (!('parentId' in d) || d.parentId is string)
+        && (!('id' in d) || d.id is string)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function categoryCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasAll([
+             'userId', 'name', 'icon', 'color', 'type', 'order',
+             'isActive', 'isDefault'
+           ])
+        && d.name is string
+        && d.icon is string
+        && d.color is string
+        && d.type in ['income', 'expense', 'both']
+        && d.order is number
+        && d.isActive is bool
+        && d.isDefault is bool
+        && categoryOptionalsValid(d);
+    }
+
+    function categoryUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        && (!touched('name') || ('name' in d && d.name is string))
+        && (!touched('icon') || ('icon' in d && d.icon is string))
+        && (!touched('color') || ('color' in d && d.color is string))
+        && (!touched('type')
+            || ('type' in d && d.type in ['income', 'expense', 'both']))
+        && (!touched('order') || ('order' in d && d.order is number))
+        && (!touched('isActive') || ('isActive' in d && d.isActive is bool))
+        && (!touched('isDefault') || ('isDefault' in d && d.isDefault is bool))
+        && categoryOptionalsValid(d);
+    }
+
+    // ---- recurring ----
+
+    function frequencyValid(f) {
+      return f is map
+        && f.keys().hasAll(['type', 'interval'])
+        && f.type in ['daily', 'weekly', 'monthly', 'yearly']
+        && f.interval is number;
+    }
+
+    function recurringOptionalsValid(d) {
+      return (!('endDate' in d) || d.endDate is timestamp)
+        && (!('lastProcessed' in d) || d.lastProcessed is timestamp)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function recurringCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasAll([
+             'userId', 'name', 'type', 'amount', 'currency', 'categoryId',
+             'description', 'frequency', 'startDate', 'nextOccurrence', 'isActive'
+           ])
+        && d.name is string
+        && d.type in ['income', 'expense']
+        && isPositive(d.amount)
+        && d.currency is string
+        && d.categoryId is string
+        && d.description is string
+        && frequencyValid(d.frequency)
+        && d.startDate is timestamp
+        && d.nextOccurrence is timestamp
+        && d.isActive is bool
+        && recurringOptionalsValid(d);
+    }
+
+    function recurringUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        && (!touched('name') || ('name' in d && d.name is string))
+        && (!touched('type') || ('type' in d && d.type in ['income', 'expense']))
+        && (!touched('amount') || ('amount' in d && isPositive(d.amount)))
+        && (!touched('currency') || ('currency' in d && d.currency is string))
+        && (!touched('categoryId') || ('categoryId' in d && d.categoryId is string))
+        && (!touched('description') || ('description' in d && d.description is string))
+        && (!touched('frequency')
+            || ('frequency' in d && frequencyValid(d.frequency)))
+        && (!touched('startDate') || ('startDate' in d && d.startDate is timestamp))
+        && (!touched('nextOccurrence')
+            || ('nextOccurrence' in d && d.nextOccurrence is timestamp))
+        && (!touched('isActive') || ('isActive' in d && d.isActive is bool))
+        && recurringOptionalsValid(d);
+    }
+
+    // ---- saved & recent searches ----
+
+    function searchOptionalsValid(d) {
+      return (!('label' in d) || d.label is string)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function searchCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasAll(['userId', 'query', 'pinned', 'lastUsedAt'])
+        && d.query is string
+        && d.pinned is bool
+        && d.lastUsedAt is timestamp
+        && searchOptionalsValid(d);
+    }
+
+    function searchUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        && (!touched('query') || ('query' in d && d.query is string))
+        && (!touched('pinned') || ('pinned' in d && d.pinned is bool))
+        && (!touched('lastUsedAt')
+            || ('lastUsedAt' in d && d.lastUsedAt is timestamp))
+        && searchOptionalsValid(d);
+    }
+
+    // ---- import history ----
+
+    function importStatuses() {
+      return ['pending', 'processing', 'completed', 'partial', 'failed'];
+    }
+
+    function importOptionalsValid(d) {
+      return (!('errors' in d) || d.errors is list)
+        && (!('fileSize' in d) || d.fileSize is number)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function importCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasAll([
+             'userId', 'importedAt', 'source', 'fileType', 'fileName', 'status'
+           ])
+        && d.importedAt is timestamp
+        && d.source in ['csv', 'pdf', 'image', 'json']
+        && d.fileType is string
+        && d.fileName is string
+        && d.status in importStatuses()
+        && importOptionalsValid(d);
+    }
+
+    function importUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        && (!touched('importedAt') || ('importedAt' in d && d.importedAt is timestamp))
+        && (!touched('source')
+            || ('source' in d && d.source in ['csv', 'pdf', 'image', 'json']))
+        && (!touched('fileName') || ('fileName' in d && d.fileName is string))
+        && (!touched('status') || ('status' in d && d.status in importStatuses()))
+        && importOptionalsValid(d);
+    }
+
+    // ---- user profile ----
+
+    function userOptionalsValid(d) {
+      return (!('photoURL' in d) || d.photoURL is string)
+        && (!('subscription' in d) || d.subscription is map)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    // photoURL is omitted, not null, when the provider has no picture.
+    function userCreateValid() {
+      let d = request.resource.data;
+      return d.keys().hasAll([
+             'email', 'displayName', 'createdAt', 'lastLoginAt', 'preferences'
+           ])
+        && d.email is string
+        && d.displayName is string
+        && d.createdAt is timestamp
+        && d.lastLoginAt is timestamp
+        && d.preferences is map
+        && userOptionalsValid(d);
+    }
+
+    function userUpdateValid() {
+      let d = request.resource.data;
+      return (!touched('email') || ('email' in d && d.email is string))
+        && (!touched('displayName') || ('displayName' in d && d.displayName is string))
+        && (!touched('createdAt') || ('createdAt' in d && d.createdAt is timestamp))
+        && (!touched('lastLoginAt')
+            || ('lastLoginAt' in d && d.lastLoginAt is timestamp))
+        && (!touched('preferences') || ('preferences' in d && d.preferences is map))
+        && userOptionalsValid(d);
+    }
+
+    // Retired shared exchange-rate cache. It was readable and writable by
+    // every authenticated user, so one account could rewrite the rates that
+    // convert every other account's stored amounts — and a poisoned rate is
+    // perfectly well shaped, so no validator can tell it from a real one.
+    // Rates are global data with a public source, so the cache moved to
+    // device-local storage rather than to another Firestore location.
     match /currencies/{document=**} {
-      // Any authenticated user can read cached rates
-      allow read: if isAuthenticated();
-      // Any authenticated user can update the cache
-      allow write: if isAuthenticated();
+      allow read, write: if false;
     }
 
     // Users collection
     match /users/{userId} {
       // Users can only read/write their own document
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && userCreateValid();
+      allow update: if isOwner(userId) && userUpdateValid();
+      allow delete: if isOwner(userId);
 
       // Transactions subcollection
       match /transactions/{transactionId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && txCreateValid(userId);
+        allow update: if isOwner(userId) && txUpdateValid(userId);
+        allow delete: if isOwner(userId);
       }
 
       // Budgets subcollection
       match /budgets/{budgetId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && budgetCreateValid(userId);
+        allow update: if isOwner(userId) && budgetUpdateValid(userId);
+        allow delete: if isOwner(userId);
       }
 
       // Categories subcollection
       match /categories/{categoryId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && categoryCreateValid(userId);
+        allow update: if isOwner(userId) && categoryUpdateValid(userId);
+        allow delete: if isOwner(userId);
       }
 
       // Recurring transactions subcollection
       match /recurring/{recurringId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && recurringCreateValid(userId);
+        allow update: if isOwner(userId) && recurringUpdateValid(userId);
+        allow delete: if isOwner(userId);
       }
 
       // Saved & recent searches subcollection
       match /savedSearches/{searchId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && searchCreateValid(userId);
+        allow update: if isOwner(userId) && searchUpdateValid(userId);
+        allow delete: if isOwner(userId);
       }
 
-      // Any other subcollections under user
+      // Import history subcollection
+      match /imports/{importId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && importCreateValid(userId);
+        allow update: if isOwner(userId) && importUpdateValid(userId);
+        allow delete: if isOwner(userId);
+      }
+
+      // Any other subcollections under user, including ones added later.
+      // Rules are additive — an allow here cannot be narrowed by the blocks
+      // above — so every validated collection must be carved out, or its
+      // field checks would simply be bypassable through this match.
       match /{subcollection}/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId) && !(subcollection in [
+          'transactions', 'budgets', 'categories',
+          'recurring', 'savedSearches', 'imports'
+        ]);
       }
     }
 
