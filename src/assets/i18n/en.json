@@ -861,5 +861,32 @@
     "convertFailedDownload": "The image could not be downloaded. If this keeps happening, the storage bucket needs a one-time CORS setup — see docs/storage-cors-setup.md.",
     "convertFailed": "Converting the image failed, so it was kept.",
     "empty": "No stored receipt images."
+  },
+  "appLock": {
+    "title": "App Locked",
+    "subtitle": "Enter your PIN to continue",
+    "pinLabel": "PIN",
+    "unlock": "Unlock",
+    "wrongPin": "Incorrect PIN",
+    "tooManyAttempts": "Too many attempts. Sign out and sign back in to regain access.",
+    "tryAgainIn": "Try again in {{seconds}}s",
+    "signOut": "Sign out instead",
+    "settingsTitle": "App Lock",
+    "settingsDescription": "Require a PIN to open the app on this device.",
+    "enable": "Require a PIN",
+    "noCredentialWarning": "No PIN is set on this device, so the app will not lock. Set one below.",
+    "timeoutLabel": "Lock after",
+    "timeoutImmediately": "Immediately",
+    "timeoutMinutes": "{{minutes}} minutes",
+    "setPin": "Set a PIN",
+    "changePin": "Change PIN",
+    "removePin": "Remove PIN",
+    "newPin": "New PIN",
+    "confirmPin": "Confirm PIN",
+    "savePin": "Save PIN",
+    "pinSaved": "PIN saved",
+    "pinRemoved": "PIN removed",
+    "pinSaveFailed": "Could not save the PIN on this device",
+    "disclaimer": "The PIN is set per device and controls access to the app. It does not encrypt your stored data."
   }
 }

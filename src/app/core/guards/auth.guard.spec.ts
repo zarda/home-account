@@ -1,13 +1,19 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRouteSnapshot, Router, RouterStateSnapshot } from '@angular/router';
 import { signal } from '@angular/core';
-import { authGuard, publicGuard } from './auth.guard';
+import { authGuard, lockGuard, publicGuard } from './auth.guard';
 import { AuthService } from '../services/auth.service';
+import { AppLockService } from '../services/app-lock.service';
 
 describe('Auth Guards', () => {
   let mockAuthService: {
     isLoading: ReturnType<typeof signal<boolean>>;
     isAuthenticated: ReturnType<typeof signal<boolean>>;
+  };
+  let mockAppLock: {
+    isLocked: ReturnType<typeof signal<boolean>>;
+    rememberRedirect: jasmine.Spy;
+    consumeRedirect: jasmine.Spy;
   };
   let mockRouter: { navigate: jasmine.Spy };
   let mockRoute: ActivatedRouteSnapshot;
@@ -19,16 +25,23 @@ describe('Auth Guards', () => {
       isAuthenticated: signal(false)
     };
 
+    mockAppLock = {
+      isLocked: signal(false),
+      rememberRedirect: jasmine.createSpy('rememberRedirect'),
+      consumeRedirect: jasmine.createSpy('consumeRedirect').and.returnValue('/dashboard')
+    };
+
     mockRouter = {
       navigate: jasmine.createSpy('navigate')
     };
 
     mockRoute = {} as ActivatedRouteSnapshot;
-    mockState = {} as RouterStateSnapshot;
+    mockState = { url: '/transactions' } as RouterStateSnapshot;
 
     TestBed.configureTestingModule({
       providers: [
         { provide: AuthService, useValue: mockAuthService },
+        { provide: AppLockService, useValue: mockAppLock },
         { provide: Router, useValue: mockRouter }
       ]
     });
@@ -146,6 +159,92 @@ describe('Auth Guards', () => {
 
       expect(result).toBe(false);
       expect(mockRouter.navigate).toHaveBeenCalledWith(['/']);
+    });
+  });
+  describe('app lock gate', () => {
+    beforeEach(() => {
+      mockAuthService.isAuthenticated.set(true);
+    });
+
+    it('allows an authenticated user through when unlocked', () => {
+      mockAppLock.isLocked.set(false);
+
+      const result = TestBed.runInInjectionContext(() =>
+        authGuard(mockRoute, mockState)
+      );
+
+      expect(result).toBe(true);
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('diverts to the lock screen when locked', () => {
+      mockAppLock.isLocked.set(true);
+
+      const result = TestBed.runInInjectionContext(() =>
+        authGuard(mockRoute, mockState)
+      );
+
+      expect(result).toBe(false);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/lock']);
+    });
+
+    // So unlocking returns the user where they were headed.
+    it('remembers the blocked destination', () => {
+      mockAppLock.isLocked.set(true);
+
+      TestBed.runInInjectionContext(() => authGuard(mockRoute, mockState));
+
+      expect(mockAppLock.rememberRedirect).toHaveBeenCalledWith('/transactions');
+    });
+
+    // Signing out must win over the lock, or the user is stuck.
+    it('sends a signed-out user to login even when locked', () => {
+      mockAuthService.isAuthenticated.set(false);
+      mockAppLock.isLocked.set(true);
+
+      const result = TestBed.runInInjectionContext(() =>
+        authGuard(mockRoute, mockState)
+      );
+
+      expect(result).toBe(false);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/login']);
+    });
+  });
+
+  describe('lockGuard', () => {
+    it('shows the lock screen while locked', () => {
+      mockAuthService.isAuthenticated.set(true);
+      mockAppLock.isLocked.set(true);
+
+      const result = TestBed.runInInjectionContext(() =>
+        lockGuard(mockRoute, mockState)
+      );
+
+      expect(result).toBe(true);
+    });
+
+    // /lock must never be a page the user cannot leave.
+    it('returns to the app when there is nothing to unlock', () => {
+      mockAuthService.isAuthenticated.set(true);
+      mockAppLock.isLocked.set(false);
+
+      const result = TestBed.runInInjectionContext(() =>
+        lockGuard(mockRoute, mockState)
+      );
+
+      expect(result).toBe(false);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/dashboard']);
+    });
+
+    it('sends a signed-out user to login', () => {
+      mockAuthService.isAuthenticated.set(false);
+
+      const result = TestBed.runInInjectionContext(() =>
+        lockGuard(mockRoute, mockState)
+      );
+
+      expect(result).toBe(false);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/login']);
     });
   });
 });

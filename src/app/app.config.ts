@@ -24,6 +24,7 @@ import { environment } from '../environments/environment';
 import { TranslationService } from './core/services/translation.service';
 import { ThemeService } from './core/services/theme.service';
 import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
+import { AppLockService } from './core/services/app-lock.service';
 
 /**
  * Tab manager for the Firestore local cache. Multi-tab so the IndexedDB
@@ -122,6 +123,11 @@ export const appConfig: ApplicationConfig = {
       // Attach the offline-queue processing listeners at startup so queued
       // images/transactions are handled as soon as connectivity returns.
       inject(OfflineQueueProcessorService);
+    }),
+    provideAppInitializer(() => {
+      // Construct the lock service before the first guarded navigation so a
+      // cold start cannot slip past the lock while it is still initializing.
+      inject(AppLockService).init();
     })
   ]
 };

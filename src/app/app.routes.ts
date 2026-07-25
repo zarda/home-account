@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { LoginComponent } from './features/auth/login/login.component';
-import { authGuard, publicGuard } from './core/guards';
+import { authGuard, lockGuard, publicGuard } from './core/guards';
 import { MainLayoutComponent } from './shared/layout/main-layout/main-layout.component';
 import { DashboardComponent } from './features/dashboard/dashboard.component';
 import { TransactionsComponent } from './features/transactions/transactions.component';
@@ -14,6 +14,12 @@ export const routes: Routes = [
     path: 'login',
     component: LoginComponent,
     canActivate: [publicGuard],
+  },
+  {
+    path: 'lock',
+    canActivate: [lockGuard],
+    loadComponent: () =>
+      import('./features/auth/app-lock/app-lock.component').then(m => m.AppLockComponent),
   },
   {
     path: '',

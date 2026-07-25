@@ -78,6 +78,32 @@ export interface UserPreferences {
                                  // use effectiveRagLevel().
   ragInsightsLevel?: RagInsightsLevel; // Tiered RAG grounding depth. Absent = derive from the
                                        // legacy boolean (true→'standard', else 'off').
+  enableAppLock?: boolean;       // Absent = off. Requires a credential on this device.
+  appLockTimeoutMinutes?: number; // Grace period after backgrounding; absent = default.
+}
+
+/** Auto-lock delays offered in settings, in minutes. 0 locks immediately. */
+export const APP_LOCK_TIMEOUT_MINUTES: readonly number[] = [0, 1, 5, 15, 60];
+
+export const DEFAULT_APP_LOCK_TIMEOUT_MINUTES = 5;
+
+/** Whether the account asked for an app lock. Absent means off. */
+export function appLockEnabled(prefs: UserPreferences | null | undefined): boolean {
+  return prefs?.enableAppLock === true;
+}
+
+/**
+ * Resolve the auto-lock delay, tolerating values written by other builds the
+ * same way effectiveRagLevel() tolerates unknown levels.
+ */
+export function effectiveAppLockTimeoutMinutes(
+  prefs: UserPreferences | null | undefined
+): number {
+  const stored = prefs?.appLockTimeoutMinutes;
+  if (typeof stored === 'number' && APP_LOCK_TIMEOUT_MINUTES.includes(stored)) {
+    return stored;
+  }
+  return DEFAULT_APP_LOCK_TIMEOUT_MINUTES;
 }
 
 /** Detail-grounding depth for AI insights — a token/latency vs. detail trade-off. */

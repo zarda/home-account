@@ -1,0 +1,93 @@
+<div class="security-settings">
+  <span class="section-label" id="app-lock-label">{{ 'appLock.settingsTitle' | translate }}</span>
+  <p class="section-description">{{ 'appLock.settingsDescription' | translate }}</p>
+
+  <div class="setting-row">
+    <mat-slide-toggle
+      [checked]="enabled()"
+      (change)="onEnabledChange($event.checked)"
+      aria-labelledby="app-lock-label"
+    >
+      {{ 'appLock.enable' | translate }}
+    </mat-slide-toggle>
+  </div>
+
+  @if (needsCredential()) {
+    <p class="lock-warning" role="alert">
+      <mat-icon class="warning-icon">warning</mat-icon>
+      {{ 'appLock.noCredentialWarning' | translate }}
+    </p>
+  }
+
+  @if (enabled() && hasCredential()) {
+    <mat-form-field appearance="outline" class="timeout-field">
+      <mat-label>{{ 'appLock.timeoutLabel' | translate }}</mat-label>
+      <mat-select
+        [value]="timeoutMinutes()"
+        (selectionChange)="onTimeoutChange($event.value)"
+      >
+        @for (minutes of timeoutOptions; track minutes) {
+          <mat-option [value]="minutes">{{ timeoutLabel(minutes) }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  }
+
+  @if (isSettingPin()) {
+    <div class="pin-setup">
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'appLock.newPin' | translate }}</mat-label>
+        <input
+          matInput
+          name="newPin"
+          type="password"
+          inputmode="numeric"
+          autocomplete="off"
+          [attr.maxlength]="pinLength"
+          [(ngModel)]="newPin"
+        />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'appLock.confirmPin' | translate }}</mat-label>
+        <input
+          matInput
+          name="confirmPin"
+          type="password"
+          inputmode="numeric"
+          autocomplete="off"
+          [attr.maxlength]="pinLength"
+          [(ngModel)]="confirmPin"
+        />
+      </mat-form-field>
+
+      <div class="pin-actions">
+        <button mat-button type="button" (click)="cancelPinSetup()">
+          {{ 'common.cancel' | translate }}
+        </button>
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          [disabled]="!canSavePin"
+          (click)="savePin()"
+        >
+          {{ 'appLock.savePin' | translate }}
+        </button>
+      </div>
+    </div>
+  } @else {
+    <div class="pin-actions">
+      <button mat-stroked-button type="button" (click)="startPinSetup()">
+        {{ (hasCredential() ? 'appLock.changePin' : 'appLock.setPin') | translate }}
+      </button>
+      @if (hasCredential()) {
+        <button mat-button type="button" (click)="removePin()">
+          {{ 'appLock.removePin' | translate }}
+        </button>
+      }
+    </div>
+  }
+
+  <p class="lock-disclaimer">{{ 'appLock.disclaimer' | translate }}</p>
+</div>

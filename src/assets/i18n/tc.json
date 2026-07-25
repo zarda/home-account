@@ -885,5 +885,32 @@
     "convertFailedDownload": "無法下載圖片。若持續發生，儲存空間值區需要一次性的 CORS 設定（請參閱 docs/storage-cors-setup.md）。",
     "convertFailed": "圖片轉換失敗，圖片已保留。",
     "empty": "沒有已儲存的收據圖片。"
+  },
+  "appLock": {
+    "title": "應用程式已鎖定",
+    "subtitle": "請輸入 PIN 碼以繼續",
+    "pinLabel": "PIN 碼",
+    "unlock": "解鎖",
+    "wrongPin": "PIN 碼不正確",
+    "tooManyAttempts": "嘗試次數過多。請登出後重新登入。",
+    "tryAgainIn": "{{seconds}} 秒後可再試",
+    "signOut": "改為登出",
+    "settingsTitle": "應用程式鎖定",
+    "settingsDescription": "在此裝置開啟應用程式時要求輸入 PIN 碼。",
+    "enable": "要求輸入 PIN 碼",
+    "noCredentialWarning": "此裝置尚未設定 PIN 碼，鎖定不會生效。請於下方設定。",
+    "timeoutLabel": "閒置多久後鎖定",
+    "timeoutImmediately": "立即",
+    "timeoutMinutes": "{{minutes}} 分鐘",
+    "setPin": "設定 PIN 碼",
+    "changePin": "變更 PIN 碼",
+    "removePin": "移除 PIN 碼",
+    "newPin": "新的 PIN 碼",
+    "confirmPin": "確認 PIN 碼",
+    "savePin": "儲存 PIN 碼",
+    "pinSaved": "已儲存 PIN 碼",
+    "pinRemoved": "已移除 PIN 碼",
+    "pinSaveFailed": "無法在此裝置儲存 PIN 碼",
+    "disclaimer": "PIN 碼以裝置為單位設定，用於限制應用程式存取，並不會加密您儲存的資料。"
   }
 }

@@ -17,6 +17,7 @@ import { SUPPORTED_CURRENCIES } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../core/services/notification.service';
 import { SecurityActivityComponent } from '../security-activity/security-activity.component';
+import { SecuritySettingsComponent } from '../security-settings/security-settings.component';
 
 @Component({
   selector: 'app-profile-settings',
@@ -32,6 +33,7 @@ import { SecurityActivityComponent } from '../security-activity/security-activit
     MatButtonToggleModule,
     TranslatePipe,
     SecurityActivityComponent,
+    SecuritySettingsComponent,
   ],
   templateUrl: './profile-settings.component.html',
   styleUrl: './profile-settings.component.scss',

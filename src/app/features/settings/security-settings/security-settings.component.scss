@@ -1,0 +1,61 @@
+.security-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.section-description {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.setting-row {
+  padding: 4px 0;
+}
+
+.lock-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-error);
+}
+
+.warning-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+}
+
+.timeout-field {
+  width: 100%;
+  max-width: 240px;
+}
+
+.pin-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 240px;
+}
+
+.pin-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lock-disclaimer {
+  margin: 4px 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

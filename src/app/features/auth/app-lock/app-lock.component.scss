@@ -1,0 +1,77 @@
+.app-lock {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--surface-background);
+}
+
+.lock-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 24px;
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+
+.lock-icon {
+  width: 48px;
+  height: 48px;
+  font-size: 48px;
+  color: var(--text-muted);
+}
+
+.lock-title {
+  margin: 8px 0 0;
+  font-size: var(--text-xl);
+  color: var(--text-primary);
+}
+
+.lock-subtitle {
+  margin: 0 0 8px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pin-field {
+  width: 100%;
+}
+
+.pin-field input {
+  letter-spacing: 0.5em;
+  text-align: center;
+}
+
+.lock-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-error);
+}
+
+.lock-blocked {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.unlock-button {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.signout-button {
+  margin-top: 4px;
+}
