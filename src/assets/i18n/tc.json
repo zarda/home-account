@@ -412,7 +412,17 @@
     "aiModeAutoDescription": "根據網路連線狀態和準確度自動選擇最佳方式",
     "textModelLabel": "文字模型（摘要與建議）",
     "visionModelLabel": "視覺模型（收據掃描）",
-    "modelLabel": "模型"
+    "modelLabel": "模型",
+    "securityActivity": "最近登入紀錄",
+    "securityActivityDescription": "您帳戶的登入紀錄，無法編輯或刪除。",
+    "securityActivityEmpty": "尚無登入紀錄",
+    "securityActivityFailed": "無法載入登入紀錄",
+    "securityEventSignIn": "已登入",
+    "activityAt": "{{date}} {{time}}",
+    "platformWeb": "網頁",
+    "platformIos": "iPhone 或 iPad",
+    "platformAndroid": "Android",
+    "platformUnknown": "未知裝置"
   },
   "days": {
     "sunday": "週日",

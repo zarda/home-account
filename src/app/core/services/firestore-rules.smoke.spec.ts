@@ -469,6 +469,80 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('securityEvents (append-only)', () => {
+    const validEvent = (overrides: Record<string, unknown> = {}) => ({
+      userId: uid,
+      type: 'signIn',
+      occurredAt: Timestamp.now(),
+      platform: 'web',
+      ...overrides
+    });
+
+    it('accepts a well-formed sign-in entry', async () => {
+      await expectAllowed(setDoc(doc(firestore, path('securityEvents')), validEvent()), 'valid create');
+    });
+
+    it('accepts the createdAt/updatedAt stamps addDocument adds', async () => {
+      await expectAllowed(
+        setDoc(
+          doc(firestore, path('securityEvents')),
+          validEvent({ createdAt: Timestamp.now(), updatedAt: Timestamp.now() })
+        ),
+        'create with service stamps'
+      );
+    });
+
+    it('rejects an unknown event type', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('securityEvents')), validEvent({ type: 'passwordChange' })),
+        'unknown type'
+      );
+    });
+
+    it("rejects an entry attributed to another user", async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('securityEvents')), validEvent({ userId: otherUid })),
+        'foreign userId'
+      );
+    });
+
+    // Anything not in the closed set could be used to smuggle in a field the
+    // log is specifically meant not to carry.
+    it('rejects extra fields outside the closed set', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('securityEvents')), validEvent({ ipAddress: '203.0.113.4' })),
+        'extra field'
+      );
+    });
+
+    // The point of the log: whoever holds the credentials must not be able to
+    // erase the record of their own sign-in.
+    it('denies updating an existing entry', async () => {
+      const p = path('securityEvents');
+      await setDoc(doc(firestore, p), validEvent());
+      await expectDenied(updateDoc(doc(firestore, p), { platform: 'ios' }), 'entry update');
+    });
+
+    it('denies overwriting an existing entry', async () => {
+      const p = path('securityEvents');
+      await setDoc(doc(firestore, p), validEvent());
+      await expectDenied(setDoc(doc(firestore, p), validEvent({ platform: 'ios' })), 'entry overwrite');
+    });
+
+    it('denies deleting an entry', async () => {
+      const p = path('securityEvents');
+      await setDoc(doc(firestore, p), validEvent());
+      await expectDenied(deleteDoc(doc(firestore, p)), 'entry delete');
+    });
+
+    it("denies writing into another user's log", async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('securityEvents', otherUid)), validEvent({ userId: otherUid })),
+        "write to stranger's log"
+      );
+    });
+  });
+
   describe('cross-tenant isolation', () => {
     it("denies writing into another user's subcollection", async () => {
       await expectDenied(
@@ -512,7 +586,10 @@ describe('firestore.rules (emulator smoke test)', () => {
     // Rules are additive, so the catch-all must exclude every validated
     // collection. Without the exclusion list these writes succeed and every
     // field validator above becomes decorative.
-    const validated = ['transactions', 'budgets', 'categories', 'recurring', 'savedSearches', 'imports'];
+    const validated = [
+      'transactions', 'budgets', 'categories',
+      'recurring', 'savedSearches', 'imports', 'securityEvents'
+    ];
 
     for (const collection of validated) {
       it(`does not let the catch-all bypass ${collection} validation`, async () => {

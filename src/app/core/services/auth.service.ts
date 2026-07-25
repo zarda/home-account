@@ -22,6 +22,7 @@ import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService, ThemePreference } from './theme.service';
+import { SecurityLogService } from './security-log.service';
 
 /**
  * First-sign-in user document built from the Firebase auth profile.
@@ -52,6 +53,7 @@ export class AuthService {
   private injector = inject(EnvironmentInjector);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
+  private securityLog = inject(SecurityLogService);
 
   // Signals for reactive state
   currentUser = signal<User | null>(null);
@@ -151,6 +153,7 @@ export class AuthService {
     const result = await signInWithPopup(this.auth, provider);
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
+    this.recordSignIn(user.id);
     return user;
   }
 
@@ -170,7 +173,21 @@ export class AuthService {
 
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
+    this.recordSignIn(user.id);
     return user;
+  }
+
+  /**
+   * Recorded from the two interactive sign-in paths only. getOrCreateUser and
+   * the auth-state listener both also run on every session restore, so logging
+   * there would record an entry for each ordinary app open and double-log a
+   * real sign-in.
+   *
+   * Not awaited: record() swallows its own errors, and while offline the write
+   * sits in the persistent cache until reconnect, which would stall sign-in.
+   */
+  private recordSignIn(userId: string): void {
+    void this.securityLog.record(userId, 'signIn');
   }
 
   async signOut(): Promise<void> {

@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { of } from 'rxjs';
 
 import { ProfileSettingsComponent } from './profile-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
@@ -11,6 +12,7 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TransactionService } from '../../../core/services/transaction.service';
+import { SecurityLogService } from '../../../core/services/security-log.service';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
@@ -23,6 +25,7 @@ describe('ProfileSettingsComponent', () => {
   let mockGeminiService: jasmine.SpyObj<GeminiService>;
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
   let mockTransactionService: jasmine.SpyObj<TransactionService>;
+  let mockSecurityLog: jasmine.SpyObj<SecurityLogService>;
 
   const mockUser = {
     displayName: 'Test User',
@@ -36,7 +39,8 @@ describe('ProfileSettingsComponent', () => {
 
   beforeEach(async () => {
     mockAuthService = jasmine.createSpyObj('AuthService', ['updateUserPreferences', 'updateUserProfile'], {
-      currentUser: signal(mockUser)
+      currentUser: signal(mockUser),
+      userId: signal('user-1')
     });
     mockAuthService.updateUserPreferences.and.returnValue(Promise.resolve());
     mockAuthService.updateUserProfile.and.returnValue(Promise.resolve());
@@ -65,7 +69,11 @@ describe('ProfileSettingsComponent', () => {
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 
     mockTransactionService = jasmine.createSpyObj('TransactionService', ['resnapshotBaseCurrency']);
+
     mockTransactionService.resnapshotBaseCurrency.and.returnValue(Promise.resolve(0));
+
+    mockSecurityLog = jasmine.createSpyObj('SecurityLogService', ['watchRecent', 'record']);
+    mockSecurityLog.watchRecent.and.returnValue(of([]));
 
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
@@ -77,7 +85,10 @@ describe('ProfileSettingsComponent', () => {
         { provide: ThemeService, useValue: mockThemeService },
         { provide: GeminiService, useValue: mockGeminiService },
         { provide: AnnouncerService, useValue: mockAnnouncer },
-        { provide: TransactionService, useValue: mockTransactionService }
+        { provide: TransactionService, useValue: mockTransactionService },
+        // Stubbed so the embedded activity list does not pull Firestore into
+        // this spec; SecurityActivityComponent has its own.
+        { provide: SecurityLogService, useValue: mockSecurityLog }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

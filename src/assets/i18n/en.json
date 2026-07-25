@@ -412,7 +412,17 @@
     "aiModeAutoDescription": "Automatically choose the best option based on connectivity and accuracy",
     "textModelLabel": "Text model (summaries & advice)",
     "visionModelLabel": "Vision model (receipt scanning)",
-    "modelLabel": "Model"
+    "modelLabel": "Model",
+    "securityActivity": "Recent Sign-In Activity",
+    "securityActivityDescription": "Sign-ins to your account. Entries cannot be edited or deleted.",
+    "securityActivityEmpty": "No sign-ins recorded yet",
+    "securityActivityFailed": "Could not load sign-in activity",
+    "securityEventSignIn": "Signed in",
+    "activityAt": "{{date}} at {{time}}",
+    "platformWeb": "Web",
+    "platformIos": "iPhone or iPad",
+    "platformAndroid": "Android",
+    "platformUnknown": "Unknown device"
   },
   "days": {
     "sunday": "Sunday",

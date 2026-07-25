@@ -412,7 +412,17 @@
     "aiModeAutoDescription": "接続状況と精度に基づいて最適なオプションを自動選択",
     "textModelLabel": "テキストモデル（サマリーとアドバイス）",
     "visionModelLabel": "ビジョンモデル（レシートスキャン）",
-    "modelLabel": "モデル"
+    "modelLabel": "モデル",
+    "securityActivity": "最近のサインイン履歴",
+    "securityActivityDescription": "アカウントへのサインイン記録です。編集や削除はできません。",
+    "securityActivityEmpty": "サインインの記録はまだありません",
+    "securityActivityFailed": "サインイン履歴を読み込めませんでした",
+    "securityEventSignIn": "サインイン",
+    "activityAt": "{{date}} {{time}}",
+    "platformWeb": "ウェブ",
+    "platformIos": "iPhone / iPad",
+    "platformAndroid": "Android",
+    "platformUnknown": "不明なデバイス"
   },
   "days": {
     "sunday": "日曜日",

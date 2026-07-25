@@ -6,3 +6,4 @@ export * from './currency.model';
 export * from './recurring-transaction.model';
 export * from './import-history.model';
 export * from './saved-search.model';
+export * from './security-event.model';

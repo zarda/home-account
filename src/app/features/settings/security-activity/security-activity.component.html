@@ -1,0 +1,32 @@
+<div class="security-activity">
+  <span class="section-label" id="security-activity-label">
+    {{ 'settings.securityActivity' | translate }}
+  </span>
+  <p class="section-description">{{ 'settings.securityActivityDescription' | translate }}</p>
+
+  @if (isLoading()) {
+    <app-loading-spinner size="sm" />
+  } @else if (hasError()) {
+    <p class="activity-error">{{ 'settings.securityActivityFailed' | translate }}</p>
+  } @else if (events().length === 0) {
+    <app-empty-state
+      size="sm"
+      icon="history"
+      [title]="'settings.securityActivityEmpty' | translate"
+    />
+  } @else {
+    <ul class="activity-list" aria-labelledby="security-activity-label">
+      @for (event of events(); track event.id) {
+        <li class="activity-item">
+          <mat-icon class="activity-icon">login</mat-icon>
+          <div class="activity-text">
+            <span class="activity-title">{{ 'settings.securityEventSignIn' | translate }}</span>
+            <span class="activity-meta" [title]="absoluteWhen(event)">
+              {{ formatWhen(event) }} · {{ platformLabelKey(event.platform) | translate }}
+            </span>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</div>
