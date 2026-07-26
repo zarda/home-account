@@ -65,6 +65,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Catches translation keys the source references but no locale defines.
+      # Key-set parity between locales is covered by the unit suite.
+      - name: Check translation keys
+        run: npm run i18n:check
+
       - name: Unit tests
         run: npm run test:ci
 

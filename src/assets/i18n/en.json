@@ -704,8 +704,6 @@
     "preview": "Preview",
     "processWithAI": "Process with AI",
     "extractingData": "Extracting data from file",
-    "processingFile": "Processing {{fileName}}...",
-    "extractingTransactions": "Extracting transactions with AI...",
     "categorizingTransactions": "Categorizing transactions...",
     "checkingDuplicates": "Checking for duplicates...",
     "foundTransactions": "Found {{count}} transactions",
