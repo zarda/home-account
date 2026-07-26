@@ -46,13 +46,23 @@
     @if (hasCards()) {
       <div class="insight-grid">
         @for (card of cards(); track card.id) {
+          <!-- An archived month keeps no transaction ids, so inline drill-downs
+               are suppressed rather than opening an empty list. -->
           <app-insight-card
             [card]="card"
-            [currency]="currency()"
+            [currency]="displayCurrency()"
             [lookup]="lookup()"
+            [archived]="isViewingArchive()"
           />
         }
       </div>
+    } @else if (isViewingArchive()) {
+      <app-empty-state
+        icon="history"
+        size="sm"
+        [title]="'insights.archiveEmptyTitle' | translate"
+        [description]="'insights.archiveEmptyBody' | translate"
+      />
     } @else if (missingRequirements().length > 0) {
       <!-- Every detector has a data gate, so a young account produces nothing.
            Name the gaps rather than looking broken. -->
@@ -77,13 +87,51 @@
       />
     }
 
-    @if (recurringSummary(); as summary) {
+    @if (isViewingArchive()) {
+      @if (archivedRecurring(); as summary) {
+        <app-recurring-list
+          [summary]="summary"
+          [currency]="displayCurrency()"
+          [archived]="true"
+        />
+      }
+    } @else if (recurringSummary(); as summary) {
       <app-recurring-list
         [summary]="summary"
         [currency]="currency()"
         [drillDownIds]="drillDownIds()"
         [lookup]="lookup()"
       />
+    }
+
+    <!-- Secondary to the live answer, so collapsed by default. Not a fifth tab
+         (the header is already tight at four) and not a route (the mobile bottom
+         nav is full at five slots). -->
+    @if (storedSnapshots().length > 0) {
+      <mat-accordion class="history-accordion">
+        <mat-expansion-panel>
+          <mat-expansion-panel-header>
+            <mat-panel-title>
+              <mat-icon class="panel-icon">history</mat-icon>
+              {{ 'insights.historyTitle' | translate }}
+            </mat-panel-title>
+            <mat-panel-description>
+              {{ 'insights.historyCount' | translate:{ count: storedSnapshots().length } }}
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+
+          <app-snapshot-timeline
+            [snapshots]="storedSnapshots()"
+            [selectedMonth]="viewedMonth()"
+            [staleness]="staleness()"
+            [isRegenerating]="isRegenerating()"
+            (monthSelected)="onMonthSelected($event)"
+            (regenerateRequested)="onRegenerate($event)"
+          />
+
+          <app-snapshot-compare [snapshots]="storedSnapshots()" />
+        </mat-expansion-panel>
+      </mat-accordion>
     }
   }
 </div>

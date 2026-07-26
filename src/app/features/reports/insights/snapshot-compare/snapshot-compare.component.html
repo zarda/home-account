@@ -1,0 +1,100 @@
+@if (canCompare()) {
+  <div class="compare">
+    <div class="compare-pickers">
+      <mat-form-field appearance="outline" class="picker">
+        <mat-label>{{ 'insights.compareFrom' | translate }}</mat-label>
+        <mat-select
+          [value]="selectedFrom()"
+          (valueChange)="onFromChange($event)"
+        >
+          @for (snapshot of snapshots(); track snapshot.monthKey) {
+            <mat-option [value]="snapshot.monthKey">
+              {{ monthLabel(snapshot.monthKey) }}
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-icon class="compare-arrow">arrow_forward</mat-icon>
+
+      <mat-form-field appearance="outline" class="picker">
+        <mat-label>{{ 'insights.compareTo' | translate }}</mat-label>
+        <mat-select
+          [value]="selectedTo()"
+          (valueChange)="onToChange($event)"
+        >
+          @for (snapshot of snapshots(); track snapshot.monthKey) {
+            <mat-option [value]="snapshot.monthKey">
+              {{ monthLabel(snapshot.monthKey) }}
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+
+    @if (refusal(); as reasonKey) {
+      <p class="compare-refusal">{{ reasonKey | translate }}</p>
+    } @else if (comparison(); as result) {
+      <div class="headline-row">
+        <div class="headline">
+          <span class="headline-label">{{ 'insights.compareSpending' | translate }}</span>
+          <span
+            class="headline-value"
+            [class.up]="result.expenseChange > 0"
+            [class.down]="result.expenseChange < 0"
+          >
+            {{ result.expenseChange | currency:result.baseCurrency:'symbol':'1.2-2' }}
+            @if (result.expenseChangeRatio !== null) {
+              <span class="headline-ratio">
+                ({{ result.expenseChangeRatio * 100 | number:'1.0-0' }}%)
+              </span>
+            }
+          </span>
+        </div>
+
+        <div class="headline">
+          <span class="headline-label">{{ 'insights.compareRecurring' | translate }}</span>
+          <span
+            class="headline-value"
+            [class.up]="result.recurringMonthlyChange > 0"
+            [class.down]="result.recurringMonthlyChange < 0"
+          >
+            {{ result.recurringMonthlyChange | currency:result.baseCurrency:'symbol':'1.2-2' }}
+          </span>
+        </div>
+      </div>
+
+      @if (changed().length > 0) {
+        <ul class="change-list">
+          @for (entry of changed(); track entry.categoryId) {
+            <li class="change-row">
+              <span class="change-name">{{ categoryName(entry.categoryId) }}</span>
+              <span
+                class="change-amount"
+                [class.up]="entry.change > 0"
+                [class.down]="entry.change < 0"
+              >
+                {{ entry.change | currency:result.baseCurrency:'symbol':'1.2-2' }}
+                @if (entry.changeRatio !== null) {
+                  <span class="change-ratio">
+                    ({{ entry.changeRatio * 100 | number:'1.0-0' }}%)
+                  </span>
+                }
+              </span>
+            </li>
+          }
+        </ul>
+      }
+
+      @if (unchanged().length > 0) {
+        <!-- Said out loud rather than left as an absence the user has to spot. -->
+        <p class="unchanged-line">
+          {{ 'insights.compareUnchanged' | translate }}
+          @for (entry of unchanged(); track entry.categoryId; let last = $last) {
+            <span>{{ categoryName(entry.categoryId) }}{{ last ? '' : ', ' }}</span>
+          }
+        </p>
+      }
+    }
+  </div>
+}

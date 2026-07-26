@@ -1,0 +1,66 @@
+@if (hasSnapshots()) {
+  <div class="timeline">
+    <div class="chip-row" role="group" [attr.aria-label]="'insights.timelineLabel' | translate">
+      @for (snapshot of snapshots(); track snapshot.monthKey) {
+        <button
+          type="button"
+          class="month-chip"
+          [class.selected]="selectedMonth() === snapshot.monthKey"
+          [attr.aria-pressed]="selectedMonth() === snapshot.monthKey"
+          (click)="select(snapshot.monthKey)"
+        >
+          {{ monthLabel(snapshot.monthKey) }}
+        </button>
+      }
+    </div>
+
+    @if (selected(); as snapshot) {
+      <div class="viewing-bar">
+        <mat-icon>history</mat-icon>
+        <span class="viewing-text">
+          {{ 'insights.viewingMonth' | translate:{ month: monthLabel(snapshot.monthKey) } }}
+        </span>
+        <button mat-stroked-button (click)="backToCurrent()">
+          {{ 'insights.backToCurrent' | translate }}
+        </button>
+      </div>
+
+      @if (staleReasons().length > 0) {
+        <!-- Inline and persistent, not a snackbar: this has to stay visible
+             until the user decides what to do about it. -->
+        <div class="stale-strip" role="status">
+          <mat-icon>warning</mat-icon>
+          <div class="stale-text">
+            <span class="stale-title">{{ 'insights.staleTitle' | translate }}</span>
+            <span class="stale-reasons">
+              @for (reason of staleReasons(); track reason) {
+                <span class="stale-reason">{{ reasonLabel(reason) }}</span>
+              }
+            </span>
+          </div>
+          <button
+            mat-stroked-button
+            color="warn"
+            [disabled]="isRegenerating()"
+            (click)="regenerate()"
+          >
+            {{ 'insights.regenerate' | translate }}
+          </button>
+        </div>
+      } @else if (showsDetectorNote()) {
+        <!-- Only our code changed, not their data: a footnote, not a warning. -->
+        <p class="detector-note">
+          {{ 'insights.detectorUpdatedNote' | translate }}
+          <button
+            mat-button
+            class="note-action"
+            [disabled]="isRegenerating()"
+            (click)="regenerate()"
+          >
+            {{ 'insights.regenerate' | translate }}
+          </button>
+        </p>
+      }
+    }
+  </div>
+}

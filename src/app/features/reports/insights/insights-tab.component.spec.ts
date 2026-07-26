@@ -10,7 +10,9 @@ import { PwaService } from '../../../core/services/pwa.service';
 import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { Transaction, User } from '../../../models';
+import { NotificationService } from '../../../core/services/notification.service';
+import { MatDialog } from '@angular/material/dialog';
+import { InsightSnapshot, Transaction, User } from '../../../models';
 import { createTimestamp, createTransaction, createUser } from '../../../core/services/testing/test-data';
 import {
   PeriodSelection,
@@ -20,7 +22,11 @@ describe('InsightsTabComponent', () => {
   let component: InsightsTabComponent;
   let fixture: ComponentFixture<InsightsTabComponent>;
   let transactionService: jasmine.SpyObj<TransactionService>;
+  let snapshotService: jasmine.SpyObj<InsightSnapshotService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
+  let dialog: jasmine.SpyObj<MatDialog>;
   let currentUser: ReturnType<typeof signal<User | null>>;
+  let storedSnapshots: ReturnType<typeof signal<InsightSnapshot[]>>;
 
   const period: PeriodSelection = {
     option: 'lastMonth',
@@ -63,10 +69,26 @@ describe('InsightsTabComponent', () => {
   beforeEach(async () => {
     sessionStorage.clear();
     currentUser = signal<User | null>(createUser());
+    storedSnapshots = signal<InsightSnapshot[]>([]);
 
     transactionService = jasmine.createSpyObj<TransactionService>(
       'TransactionService', ['getTransactionsInRange']);
     transactionService.getTransactionsInRange.and.returnValue(of([]));
+
+    snapshotService = jasmine.createSpyObj<InsightSnapshotService>(
+      'InsightSnapshotService',
+      ['generateClosedMonths', 'watch', 'get', 'staleness', 'regenerate'],
+      { snapshots: storedSnapshots });
+    snapshotService.generateClosedMonths.and.returnValue(Promise.resolve([]));
+    snapshotService.watch.and.returnValue(of([]));
+    snapshotService.get.and.returnValue(null);
+    snapshotService.staleness.and.returnValue(Promise.resolve(null));
+    snapshotService.regenerate.and.returnValue(Promise.resolve(null));
+
+    notifications = jasmine.createSpyObj<NotificationService>(
+      'NotificationService', ['success', 'error', 'info']);
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
 
     await TestBed.configureTestingModule({
       imports: [InsightsTabComponent, NoopAnimationsModule],
@@ -74,13 +96,9 @@ describe('InsightsTabComponent', () => {
         { provide: TransactionService, useValue: transactionService },
         { provide: AuthService, useValue: { currentUser } },
         { provide: PwaService, useValue: { isOnline: signal(true) } },
-        {
-          provide: InsightSnapshotService,
-          useValue: {
-            generateClosedMonths: jasmine.createSpy('generateClosedMonths')
-              .and.returnValue(Promise.resolve([])),
-          },
-        },
+        { provide: InsightSnapshotService, useValue: snapshotService },
+        { provide: NotificationService, useValue: notifications },
+        { provide: MatDialog, useValue: dialog },
         {
           provide: CurrencyService,
           useValue: {
@@ -167,5 +185,101 @@ describe('InsightsTabComponent', () => {
     transactionService.getTransactionsInRange.calls.reset();
     component.refresh();
     expect(transactionService.getTransactionsInRange).toHaveBeenCalled();
+  });
+
+  describe('viewing a stored month', () => {
+    const archived: InsightSnapshot = {
+      id: '2026-03', userId: 'u1', monthKey: '2026-03',
+      detectorVersion: 1, schemaVersion: 1, status: 'complete',
+      fingerprint: { tx: 'x:4', count: 4, timeZone: 'UTC', baseCurrency: 'JPY' },
+      totals: { income: 0, expense: 400, balance: -400, count: 4 },
+      byCategory: [],
+      facts: {
+        recurring: { groups: [], groupCount: 0 },
+      } as unknown as InsightSnapshot['facts'],
+      cards: [{
+        id: 'smallDrip', kind: 'smallDrip',
+        titleKey: 'insights.smallDripTitle', bodyKey: 'insights.smallDripBody',
+        params: { count: 4, percent: 20, months: 1 },
+        metrics: { total: 80 },
+        categoryIds: [], transactionCount: 4,
+        drillDown: { mode: 'none' }, weight: 50,
+      }],
+      generatedAt: createTimestamp(new Date(2026, 3, 1)),
+      createdAt: createTimestamp(new Date(2026, 3, 1)),
+      revision: 1,
+    };
+
+    beforeEach(() => {
+      snapshotService.get.and.callFake(
+        (month: string) => (month === '2026-03' ? archived : null));
+    });
+
+    it('renders the stored cards rather than recomputing', async () => {
+      await build(history());
+      component.onMonthSelected('2026-03');
+
+      expect(component.isViewingArchive()).toBeTrue();
+      expect(component.cards().map(card => card.id)).toEqual(['smallDrip']);
+    });
+
+    it('shows the currency the month was computed in, not today\'s', async () => {
+      // Every money field in that document is in JPY; rendering it as USD would
+      // be a silently wrong number.
+      await build(history());
+      component.onMonthSelected('2026-03');
+      expect(component.displayCurrency()).toBe('JPY');
+    });
+
+    it('resolves staleness only for the month opened', async () => {
+      await build(history());
+      expect(snapshotService.staleness).not.toHaveBeenCalled();
+
+      component.onMonthSelected('2026-03');
+      expect(snapshotService.staleness).toHaveBeenCalledOnceWith('2026-03');
+    });
+
+    it('returns to the live computation', async () => {
+      await build(history());
+      component.onMonthSelected('2026-03');
+      component.onMonthSelected(null);
+
+      expect(component.isViewingArchive()).toBeFalse();
+      expect(component.staleness()).toBeNull();
+      expect(component.cards().length).toBeGreaterThan(1);
+    });
+
+    it('regenerates behind a confirmation', async () => {
+      await build(history());
+      component.onRegenerate('2026-03');
+
+      expect(dialog.open).toHaveBeenCalled();
+      expect(snapshotService.regenerate).toHaveBeenCalledWith('2026-03');
+
+      // The confirm handler is async: regenerate, then re-read staleness.
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(notifications.success).toHaveBeenCalled();
+      expect(component.isRegenerating()).toBeFalse();
+    });
+
+    it('does not regenerate when the confirmation is declined', async () => {
+      dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+      await build(history());
+      component.onRegenerate('2026-03');
+
+      expect(snapshotService.regenerate).not.toHaveBeenCalled();
+    });
+
+    it('reports a failed regeneration', async () => {
+      snapshotService.regenerate.and.returnValue(Promise.reject(new Error('denied')));
+      await build(history());
+      component.onRegenerate('2026-03');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(notifications.error).toHaveBeenCalled();
+    });
   });
 });

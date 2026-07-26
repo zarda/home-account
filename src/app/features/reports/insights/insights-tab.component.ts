@@ -1,9 +1,30 @@
-import { Component, OnInit, computed, effect, inject, input, untracked } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  OnInit,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
+import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { InsightsService } from '../../../core/services/insights.service';
 import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { InsightCard, InsightSnapshot, SnapshotStaleness } from '../../../models';
+import { sortInsightCards } from '../../../core/utils/insight-card.utils';
+import {
+  ConfirmDialogComponent,
+} from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { SnapshotTimelineComponent } from './snapshot-timeline/snapshot-timeline.component';
+import { SnapshotCompareComponent } from './snapshot-compare/snapshot-compare.component';
 import { DEFAULT_HABIT_RHYTHM_OPTIONS } from '../../../core/utils/habit-rhythm.utils';
 import { DEFAULT_CATEGORY_TREND_OPTIONS } from '../../../core/utils/category-trend.utils';
 import { parseMonthKey } from '../../../core/utils/transaction-date.utils';
@@ -34,12 +55,15 @@ import { RecurringListComponent } from './recurring-list/recurring-list.componen
   standalone: true,
   imports: [
     MatButtonModule,
+    MatExpansionModule,
     MatIconModule,
     EmptyStateComponent,
     LoadingSpinnerComponent,
     TranslatePipe,
     InsightCardComponent,
     RecurringListComponent,
+    SnapshotTimelineComponent,
+    SnapshotCompareComponent,
   ],
   providers: [InsightsService],
   templateUrl: './insights-tab.component.html',
@@ -49,18 +73,53 @@ export class InsightsTabComponent implements OnInit {
   private insights = inject(InsightsService);
   private snapshots = inject(InsightSnapshotService);
   private translation = inject(TranslationService);
+  private notifications = inject(NotificationService);
+  private dialog = inject(MatDialog);
+  private destroyRef = inject(DestroyRef);
 
   period = input.required<PeriodSelection>();
   currency = input.required<string>();
 
   readonly isLoading = this.insights.isLoading;
   readonly hasFailed = this.insights.hasFailed;
-  readonly cards = this.insights.cards;
+  readonly liveCards = this.insights.cards;
   readonly facts = this.insights.facts;
   readonly drillDownIds = this.insights.drillDownIds;
   readonly lookup = this.insights.transactionLookup;
   readonly transactionCount = this.insights.windowTransactionCount;
   readonly isOfflineWithoutData = this.insights.isOfflineWithoutData;
+
+  readonly storedSnapshots = this.snapshots.snapshots;
+  readonly isRegenerating = signal(false);
+
+  /** Which stored month is open, or null for the live computation. */
+  readonly viewedMonth = signal<string | null>(null);
+  readonly staleness = signal<SnapshotStaleness | null>(null);
+
+  readonly viewedSnapshot = computed<InsightSnapshot | null>(() => {
+    const month = this.viewedMonth();
+    return month ? this.snapshots.get(month) : null;
+  });
+
+  readonly isViewingArchive = computed(() => this.viewedSnapshot() !== null);
+
+  /**
+   * Cards for whatever is on screen.
+   *
+   * A stored month renders its own frozen cards rather than re-running any
+   * detector, which is what keeps old history readable as the detectors change.
+   */
+  readonly cards = computed<InsightCard[]>(() => {
+    const snapshot = this.viewedSnapshot();
+    return snapshot ? sortInsightCards(snapshot.cards) : this.liveCards();
+  });
+
+  /** A frozen month is shown in the currency it was computed in, not today's. */
+  readonly displayCurrency = computed(
+    () => this.viewedSnapshot()?.fingerprint.baseCurrency ?? this.currency());
+
+  readonly archivedRecurring = computed(
+    () => this.viewedSnapshot()?.facts?.recurring ?? null);
 
   constructor() {
     // Reload when the page's period selector moves. untracked keeps the read of
@@ -73,11 +132,70 @@ export class InsightsTabComponent implements OnInit {
 
   ngOnInit(): void {
     this.insights.load(this.period());
+    this.snapshots.watch().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     // Also triggered from the dashboard; the service shares one in-flight run,
     // so this only matters for someone deep-linking straight to Reports, who
     // would otherwise be a session behind on history.
     this.snapshots.generateClosedMonths().catch(() => {
       // Non-fatal: the live tab does not depend on stored history.
+    });
+  }
+
+  /**
+   * Open a stored month, or return to the live computation.
+   *
+   * Staleness is resolved only for the month actually opened. Fingerprinting
+   * every stored month up front would mean a query per month for information
+   * nobody has asked for.
+   */
+  onMonthSelected(monthKey: string | null): void {
+    this.viewedMonth.set(monthKey);
+    this.staleness.set(null);
+    if (!monthKey) {
+      return;
+    }
+    this.snapshots.staleness(monthKey)
+      .then(result => {
+        // Ignore a result that arrived after the user moved on.
+        if (this.viewedMonth() === monthKey) {
+          this.staleness.set(result);
+        }
+      })
+      .catch(() => this.staleness.set(null));
+  }
+
+  /**
+   * Recompute a stored month with the current detectors.
+   *
+   * Confirmed first: it overwrites a point-in-time record, and the numbers a
+   * user remembers seeing will change.
+   */
+  onRegenerate(monthKey: string): void {
+    const dialog = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: this.translation.t('insights.regenerateTitle'),
+        message: this.translation.t('insights.regenerateMessage'),
+        confirmLabel: this.translation.t('insights.regenerate'),
+        confirmColor: 'warn' as const,
+        icon: 'refresh',
+      },
+    });
+
+    dialog.afterClosed().subscribe(async confirmed => {
+      if (!confirmed) {
+        return;
+      }
+      this.isRegenerating.set(true);
+      try {
+        await this.snapshots.regenerate(monthKey);
+        this.staleness.set(await this.snapshots.staleness(monthKey));
+        // Already translated, per the notification service's contract.
+        this.notifications.success(this.translation.t('insights.snapshotRegenerated'));
+      } catch {
+        this.notifications.error(this.translation.t('insights.regenerateFailed'));
+      } finally {
+        this.isRegenerating.set(false);
+      }
     });
   }
 
