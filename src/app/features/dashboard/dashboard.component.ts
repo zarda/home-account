@@ -8,6 +8,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RecurringService } from '../../core/services/recurring.service';
+import { InsightSnapshotService } from '../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { Transaction, Category, CategoryTotal, RAG_TIER_CONFIGS, effectiveRagLevel } from '../../models';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
@@ -51,6 +52,7 @@ export class DashboardComponent implements OnInit {
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
   private recurringService = inject(RecurringService);
+  private insightSnapshots = inject(InsightSnapshotService);
   private translationService = inject(TranslationService);
   private destroyRef = inject(DestroyRef);
 
@@ -192,6 +194,17 @@ export class DashboardComponent implements OnInit {
     // The live subscriptions above surface newly posted docs automatically.
     this.recurringService.catchUpRecurringTransactions().catch(() => {
       // Non-fatal: the dashboard still renders with existing data.
+    });
+
+    // Write insight snapshots for any month that closed while the app was shut.
+    // Also outside loadData() for the same reason, and hooked here rather than in
+    // an app initializer because onAuthStateChanged resolves asynchronously — at
+    // bootstrap there is no uid yet to build a path from. The dashboard is the
+    // landing route, so history accumulates even for a user who never opens
+    // Reports. The service shares one in-flight run, so the insights tab calling
+    // it too is free.
+    this.insightSnapshots.generateClosedMonths().catch(() => {
+      // Non-fatal: snapshots are history, not a precondition for anything.
     });
   }
 

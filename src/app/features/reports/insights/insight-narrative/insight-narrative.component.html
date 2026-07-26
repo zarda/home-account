@@ -1,0 +1,39 @@
+<!-- Nothing renders at all without a provider, or with grounding turned off:
+     the rule-based cards are the feature and this only ever sits on top. -->
+@if (isAvailable()) {
+  <mat-card class="narrative-card">
+    <mat-card-header>
+      <div class="card-heading">
+        <mat-icon class="card-icon">auto_awesome</mat-icon>
+        <mat-card-title>{{ 'insights.narrativeTitle' | translate }}</mat-card-title>
+      </div>
+      <button
+        mat-icon-button
+        class="refresh"
+        [disabled]="isLoading()"
+        (click)="regenerate()"
+        [attr.aria-label]="'insights.narrativeRefresh' | translate"
+      >
+        <mat-icon>refresh</mat-icon>
+      </button>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (isLoading()) {
+        <app-loading-spinner size="sm" [message]="'insights.narrativeLoading' | translate" />
+      } @else if (errorKey(); as key) {
+        <div class="error-state">
+          <mat-icon>error_outline</mat-icon>
+          <span>{{ key | translate }}</span>
+        </div>
+      } @else if (isUnchanged()) {
+        <!-- Nothing moved materially, so there is nothing new to say — and no
+             request was spent saying it. -->
+        <p class="unchanged">{{ 'insights.narrativeUnchanged' | translate }}</p>
+      } @else if (narrative()) {
+        <div class="narrative-body" [innerHTML]="formatted()"></div>
+        <p class="narrative-note">{{ 'insights.narrativeNote' | translate }}</p>
+      }
+    </mat-card-content>
+  </mat-card>
+}

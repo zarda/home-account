@@ -21,6 +21,7 @@ import {
 } from '../utils/categorization.utils';
 import { buildSearchPrompt, parseSearchIntent } from '../utils/nl-search.utils';
 import { SearchIntent, SearchQueryContext } from '../../models';
+import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 
 @Injectable({ providedIn: 'root' })
 export class OpenAIService {
@@ -221,6 +222,45 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
     } catch (error) {
       console.error('OpenAI category suggestion error:', error);
       return 'other_expense';
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
+  /**
+   * Describe an already-computed spending pattern in prose.
+   *
+   * Takes a pre-built aggregate context rather than transactions: the insights
+   * feature sends numbers and category names only, never a description, note or
+   * merchant string. Facts in, prose out.
+   */
+  async generatePatternNarrative(context: string, locale: string): Promise<string> {
+    if (!this.client) {
+      throw new Error('OpenAI client not available');
+    }
+
+    this.isProcessing.set(true);
+    try {
+      const prompt = `You are describing a person's own spending patterns back to them.
+
+PATTERNS ALREADY DETECTED (all figures pre-computed, do not recalculate):
+${context}
+
+INSTRUCTION: Write 3-4 sentences describing what these patterns show.
+- Describe, never judge. Say what changed, not whether it was wise.
+- Use the exact figures above; invent nothing.
+- Compare the person only to their own history.
+- No preamble, no headings, no bullet list.
+Locale: ${locale}`;
+
+      const response = await this.client.responses.create({
+        model: this.model,
+        input: prompt,
+        max_output_tokens: 700,
+        store: false,
+      });
+
+      return trimToLastCompleteSentence((response.output_text ?? '').trim());
     } finally {
       this.isProcessing.set(false);
     }

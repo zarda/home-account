@@ -287,6 +287,59 @@ service cloud.firestore {
         && importOptionalsValid(d);
     }
 
+    // ---- insight snapshots ----
+
+    // `yyyy-MM`. The first regex validator in this file; the month key is both
+    // the document id and a stored field, and they have to agree.
+    function isMonthKey(value) {
+      return value is string && value.matches('^[0-9]{4}-(0[1-9]|1[0-2])$');
+    }
+
+    function snapshotFingerprintValid(f) {
+      return f is map
+        && f.keys().hasOnly(['tx', 'count', 'timeZone', 'baseCurrency'])
+        && f.tx is string
+        && f.count is int && f.count >= 0
+        && f.timeZone is string
+        && f.baseCurrency is string;
+    }
+
+    // Create and update share one validator: a regeneration rewrites the whole
+    // document rather than patching it, so there is no partial-update shape to
+    // tolerate here.
+    //
+    // `is int` holds only because the SDK writes integral JS numbers as
+    // integerValue, so anything computed must be rounded before assignment.
+    function snapshotValid(userId, monthId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasOnly([
+             'userId', 'monthKey', 'detectorVersion', 'schemaVersion', 'status',
+             'fingerprint', 'totals', 'byCategory', 'facts', 'cards',
+             'generatedAt', 'createdAt', 'updatedAt', 'revision'
+           ])
+        && d.keys().hasAll([
+             'userId', 'monthKey', 'detectorVersion', 'schemaVersion', 'status',
+             'fingerprint', 'totals', 'byCategory', 'facts', 'cards',
+             'generatedAt', 'createdAt', 'revision'
+           ])
+        // The month key can never be repointed at a different month.
+        && d.monthKey == monthId
+        && isMonthKey(d.monthKey)
+        && d.detectorVersion is int && d.detectorVersion > 0
+        && d.schemaVersion is int && d.schemaVersion > 0
+        && d.status == 'complete'
+        && snapshotFingerprintValid(d.fingerprint)
+        && d.totals is map
+        && d.byCategory is list
+        && d.facts is map
+        && d.cards is list
+        && d.generatedAt is timestamp
+        && d.createdAt is timestamp
+        && (!('updatedAt' in d) || d.updatedAt is timestamp)
+        && d.revision is int && d.revision > 0;
+    }
+
     // ---- user profile ----
 
     function userOptionalsValid(d) {
@@ -416,6 +469,29 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // Monthly spending-insight snapshots, keyed by `yyyy-MM`.
+      //
+      // Point-in-time records. The closed field set is safe to require here,
+      // as with securityEvents, because the collection cannot predate its own
+      // rule and so has no legacy rows.
+      //
+      // Unlike securityEvents these are not an audit trail. The owner is
+      // entitled to remove them and account deletion has to, and a rule cannot
+      // tell "deleting my account" apart from "deleting one snapshot", so
+      // delete is allowed. That makes these immutable in practice rather than
+      // immutable by rule: a rewrite must revalidate the whole document, must
+      // keep the month key pinned to the document id, and must advance
+      // `revision`, so a regeneration is recorded instead of history being
+      // silently amended.
+      match /insightSnapshots/{monthId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && snapshotValid(userId, monthId);
+        allow update: if isOwner(userId)
+          && snapshotValid(userId, monthId)
+          && request.resource.data.revision > resource.data.revision;
+        allow delete: if isOwner(userId);
+      }
+
       // Any other subcollections under user, including ones added later.
       // Rules are additive — an allow here cannot be narrowed by the blocks
       // above — so every validated collection must be carved out, or its
@@ -424,7 +500,8 @@ service cloud.firestore {
         allow read: if isOwner(userId);
         allow write: if isOwner(userId) && !(subcollection in [
           'transactions', 'budgets', 'categories',
-          'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets'
+          'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
+          'insightSnapshots'
         ]);
       }
     }

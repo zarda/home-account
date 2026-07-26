@@ -4,7 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Transaction, Category, MonthlyTotal } from '../../models';
+import { Transaction, Category, InsightSnapshot, MonthlyTotal } from '../../models';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -46,9 +46,17 @@ export interface ReportData {
   currency: string;
 }
 
+/** Bumped whenever the backup gains or reshapes a section. */
+export const BACKUP_SCHEMA_VERSION = '1.1';
+
 export interface ExportData {
   transactions: Transaction[];
   categories: Category[];
+  /**
+   * Monthly spending-insight snapshots. Optional so a backup written before
+   * they existed still parses as an ExportData.
+   */
+  insightSnapshots?: InsightSnapshot[];
   exportDate: string;
   version: string;
 }
@@ -310,7 +318,7 @@ export class ExportService {
     const exportObject = {
       ...data,
       exportDate: new Date().toISOString(),
-      version: '1.0'
+      version: BACKUP_SCHEMA_VERSION
     };
 
     const jsonString = JSON.stringify(exportObject, null, 2);

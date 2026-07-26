@@ -1,0 +1,147 @@
+<div class="insights-tab">
+  @if (isLoading()) {
+    <app-loading-spinner [message]="'insights.computing' | translate" />
+  } @else if (hasFailed()) {
+    <app-empty-state
+      icon="error_outline"
+      [title]="'insights.errorTitle' | translate"
+      [description]="'insights.errorBody' | translate"
+      [actionLabel]="'insights.retry' | translate"
+      actionIcon="refresh"
+      (action)="refresh()"
+    />
+  } @else if (isOfflineWithoutData()) {
+    <!-- Distinguished from "no data" on purpose: a cold cache offline returns an
+         empty snapshot, and telling the user they have no transactions would be
+         a lie. -->
+    <app-empty-state
+      icon="cloud_off"
+      [title]="'insights.offlineTitle' | translate"
+      [description]="'insights.offlineBody' | translate"
+    />
+  } @else {
+    <!-- The window is usually wider than the selected period, so stating it is
+         what stops a six-month trend beside a "this month" selection from
+         reading as a bug. -->
+    @if (windowLabel()) {
+      <div class="window-banner">
+        <mat-icon>date_range</mat-icon>
+        <span>
+          {{ 'insights.basedOn' | translate:{
+            range: windowLabel(),
+            count: transactionCount()
+          } }}
+        </span>
+        <button
+          mat-icon-button
+          class="refresh-button"
+          (click)="refresh()"
+          [attr.aria-label]="'insights.retry' | translate"
+        >
+          <mat-icon>refresh</mat-icon>
+        </button>
+      </div>
+    }
+
+    <!-- Only on the live view: describing a frozen month would need the prose to
+         be stored, and model output is not deterministic enough to belong in a
+         record that must regenerate identically. -->
+    @if (!isViewingArchive() && facts(); as liveFacts) {
+      <app-insight-narrative
+        [facts]="liveFacts"
+        [previousFacts]="previousMonthFacts()"
+      />
+    }
+
+    @if (hasCards()) {
+      <div class="insight-grid">
+        @for (card of cards(); track card.id) {
+          <!-- An archived month keeps no transaction ids, so inline drill-downs
+               are suppressed rather than opening an empty list. -->
+          <app-insight-card
+            [card]="card"
+            [currency]="displayCurrency()"
+            [lookup]="lookup()"
+            [archived]="isViewingArchive()"
+          />
+        }
+      </div>
+    } @else if (isViewingArchive()) {
+      <app-empty-state
+        icon="history"
+        size="sm"
+        [title]="'insights.archiveEmptyTitle' | translate"
+        [description]="'insights.archiveEmptyBody' | translate"
+      />
+    } @else if (missingRequirements().length > 0) {
+      <!-- Every detector has a data gate, so a young account produces nothing.
+           Name the gaps rather than looking broken. -->
+      <div class="getting-started">
+        <app-empty-state
+          icon="lightbulb"
+          size="sm"
+          [title]="'insights.gettingStartedTitle' | translate"
+          [description]="'insights.gettingStartedBody' | translate"
+        />
+        <ul class="requirement-list">
+          @for (requirement of missingRequirements(); track requirement) {
+            <li>{{ requirement }}</li>
+          }
+        </ul>
+      </div>
+    } @else {
+      <app-empty-state
+        icon="lightbulb"
+        [title]="'insights.noPatternsTitle' | translate"
+        [description]="'insights.noPatternsBody' | translate"
+      />
+    }
+
+    @if (isViewingArchive()) {
+      @if (archivedRecurring(); as summary) {
+        <app-recurring-list
+          [summary]="summary"
+          [currency]="displayCurrency()"
+          [archived]="true"
+        />
+      }
+    } @else if (recurringSummary(); as summary) {
+      <app-recurring-list
+        [summary]="summary"
+        [currency]="currency()"
+        [drillDownIds]="drillDownIds()"
+        [lookup]="lookup()"
+      />
+    }
+
+    <!-- Secondary to the live answer, so collapsed by default. Not a fifth tab
+         (the header is already tight at four) and not a route (the mobile bottom
+         nav is full at five slots). -->
+    @if (storedSnapshots().length > 0) {
+      <mat-accordion class="history-accordion">
+        <mat-expansion-panel>
+          <mat-expansion-panel-header>
+            <mat-panel-title>
+              <mat-icon class="panel-icon">history</mat-icon>
+              {{ 'insights.historyTitle' | translate }}
+            </mat-panel-title>
+            <mat-panel-description>
+              {{ 'insights.historyCount' | translate:{ count: storedSnapshots().length } }}
+            </mat-panel-description>
+          </mat-expansion-panel-header>
+
+          <app-snapshot-timeline
+            [snapshots]="storedSnapshots()"
+            [selectedMonth]="viewedMonth()"
+            [staleness]="staleness()"
+            [isRegenerating]="isRegenerating()"
+            (monthSelected)="onMonthSelected($event)"
+            (regenerateRequested)="onRegenerate($event)"
+          />
+
+          <app-snapshot-compare [snapshots]="storedSnapshots()" />
+        </mat-expansion-panel>
+      </mat-accordion>
+    }
+  }
+</div>

@@ -36,6 +36,21 @@ device with no model call, so they are always available and are **not**
 affected by the detail-level setting — that setting only controls what is
 shared with the AI provider for the dashboard summary.
 
+## The level also gates the spending-pattern narrative
+
+The Insights tab (see [insights.md](insights.md)) has an optional written
+description of its detected patterns, and it is gated on this setting as well as
+on having a provider configured. Detector output is grounding data — aggregates
+derived from the user's transactions — so sending it while the level is **Off**
+would contradict what the setting means to the person who chose it. What gets
+sent scales with the tier: Light and Standard send totals, trend directions and
+shares, and rhythm flags; Deep additionally sends the per-month series.
+
+The rule-based cards themselves are pure local computation, like the quick-filter
+chips, so they are unaffected by this setting and always available. Nothing a
+person typed is ever included — no descriptions, notes, merchant strings,
+transaction ids or individual dates — and the prose is never stored.
+
 ## Preference storage and migration
 
 The level is stored in the user profile as `preferences.ragInsightsLevel`

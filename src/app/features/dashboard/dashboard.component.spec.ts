@@ -18,6 +18,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RecurringService } from '../../core/services/recurring.service';
+import { InsightSnapshotService } from '../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { BudgetAlert, Transaction, User } from '../../models';
@@ -60,6 +61,7 @@ describe('DashboardComponent', () => {
   };
   let categoryService: { categories: ReturnType<typeof signal<unknown[]>>; loadCategories: jasmine.Spy };
   let recurringService: { catchUpRecurringTransactions: jasmine.Spy };
+  let insightSnapshotService: { generateClosedMonths: jasmine.Spy };
   let authService: { currentUser: ReturnType<typeof signal<User | null>> };
   let currencyService: jasmine.SpyObj<CurrencyService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
@@ -96,6 +98,13 @@ describe('DashboardComponent', () => {
         .createSpy('catchUpRecurringTransactions')
         .and.returnValue(Promise.resolve([])),
     };
+    // Root-provided, so without this the real service is constructed and its
+    // Firestore injection fails.
+    insightSnapshotService = {
+      generateClosedMonths: jasmine
+        .createSpy('generateClosedMonths')
+        .and.returnValue(Promise.resolve([])),
+    };
     authService = { currentUser: signal<User | null>(createUser({ displayName: 'Ada Lovelace' })) };
     currencyService = jasmine.createSpyObj('CurrencyService', ['convert', 'amountInBase']);
     currencyService.convert.and.callFake((amount: number) => amount);
@@ -115,6 +124,7 @@ describe('DashboardComponent', () => {
         { provide: BudgetService, useValue: budgetService },
         { provide: CategoryService, useValue: categoryService },
         { provide: RecurringService, useValue: recurringService },
+        { provide: InsightSnapshotService, useValue: insightSnapshotService },
         { provide: CurrencyService, useValue: currencyService },
         { provide: AuthService, useValue: authService },
         { provide: TranslationService, useValue: translation },
@@ -348,6 +358,25 @@ describe('DashboardComponent', () => {
       expect(recurringService.catchUpRecurringTransactions).toHaveBeenCalledTimes(1);
     });
 
+    it('triggers snapshot generation once on init, not again on period changes', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      expect(insightSnapshotService.generateClosedMonths).toHaveBeenCalledTimes(1);
+
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      expect(insightSnapshotService.generateClosedMonths).toHaveBeenCalledTimes(1);
+    });
+
+    it('still loads the dashboard when snapshot generation fails', async () => {
+      insightSnapshotService.generateClosedMonths.and.returnValue(
+        Promise.reject(new Error('offline')),
+      );
+      const fixture = build();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(fixture.componentInstance).toBeTruthy();
+    });
+
     it('still loads the dashboard when the catch-up fails', async () => {
       recurringService.catchUpRecurringTransactions.and.returnValue(
         Promise.reject(new Error('offline')),
@@ -423,6 +452,7 @@ describe('DashboardComponent', () => {
           { provide: BudgetService, useValue: budgetService },
           { provide: CategoryService, useValue: categoryService },
           { provide: RecurringService, useValue: recurringService },
+          { provide: InsightSnapshotService, useValue: insightSnapshotService },
           { provide: CurrencyService, useValue: currencyService },
           { provide: AuthService, useValue: authService },
           { provide: TranslationService, useValue: translation },

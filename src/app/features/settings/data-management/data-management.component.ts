@@ -8,7 +8,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 
-import { ExportService, ImportedTransaction } from '../../../core/services/export.service';
+import {
+  BACKUP_SCHEMA_VERSION,
+  ExportService,
+  ImportedTransaction,
+} from '../../../core/services/export.service';
+import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -37,6 +42,7 @@ import { NotificationService } from '../../../core/services/notification.service
 export class DataManagementComponent {
   private notifications = inject(NotificationService);
   private exportService = inject(ExportService);
+  private insightSnapshots = inject(InsightSnapshotService);
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
@@ -76,12 +82,17 @@ export class DataManagementComponent {
       // Fetch ALL transactions from database (not just what's loaded in the signal)
       const transactions = await firstValueFrom(this.transactionService.getAllTransactions());
       const categories = this.categoryService.categories();
+      // Snapshots are user data, so a backup that omitted them would not be a
+      // full one. Read one-shot rather than from the live signal, which only
+      // holds whatever a subscription happened to deliver.
+      const insightSnapshots = await this.insightSnapshots.exportAll();
 
       const blob = this.exportService.exportToJSON({
         transactions,
         categories,
+        insightSnapshots,
         exportDate: new Date().toISOString(),
-        version: '1.0'
+        version: BACKUP_SCHEMA_VERSION
       });
 
       const date = new Date().toISOString().split('T')[0];

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ExportService } from './export.service';
+import { BACKUP_SCHEMA_VERSION, ExportService } from './export.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
@@ -232,7 +232,11 @@ describe('ExportService', () => {
         const parsed = JSON.parse(content);
         expect(parsed.transactions).toBeDefined();
         expect(parsed.categories).toBeDefined();
-        expect(parsed.version).toBe('1.0');
+        // Bumped when insight snapshots joined the backup. The version had
+        // never moved as sections were added, so a schema change was shipping
+        // under the same number each time.
+        expect(parsed.version).toBe(BACKUP_SCHEMA_VERSION);
+        expect(parsed.version).toBe('1.1');
         done();
       };
       reader.readAsText(blob);

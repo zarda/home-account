@@ -208,6 +208,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs lint, headless unit tests with 
 
 | Doc | Contents |
 |-----|----------|
+| [docs/insights.md](docs/insights.md) | Spending-pattern detectors, monthly snapshots, card contract, privacy boundary |
 | [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
 | [docs/remote-config.md](docs/remote-config.md) | Firebase Remote Config parameters and defaults |
 | [docs/storage-cors-setup.md](docs/storage-cors-setup.md) | One-time Cloud Storage CORS setup for in-browser receipt reads |
