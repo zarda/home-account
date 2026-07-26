@@ -1,0 +1,170 @@
+import { Timestamp } from '@angular/fire/firestore';
+import { Transaction } from '../../models';
+
+/**
+ * Date handling shared by the spending-pattern detectors.
+ *
+ * Two things here are load-bearing rather than conveniences:
+ *
+ * 1. `dateOf` is the single coercion for a transaction's date. Persisted rows
+ *    carry a Firestore Timestamp, while specs and DTOs pass a plain Date, and
+ *    before this file that duck-typing was copy-pasted in seven places.
+ *
+ * 2. `wholeDaysBetween` normalises to UTC midnight before subtracting. A local
+ *    millisecond diff spans 23 or 25 hours across a DST transition, which turns
+ *    a monthly subscription cadence into 29.96 days and breaks the detectors'
+ *    interval classification.
+ *
+ * Everything reads *local* date parts, so day-of-week and day-of-month results
+ * are a function of the runtime's IANA zone. Callers that persist those results
+ * must record the zone alongside them.
+ */
+
+/** Milliseconds in a day. Safe as a constant only for UTC-normalised diffs. */
+const MS_PER_DAY = 86_400_000;
+
+/** Saturday and Sunday, the weekend in all three shipped locales (en/ja/tc). */
+export const DEFAULT_WEEKEND_DAYS: readonly number[] = [0, 6];
+
+/** Coerce a Firestore Timestamp, a Date, or junk into a Date. */
+export function toDate(value: Timestamp | Date | null | undefined): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const converted = (value as Timestamp | null | undefined)?.toDate?.();
+  return converted instanceof Date && !Number.isNaN(converted.getTime()) ? converted : null;
+}
+
+/**
+ * A transaction's date. Returns the epoch on unreadable input rather than
+ * throwing, so one corrupt row cannot take down a whole detector pass.
+ */
+export function dateOf(transaction: Pick<Transaction, 'date'>): Date {
+  return toDate(transaction.date) ?? new Date(0);
+}
+
+/** `yyyy-MM` from local parts. Sorts lexicographically == chronologically. */
+export function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** `yyyy-MM-dd` from local parts. */
+export function dayKey(date: Date): string {
+  return `${monthKey(date)}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/** Parse `yyyy-MM`. `month` is 0-11 to match Date. Null on anything else. */
+export function parseMonthKey(key: string): { year: number; month: number } | null {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(key);
+  if (!match) {
+    return null;
+  }
+  return { year: Number(match[1]), month: Number(match[2]) - 1 };
+}
+
+/** Local midnight on the first of the month. */
+export function startOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+/** Last millisecond of the month, matching the range queries in TransactionService. */
+export function endOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+
+/**
+ * Shift by whole months, clamping the day to the target month's length so
+ * addMonths(Jan 31, 1) is Feb 28/29 rather than rolling into March.
+ */
+export function addMonths(date: Date, months: number): Date {
+  const year = date.getFullYear();
+  const month = date.getMonth() + months;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  return new Date(
+    year,
+    month,
+    Math.min(date.getDate(), lastDay),
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+    date.getMilliseconds(),
+  );
+}
+
+/**
+ * Never let a window claim to cover the future: a period selection running to
+ * the end of the current month would otherwise report a partial month as whole.
+ */
+export function clampToEndOfToday(end: Date, now: Date): Date {
+  const endOfToday = new Date(
+    now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  return end < endOfToday ? end : endOfToday;
+}
+
+/** Every `yyyy-MM` from `start` to `end`, inclusive at both ends, ascending. */
+export function monthKeysBetween(start: Date, end: Date): string[] {
+  const keys: string[] = [];
+  const last = startOfMonth(end).getTime();
+  let cursor = startOfMonth(start);
+  while (cursor.getTime() <= last) {
+    keys.push(monthKey(cursor));
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return keys;
+}
+
+/**
+ * Whole days from `a` to `b`, signed. Both are normalised to UTC midnight from
+ * their *local* parts first, so the result is an exact integer regardless of
+ * DST transitions between them.
+ */
+export function wholeDaysBetween(a: Date, b: Date): number {
+  const utcA = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const utcB = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((utcB - utcA) / MS_PER_DAY);
+}
+
+export function isWeekend(
+  date: Date,
+  weekendDays: readonly number[] = DEFAULT_WEEKEND_DAYS,
+): boolean {
+  return weekendDays.includes(date.getDay());
+}
+
+/**
+ * Calendar days of each kind in an inclusive window.
+ *
+ * Detectors need this because a month holds roughly 22 weekdays to 8 weekend
+ * days: comparing weekday and weekend *totals* would report "you spend more on
+ * weekdays" for essentially every user. Dividing by these counts is what makes
+ * the comparison mean anything.
+ */
+export function countDaysByKind(
+  start: Date,
+  end: Date,
+  weekendDays: readonly number[] = DEFAULT_WEEKEND_DAYS,
+): { weekdayDays: number; weekendDays: number; totalDays: number } {
+  const totalDays = wholeDaysBetween(start, end) + 1;
+  if (totalDays <= 0) {
+    return { weekdayDays: 0, weekendDays: 0, totalDays: 0 };
+  }
+
+  let weekend = 0;
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  for (let i = 0; i < totalDays; i += 1) {
+    if (isWeekend(cursor, weekendDays)) {
+      weekend += 1;
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return { weekdayDays: totalDays - weekend, weekendDays: weekend, totalDays };
+}
+
+/** True when the date falls in the final `tailDays` days of its own month. */
+export function isLastDaysOfMonth(date: Date, tailDays: number): boolean {
+  if (tailDays <= 0) {
+    return false;
+  }
+  const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return date.getDate() > daysInMonth - tailDays;
+}
