@@ -1,3 +1,4 @@
+import { Timestamp } from '@angular/fire/firestore';
 import type { CategoryTrend } from '../core/utils/category-trend.utils';
 import type { HabitRhythms, MonthEndSpike, PaydayEffect } from '../core/utils/habit-rhythm.utils';
 import type { RecurringGroup, RecurringSummary } from '../core/utils/recurring-pattern.utils';
@@ -18,6 +19,22 @@ import type { CategoryTotalWithCount, TypeTotals } from '../core/utils/transacti
  * a regeneration would produce different numbers.
  */
 export const INSIGHT_DETECTOR_VERSION = 1;
+
+/**
+ * Bump when the stored document's shape changes.
+ *
+ * Read separately from the detector version: a reader refuses a document whose
+ * schema is newer than it understands, whereas a newer detector version is only
+ * a note that a regeneration would produce different numbers.
+ */
+export const INSIGHT_SNAPSHOT_SCHEMA_VERSION = 1;
+
+/**
+ * Named alias rather than a bare literal, so later states can be added without
+ * reshaping documents that are already stored — the same reason
+ * SecurityEventType is an alias.
+ */
+export type InsightSnapshotStatus = 'complete';
 
 export type InsightKind =
   | 'recurringPortfolio'
@@ -139,4 +156,80 @@ export interface InsightFacts {
   trends: CategoryTrend[];
   rhythms: StorableHabitRhythms;
   drip: StorableSmallAmountDrip;
+}
+
+/**
+ * What a snapshot was computed from, so a later recomputation can be compared
+ * against it honestly.
+ *
+ * The time zone and base currency are here for the same reason they are in the
+ * facts: either one changes every number in the document without changing a
+ * single transaction, so a fingerprint that ignored them would call a snapshot
+ * current when its own numbers no longer follow from its own data.
+ */
+export interface InsightSnapshotFingerprint {
+  /** Content hash over (id, last write) of the month's transactions. */
+  tx: string;
+  count: number;
+  /** IANA zone the day-of-week and month-end maths ran in. */
+  timeZone: string;
+  /** The currency every money field in this document is expressed in. */
+  baseCurrency: string;
+}
+
+/**
+ * One month of frozen insights at `users/{uid}/insightSnapshots/{yyyy-MM}`.
+ *
+ * Point-in-time records. Regenerating one is an explicit user action that bumps
+ * `revision`, so history is never silently amended. Unlike the sign-in log these
+ * are not an audit trail — the owner is entitled to delete them, which account
+ * deletion needs — so they are immutable in practice (closed field set, full
+ * rewrite, strictly increasing revision) rather than immutable by rule.
+ *
+ * `cards` are stored as computed so a past month renders without re-running any
+ * detector, which is what keeps old snapshots readable as the detectors evolve.
+ * There is deliberately no narrative field: model prose is not deterministic, and
+ * storing it would make "identical when regenerated" impossible to assert.
+ */
+export interface InsightSnapshot {
+  /** Equal to `monthKey`; the Firestore document id. */
+  id: string;
+  userId: string;
+  /** `yyyy-MM`. Sorts lexicographically in chronological order. */
+  monthKey: string;
+  detectorVersion: number;
+  schemaVersion: number;
+  status: InsightSnapshotStatus;
+  fingerprint: InsightSnapshotFingerprint;
+  totals: TypeTotals;
+  byCategory: CategoryTotalWithCount[];
+  facts: InsightFacts;
+  cards: InsightCard[];
+  generatedAt: Timestamp;
+  /** Written explicitly: FirestoreService.setDocument only stamps updatedAt. */
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
+  /** 1 on create, strictly increasing on every regeneration. */
+  revision: number;
+}
+
+export type SnapshotStalenessReason =
+  | 'transactionsChanged'
+  | 'baseCurrencyChanged'
+  | 'timeZoneChanged'
+  | 'detectorUpdated';
+
+export interface SnapshotStaleness {
+  /**
+   * True only for reasons that mean the user's own data moved.
+   *
+   * A detector-version gap is deliberately excluded. "Your data changed since
+   * this snapshot" and "our code changed" are different statements, and lighting
+   * up every month in the timeline the first time a threshold is tuned would
+   * alarm the user about something they did not do.
+   */
+  isStale: boolean;
+  reasons: SnapshotStalenessReason[];
+  /** Null when the current data could not be read. */
+  currentFingerprint: string | null;
 }
