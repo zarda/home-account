@@ -55,6 +55,21 @@ export interface MonthlyCategorySeries {
   windowTotal: number;
 }
 
+/**
+ * Order two ids by UTF-16 code unit, as a deterministic sort tiebreaker.
+ *
+ * Deliberately not `localeCompare`, whose collation depends on the runtime's
+ * ICU data and which ignores punctuation in some locales — so `food_x` and
+ * `foodx` could order differently on two devices, and a regenerated snapshot
+ * would stop matching the one it replaced.
+ */
+export function compareIds(a: string, b: string): number {
+  if (a < b) {
+    return -1;
+  }
+  return a > b ? 1 : 0;
+}
+
 /** Round to cents. Stability matters more here than accounting exactness. */
 export function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -129,7 +144,7 @@ export function groupExpensesByCategoryWithCounts(
       total: roundMoney(entry.total),
       count: entry.count,
     }))
-    .sort((a, b) => b.total - a.total || a.categoryId.localeCompare(b.categoryId));
+    .sort((a, b) => b.total - a.total || compareIds(a.categoryId, b.categoryId));
 }
 
 /**
@@ -194,7 +209,7 @@ export function bucketByMonthAndCategory(
     windowTotal += value;
   }
 
-  const categoryIds = [...totals.keys()].sort((a, b) => a.localeCompare(b));
+  const categoryIds = [...totals.keys()].sort(compareIds);
   return {
     months: [...months],
     totalsByCategory: categoryIds.map(categoryId => ({
