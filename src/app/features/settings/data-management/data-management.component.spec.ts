@@ -10,6 +10,7 @@ import { ExportService } from '../../../core/services/export.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
+import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
@@ -22,6 +23,7 @@ describe('DataManagementComponent', () => {
   let notifications: jasmine.SpyObj<NotificationService>;
   let mockTransactionService: jasmine.SpyObj<TransactionService>;
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
+  let mockInsightSnapshots: jasmine.SpyObj<InsightSnapshotService>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
@@ -55,6 +57,12 @@ describe('DataManagementComponent', () => {
       categories: signal([])
     });
 
+    // Root-provided, so without this the real service is constructed and its
+    // Firestore injection fails.
+    mockInsightSnapshots = jasmine.createSpyObj('InsightSnapshotService', ['exportAll', 'deleteAll']);
+    mockInsightSnapshots.exportAll.and.returnValue(Promise.resolve([]));
+    mockInsightSnapshots.deleteAll.and.returnValue(Promise.resolve());
+
     mockAuthService = jasmine.createSpyObj('AuthService', ['signOut']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
@@ -81,6 +89,7 @@ describe('DataManagementComponent', () => {
         { provide: ExportService, useValue: mockExportService },
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: CategoryService, useValue: mockCategoryService },
+        { provide: InsightSnapshotService, useValue: mockInsightSnapshots },
         { provide: AuthService, useValue: mockAuthService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
