@@ -7,6 +7,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { PwaService } from '../../../core/services/pwa.service';
+import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction, User } from '../../../models';
@@ -73,6 +74,13 @@ describe('InsightsTabComponent', () => {
         { provide: TransactionService, useValue: transactionService },
         { provide: AuthService, useValue: { currentUser } },
         { provide: PwaService, useValue: { isOnline: signal(true) } },
+        {
+          provide: InsightSnapshotService,
+          useValue: {
+            generateClosedMonths: jasmine.createSpy('generateClosedMonths')
+              .and.returnValue(Promise.resolve([])),
+          },
+        },
         {
           provide: CurrencyService,
           useValue: {

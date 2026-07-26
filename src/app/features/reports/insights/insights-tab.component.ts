@@ -2,6 +2,7 @@ import { Component, OnInit, computed, effect, inject, input, untracked } from '@
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { InsightsService } from '../../../core/services/insights.service';
+import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { DEFAULT_HABIT_RHYTHM_OPTIONS } from '../../../core/utils/habit-rhythm.utils';
 import { DEFAULT_CATEGORY_TREND_OPTIONS } from '../../../core/utils/category-trend.utils';
@@ -46,6 +47,7 @@ import { RecurringListComponent } from './recurring-list/recurring-list.componen
 })
 export class InsightsTabComponent implements OnInit {
   private insights = inject(InsightsService);
+  private snapshots = inject(InsightSnapshotService);
   private translation = inject(TranslationService);
 
   period = input.required<PeriodSelection>();
@@ -71,6 +73,12 @@ export class InsightsTabComponent implements OnInit {
 
   ngOnInit(): void {
     this.insights.load(this.period());
+    // Also triggered from the dashboard; the service shares one in-flight run,
+    // so this only matters for someone deep-linking straight to Reports, who
+    // would otherwise be a session behind on history.
+    this.snapshots.generateClosedMonths().catch(() => {
+      // Non-fatal: the live tab does not depend on stored history.
+    });
   }
 
   /** "Feb – Jul 2026", so the trailing window is never mistaken for a bug. */
