@@ -392,6 +392,34 @@ export class CloudLLMProviderService {
   }
 
   /**
+   * Describe an already-computed spending pattern in prose.
+   *
+   * A separate entry point from generateSpendingSummary on purpose. That method
+   * takes `Transaction[]`, so reusing it for the insights narrative would mean
+   * either sending raw transactions — which the insights feature explicitly does
+   * not do — or passing an empty array and relying on three provider
+   * implementations to tolerate it. Taking a pre-built aggregate context makes
+   * the privacy boundary structural rather than a matter of discipline: there is
+   * no parameter here that could carry a description, a note or a merchant name.
+   */
+  async generatePatternNarrative(context: string, locale: string): Promise<string> {
+    const provider = this.getBestAvailableProvider('insights');
+
+    if (!provider) {
+      throw new Error('No cloud AI provider available for insights');
+    }
+
+    switch (provider) {
+      case 'gemini':
+        return this.geminiService.generatePatternNarrative(context, locale);
+      case 'openai':
+        return this.openaiService.generatePatternNarrative(context, locale);
+      case 'claude':
+        return this.claudeService.generatePatternNarrative(context, locale);
+    }
+  }
+
+  /**
    * Get financial advice.
    */
   async getFinancialAdvice(

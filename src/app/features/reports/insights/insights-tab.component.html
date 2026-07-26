@@ -43,6 +43,16 @@
       </div>
     }
 
+    <!-- Only on the live view: describing a frozen month would need the prose to
+         be stored, and model output is not deterministic enough to belong in a
+         record that must regenerate identically. -->
+    @if (!isViewingArchive() && facts(); as liveFacts) {
+      <app-insight-narrative
+        [facts]="liveFacts"
+        [previousFacts]="previousMonthFacts()"
+      />
+    }
+
     @if (hasCards()) {
       <div class="insight-grid">
         @for (card of cards(); track card.id) {

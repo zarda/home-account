@@ -1013,6 +1013,11 @@
     "compareRecurring": "Recurring change",
     "compareUnchanged": "Unchanged: ",
     "compareCurrencyMismatch": "These two months were saved in different base currencies, so they cannot be compared.",
-    "compareSameMonth": "Pick two different months to compare."
+    "compareSameMonth": "Pick two different months to compare.",
+    "narrativeTitle": "In words",
+    "narrativeLoading": "Writing it up…",
+    "narrativeRefresh": "Write it again",
+    "narrativeUnchanged": "Nothing has moved much since last month.",
+    "narrativeNote": "Written from the figures above. Only totals and category names are sent — never descriptions, notes or individual transactions."
   }
 }

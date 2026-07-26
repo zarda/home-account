@@ -1013,6 +1013,11 @@
     "compareRecurring": "定期支出變化",
     "compareUnchanged": "沒有變化：",
     "compareCurrencyMismatch": "這兩個月以不同的基準貨幣儲存，因此無法比較。",
-    "compareSameMonth": "請選擇兩個不同的月份進行比較。"
+    "compareSameMonth": "請選擇兩個不同的月份進行比較。",
+    "narrativeTitle": "文字說明",
+    "narrativeLoading": "正在撰寫…",
+    "narrativeRefresh": "重新撰寫",
+    "narrativeUnchanged": "與上個月相比沒有太大變化。",
+    "narrativeNote": "依據上方數字撰寫。僅傳送總額與分類名稱，不會傳送說明、備註或個別交易。"
   }
 }

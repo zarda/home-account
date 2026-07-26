@@ -16,6 +16,10 @@ import {
   Budget, CategoryTotal, Transaction, MonthlyTotal,
   RAG_TIER_CONFIGS, effectiveRagLevel,
 } from '../../../models';
+import {
+  containsPotentialXSS,
+  markdownToHtml,
+} from '../../../core/utils/markdown.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
@@ -311,70 +315,19 @@ export class AiSummaryComponent {
     return period;
   }
 
-  // Format markdown to HTML for display
+  /**
+   * Format markdown to HTML for display.
+   *
+   * The string work lives in core/utils/markdown.utils so the insights narrative
+   * shares it rather than carrying a second copy of the XSS pre-check. The
+   * sanitizer call stays here, because trusting HTML belongs where it is
+   * rendered.
+   */
   formatMarkdown(markdown: string): SafeHtml {
-    let html = markdown;
-
-    // Security check: detect potential XSS attempts
-    if (this.containsPotentialXSS(html)) {
+    if (containsPotentialXSS(markdown)) {
       console.warn('[AI Summary] Potential XSS detected in markdown content');
-      return this.sanitizer.sanitize(1, html) || ''; // 1 = SecurityContext.HTML
+      return this.sanitizer.sanitize(1, markdown) || ''; // 1 = SecurityContext.HTML
     }
-
-    // Convert markdown headers (## Title) to HTML
-    html = html.replace(/^### (.*?)$/gm, '<h3 class="markdown-h3">$1</h3>');
-    html = html.replace(/^## (.*?)$/gm, '<h2 class="markdown-h2">$1</h2>');
-    html = html.replace(/^# (.*?)$/gm, '<h1 class="markdown-h1">$1</h1>');
-
-    // Convert bold text (**text**)
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-
-    // Convert italic text (*text*)
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-
-    // Convert bullet points (- item) to HTML lists
-    const lines = html.split('\n');
-    let inList = false;
-    const processedLines: string[] = [];
-
-    for (const line of lines) {
-      if (line.trim().startsWith('- ')) {
-        if (!inList) {
-          processedLines.push('<ul class="markdown-list">');
-          inList = true;
-        }
-        processedLines.push(`<li>${line.trim().substring(2)}</li>`);
-      } else {
-        if (inList) {
-          processedLines.push('</ul>');
-          inList = false;
-        }
-        if (line.trim()) {
-          processedLines.push(`<p>${line}</p>`);
-        }
-      }
-    }
-
-    if (inList) {
-      processedLines.push('</ul>');
-    }
-
-    html = processedLines.join('');
-
-    return this.sanitizer.bypassSecurityTrustHtml(html);
-  }
-
-  // Check for potential XSS patterns
-  private containsPotentialXSS(text: string): boolean {
-    const xssPatterns = [
-      /<script/i,
-      /on\w+\s*=/i,  // onclick=, onerror=, etc.
-      /javascript:/i,
-      /<iframe/i,
-      /<embed/i,
-      /<object/i,
-    ];
-
-    return xssPatterns.some(pattern => pattern.test(text));
+    return this.sanitizer.bypassSecurityTrustHtml(markdownToHtml(markdown));
   }
 }

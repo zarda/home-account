@@ -25,6 +25,7 @@ import {
 } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { SnapshotTimelineComponent } from './snapshot-timeline/snapshot-timeline.component';
 import { SnapshotCompareComponent } from './snapshot-compare/snapshot-compare.component';
+import { InsightNarrativeComponent } from './insight-narrative/insight-narrative.component';
 import { DEFAULT_HABIT_RHYTHM_OPTIONS } from '../../../core/utils/habit-rhythm.utils';
 import { DEFAULT_CATEGORY_TREND_OPTIONS } from '../../../core/utils/category-trend.utils';
 import { parseMonthKey } from '../../../core/utils/transaction-date.utils';
@@ -64,6 +65,7 @@ import { RecurringListComponent } from './recurring-list/recurring-list.componen
     RecurringListComponent,
     SnapshotTimelineComponent,
     SnapshotCompareComponent,
+    InsightNarrativeComponent,
   ],
   providers: [InsightsService],
   templateUrl: './insights-tab.component.html',
@@ -120,6 +122,13 @@ export class InsightsTabComponent implements OnInit {
 
   readonly archivedRecurring = computed(
     () => this.viewedSnapshot()?.facts?.recurring ?? null);
+
+  /**
+   * The newest stored month's facts, so the narrative can skip a request when
+   * nothing has moved materially since then.
+   */
+  readonly previousMonthFacts = computed(
+    () => this.storedSnapshots()[0]?.facts ?? null);
 
   constructor() {
     // Reload when the page's period selector moves. untracked keeps the read of

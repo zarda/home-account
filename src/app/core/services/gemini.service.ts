@@ -587,6 +587,52 @@ Write the section headings in the same language as the response. Format EVERY se
   }
 
   // Get financial advice based on period totals
+  /**
+   * Describe an already-computed spending pattern in prose.
+   *
+   * Takes a pre-built aggregate context rather than transactions: the insights
+   * feature sends numbers and category names only, never a description, note or
+   * merchant string. Facts in, prose out.
+   */
+  async generatePatternNarrative(context: string, locale: string): Promise<string> {
+    if (!this.textModel) {
+      throw new Error('Gemini text model not available');
+    }
+
+    this.isProcessing.set(true);
+    try {
+      const prompt = `You are describing a person's own spending patterns back to them.
+
+PATTERNS ALREADY DETECTED (all figures pre-computed, do not recalculate):
+${context}
+
+INSTRUCTION: Write 3-4 sentences describing what these patterns show.
+- Describe, never judge. Say what changed, not whether it was wise.
+- Use the exact figures above; invent nothing.
+- Compare the person only to their own history.
+- No preamble, no headings, no bullet list.
+${this.getLanguageInstruction()}
+Locale: ${locale}`;
+
+      const result = await this.generateTextWithRetry({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: this.currentTextModelId.includes('gemma') ? 2048 : 1024,
+          temperature: 0.3,
+          topP: 0.7,
+        }
+      });
+
+      let text = result.response.text().trim();
+      if (locale === 'tc' || locale === 'ja') {
+        text = dropNonCjkSentences(text);
+      }
+      return trimToLastCompleteSentence(text);
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
   async getFinancialAdvice(
     summary: MonthlyTotal,
     baseCurrency = 'USD',

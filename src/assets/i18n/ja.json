@@ -1013,6 +1013,11 @@
     "compareRecurring": "定期支出の変化",
     "compareUnchanged": "変化なし：",
     "compareCurrencyMismatch": "この2つの月は異なる基準通貨で保存されているため、比較できません。",
-    "compareSameMonth": "比較するには異なる2つの月を選んでください。"
+    "compareSameMonth": "比較するには異なる2つの月を選んでください。",
+    "narrativeTitle": "説明",
+    "narrativeLoading": "作成中…",
+    "narrativeRefresh": "もう一度作成",
+    "narrativeUnchanged": "先月から大きな変化はありません。",
+    "narrativeNote": "上記の数値から作成しています。送信されるのは合計とカテゴリ名のみで、説明・メモ・個別の取引は送信されません。"
   }
 }
