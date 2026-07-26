@@ -591,6 +591,163 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('insightSnapshots', () => {
+    /**
+     * Snapshots are keyed by `yyyy-MM`, so they need their own path helper —
+     * the shared one appends a counter, which no month key can match.
+     */
+    const snapshotPath = (monthKey: string, owner = uid): string =>
+      `users/${owner}/insightSnapshots/${monthKey}`;
+
+    const validSnapshot = (monthKey: string, overrides: Record<string, unknown> = {}) => ({
+      userId: uid,
+      monthKey,
+      detectorVersion: 1,
+      schemaVersion: 1,
+      status: 'complete',
+      fingerprint: {
+        tx: 'abcd1234:10',
+        count: 10,
+        timeZone: 'Asia/Taipei',
+        baseCurrency: 'USD'
+      },
+      totals: { income: 4000, expense: 1200, balance: 2800, count: 10 },
+      byCategory: [{ categoryId: 'food_groceries', total: 800, count: 6 }],
+      facts: { detectorVersion: 1, baseCurrency: 'USD' },
+      cards: [],
+      generatedAt: Timestamp.now(),
+      createdAt: Timestamp.now(),
+      revision: 1,
+      ...overrides
+    });
+
+    it('accepts a well-formed snapshot', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, snapshotPath('2026-01')), validSnapshot('2026-01')),
+        'valid create'
+      );
+    });
+
+    it('accepts the updatedAt stamp setDocument adds', async () => {
+      await expectAllowed(
+        setDoc(
+          doc(firestore, snapshotPath('2026-02')),
+          validSnapshot('2026-02', { updatedAt: Timestamp.now() })
+        ),
+        'create with the service stamp'
+      );
+    });
+
+    // The month key is both the document id and a stored field; if they can
+    // disagree, a snapshot can be filed under the wrong month.
+    it('rejects a monthKey that disagrees with the document id', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, snapshotPath('2026-03')), validSnapshot('2026-04')),
+        'mismatched month key'
+      );
+    });
+
+    it('rejects document ids that are not yyyy-MM', async () => {
+      for (const badId of ['2026-13', '2026-00', '2026-1', 'march', '2026-01-01']) {
+        await expectDenied(
+          setDoc(doc(firestore, snapshotPath(badId)), validSnapshot(badId)),
+          `bad month id ${badId}`
+        );
+      }
+    });
+
+    it('rejects an unknown extra field', async () => {
+      await expectDenied(
+        setDoc(
+          doc(firestore, snapshotPath('2026-05')),
+          validSnapshot('2026-05', { narrative: 'a written summary' })
+        ),
+        'extra field'
+      );
+    });
+
+    it('rejects a snapshot missing its fingerprint', async () => {
+      const payload = validSnapshot('2026-06') as Record<string, unknown>;
+      delete payload['fingerprint'];
+      await expectDenied(
+        setDoc(doc(firestore, snapshotPath('2026-06')), payload),
+        'missing fingerprint'
+      );
+    });
+
+    it('rejects a malformed fingerprint', async () => {
+      await expectDenied(
+        setDoc(
+          doc(firestore, snapshotPath('2026-07')),
+          validSnapshot('2026-07', { fingerprint: { tx: 'abc', count: 'ten' } })
+        ),
+        'malformed fingerprint'
+      );
+    });
+
+    it('rejects a snapshot attributed to another user', async () => {
+      await expectDenied(
+        setDoc(
+          doc(firestore, snapshotPath('2026-08')),
+          validSnapshot('2026-08', { userId: otherUid })
+        ),
+        'foreign userId'
+      );
+    });
+
+    it('rejects a zero or negative revision', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, snapshotPath('2026-09')), validSnapshot('2026-09', { revision: 0 })),
+        'revision 0'
+      );
+    });
+
+    // A regeneration has to be recorded rather than history being silently
+    // amended, so a rewrite must advance the revision.
+    it('denies an overwrite that does not advance the revision', async () => {
+      const p = snapshotPath('2026-10');
+      await setDoc(doc(firestore, p), validSnapshot('2026-10'));
+      await expectDenied(
+        setDoc(doc(firestore, p), validSnapshot('2026-10', { revision: 1 })),
+        'overwrite at the same revision'
+      );
+    });
+
+    it('allows a regeneration that advances the revision', async () => {
+      const p = snapshotPath('2026-11');
+      await setDoc(doc(firestore, p), validSnapshot('2026-11'));
+      await expectAllowed(
+        setDoc(doc(firestore, p), validSnapshot('2026-11', { revision: 2 })),
+        'regeneration'
+      );
+    });
+
+    // Deliberately allowed, unlike securityEvents: account deletion has to
+    // remove these, and a rule cannot tell that apart from deleting one.
+    it('allows the owner to delete a snapshot', async () => {
+      const p = snapshotPath('2026-12');
+      await setDoc(doc(firestore, p), validSnapshot('2026-12'));
+      await expectAllowed(deleteDoc(doc(firestore, p)), 'owner delete');
+    });
+
+    it("denies writing into another user's snapshots", async () => {
+      await expectDenied(
+        setDoc(
+          doc(firestore, snapshotPath('2026-01', otherUid)),
+          validSnapshot('2026-01', { userId: otherUid })
+        ),
+        "write to stranger's snapshots"
+      );
+    });
+
+    it("denies reading another user's snapshots", async () => {
+      await expectDenied(
+        getDoc(doc(firestore, snapshotPath('2026-01', otherUid))),
+        "read of stranger's snapshot"
+      );
+    });
+  });
+
   describe('cross-tenant isolation', () => {
     it("denies writing into another user's subcollection", async () => {
       await expectDenied(
@@ -636,7 +793,8 @@ describe('firestore.rules (emulator smoke test)', () => {
     // field validator above becomes decorative.
     const validated = [
       'transactions', 'budgets', 'categories',
-      'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets'
+      'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
+      'insightSnapshots'
     ];
 
     for (const collection of validated) {
@@ -648,16 +806,19 @@ describe('firestore.rules (emulator smoke test)', () => {
       });
     }
 
+    // Deliberately a name that will never become a real feature: this case has
+    // to keep testing the catch-all itself, and it previously used
+    // insightSnapshots, which then became a validated collection.
     it('still allows owner writes to collections with no validator', async () => {
       await expectAllowed(
-        setDoc(doc(firestore, path('insightSnapshots')), { anything: true }),
+        setDoc(doc(firestore, path('unvalidatedProbe')), { anything: true }),
         'write to an unvalidated subcollection'
       );
     });
 
     it('denies unvalidated subcollection writes for a different user', async () => {
       await expectDenied(
-        setDoc(doc(firestore, path('insightSnapshots', otherUid)), { anything: true }),
+        setDoc(doc(firestore, path('unvalidatedProbe', otherUid)), { anything: true }),
         "write to stranger's unvalidated subcollection"
       );
     });
