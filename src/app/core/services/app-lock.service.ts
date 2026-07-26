@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 
 import { AuthService } from './auth.service';
 import {
+  APP_LOCK_STORAGE_PREFIX,
   MAX_PIN_ATTEMPTS,
   clearAttemptState,
   clearPinRecord,
@@ -110,6 +111,17 @@ export class AppLockService {
         this.onBackground();
       } else {
         this.onForeground();
+      }
+    });
+
+    if (typeof window === 'undefined') return;
+
+    // Fires only in the app's *other* tabs. Without it, a tab sitting on the
+    // lock screen keeps its memoized 'pin' method after the credential is
+    // removed elsewhere, so no PIN opens it and it stays stuck until reload.
+    window.addEventListener('storage', event => {
+      if (event.key === null || event.key.startsWith(APP_LOCK_STORAGE_PREFIX)) {
+        this.credentialVersion.update(v => v + 1);
       }
     });
   }

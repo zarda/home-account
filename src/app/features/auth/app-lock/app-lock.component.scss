@@ -72,6 +72,12 @@ form {
   width: 100%;
 }
 
+.forgot-hint {
+  margin: 12px 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
 .signout-button {
   margin-top: 4px;
 }

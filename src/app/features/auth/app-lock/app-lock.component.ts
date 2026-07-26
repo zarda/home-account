@@ -92,8 +92,15 @@ export class AppLockComponent implements OnInit, OnDestroy {
    * the very lock they cannot pass. Recovery has to happen from this screen.
    */
   async signOut(): Promise<void> {
+    // Order matters: clearing first means a sign-out that fails still leaves
+    // the device recoverable. Navigation runs either way, so a rejected
+    // sign-out cannot strand the user on this screen.
     this.appLock.clearCredential();
-    await this.authService.signOut();
+    try {
+      await this.authService.signOut();
+    } catch (error) {
+      console.error('Sign-out from the lock screen failed:', error);
+    }
     await this.router.navigate(['/login']);
   }
 

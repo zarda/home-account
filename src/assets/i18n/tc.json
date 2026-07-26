@@ -913,6 +913,7 @@
     "pinRemoved": "已移除 PIN 碼",
     "pinSaveFailed": "無法在此裝置儲存 PIN 碼",
     "disclaimer": "PIN 碼以裝置為單位設定，用於限制應用程式存取，並不會加密您儲存的資料。",
-    "timeoutMinute": "1 分鐘"
+    "timeoutMinute": "1 分鐘",
+    "forgotPin": "忘記 PIN 碼？登出即可清除此裝置的 PIN 碼；您的資料不會遺失，重新登入後可設定新的 PIN 碼。"
   }
 }

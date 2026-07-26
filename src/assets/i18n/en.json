@@ -889,6 +889,7 @@
     "pinRemoved": "PIN removed",
     "pinSaveFailed": "Could not save the PIN on this device",
     "disclaimer": "The PIN is set per device and controls access to the app. It does not encrypt your stored data.",
-    "timeoutMinute": "1 minute"
+    "timeoutMinute": "1 minute",
+    "forgotPin": "Forgot your PIN? Signing out clears it on this device — your data is safe, and you can set a new PIN after signing back in."
   }
 }

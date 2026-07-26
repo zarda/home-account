@@ -117,6 +117,18 @@ describe('AppLockComponent', () => {
     expect(appLock.clearCredential).toHaveBeenCalled();
   });
 
+  // A rejected sign-out must not strand the user on the lock screen, and the
+  // credential is cleared first so the device stays recoverable regardless.
+  it('still clears the credential and leaves when sign-out fails', async () => {
+    spyOn(console, 'error');
+    auth.signOut.and.rejectWith(new Error('offline'));
+
+    await component.signOut();
+
+    expect(appLock.clearCredential).toHaveBeenCalled();
+    expect(router.navigate).toHaveBeenCalledWith(['/login']);
+  });
+
   it('blocks submission while throttled', () => {
     appLock.blockedForMs.and.returnValue(8_000);
     component.pin = '123456';

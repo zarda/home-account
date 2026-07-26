@@ -913,6 +913,7 @@
     "pinRemoved": "PINを削除しました",
     "pinSaveFailed": "このデバイスにPINを保存できませんでした",
     "disclaimer": "PINはデバイスごとに設定され、アプリへのアクセスを制限します。保存されたデータの暗号化は行いません。",
-    "timeoutMinute": "1分後"
+    "timeoutMinute": "1分後",
+    "forgotPin": "PINをお忘れですか？サインアウトするとこのデバイスのPINが削除されます。データはそのまま残り、再サインイン後に新しいPINを設定できます。"
   }
 }

@@ -4,7 +4,12 @@ import { Router } from '@angular/router';
 
 import { AppLockService } from './app-lock.service';
 import { AuthService } from './auth.service';
-import { appLockStorageKey, clearAttemptState, MAX_PIN_ATTEMPTS } from '../utils/app-lock.utils';
+import {
+  APP_LOCK_STORAGE_PREFIX,
+  appLockStorageKey,
+  clearAttemptState,
+  MAX_PIN_ATTEMPTS,
+} from '../utils/app-lock.utils';
 import { derivePinRecord } from '../utils/pin-hash.utils';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
 import { createMockUser } from './testing/mock-auth.service';
@@ -215,6 +220,52 @@ describe('AppLockService', () => {
 
       expect(service.failedAttempts()).toBe(0);
       expect(service.blockedForMs()).toBe(0);
+    });
+  });
+
+  describe('cross-tab recovery', () => {
+    // Another tab removing the PIN must not leave this one stuck on the lock
+    // screen with a credential that no longer exists and no PIN that works.
+    it('unlocks when the credential is removed in another tab', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      service.init();
+      expect(service.isLocked()).toBe(true);
+
+      localStorage.removeItem(appLockStorageKey('user-1'));
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: appLockStorageKey('user-1') })
+      );
+
+      expect(service.method()).toBe('none');
+      expect(service.isLocked()).toBe(false);
+    });
+
+    it('re-reads the credential when storage is cleared wholesale', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      service.init();
+      expect(service.isLocked()).toBe(true);
+
+      localStorage.removeItem(appLockStorageKey('user-1'));
+      window.dispatchEvent(new StorageEvent('storage', { key: null }));
+
+      expect(service.isLocked()).toBe(false);
+    });
+
+    it('ignores unrelated storage keys', async () => {
+      await seedPin();
+      setPreferences({ enableAppLock: true });
+      service.init();
+      // Read once so there is a memoized value an over-eager listener could
+      // invalidate; otherwise the next read would recompute regardless.
+      expect(service.isLocked()).toBe(true);
+
+      localStorage.removeItem(appLockStorageKey('user-1'));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'some.other.key' }));
+
+      expect(service.isLocked()).toBe(true);
+      expect(APP_LOCK_STORAGE_PREFIX.startsWith('homeaccount')).toBe(true);
     });
   });
 
