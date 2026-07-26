@@ -14,14 +14,21 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteField,
   Timestamp
 } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../models';
+import {
+  User,
+  UserPreferences,
+  LegacyProviderApiKeys,
+  DEFAULT_USER_PREFERENCES
+} from '../../models';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService, ThemePreference } from './theme.service';
+import { SecurityLogService } from './security-log.service';
 
 /**
  * First-sign-in user document built from the Firebase auth profile.
@@ -52,6 +59,7 @@ export class AuthService {
   private injector = inject(EnvironmentInjector);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
+  private securityLog = inject(SecurityLogService);
 
   // Signals for reactive state
   currentUser = signal<User | null>(null);
@@ -151,6 +159,7 @@ export class AuthService {
     const result = await signInWithPopup(this.auth, provider);
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
+    this.recordSignIn(user.id);
     return user;
   }
 
@@ -170,7 +179,21 @@ export class AuthService {
 
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
+    this.recordSignIn(user.id);
     return user;
+  }
+
+  /**
+   * Recorded from the two interactive sign-in paths only. getOrCreateUser and
+   * the auth-state listener both also run on every session restore, so logging
+   * there would record an entry for each ordinary app open and double-log a
+   * real sign-in.
+   *
+   * Not awaited: record() swallows its own errors, and while offline the write
+   * sits in the persistent cache until reconnect, which would stall sign-in.
+   */
+  private recordSignIn(userId: string): void {
+    void this.securityLog.record(userId, 'signIn');
   }
 
   async signOut(): Promise<void> {
@@ -225,6 +248,40 @@ export class AuthService {
       ...user,
       preferences: updatedPreferences
     });
+  }
+
+  /**
+   * Drop the provider API keys older builds stored on the preferences map.
+   *
+   * Field-level deletes rather than a whole-map rewrite, so a preference edit
+   * racing in from another device is not clobbered. The local signal is
+   * stripped too: updateUserPreferences rewrites the whole map from the
+   * in-memory copy, which would otherwise put the keys straight back.
+   */
+  async clearStoredProviderApiKeys(): Promise<void> {
+    const user = this.currentUser();
+    if (!user) {
+      throw new Error('No authenticated user');
+    }
+
+    const userRef = doc(this.firestore, 'users', user.id);
+    await updateDoc(userRef, {
+      'preferences.geminiApiKey': deleteField(),
+      'preferences.openaiApiKey': deleteField(),
+      'preferences.claudeApiKey': deleteField()
+    });
+
+    // Re-read rather than reusing the snapshot taken before the await: a
+    // preference the user changed while the delete was in flight would
+    // otherwise be reverted in the signal.
+    const latest = this.currentUser();
+    if (!latest) return;
+
+    const preferences = { ...latest.preferences } as UserPreferences & LegacyProviderApiKeys;
+    delete preferences.geminiApiKey;
+    delete preferences.openaiApiKey;
+    delete preferences.claudeApiKey;
+    this.currentUser.set({ ...latest, preferences });
   }
 
   async updateUserProfile(data: { displayName?: string; photoURL?: string }): Promise<void> {

@@ -4,6 +4,7 @@ import { GeminiService, ParsedReceipt, RawTransaction, ExtractedTransaction, Cat
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
+import { ProviderKeyService } from './provider-key.service';
 import { Category, Transaction, Budget, MonthlyTotal, LLMProvider, LLMProviderPreferences } from '../../models';
 import { createMockUser } from './testing/mock-auth.service';
 
@@ -43,6 +44,7 @@ describe('CloudLLMProviderService', () => {
   let openai: jasmine.SpyObj<OpenAIService>;
   let claude: jasmine.SpyObj<ClaudeService>;
   let auth: jasmine.SpyObj<AuthService>;
+  let providerKeys: jasmine.SpyObj<ProviderKeyService>;
 
   const sampleReceipt: ParsedReceipt = {
     merchant: 'Shop', amount: 5, currency: 'USD', date: new Date('2024-01-01'),
@@ -57,6 +59,7 @@ describe('CloudLLMProviderService', () => {
         { provide: OpenAIService, useValue: openai as unknown as OpenAIService },
         { provide: ClaudeService, useValue: claude as unknown as ClaudeService },
         { provide: AuthService, useValue: auth },
+        { provide: ProviderKeyService, useValue: providerKeys },
       ],
     });
     service = TestBed.inject(CloudLLMProviderService);
@@ -72,6 +75,15 @@ describe('CloudLLMProviderService', () => {
 
     auth = jasmine.createSpyObj<AuthService>('AuthService', ['currentUser']);
     auth.currentUser.and.returnValue(null);
+
+    providerKeys = jasmine.createSpyObj<ProviderKeyService>('ProviderKeyService', [
+      'resolve',
+      'getKey',
+      'setKey',
+    ]);
+    providerKeys.resolve.and.resolveTo({});
+    providerKeys.getKey.and.resolveTo(undefined);
+    providerKeys.setKey.and.resolveTo(undefined);
 
     build();
   });
@@ -111,44 +123,47 @@ describe('CloudLLMProviderService', () => {
   });
 
   // ----------------------------------------------------------------
-  // initializeFromUserPreferences
+  // initializeProviders
   // ----------------------------------------------------------------
-  describe('initializeFromUserPreferences', () => {
-    it('initializes each provider that has an API key', () => {
-      auth.currentUser.and.returnValue(createMockUser('u', {
-        preferences: {
-          ...createMockUser().preferences,
-          geminiApiKey: 'g-key',
-          openaiApiKey: 'o-key',
-          claudeApiKey: 'c-key',
-        },
-      }));
+  describe('initializeProviders', () => {
+    it('initializes each provider that has an API key', async () => {
+      providerKeys.resolve.and.resolveTo({ gemini: 'g-key', openai: 'o-key', claude: 'c-key' });
 
-      service.initializeFromUserPreferences('text-model', 'vision-model');
+      await service.initializeProviders('text-model', 'vision-model');
 
       expect(gemini.reinitialize).toHaveBeenCalledWith('g-key', 'text-model', 'vision-model');
       expect((openai as unknown as jasmine.SpyObj<GeminiService>).reinitialize).toHaveBeenCalledWith('o-key');
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize).toHaveBeenCalledWith('c-key');
     });
 
-    it('skips providers without an API key', () => {
-      auth.currentUser.and.returnValue(createMockUser('u', {
-        preferences: { ...createMockUser().preferences, geminiApiKey: 'g-key' },
-      }));
+    it('skips providers without an API key', async () => {
+      providerKeys.resolve.and.resolveTo({ gemini: 'g-key' });
 
-      service.initializeFromUserPreferences();
+      await service.initializeProviders();
 
       expect(gemini.reinitialize).toHaveBeenCalledWith('g-key', undefined, undefined);
       expect((openai as unknown as jasmine.SpyObj<GeminiService>).reinitialize).not.toHaveBeenCalled();
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize).not.toHaveBeenCalled();
     });
 
-    it('warns and does nothing when there is no user', () => {
-      auth.currentUser.and.returnValue(null);
-      const warn = spyOn(console, 'warn');
-      service.initializeFromUserPreferences();
+    it('does nothing when no keys are stored', async () => {
+      providerKeys.resolve.and.resolveTo({});
+
+      await service.initializeProviders();
+
       expect(gemini.reinitialize).not.toHaveBeenCalled();
-      expect(warn).toHaveBeenCalled();
+      expect((openai as unknown as jasmine.SpyObj<GeminiService>).reinitialize).not.toHaveBeenCalled();
+      expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize).not.toHaveBeenCalled();
+    });
+
+    // The keys never travel through the user document any more.
+    it('reads keys from the secrets store, not from preferences', async () => {
+      providerKeys.resolve.and.resolveTo({ gemini: 'g-key' });
+
+      await service.initializeProviders();
+
+      expect(providerKeys.resolve).toHaveBeenCalled();
+      expect(auth.currentUser).not.toHaveBeenCalled();
     });
   });
 
@@ -191,17 +206,15 @@ describe('CloudLLMProviderService', () => {
       expect((claude as unknown as { setModel: jasmine.Spy }).setModel).toHaveBeenCalledWith('claude-x');
     });
 
-    it('reinitializeGemini uses the stored gemini API key', () => {
-      auth.currentUser.and.returnValue(createMockUser('u', {
-        preferences: { ...createMockUser().preferences, geminiApiKey: 'stored-key' },
-      }));
-      service.reinitializeGemini('t', 'v');
+    it('reinitializeGemini uses the stored gemini API key', async () => {
+      providerKeys.getKey.and.resolveTo('stored-key');
+      await service.reinitializeGemini('t', 'v');
       expect(gemini.reinitialize).toHaveBeenCalledWith('stored-key', 't', 'v');
     });
 
-    it('reinitializeGemini passes undefined when there is no key', () => {
-      auth.currentUser.and.returnValue(null);
-      service.reinitializeGemini();
+    it('reinitializeGemini passes undefined when there is no key', async () => {
+      providerKeys.getKey.and.resolveTo(undefined);
+      await service.reinitializeGemini();
       expect(gemini.reinitialize).toHaveBeenCalledWith(undefined, undefined, undefined);
     });
   });

@@ -58,6 +58,32 @@ describe('CategoryService', () => {
         expect(c.isDefault).toBe(true);
       });
     });
+
+    // Transactions reference these ids, so a collision would silently merge two
+    // catalog entries into one.
+    it('should generate a unique id for every default category', () => {
+      const ids = service.getDefaultCategories().map(c => c.id);
+      const duplicates = ids.filter((id, i) => ids.indexOf(id) !== i);
+      expect(duplicates).toEqual([]);
+    });
+
+    it('should generate one category per catalog entry', () => {
+      const expected = [...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].reduce(
+        (total, group) => total + 1 + group.categories.length,
+        0
+      );
+      expect(service.getDefaultCategories().length).toBe(expected);
+    });
+
+    it('should parent every subcategory to a real group', () => {
+      const categories = service.getDefaultCategories();
+      const groupIds = new Set(categories.filter(c => !c.parentId).map(c => c.id));
+      categories
+        .filter(c => c.parentId)
+        .forEach(c => {
+          expect(groupIds.has(c.parentId as string)).toBe(true, `${c.id} has no group`);
+        });
+    });
   });
 
   describe('computed signals', () => {

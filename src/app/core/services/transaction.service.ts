@@ -12,6 +12,13 @@ import { ReceiptQuotaService } from './receipt-quota.service';
  * Callers surface the quota dialog instead of a generic error message.
  */
 export const RECEIPT_IMAGE_LIMIT_ERROR = 'RECEIPT_IMAGE_LIMIT_REACHED';
+
+/**
+ * Thrown when an amount is zero, negative or not a number. Import sources
+ * (CSV columns, model-extracted receipts) can produce these; the write would
+ * be rejected by firestore.rules anyway.
+ */
+export const INVALID_AMOUNT_ERROR = 'INVALID_TRANSACTION_AMOUNT';
 import {
   Transaction,
   TransactionFilters,
@@ -136,6 +143,12 @@ export class TransactionService {
     try {
       const userId = this.authService.userId();
       if (!userId) throw new Error('User not authenticated');
+
+      // firestore.rules rejects non-positive amounts. Fail here so importers
+      // get a row they can report rather than an opaque permission error.
+      if (!Number.isFinite(data.amount) || data.amount <= 0) {
+        throw new Error(INVALID_AMOUNT_ERROR);
+      }
 
       const baseCurrency = this.authService.currentUser()?.preferences.baseCurrency ?? 'USD';
       // The persisted base-currency snapshot must never be computed against

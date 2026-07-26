@@ -32,6 +32,28 @@ export const FREE_TIER_RECEIPT_IMAGE_LIMIT = 200;
 
 export type LLMProvider = 'gemini' | 'openai' | 'claude';
 
+/**
+ * Per-provider API keys. Stored at users/{uid}/secrets/providers rather than
+ * on UserPreferences, so they no longer ride along in every snapshot of the
+ * broadly-subscribed user document. Field names match LLMProvider so
+ * secrets[provider] type-checks.
+ */
+export interface ProviderSecrets {
+  gemini?: string;
+  openai?: string;
+  claude?: string;
+}
+
+/**
+ * How older builds stored the keys on the preferences map. Read only by the
+ * one-time migration in ProviderKeyService.
+ */
+export interface LegacyProviderApiKeys {
+  geminiApiKey?: string;
+  openaiApiKey?: string;
+  claudeApiKey?: string;
+}
+
 export interface LLMProviderPreferences {
   receiptScanning: LLMProvider;
   categorization: LLMProvider;
@@ -52,15 +74,38 @@ export interface UserPreferences {
   dateFormat: string;            // 'MM/DD/YYYY', 'DD/MM/YYYY'
   theme: 'light' | 'dark' | 'system';
   defaultCategories: string[];   // Category IDs to show first
-  geminiApiKey?: string;         // Optional user-provided Gemini API key
-  openaiApiKey?: string;         // Optional user-provided OpenAI API key
-  claudeApiKey?: string;         // Optional user-provided Claude/Anthropic API key
   llmProviderPreferences?: LLMProviderPreferences; // Per-feature LLM provider selection
   enableRagInsights?: boolean;   // Legacy on/off RAG toggle. Kept and dual-written on save so
                                  // older installed clients keep working; never read directly —
                                  // use effectiveRagLevel().
   ragInsightsLevel?: RagInsightsLevel; // Tiered RAG grounding depth. Absent = derive from the
                                        // legacy boolean (true→'standard', else 'off').
+  enableAppLock?: boolean;       // Absent = off. Requires a credential on this device.
+  appLockTimeoutMinutes?: number; // Grace period after backgrounding; absent = default.
+}
+
+/** Auto-lock delays offered in settings, in minutes. 0 locks immediately. */
+export const APP_LOCK_TIMEOUT_MINUTES: readonly number[] = [0, 1, 5, 15, 60];
+
+export const DEFAULT_APP_LOCK_TIMEOUT_MINUTES = 5;
+
+/** Whether the account asked for an app lock. Absent means off. */
+export function appLockEnabled(prefs: UserPreferences | null | undefined): boolean {
+  return prefs?.enableAppLock === true;
+}
+
+/**
+ * Resolve the auto-lock delay, tolerating values written by other builds the
+ * same way effectiveRagLevel() tolerates unknown levels.
+ */
+export function effectiveAppLockTimeoutMinutes(
+  prefs: UserPreferences | null | undefined
+): number {
+  const stored = prefs?.appLockTimeoutMinutes;
+  if (typeof stored === 'number' && APP_LOCK_TIMEOUT_MINUTES.includes(stored)) {
+    return stored;
+  }
+  return DEFAULT_APP_LOCK_TIMEOUT_MINUTES;
 }
 
 /** Detail-grounding depth for AI insights — a token/latency vs. detail trade-off. */

@@ -1,0 +1,49 @@
+<div class="app-lock">
+  <div class="lock-card">
+    <mat-icon class="lock-icon">lock</mat-icon>
+    <h1 class="lock-title">{{ 'appLock.title' | translate }}</h1>
+    <p class="lock-subtitle">{{ 'appLock.subtitle' | translate }}</p>
+
+    <form (ngSubmit)="submit()">
+      <mat-form-field appearance="outline" class="pin-field">
+        <mat-label>{{ 'appLock.pinLabel' | translate }}</mat-label>
+        <input
+          matInput
+          name="pin"
+          type="password"
+          inputmode="numeric"
+          autocomplete="off"
+          [attr.maxlength]="pinLength"
+          [(ngModel)]="pin"
+          [disabled]="isBlocked()"
+        />
+      </mat-form-field>
+
+      @if (errorKey(); as key) {
+        <p class="lock-error" role="alert">{{ key | translate }}</p>
+      }
+
+      @if (isBlocked()) {
+        <p class="lock-blocked" role="status">
+          {{ t('appLock.tryAgainIn', { seconds: blockedSeconds() }) }}
+        </p>
+      }
+
+      <button
+        mat-flat-button
+        color="primary"
+        type="submit"
+        class="unlock-button"
+        [disabled]="!canSubmit"
+      >
+        {{ 'appLock.unlock' | translate }}
+      </button>
+    </form>
+
+    <p class="forgot-hint">{{ 'appLock.forgotPin' | translate }}</p>
+
+    <button mat-button type="button" class="signout-button" (click)="signOut()">
+      {{ 'appLock.signOut' | translate }}
+    </button>
+  </div>
+</div>

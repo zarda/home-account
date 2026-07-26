@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
@@ -10,6 +11,7 @@ import { OfflineQueueService } from '../../../core/services/offline-queue.servic
 import { GeminiService } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
 
@@ -23,6 +25,8 @@ describe('AiSettingsPageComponent', () => {
   let geminiServiceMock: jasmine.SpyObj<GeminiService>;
   let cloudLLMProviderMock: jasmine.SpyObj<CloudLLMProviderService>;
   let authServiceMock: jasmine.SpyObj<AuthService>;
+  let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
+  let providerKeysLoadFailed: ReturnType<typeof signal<boolean>>;
   let announcerMock: jasmine.SpyObj<AnnouncerService>;
 
   beforeEach(async () => {
@@ -74,6 +78,16 @@ describe('AiSettingsPageComponent', () => {
     ]);
     cloudLLMProviderMock.isProviderAvailable.and.returnValue(false);
 
+    providerKeysLoadFailed = signal(false);
+    providerKeysMock = jasmine.createSpyObj<ProviderKeyService>(
+      'ProviderKeyService',
+      ['resolve', 'getKey', 'setKey'],
+      { loadFailed: providerKeysLoadFailed }
+    );
+    providerKeysMock.resolve.and.resolveTo({});
+    providerKeysMock.getKey.and.resolveTo(undefined);
+    providerKeysMock.setKey.and.resolveTo(undefined);
+
     authServiceMock = jasmine.createSpyObj('AuthService', ['currentUser', 'updateUserPreferences']);
     authServiceMock.currentUser.and.returnValue({
       preferences: {
@@ -105,6 +119,7 @@ describe('AiSettingsPageComponent', () => {
         { provide: CloudLLMProviderService, useValue: cloudLLMProviderMock },
         { provide: AuthService, useValue: authServiceMock },
         { provide: AnnouncerService, useValue: announcerMock },
+        { provide: ProviderKeyService, useValue: providerKeysMock },
       ],
     }).compileComponents();
 
@@ -278,6 +293,66 @@ describe('AiSettingsPageComponent', () => {
 
     it('should not show native AI on web', () => {
       expect(component.canUseNative()).toBeFalse();
+    });
+  });
+
+  describe('provider API keys', () => {
+    it('loads the stored keys into the form', async () => {
+      providerKeysMock.resolve.and.resolveTo({ gemini: 'g-key', claude: 'c-key' });
+
+      await component['loadApiKeys']();
+
+      expect(component.geminiApiKey).toBe('g-key');
+      expect(component.claudeApiKey).toBe('c-key');
+      expect(component.openaiApiKey).toBe('');
+    });
+
+    // Keys go to the secrets document, never back onto the preferences map.
+    it('saves a key through the secrets store, not user preferences', async () => {
+      component.geminiApiKey = 'new-key';
+
+      await component.onGeminiApiKeyChange();
+
+      expect(providerKeysMock.setKey).toHaveBeenCalledWith('gemini', 'new-key');
+      expect(authServiceMock.updateUserPreferences).not.toHaveBeenCalled();
+    });
+
+    it('applies the saved key to the provider straight away', async () => {
+      component.openaiApiKey = 'o-key';
+
+      await component.onOpenaiApiKeyChange();
+
+      expect(providerKeysMock.setKey).toHaveBeenCalledWith('openai', 'o-key');
+      expect(cloudLLMProviderMock.updateProviderApiKey).toHaveBeenCalledWith('openai', 'o-key');
+    });
+
+    it('clears a key when the field is emptied', async () => {
+      component.claudeApiKey = '';
+
+      await component.onClaudeApiKeyChange();
+
+      expect(providerKeysMock.setKey).toHaveBeenCalledWith('claude', undefined);
+    });
+
+    // The fields render blank when the keys could not be read, so accepting a
+    // save here would write that blankness over the stored keys.
+    it('saves nothing until the stored keys have actually been read', async () => {
+      component.keysLoaded.set(false);
+      component.geminiApiKey = '';
+
+      await component.onGeminiApiKeyChange();
+
+      expect(providerKeysMock.setKey).not.toHaveBeenCalled();
+    });
+
+    it('reports a failed load instead of showing empty fields as truth', async () => {
+      providerKeysMock.resolve.and.resolveTo({});
+      providerKeysLoadFailed.set(true);
+
+      await component['loadApiKeys']();
+
+      expect(component.keysLoaded()).toBe(false);
+      expect(notifications.error).toHaveBeenCalled();
     });
   });
 });

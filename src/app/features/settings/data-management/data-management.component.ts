@@ -226,13 +226,30 @@ export class DataManagementComponent {
 
         const parsed = this.exportService.parseImportedData(transactions);
 
+        // One unusable row (a zero amount from a stray CSV column, say) must
+        // not abandon the rest of the file half-imported.
+        let imported = 0;
+        let skipped = 0;
         for (let i = 0; i < parsed.length; i++) {
-          await this.transactionService.addTransaction(parsed[i]);
+          try {
+            await this.transactionService.addTransaction(parsed[i]);
+            imported++;
+          } catch (error) {
+            skipped++;
+            console.error('Failed to import transaction', parsed[i], error);
+          }
           this.importProgress.set(Math.round(((i + 1) / parsed.length) * 100));
         }
 
-        const message = this.t('settings.transactionsImported', { count: transactions.length });
-        this.notifications.success(message);
+        if (skipped > 0) {
+          this.notifications.info(
+            this.t('settings.transactionsImportedPartial', { count: imported, skipped })
+          );
+        } else {
+          this.notifications.success(
+            this.t('settings.transactionsImported', { count: imported })
+          );
+        }
         this.cancelImport();
         this.isImporting.set(false);
       }

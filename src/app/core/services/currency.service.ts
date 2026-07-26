@@ -1,7 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { Observable, of } from 'rxjs';
-import { FirestoreService } from './firestore.service';
 import { TranslationService } from './translation.service';
 import {
   CurrencyInfo,
@@ -14,10 +13,15 @@ import {
 const CACHE_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
 // Using ExchangeRate-API (free, no API key required, supports TWD/VND)
 const CURRENCY_API_URL = 'https://open.er-api.com/v6/latest/USD';
+// Rates were cached in a shared /currencies/rates document that every signed-in
+// user could write, which let one account rewrite the rates converting every
+// other account's amounts. The cache is per-device now and that collection is
+// closed (firestore.rules); rates are global data, so there is nothing to gain
+// from storing them per account.
+const RATES_CACHE_KEY = 'home-account.exchangeRates';
 
 @Injectable({ providedIn: 'root' })
 export class CurrencyService {
-  private firestoreService = inject(FirestoreService);
   private translationService = inject(TranslationService);
 
   // Signals
@@ -41,8 +45,8 @@ export class CurrencyService {
   // Initialize exchange rates from cache or API
   private async initializeRates(): Promise<void> {
     try {
-      // Try to load from Firestore cache first
-      const cached = await this.getCachedRates();
+      // Try to load from the device cache first
+      const cached = this.getCachedRates();
 
       if (cached && !this.isExpired(cached.lastUpdated)) {
         this.setRatesFromCache(cached);
@@ -151,8 +155,7 @@ export class CurrencyService {
         this.exchangeRates.set(rates);
         this.lastUpdated.set(new Date());
 
-        // Cache rates in Firestore
-        await this.cacheRates(data.rates);
+        this.cacheRates(data.rates);
       }
     } catch (error) {
       console.error('Failed to refresh exchange rates:', error);
@@ -207,40 +210,40 @@ export class CurrencyService {
     }
   }
 
-  // Cache rates in Firestore
-  private async cacheRates(rates: ExchangeRates): Promise<void> {
+  // Cache rates on the device
+  private cacheRates(rates: ExchangeRates): void {
     try {
-      await this.firestoreService.setDocument('currencies/rates', {
-        ...rates,
-        lastUpdated: Timestamp.now()
-      });
+      localStorage.setItem(
+        RATES_CACHE_KEY,
+        JSON.stringify({ rates, lastUpdatedMs: Date.now() })
+      );
     } catch (error) {
+      // Private browsing and full quotas both throw here; the API fetch still
+      // populated the live rates, so a failed cache write is not fatal.
       console.error('Failed to cache rates:', error);
     }
   }
 
-  // Get cached rates from Firestore
-  private async getCachedRates(): Promise<CachedRates | null> {
+  // Get cached rates from the device
+  private getCachedRates(): CachedRates | null {
     try {
-      const doc = await this.firestoreService.getDocument<Record<string, unknown>>(
-        'currencies/rates'
-      );
+      const raw = localStorage.getItem(RATES_CACHE_KEY);
+      if (!raw) return null;
 
-      if (doc && doc['lastUpdated']) {
-        // Extract lastUpdated and filter out non-rate fields (id, lastUpdated, updatedAt)
-        const lastUpdated = doc['lastUpdated'] as Timestamp;
-        const rates: ExchangeRates = {};
-
-        for (const [key, value] of Object.entries(doc)) {
-          // Only include numeric values (exchange rates), skip metadata fields
-          if (typeof value === 'number') {
-            rates[key] = value;
-          }
-        }
-
-        return { rates, lastUpdated };
+      const parsed = JSON.parse(raw) as { rates?: unknown; lastUpdatedMs?: unknown };
+      if (typeof parsed?.lastUpdatedMs !== 'number' || !parsed.rates) {
+        return null;
       }
-      return null;
+
+      const rates: ExchangeRates = {};
+      for (const [code, value] of Object.entries(parsed.rates as Record<string, unknown>)) {
+        // Only include numeric values (exchange rates), skip anything else
+        if (typeof value === 'number') {
+          rates[code] = value;
+        }
+      }
+
+      return { rates, lastUpdated: Timestamp.fromMillis(parsed.lastUpdatedMs) };
     } catch (error) {
       console.error('Failed to get cached rates:', error);
       return null;

@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
 import { AuthService } from '../services/auth.service';
+import { AppLockService } from '../services/app-lock.service';
 
 const LOADING_CHECK_INTERVAL_MS = 50;
 const AUTH_LOADING_TIMEOUT_MS = 10000;
@@ -32,16 +33,22 @@ function waitForAuthLoading(
  * Guard that protects routes requiring authentication.
  * Redirects unauthenticated users to /login.
  */
-export const authGuard: CanActivateFn = () => {
+export const authGuard: CanActivateFn = (_route, state) => {
   const authService = inject(AuthService);
+  const appLock = inject(AppLockService);
   const router = inject(Router);
 
   const checkAuthentication = (): boolean => {
-    if (authService.isAuthenticated()) {
-      return true;
+    if (!authService.isAuthenticated()) {
+      router.navigate(['/login']);
+      return false;
     }
-    router.navigate(['/login']);
-    return false;
+    if (appLock.isLocked()) {
+      appLock.rememberRedirect(state.url);
+      router.navigate(['/lock']);
+      return false;
+    }
+    return true;
   };
 
   if (authService.isLoading()) {
@@ -49,6 +56,35 @@ export const authGuard: CanActivateFn = () => {
   }
 
   return checkAuthentication();
+};
+
+/**
+ * Guard for the lock screen itself: sends signed-out users to /login and
+ * anyone with nothing to unlock back into the app, so /lock is never a dead
+ * end the user cannot leave.
+ */
+export const lockGuard: CanActivateFn = () => {
+  const authService = inject(AuthService);
+  const appLock = inject(AppLockService);
+  const router = inject(Router);
+
+  const checkLocked = (): boolean => {
+    if (!authService.isAuthenticated()) {
+      router.navigate(['/login']);
+      return false;
+    }
+    if (!appLock.isLocked()) {
+      router.navigate([appLock.consumeRedirect()]);
+      return false;
+    }
+    return true;
+  };
+
+  if (authService.isLoading()) {
+    return waitForAuthLoading(authService, checkLocked);
+  }
+
+  return checkLocked();
 };
 
 /**
