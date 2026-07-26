@@ -51,6 +51,8 @@ export const DEFAULT_EXPENSE_GROUPS: CategoryGroup[] = [
       { nameKey: 'categoryNames.coffeeAndDrinks', icon: 'local_cafe' },
       { nameKey: 'categoryNames.fastFood', icon: 'fastfood' },
       { nameKey: 'categoryNames.delivery', icon: 'delivery_dining' },
+      { nameKey: 'categoryNames.alcoholAndTobacco', icon: 'liquor' },
+      { nameKey: 'categoryNames.snacksAndConvenience', icon: 'local_convenience_store' },
     ]
   },
   {
@@ -66,6 +68,8 @@ export const DEFAULT_EXPENSE_GROUPS: CategoryGroup[] = [
       { nameKey: 'categoryNames.taxiAndRideShare', icon: 'local_taxi' },
       { nameKey: 'categoryNames.carMaintenance', icon: 'car_repair' },
       { nameKey: 'categoryNames.carInsurance', icon: 'verified_user' },
+      { nameKey: 'categoryNames.tolls', icon: 'toll' },
+      { nameKey: 'categoryNames.evCharging', icon: 'ev_station' },
     ]
   },
   {
@@ -108,6 +112,8 @@ export const DEFAULT_EXPENSE_GROUPS: CategoryGroup[] = [
       { nameKey: 'categoryNames.internetAndPhone', icon: 'wifi' },
       { nameKey: 'categoryNames.rentAndMortgage', icon: 'apartment' },
       { nameKey: 'categoryNames.gasAndHeating', icon: 'local_fire_department' },
+      { nameKey: 'categoryNames.homeMaintenance', icon: 'home_repair_service' },
+      { nameKey: 'categoryNames.homeInsurance', icon: 'shield' },
     ]
   },
   {
@@ -202,6 +208,8 @@ export const DEFAULT_EXPENSE_GROUPS: CategoryGroup[] = [
       { nameKey: 'categoryNames.bankFees', icon: 'credit_card' },
       { nameKey: 'categoryNames.loansAndDebt', icon: 'money_off' },
       { nameKey: 'categoryNames.investmentFees', icon: 'trending_down' },
+      { nameKey: 'categoryNames.lifeInsurance', icon: 'policy' },
+      { nameKey: 'categoryNames.governmentFees', icon: 'assured_workload' },
     ]
   },
   {
@@ -258,6 +266,7 @@ export const DEFAULT_INCOME_GROUPS: CategoryGroup[] = [
       { nameKey: 'categoryNames.commission', icon: 'percent' },
       { nameKey: 'categoryNames.overtime', icon: 'schedule' },
       { nameKey: 'categoryNames.tips', icon: 'savings' },
+      { nameKey: 'categoryNames.partTimeJob', icon: 'work_history' },
     ]
   },
   {
@@ -272,6 +281,7 @@ export const DEFAULT_INCOME_GROUPS: CategoryGroup[] = [
       { nameKey: 'categoryNames.consulting', icon: 'psychology' },
       { nameKey: 'categoryNames.sideHustle', icon: 'handyman' },
       { nameKey: 'categoryNames.contractWork', icon: 'description' },
+      { nameKey: 'categoryNames.royalties', icon: 'copyright' },
     ]
   },
   {
@@ -312,6 +322,7 @@ export const DEFAULT_INCOME_GROUPS: CategoryGroup[] = [
       { nameKey: 'categoryNames.pension', icon: 'elderly' },
       { nameKey: 'categoryNames.socialSecurity', icon: 'security' },
       { nameKey: 'categoryNames.unemployment', icon: 'work_off' },
+      { nameKey: 'categoryNames.childBenefit', icon: 'child_care' },
     ]
   },
   {
