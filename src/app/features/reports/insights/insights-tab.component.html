@@ -1,0 +1,89 @@
+<div class="insights-tab">
+  @if (isLoading()) {
+    <app-loading-spinner [message]="'insights.computing' | translate" />
+  } @else if (hasFailed()) {
+    <app-empty-state
+      icon="error_outline"
+      [title]="'insights.errorTitle' | translate"
+      [description]="'insights.errorBody' | translate"
+      [actionLabel]="'insights.retry' | translate"
+      actionIcon="refresh"
+      (action)="refresh()"
+    />
+  } @else if (isOfflineWithoutData()) {
+    <!-- Distinguished from "no data" on purpose: a cold cache offline returns an
+         empty snapshot, and telling the user they have no transactions would be
+         a lie. -->
+    <app-empty-state
+      icon="cloud_off"
+      [title]="'insights.offlineTitle' | translate"
+      [description]="'insights.offlineBody' | translate"
+    />
+  } @else {
+    <!-- The window is usually wider than the selected period, so stating it is
+         what stops a six-month trend beside a "this month" selection from
+         reading as a bug. -->
+    @if (windowLabel()) {
+      <div class="window-banner">
+        <mat-icon>date_range</mat-icon>
+        <span>
+          {{ 'insights.basedOn' | translate:{
+            range: windowLabel(),
+            count: transactionCount()
+          } }}
+        </span>
+        <button
+          mat-icon-button
+          class="refresh-button"
+          (click)="refresh()"
+          [attr.aria-label]="'insights.retry' | translate"
+        >
+          <mat-icon>refresh</mat-icon>
+        </button>
+      </div>
+    }
+
+    @if (hasCards()) {
+      <div class="insight-grid">
+        @for (card of cards(); track card.id) {
+          <app-insight-card
+            [card]="card"
+            [currency]="currency()"
+            [lookup]="lookup()"
+          />
+        }
+      </div>
+    } @else if (missingRequirements().length > 0) {
+      <!-- Every detector has a data gate, so a young account produces nothing.
+           Name the gaps rather than looking broken. -->
+      <div class="getting-started">
+        <app-empty-state
+          icon="lightbulb"
+          size="sm"
+          [title]="'insights.gettingStartedTitle' | translate"
+          [description]="'insights.gettingStartedBody' | translate"
+        />
+        <ul class="requirement-list">
+          @for (requirement of missingRequirements(); track requirement) {
+            <li>{{ requirement }}</li>
+          }
+        </ul>
+      </div>
+    } @else {
+      <app-empty-state
+        icon="lightbulb"
+        [title]="'insights.noPatternsTitle' | translate"
+        [description]="'insights.noPatternsBody' | translate"
+      />
+    }
+
+    @if (recurringSummary(); as summary) {
+      <app-recurring-list
+        [summary]="summary"
+        [currency]="currency()"
+        [drillDownIds]="drillDownIds()"
+        [lookup]="lookup()"
+      />
+    }
+  }
+</div>

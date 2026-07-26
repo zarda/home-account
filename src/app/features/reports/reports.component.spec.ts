@@ -100,6 +100,18 @@ describe('ReportsComponent', () => {
       expect(component.dateRange()).toEqual({ start, end });
       expect(mockTransactionService.getByDateRange).toHaveBeenCalledWith(start, end);
     });
+
+    it('should retain the selected option, which the insights tab needs', () => {
+      const start = new Date(2024, 5, 1);
+      const end = new Date(2024, 5, 30, 23, 59, 59);
+
+      component.onPeriodSelection(selection('custom', start, end));
+
+      // dateRange used to be the only thing kept, which dropped the option the
+      // trailing insight window is derived from.
+      expect(component.selectedPeriod().option).toBe('custom');
+      expect(component.selectedPeriod().start).toBe(start);
+    });
   });
 
   describe('computed values', () => {

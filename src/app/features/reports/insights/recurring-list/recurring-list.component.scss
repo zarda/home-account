@@ -1,0 +1,113 @@
+.recurring-card {
+  border-radius: var(--radius-lg);
+}
+
+mat-card-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+mat-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.recurring-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-label {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.section-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.recurring-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recurring-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.row-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.row-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--color-expense);
+
+  mat-icon {
+    font-size: var(--text-sm);
+    width: 1em;
+    height: 1em;
+  }
+}
+
+.row-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  white-space: nowrap;
+}
+
+.row-monthly {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.row-monthly-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.row-toggle {
+  flex-shrink: 0;
+}

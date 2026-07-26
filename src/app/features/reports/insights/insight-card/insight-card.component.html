@@ -1,0 +1,71 @@
+<mat-card class="insight-card elevation-card">
+  <mat-card-header>
+    <div class="card-heading">
+      <mat-icon class="card-icon">{{ icon() }}</mat-icon>
+      <mat-card-title>{{ title() }}</mat-card-title>
+    </div>
+  </mat-card-header>
+
+  <mat-card-content>
+    @if (isUnknownKind()) {
+      <!-- A snapshot written by a newer build: show the numbers rather than
+           nothing, so old history never renders blank. -->
+      <p class="card-body">{{ 'insights.unknownKind' | translate }}</p>
+      <dl class="metric-list">
+        @for (entry of metricEntries(); track entry[0]) {
+          <div class="metric-row">
+            <dt>{{ entry[0] }}</dt>
+            <dd>{{ entry[1] | currency:currency():'symbol':'1.2-2' }}</dd>
+          </div>
+        }
+      </dl>
+    } @else {
+      <p class="card-body">{{ body() }}</p>
+
+      @if (headline(); as figure) {
+        <app-stat-card
+          class="card-headline"
+          [label]="figure.label"
+          [labelSuffix]="currency()"
+          [value]="(figure.value | currency:currency():'symbol':'1.2-2') ?? ''"
+          tone="expense"
+        />
+      }
+
+      @if (categoryNames().length > 1) {
+        <p class="card-categories">{{ categoryNames().join(', ') }}</p>
+      }
+    }
+
+    <p class="card-basis">
+      {{ 'insights.basedOnCount' | translate:{ count: card().transactionCount } }}
+    </p>
+
+    @if (showRows()) {
+      <app-insight-transaction-list
+        [transactionIds]="inlineIds()"
+        [lookup]="lookup()"
+        [truncated]="inlineTruncated()"
+      />
+    }
+  </mat-card-content>
+
+  @if (canOpenFilters() || canShowRows()) {
+    <mat-card-actions class="card-actions">
+      @if (canOpenFilters()) {
+        <button mat-stroked-button (click)="openFilters()">
+          <mat-icon>list</mat-icon>
+          <span>{{ 'insights.viewTransactions' | translate }}</span>
+        </button>
+      }
+      @if (canShowRows()) {
+        <button mat-stroked-button (click)="toggleRows()" [attr.aria-expanded]="showRows()">
+          <mat-icon>{{ showRows() ? 'expand_less' : 'expand_more' }}</mat-icon>
+          <span>
+            {{ (showRows() ? 'insights.hideTransactions' : 'insights.showTransactions') | translate }}
+          </span>
+        </button>
+      }
+    </mat-card-actions>
+  }
+</mat-card>

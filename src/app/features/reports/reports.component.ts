@@ -21,6 +21,7 @@ import {
 import { SpendingAnalysisComponent } from './spending-analysis/spending-analysis.component';
 import { CategoryBreakdownComponent } from './category-breakdown/category-breakdown.component';
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
+import { InsightsTabComponent } from './insights/insights-tab.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
 import { Category, Transaction } from '../../models';
 import { tabAnimationDuration } from '../../core/layout/motion';
@@ -40,6 +41,7 @@ import { tabAnimationDuration } from '../../core/layout/motion';
     SpendingAnalysisComponent,
     CategoryBreakdownComponent,
     MonthlyComparisonComponent,
+    InsightsTabComponent,
     TranslatePipe,
   ],
   templateUrl: './reports.component.html',
@@ -63,8 +65,17 @@ export class ReportsComponent implements OnInit {
     return this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
   });
 
+  /**
+   * The whole selection, not just its dates. The insights tab derives a trailing
+   * window from it, which needs the option to know how far back to look.
+   */
+  selectedPeriod = signal<PeriodSelection>(defaultPeriodSelection());
+
   // Date range for child components; the shared period selector drives it.
-  dateRange = signal<{ start: Date; end: Date }>(defaultPeriodSelection());
+  dateRange = computed<{ start: Date; end: Date }>(() => {
+    const selection = this.selectedPeriod();
+    return { start: selection.start, end: selection.end };
+  });
 
   // Transaction data
   transactions = this.transactionService.transactions;
@@ -119,7 +130,7 @@ export class ReportsComponent implements OnInit {
   }
 
   onPeriodSelection(selection: PeriodSelection): void {
-    this.dateRange.set({ start: selection.start, end: selection.end });
+    this.selectedPeriod.set(selection);
     this.loadData();
   }
 

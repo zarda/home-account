@@ -1,0 +1,86 @@
+<mat-card class="recurring-card elevation-card">
+  <mat-card-header>
+    <mat-card-title>{{ 'insights.recurringListTitle' | translate }}</mat-card-title>
+  </mat-card-header>
+
+  <mat-card-content>
+    @if (declared().length > 0) {
+      <section class="recurring-section">
+        <h4 class="section-label">{{ 'insights.recurringDeclared' | translate }}</h4>
+        <ng-container [ngTemplateOutlet]="rows" [ngTemplateOutletContext]="{ groups: declared() }" />
+      </section>
+    }
+
+    @if (detected().length > 0) {
+      <section class="recurring-section">
+        <h4 class="section-label">{{ 'insights.recurringDetected' | translate }}</h4>
+        <p class="section-note">{{ 'insights.recurringDetectedNote' | translate }}</p>
+        <ng-container [ngTemplateOutlet]="rows" [ngTemplateOutletContext]="{ groups: detected() }" />
+      </section>
+    }
+
+    @if (hasHiddenGroups()) {
+      <p class="section-note">
+        {{ 'insights.recurringMore' | translate:{ count: hiddenCount() } }}
+      </p>
+    }
+  </mat-card-content>
+</mat-card>
+
+<ng-template #rows let-groups="groups">
+  <div class="recurring-rows">
+    @for (group of groups; track group.key) {
+      <div class="recurring-row">
+        <div class="row-main">
+          <app-category-chip
+            appearance="tile"
+            size="sm"
+            [icon]="categoryIcon(group.categoryId)"
+            [color]="categoryColor(group.categoryId)"
+          />
+
+          <div class="row-text">
+            <span class="row-label">{{ group.label }}</span>
+            <span class="row-meta">
+              {{ cadenceLabel(group) }}
+              &middot;
+              {{ 'insights.occurrences' | translate:{ count: group.occurrenceCount } }}
+              @if (group.priceIncreased) {
+                <span class="row-flag">
+                  <mat-icon>trending_up</mat-icon>
+                  {{ 'insights.priceIncreased' | translate }}
+                </span>
+              }
+            </span>
+          </div>
+
+          <div class="row-amount">
+            <span class="row-monthly">
+              {{ group.monthlyEquivalent | currency:currency():'symbol':'1.2-2' }}
+            </span>
+            <span class="row-monthly-label">{{ 'insights.perMonth' | translate }}</span>
+          </div>
+
+          @if (canExpand(group)) {
+            <button
+              mat-icon-button
+              class="row-toggle"
+              (click)="toggle(group)"
+              [attr.aria-expanded]="isExpanded(group)"
+              [attr.aria-label]="'insights.showTransactions' | translate"
+            >
+              <mat-icon>{{ isExpanded(group) ? 'expand_less' : 'expand_more' }}</mat-icon>
+            </button>
+          }
+        </div>
+
+        @if (isExpanded(group)) {
+          <app-insight-transaction-list
+            [transactionIds]="idsFor(group)"
+            [lookup]="lookup()"
+          />
+        }
+      </div>
+    }
+  </div>
+</ng-template>

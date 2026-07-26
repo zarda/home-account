@@ -258,7 +258,9 @@
       "description": "描述",
       "pageOf": "第 {{current}} 頁，共 {{total}} 頁",
       "generatedOn": "產生於 {{date}}"
-    }
+    },
+    "insights": "消費模式",
+    "tabInsights": "模式"
   },
   "settings": {
     "title": "設定",
@@ -954,6 +956,39 @@
     "paydayTitle": "發薪日效應",
     "paydayBody": "發薪後 {{days}} 天的每日花費高出 {{percent}}%，共 {{counted}} 筆。",
     "smallDripTitle": "小額支出累積起來",
-    "smallDripBody": "{{count}} 筆小額支出佔了 {{months}} 個月支出的 {{percent}}%。"
+    "smallDripBody": "{{count}} 筆小額支出佔了 {{months}} 個月支出的 {{percent}}%。",
+    "computing": "正在尋找消費模式…",
+    "basedOn": "依據 {{range}} 的 {{count}} 筆交易",
+    "basedOnCount": "依據 {{count}} 筆交易",
+    "viewTransactions": "查看交易",
+    "showTransactions": "顯示交易",
+    "hideTransactions": "隱藏交易",
+    "rowsUnavailable": "這些交易已無法查看。",
+    "listTruncated": "僅顯示最近的部分。",
+    "unknownKind": "這項洞察由較新版本的應用程式建立。",
+    "perMonth": "每月",
+    "recentMonthlyAverage": "近期月平均",
+    "perWeekendDay": "週末每日",
+    "perDayAtMonthEnd": "月底每日",
+    "perDayAfterPayday": "發薪後每日",
+    "smallTotal": "小額支出合計",
+    "occurrences": "{{count}} 次支付",
+    "priceIncreased": "已調漲",
+    "recurringListTitle": "定期支出",
+    "recurringDeclared": "您設定的",
+    "recurringDetected": "從紀錄中找到的",
+    "recurringDetectedNote": "這些看起來很規律，但您尚未設定為定期交易。",
+    "recurringMore": "另有 {{count}} 筆。",
+    "retry": "重新嘗試",
+    "errorTitle": "無法載入洞察",
+    "errorBody": "讀取交易時發生問題。",
+    "offlineTitle": "離線",
+    "offlineBody": "此裝置尚未快取您的交易。重新連線後即可查看消費模式。",
+    "noPatternsTitle": "尚未出現明顯模式",
+    "noPatternsBody": "目前還看不出可描述的趨勢，幾週後再回來看看。",
+    "gettingStartedTitle": "正在累積紀錄",
+    "gettingStartedBody": "分析模式還需要多一些資料：",
+    "needMonths": "需要 {{needed}} 個完整月份的紀錄，目前有 {{have}} 個",
+    "needTransactions": "此期間需要 {{needed}} 筆交易，目前有 {{have}} 筆"
   }
 }

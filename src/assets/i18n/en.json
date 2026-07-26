@@ -258,7 +258,9 @@
       "description": "Description",
       "pageOf": "Page {{current}} of {{total}}",
       "generatedOn": "Generated on {{date}}"
-    }
+    },
+    "insights": "Spending Patterns",
+    "tabInsights": "Patterns"
   },
   "settings": {
     "title": "Settings",
@@ -954,6 +956,39 @@
     "paydayTitle": "Payday effect",
     "paydayBody": "The {{days}} days from payday run {{percent}}% higher per day, across {{counted}} transactions.",
     "smallDripTitle": "Small purchases add up",
-    "smallDripBody": "{{count}} small purchases came to {{percent}}% of your spending over {{months}} months."
+    "smallDripBody": "{{count}} small purchases came to {{percent}}% of your spending over {{months}} months.",
+    "computing": "Looking for patterns…",
+    "basedOn": "Based on {{range}} · {{count}} transactions",
+    "basedOnCount": "Based on {{count}} transactions",
+    "viewTransactions": "View transactions",
+    "showTransactions": "Show transactions",
+    "hideTransactions": "Hide transactions",
+    "rowsUnavailable": "These transactions are no longer available.",
+    "listTruncated": "Showing the most recent only.",
+    "unknownKind": "This insight was created by a newer version of the app.",
+    "perMonth": "per month",
+    "recentMonthlyAverage": "recent monthly average",
+    "perWeekendDay": "per weekend day",
+    "perDayAtMonthEnd": "per day at month end",
+    "perDayAfterPayday": "per day after payday",
+    "smallTotal": "small purchases total",
+    "occurrences": "{{count}} payments",
+    "priceIncreased": "went up",
+    "recurringListTitle": "Recurring payments",
+    "recurringDeclared": "Set up by you",
+    "recurringDetected": "Found in your history",
+    "recurringDetectedNote": "These look regular but you have not set them up as recurring.",
+    "recurringMore": "And {{count}} more.",
+    "retry": "Try again",
+    "errorTitle": "Could not load your insights",
+    "errorBody": "Something went wrong reading your transactions.",
+    "offlineTitle": "Offline",
+    "offlineBody": "Your transactions are not cached on this device yet. Reconnect to see your patterns.",
+    "noPatternsTitle": "No clear patterns yet",
+    "noPatternsBody": "Your spending has not settled into anything we can describe yet. Check back after a few more weeks.",
+    "gettingStartedTitle": "Building up your history",
+    "gettingStartedBody": "Patterns need a little more to work with:",
+    "needMonths": "{{needed}} full months of history — you have {{have}}",
+    "needTransactions": "{{needed}} transactions in the period — you have {{have}}"
   }
 }

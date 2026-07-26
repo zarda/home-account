@@ -258,7 +258,9 @@
       "description": "説明",
       "pageOf": "{{current}} / {{total}} ページ",
       "generatedOn": "作成日: {{date}}"
-    }
+    },
+    "insights": "消費パターン",
+    "tabInsights": "パターン"
   },
   "settings": {
     "title": "設定",
@@ -954,6 +956,39 @@
     "paydayTitle": "給料日の影響",
     "paydayBody": "給料日から{{days}}日間は1日あたり{{percent}}%多く、{{counted}}件が該当します。",
     "smallDripTitle": "少額の支出が積み重なっています",
-    "smallDripBody": "少額の支出{{count}}件が、{{months}}か月の支出の{{percent}}%を占めています。"
+    "smallDripBody": "少額の支出{{count}}件が、{{months}}か月の支出の{{percent}}%を占めています。",
+    "computing": "パターンを分析しています…",
+    "basedOn": "{{range}}の取引{{count}}件に基づく",
+    "basedOnCount": "取引{{count}}件に基づく",
+    "viewTransactions": "取引を表示",
+    "showTransactions": "取引を表示",
+    "hideTransactions": "取引を隠す",
+    "rowsUnavailable": "これらの取引は利用できなくなりました。",
+    "listTruncated": "最近のものだけを表示しています。",
+    "unknownKind": "このインサイトは新しいバージョンのアプリで作成されました。",
+    "perMonth": "1か月あたり",
+    "recentMonthlyAverage": "直近の月平均",
+    "perWeekendDay": "週末1日あたり",
+    "perDayAtMonthEnd": "月末1日あたり",
+    "perDayAfterPayday": "給料日後1日あたり",
+    "smallTotal": "少額支出の合計",
+    "occurrences": "{{count}}回の支払い",
+    "priceIncreased": "値上がり",
+    "recurringListTitle": "定期的な支払い",
+    "recurringDeclared": "ご自身で登録したもの",
+    "recurringDetected": "履歴から見つかったもの",
+    "recurringDetectedNote": "定期的に見えますが、定期取引として登録されていません。",
+    "recurringMore": "ほか{{count}}件。",
+    "retry": "再試行",
+    "errorTitle": "インサイトを読み込めませんでした",
+    "errorBody": "取引の読み込み中に問題が発生しました。",
+    "offlineTitle": "オフライン",
+    "offlineBody": "このデバイスに取引がまだ保存されていません。再接続するとパターンを確認できます。",
+    "noPatternsTitle": "まだ明確なパターンはありません",
+    "noPatternsBody": "説明できるほどの傾向はまだ現れていません。数週間後にまたご確認ください。",
+    "gettingStartedTitle": "履歴を蓄積しています",
+    "gettingStartedBody": "パターンの分析にはもう少しデータが必要です：",
+    "needMonths": "完全な履歴が{{needed}}か月分必要です（現在{{have}}か月）",
+    "needTransactions": "期間内に取引が{{needed}}件必要です（現在{{have}}件）"
   }
 }

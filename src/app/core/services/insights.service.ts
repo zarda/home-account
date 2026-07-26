@@ -97,7 +97,7 @@ export class InsightsService {
   private loading = signal<boolean>(false);
   private failed = signal<boolean>(false);
   private windowState = signal<InsightWindow | null>(null);
-  private transactionCount = signal<number>(0);
+  private windowTransactions = signal<Transaction[]>([]);
 
   readonly isLoading = this.loading.asReadonly();
   readonly hasFailed = this.failed.asReadonly();
@@ -120,11 +120,23 @@ export class InsightsService {
   });
 
   /** Transactions the window actually contained, for the "based on" banner. */
-  readonly windowTransactionCount = this.transactionCount.asReadonly();
+  readonly windowTransactionCount = computed(() => this.windowTransactions().length);
+
+  /**
+   * Rows behind an inline drill-down, by id. The cards carry ids only, and the
+   * window is already in memory, so resolving here avoids a second query.
+   */
+  readonly transactionLookup = computed(() => {
+    const lookup = new Map<string, Transaction>();
+    for (const transaction of this.windowTransactions()) {
+      lookup.set(transaction.id, transaction);
+    }
+    return lookup;
+  });
 
   /** True when there is nothing to show and connectivity is the likely reason. */
   readonly isOfflineWithoutData = computed(
-    () => !this.pwa.isOnline() && this.transactionCount() === 0 && !this.loading());
+    () => !this.pwa.isOnline() && this.windowTransactions().length === 0 && !this.loading());
 
   private baseCurrency(): string {
     return this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
@@ -156,7 +168,7 @@ export class InsightsService {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: transactions => {
-          this.transactionCount.set(transactions.length);
+          this.windowTransactions.set(transactions);
           this.state.set(this.computeOrRestore(transactions, window));
           this.loading.set(false);
         },
@@ -164,7 +176,7 @@ export class InsightsService {
           // An onSnapshot listener serves the local cache while offline and
           // emits empty on a cold cache rather than rejecting, so reaching here
           // means a genuine failure, not merely being offline.
-          this.transactionCount.set(0);
+          this.windowTransactions.set([]);
           this.state.set(null);
           this.failed.set(true);
           this.loading.set(false);

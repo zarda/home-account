@@ -64,6 +64,27 @@
           />
         </div>
       </mat-tab>
+
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon class="tab-icon">lightbulb</mat-icon>
+          <span class="tab-label">{{ 'reports.insights' | translate }}</span>
+          <span class="tab-label-short">{{ 'reports.tabInsights' | translate }}</span>
+        </ng-template>
+        <!-- matTabContent is required, not cosmetic: without it this tab's
+             six-month Firestore listener would open on every visit to Reports,
+             whether or not anyone taps Insights. It also takes the whole period
+             selection rather than the page's transactions, because the insight
+             window is usually wider than the selected range. -->
+        <ng-template matTabContent>
+          <div class="tab-content">
+            <app-insights-tab
+              [period]="selectedPeriod()"
+              [currency]="baseCurrency()"
+            />
+          </div>
+        </ng-template>
+      </mat-tab>
     </mat-tab-group>
   }
 </div>
