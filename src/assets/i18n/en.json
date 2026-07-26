@@ -928,5 +928,32 @@
     "disclaimer": "The PIN is set per device and controls access to the app. It does not encrypt your stored data.",
     "timeoutMinute": "1 minute",
     "forgotPin": "Forgot your PIN? Signing out clears it on this device — your data is safe, and you can set a new PIN after signing back in."
+  },
+  "insights": {
+    "cadenceWeekly": "weekly",
+    "cadenceBiweekly": "fortnightly",
+    "cadenceMonthly": "monthly",
+    "cadenceQuarterly": "quarterly",
+    "cadenceYearly": "yearly",
+    "recurringPortfolioTitle": "Recurring payments",
+    "recurringPortfolioBody": "{{count}} recurring payments — {{declared}} you set up, {{detected}} found in your history.",
+    "recurringIncreasedTitle": "A recurring payment went up",
+    "recurringIncreasedBody": "This {{cadence}} charge is higher than it was, across {{occurrences}} payments.",
+    "recurringNewTitle": "A new recurring payment",
+    "recurringNewBody": "This {{cadence}} charge started during this period, {{occurrences}} payments so far.",
+    "trendRisingTitle": "Rising",
+    "trendRisingBody": "Up {{percent}}% over the last {{months}} months, and {{share}}% of your spending.",
+    "trendFallingTitle": "Falling",
+    "trendFallingBody": "Down {{percent}}% over the last {{months}} months, and {{share}}% of your spending.",
+    "weekendLeanTitle": "Weekend days cost more",
+    "weekendLeanBody": "{{percent}}% more per weekend day than per weekday, across {{counted}} of {{total}} transactions.",
+    "weekdayLeanTitle": "Weekdays cost more",
+    "weekdayLeanBody": "{{percent}}% more per weekday than per weekend day, across {{counted}} of {{total}} transactions.",
+    "monthEndTitle": "Month-end spike",
+    "monthEndBody": "The last {{days}} days of each month run {{percent}}% higher per day, across {{counted}} transactions.",
+    "paydayTitle": "Payday effect",
+    "paydayBody": "The {{days}} days from payday run {{percent}}% higher per day, across {{counted}} transactions.",
+    "smallDripTitle": "Small purchases add up",
+    "smallDripBody": "{{count}} small purchases came to {{percent}}% of your spending over {{months}} months."
   }
 }

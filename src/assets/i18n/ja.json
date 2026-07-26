@@ -928,5 +928,32 @@
     "disclaimer": "PINはデバイスごとに設定され、アプリへのアクセスを制限します。保存されたデータの暗号化は行いません。",
     "timeoutMinute": "1分後",
     "forgotPin": "PINをお忘れですか？サインアウトするとこのデバイスのPINが削除されます。データはそのまま残り、再サインイン後に新しいPINを設定できます。"
+  },
+  "insights": {
+    "cadenceWeekly": "毎週",
+    "cadenceBiweekly": "隔週",
+    "cadenceMonthly": "毎月",
+    "cadenceQuarterly": "四半期ごと",
+    "cadenceYearly": "毎年",
+    "recurringPortfolioTitle": "定期的な支払い",
+    "recurringPortfolioBody": "定期的な支払いが{{count}}件（登録済み{{declared}}件、履歴から検出{{detected}}件）。",
+    "recurringIncreasedTitle": "定期的な支払いが増えています",
+    "recurringIncreasedBody": "この{{cadence}}の支払いは以前より高くなっています（{{occurrences}}回分）。",
+    "recurringNewTitle": "新しい定期的な支払い",
+    "recurringNewBody": "この{{cadence}}の支払いはこの期間に始まりました（現在{{occurrences}}回）。",
+    "trendRisingTitle": "増加傾向",
+    "trendRisingBody": "直近{{months}}か月で{{percent}}%増加し、支出の{{share}}%を占めています。",
+    "trendFallingTitle": "減少傾向",
+    "trendFallingBody": "直近{{months}}か月で{{percent}}%減少し、支出の{{share}}%を占めています。",
+    "weekendLeanTitle": "週末の支出が多めです",
+    "weekendLeanBody": "週末1日あたりの支出は平日より{{percent}}%多く、{{total}}件中{{counted}}件が該当します。",
+    "weekdayLeanTitle": "平日の支出が多めです",
+    "weekdayLeanBody": "平日1日あたりの支出は週末より{{percent}}%多く、{{total}}件中{{counted}}件が該当します。",
+    "monthEndTitle": "月末に増える傾向",
+    "monthEndBody": "各月の最後の{{days}}日間は1日あたり{{percent}}%多く、{{counted}}件が該当します。",
+    "paydayTitle": "給料日の影響",
+    "paydayBody": "給料日から{{days}}日間は1日あたり{{percent}}%多く、{{counted}}件が該当します。",
+    "smallDripTitle": "少額の支出が積み重なっています",
+    "smallDripBody": "少額の支出{{count}}件が、{{months}}か月の支出の{{percent}}%を占めています。"
   }
 }
