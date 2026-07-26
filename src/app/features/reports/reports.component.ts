@@ -25,6 +25,10 @@ import { InsightsTabComponent } from './insights/insights-tab.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
 import { Category, Transaction } from '../../models';
 import { tabAnimationDuration } from '../../core/layout/motion';
+import {
+  groupExpensesByCategory,
+  sumByType,
+} from '../../core/utils/transaction-aggregation.utils';
 
 @Component({
   selector: 'app-reports',
@@ -96,34 +100,15 @@ export class ReportsComponent implements OnInit {
   }
 
   // Computed totals (using dynamic conversion)
-  totalIncome = computed(() => {
-    return this.transactions()
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + this.toBaseCurrency(t), 0);
-  });
+  private typeTotals = computed(
+    () => sumByType(this.transactions(), t => this.toBaseCurrency(t)));
 
-  totalExpenses = computed(() => {
-    return this.transactions()
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + this.toBaseCurrency(t), 0);
-  });
+  totalIncome = computed(() => this.typeTotals().income);
+  totalExpenses = computed(() => this.typeTotals().expense);
+  balance = computed(() => this.typeTotals().balance);
 
-  balance = computed(() => this.totalIncome() - this.totalExpenses());
-
-  categoryTotals = computed(() => {
-    const transactions = this.transactions();
-    const expenseTransactions = transactions.filter(t => t.type === 'expense');
-
-    const totals = new Map<string, number>();
-    for (const t of expenseTransactions) {
-      const current = totals.get(t.categoryId) || 0;
-      totals.set(t.categoryId, current + this.toBaseCurrency(t));
-    }
-
-    return Array.from(totals.entries())
-      .map(([categoryId, total]) => ({ categoryId, total }))
-      .sort((a, b) => b.total - a.total);
-  });
+  categoryTotals = computed(
+    () => groupExpensesByCategory(this.transactions(), t => this.toBaseCurrency(t)));
 
   ngOnInit(): void {
     this.loadData();

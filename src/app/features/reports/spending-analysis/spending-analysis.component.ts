@@ -14,6 +14,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { dayKey, monthKey } from '../../../core/utils/transaction-date.utils';
 
 interface MonthlyData {
   month: string;
@@ -145,7 +146,7 @@ export class SpendingAnalysisComponent {
 
     const current = new Date(start);
     while (current <= end) {
-      const key = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+      const key = monthKey(current);
       monthlyMap.set(key, { income: 0, expense: 0 });
       current.setMonth(current.getMonth() + 1);
     }
@@ -153,7 +154,7 @@ export class SpendingAnalysisComponent {
     // Aggregate transactions by month (convert to current base currency dynamically)
     for (const t of transactions) {
       const date = t.date.toDate();
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const key = monthKey(date);
 
       const existing = monthlyMap.get(key);
       if (existing) {
@@ -208,14 +209,14 @@ export class SpendingAnalysisComponent {
 
     const cursor = new Date(start);
     while (cursor <= end) {
-      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+      const key = dayKey(cursor);
       dayMap.set(key, { income: 0, expense: 0 });
       cursor.setDate(cursor.getDate() + 1);
     }
 
     for (const t of transactions) {
       const d = t.date.toDate();
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const key = dayKey(d);
       const bucket = dayMap.get(key);
       if (bucket) {
         const amount = this.toBaseCurrency(t);

@@ -11,6 +11,7 @@ import {
   computeAmountAnomalies,
   computeCategoryDeltas,
 } from '../utils/spending-insight.utils';
+import { dateOf } from '../utils/transaction-date.utils';
 
 export type InsightChipKind = 'anomaly' | 'newCategory' | 'topCategory';
 
@@ -87,7 +88,7 @@ export class InsightChipsService {
     monthStart: Date,
     monthEnd: Date,
   ): InsightChip[] {
-    const currentExpenses = baselineExpenses.filter(t => this.dateOf(t) >= monthStart);
+    const currentExpenses = baselineExpenses.filter(t => dateOf(t) >= monthStart);
     if (currentExpenses.length === 0) {
       return [];
     }
@@ -186,12 +187,5 @@ export class InsightChipsService {
   private categoryName(categoryId: string): string {
     const category = this.categoryService.categories().find(c => c.id === categoryId);
     return category?.name ? this.translationService.t(category.name) : 'Other';
-  }
-
-  private dateOf(t: Transaction): Date {
-    const date = t.date as unknown as Date | { toDate?: () => Date } | null;
-    if (date instanceof Date) return date;
-    const parsed = date?.toDate?.();
-    return parsed instanceof Date ? parsed : new Date(0);
   }
 }
