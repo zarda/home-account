@@ -19,10 +19,11 @@ This project demonstrates modern Angular development practices with a focus on:
 ## Features
 
 - **Dashboard** - Financial overview with income/expense summary and spending charts
-- **Transactions** - Multi-currency support with filtering, tags, and location tracking
+- **Transactions** - Multi-currency support with filtering, tags, and location tracking; typo-tolerant search with saved and recent searches, plus insight quick-filter chips (unusual amounts, new and top categories) computed locally from your data
+- **Smart Search** - Ask questions in plain language from the app header ("how much did I spend on groceries last month"); the AI only translates the question into filters or an aggregate operation — every number shown is computed locally from your transactions, and it degrades to keyword search offline
 - **Budgets** - Period-based budget limits with recurring transactions management
 - **Reports** - Financial analytics with CSV and PDF export
-- **AI Import** - Import transactions from receipt images with intelligent category suggestions
+- **AI Import** - Import transactions from receipt images with category auto-choose validated against your catalog, sub-category targets, and per-row model confidence that drives the "needs review" flow
 - **AI Insights** - Spending summaries and advice with selectable detail-grounding levels (Off/Light/Standard/Deep) that trade token cost and speed for detail; transaction details are only shared with your configured AI provider when enabled — see [docs/rag-insights.md](docs/rag-insights.md)
 - **Camera Capture** - Take photos directly from the app for receipt scanning
 - **Dark Mode** - Light/dark/system theme support
@@ -49,7 +50,7 @@ On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence i
 | UI | Angular Material 22, Tailwind CSS 3.4 |
 | State | Angular Signals |
 | Backend | Firebase (Auth, Firestore) |
-| AI (Web) | Google Generative AI (Gemini 3.1 / Gemma 4) |
+| AI (Web) | Google Generative AI (Gemini 3.1 / Gemma 4); OpenAI and Anthropic as alternative providers |
 | AI (On-Device) | Apple Foundation Models (Apple Intelligence) + Vision Framework |
 | Multi-Platform | Capacitor 8 |
 | Charts | Chart.js + ng2-charts |
@@ -162,6 +163,10 @@ Without this file, the Xcode build will fail with a missing resource error. The 
 3. Expand "Google Gemini" and enter your API key
 4. Optionally configure OpenAI or Claude as alternative providers
 
+Each AI feature — receipt scanning, categorization, insights, and smart
+search — can be pinned to a specific provider in the same settings page;
+unavailable providers fall back in the order Gemini → OpenAI → Claude.
+
 ### iOS (Native OCR)
 Native Vision OCR works automatically on iOS devices - no configuration needed.
 Falls back to cloud AI if native OCR is unavailable.
@@ -189,6 +194,7 @@ The web app is a fully-featured Progressive Web App:
 | `npm run cap:ios` | Open iOS project in Xcode |
 | `npm test` | Run unit tests |
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
+| `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
 | `npm run lint` | ESLint |
 | `firebase deploy` | Deploy web to Firebase Hosting |
 
@@ -197,6 +203,16 @@ The web app is a fully-featured Progressive Web App:
 GitHub Actions (`.github/workflows/ci.yml`) runs lint, headless unit tests with coverage, and a production build on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
+
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
+| [docs/remote-config.md](docs/remote-config.md) | Firebase Remote Config parameters and defaults |
+| [docs/storage-cors-setup.md](docs/storage-cors-setup.md) | One-time Cloud Storage CORS setup for in-browser receipt reads |
+| [docs/specs/](docs/specs/) | Dated design records for larger features |
+| [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 
 ## Live Demo
 

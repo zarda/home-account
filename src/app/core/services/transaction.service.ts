@@ -605,6 +605,30 @@ export class TransactionService {
     );
   }
 
+  /**
+   * Non-mutating fetch of every transaction (both types) in a date range.
+   * Unlike getTransactions()/getByDateRange(), this leaves the main
+   * `transactions` signal untouched; used for aggregate computations that
+   * must not disturb the visible list (smart search answers).
+   */
+  getTransactionsInRange(start: Date, end: Date): Observable<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return of([]);
+
+    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
+      orderBy: [{ field: 'date', direction: 'desc' }],
+      where: [
+        { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
+        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+      ]
+    };
+
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      options
+    );
+  }
+
   private groupByCategory(transactions: Transaction[]): CategoryTotal[] {
     const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
     const categoryMap = new Map<string, number>();

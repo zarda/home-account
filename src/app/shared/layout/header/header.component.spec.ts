@@ -2,9 +2,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
+import { MatDialog } from '@angular/material/dialog';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { HeaderComponent } from './header.component';
 import { AuthService } from '../../../core/services/auth.service';
+import { AiSearchDialogComponent } from '../../components/ai-search-dialog/ai-search-dialog.component';
 import { User } from '../../../models';
 
 describe('HeaderComponent', () => {
@@ -13,6 +15,7 @@ describe('HeaderComponent', () => {
   let routerEvents: Subject<unknown>;
   let mockRouter: { events: Subject<unknown>; navigate: jasmine.Spy };
   let mockAuth: { currentUser: ReturnType<typeof signal<User | null>>; signOut: jasmine.Spy };
+  let mockDialog: jasmine.SpyObj<MatDialog>;
   let viewport$: BehaviorSubject<BreakpointState>;
 
   const mobileViewport = (matches: boolean): BreakpointState => ({ matches, breakpoints: {} });
@@ -39,12 +42,14 @@ describe('HeaderComponent', () => {
     };
     // Auto-hide only applies on mobile; tests opt in per case.
     viewport$ = new BehaviorSubject<BreakpointState>(mobileViewport(true));
+    mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
 
     await TestBed.configureTestingModule({
       imports: [HeaderComponent],
       providers: [
         { provide: Router, useValue: mockRouter },
         { provide: AuthService, useValue: mockAuth },
+        { provide: MatDialog, useValue: mockDialog },
         { provide: BreakpointObserver, useValue: { observe: () => viewport$.asObservable() } },
       ],
     })
@@ -63,6 +68,14 @@ describe('HeaderComponent', () => {
     fixture.detectChanges();
     expect(component).toBeTruthy();
     expect(component.currentUser()?.displayName).toBe('Tester');
+  });
+
+  it('opens the smart-search dialog', () => {
+    component.openSearchDialog();
+    expect(mockDialog.open).toHaveBeenCalledWith(AiSearchDialogComponent, {
+      width: '520px',
+      maxWidth: '95vw',
+    });
   });
 
   it('isHidden reflects the inverse of visibility', () => {

@@ -6,8 +6,9 @@ emulators** with a seeded demo account ("Alex Chen", July 2026 data). No real Fi
 or Google sign-in needed: the scripts create a Google-linked user via the Auth emulator REST API
 and inject the session directly into IndexedDB, then seed Firestore over the emulator REST API.
 
-Used to produce the before-state evidence in [`docs/ui-audit/`](../) for the
-[UI upgrade plan](../../ui-upgrade-plan.md). Re-run it on UI PRs for before/after screenshots.
+Originally built to audit the app for the 2026-07 UI upgrade (landed via #96).
+Re-run it on UI PRs for before/after screenshots; commit only curated evidence
+into [`docs/ui-audit/`](../).
 
 ## Setup
 

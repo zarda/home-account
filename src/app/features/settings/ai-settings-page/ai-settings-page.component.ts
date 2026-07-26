@@ -188,7 +188,11 @@ export class AiSettingsPageComponent implements OnInit {
 
   private async loadApiKeys(): Promise<void> {
     const user = this.authService.currentUser();
-    this.llmProviderPreferences = user?.preferences?.llmProviderPreferences || DEFAULT_LLM_PROVIDER_PREFERENCES;
+    // Merge defaults: stored objects from before a feature existed lack its key.
+    this.llmProviderPreferences = {
+      ...DEFAULT_LLM_PROVIDER_PREFERENCES,
+      ...user?.preferences?.llmProviderPreferences,
+    };
     this.ragInsightsLevel.set(effectiveRagLevel(user?.preferences));
 
     // Keys live outside the user document now, so this is the one place that

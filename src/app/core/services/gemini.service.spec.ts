@@ -60,7 +60,7 @@ describe('GeminiService', () => {
   const categories: Category[] = [
     createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense' }),
     createCategory({ id: 'food_restaurants', name: 'Restaurants', type: 'expense' }),
-    createCategory({ id: 'transport_fuel_&_gas', name: 'Fuel & Gas', type: 'expense' }),
+    createCategory({ id: 'transport_fuelAndGas', name: 'Fuel & Gas', type: 'expense' }),
     createCategory({ id: 'inactive_cat', name: 'Inactive', type: 'expense', isActive: false }),
     createCategory({ id: 'child_cat', name: 'Child', type: 'expense', parentId: 'food_groceries' }),
   ];
@@ -376,12 +376,105 @@ describe('GeminiService', () => {
       expect(result[1].confidence).toBe(0.3);
     });
 
+    it('passes the model-reported confidence through, clamped to [0, 1]', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { index: 0, categoryId: 'food_groceries', confidence: 0.55 },
+        { index: 1, categoryId: 'food_restaurants', confidence: 1.7 },
+      ])));
+
+      const txns = [
+        { description: 'Milk', amount: 3, date: new Date() },
+        { description: 'Dinner', amount: 40, date: new Date() },
+      ];
+      const result = await service.categorizeTransactions(txns);
+
+      expect(result[0].confidence).toBe(0.55);
+      expect(result[1].confidence).toBe(1);
+    });
+
+    it('coerces a category ID missing from the catalog to other_expense', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { index: 0, categoryId: 'dining_out', confidence: 0.9 },
+      ])));
+
+      const txns = [{ description: 'Dinner', amount: 40, date: new Date() }];
+      const result = await service.categorizeTransactions(txns);
+
+      expect(result[0].suggestedCategoryId).toBe('other_expense');
+      expect(result[0].confidence).toBe(0.3);
+    });
+
+    it('accepts a sub-category as the chosen target', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { index: 0, categoryId: 'child_cat', confidence: 0.85 },
+      ])));
+
+      const txns = [{ description: 'Something specific', amount: 5, date: new Date() }];
+      const result = await service.categorizeTransactions(txns);
+
+      expect(result[0].suggestedCategoryId).toBe('child_cat');
+      expect(result[0].confidence).toBe(0.85);
+    });
+
+    it('offers sub-categories and asks for confidence in the prompt', async () => {
+      textModel.generateContent.and.resolveTo(makeResult('[]'));
+
+      await service.categorizeTransactions([
+        { description: 'Milk', amount: 3, date: new Date() },
+      ]);
+
+      const request = textModel.generateContent.calls.mostRecent().args[0] as {
+        contents: { parts: { text: string }[] }[];
+      };
+      const prompt = request.contents[0].parts[0].text;
+      expect(prompt).toContain('child_cat: Groceries / Child');
+      expect(prompt).toContain('"confidence"');
+      expect(prompt).not.toContain('inactive_cat');
+    });
+
     it('returns defaults for every transaction on error', async () => {
       textModel.generateContent.and.rejectWith(new Error('boom'));
       const txns = [{ description: 'A', amount: 1, date: new Date() }];
       const result = await service.categorizeTransactions(txns);
       expect(result[0].suggestedCategoryId).toBe('other_expense');
       expect(result[0].confidence).toBe(0.1);
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // interpretSearchQuery
+  // ----------------------------------------------------------------
+  describe('interpretSearchQuery', () => {
+    const context = {
+      today: '2026-07-24',
+      baseCurrency: 'USD',
+      categories: [{ id: 'food_groceries', name: 'Groceries', type: 'expense' as const }],
+    };
+
+    it('throws when the text model is not available', async () => {
+      (service as unknown as { textModel: unknown }).textModel = null;
+      await expectAsync(service.interpretSearchQuery('coffee', context))
+        .toBeRejectedWithError('Gemini text model not available');
+    });
+
+    it('parses a fenced model response into a validated intent', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(
+        '```json\n{"kind":"filter","filters":{"categoryId":"food_groceries","startDate":"2026-06-01"}}\n```'));
+
+      const intent = await service.interpretSearchQuery('groceries in june', context);
+
+      expect(intent.kind).toBe('filter');
+      expect(intent.filters.categoryId).toBe('food_groceries');
+      expect(intent.filters.startDate).toEqual(new Date(2026, 5, 1));
+      const request = textModel.generateContent.calls.mostRecent().args[0] as {
+        contents: { parts: { text: string }[] }[];
+      };
+      expect(request.contents[0].parts[0].text).toContain('"groceries in june"');
+    });
+
+    it('rejects when the response is not usable JSON', async () => {
+      textModel.generateContent.and.resolveTo(makeResult('cannot help with that'));
+      await expectAsync(service.interpretSearchQuery('x', context)).toBeRejected();
     });
   });
 
@@ -1059,14 +1152,14 @@ describe('GeminiService', () => {
 
       it('matches by partial name', () => {
         // "Fuel" is contained in the "Fuel & Gas" category name.
-        expect(api.mapCategoryNameToId('Fuel')).toBe('transport_fuel_&_gas');
+        expect(api.mapCategoryNameToId('Fuel')).toBe('transport_fuelAndGas');
       });
 
       it('maps known keywords when no category matches', () => {
         categoryService.categories.and.returnValue([]);
-        expect(api.mapCategoryNameToId('some coffee shop')).toBe('food_coffee_&_drinks');
-        expect(api.mapCategoryNameToId('gas station')).toBe('transport_fuel_&_gas');
-        expect(api.mapCategoryNameToId('pharmacy run')).toBe('health_pharmacy_&_medicine');
+        expect(api.mapCategoryNameToId('some coffee shop')).toBe('food_coffeeAndDrinks');
+        expect(api.mapCategoryNameToId('gas station')).toBe('transport_fuelAndGas');
+        expect(api.mapCategoryNameToId('pharmacy run')).toBe('health_pharmacyAndMedicine');
       });
 
       it('returns other_expense when nothing matches', () => {

@@ -29,6 +29,13 @@ those levels are also cheaper on reads and faster to load.
 The "Financial Tip" half of the card is intentionally not grounded — only the
 spending summary receives transaction details.
 
+The same anomaly / category-delta / top-expense computations (extracted into
+`src/app/core/utils/spending-insight.utils.ts`) also power the insight
+quick-filter chips above the transaction list. The chips run entirely on
+device with no model call, so they are always available and are **not**
+affected by the detail-level setting — that setting only controls what is
+shared with the AI provider for the dashboard summary.
+
 ## Preference storage and migration
 
 The level is stored in the user profile as `preferences.ragInsightsLevel`

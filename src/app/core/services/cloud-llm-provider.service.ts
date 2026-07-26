@@ -4,9 +4,9 @@ import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
 import { ProviderKeyService } from './provider-key.service';
-import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, MonthlyTotal } from '../../models';
+import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, MonthlyTotal, SearchIntent, SearchQueryContext } from '../../models';
 
-export type AIFeatureType = 'receiptScanning' | 'categorization' | 'insights';
+export type AIFeatureType = 'receiptScanning' | 'categorization' | 'insights' | 'search';
 
 interface ProviderStatus {
   gemini: boolean;
@@ -110,11 +110,15 @@ export class CloudLLMProviderService {
 
 
   /**
-   * Get the provider preferences for the current user.
+   * Get the provider preferences for the current user. Stored objects from
+   * before a feature existed lack its key, so defaults are merged in.
    */
   private getProviderPreferences(): LLMProviderPreferences {
     const user = this.authService.currentUser();
-    return user?.preferences?.llmProviderPreferences ?? DEFAULT_LLM_PROVIDER_PREFERENCES;
+    return {
+      ...DEFAULT_LLM_PROVIDER_PREFERENCES,
+      ...user?.preferences?.llmProviderPreferences,
+    };
   }
 
   /**
@@ -322,6 +326,31 @@ export class CloudLLMProviderService {
         return this.openaiService.detectCSVMapping(headers, sampleRows);
       case 'claude':
         return this.claudeService.detectCSVMapping(headers, sampleRows);
+    }
+  }
+
+  // ============================================================
+  // Search Features
+  // ============================================================
+
+  /**
+   * Interpret a natural-language transaction search query into a
+   * structured intent.
+   */
+  async interpretSearchQuery(query: string, context: SearchQueryContext): Promise<SearchIntent> {
+    const provider = this.getBestAvailableProvider('search');
+
+    if (!provider) {
+      throw new Error('No cloud AI provider available for search');
+    }
+
+    switch (provider) {
+      case 'gemini':
+        return this.geminiService.interpretSearchQuery(query, context);
+      case 'openai':
+        return this.openaiService.interpretSearchQuery(query, context);
+      case 'claude':
+        return this.claudeService.interpretSearchQuery(query, context);
     }
   }
 

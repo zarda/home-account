@@ -1,5 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { GeminiService, RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
+import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
@@ -23,6 +24,7 @@ import {
 @Injectable({ providedIn: 'root' })
 export class AIImportService {
   private geminiService = inject(GeminiService);
+  private cloudLLMProvider = inject(CloudLLMProviderService);
   private exportService = inject(ExportService);
   private duplicateService = inject(DuplicateDetectionService);
   private importHistoryService = inject(ImportHistoryService);
@@ -274,16 +276,16 @@ export class AIImportService {
       date: new Date(t.date)
     }));
 
-    // Use Gemini for categorization if available
+    // Categorize with the user's preferred cloud provider if any is available
     let categorizedByAI = rawTransactions.map((t) => ({
       ...t,
       suggestedCategoryId: 'other_expense',
       confidence: 0.1
     }));
 
-    if (this.geminiService.isAvailable()) {
+    if (this.cloudLLMProvider.hasAnyCloudProvider()) {
       try {
-        categorizedByAI = await this.geminiService.categorizeTransactions(rawTransactions);
+        categorizedByAI = await this.cloudLLMProvider.categorizeTransactions(rawTransactions);
       } catch (error) {
         console.warn('AI categorization failed, using defaults:', error);
       }

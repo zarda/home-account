@@ -226,6 +226,16 @@ describe('OfflineQueueService', () => {
       expect((await service.getSyncLog()).length).toBe(0);
     });
 
+    it('trims entries logged in the same millisecond as the cutoff', async () => {
+      // On a fast run the queue write and the cutoff computation can land in
+      // the same millisecond; freezing the clock reproduces that timing
+      // deterministically instead of once in a blue moon mid-suite.
+      spyOn(Date, 'now').and.returnValue(1_800_000_000_000);
+      await service.queueImage(imageFile());
+      await service.clearOldLogs(0);
+      expect((await service.getSyncLog()).length).toBe(0);
+    });
+
     it('reports storage usage', async () => {
       const usage = await service.getStorageUsage();
       expect(usage.used).toBeGreaterThanOrEqual(0);
