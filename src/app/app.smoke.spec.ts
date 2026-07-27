@@ -42,6 +42,7 @@ import {
 } from '@angular/fire/firestore';
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
 import { routes } from './app.routes';
+import { currentScreenView } from './core/services/analytics-screen-view';
 import { AuthService } from './core/services/auth.service';
 import { CurrencyService } from './core/services/currency.service';
 import { MockAuthService, createMockUser } from './core/services/testing';
@@ -91,6 +92,25 @@ describe('App routes (emulator smoke test)', () => {
     if (data) {
       await waitForDom(`${url} data "${data}"`, () => pageText().includes(data));
     }
+    expectScreenName(url);
+  }
+
+  /**
+   * The screen name analytics would report for the page just navigated to.
+   *
+   * Worth asserting here rather than only in the unit spec: this is a real
+   * activated router state built from the real route configuration, so it
+   * catches the case a synthetic snapshot cannot — a route nested or renamed
+   * in app.routes.ts silently changing what GA4 calls the screen. The names
+   * are a published contract in three places at once (docs/analytics.md, the
+   * web transport, and the hand-written iOS one), and this is what keeps all
+   * three describing the same screen.
+   */
+  function expectScreenName(url: string): void {
+    const expected = url.replace(/^\//, '').split('?')[0];
+    const screen = currentScreenView(TestBed.inject(Router));
+
+    expect(screen?.screenName).withContext(`screen_name for ${url}`).toBe(expected);
   }
 
   beforeAll(async () => {

@@ -70,6 +70,12 @@ jobs:
       - name: Check translation keys
         run: npm run i18n:check
 
+      # Keeps docs/analytics.md honest: every tracked event must appear in the
+      # registry table, every row must have a call site, and the screen table
+      # must match the configured routes.
+      - name: Check analytics registry
+        run: npm run analytics:check
+
       - name: Unit tests
         run: npm run test:ci
 

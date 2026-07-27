@@ -42,6 +42,7 @@ import { formatReceiptItemLines } from '../../../core/utils/receipt-consolidatio
 import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 
 interface DialogData {
   mode: 'add' | 'edit';
@@ -91,6 +92,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private router = inject(Router);
   private aiImportService = inject(AIImportService);
   private cdr = inject(ChangeDetectorRef);
+  private analytics = inject(AnalyticsService);
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
 
@@ -105,6 +107,19 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   scanError = signal<string | null>(null);
   // Compressed receipt image to upload alongside the transaction.
   receiptFile = signal<File | null>(null);
+
+  /**
+   * Whether a receipt scan filled any of this form.
+   *
+   * The same form serves manual entry and receipt-assisted entry, and the
+   * transaction that comes out is identical either way, so nothing on the
+   * saved record can tell the two apart. Reported as the `method` of
+   * transaction_add, which is the whole point of that event — knowing whether
+   * scanning is worth its maintenance cost. Cleared whenever the scan is
+   * undone, so a failed or discarded scan does not claim credit for a form the
+   * user then filled in by hand.
+   */
+  private filledByScan = false;
 
   // Existing stored receipt (edit mode). Cleared locally after the user
   // removes it or converts it into note text.
@@ -309,6 +324,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
       if (this.data.mode === 'add') {
         await this.transactionService.addTransaction(transactionData);
+        // Tagged here rather than in TransactionService.addTransaction: that
+        // chokepoint also serves backup restore and offline replay, which
+        // would report thousands of events for one user action and none of
+        // them for a real entry decision.
+        this.analytics.trackTransactionAdd({
+          method: this.filledByScan ? 'receipt_scan' : 'manual',
+          type: transactionData.type === 'income' ? 'income' : 'expense',
+        });
       } else if (this.data.transaction) {
         await this.transactionService.updateTransaction(
           this.data.transaction.id,
@@ -434,12 +457,15 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // Show success message
       const message = this.translationService.t('ai.scanSuccess');
       this.notifications.success(message);
+      this.filledByScan = true;
       receiptCount = result.receiptCount ?? 1;
     } catch (error) {
       console.error('Receipt scan error:', error);
       const message = this.translationService.t('ai.scanError');
       this.scanError.set(message);
       this.notifications.error(message);
+      // A failed scan leaves the user filling the form in by hand.
+      this.filledByScan = false;
     } finally {
       this.isScanning.set(false);
     }
@@ -492,6 +518,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.receiptPreview.set(null);
     this.scanError.set(null);
     this.receiptFile.set(null);
+    this.filledByScan = false;
   }
 
   /**
@@ -582,6 +609,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   private async fetchCategorySuggestion(description: string): Promise<void> {
+    this.analytics.trackAiAssistUsed({ feature: 'categorization' });
     this.isSuggesting.set(true);
     this.suggestedCategory.set(null);
 

@@ -7,6 +7,7 @@ import { ImportHistoryService } from './import-history.service';
 import { TransactionService } from './transaction.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService, ProcessingResult } from './ai-strategy.service';
+import { AnalyticsService } from './analytics.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
@@ -31,6 +32,7 @@ export class AIImportService {
   private transactionService = inject(TransactionService);
   private authService = inject(AuthService);
   private strategyService = inject(AIStrategyService);
+  private analytics = inject(AnalyticsService);
   private offlineQueue = inject(OfflineQueueService);
   private pwaService = inject(PwaService);
 
@@ -203,6 +205,12 @@ export class AIImportService {
     if (!this.geminiService.isAvailable()) {
       throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
     }
+
+    // After the availability guard, so a request that was never issued is not
+    // counted. Tagged here rather than in AIStrategyService because the import
+    // wizard reaches this method directly, and because the strategy service is
+    // also driven by the offline queue replaying work nobody just asked for.
+    this.analytics.trackAiAssistUsed({ feature: 'receipt_scan' });
 
     this.isProcessing.set(true);
     this.processingStatus.set('Reading images...');
@@ -390,6 +398,8 @@ export class AIImportService {
     if (!this.geminiService.isAvailable()) {
       throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
     }
+
+    this.analytics.trackAiAssistUsed({ feature: 'pdf_import' });
 
     this.isProcessing.set(true);
     this.processingStatus.set('Reading PDF...');

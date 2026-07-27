@@ -30,6 +30,19 @@
     </mat-card-content>
   </mat-card>
 
+  <!-- Privacy Card -->
+  <mat-card class="privacy-card">
+    <mat-card-content>
+      <div class="privacy-content">
+        <mat-icon class="privacy-icon">lock</mat-icon>
+        <div class="privacy-text">
+          <p class="privacy-title">{{ 'about.privacyTitle' | translate }}</p>
+          <p class="privacy-body">{{ 'about.privacyBody' | translate }}</p>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
   <!-- Donate Card (web only - hidden in native apps per App Store guidelines) -->
   @if (showDonateSection()) {
     <mat-card class="donate-card">

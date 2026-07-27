@@ -82,6 +82,8 @@ export interface UserPreferences {
                                        // legacy boolean (true→'standard', else 'off').
   enableAppLock?: boolean;       // Absent = off. Requires a credential on this device.
   appLockTimeoutMinutes?: number; // Grace period after backgrounding; absent = default.
+  enableUsageAnalytics?: boolean; // Absent = off. Anonymous product usage only — see
+                                  // docs/analytics.md for what is and is not collected.
 }
 
 /** Auto-lock delays offered in settings, in minutes. 0 locks immediately. */
@@ -106,6 +108,19 @@ export function effectiveAppLockTimeoutMinutes(
     return stored;
   }
   return DEFAULT_APP_LOCK_TIMEOUT_MINUTES;
+}
+
+/**
+ * Whether the account opted in to anonymous usage statistics.
+ *
+ * Absent means off, and that is load-bearing rather than merely tidy: a
+ * preferences map written by an older build, a signed-out session, and the
+ * window before the user document arrives all read as absent, and none of
+ * them may be treated as consent. Analytics is never initialised while this
+ * is false, so "off" means no request was made rather than a suppressed one.
+ */
+export function usageAnalyticsEnabled(prefs: UserPreferences | null | undefined): boolean {
+  return prefs?.enableUsageAnalytics === true;
 }
 
 /** Detail-grounding depth for AI insights — a token/latency vs. detail trade-off. */

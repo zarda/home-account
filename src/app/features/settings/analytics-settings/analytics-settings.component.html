@@ -1,0 +1,16 @@
+<div class="analytics-settings">
+  <span class="section-label" id="usage-analytics-label">{{ 'analytics.settingsTitle' | translate }}</span>
+  <p class="section-description">{{ 'analytics.settingsDescription' | translate }}</p>
+
+  <div class="setting-row">
+    <mat-slide-toggle
+      [checked]="enabled()"
+      (change)="onEnabledChange($event.checked)"
+      aria-labelledby="usage-analytics-label"
+    >
+      {{ 'analytics.enable' | translate }}
+    </mat-slide-toggle>
+  </div>
+
+  <p class="analytics-disclaimer">{{ 'analytics.disclaimer' | translate }}</p>
+</div>

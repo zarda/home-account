@@ -14,6 +14,7 @@ import { Category, CurrencyInfo, SavedSearch, TransactionFilters } from '../../.
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { isImeComposition } from '../../../core/utils/keyboard.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
@@ -41,6 +42,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   private currencyService = inject(CurrencyService);
   private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   searchHistory = inject(SearchHistoryService);
+  private analytics = inject(AnalyticsService);
 
   @ViewChild('dayPicker') dayPicker!: MatDatepicker<Date>;
   @ViewChild('startPicker') startPicker!: MatDatepicker<Date>;
@@ -176,6 +178,31 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (!query || query === this.lastRecordedQuery) return;
     this.lastRecordedQuery = query;
     void this.searchHistory.recordRecent(query);
+    this.analytics.trackTransactionSearch({ has_filters: this.hasNarrowingFilters() });
+  }
+
+  /**
+   * Whether the search was run against anything narrower than the default view.
+   *
+   * Deliberately not activeFilterCount(): that counts startDate and endDate as
+   * two separate filters, and every quick filter — including the "this month"
+   * one ngOnInit applies before the user touches anything — sets both. Reading
+   * it here would report has_filters for a plain visit and miss the
+   * distinction the event exists to draw.
+   *
+   * Reported only from recordSearch(), which runs on a committed, non-empty,
+   * changed query — so this is one event per search the user meant, not one
+   * per keystroke and not one per page load.
+   */
+  private hasNarrowingFilters(): boolean {
+    return (
+      !!this.filters.type ||
+      !!this.filters.categoryId ||
+      !!this.filters.currency ||
+      this.filters.minAmount !== undefined ||
+      this.filters.maxAmount !== undefined ||
+      this.activeQuickFilter() !== 'thisMonth'
+    );
   }
 
   // The recents/saved dropdown renders under a focused, still-empty search box.

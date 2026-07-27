@@ -18,6 +18,7 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 
 interface CapturedImage {
   id: string;
@@ -53,6 +54,24 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   private translationService = inject(TranslationService);
   private duplicateService = inject(DuplicateDetectionService);
   private router = inject(Router);
+  private analytics = inject(AnalyticsService);
+
+  /**
+   * One receipt_import per attempt, whichever branch resolves it.
+   *
+   * processImage has five terminal paths — queued offline, no AI configured,
+   * nothing extracted, extracted, and the outer catch — and two of them are
+   * reached through nested helpers. A flag is cheaper to follow than threading
+   * an outcome back up through all of them, and it makes double counting
+   * structurally impossible rather than a thing to be careful about.
+   */
+  private importReported = false;
+
+  private reportImport(outcome: 'ok' | 'failed' | 'queued_offline'): void {
+    if (this.importReported) return;
+    this.importReported = true;
+    this.analytics.trackReceiptImport({ outcome });
+  }
 
   // Support for multiple captured images
   capturedImages = signal<CapturedImage[]>([]);
@@ -240,6 +259,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
 
     this.isProcessing.set(true);
     this.error.set(null);
+    this.importReported = false;
 
     try {
       const files = images.map(img => img.compressedFile || img.file);
@@ -254,6 +274,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       // Check if AI is available
       if (!this.strategyService.canUseCloud() && !this.strategyService.canUseNative()) {
         this.error.set('AI service is not available. Please configure your API key in Profile Settings.');
+        this.reportImport('failed');
         return;
       }
 
@@ -290,6 +311,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       this.error.set(
         err instanceof Error ? err.message : 'Failed to process image(s). Please try again.'
       );
+      this.reportImport('failed');
     } finally {
       this.isProcessing.set(false);
       this.processingStatus.set('');
@@ -310,9 +332,13 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       const message = this.translationService.t('import.queuedForLater', { count: files.length });
       this.notifications.success(message);
 
+      // Not a failure and not yet a success: the images are safely stored and
+      // the real outcome lands later, from the queue processor.
+      this.reportImport('queued_offline');
       this.dialogRef.close({ success: true, queued: true, count: files.length });
     } catch {
       this.error.set('Failed to save images for later. Please try again.');
+      this.reportImport('failed');
     } finally {
       this.isProcessing.set(false);
       this.processingStatus.set('');
@@ -398,6 +424,10 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         : 'No transactions found in the image. Please try again with a clearer photo.';
       this.error.set(message);
       this.isProcessing.set(false);
+      // Nothing extracted is a failed import from the user's point of view,
+      // whatever the pipeline thinks: they photographed a receipt and got no
+      // transaction out of it.
+      this.reportImport('failed');
       return;
     }
 
@@ -405,6 +435,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     const platform = this.strategyService.platform();
     console.log(`[Camera] Processed on ${platform}`);
 
+    this.reportImport('ok');
     this.dialogRef.close({ success: true, result });
     this.router.navigate(['/import/file'], {
       state: { 

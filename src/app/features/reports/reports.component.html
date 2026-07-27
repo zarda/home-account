@@ -16,6 +16,7 @@
     <!-- Tabs Navigation -->
     <mat-tab-group
       [(selectedIndex)]="selectedTabIndex"
+      (selectedTabChange)="onTabChange($event.index)"
       class="reports-tabs"
       [animationDuration]="tabAnimationDuration"
     >

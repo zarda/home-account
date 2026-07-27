@@ -28,6 +28,7 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Camera Capture** - Take photos directly from the app for receipt scanning
 - **Dark Mode** - Light/dark/system theme support
 - **Multi-language** - English, Traditional Chinese, Japanese
+- **Usage statistics** - Off by default. When switched on in Settings, only which screens are opened and which features are used are shared; never amounts, merchants, categories, notes or anything you typed — see [docs/analytics.md](docs/analytics.md)
 - **PWA Support** - Install as a native app on iOS/Android, works offline
 
 ## Platform-Specific Features
@@ -196,11 +197,13 @@ The web app is a fully-featured Progressive Web App:
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
 | `npm run lint` | ESLint |
+| `npm run i18n:check` | Verify every literal translation key resolves in all locales |
+| `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `firebase deploy` | Deploy web to Firebase Hosting |
 
 ## Continuous Integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs lint, headless unit tests with coverage, and a production build on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current.
+GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translation-key check, the analytics-registry check, headless unit tests with coverage, the emulator smoke tests, and a production build — on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 
@@ -208,11 +211,12 @@ GitHub Actions (`.github/workflows/ci.yml`) runs lint, headless unit tests with 
 
 | Doc | Contents |
 |-----|----------|
+| [docs/analytics.md](docs/analytics.md) | GA4 event taxonomy, tagging registry, consent, privacy boundary, console setup |
 | [docs/insights.md](docs/insights.md) | Spending-pattern detectors, monthly snapshots, card contract, privacy boundary |
 | [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
 | [docs/remote-config.md](docs/remote-config.md) | Firebase Remote Config parameters and defaults |
 | [docs/storage-cors-setup.md](docs/storage-cors-setup.md) | One-time Cloud Storage CORS setup for in-browser receipt reads |
-| [docs/specs/](docs/specs/) | Dated design records for larger features |
+| [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 
 ## Live Demo

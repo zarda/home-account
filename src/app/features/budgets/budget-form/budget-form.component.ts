@@ -19,6 +19,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Budget, CreateBudgetDTO, BudgetPeriod } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
@@ -60,6 +61,7 @@ export class BudgetFormComponent implements OnInit {
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
+  private analytics = inject(AnalyticsService);
 
   form!: FormGroup;
   isSubmitting = signal(false);
@@ -146,6 +148,9 @@ export class BudgetFormComponent implements OnInit {
 
       if (this.data.mode === 'add') {
         await this.budgetService.createBudget(budgetData);
+        // After the write, so a budget that failed to save is not counted as
+        // one the user created.
+        this.analytics.trackBudgetCreate();
       } else if (this.data.budget) {
         await this.budgetService.updateBudget(this.data.budget.id, budgetData);
       }

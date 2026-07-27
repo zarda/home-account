@@ -18,6 +18,8 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../core/services/notification.service';
 import { SecurityActivityComponent } from '../security-activity/security-activity.component';
 import { SecuritySettingsComponent } from '../security-settings/security-settings.component';
+import { AnalyticsSettingsComponent } from '../analytics-settings/analytics-settings.component';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 
 @Component({
   selector: 'app-profile-settings',
@@ -34,6 +36,7 @@ import { SecuritySettingsComponent } from '../security-settings/security-setting
     TranslatePipe,
     SecurityActivityComponent,
     SecuritySettingsComponent,
+    AnalyticsSettingsComponent,
   ],
   templateUrl: './profile-settings.component.html',
   styleUrl: './profile-settings.component.scss',
@@ -43,6 +46,7 @@ export class ProfileSettingsComponent {
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
+  private analytics = inject(AnalyticsService);
   private transactionService = inject(TransactionService);
 
   currencies = SUPPORTED_CURRENCIES;
@@ -92,6 +96,8 @@ export class ProfileSettingsComponent {
     const saved = await this.savePreference({ baseCurrency: this.baseCurrency });
     if (!saved) return;
 
+    this.analytics.trackSettingsChange({ setting: 'currency' });
+
     // Stored per-transaction snapshots (amountInBaseCurrency/exchangeRate)
     // are frozen against the old base; rewrite them so lists, totals, and
     // budgets convert against the newly chosen currency.
@@ -115,11 +121,16 @@ export class ProfileSettingsComponent {
     // Apply theme immediately
     this.themeService.setTheme(this.theme);
     await this.savePreference({ theme: this.theme });
+    this.analytics.trackSettingsChange({ setting: 'theme' });
   }
 
   async onLanguageChange(): Promise<void> {
     await this.translationService.setLocale(this.language);
     await this.savePreference({ language: this.language });
+    // Tagged from the handler, never from TranslationService.setLocale: that
+    // also runs at boot, on its own error fallback, and when preferences sync
+    // from the database, none of which is someone changing a setting.
+    this.analytics.trackSettingsChange({ setting: 'language' });
   }
 
   private async savePreference(pref: Record<string, unknown>): Promise<boolean> {

@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for ios/App/App/GoogleService-Info.plist (gitignored). Download the
+  real file from the Firebase console: Project settings → General → your iOS
+  app.
+
+  IS_ANALYTICS_ENABLED below is true because the download should happen after
+  the iOS app has been linked to a Google Analytics data stream — a plist
+  generated before that has it false and carries no MEASUREMENT_ID. Treat the
+  flag as a tell that you downloaded the right file, not as the switch that
+  controls collection: that is FIREBASE_ANALYTICS_COLLECTION_ENABLED in
+  Info.plist, which is deliberately NO so nothing is collected until the
+  account opts in. See docs/analytics.md.
+-->
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
@@ -21,7 +34,9 @@
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
-	<false></false>
+	<true></true>
+	<key>MEASUREMENT_ID</key>
+	<string>G-YOUR_MEASUREMENT_ID</string>
 	<key>IS_APPINVITE_ENABLED</key>
 	<true></true>
 	<key>IS_GCM_ENABLED</key>
