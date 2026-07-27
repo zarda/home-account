@@ -4,6 +4,9 @@ import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { DuplicateWarningComponent, DuplicateInfo } from './duplicate-warning.component';
 import { CategorizedImportTransaction, DuplicateCheck } from '../../../../models';
+import en from '../../../../../assets/i18n/en.json';
+import ja from '../../../../../assets/i18n/ja.json';
+import tc from '../../../../../assets/i18n/tc.json';
 
 describe('DuplicateWarningComponent', () => {
   let component: DuplicateWarningComponent;
@@ -77,21 +80,34 @@ describe('DuplicateWarningComponent', () => {
     });
   });
 
-  describe('getMatchLabel', () => {
-    it('should return Exact Match for exact type', () => {
-      expect(component.getMatchLabel('exact')).toBe('Exact Match');
+  describe('getMatchLabelKey', () => {
+    const matchTypes: DuplicateCheck['matchType'][] = ['exact', 'likely', 'possible', 'none'];
+
+    it('maps each match type to its own key', () => {
+      const keys = matchTypes.map(t => component.getMatchLabelKey(t));
+      expect(keys).toEqual([
+        'import.matchExact',
+        'import.matchLikely',
+        'import.matchPossible',
+        'import.matchUnknown',
+      ]);
     });
 
-    it('should return Likely Match for likely type', () => {
-      expect(component.getMatchLabel('likely')).toBe('Likely Match');
-    });
-
-    it('should return Possible Match for possible type', () => {
-      expect(component.getMatchLabel('possible')).toBe('Possible Match');
-    });
-
-    it('should return Unknown for unknown match type', () => {
-      expect(component.getMatchLabel('none')).toBe('Unknown');
+    it('resolves every key in every locale', () => {
+      // These labels were hard-coded English until now. The keys are looked up
+      // dynamically, so check-i18n.mjs cannot see them — its regex only matches
+      // a literal key next to the translate pipe. This assertion is the only
+      // thing standing between a renamed key and a raw 'import.matchExact'
+      // rendering in the UI.
+      for (const locale of [en, ja, tc]) {
+        for (const type of matchTypes) {
+          const leaf = component.getMatchLabelKey(type).split('.')[1];
+          const value = (locale.import as Record<string, string>)[leaf];
+          expect(value)
+            .withContext(`${component.getMatchLabelKey(type)} is missing or empty`)
+            .toBeTruthy();
+        }
+      }
     });
   });
 

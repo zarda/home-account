@@ -44,16 +44,24 @@ export class DuplicateWarningComponent {
     }
   }
 
-  getMatchLabel(matchType: DuplicateCheck['matchType']): string {
+  /**
+   * Translation key for a match type.
+   *
+   * Returning a key rather than a string is what lets `check-i18n.mjs` see
+   * these at all — it matches keys next to the translate pipe, so the English
+   * literals this used to return were invisible to every i18n check the repo
+   * has, and stayed untranslated in ja and tc without anything noticing.
+   */
+  getMatchLabelKey(matchType: DuplicateCheck['matchType']): string {
     switch (matchType) {
       case 'exact':
-        return 'Exact Match';
+        return 'import.matchExact';
       case 'likely':
-        return 'Likely Match';
+        return 'import.matchLikely';
       case 'possible':
-        return 'Possible Match';
+        return 'import.matchPossible';
       default:
-        return 'Unknown';
+        return 'import.matchUnknown';
     }
   }
 

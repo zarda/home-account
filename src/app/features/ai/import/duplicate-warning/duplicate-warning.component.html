@@ -22,7 +22,7 @@
                 <mat-icon [class]="'match-' + dup.check.matchType">
                   {{ getMatchIcon(dup.check.matchType) }}
                 </mat-icon>
-                <span class="match-type">{{ getMatchLabel(dup.check.matchType) }}</span>
+                <span class="match-type">{{ getMatchLabelKey(dup.check.matchType) | translate }}</span>
                 <span class="confidence">({{ (dup.check.confidence * 100).toFixed(0) }}%)</span>
               </div>
               <div class="item-details">
