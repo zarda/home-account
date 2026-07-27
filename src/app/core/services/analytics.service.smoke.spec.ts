@@ -106,6 +106,10 @@ describe('Analytics opt-in (emulator smoke test)', () => {
     });
   };
 
+  /** The stored preferences as a premium account, whose preference is read. */
+  const asPremium = (preferences: UserPreferences): User =>
+    ({ id: uid, subscription: { tier: 'premium' }, preferences }) as User;
+
   const storedPreferences = async (): Promise<UserPreferences> => {
     const snapshot = await getDoc(doc(firestore, `users/${uid}`));
     return (snapshot.data() as { preferences: UserPreferences }).preferences;
@@ -177,7 +181,9 @@ describe('Analytics opt-in (emulator smoke test)', () => {
     const stored = await storedPreferences();
     // Firestore accepted the new key, and the rewrite did not drop the
     // preferences that were already there.
-    expect(usageAnalyticsEnabled(stored)).toBeTrue();
+    expect(stored.enableUsageAnalytics).toBeTrue();
+    // Read back through the accessor as premium, the only tier that consults it.
+    expect(usageAnalyticsEnabled(asPremium(stored))).toBeTrue();
     expect(stored.baseCurrency).toBe('USD');
     expect(stored.theme).toBe('system');
   });
@@ -192,29 +198,43 @@ describe('Analytics opt-in (emulator smoke test)', () => {
       enableUsageAnalytics: false,
     });
 
-    expect(usageAnalyticsEnabled(await storedPreferences())).toBeFalse();
+    expect(usageAnalyticsEnabled(asPremium(await storedPreferences()))).toBeFalse();
   });
 
-  it('should leave a fresh profile opted out', async () => {
-    // No migration writes the field, so an account created before the setting
-    // shipped has to read as off.
-    expect(usageAnalyticsEnabled(await storedPreferences())).toBeFalse();
-    expect(service.consentGranted()).toBeFalse();
+  it('should leave a fresh premium profile opted out', async () => {
+    // No migration writes the field, so a premium account that has not answered
+    // reads as off.
+    expect(usageAnalyticsEnabled(asPremium(await storedPreferences()))).toBeFalse();
   });
 
-  it('should enable and disable collection as the stored preference changes', fakeAsync(() => {
+  it('should collect for the seeded free-tier profile', async () => {
+    // The seeded document carries no subscription record, so it is free tier.
+    expect(service.collectionEnabled()).toBeTrue();
+  });
+
+  it('should enable and disable collection as a premium account changes its mind', fakeAsync(() => {
+    // Premium, because that is the only tier whose preference is consulted;
+    // a free-tier account cannot express "off" at all.
+    const premium = (enableUsageAnalytics?: boolean): User =>
+      ({
+        id: uid,
+        subscription: { tier: 'premium' },
+        preferences: {
+          ...authService.currentUser()?.preferences,
+          ...(enableUsageAnalytics === undefined ? {} : { enableUsageAnalytics }),
+        },
+      }) as User;
+
+    authService.currentUser.set(premium());
     TestBed.tick();
     tick();
-    // Nothing is collected while the seeded profile has no opt-in.
+    // A premium account that has not answered is off.
     expect(transport.enabledCalls).toEqual([false]);
 
     // updateUserPreferences re-sets the currentUser signal after the write, so
     // the change reaches the service the same way it would from the settings
     // toggle — without a reload.
-    authService.currentUser.set({
-      id: uid,
-      preferences: { ...authService.currentUser()?.preferences, enableUsageAnalytics: true },
-    } as User);
+    authService.currentUser.set(premium(true));
     TestBed.tick();
     tick();
 
@@ -224,10 +244,7 @@ describe('Analytics opt-in (emulator smoke test)', () => {
     tick();
     expect(transport.events.map(event => event.name)).toEqual(['budget_create']);
 
-    authService.currentUser.set({
-      id: uid,
-      preferences: { ...authService.currentUser()?.preferences, enableUsageAnalytics: false },
-    } as User);
+    authService.currentUser.set(premium(false));
     TestBed.tick();
     tick();
 

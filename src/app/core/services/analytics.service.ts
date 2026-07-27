@@ -68,12 +68,14 @@ export class AnalyticsService {
   private consentChain: Promise<void> = Promise.resolve();
 
   /**
-   * The account's opt-in, straight off the preferences map. Absent means off,
-   * so the window between boot and the user document arriving is silent by
+   * Whether collection is on for the signed-in account.
+   *
+   * Free tier: always on. Premium: the stored preference. No account: off, so
+   * the window between boot and the user document arriving is silent by
    * construction rather than by timing.
    */
-  readonly consentGranted = computed(() =>
-    usageAnalyticsEnabled(this.auth?.currentUser?.()?.preferences)
+  readonly collectionEnabled = computed(() =>
+    usageAnalyticsEnabled(this.auth?.currentUser?.())
   );
 
   constructor() {
@@ -81,7 +83,7 @@ export class AnalyticsService {
     // device, all through one signal. Mirrors the preference-sync effect in
     // AuthService.
     effect(() => {
-      const granted = this.consentGranted();
+      const granted = this.collectionEnabled();
       // Native collection persists across launches, so pushing before the auth
       // state settles would either restart the session for a consenting user
       // or briefly contradict the stored preference.
@@ -157,7 +159,7 @@ export class AnalyticsService {
    * from signals and conditionals, and types are gone by the time they do.
    */
   protected send(name: AnalyticsEventName, params: Record<string, unknown>): void {
-    if (!this.consentGranted()) {
+    if (!this.collectionEnabled()) {
       return;
     }
 
@@ -231,7 +233,7 @@ export class AnalyticsService {
   }
 
   private reportScreen(): void {
-    if (!this.router || !this.consentGranted()) {
+    if (!this.router || !this.collectionEnabled()) {
       return;
     }
     const screen = currentScreenView(this.router);

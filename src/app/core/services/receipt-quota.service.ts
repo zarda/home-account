@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { RemoteConfigService } from './remote-config.service';
-import { SubscriptionTier, Transaction } from '../../models';
+import { SubscriptionTier, Transaction, subscriptionTier } from '../../models';
 
 /**
  * Tracks how many receipt images a user has stored and enforces the
@@ -26,9 +26,7 @@ export class ReceiptQuotaService {
   /** Stored receipt image count, or null before the first load. */
   imageCount = computed(() => this._imageCount());
 
-  tier = computed<SubscriptionTier>(() =>
-    this.authService.currentUser()?.subscription?.tier ?? 'free'
-  );
+  tier = computed<SubscriptionTier>(() => subscriptionTier(this.authService.currentUser()));
 
   /** Image limit for the current tier, tunable via Remote Config. */
   imageLimit = computed(() =>
