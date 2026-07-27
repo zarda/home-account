@@ -1,3 +1,4 @@
+import { nextImportRowId } from '../utils/import-row-id.utils';
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { GeminiService, RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
@@ -174,8 +175,8 @@ export class AIImportService {
   private convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {
     const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
 
-    return result.transactions.map((tx, index) => ({
-      id: `strategy_${index}_${Date.now()}`,
+    return result.transactions.map(tx => ({
+      id: nextImportRowId('strategy'),
       description: tx.description,
       amount: tx.amount,
       currency: tx.currency || baseCurrency,
@@ -303,7 +304,7 @@ export class AIImportService {
     return categorizedByAI.map((t, index) => {
       const original = transactions[index];
       return {
-        id: `multi_img_${index}_${Date.now()}`,
+        id: nextImportRowId('multi_img'),
         description: t.description,
         amount: Math.abs(t.amount),
         currency: original.currency || baseCurrency,
@@ -514,8 +515,8 @@ export class AIImportService {
       this.processingProgress.set(50);
 
       const categorized: CategorizedImportTransaction[] = data.transactions.map(
-        (t: Record<string, unknown>, index: number) => ({
-          id: `json_${index}_${Date.now()}`,
+        (t: Record<string, unknown>) => ({
+          id: nextImportRowId('json'),
           description: t['description'] as string || 'Unknown',
           amount: Math.abs(t['amount'] as number || 0),
           currency: (t['currency'] as string) || 'USD',
@@ -557,11 +558,11 @@ export class AIImportService {
 
     // Convert ExtractedTransaction to CategorizedImportTransaction
     // If transaction already has a category from extraction, use it; otherwise suggest 'other_expense'
-    return transactions.map((t, index) => {
+    return transactions.map(t => {
       const suggestedCategoryId = t.category || 'other_expense';
 
       return {
-        id: `import_${index}_${Date.now()}`,
+        id: nextImportRowId('import'),
         description: t.description,
         amount: Math.abs(t.amount),
         currency: t.currency || baseCurrency,

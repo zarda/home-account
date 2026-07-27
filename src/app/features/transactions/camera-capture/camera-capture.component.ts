@@ -1,3 +1,4 @@
+import { nextImportRowId } from '../../../core/utils/import-row-id.utils';
 import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
@@ -371,8 +372,8 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     strategyResult: import('../../../core/services/ai-strategy.service').ProcessingResult,
     files: File[]
   ): Promise<import('../../../models').ImportResult> {
-    const transactions = strategyResult.transactions.map((tx, index) => ({
-      id: `strategy_${index}_${Date.now()}`,
+    const transactions = strategyResult.transactions.map(tx => ({
+      id: nextImportRowId('strategy'),
       description: tx.description,
       amount: tx.amount,
       currency: tx.currency,
