@@ -73,7 +73,7 @@ export class AnalyticsService {
    * construction rather than by timing.
    */
   readonly consentGranted = computed(() =>
-    usageAnalyticsEnabled(this.auth?.currentUser()?.preferences)
+    usageAnalyticsEnabled(this.auth?.currentUser?.()?.preferences)
   );
 
   constructor() {
@@ -85,7 +85,14 @@ export class AnalyticsService {
       // Native collection persists across launches, so pushing before the auth
       // state settles would either restart the session for a consenting user
       // or briefly contradict the stored preference.
-      if (this.auth?.isLoading()) {
+      //
+      // Both signals are read through optional calls. This service is
+      // constructed by any component that tags anything, and the component
+      // specs across the app stub AuthService with only the members they
+      // themselves need — a hard call here turns every one of them red for a
+      // service they never asked about. An absent signal reads as "settled,
+      // signed out", which is off.
+      if (this.auth?.isLoading?.()) {
         return;
       }
       const generation = ++this.consentGeneration;
@@ -98,8 +105,15 @@ export class AnalyticsService {
     this.send('transaction_add', params);
   }
 
-  /** A search was committed on the transaction list. */
-  trackTransactionSearch(params: AnalyticsEventParams<'transaction_search'>): void {
+  /**
+   * A search was committed on the transaction list.
+   *
+   * has_filters is a boolean here and an enumerated 'true'/'false' in the
+   * taxonomy: GA4 has no boolean parameter type, and making every call site
+   * stringify by hand is how one of them ends up sending 'yes'. The validator
+   * does the coercion.
+   */
+  trackTransactionSearch(params: { has_filters: boolean }): void {
     this.send('transaction_search', params);
   }
 
