@@ -303,11 +303,19 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.updateSelectedIds();
   }
 
+  /**
+   * Re-select the rows that were auto-deselected for being duplicates.
+   *
+   * Only the duplicates: this used to select every row, so a user who had
+   * worked through the list and unticked a few ordinary rows lost that work the
+   * moment they decided to keep the duplicates — and the button says "include
+   * duplicates", not "select everything".
+   */
   includeAllDuplicates(): void {
     this.extractedTransactions.update(txns =>
       txns.map(t => ({
         ...t,
-        selected: true
+        selected: t.isDuplicate ? true : t.selected
       }))
     );
     this.updateSelectedIds();

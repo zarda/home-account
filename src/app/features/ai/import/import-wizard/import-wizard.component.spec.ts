@@ -332,7 +332,22 @@ describe('ImportWizardComponent', () => {
   });
 
   describe('includeAllDuplicates', () => {
-    it('should select all transactions including duplicates', () => {
+    it('should select the duplicates', () => {
+      const transactions: CategorizedImportTransaction[] = [
+        { ...mockTransactions[0], isDuplicate: true, selected: false },
+        { ...mockTransactions[1], isDuplicate: false, selected: true }
+      ];
+      component.extractedTransactions.set(transactions);
+
+      component.includeAllDuplicates();
+
+      const updated = component.extractedTransactions();
+      expect(updated.find(t => t.isDuplicate)?.selected).toBeTrue();
+    });
+
+    it('should leave a manually deselected non-duplicate alone', () => {
+      // The button says "include duplicates". Selecting everything threw away
+      // the user's own decisions about the rest of the list.
       const transactions: CategorizedImportTransaction[] = [
         { ...mockTransactions[0], isDuplicate: true, selected: false },
         { ...mockTransactions[1], isDuplicate: false, selected: false }
@@ -342,7 +357,8 @@ describe('ImportWizardComponent', () => {
       component.includeAllDuplicates();
 
       const updated = component.extractedTransactions();
-      expect(updated.every(t => t.selected)).toBeTrue();
+      expect(updated.find(t => t.isDuplicate)?.selected).toBeTrue();
+      expect(updated.find(t => !t.isDuplicate)?.selected).toBeFalse();
     });
   });
 
