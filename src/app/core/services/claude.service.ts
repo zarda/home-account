@@ -604,6 +604,8 @@ export class ClaudeService implements CloudLLMProviderAdapter {
         category: t.category,
         merchant: t.merchant,
         details: t.details,
+        amountConfidence: t.amountConfidence,
+        dateConfidence: t.dateConfidence,
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';

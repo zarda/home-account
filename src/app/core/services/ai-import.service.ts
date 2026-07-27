@@ -698,6 +698,9 @@ export class AIImportService {
         categoryConfidence: 0.8, // AI extracted categories are fairly confident
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         notes: this.formatItemNotes(t.details),
+        fieldConfidence: (t.amountConfidence !== undefined || t.dateConfidence !== undefined)
+          ? { amount: t.amountConfidence, date: t.dateConfidence }
+          : undefined,
         isDuplicate: false,
         selected: true
       };

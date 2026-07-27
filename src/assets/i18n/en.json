@@ -799,7 +799,9 @@
     "imageKindReceipt": "Receipts",
     "imageKindStatement": "Statement",
     "imageKindReceiptHint": "Items on one receipt are combined into a single transaction.",
-    "imageKindStatementHint": "Each line on the statement becomes its own transaction."
+    "imageKindStatementHint": "Each line on the statement becomes its own transaction.",
+    "verifyAmount": "Double-check this amount — the AI was only {{percent}}% sure it read it correctly",
+    "verifyDate": "Double-check this date — the AI was only {{percent}}% sure it read it correctly"
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

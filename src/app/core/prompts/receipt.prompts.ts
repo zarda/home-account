@@ -27,7 +27,9 @@ export function renderReceiptParse(): RenderedPrompt {
   "items": [{"name": "item name", "amount": item price as number}],
   "receiptDetails": "full receipt content line by line",
   "suggestedCategory": "one of: ${EXTRACTION_CATEGORY_NAMES}",
-  "receiptCount": number of distinct receipts visible in the photo
+  "receiptCount": number of distinct receipts visible in the photo,
+  "amountConfidence": how clearly the total was legible, 0.0 to 1.0,
+  "dateConfidence": how clearly the date was legible, 0.0 to 1.0
 }
 
 IMPORTANT:
@@ -36,6 +38,7 @@ IMPORTANT:
 - "items" array: each purchased item with its individual price.
 - "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep original language.
 - If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.
+- Lower "amountConfidence" and "dateConfidence" when a figure is blurred, cut off, ambiguous or inferred rather than read.
 Return ONLY the JSON, nothing else.`,
     expects: 'json',
     maxOutputTokens: 2000,
@@ -95,6 +98,10 @@ For each transaction found, extract:
 - currency: detected currency code (default to USD if unclear)
 - merchant: store/business name (optional)
 - details: for receipts, reproduce the FULL receipt content line by line — every item with its price, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the original language. (optional)
+- amountConfidence: how clearly the amount was legible, 0.0 to 1.0
+- dateConfidence: how clearly the date was legible, 0.0 to 1.0
+
+Lower the two confidence values when a figure is blurred, cut off, ambiguous or inferred rather than read.
 
 Return ONLY a valid JSON array with this structure (no markdown, no explanation):
 [
@@ -105,7 +112,9 @@ Return ONLY a valid JSON array with this structure (no markdown, no explanation)
     "type": "expense",
     "currency": "USD",
     "merchant": "AMAZON.COM",
-    "details": "USB Cable — 12.99\\nBook — 32.00\\nSubtotal 44.99\\nTax 1.00\\nTotal 45.99"
+    "details": "USB Cable — 12.99\\nBook — 32.00\\nSubtotal 44.99\\nTax 1.00\\nTotal 45.99",
+    "amountConfidence": 0.98,
+    "dateConfidence": 0.95
   }
 ]
 

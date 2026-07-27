@@ -799,7 +799,9 @@
     "imageKindReceipt": "收據",
     "imageKindStatement": "對帳單",
     "imageKindReceiptHint": "同一張收據上的品項會合併為一筆交易。",
-    "imageKindStatementHint": "對帳單上的每一行都會成為獨立的交易。"
+    "imageKindStatementHint": "對帳單上的每一行都會成為獨立的交易。",
+    "verifyAmount": "請再確認此金額，AI 的辨識信心僅有 {{percent}}%",
+    "verifyDate": "請再確認此日期，AI 的辨識信心僅有 {{percent}}%"
   },
   "errors": {
     "generic": "發生錯誤，請重試。",

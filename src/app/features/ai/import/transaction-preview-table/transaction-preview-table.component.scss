@@ -335,3 +335,19 @@
     width: 100%;
   }
 }
+
+// Marker on a field the model was not confident it read correctly. Amber
+// rather than red: the value may well be right, and the reviewer is being
+// asked to glance at it, not told it is wrong.
+.verify-flag {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--color-warning);
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.date-chip.needs-verify {
+  color: var(--color-warning);
+}

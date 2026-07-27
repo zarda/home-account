@@ -50,6 +50,15 @@
               <span class="description-text">{{ row.description }}</span>
             </div>
             <div class="amount-section" [class.income]="row.type === 'income'" [class.expense]="row.type === 'expense'">
+              @if (needsVerification(row, 'amount')) {
+                <mat-icon
+                  class="verify-flag"
+                  [matTooltip]="verificationTooltip(row, 'amount')"
+                  matTooltipPosition="above"
+                  role="img"
+                  [attr.aria-label]="verificationTooltip(row, 'amount')"
+                >error_outline</mat-icon>
+              }
               {{ row.type === 'income' ? '+' : '-' }}{{ row.amount | currency:row.currency:'symbol':'1.2-2' }}
             </div>
           </div>
@@ -57,8 +66,18 @@
           <!-- Middle: Date, Type, Category -->
           <div class="card-bottom-row">
             <div class="meta-info">
-              <span class="date-chip">
-                <mat-icon>calendar_today</mat-icon>
+              <span class="date-chip" [class.needs-verify]="needsVerification(row, 'date')">
+                @if (needsVerification(row, 'date')) {
+                  <mat-icon
+                    class="verify-flag"
+                    [matTooltip]="verificationTooltip(row, 'date')"
+                    matTooltipPosition="above"
+                    role="img"
+                    [attr.aria-label]="verificationTooltip(row, 'date')"
+                  >error_outline</mat-icon>
+                } @else {
+                  <mat-icon>calendar_today</mat-icon>
+                }
                 {{ row.date | date:'mediumDate' }}
               </span>
               <button

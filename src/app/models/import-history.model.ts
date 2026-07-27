@@ -40,6 +40,22 @@ export interface ImagePositionMetadata {
   receiptId?: number;              // AI-assigned receipt group across the processed photos
 }
 
+/**
+ * Per-field extraction confidence, 0–1.
+ *
+ * Only the two fields a misread actually costs something: an amount that is
+ * wrong is money recorded wrong, and a date that is wrong lands the
+ * transaction in the wrong period. A misread description is visible at a
+ * glance and harmless.
+ */
+export interface FieldConfidence {
+  amount?: number;
+  date?: number;
+}
+
+/** Below this, a field is worth the reviewer's attention before importing. */
+export const VERIFY_FIELD_THRESHOLD = 0.7;
+
 export interface CategorizedImportTransaction {
   id: string;                      // Temporary ID for UI selection
   description: string;
@@ -49,6 +65,18 @@ export interface CategorizedImportTransaction {
   type: 'income' | 'expense';
   suggestedCategoryId: string;
   categoryConfidence: number;
+  /**
+   * How sure the model was that it read the amount and the date correctly.
+   *
+   * Separate from categoryConfidence, which is about where the transaction
+   * belongs rather than whether it was read right. The extraction confidence
+   * used to be collapsed into categoryConfidence and lost, so a blurry total
+   * looked exactly like a clear one in the preview — and the amount is the
+   * field a misread costs the most.
+   *
+   * Absent means the source could not report it (CSV, JSON, a manual row).
+   */
+  fieldConfidence?: FieldConfidence;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)

@@ -4,6 +4,7 @@ import { NO_ERRORS_SCHEMA } from '@angular/core';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { CategorizedImportTransaction } from '../../../../models';
+import { TranslationService } from '../../../../core/services/translation.service';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -57,7 +58,18 @@ describe('TransactionPreviewTableComponent', () => {
 
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
-      schemas: [NO_ERRORS_SCHEMA]
+      schemas: [NO_ERRORS_SCHEMA],
+      providers: [
+        {
+          // Echoes the key and its params so tooltip assertions can check the
+          // interpolated value without depending on the English wording.
+          provide: TranslationService,
+          useValue: {
+            t: (key: string, params?: Record<string, string | number>) =>
+              params ? `${key}:${JSON.stringify(params)}` : key,
+          },
+        },
+      ],
     })
       .overrideComponent(TransactionPreviewTableComponent, {
         set: { template: '<div></div>' }
@@ -173,7 +185,7 @@ describe('TransactionPreviewTableComponent', () => {
 
     it('should select all non-duplicate transactions when checked', () => {
       // Deselect all first
-      component.transactions.forEach(t => t.selected = false);
+      component.transactions = component.transactions.map(t => ({ ...t, selected: false }));
 
       component.toggleSelectAll(true);
 
@@ -217,11 +229,9 @@ describe('TransactionPreviewTableComponent', () => {
     });
 
     it('should toggle transaction selection', () => {
-      const txn = component.transactions[0];
+      component.toggleSelection(component.transactions[0], false);
 
-      component.toggleSelection(txn, false);
-
-      expect(txn.selected).toBeFalse();
+      expect(component.transactions[0].selected).toBeFalse();
     });
 
     it('should emit transactionsUpdated event', () => {
@@ -247,12 +257,11 @@ describe('TransactionPreviewTableComponent', () => {
       component.transactions = transactions;
       fixture.detectChanges();
 
-      const txn = component.transactions[0];
-      expect(txn.type).toBe('expense');
+      expect(component.transactions[0].type).toBe('expense');
 
-      component.toggleType(txn);
+      component.toggleType(component.transactions[0]);
 
-      expect(txn.type).toBe('income');
+      expect(component.transactions[0].type).toBe('income');
     });
 
     it('should toggle income to expense', () => {
@@ -260,12 +269,11 @@ describe('TransactionPreviewTableComponent', () => {
       component.transactions = transactions;
       fixture.detectChanges();
 
-      const txn = component.transactions[1];
-      expect(txn.type).toBe('income');
+      expect(component.transactions[1].type).toBe('income');
 
-      component.toggleType(txn);
+      component.toggleType(component.transactions[1]);
 
-      expect(txn.type).toBe('expense');
+      expect(component.transactions[1].type).toBe('expense');
     });
 
     it('should emit transactionsUpdated event', () => {
@@ -288,19 +296,15 @@ describe('TransactionPreviewTableComponent', () => {
     });
 
     it('should update category id', () => {
-      const txn = component.transactions[0];
+      component.updateCategory(component.transactions[0], 'salary');
 
-      component.updateCategory(txn, 'salary');
-
-      expect(txn.suggestedCategoryId).toBe('salary');
+      expect(component.transactions[0].suggestedCategoryId).toBe('salary');
     });
 
     it('should set confidence to 1.0 (user confirmed)', () => {
-      const txn = component.transactions[0];
+      component.updateCategory(component.transactions[0], 'salary');
 
-      component.updateCategory(txn, 'salary');
-
-      expect(txn.categoryConfidence).toBe(1.0);
+      expect(component.transactions[0].categoryConfidence).toBe(1.0);
     });
 
     it('should emit transactionsUpdated event', () => {
@@ -309,6 +313,96 @@ describe('TransactionPreviewTableComponent', () => {
       component.updateCategory(component.transactions[0], 'salary');
 
       expect(component.transactionsUpdated.emit).toHaveBeenCalled();
+    });
+  });
+
+  describe('field verification markers', () => {
+    const row = (overrides = {}) => ({
+      id: 'r1',
+      description: 'Blurry receipt',
+      amount: 12.34,
+      currency: 'USD',
+      date: new Date('2026-06-01'),
+      type: 'expense' as const,
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('flags an amount the model was unsure it read', () => {
+      const t = row({ fieldConfidence: { amount: 0.4 } });
+      expect(component.needsVerification(t, 'amount')).toBeTrue();
+    });
+
+    it('leaves a confidently read amount unflagged', () => {
+      const t = row({ fieldConfidence: { amount: 0.98 } });
+      expect(component.needsVerification(t, 'amount')).toBeFalse();
+    });
+
+    it('does not flag a field the source could not report on', () => {
+      // CSV and JSON imports have no model to ask. Flagging every one of their
+      // rows would train the user to ignore the marker.
+      expect(component.needsVerification(row(), 'amount')).toBeFalse();
+      expect(component.needsVerification(row({ fieldConfidence: {} }), 'date')).toBeFalse();
+    });
+
+    it('flags amount and date independently', () => {
+      const t = row({ fieldConfidence: { amount: 0.99, date: 0.3 } });
+      expect(component.needsVerification(t, 'amount')).toBeFalse();
+      expect(component.needsVerification(t, 'date')).toBeTrue();
+    });
+
+    it('reports the confidence as a percentage in the tooltip', () => {
+      const t = row({ fieldConfidence: { amount: 0.42 } });
+      expect(component.verificationTooltip(t, 'amount')).toContain('42');
+    });
+  });
+
+  describe('row edits', () => {
+    const rows = () => [
+      {
+        id: 'r1', description: 'A', amount: 1, currency: 'USD', date: new Date('2026-06-01'),
+        type: 'expense' as const, suggestedCategoryId: 'food', categoryConfidence: 0.5,
+        isDuplicate: false, selected: false,
+      },
+      {
+        id: 'r2', description: 'B', amount: 2, currency: 'USD', date: new Date('2026-06-02'),
+        type: 'expense' as const, suggestedCategoryId: 'food', categoryConfidence: 0.5,
+        isDuplicate: false, selected: false,
+      },
+    ];
+
+    it('does not mutate the row objects it was given', () => {
+      // Edits used to assign onto the @Input objects, which the parent also
+      // holds — so a computed() over them would never see the change.
+      const original = rows();
+      const snapshot = { ...original[0] };
+      component.transactions = original;
+
+      component.updateCategory(original[0], 'transport');
+
+      expect(original[0]).toEqual(snapshot);
+      expect(component.transactions[0].suggestedCategoryId).toBe('transport');
+    });
+
+    it('stamps full confidence when the user picks a category', () => {
+      component.transactions = rows();
+      component.updateCategory(component.transactions[0], 'transport');
+      expect(component.transactions[0].categoryConfidence).toBe(1.0);
+    });
+
+    it('emits a new array on every edit', () => {
+      component.transactions = rows();
+      const emitted: unknown[] = [];
+      component.transactionsUpdated.subscribe(v => emitted.push(v));
+
+      component.toggleSelection(component.transactions[0], true);
+      component.toggleType(component.transactions[1]);
+
+      expect(emitted.length).toBe(2);
+      expect(emitted[0]).not.toBe(emitted[1]);
     });
   });
 });

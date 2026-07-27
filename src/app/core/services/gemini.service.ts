@@ -74,6 +74,8 @@ export interface ExtractedTransaction {
   category?: string;               // Transaction category (e.g., Groceries, Gas, etc.)
   merchant?: string;               // Specific merchant/business name
   details?: string;                // Additional details (card last 4 digits, reference number, etc.)
+  amountConfidence?: number;       // How legible the amount was (0-1); absent when unreported
+  dateConfidence?: number;         // How legible the date was (0-1); absent when unreported
 }
 
 export interface MultiImageExtractedTransaction extends ExtractedTransaction {
@@ -685,6 +687,8 @@ export class GeminiService implements CloudLLMProviderAdapter {
         category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
         merchant: t.merchant,
         details: t.details,
+        amountConfidence: t.amountConfidence,
+        dateConfidence: t.dateConfidence,
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
