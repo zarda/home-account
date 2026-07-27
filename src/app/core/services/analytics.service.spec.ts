@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AnalyticsService } from './analytics.service';
+import { AnalyticsEventName } from '../config/analytics-events';
 import { AnalyticsParams, AnalyticsTransport } from './analytics-transport';
 import { ScreenView } from './analytics-screen-view';
 import { AuthService } from './auth.service';
@@ -40,7 +41,7 @@ class TestAnalyticsService extends AnalyticsService {
     return this.fake;
   }
 
-  track(name: string, params: AnalyticsParams = {}): void {
+  track(name: AnalyticsEventName, params: Record<string, unknown> = {}): void {
     this.send(name, params);
   }
 }
@@ -227,6 +228,69 @@ describe('AnalyticsService', () => {
       tick();
 
       expect(transport.events).toEqual([]);
+    }));
+
+    it('should drop an event carrying an undeclared parameter', fakeAsync(() => {
+      currentUser.set(userWithConsent(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+      spyOn(console, 'warn');
+
+      service.track('transaction_add', {
+        method: 'manual',
+        type: 'expense',
+        merchant: 'Blue Bottle Coffee',
+      });
+      tick();
+
+      expect(transport.events).toEqual([]);
+    }));
+
+    it('should drop an event whose value is outside the taxonomy', fakeAsync(() => {
+      currentUser.set(userWithConsent(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+      spyOn(console, 'warn');
+
+      service.track('receipt_import', { outcome: 'a receipt from Blue Bottle' });
+      tick();
+
+      expect(transport.events).toEqual([]);
+    }));
+
+    it('should not log the offending value when dropping an event', fakeAsync(() => {
+      currentUser.set(userWithConsent(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+      const warn = spyOn(console, 'warn');
+
+      service.track('settings_change', { setting: 'note: bought coffee at Blue Bottle' });
+      tick();
+
+      // The warning exists so a developer notices the mistake; repeating the
+      // value in it would put the very thing that must not be sent into a log.
+      const logged = warn.calls.allArgs().flat().join(' ');
+      expect(logged).not.toContain('Blue Bottle');
+      expect(logged).toContain('settings_change');
+    }));
+
+    it('should send through the typed wrappers', fakeAsync(() => {
+      currentUser.set(userWithConsent(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+
+      service.trackBudgetCreate();
+      service.trackReportView({ report_type: 'insights' });
+      tick();
+
+      expect(transport.events).toEqual([
+        { name: 'budget_create', params: {} },
+        { name: 'report_view', params: { report_type: 'insights' } },
+      ]);
     }));
 
     it('should never throw when the transport fails', fakeAsync(() => {

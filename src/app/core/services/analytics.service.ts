@@ -11,10 +11,14 @@ import { NavigationEnd, Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { filter } from 'rxjs/operators';
 import { usageAnalyticsEnabled } from '../../models';
+import {
+  AnalyticsEventName,
+  AnalyticsEventParams,
+  validateAnalyticsParams,
+} from '../config/analytics-events';
 import { AuthService } from './auth.service';
 import { currentScreenView } from './analytics-screen-view';
 import {
-  AnalyticsParams,
   AnalyticsTransport,
   NativeAnalyticsTransport,
   WebAnalyticsTransport,
@@ -89,16 +93,72 @@ export class AnalyticsService {
     });
   }
 
+  /** A transaction was created by a user action. */
+  trackTransactionAdd(params: AnalyticsEventParams<'transaction_add'>): void {
+    this.send('transaction_add', params);
+  }
+
+  /** A search was committed on the transaction list. */
+  trackTransactionSearch(params: AnalyticsEventParams<'transaction_search'>): void {
+    this.send('transaction_search', params);
+  }
+
+  /** A receipt or file import reached a terminal outcome. */
+  trackReceiptImport(params: AnalyticsEventParams<'receipt_import'>): void {
+    this.send('receipt_import', params);
+  }
+
+  /** A budget was created. */
+  trackBudgetCreate(): void {
+    this.send('budget_create', {});
+  }
+
+  /** The dashboard budget-alert banner became visible. */
+  trackBudgetExceededViewed(params: AnalyticsEventParams<'budget_exceeded_viewed'>): void {
+    this.send('budget_exceeded_viewed', params);
+  }
+
+  /** A report tab was shown. */
+  trackReportView(params: AnalyticsEventParams<'report_view'>): void {
+    this.send('report_view', params);
+  }
+
+  /** An AI-assisted feature actually called a provider. */
+  trackAiAssistUsed(params: AnalyticsEventParams<'ai_assist_used'>): void {
+    this.send('ai_assist_used', params);
+  }
+
+  /** A preference was changed from settings. */
+  trackSettingsChange(params: AnalyticsEventParams<'settings_change'>): void {
+    this.send('settings_change', params);
+  }
+
   /**
-   * Send an event. Callers are the typed wrappers in this service; the params
-   * they pass are already validated against the taxonomy.
+   * The one path to the transport.
+   *
+   * Typed wrappers rather than a public generic log() so the compiler rejects
+   * an unknown event or an off-taxonomy value at the call site, and so the
+   * registry check can read an event name it can trust. The runtime validation
+   * below is not redundant with those types: call sites compute these values
+   * from signals and conditionals, and types are gone by the time they do.
    */
-  protected send(name: string, params: AnalyticsParams = {}): void {
+  protected send(name: AnalyticsEventName, params: Record<string, unknown>): void {
     if (!this.consentGranted()) {
       return;
     }
+
+    const validated = validateAnalyticsParams(name, params);
+    if (!validated) {
+      // Dropped whole rather than trimmed: a value nobody enumerated suggests
+      // the call site is passing something derived from user data, and sending
+      // the event without it would bury that. The value itself is not logged,
+      // for the same reason it is not sent.
+      console.warn(`[Analytics] Dropped ${name}: parameters outside the taxonomy`);
+      return;
+    }
+
     void this.resolveTransport()
-      .logEvent(name, params)
+      .logEvent(name, validated)
       .catch(error => this.swallow(error));
   }
 

@@ -18,6 +18,7 @@ import {
   Timestamp,
 } from '@angular/fire/firestore';
 import { AnalyticsService } from './analytics.service';
+import { AnalyticsEventName } from '../config/analytics-events';
 import { AnalyticsParams, AnalyticsTransport } from './analytics-transport';
 import { ScreenView } from './analytics-screen-view';
 import { AuthService } from './auth.service';
@@ -82,7 +83,7 @@ describe('Analytics opt-in (emulator smoke test)', () => {
       return this.fake;
     }
 
-    track(name: string, params: AnalyticsParams = {}): void {
+    track(name: AnalyticsEventName, params: Record<string, unknown> = {}): void {
       this.send(name, params);
     }
   }

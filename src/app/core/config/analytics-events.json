@@ -1,0 +1,61 @@
+{
+  "transaction_add": {
+    "since": "1.16.91",
+    "params": {
+      "method": ["manual", "receipt_scan", "ai_import"],
+      "type": ["income", "expense", "mixed"]
+    }
+  },
+  "transaction_search": {
+    "since": "1.16.91",
+    "params": {
+      "has_filters": ["true", "false"]
+    }
+  },
+  "receipt_import": {
+    "since": "1.16.91",
+    "params": {
+      "outcome": ["ok", "failed", "queued_offline"]
+    }
+  },
+  "budget_create": {
+    "since": "1.16.91",
+    "params": {}
+  },
+  "budget_exceeded_viewed": {
+    "since": "1.16.91",
+    "params": {
+      "severity": ["warning", "critical", "exceeded"]
+    }
+  },
+  "report_view": {
+    "since": "1.16.91",
+    "params": {
+      "report_type": [
+        "spending_analysis",
+        "category_breakdown",
+        "monthly_comparison",
+        "insights"
+      ]
+    }
+  },
+  "ai_assist_used": {
+    "since": "1.16.91",
+    "params": {
+      "feature": [
+        "receipt_scan",
+        "categorization",
+        "pdf_import",
+        "search",
+        "summary",
+        "narrative"
+      ]
+    }
+  },
+  "settings_change": {
+    "since": "1.16.91",
+    "params": {
+      "setting": ["theme", "language", "currency"]
+    }
+  }
+}
