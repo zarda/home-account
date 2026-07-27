@@ -51,5 +51,20 @@
 	<string>Camera is used to scan receipts for transaction import</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Photo library access is used to import receipt images</string>
+	<!-- Usage statistics are opt-in. The measurement SDK starts as soon as
+	     FirebaseApp.configure() runs — which the authentication plugin does at
+	     launch, long before the account's stored preference can be read — so
+	     collection has to be off in the bundle and switched on at runtime by
+	     AnalyticsService once consent resolves. Use _ENABLED and not
+	     _DEACTIVATED: deactivation is permanent for the install and cannot be
+	     undone by the API. See docs/analytics.md. -->
+	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
+	<false/>
+	<!-- A Capacitor app is one view controller, so automatic screen reporting
+	     would emit a single screen for the whole app and split the Screens
+	     report against the route-derived screen_view events the app sends
+	     itself. -->
+	<key>FirebaseAutomaticScreenReportingEnabled</key>
+	<false/>
 </dict>
 </plist>
