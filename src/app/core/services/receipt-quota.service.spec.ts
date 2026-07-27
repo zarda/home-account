@@ -17,8 +17,10 @@ describe('ReceiptQuotaService', () => {
   let premiumLimit: ReturnType<typeof signal<number>>;
 
   beforeEach(() => {
-    firestoreMock = jasmine.createSpyObj<FirestoreService>('FirestoreService', ['countDocuments']);
-    firestoreMock.countDocuments.and.resolveTo(0);
+    firestoreMock = jasmine.createSpyObj<FirestoreService>('FirestoreService', ['getCollection']);
+    firestoreMock.getCollection.and.resolveTo(
+      Array.from({ length: 0 }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
+    );
 
     freeLimit = signal(FREE_TIER_RECEIPT_IMAGE_LIMIT);
     premiumLimit = signal(Number.POSITIVE_INFINITY);
@@ -56,7 +58,9 @@ describe('ReceiptQuotaService', () => {
 
   it('honors a remotely tuned free-tier limit', async () => {
     freeLimit.set(2);
-    firestoreMock.countDocuments.and.resolveTo(2);
+    firestoreMock.getCollection.and.resolveTo(
+      Array.from({ length: 2 }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
+    );
 
     expect(await service.canAddImage()).toBeFalse();
     expect(service.isAtLimit()).toBeTrue();
@@ -70,28 +74,34 @@ describe('ReceiptQuotaService', () => {
   it('honors a remotely tuned premium limit', async () => {
     authMock.setMockUser(createMockUser('u1', { subscription: { tier: 'premium' } }));
     premiumLimit.set(3);
-    firestoreMock.countDocuments.and.resolveTo(3);
+    firestoreMock.getCollection.and.resolveTo(
+      Array.from({ length: 3 }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
+    );
 
     expect(service.hasUnlimitedImages()).toBeFalse();
     expect(await service.canAddImage()).toBeFalse();
   });
 
   it('counts stored images via a receiptUrl aggregation query', async () => {
-    firestoreMock.countDocuments.and.resolveTo(42);
+    firestoreMock.getCollection.and.resolveTo(
+      Array.from({ length: 42 }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
+    );
 
     const count = await service.refreshCount();
 
     expect(count).toBe(42);
     expect(service.imageCount()).toBe(42);
     expect(service.remaining()).toBe(FREE_TIER_RECEIPT_IMAGE_LIMIT - 42);
-    expect(firestoreMock.countDocuments).toHaveBeenCalledWith(
+    expect(firestoreMock.getCollection).toHaveBeenCalledWith(
       'users/test-user-123/transactions',
       { where: [{ field: 'receiptUrl', op: '>', value: '' }] }
     );
   });
 
   it('allows uploads below the limit and blocks them at the limit', async () => {
-    firestoreMock.countDocuments.and.resolveTo(FREE_TIER_RECEIPT_IMAGE_LIMIT - 1);
+    firestoreMock.getCollection.and.resolveTo(
+      Array.from({ length: FREE_TIER_RECEIPT_IMAGE_LIMIT - 1 }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
+    );
     expect(await service.canAddImage()).toBeTrue();
     expect(service.isAtLimit()).toBeFalse();
 
@@ -105,7 +115,7 @@ describe('ReceiptQuotaService', () => {
   it('reuses the cached count instead of re-querying', async () => {
     await service.canAddImage();
     await service.canAddImage();
-    expect(firestoreMock.countDocuments).toHaveBeenCalledTimes(1);
+    expect(firestoreMock.getCollection).toHaveBeenCalledTimes(1);
   });
 
   it('re-queries after the count is invalidated', async () => {
@@ -113,11 +123,13 @@ describe('ReceiptQuotaService', () => {
     service.invalidateCount();
     expect(service.imageCount()).toBeNull();
     await service.canAddImage();
-    expect(firestoreMock.countDocuments).toHaveBeenCalledTimes(2);
+    expect(firestoreMock.getCollection).toHaveBeenCalledTimes(2);
   });
 
   it('frees a slot when an image is removed', async () => {
-    firestoreMock.countDocuments.and.resolveTo(FREE_TIER_RECEIPT_IMAGE_LIMIT);
+    firestoreMock.getCollection.and.resolveTo(
+      Array.from({ length: FREE_TIER_RECEIPT_IMAGE_LIMIT }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
+    );
     await service.refreshCount();
     expect(service.isAtLimit()).toBeTrue();
 
@@ -127,7 +139,7 @@ describe('ReceiptQuotaService', () => {
   });
 
   it('fails open when the count query errors', async () => {
-    firestoreMock.countDocuments.and.rejectWith(new Error('offline'));
+    firestoreMock.getCollection.and.rejectWith(new Error('offline'));
     expect(await service.canAddImage()).toBeTrue();
   });
 
@@ -135,5 +147,41 @@ describe('ReceiptQuotaService', () => {
     await service.refreshCount();
     service.noteImageRemoved();
     expect(service.imageCount()).toBe(0);
+  });
+
+  describe('counting images rather than transactions', () => {
+    it('counts every image on a multi-image transaction', () => {
+      // The quota limits images, and one transaction can hold several.
+      firestoreMock.getCollection.and.resolveTo([
+        { id: 'a', receiptUrl: 'u', receiptCount: 3 },
+        { id: 'b', receiptUrl: 'u', receiptCount: 1 },
+      ] as never);
+
+      return service.refreshCount().then(count => expect(count).toBe(4));
+    });
+
+    it('counts a row written before receiptCount existed as one image', () => {
+      // Treating it as zero would let the user exceed the limit, and would
+      // make replacing its receipt consume a second slot for the same picture.
+      firestoreMock.getCollection.and.resolveTo([
+        { id: 'legacy', receiptUrl: 'https://example.test/r.jpg' },
+      ] as never);
+
+      return service.refreshCount().then(count => expect(count).toBe(1));
+    });
+
+    it('filters on receiptUrl, never on a field that can hold an array', () => {
+      // Firestore orders arrays after strings, so an inequality against the
+      // image field would match every document — including ones with no
+      // images — and every user would hit the limit at once.
+      firestoreMock.getCollection.and.resolveTo([] as never);
+
+      return service.refreshCount().then(() => {
+        const options = firestoreMock.getCollection.calls.mostRecent().args[1] as {
+          where: { field: string }[];
+        };
+        expect(options.where[0].field).toBe('receiptUrl');
+      });
+    });
   });
 });

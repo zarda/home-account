@@ -193,6 +193,7 @@ export class TransactionService {
           id,
           data.receiptFile
         );
+        transaction.receiptCount = 1;
         await this.firestoreService.setDocument(
           `${this.userTransactionsPath}/${id}`,
           transaction
@@ -282,6 +283,7 @@ export class TransactionService {
             id,
             data.receiptFile
           );
+          updateData.receiptCount = 1;
           if (isNewImage) {
             this.receiptQuota.noteImageAdded();
           }
@@ -336,7 +338,7 @@ export class TransactionService {
     await this.storageService.deleteReceipt(userId, id);
     await this.firestoreService.updateDocument(
       `${this.userTransactionsPath}/${id}`,
-      { receiptUrl: deleteField() }
+      { receiptUrl: deleteField(), receiptCount: 0 }
     );
     this.receiptQuota.noteImageRemoved();
   }
@@ -668,8 +670,11 @@ export class TransactionService {
 
     return this.firestoreService.subscribeToCollection<Transaction>(
       this.userTransactionsPath,
-      // Matches non-empty receiptUrl values; ordering on the inequality
-      // field is implicit, so sort by date client-side instead
+      // Filters on receiptUrl, which stays a string even once a transaction
+      // can hold several images — it points at the first one. An inequality
+      // against a field that can hold an array would match every document,
+      // since Firestore orders arrays after strings. Ordering on the
+      // inequality field is implicit, so sort by date client-side instead.
       { where: [{ field: 'receiptUrl', op: '>', value: '' }] }
     ).pipe(
       map(transactions =>

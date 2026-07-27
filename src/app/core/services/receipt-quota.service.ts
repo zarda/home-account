@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { RemoteConfigService } from './remote-config.service';
-import { SubscriptionTier, Transaction, subscriptionTier } from '../../models';
+import { SubscriptionTier, Transaction, receiptImageCount, subscriptionTier } from '../../models';
 
 /**
  * Tracks how many receipt images a user has stored and enforces the
@@ -69,11 +69,21 @@ export class ReceiptQuotaService {
     const userId = this.authService.userId();
     if (!userId) throw new Error('User not authenticated');
 
-    const count = await this.firestoreService.countDocuments(
+    // Sums images rather than counting documents, for two reasons. The quota
+    // is a limit on images, and a transaction can hold more than one. And the
+    // filter stays on receiptUrl, which is always a string — an inequality
+    // against a field that can hold an array would match every document,
+    // because Firestore orders arrays after strings, and every user would
+    // trip the limit at once.
+    //
+    // Reading the rows rather than counting them is affordable precisely
+    // because the quota bounds them: a user at the limit has at most a few
+    // hundred, and a user past it cannot add more.
+    const withImages = await this.firestoreService.getCollection<Transaction>(
       `users/${userId}/transactions`,
-      // Matches every document whose receiptUrl is a non-empty string
       { where: [{ field: 'receiptUrl', op: '>', value: '' }] }
     );
+    const count = withImages.reduce((total, t) => total + receiptImageCount(t), 0);
     this._imageCount.set(count);
     this.countedForUserId = userId;
     return count;
@@ -97,9 +107,18 @@ export class ReceiptQuotaService {
     this.countedForUserId = null;
   }
 
-  /** True when this transaction change would store a NEW image. */
-  isNewImage(existing: Pick<Transaction, 'receiptUrl'> | null | undefined): boolean {
-    return !existing?.receiptUrl;
+  /**
+   * True when this transaction change would store a NEW image.
+   *
+   * Reads receiptCount where it is present and falls back to receiptUrl for
+   * rows written before the count existed — a row with an image but no count
+   * must not be treated as empty, or replacing its receipt would consume a
+   * second quota slot for the same picture.
+   */
+  isNewImage(
+    existing: Pick<Transaction, 'receiptUrl' | 'receiptCount'> | null | undefined
+  ): boolean {
+    return receiptImageCount(existing) === 0;
   }
 
   private async ensureCountLoaded(): Promise<number> {

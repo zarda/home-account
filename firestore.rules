@@ -40,6 +40,7 @@ service cloud.firestore {
         && (!('note' in d) || d.note is string)
         && (!('tags' in d) || d.tags is list)
         && (!('receiptUrl' in d) || d.receiptUrl is string)
+        && (!('receiptCount' in d) || (d.receiptCount is int && d.receiptCount >= 0))
         && (!('recurringId' in d) || d.recurringId is string)
         && (!('location' in d) || d.location is map)
         && (!('createdAt' in d) || d.createdAt is timestamp)
