@@ -11,39 +11,6 @@ const MAX_SEARCH_QUERY_LENGTH = 100;
 const MIN_YEAR = 1970;
 const MAX_YEAR = 2100;
 
-/**
- * Prompt for turning a natural-language question about the user's
- * transactions into a structured command. The model only ever returns a
- * scope and an operation; it is never asked for (and must never produce)
- * a numeric answer.
- */
-export function buildSearchPrompt(query: string, context: SearchQueryContext): string {
-  const catalog = context.categories
-    .map(c => `${c.id}: ${c.name}`)
-    .join('\n');
-
-  return `You convert a user's natural-language question about their personal finance transactions into a JSON command. Today is ${context.today}. The base currency is ${context.baseCurrency}. The question may be in English, Japanese, or Traditional Chinese.
-
-Valid categoryId values (id: name):
-${catalog}
-
-Decide the kind:
-- "filter" when the user wants to FIND or LIST transactions.
-- "aggregate" when the user asks for a computed value: total spent -> "sum", how many -> "count", average -> "average", biggest/most expensive -> "max", smallest/cheapest -> "min", top/biggest categories -> "topCategories".
-
-Rules:
-- Resolve relative ranges ("last month", "this year") against today; dates are YYYY-MM-DD.
-- Only use categoryId values from the list above. If no listed category clearly matches, omit categoryId and put the term in searchQuery instead.
-- "type" is "expense" or "income". Amounts are plain numbers. Omit every field the question does not imply. Never invent amounts or dates.
-- "limit" (topCategories only) is how many categories to return.
-
-Return ONLY one JSON object, no other text, in one of these shapes:
-{"kind":"filter","filters":{"type":"expense","categoryId":"food","startDate":"2026-06-01","endDate":"2026-06-30","minAmount":50,"maxAmount":200,"currency":"USD","searchQuery":"starbucks"}}
-{"kind":"aggregate","operation":"sum","filters":{"categoryId":"food","startDate":"2026-06-01","endDate":"2026-06-30"},"limit":3}
-
-The question: "${query}"`;
-}
-
 interface RawIntent {
   kind?: unknown;
   operation?: unknown;

@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import type { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
-import { TranslationService, SupportedLocale } from './translation.service';
+import { TranslationService } from './translation.service';
 import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import {
@@ -17,8 +17,18 @@ import {
   buildCategoryPromptCatalog,
   mapCategoryNameToId,
 } from '../utils/categorization.utils';
-import { buildSearchPrompt, parseSearchIntent } from '../utils/nl-search.utils';
+import { parseSearchIntent } from '../utils/nl-search.utils';
 import { SearchIntent, SearchQueryContext } from '../../models';
+import {
+  JSON_ONLY_PREAMBLE,
+  RenderedPrompt,
+  languageInstruction,
+  renderBudgetSection,
+  renderCategoryBreakdown,
+  renderLargestExpenses,
+  renderPreviousPeriodSection,
+  renderPrompt,
+} from '../prompts';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -200,27 +210,8 @@ export class GeminiService {
     this.isProcessing.set(true);
     this.lastError.set(null);
 
-    const prompt = `Do NOT include any thinking, reasoning, or analysis in your response. Output ONLY valid JSON.
-
-Analyze this receipt image and extract into this JSON structure (no markdown, no code blocks):
-{
-  "merchant": "store/restaurant name",
-  "amount": total amount as number,
-  "currency": "detected currency code (USD, EUR, JPY, CNY, TWD, THB, etc.)",
-  "date": "YYYY-MM-DD format",
-  "items": [{"name": "item name", "amount": item price as number}],
-  "receiptDetails": "full receipt content line by line",
-  "suggestedCategory": "one of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other",
-  "receiptCount": number of distinct receipts visible in the photo
-}
-
-IMPORTANT:
-- "amount" is the TOTAL amount paid (bottom of receipt).
-- If MORE THAN ONE receipt is visible, extract the LARGEST/primary receipt into the fields above and set receiptCount to how many receipts are visible.
-- "items" array: each purchased item with its individual price.
-- "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep original language.
-- If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.
-Return ONLY the JSON, nothing else.`;
+    const rendered = renderPrompt('receiptParse');
+    const prompt = this.renderedText(rendered);
 
     let lastError: unknown;
 
@@ -239,11 +230,7 @@ Return ONLY the JSON, nothing else.`;
               }
             ]
           }],
-          generationConfig: {
-            maxOutputTokens: 2000,
-            temperature: 0.05,
-            topP: 0.6,
-          }
+          generationConfig: this.generationConfig(rendered)
         });
 
         const responseText = result.response.text();
@@ -300,20 +287,14 @@ Return ONLY the JSON, nothing else.`;
         .map(c => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
-      const prompt = `Given this transaction description: "${description}"
-
-Available categories:
-${categoryList}
-
-Return ONLY the category ID that best matches this transaction. Just the ID, nothing else.`;
+      const rendered = renderPrompt('categorySuggestion', {
+        description,
+        categoryCatalog: categoryList,
+      });
 
       const result = await this.textModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: 50,
-          temperature: 0.05,
-          topP: 0.5,
-        }
+        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
+        generationConfig: this.generationConfig(rendered)
       });
       const responseText = result.response.text().trim();
       const suggestedId = this.filterReasoningContext(responseText);
@@ -346,30 +327,18 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
         name => this.translateCategoryName(name)
       );
 
-      const transactionList = transactions
-        .map((t, i) => `${i}: "${t.description}" (${t.amount})`)
-        .join('\n');
-
-      const prompt = `Categorize these transactions into the most appropriate category.
-
-Available categories:
-${categoryList}
-
-Transactions:
-${transactionList}
-
-Pick the most specific category that fits (a "Parent / Child" entry when one matches). "confidence" is your certainty from 0 to 1.
-
-Return ONLY a valid JSON array with objects containing "index", "categoryId" and "confidence":
-[{"index": 0, "categoryId": "food_groceries", "confidence": 0.9}, {"index": 1, "categoryId": "transport", "confidence": 0.6}]`;
+      const rendered = renderPrompt('categorizeTransactions', {
+        categoryCatalog: categoryList,
+        rows: transactions.map((t, i) => ({
+          index: i,
+          description: t.description,
+          amount: t.amount,
+        })),
+      });
 
       const result = await this.textModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: 800,
-          temperature: 0.05,
-          topP: 0.6,
-        }
+        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
+        generationConfig: this.generationConfig(rendered)
       });
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
@@ -399,13 +368,10 @@ Return ONLY a valid JSON array with objects containing "index", "categoryId" and
     this.isProcessing.set(true);
 
     try {
+      const rendered = renderPrompt('searchQuery', { query, context });
       const result = await this.textModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: buildSearchPrompt(query, context) }] }],
-        generationConfig: {
-          maxOutputTokens: 400,
-          temperature: 0.05,
-          topP: 0.5,
-        }
+        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
+        generationConfig: this.generationConfig(rendered)
       });
       const cleanedJson = this.extractJson(result.response.text());
       return parseSearchIntent(JSON.parse(cleanedJson), context);
@@ -462,108 +428,85 @@ Return ONLY a valid JSON array with objects containing "index", "categoryId" and
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
 
-      const categoryBreakdown = Array.from(byCategory.values())
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 5)
-        .map(c => `${c.name}: ${fmt(c.total)} ${baseCurrency} (${c.count} transactions)`)
-        .join('\n');
+      const categoryBreakdown = renderCategoryBreakdown(
+        Array.from(byCategory.values())
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 5)
+          .map(c => ({ name: c.name, total: fmt(c.total), count: c.count })),
+        baseCurrency
+      );
 
       // Build individual transactions list (recent + largest)
       const expenseTransactions = transactions.filter(t => t.type === 'expense');
-      const largestExpenses = [...expenseTransactions]
-        .sort((a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency))
-        .slice(0, 5)
-        .map(t => {
-          const cat = categories.find(c => c.id === t.categoryId);
-          return `- ${t.description}: ${fmt(toBaseCurrency(t.amount, t.currency))} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
-        })
-        .join('\n');
+      const largestExpenses = renderLargestExpenses(
+        [...expenseTransactions]
+          .sort((a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency))
+          .slice(0, 5)
+          .map(t => ({
+            description: t.description,
+            amount: fmt(toBaseCurrency(t.amount, t.currency)),
+            categoryName: this.translateCategoryName(
+              categories.find(c => c.id === t.categoryId)?.name
+            ),
+          })),
+        baseCurrency
+      );
 
       // Build historical comparison section
       let historicalSection = '';
       if (previousPeriodData && (previousPeriodData.income > 0 || previousPeriodData.expense > 0)) {
-        const expenseChange = previousPeriodData.expense > 0
-          ? ((totalExpense - previousPeriodData.expense) / previousPeriodData.expense * 100).toFixed(1)
-          : 'N/A';
-        const incomeChange = previousPeriodData.income > 0
-          ? ((totalIncome - previousPeriodData.income) / previousPeriodData.income * 100).toFixed(1)
-          : 'N/A';
-        historicalSection = `
-Previous period comparison:
-- Previous income: ${fmt(previousPeriodData.income)} ${baseCurrency}
-- Previous expenses: ${fmt(previousPeriodData.expense)} ${baseCurrency}
-- Income change: ${incomeChange}%
-- Expense change: ${expenseChange}%
-`;
+        historicalSection = renderPreviousPeriodSection({
+          baseCurrency,
+          previousIncome: fmt(previousPeriodData.income),
+          previousExpense: fmt(previousPeriodData.expense),
+          incomeChangePercent: previousPeriodData.income > 0
+            ? ((totalIncome - previousPeriodData.income) / previousPeriodData.income * 100).toFixed(1)
+            : 'N/A',
+          expenseChangePercent: previousPeriodData.expense > 0
+            ? ((totalExpense - previousPeriodData.expense) / previousPeriodData.expense * 100).toFixed(1)
+            : 'N/A',
+        });
       }
 
       // Build budget section
       let budgetSection = '';
       if (budgets && budgets.length > 0) {
-        const budgetLines = budgets.map(b => {
-          const categorySpent = byCategory.get(b.categoryId)?.total ?? 0;
-          // Convert budget amount to base currency for comparison
-          const budgetAmountInBaseCurrency = this.currencyService.convert(b.amount, b.currency, baseCurrency);
-          const percentUsed = budgetAmountInBaseCurrency > 0 ? (categorySpent / budgetAmountInBaseCurrency * 100) : 0;
-          const status = percentUsed >= 100 ? '⚠️ EXCEEDED' : percentUsed >= 80 ? '⚠️ Near limit' : '✓';
-          return `- ${b.name}: ${fmt(categorySpent)}/${fmt(budgetAmountInBaseCurrency)} ${baseCurrency} (${percentUsed.toFixed(0)}%) ${status}`;
-        }).join('\n');
-        budgetSection = `
-Active budgets status:
-${budgetLines}
-`;
+        budgetSection = renderBudgetSection(
+          budgets.map(b => {
+            const categorySpent = byCategory.get(b.categoryId)?.total ?? 0;
+            // Convert budget amount to base currency for comparison
+            const budgetAmountInBaseCurrency = this.currencyService.convert(b.amount, b.currency, baseCurrency);
+            return {
+              name: b.name,
+              spent: fmt(categorySpent),
+              limit: fmt(budgetAmountInBaseCurrency),
+              percentUsed: budgetAmountInBaseCurrency > 0
+                ? (categorySpent / budgetAmountInBaseCurrency * 100)
+                : 0,
+            };
+          }),
+          baseCurrency
+        );
       }
 
-    // Optional RAG grounding block (ragInsightsLevel preference)
-    const ragSection = ragContext?.trim()
-      ? `\nNotable activity (retrieved from your transactions):\n${ragContext.trim()}\n`
-      : '';
-
-      const prompt = `Generate structured AI Insights for ${period}.
-
-Financial data (all amounts in ${baseCurrency}):
-- Total Income: ${fmt(totalIncome)} ${baseCurrency}
-- Total Expenses: ${fmt(totalExpense)} ${baseCurrency}
-- Net: ${fmt(totalIncome - totalExpense)} ${baseCurrency}
-- Transaction count: ${transactions.length}
-
-Top spending categories:
-${categoryBreakdown}
-
-Largest individual expenses:
-${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}${ragSection}
-Return AI Insights in this exact format (use markdown):
-
-## Spending Pattern
-[1-2 sentences about main spending categories with specific amounts and percentages]
-
-## Changes & Trends
-[1-2 sentences about significant changes from previous period with impact assessment]
-
-## Budget Status
-[1-2 sentences about budget limits - warnings if any are near limit, or confirmation if all good]
-
-## Actionable Insights
-- [Specific, practical insight #1]
-- [Specific, practical insight #2]
-- [Specific, practical insight #3]
-
-Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
-${ragSection ? 'Ground your insights in the Notable activity section — cite its specific transactions, amounts, and changes where relevant.\n' : ''}Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
-
-${this.getLanguageInstruction()}
-Write the section headings in the same language as the response. Format EVERY section heading — including the first one — as its own line starting with "## ".`;
+      const rendered = renderPrompt('spendingSummary', {
+        period,
+        baseCurrency,
+        totalIncome: fmt(totalIncome),
+        totalExpense: fmt(totalExpense),
+        net: fmt(totalIncome - totalExpense),
+        transactionCount: transactions.length,
+        categoryBreakdown,
+        largestExpenses,
+        historicalSection,
+        budgetSection,
+        grounding: ragContext,
+        languageInstruction: this.getLanguageInstruction(),
+      });
 
       const result = await this.generateTextWithRetry({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          // Gemma 4 drafts verbosely before its final answer and needs more
-          // room, or the visible sections arrive truncated
-          maxOutputTokens: this.currentTextModelId.includes('gemma') ? 4096 : 2048,
-          temperature: 0.3,
-          topP: 0.7,
-        }
+        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
+        generationConfig: this.generationConfig(rendered)
       });
       const rawText = result.response.text().trim();
       const filteredText = this.currentTextModelId.includes('gemma-4')
@@ -601,26 +544,15 @@ Write the section headings in the same language as the response. Format EVERY se
 
     this.isProcessing.set(true);
     try {
-      const prompt = `You are describing a person's own spending patterns back to them.
-
-PATTERNS ALREADY DETECTED (all figures pre-computed, do not recalculate):
-${context}
-
-INSTRUCTION: Write 3-4 sentences describing what these patterns show.
-- Describe, never judge. Say what changed, not whether it was wise.
-- Use the exact figures above; invent nothing.
-- Compare the person only to their own history.
-- No preamble, no headings, no bullet list.
-${this.getLanguageInstruction()}
-Locale: ${locale}`;
+      const rendered = renderPrompt('patternNarrative', {
+        context,
+        locale,
+        languageInstruction: this.getLanguageInstruction(),
+      });
 
       const result = await this.generateTextWithRetry({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: this.currentTextModelId.includes('gemma') ? 2048 : 1024,
-          temperature: 0.3,
-          topP: 0.7,
-        }
+        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
+        generationConfig: this.generationConfig(rendered)
       });
 
       let text = result.response.text().trim();
@@ -652,30 +584,20 @@ Locale: ${locale}`;
         : 0;
       const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
 
-      const prompt = `You are a financial advisor giving brief, specific financial advice.
-
-FACTS:
-- Income: ${fmt(summary.income)} ${baseCurrency}
-- Expenses: ${fmt(summary.expense)} ${baseCurrency}
-- Balance: ${fmt(summary.balance)} ${baseCurrency}
-- Period: ${period}
-
-INSTRUCTION: Write ONLY 2-3 sentences of financial advice. No introduction, no reasoning, no metadata.
-
-${savingsRate < 20 ? '- Address the low savings rate with concrete, actionable steps.' : '- Acknowledge positive progress and suggest next steps.'}
-${summary.balance < 0 ? '- Prioritize: stop deficit spending and find income.' : '- Prioritize: maintain momentum and increase savings.'}
-
-TONE: Practical, specific, supportive. Use exact numbers from above.
-${this.getLanguageInstruction()}
-OUTPUT: Only the advice sentences themselves — no preamble, no labels, no quotation marks.`;
+      const rendered = renderPrompt('financialAdvice', {
+        period,
+        baseCurrency,
+        income: fmt(summary.income),
+        expense: fmt(summary.expense),
+        balance: fmt(summary.balance),
+        savingsRate,
+        balanceIsNegative: summary.balance < 0,
+        languageInstruction: this.getLanguageInstruction(),
+      });
 
       const result = await this.generateTextWithRetry({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: this.currentTextModelId.includes('gemma') ? 2048 : 1024,
-          temperature: 0.2,
-          topP: 0.7,
-        }
+        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
+        generationConfig: this.generationConfig(rendered)
       });
       const rawText = result.response.text().trim();
       let filteredText = this.currentTextModelId.includes('gemma-4')
@@ -710,35 +632,14 @@ OUTPUT: Only the advice sentences themselves — no preamble, no labels, no quot
     this.lastError.set(null);
 
     try {
-      // Extract receipt summary with full receipt content as notes
-      const extractPrompt = `Extract key information from this receipt:
-
-Return ONLY a JSON object (not an array):
-{
-  "date": "YYYY-MM-DD",
-  "merchant": "Store/Restaurant Name",
-  "totalAmount": 123.45,
-  "currency": "CNY",
-  "receiptDetails": "Full receipt content reproduced line by line",
-  "suggestedCategory": "category name"
-}
-
-Rules:
-- date: Receipt date (YYYY-MM-DD), use today if not visible
-- merchant: Store or restaurant name
-- totalAmount: Total amount paid (positive number only)
-- currency: Currency code (TWD for Taiwan, CNY for Chinese, JPY for Japanese, etc.)
-- receiptDetails: Reproduce the FULL receipt content line by line, preserving all information visible on the receipt: every item with its price, quantity if shown, discounts, subtotals, tax lines, service charges, payment method, change, etc. Use newline to separate each line. Keep the original language. Example: "コーヒー L ×1 — 480\nサンドイッチ ×2 — 760\n割引 -100\n小計 1,140\n内税(10%) 104\n合計 1,140\nVISA ****1234"
-- suggestedCategory: One of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other
-
-Capture EVERYTHING on the receipt.`;
+      const rendered = renderPrompt('receiptSummary');
 
       console.log('[GeminiService] Extracting receipt summary');
       const extractResult = await this.visionModel.generateContent({
         contents: [{
           role: 'user',
           parts: [
-            { text: extractPrompt },
+            { text: this.renderedText(rendered) },
             {
               inlineData: {
                 mimeType: 'image/jpeg',
@@ -747,11 +648,7 @@ Capture EVERYTHING on the receipt.`;
             }
           ]
         }],
-        generationConfig: {
-          maxOutputTokens: 1000,
-          temperature: 0.1,
-          topP: 0.85,
-        }
+        generationConfig: this.generationConfig(rendered)
       });
 
       const responseText = extractResult.response.text();
@@ -805,37 +702,13 @@ Capture EVERYTHING on the receipt.`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
-
-Extract ALL transactions from this PDF bank statement.
-
-For each transaction: date (YYYY-MM-DD), description, amount (positive number), type (income/expense), currency.
-
-Return ONLY valid JSON array (no markdown, no explanation, no thinking):
-[
-  {
-    "date": "2024-01-15",
-    "description": "DIRECT DEPOSIT - EMPLOYER",
-    "amount": 3500.00,
-    "type": "income",
-    "currency": "USD"
-  },
-  {
-    "date": "2024-01-16",
-    "description": "WALMART",
-    "amount": 125.43,
-    "type": "expense",
-    "currency": "USD"
-  }
-]
-
-Empty array [] if no transactions found. Only posted/confirmed transactions.`;
+      const rendered = renderPrompt('pdfStatement');
 
       const result = await this.visionModel.generateContent({
         contents: [{
           role: 'user',
           parts: [
-            { text: prompt },
+            { text: this.renderedText(rendered) },
             {
               inlineData: {
                 mimeType: 'application/pdf',
@@ -844,11 +717,7 @@ Empty array [] if no transactions found. Only posted/confirmed transactions.`;
             }
           ]
         }],
-        generationConfig: {
-          maxOutputTokens: 1000,
-          temperature: 0.05,
-          topP: 0.65,
-        }
+        generationConfig: this.generationConfig(rendered)
       });
 
       const responseText = result.response.text();
@@ -895,43 +764,9 @@ Empty array [] if no transactions found. Only posted/confirmed transactions.`;
     this.isProcessing.set(true);
     this.lastError.set(null);
 
-    const prompt = `You are analyzing ${imageBase64Array.length} photos. They may be:
-- Multiple photos of ONE receipt (overlapping pages) → items share the same receiptId
-- Photos of DIFFERENT receipts → each receipt gets a different receiptId
-- A mix of both
-A single photo may also show SEVERAL receipts side by side → give each its own receiptId.
-
-FIRST: Determine which photos belong to the same receipt (same merchant, date, style) vs different receipts.
-Then: Extract EVERY line item. Items from the same receipt share the same receiptId (starting from 1).
-If photos overlap, deduplicate — extract each unique item ONLY ONCE.
-
-Output ONLY valid JSON array. NO explanation, NO thinking.
-
-FIELDS:
-- date: YYYY-MM-DD
-- description: Product/item name (not merchant)
-- amount: Individual item price
-- type: 'expense' or 'income'
-- currency: JPY, USD, TWD, etc
-- receiptId: Integer grouping items from the same receipt (1, 2, 3...)
-- imageIndex: Which photo (0-based)
-- positionInImage: 'top', 'middle', 'bottom'
-- confidence: 0.0-1.0
-- category: Food, Transport, etc (optional)
-- merchant: Store name (optional)
-- details: Full context for this item — quantity, size, flavor, discount, tax info (optional)
-- wasMerged: true if deduplicated across images (optional)
-- mergedFromImages: [0,1] if from multiple images (optional)
-
-For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items, discounts, subtotals, tax, service charges, payment method, change, etc.
-
-Example:
-[
-  {"date":"2024-01-15","description":"おにぎり","amount":151,"type":"expense","currency":"JPY","receiptId":1,"imageIndex":0,"positionInImage":"middle","confidence":0.95,"merchant":"セブンイレブン","details":"×1"},
-  {"date":"2024-01-15","description":"コーヒー L","amount":330,"type":"expense","currency":"JPY","receiptId":1,"imageIndex":1,"positionInImage":"top","confidence":0.90,"merchant":"セブンイレブン","details":"×1 店内","receiptDetails":"おにぎり ×1 — 151\nコーヒー L ×1 — 330\n小計 481\n内税(8%) 36\n内税(10%) 30\n合計 481\n現金 500\nお釣り 19"}
-]
-
-Return ONLY valid JSON array:`;
+    const rendered = renderPrompt('multiImageReceipts', {
+      imageCount: imageBase64Array.length,
+    });
 
     // Build the content parts with all images
     const imageParts = imageBase64Array.map(imageBase64 => ({
@@ -948,13 +783,9 @@ Return ONLY valid JSON array:`;
         const result = await model!.generateContent({
           contents: [{
             role: 'user',
-            parts: [{ text: prompt }, ...imageParts]
+            parts: [{ text: this.renderedText(rendered) }, ...imageParts]
           }],
-          generationConfig: {
-            maxOutputTokens: 4000,
-            temperature: 0.05,
-            topP: 0.7,
-          }
+          generationConfig: this.generationConfig(rendered)
         });
         const responseText = result.response.text();
         const cleanedJson = this.extractJson(responseText);
@@ -1014,41 +845,13 @@ Return ONLY valid JSON array:`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Extract EVERY individual product/item from this receipt image.
-
-The photo may contain MORE THAN ONE receipt (e.g. several laid side by side). Give the items of each receipt their own receiptId (1, 2, 3...).
-
-Return each item as a SEPARATE JSON object in an array.
-Do NOT include total, subtotal, tax, or service charge as items.
-
-FIELDS PER ITEM:
-- date: YYYY-MM-DD
-- description: product name
-- amount: individual item price
-- type: "expense"
-- currency: JPY, USD, TWD, CNY, etc
-- receiptId: Integer grouping items from the same receipt (1, 2, 3...)
-- positionInImage: "top", "middle", "bottom"
-- confidence: 0.0-1.0
-- category: Restaurants, Groceries, Coffee & Drinks, Fast Food, Shopping, Other (optional)
-- merchant: store name (optional)
-- details: quantity, size, flavor, discount if any (optional)
-
-For the LAST item of each receipt (receiptId group), include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep original language.
-
-Example:
-[
-  {"date":"2024-04-11","description":"おにぎり","amount":151,"type":"expense","currency":"JPY","receiptId":1,"positionInImage":"middle","confidence":0.95,"merchant":"セブン"},
-  {"date":"2024-04-11","description":"コーヒー L","amount":330,"type":"expense","currency":"JPY","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"セブン","receiptDetails":"おにぎり ×1 — 151\nコーヒー L ×1 — 330\n小計 481\n内税(8%) 36\n合計 481\n現金 500\nお釣り 19"}
-]
-
-Output ONLY JSON array. Nothing else.`;
+      const rendered = renderPrompt('receiptItems');
 
       const result = await this.visionModel.generateContent({
         contents: [{
           role: 'user',
           parts: [
-            { text: prompt },
+            { text: this.renderedText(rendered) },
             {
               inlineData: {
                 mimeType: 'image/jpeg',
@@ -1057,11 +860,7 @@ Output ONLY JSON array. Nothing else.`;
             }
           ]
         }],
-        generationConfig: {
-          maxOutputTokens: 2000,
-          temperature: 0.05,
-          topP: 0.65,
-        }
+        generationConfig: this.generationConfig(rendered)
       });
 
       const responseText = result.response.text();
@@ -1104,35 +903,11 @@ Output ONLY JSON array. Nothing else.`;
     this.isProcessing.set(true);
 
     try {
-      const prompt = `Do NOT include any thinking, reasoning, or analysis. Output ONLY valid JSON.
-
-Analyze CSV headers and sample data to map columns for financial transaction data.
-
-Headers: ${JSON.stringify(headers)}
-Sample (first 3 rows): ${JSON.stringify(sampleRows.slice(0, 3))}
-
-Identify columns for: dateColumn, descriptionColumn, amountColumn, debitColumn, creditColumn, typeColumn, categoryColumn, dateFormat, hasHeader.
-
-Return ONLY valid JSON (no thinking, no explanation):
-{
-  "dateColumn": "Date",
-  "descriptionColumn": "Description",
-  "amountColumn": "Amount",
-  "debitColumn": null,
-  "creditColumn": null,
-  "typeColumn": null,
-  "categoryColumn": null,
-  "dateFormat": "MM/DD/YYYY",
-  "hasHeader": true
-}`;
+      const rendered = renderPrompt('csvMapping', { headers, sampleRows });
 
       const result = await this.textModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: 500,
-          temperature: 0.05,
-          topP: 0.6,
-        }
+        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
+        generationConfig: this.generationConfig(rendered)
       });
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
@@ -1154,13 +929,38 @@ Return ONLY valid JSON (no thinking, no explanation):
 
   // Helper: Get language instruction for AI prompts based on user's locale
   private getLanguageInstruction(): string {
-    const locale = this.translationService.currentLocale();
-    const languageMap: Record<SupportedLocale, string> = {
-      'en': 'Respond in English.',
-      'tc': 'Respond in Traditional Chinese (繁體中文).',
-      'ja': 'Respond in Japanese (日本語).'
+    return languageInstruction(this.translationService.currentLocale());
+  }
+
+  /**
+   * Render a registry prompt into the text Gemini should receive.
+   *
+   * The JSON-only preamble is added here rather than written into the prompts
+   * because it is a Gemini quirk: its models otherwise narrate their reasoning
+   * ahead of the JSON and the parse fails. OpenAI and Claude need no such
+   * warning, and when the preamble lived in the prompt text it was one of the
+   * reasons the three copies of each prompt drifted apart.
+   */
+  private renderedText(rendered: RenderedPrompt): string {
+    const preamble = rendered.expects === 'json' ? `${JSON_ONLY_PREAMBLE}\n\n` : '';
+    const system = rendered.system ? `${rendered.system}\n\n` : '';
+    return `${preamble}${system}${rendered.user}`;
+  }
+
+  /**
+   * Gemma drafts verbosely before its final answer, so every prose reply gets
+   * double the room or the visible text arrives truncated. That is a property of
+   * the model rather than of the task, which is why it is applied here and not
+   * in the registry. JSON replies are unaffected — they do not get drafted.
+   */
+  private generationConfig(rendered: RenderedPrompt) {
+    const draftsVerbosely =
+      this.currentTextModelId.includes('gemma') && rendered.expects !== 'json';
+    return {
+      maxOutputTokens: draftsVerbosely ? rendered.maxOutputTokens * 2 : rendered.maxOutputTokens,
+      temperature: rendered.temperature,
+      ...(rendered.topP !== undefined ? { topP: rendered.topP } : {}),
     };
-    return languageMap[locale] || 'Respond in English.';
   }
 
   // Helper: Extract JSON from response that might have markdown formatting or reasoning

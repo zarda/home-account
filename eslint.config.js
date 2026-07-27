@@ -74,6 +74,46 @@ module.exports = defineConfig([
     },
   },
   {
+    // Model SDK access is confined to the three provider services. The prompt
+    // registry check can only prove parity over the call sites it can see, and
+    // it looks at exactly these three files — a fourth file issuing its own
+    // model call would be invisible to it, and would be free to carry its own
+    // unregistered prompt. Same argument as the analytics block above, applied
+    // to a second SDK family.
+    files: ["src/app/**/*.ts"],
+    // The globs cover the matching *.spec.ts too: each provider's own spec
+    // legitimately imports its SDK to type the fake client.
+    ignores: [
+      "src/app/core/services/gemini.service*.ts",
+      "src/app/core/services/openai.service*.ts",
+      "src/app/core/services/claude.service*.ts",
+    ],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@google/generative-ai",
+              message:
+                "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
+            },
+            {
+              name: "openai",
+              message:
+                "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
+            },
+            {
+              name: "@anthropic-ai/sdk",
+              message:
+                "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.html"],
     extends: [
       angular.configs.templateRecommended,

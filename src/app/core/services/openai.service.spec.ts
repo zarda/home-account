@@ -633,8 +633,11 @@ describe('OpenAIService', () => {
       const zero = { ...summary, income: 0 } as MonthlyTotal;
       const result = await service.getFinancialAdvice(zero);
       expect(result).toBe('advice');
+      // A zero savings rate selects the low-rate guidance. The prompt's own
+      // wording is asserted in prompt-registry.spec.ts; what matters here is
+      // that the computed rate reaches the registry and picks the right branch.
       const prompt = fake.responses.create.calls.mostRecent().args[0].input as string;
-      expect(prompt).toContain('Savings Rate: 0.0%');
+      expect(prompt).toContain('Address the low savings rate');
     });
 
     it('falls back to a default when the model returns nothing', async () => {

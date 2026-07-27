@@ -1,4 +1,4 @@
-import { buildSearchPrompt, parseSearchIntent } from './nl-search.utils';
+import { parseSearchIntent } from './nl-search.utils';
 import { SearchQueryContext } from '../../models';
 
 describe('nl-search.utils', () => {
@@ -11,23 +11,6 @@ describe('nl-search.utils', () => {
       { id: 'employment', name: 'Employment', type: 'income' },
     ],
   };
-
-  describe('buildSearchPrompt', () => {
-    it('embeds today, the base currency, the catalog and the query', () => {
-      const prompt = buildSearchPrompt('coffee last month', context);
-      expect(prompt).toContain('Today is 2026-07-24');
-      expect(prompt).toContain('base currency is USD');
-      expect(prompt).toContain('food_groceries: Food & Drinks / Groceries');
-      expect(prompt).toContain('"coffee last month"');
-    });
-
-    it('instructs the model to only return JSON with the two shapes', () => {
-      const prompt = buildSearchPrompt('x', context);
-      expect(prompt).toContain('"kind":"filter"');
-      expect(prompt).toContain('"kind":"aggregate"');
-      expect(prompt).toContain('Return ONLY one JSON object');
-    });
-  });
 
   describe('parseSearchIntent', () => {
     it('accepts a well-formed filter intent', () => {

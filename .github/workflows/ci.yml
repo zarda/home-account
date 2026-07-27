@@ -76,6 +76,13 @@ jobs:
       - name: Check analytics registry
         run: npm run analytics:check
 
+      # Keeps the three provider services sending the same prompt for the same
+      # task: every registered prompt must reach every provider (or be listed as
+      # a documented gap), must be documented in docs/prompts.md, and no provider
+      # may grow a new inline prompt literal.
+      - name: Check prompt registry
+        run: npm run prompts:check
+
       - name: Unit tests
         run: npm run test:ci
 

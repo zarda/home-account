@@ -3,7 +3,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
-import { TranslationService, SupportedLocale } from './translation.service';
+import { TranslationService } from './translation.service';
 import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
 import {
   ParsedReceipt,
@@ -19,8 +19,17 @@ import {
   buildCategoryPromptCatalog,
   mapCategoryNameToId,
 } from '../utils/categorization.utils';
-import { buildSearchPrompt, parseSearchIntent } from '../utils/nl-search.utils';
+import { parseSearchIntent } from '../utils/nl-search.utils';
 import { SearchIntent, SearchQueryContext } from '../../models';
+import {
+  RenderedPrompt,
+  languageInstruction,
+  renderBudgetSection,
+  renderCategoryBreakdown,
+  renderLargestExpenses,
+  renderPreviousPeriodSection,
+  renderPrompt,
+} from '../prompts';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 
 @Injectable({ providedIn: 'root' })
@@ -124,23 +133,7 @@ export class ClaudeService {
     this.lastError.set(null);
 
     try {
-      const prompt = `Analyze this receipt image and extract ALL information.
-Return ONLY a valid JSON object with this exact structure (no markdown, no code blocks):
-{
-  "merchant": "store/restaurant name",
-  "amount": total amount as number,
-  "currency": "detected currency code (USD, EUR, JPY, CNY, TWD, THB, etc.)",
-  "date": "YYYY-MM-DD format",
-  "items": [{"name": "item name", "amount": item price as number}],
-  "receiptDetails": "full receipt content line by line",
-  "suggestedCategory": "one of: Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other"
-}
-
-IMPORTANT:
-- "items": Every purchased item with its price.
-- "amount" is the TOTAL amount paid.
-- "receiptDetails": Reproduce the FULL receipt content line by line. Include all items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep original language.
-- If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.`;
+      const rendered = renderPrompt('receiptParse');
 
       // Extract base64 data without the data URL prefix
       const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
@@ -148,7 +141,8 @@ IMPORTANT:
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 2000,
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
         messages: [
           {
             role: 'user',
@@ -161,7 +155,7 @@ IMPORTANT:
                   data: base64Data,
                 },
               },
-              { type: 'text', text: prompt },
+              { type: 'text', text: this.renderedText(rendered) },
             ],
           },
         ],
@@ -183,6 +177,7 @@ IMPORTANT:
         receiptDetails: parsed.receiptDetails,
         suggestedCategory: categoryId,
         confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
+        receiptCount: Number(parsed.receiptCount) || 1,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -208,17 +203,16 @@ IMPORTANT:
         .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
         .join('\n');
 
-      const prompt = `Given this transaction description: "${description}"
-
-Available categories:
-${categoryList}
-
-Return ONLY the category ID that best matches this transaction. Just the ID, nothing else.`;
+      const rendered = renderPrompt('categorySuggestion', {
+        description,
+        categoryCatalog: categoryList,
+      });
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 50,
-        messages: [{ role: 'user', content: prompt }],
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
+        messages: [{ role: 'user', content: this.renderedText(rendered) }],
       });
 
       const suggestedId = this.extractTextFromResponse(response).trim();
@@ -248,22 +242,17 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
 
     this.isProcessing.set(true);
     try {
-      const prompt = `You are describing a person's own spending patterns back to them.
-
-PATTERNS ALREADY DETECTED (all figures pre-computed, do not recalculate):
-${context}
-
-INSTRUCTION: Write 3-4 sentences describing what these patterns show.
-- Describe, never judge. Say what changed, not whether it was wise.
-- Use the exact figures above; invent nothing.
-- Compare the person only to their own history.
-- No preamble, no headings, no bullet list.
-Locale: ${locale}`;
+      const rendered = renderPrompt('patternNarrative', {
+        context,
+        locale,
+        languageInstruction: this.getLanguageInstruction(),
+      });
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 700,
-        messages: [{ role: 'user', content: prompt }],
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
+        messages: [{ role: 'user', content: this.renderedText(rendered) }],
       });
 
       return trimToLastCompleteSentence(this.extractTextFromResponse(response).trim());
@@ -287,27 +276,20 @@ Locale: ${locale}`;
         (name) => this.translateCategoryName(name)
       );
 
-      const transactionList = transactions
-        .map((t, i) => `${i}: "${t.description}" (${t.amount})`)
-        .join('\n');
-
-      const prompt = `Categorize these transactions into the most appropriate category.
-
-Available categories:
-${categoryList}
-
-Transactions:
-${transactionList}
-
-Pick the most specific category that fits (a "Parent / Child" entry when one matches). "confidence" is your certainty from 0 to 1.
-
-Return ONLY a valid JSON array with objects containing "index", "categoryId" and "confidence":
-[{"index": 0, "categoryId": "food_groceries", "confidence": 0.9}, {"index": 1, "categoryId": "transport", "confidence": 0.6}]`;
+      const rendered = renderPrompt('categorizeTransactions', {
+        categoryCatalog: categoryList,
+        rows: transactions.map((t, i) => ({
+          index: i,
+          description: t.description,
+          amount: t.amount,
+        })),
+      });
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 800,
-        messages: [{ role: 'user', content: prompt }],
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
+        messages: [{ role: 'user', content: this.renderedText(rendered) }],
       });
 
       const responseText = this.extractTextFromResponse(response);
@@ -337,10 +319,12 @@ Return ONLY a valid JSON array with objects containing "index", "categoryId" and
     this.isProcessing.set(true);
 
     try {
+      const rendered = renderPrompt('searchQuery', { query, context });
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 400,
-        messages: [{ role: 'user', content: buildSearchPrompt(query, context) }],
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
+        messages: [{ role: 'user', content: this.renderedText(rendered) }],
       });
 
       const cleanedJson = this.extractJson(this.extractTextFromResponse(response));
@@ -394,123 +378,98 @@ Return ONLY a valid JSON array with objects containing "index", "categoryId" and
         .filter((t) => t.type === 'expense')
         .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
 
-      const categoryBreakdown = Array.from(byCategory.values())
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 5)
-        .map((c) => `${c.name}: ${fmt(c.total)} ${baseCurrency} (${c.count} transactions)`)
-        .join('\n');
+      const categoryBreakdown = renderCategoryBreakdown(
+        Array.from(byCategory.values())
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 5)
+          .map((c) => ({ name: c.name, total: fmt(c.total), count: c.count })),
+        baseCurrency
+      );
 
       const expenseTransactions = transactions.filter((t) => t.type === 'expense');
-      const largestExpenses = [...expenseTransactions]
-        .sort(
-          (a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency)
-        )
-        .slice(0, 5)
-        .map((t) => {
-          const cat = categories.find((c) => c.id === t.categoryId);
-          return `- ${t.description}: ${fmt(toBaseCurrency(t.amount, t.currency))} ${baseCurrency} (${this.translateCategoryName(cat?.name)})`;
-        })
-        .join('\n');
+      const largestExpenses = renderLargestExpenses(
+        [...expenseTransactions]
+          .sort(
+            (a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency)
+          )
+          .slice(0, 5)
+          .map((t) => ({
+            description: t.description,
+            amount: fmt(toBaseCurrency(t.amount, t.currency)),
+            categoryName: this.translateCategoryName(
+              categories.find((c) => c.id === t.categoryId)?.name
+            ),
+          })),
+        baseCurrency
+      );
 
       let historicalSection = '';
       if (previousPeriodData && (previousPeriodData.income > 0 || previousPeriodData.expense > 0)) {
-        const expenseChange =
-          previousPeriodData.expense > 0
-            ? (
-                ((totalExpense - previousPeriodData.expense) / previousPeriodData.expense) *
-                100
-              ).toFixed(1)
-            : 'N/A';
-        const incomeChange =
-          previousPeriodData.income > 0
-            ? (
-                ((totalIncome - previousPeriodData.income) / previousPeriodData.income) *
-                100
-              ).toFixed(1)
-            : 'N/A';
-        historicalSection = `
-Previous period comparison:
-- Previous income: ${fmt(previousPeriodData.income)} ${baseCurrency}
-- Previous expenses: ${fmt(previousPeriodData.expense)} ${baseCurrency}
-- Income change: ${incomeChange}%
-- Expense change: ${expenseChange}%
-`;
+        historicalSection = renderPreviousPeriodSection({
+          baseCurrency,
+          previousIncome: fmt(previousPeriodData.income),
+          previousExpense: fmt(previousPeriodData.expense),
+          incomeChangePercent:
+            previousPeriodData.income > 0
+              ? (
+                  ((totalIncome - previousPeriodData.income) / previousPeriodData.income) *
+                  100
+                ).toFixed(1)
+              : 'N/A',
+          expenseChangePercent:
+            previousPeriodData.expense > 0
+              ? (
+                  ((totalExpense - previousPeriodData.expense) / previousPeriodData.expense) *
+                  100
+                ).toFixed(1)
+              : 'N/A',
+        });
       }
 
       let budgetSection = '';
       if (budgets && budgets.length > 0) {
-        const budgetLines = budgets
-          .map((b) => {
+        budgetSection = renderBudgetSection(
+          budgets.map((b) => {
             const categorySpent = byCategory.get(b.categoryId)?.total ?? 0;
             const budgetAmountInBaseCurrency = this.currencyService.convert(
               b.amount,
               b.currency,
               baseCurrency
             );
-            const percentUsed =
-              budgetAmountInBaseCurrency > 0
-                ? (categorySpent / budgetAmountInBaseCurrency) * 100
-                : 0;
-            const status =
-              percentUsed >= 100
-                ? '⚠️ EXCEEDED'
-                : percentUsed >= 80
-                  ? '⚠️ Near limit'
-                  : '✓';
-            return `- ${b.name}: ${fmt(categorySpent)}/${fmt(budgetAmountInBaseCurrency)} ${baseCurrency} (${percentUsed.toFixed(0)}%) ${status}`;
-          })
-          .join('\n');
-        budgetSection = `
-Active budgets status:
-${budgetLines}
-`;
+            return {
+              name: b.name,
+              spent: fmt(categorySpent),
+              limit: fmt(budgetAmountInBaseCurrency),
+              percentUsed:
+                budgetAmountInBaseCurrency > 0
+                  ? (categorySpent / budgetAmountInBaseCurrency) * 100
+                  : 0,
+            };
+          }),
+          baseCurrency
+        );
       }
 
-    // Optional RAG grounding block (ragInsightsLevel preference)
-    const ragSection = ragContext?.trim()
-      ? `\nNotable activity (retrieved from your transactions):\n${ragContext.trim()}\n`
-      : '';
-
-      const prompt = `Generate a brief, helpful spending summary for ${period}.
-
-Financial data (all amounts in ${baseCurrency}):
-- Total Income: ${fmt(totalIncome)} ${baseCurrency}
-- Total Expenses: ${fmt(totalExpense)} ${baseCurrency}
-- Net: ${fmt(totalIncome - totalExpense)} ${baseCurrency}
-- Transaction count: ${transactions.length}
-
-Top spending categories:
-${categoryBreakdown}
-
-Largest individual expenses:
-${largestExpenses || 'No expenses recorded'}
-${historicalSection}${budgetSection}${ragSection}
-Return AI Insights in this exact format (use markdown):
-
-## Spending Pattern
-[1-2 sentences about main spending categories with specific amounts and percentages]
-
-## Changes & Trends
-[1-2 sentences about significant changes from previous period with impact assessment]
-
-## Budget Status
-[1-2 sentences about budget limits - warnings if any are near limit, or confirmation if all good]
-
-## Actionable Insights
-- [Specific, practical insight #1]
-- [Specific, practical insight #2]
-- [Specific, practical insight #3]
-
-Be detailed, encouraging, and practical. Include specific numbers and examples. Use ${baseCurrency} for amounts.
-${ragSection ? 'Ground your insights in the Notable activity section — cite its specific transactions, amounts, and changes where relevant.\n' : ''}Output ONLY the final insights in the exact format above — no reasoning, no drafts, no commentary.
-
-${this.getLanguageInstruction()}
-Write the "##" section headings in the same language as the response.`;
+      const rendered = renderPrompt('spendingSummary', {
+        period,
+        baseCurrency,
+        totalIncome: fmt(totalIncome),
+        totalExpense: fmt(totalExpense),
+        net: fmt(totalIncome - totalExpense),
+        transactionCount: transactions.length,
+        categoryBreakdown,
+        largestExpenses,
+        historicalSection,
+        budgetSection,
+        grounding: ragContext,
+        languageInstruction: this.getLanguageInstruction(),
+      });
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 1500,
-        messages: [{ role: 'user', content: prompt }],
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
+        messages: [{ role: 'user', content: this.renderedText(rendered) }],
       });
 
       return this.extractTextFromResponse(response) || 'Unable to generate spending summary.';
@@ -542,26 +501,22 @@ Write the "##" section headings in the same language as the response.`;
           : 0;
       const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
 
-      const prompt = `Provide brief financial advice based on this summary for ${period} (amounts in ${baseCurrency}):
-
-- Income: ${fmt(summary.income)} ${baseCurrency}
-- Expenses: ${fmt(summary.expense)} ${baseCurrency}
-- Balance: ${fmt(summary.balance)} ${baseCurrency}
-- Savings Rate: ${savingsRate.toFixed(1)}%
-- Transaction Count: ${summary.transactionCount}
-
-Give 1-2 sentences of personalized, actionable advice. Be encouraging but honest. Use ${baseCurrency} for currency amounts.
-Consider:
-- If savings rate is <20%, suggest ways to save more
-- If balance is negative, acknowledge the situation kindly
-- If doing well (>30% savings), congratulate and suggest next steps
-
-${this.getLanguageInstruction()}`;
+      const rendered = renderPrompt('financialAdvice', {
+        period,
+        baseCurrency,
+        income: fmt(summary.income),
+        expense: fmt(summary.expense),
+        balance: fmt(summary.balance),
+        savingsRate,
+        balanceIsNegative: summary.balance < 0,
+        languageInstruction: this.getLanguageInstruction(),
+      });
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 400,
-        messages: [{ role: 'user', content: prompt }],
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
+        messages: [{ role: 'user', content: this.renderedText(rendered) }],
       });
 
       return (
@@ -587,39 +542,15 @@ ${this.getLanguageInstruction()}`;
     this.lastError.set(null);
 
     try {
-      const prompt = `Analyze this image (bank statement, receipt, or financial document) and extract ALL transactions.
-
-For each transaction found, extract:
-- date: in YYYY-MM-DD format
-- description: merchant/payee name or transaction description
-- amount: as a positive number
-- type: "income" for credits/deposits, "expense" for debits/withdrawals
-- currency: detected currency code (default to USD if unclear)
-- merchant: store/business name (optional)
-- details: for receipts, reproduce the FULL receipt content line by line — every item with its price, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the original language. (optional)
-
-Return ONLY a valid JSON array with this structure (no markdown, no explanation):
-[
-  {
-    "date": "2024-01-15",
-    "description": "AMAZON.COM",
-    "amount": 45.99,
-    "type": "expense",
-    "currency": "USD",
-    "merchant": "AMAZON.COM",
-    "details": "USB Cable — 12.99\\nBook — 32.00\\nSubtotal 44.99\\nTax 1.00\\nTotal 45.99"
-  }
-]
-
-If no transactions can be extracted, return an empty array: []
-Only include confirmed transactions, not pending ones.`;
+      const rendered = renderPrompt('statementTransactions');
 
       const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
       const mediaType = this.getMediaType(imageBase64);
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 2000,
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
         messages: [
           {
             role: 'user',
@@ -632,7 +563,7 @@ Only include confirmed transactions, not pending ones.`;
                   data: base64Data,
                 },
               },
-              { type: 'text', text: prompt },
+              { type: 'text', text: this.renderedText(rendered) },
             ],
           },
         ],
@@ -678,56 +609,9 @@ Only include confirmed transactions, not pending ones.`;
     this.lastError.set(null);
 
     try {
-      const prompt = `You are analyzing ${imageBase64Array.length} photos of receipts or financial documents. They may be:
-- Multiple photos of ONE receipt (overlapping pages, ordered top to bottom) → items share the same receiptId
-- Photos of DIFFERENT receipts → each receipt gets a different receiptId
-- A mix of both
-A single photo may also show SEVERAL receipts side by side → give each its own receiptId.
-
-FIRST: Determine which photos belong to the same receipt (same merchant, date, style) vs different receipts.
-
-IMPORTANT: Photos of the same receipt likely have OVERLAPPING content at the edges.
-- The BOTTOM portion of Image N likely overlaps with the TOP portion of Image N+1
-- You MUST identify and DEDUPLICATE overlapping items
-- Return each unique item ONLY ONCE, preferring the clearer/more complete instance
-
-For each UNIQUE transaction/line item found, extract:
-- date: in YYYY-MM-DD format (use the receipt date if individual items don't have dates)
-- description: item name or transaction description
-- amount: FINAL amount after any discounts applied (as a positive number)
-- type: "income" for credits/refunds, "expense" for purchases/debits
-- currency: detected currency code (default to USD if unclear)
-- receiptId: integer grouping items from the same receipt (1, 2, 3...)
-- imageIndex: which image this item appears in (0-based)
-- positionInImage: "top", "middle", or "bottom" based on vertical position
-- confidence: your confidence in the extraction accuracy (0.0 to 1.0)
-- merchant: store name (optional)
-- category: transaction category like Restaurants, Groceries, Shopping (optional)
-- details: full context for this item — quantity, size, flavor, discount, tax info (optional)
-- wasMerged: true if this item appeared in multiple images and was deduplicated
-
-For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items with prices, discounts, subtotals, tax, service charges, payment method, change, etc. Keep the original language.
-
-Return ONLY a valid JSON array (no markdown):
-[
-  {
-    "date": "2024-01-15",
-    "description": "Item name",
-    "amount": 10.99,
-    "type": "expense",
-    "currency": "USD",
-    "receiptId": 1,
-    "imageIndex": 0,
-    "positionInImage": "middle",
-    "confidence": 0.95,
-    "merchant": "Store name",
-    "details": "×1",
-    "wasMerged": false,
-    "receiptDetails": "Item name ×1 — 10.99\\nSubtotal 10.99\\nTax 0.88\\nTotal 11.87"
-  }
-]
-
-If no transactions can be extracted, return an empty array: []`;
+      const rendered = renderPrompt('multiImageReceipts', {
+        imageCount: imageBase64Array.length,
+      });
 
       const content: Anthropic.Messages.ContentBlockParam[] = [];
 
@@ -746,11 +630,12 @@ If no transactions can be extracted, return an empty array: []`;
       }
 
       // Add the prompt text
-      content.push({ type: 'text', text: prompt });
+      content.push({ type: 'text', text: this.renderedText(rendered) });
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 4000,
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
         messages: [{ role: 'user', content }],
       });
 
@@ -794,39 +679,13 @@ If no transactions can be extracted, return an empty array: []`;
     this.isProcessing.set(true);
 
     try {
-      const prompt = `Analyze these CSV headers and sample data to determine the best column mapping for financial transaction data.
-
-Headers: ${JSON.stringify(headers)}
-Sample rows (first 3): ${JSON.stringify(sampleRows.slice(0, 3))}
-
-Identify which columns contain:
-- dateColumn: column name containing transaction dates
-- descriptionColumn: column name containing merchant/payee description
-- amountColumn: column name for single amount field (or null if separate debit/credit)
-- debitColumn: column name for debit/expense amounts (or null)
-- creditColumn: column name for credit/income amounts (or null)
-- typeColumn: column name indicating transaction type (or null)
-- categoryColumn: column name for category (or null)
-- dateFormat: detected date format (e.g., "MM/DD/YYYY", "YYYY-MM-DD")
-- hasHeader: true if first row is headers
-
-Return ONLY valid JSON with this structure:
-{
-  "dateColumn": "Date",
-  "descriptionColumn": "Description",
-  "amountColumn": "Amount",
-  "debitColumn": null,
-  "creditColumn": null,
-  "typeColumn": null,
-  "categoryColumn": null,
-  "dateFormat": "MM/DD/YYYY",
-  "hasHeader": true
-}`;
+      const rendered = renderPrompt('csvMapping', { headers, sampleRows });
 
       const response = await this.client.messages.create({
         model: this.model,
-        max_tokens: 300,
-        messages: [{ role: 'user', content: prompt }],
+        max_tokens: rendered.maxOutputTokens,
+        ...this.systemParam(rendered),
+        messages: [{ role: 'user', content: this.renderedText(rendered) }],
       });
 
       const responseText = this.extractTextFromResponse(response);
@@ -864,13 +723,23 @@ Return ONLY valid JSON with this structure:
 
   // Helper: Get language instruction
   private getLanguageInstruction(): string {
-    const locale = this.translationService.currentLocale();
-    const languageMap: Record<SupportedLocale, string> = {
-      en: 'Respond in English.',
-      tc: 'Respond in Traditional Chinese (繁體中文).',
-      ja: 'Respond in Japanese (日本語).',
-    };
-    return languageMap[locale] || 'Respond in English.';
+    return languageInstruction(this.translationService.currentLocale());
+  }
+
+  /**
+   * The user turn of a registry prompt.
+   *
+   * Claude is the one provider with a real top-level `system` parameter, so a
+   * prompt that sets `system` must not have it folded into the user turn here —
+   * `systemParam` below carries it instead.
+   */
+  private renderedText(rendered: RenderedPrompt): string {
+    return rendered.user;
+  }
+
+  /** Spread into `messages.create` so `system` is only sent when a prompt sets one. */
+  private systemParam(rendered: RenderedPrompt): { system?: string } {
+    return rendered.system ? { system: rendered.system } : {};
   }
 
   // Helper: Extract JSON from response
