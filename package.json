@@ -12,6 +12,7 @@
     "smoke": "firebase emulators:exec --only auth,storage,firestore --project demo-home-account \"npm run test:smoke\"",
     "lint": "ng lint",
     "i18n:check": "node scripts/check-i18n.mjs",
+    "analytics:check": "node scripts/check-analytics-registry.mjs",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "build:ios": "ng build --configuration=production-local && npx cap sync ios",
