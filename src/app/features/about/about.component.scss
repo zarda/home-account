@@ -117,6 +117,41 @@
   margin: 0;
 }
 
+// Privacy Card
+.privacy-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+// Same box/line-height pairing as .copyright-icon above.
+.privacy-icon {
+  color: var(--text-muted);
+  font-size: var(--text-2xl);
+  width: var(--text-2xl);
+  height: var(--text-2xl);
+  line-height: 1;
+}
+
+.privacy-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.privacy-title {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  margin: 0;
+  font-weight: 500;
+}
+
+.privacy-body {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+
 // Donate Card
 .donate-card {
   background: linear-gradient(135deg, rgba(var(--color-accent-rgb, 63, 81, 181), 0.1), rgba(var(--color-primary-rgb, 25, 118, 210), 0.1));

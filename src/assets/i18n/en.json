@@ -872,6 +872,8 @@
     "description": "A personal finance management application built with modern web technologies. Track your income, expenses, budgets, and gain insights into your financial habits.",
     "copyright": "Copyright",
     "allRightsReserved": "All rights reserved.",
+    "privacyTitle": "Your data stays yours",
+    "privacyBody": "Transactions, receipts and notes are stored in your own account and are never sold or shared. Anonymous usage statistics are off unless you turn them on in Settings, and even then only screens and features are recorded — never amounts, merchants, categories or anything you typed.",
     "donateTitle": "Support Home Account",
     "donateDescription": "If you find this app helpful, consider supporting its development with a donation. Your contribution helps maintain and improve the application.",
     "donateButton": "Donate",
@@ -906,7 +908,7 @@
     "settingsTitle": "Usage statistics",
     "settingsDescription": "Help decide what to build next by sharing which parts of the app you use.",
     "enable": "Share anonymous usage statistics",
-    "disclaimer": "Off unless you turn it on. Only which screens you open and which features you use are sent \u2014 never amounts, merchants, categories, notes or anything you typed."
+    "disclaimer": "Off unless you turn it on. Only which screens you open and which features you use are sent — never amounts, merchants, categories, notes or anything you typed."
   },
   "appLock": {
     "title": "App Locked",

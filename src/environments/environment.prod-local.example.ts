@@ -4,6 +4,12 @@
 //   1. Copy this file to environment.prod-local.ts (gitignored — never committed)
 //   2. Fill in your Firebase project's values from the Firebase console
 //      (Project settings → General → Your apps → SDK setup and configuration)
+//   3. measurementId turns on Google Analytics 4 and is shared by the web
+//      deploy and the iOS build — angular.json points both the `production`
+//      and `production-local` configurations at this file. Anything that does
+//      not start with "G-" is ignored and the build ships without analytics.
+//      iOS additionally needs a GoogleService-Info.plist downloaded after the
+//      iOS app was linked to a data stream. See docs/analytics.md.
 //
 // The production build (`ng build --configuration=production`, used by
 // `npm run build:web`) swaps src/environments/environment.ts for
