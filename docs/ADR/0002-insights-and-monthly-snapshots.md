@@ -1,12 +1,12 @@
-# Spending-pattern insights and monthly snapshots
+# 2. Spending-pattern insights and monthly snapshots
 
-**Status:** implemented · **Issues:** #116, #117 · **Date:** 2026-07-26
+**Status:** Accepted, implemented · **Date:** 2026-07-26 · **Issues:** #116, #117
 
 Reference documentation lives in [../insights.md](../insights.md). This record
 keeps the decisions and the reasoning, including where the implementation
 deliberately departs from what the issues asked for.
 
-## Scope
+## Context
 
 Four rule-based detectors (recurring/subscription creep, category trends, habit
 rhythms, small-amount drip), an Insights tab under Reports, monthly snapshots at
@@ -18,7 +18,7 @@ Four detectors already exceed #116's minimum of three, and a tighter first cut i
 easier to tune against real data. The trend detector computes `windowShare`
 already, so adding it later is cheap.
 
-## Decisions
+## Decision
 
 ### Placement: a fourth tab, not a route
 

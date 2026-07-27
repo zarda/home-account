@@ -9,6 +9,9 @@ their own history, never against other users, and the wording is descriptive
 rather than judgmental — "your grocery spending rose 18%", not an opinion about
 whether that was wise.
 
+The reasoning behind the detectors and the snapshot model is in
+[ADR/0002](ADR/0002-insights-and-monthly-snapshots.md).
+
 ## The two layers
 
 **Rule-based detectors** are pure functions in `src/app/core/utils/`. They are

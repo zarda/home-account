@@ -6,6 +6,9 @@ category changes — instead of only aggregate totals. How much detail is shared
 with your configured AI provider is controlled by the **Detail level** setting in
 **Settings → AI → AI Insights**.
 
+The reasoning behind the tier design is in
+[ADR/0001](ADR/0001-tiered-rag-levels.md).
+
 ## Levels
 
 More detail produces a richer, more specific analysis, but shares more data with

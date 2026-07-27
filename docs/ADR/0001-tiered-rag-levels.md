@@ -1,9 +1,11 @@
-# Design: Tiered RAG levels for AI insights
+# 1. Tiered RAG levels for AI insights
 
-Date: 2026-07-22
-Status: implemented
+**Status:** Accepted, implemented · **Date:** 2026-07-22
 
-## Problem
+Reference documentation lives in [../rag-insights.md](../rag-insights.md). This
+record keeps the decision and the reasoning.
+
+## Context
 
 The detail-grounded insights feature was a single on/off toggle
 (`enableRagInsights`). Grounding depth is a time and token trade-off — more
@@ -61,6 +63,16 @@ Key decisions:
 
 Out of scope (deliberately): grounding the financial-advice prompt, and
 per-transaction detail lines (notes/tags/merchant) in the grounding block.
+
+## Consequences
+
+Grounding depth becomes a user-visible trade-off rather than a hidden one, at
+the cost of a preference field that has to tolerate three states — a new level,
+the legacy boolean, and neither — for as long as older clients exist. The
+dual-write keeps them working; the accessor is the only place that knows.
+
+Choosing `off` or `light` now skips a Firestore query entirely, so the cheapest
+levels are also the fastest.
 
 ## Testing
 

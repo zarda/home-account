@@ -10,6 +10,9 @@ It is not used for per-user reporting, advertising, remarketing or audience
 building, and there is no way to identify an individual account from what is
 sent.
 
+The reasoning behind how this is built — and what was rejected — is in
+[ADR/0003](ADR/0003-analytics-consent-and-taxonomy.md).
+
 ## Consent
 
 Off until the account turns it on, in **Settings → Preferences → Share
