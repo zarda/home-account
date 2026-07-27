@@ -10,6 +10,7 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
+import { AnalyticsService } from '../../core/services/analytics.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
@@ -57,6 +58,7 @@ export class ReportsComponent implements OnInit {
   private authService = inject(AuthService);
   private currencyService = inject(CurrencyService);
   private dialog = inject(MatDialog);
+  private analytics = inject(AnalyticsService);
 
   isLoading = signal(true);
   selectedTabIndex = 0;
@@ -114,6 +116,44 @@ export class ReportsComponent implements OnInit {
     this.loadData();
   }
 
+  /**
+   * Which report each tab index is, for reporting.
+   *
+   * The tabs carry no identifier of their own — they are ordered mat-tab
+   * elements — so the mapping has to live somewhere, and somewhere that will
+   * be noticed if a tab is inserted. Reordering the tabs without updating this
+   * list silently relabels the data in GA4.
+   */
+  private static readonly REPORT_TYPES = [
+    'spending_analysis',
+    'category_breakdown',
+    'monthly_comparison',
+    'insights',
+  ] as const;
+
+  /**
+   * Tabs already reported for this component instance.
+   *
+   * The tab group lives inside the @else of an isLoading() guard, so changing
+   * the period destroys and recreates it. MatTabGroup does not emit
+   * selectedTabChange on creation, so without this the landing tab would go
+   * unreported on entry — and with a naive fix it would be reported again
+   * after every period change.
+   */
+  private reportedTabs = new Set<number>();
+
+  onTabChange(index: number): void {
+    this.reportTab(index);
+  }
+
+  private reportTab(index: number): void {
+    if (this.reportedTabs.has(index)) return;
+    const reportType = ReportsComponent.REPORT_TYPES[index];
+    if (!reportType) return;
+    this.reportedTabs.add(index);
+    this.analytics.trackReportView({ report_type: reportType });
+  }
+
   onPeriodSelection(selection: PeriodSelection): void {
     this.selectedPeriod.set(selection);
     this.loadData();
@@ -137,10 +177,18 @@ export class ReportsComponent implements OnInit {
     const range = this.dateRange();
 
     this.transactionService.getByDateRange(range.start, range.end).subscribe({
-      next: () => this.isLoading.set(false),
-      error: () => this.isLoading.set(false)
+      next: () => this.finishLoading(),
+      error: () => this.finishLoading()
     });
 
     this.categoryService.loadCategories().subscribe();
+  }
+
+  private finishLoading(): void {
+    this.isLoading.set(false);
+    // The tab group only exists once loading finishes, and it does not emit a
+    // change for the tab it opens on. Without this the landing report — the
+    // most-viewed one — would look like the least-viewed.
+    this.reportTab(this.selectedTabIndex);
   }
 }
