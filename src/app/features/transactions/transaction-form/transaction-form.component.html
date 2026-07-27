@@ -6,8 +6,9 @@
 
   <form [formGroup]="form" (ngSubmit)="onSubmit()">
     <mat-dialog-content class="dialog-content">
-      <!-- AI Receipt Scanner (only show for add mode) -->
-      @if (data.mode === 'add' && isAiAvailable()) {
+      <!-- Attach or rescan a receipt. Available when editing too: the service
+           side has always accepted a replacement, only the UI withheld it. -->
+      @if (isAiAvailable()) {
         <div class="receipt-scanner-section">
           <!-- Hidden file input -->
           <input
@@ -66,7 +67,9 @@
       }
 
       <!-- Existing receipt (edit mode): thumbnail plus quota housekeeping actions -->
-      @if (data.mode === 'edit' && existingReceiptUrl) {
+      <!-- The stored receipt. Hidden once a replacement is queued, so the
+           dialog does not show the old image next to the new one. -->
+      @if (data.mode === 'edit' && existingReceiptUrl && !receiptFile()) {
         <div class="receipt-scanner-section">
           <a
             class="receipt-preview receipt-link"

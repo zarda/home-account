@@ -206,6 +206,34 @@ describe('TransactionFormComponent', () => {
       expect(dto.receiptFile).toBeUndefined();
     });
 
+    it('sends a newly attached receipt when editing', async () => {
+      // updateTransaction has always accepted receiptFile; only the UI
+      // withheld the scanner in edit mode, so it could never be set.
+      const txn = createTransaction({ id: 'e1' });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      validForm(component);
+      const file = new File([''], 'receipt.jpg', { type: 'image/jpeg' });
+      component.receiptFile.set(file);
+
+      await component.onSubmit();
+
+      const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+      expect(dto.receiptFile).toBe(file);
+    });
+
+    it('replaces an existing receipt when editing', async () => {
+      const stored = createTransaction({ id: 'e2', receiptUrl: 'https://example.test/old.jpg' });
+      const component = build({ mode: 'edit', transaction: stored }).componentInstance;
+      validForm(component);
+      const file = new File([''], 'new-receipt.jpg', { type: 'image/jpeg' });
+      component.receiptFile.set(file);
+
+      await component.onSubmit();
+
+      const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+      expect(dto.receiptFile).toBe(file);
+    });
+
     it('updates an existing transaction in edit mode', async () => {
       const txn = createTransaction({ id: 'e1' });
       const component = build({ mode: 'edit', transaction: txn }).componentInstance;
