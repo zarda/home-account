@@ -1,11 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { CloudLLMProviderService, AIFeatureType } from './cloud-llm-provider.service';
-import { GeminiService, ParsedReceipt, RawTransaction, ExtractedTransaction, CategorizedTransaction, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
+import { GeminiService, ParsedReceipt, RawTransaction, CategorizedTransaction, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
 import { ProviderKeyService } from './provider-key.service';
 import { Category, Transaction, Budget, MonthlyTotal, LLMProvider, LLMProviderPreferences } from '../../models';
+import { ProviderCapabilities } from './llm-provider.interface';
 import { createMockUser } from './testing/mock-auth.service';
 
 /**
@@ -20,7 +21,6 @@ function makeProviderSpy(name: string): jasmine.SpyObj<GeminiService> {
     'lastError',
     'reinitialize',
     'parseReceipt',
-    'extractTransactionsFromImage',
     'extractTransactionsFromMultipleImages',
     'extractTransactionsFromPDF',
     'suggestCategory',
@@ -35,6 +35,12 @@ function makeProviderSpy(name: string): jasmine.SpyObj<GeminiService> {
   spy.isProcessing.and.returnValue(false);
   spy.lastError.and.returnValue(null);
   spy.reinitialize.and.resolveTo(undefined);
+  // Only Gemini accepts a PDF directly; the façade picks a PDF provider by
+  // capability rather than by preference.
+  (spy as unknown as { capabilities: ProviderCapabilities }).capabilities = {
+    vision: true,
+    nativePdf: name === 'GeminiService',
+  };
   return spy;
 }
 
@@ -376,7 +382,7 @@ describe('CloudLLMProviderService', () => {
     it('throws when no provider is available for receipt scanning', async () => {
       setAvailability(false, false, false);
       await expectAsync(service.parseReceipt('img'))
-        .toBeRejectedWithError(/No cloud AI provider available for receipt scanning/);
+        .toBeRejectedWithError(/No cloud AI provider available for receiptScanning/);
     });
   });
 
@@ -387,7 +393,6 @@ describe('CloudLLMProviderService', () => {
     beforeEach(() => {
       gemini.isAvailableSignal.and.returnValue(true);
       gemini.parseReceipt.and.resolveTo(sampleReceipt);
-      gemini.extractTransactionsFromImage.and.resolveTo([]);
       gemini.extractTransactionsFromMultipleImages.and.resolveTo([]);
       gemini.extractTransactionsFromPDF.and.resolveTo([]);
     });
@@ -411,20 +416,6 @@ describe('CloudLLMProviderService', () => {
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).parseReceipt).toHaveBeenCalled();
     });
 
-    it('extractTransactionsFromImage delegates', async () => {
-      const extracted: ExtractedTransaction[] = [];
-      gemini.extractTransactionsFromImage.and.resolveTo(extracted);
-      const r = await service.extractTransactionsFromImage('img');
-      expect(r).toBe(extracted);
-      expect(gemini.extractTransactionsFromImage).toHaveBeenCalledWith('img');
-    });
-
-    it('extractTransactionsFromImage throws when no provider', async () => {
-      gemini.isAvailableSignal.and.returnValue(false);
-      await expectAsync(service.extractTransactionsFromImage('img'))
-        .toBeRejectedWithError(/No cloud AI provider available for image extraction/);
-    });
-
     it('extractTransactionsFromMultipleImages delegates', async () => {
       const extracted: MultiImageExtractedTransaction[] = [];
       gemini.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
@@ -436,15 +427,7 @@ describe('CloudLLMProviderService', () => {
     it('extractTransactionsFromMultipleImages throws when no provider', async () => {
       gemini.isAvailableSignal.and.returnValue(false);
       await expectAsync(service.extractTransactionsFromMultipleImages(['a']))
-        .toBeRejectedWithError(/No cloud AI provider available for multi-image extraction/);
-    });
-
-    it('extractTransactionsFromImage delegates to openai when preferred', async () => {
-      gemini.isAvailableSignal.and.returnValue(false);
-      (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
-      (openai as unknown as jasmine.SpyObj<GeminiService>).extractTransactionsFromImage.and.resolveTo([]);
-      await service.extractTransactionsFromImage('img');
-      expect((openai as unknown as jasmine.SpyObj<GeminiService>).extractTransactionsFromImage).toHaveBeenCalled();
+        .toBeRejectedWithError(/No cloud AI provider available for receiptScanning/);
     });
 
     it('extractTransactionsFromMultipleImages delegates to claude when preferred', async () => {
@@ -486,17 +469,19 @@ describe('CloudLLMProviderService', () => {
       expect(gemini.extractTransactionsFromPDF).toHaveBeenCalled();
     });
 
-    it('throws when only a non-gemini provider is available', async () => {
+    it('throws when the only available provider cannot take a PDF', async () => {
+      // Selection is by capability, so this is refused up front rather than
+      // reaching an SDK that would fail on the payload.
       gemini.isAvailableSignal.and.returnValue(false);
       (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
       await expectAsync(service.extractTransactionsFromPDF('pdf'))
-        .toBeRejectedWithError(/PDF extraction is only supported with Gemini/);
+        .toBeRejectedWithError(/needs a provider that accepts PDFs directly/);
     });
 
     it('throws when no provider is available at all', async () => {
       gemini.isAvailableSignal.and.returnValue(false);
       await expectAsync(service.extractTransactionsFromPDF('pdf'))
-        .toBeRejectedWithError(/No cloud AI provider available for PDF extraction/);
+        .toBeRejectedWithError(/needs a provider that accepts PDFs directly/);
     });
   });
 
@@ -564,7 +549,7 @@ describe('CloudLLMProviderService', () => {
     it('detectCSVMapping throws when no provider', async () => {
       gemini.isAvailableSignal.and.returnValue(false);
       await expectAsync(service.detectCSVMapping(['D'], [['1']]))
-        .toBeRejectedWithError(/No cloud AI provider available for CSV mapping/);
+        .toBeRejectedWithError(/No cloud AI provider available for categorization/);
     });
 
     it('detectCSVMapping delegates to openai when preferred', async () => {

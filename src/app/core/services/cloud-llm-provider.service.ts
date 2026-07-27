@@ -1,10 +1,11 @@
 import { Injectable, inject, computed } from '@angular/core';
-import { GeminiService, ParsedReceipt, RawTransaction, ExtractedTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
+import { GeminiService, ParsedReceipt, RawTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
 import { ProviderKeyService } from './provider-key.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, MonthlyTotal, SearchIntent, SearchQueryContext } from '../../models';
+import { CloudLLMProviderAdapter } from './llm-provider.interface';
 
 export type AIFeatureType = 'receiptScanning' | 'categorization' | 'insights' | 'search';
 
@@ -176,191 +177,105 @@ export class CloudLLMProviderService {
   }
 
   // ============================================================
-  // Receipt Scanning Features
+  // Provider Features
+  //
+  // Every method resolves an adapter and calls it. There is no per-method
+  // switch any more: the adapter interface guarantees each provider offers
+  // the same surface, so adding a capability means adding it in one place
+  // rather than in eleven three-armed switches that nothing kept in step.
   // ============================================================
 
   /**
-   * Parse a receipt image using the configured provider.
+   * The provider that should serve this feature, or a thrown error naming the
+   * feature that has none.
    */
+  private resolve(feature: AIFeatureType): CloudLLMProviderAdapter {
+    const provider = this.getBestAvailableProvider(feature);
+    if (!provider) {
+      throw new Error(`No cloud AI provider available for ${feature}`);
+    }
+    return this.adapters()[provider];
+  }
+
+  private adapters(): Record<LLMProvider, CloudLLMProviderAdapter> {
+    return {
+      gemini: this.geminiService,
+      openai: this.openaiService,
+      claude: this.claudeService,
+    };
+  }
+
+  // ---------------------------------------------- receipt scanning
+
+  /** Parse a receipt image using the configured provider. */
   async parseReceipt(imageBase64: string): Promise<ParsedReceipt> {
-    const provider = this.getBestAvailableProvider('receiptScanning');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for receipt scanning');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.parseReceipt(imageBase64);
-      case 'openai':
-        return this.openaiService.parseReceipt(imageBase64);
-      case 'claude':
-        return this.claudeService.parseReceipt(imageBase64);
-    }
+    return this.resolve('receiptScanning').parseReceipt(imageBase64);
   }
 
-  /**
-   * Extract transactions from an image.
-   */
-  async extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]> {
-    const provider = this.getBestAvailableProvider('receiptScanning');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for image extraction');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.extractTransactionsFromImage(imageBase64);
-      case 'openai':
-        return this.openaiService.extractTransactionsFromImage(imageBase64);
-      case 'claude':
-        return this.claudeService.extractTransactionsFromImage(imageBase64);
-    }
-  }
-
-  /**
-   * Extract transactions from multiple images.
-   */
+  /** Extract transactions from multiple images. */
   async extractTransactionsFromMultipleImages(
     imageBase64Array: string[]
   ): Promise<MultiImageExtractedTransaction[]> {
-    const provider = this.getBestAvailableProvider('receiptScanning');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for multi-image extraction');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.extractTransactionsFromMultipleImages(imageBase64Array);
-      case 'openai':
-        return this.openaiService.extractTransactionsFromMultipleImages(imageBase64Array);
-      case 'claude':
-        return this.claudeService.extractTransactionsFromMultipleImages(imageBase64Array);
-    }
+    return this.resolve('receiptScanning').extractTransactionsFromMultipleImages(imageBase64Array);
   }
 
   /**
    * Extract transactions from a PDF.
+   *
+   * Only Gemini accepts a PDF directly, so a provider is chosen by capability
+   * rather than by preference here. Until the pages can be rasterized client
+   * side (#55), a user with only OpenAI or Claude configured gets a clear
+   * refusal instead of an SDK error.
    */
   async extractTransactionsFromPDF(pdfBase64: string): Promise<RawTransaction[]> {
-    const provider = this.getBestAvailableProvider('receiptScanning');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for PDF extraction');
+    const adapters = this.adapters();
+    const status = this.providerStatus();
+    const capable = (Object.keys(adapters) as LLMProvider[]).find(
+      name => status[name] && adapters[name].capabilities.nativePdf
+    );
+
+    if (!capable) {
+      throw new Error('PDF extraction needs a provider that accepts PDFs directly');
     }
 
-    // Only Gemini supports PDF extraction currently
-    if (provider === 'gemini') {
-      return this.geminiService.extractTransactionsFromPDF(pdfBase64);
-    }
-
-    // For other providers, we'd need to convert PDF to images first
-    // For now, fall back to Gemini if available, otherwise throw
-    if (this.isProviderAvailable('gemini')) {
-      return this.geminiService.extractTransactionsFromPDF(pdfBase64);
-    }
-
-    throw new Error('PDF extraction is only supported with Gemini');
+    // Guaranteed present: nativePdf is only true where the method exists.
+    return adapters[capable].extractTransactionsFromPDF!(pdfBase64);
   }
 
-  // ============================================================
-  // Categorization Features
-  // ============================================================
+  // ---------------------------------------------- categorization
 
-  /**
-   * Suggest a category for a transaction description.
-   */
+  /** Suggest a category for a transaction description. */
   async suggestCategory(description: string, categories: Category[]): Promise<string> {
-    const provider = this.getBestAvailableProvider('categorization');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for categorization');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.suggestCategory(description, categories);
-      case 'openai':
-        return this.openaiService.suggestCategory(description, categories);
-      case 'claude':
-        return this.claudeService.suggestCategory(description, categories);
-    }
+    return this.resolve('categorization').suggestCategory(description, categories);
   }
 
-  /**
-   * Categorize multiple transactions.
-   */
+  /** Categorize multiple transactions. */
   async categorizeTransactions(transactions: RawTransaction[]): Promise<CategorizedTransaction[]> {
-    const provider = this.getBestAvailableProvider('categorization');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for categorization');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.categorizeTransactions(transactions);
-      case 'openai':
-        return this.openaiService.categorizeTransactions(transactions);
-      case 'claude':
-        return this.claudeService.categorizeTransactions(transactions);
-    }
+    return this.resolve('categorization').categorizeTransactions(transactions);
   }
 
-  /**
-   * Detect CSV column mapping.
-   */
+  /** Detect CSV column mapping. */
   async detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping> {
-    const provider = this.getBestAvailableProvider('categorization');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for CSV mapping');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.detectCSVMapping(headers, sampleRows);
-      case 'openai':
-        return this.openaiService.detectCSVMapping(headers, sampleRows);
-      case 'claude':
-        return this.claudeService.detectCSVMapping(headers, sampleRows);
-    }
+    return this.resolve('categorization').detectCSVMapping(headers, sampleRows);
   }
 
-  // ============================================================
-  // Search Features
-  // ============================================================
+  // ---------------------------------------------- search
 
   /**
-   * Interpret a natural-language transaction search query into a
-   * structured intent.
+   * Interpret a natural-language transaction search query into a structured
+   * intent.
+   *
+   * Failures are deliberately not caught: callers fall back to keyword search,
+   * and swallowing the error here would leave the user with no results and no
+   * explanation.
    */
   async interpretSearchQuery(query: string, context: SearchQueryContext): Promise<SearchIntent> {
-    const provider = this.getBestAvailableProvider('search');
-
-    if (!provider) {
-      throw new Error('No cloud AI provider available for search');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.interpretSearchQuery(query, context);
-      case 'openai':
-        return this.openaiService.interpretSearchQuery(query, context);
-      case 'claude':
-        return this.claudeService.interpretSearchQuery(query, context);
-    }
+    return this.resolve('search').interpretSearchQuery(query, context);
   }
 
-  // ============================================================
-  // Insights Features
-  // ============================================================
+  // ---------------------------------------------- insights
 
-  /**
-   * Generate a spending summary.
-   */
+  /** Generate a spending summary. */
   async generateSpendingSummary(
     transactions: Transaction[],
     period: string,
@@ -369,26 +284,9 @@ export class CloudLLMProviderService {
     budgets?: Budget[],
     ragContext?: string
   ): Promise<string> {
-    const provider = this.getBestAvailableProvider('insights');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for insights');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
-        );
-      case 'openai':
-        return this.openaiService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
-        );
-      case 'claude':
-        return this.claudeService.generateSpendingSummary(
-          transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
-        );
-    }
+    return this.resolve('insights').generateSpendingSummary(
+      transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
+    );
   }
 
   /**
@@ -403,45 +301,18 @@ export class CloudLLMProviderService {
    * no parameter here that could carry a description, a note or a merchant name.
    */
   async generatePatternNarrative(context: string, locale: string): Promise<string> {
-    const provider = this.getBestAvailableProvider('insights');
-
-    if (!provider) {
-      throw new Error('No cloud AI provider available for insights');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.generatePatternNarrative(context, locale);
-      case 'openai':
-        return this.openaiService.generatePatternNarrative(context, locale);
-      case 'claude':
-        return this.claudeService.generatePatternNarrative(context, locale);
-    }
+    return this.resolve('insights').generatePatternNarrative(context, locale);
   }
 
-  /**
-   * Get financial advice.
-   */
+  /** Get financial advice. */
   async getFinancialAdvice(
     summary: MonthlyTotal,
     baseCurrency?: string,
     period?: string
   ): Promise<string> {
-    const provider = this.getBestAvailableProvider('insights');
-    
-    if (!provider) {
-      throw new Error('No cloud AI provider available for insights');
-    }
-
-    switch (provider) {
-      case 'gemini':
-        return this.geminiService.getFinancialAdvice(summary, baseCurrency, period);
-      case 'openai':
-        return this.openaiService.getFinancialAdvice(summary, baseCurrency, period);
-      case 'claude':
-        return this.claudeService.getFinancialAdvice(summary, baseCurrency, period);
-    }
+    return this.resolve('insights').getFinancialAdvice(summary, baseCurrency, period);
   }
+
 
   // ============================================================
   // Status and Info
