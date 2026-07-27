@@ -5,6 +5,7 @@ import {
   RagInsightsLevel,
   UserPreferences,
   effectiveRagLevel,
+  usageAnalyticsEnabled,
 } from './user.model';
 
 describe('effectiveRagLevel', () => {
@@ -41,6 +42,43 @@ describe('effectiveRagLevel', () => {
     expect(effectiveRagLevel(corrupt)).toBe('standard');
     const corruptOff = prefs({ ragInsightsLevel: 'bogus' as RagInsightsLevel });
     expect(effectiveRagLevel(corruptOff)).toBe('off');
+  });
+});
+
+describe('usageAnalyticsEnabled', () => {
+  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    ...DEFAULT_USER_PREFERENCES,
+    ...overrides,
+  });
+
+  it('should be off for missing preferences', () => {
+    // Signed out, and the window before the user document arrives. Neither
+    // may read as consent, which is what keeps the app silent at boot.
+    expect(usageAnalyticsEnabled(undefined)).toBeFalse();
+    expect(usageAnalyticsEnabled(null)).toBeFalse();
+  });
+
+  it('should be off when the field is absent', () => {
+    // Every account created before the setting shipped is in this state, so
+    // absent has to mean off rather than "not migrated yet".
+    expect(usageAnalyticsEnabled(prefs({}))).toBeFalse();
+  });
+
+  it('should be off unless the stored value is exactly true', () => {
+    expect(usageAnalyticsEnabled(prefs({ enableUsageAnalytics: false }))).toBeFalse();
+    // A map written by another build could hold anything; only a real boolean
+    // true is consent.
+    expect(
+      usageAnalyticsEnabled(prefs({ enableUsageAnalytics: 'yes' as unknown as boolean }))
+    ).toBeFalse();
+  });
+
+  it('should be on when the account opted in', () => {
+    expect(usageAnalyticsEnabled(prefs({ enableUsageAnalytics: true }))).toBeTrue();
+  });
+
+  it('should stay out of the defaults so a new account starts opted out', () => {
+    expect('enableUsageAnalytics' in DEFAULT_USER_PREFERENCES).toBeFalse();
   });
 });
 
