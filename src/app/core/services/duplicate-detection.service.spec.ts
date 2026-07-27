@@ -199,6 +199,54 @@ describe('DuplicateDetectionService', () => {
       expect(dup?.isDuplicate).toBeTrue();
       expect(unique?.isDuplicate).toBeFalse();
     });
+
+    describe('CJK merchant names', () => {
+      it('stops calling two different CJK merchants an exact match', async () => {
+        // Behaviour change: the old normalizer stripped everything outside
+        // [a-z0-9], so every CJK description normalized to '' and compared
+        // equal — two unrelated merchants on the same day for the same amount
+        // were reported as an *exact* duplicate at full confidence.
+        //
+        // They still match as 'likely', which is the same-day/same-amount rule
+        // and is description-independent by design. What changes is that the
+        // descriptions no longer claim to be the same.
+        mockTransactionService.getTransactions.and.returnValue(
+          of([existing({ description: 'セブンイレブン' })])
+        );
+
+        const results = await service.checkDuplicates([
+          importTxn({ id: 'other-merchant', description: '全家便利商店' }),
+        ]);
+
+        expect(results[0].matchType).toBe('likely');
+        expect(results[0].confidence).toBeLessThan(1);
+      });
+
+      it('still matches the same CJK merchant on the same day and amount', async () => {
+        mockTransactionService.getTransactions.and.returnValue(
+          of([existing({ description: 'セブンイレブン' })])
+        );
+
+        const results = await service.checkDuplicates([
+          importTxn({ id: 'same-merchant', description: 'セブンイレブン' }),
+        ]);
+
+        expect(results[0].isDuplicate).toBeTrue();
+        expect(results[0].matchType).toBe('exact');
+      });
+
+      it('ignores punctuation and spacing inside a CJK name', async () => {
+        mockTransactionService.getTransactions.and.returnValue(
+          of([existing({ description: 'スターバックス 渋谷店' })])
+        );
+
+        const results = await service.checkDuplicates([
+          importTxn({ id: 'punctuated', description: 'スターバックス（渋谷店）' }),
+        ]);
+
+        expect(results[0].isDuplicate).toBeTrue();
+      });
+    });
   });
 
   describe('markDuplicates', () => {

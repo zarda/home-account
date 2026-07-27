@@ -3,6 +3,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { firstValueFrom } from 'rxjs';
 import { TransactionService } from './transaction.service';
 import { Transaction, CategorizedImportTransaction, DuplicateCheck, ImagePositionMetadata } from '../../models';
+import { normalizeMerchantKey } from '../utils/merchant-key.utils';
 
 /** Minimum Dice-coefficient overlap for two descriptions to count as similar. */
 const SIMILARITY_THRESHOLD = 0.7;
@@ -156,13 +157,13 @@ export class DuplicateDetectionService {
   }
 
   /**
-   * Normalize a description for comparison
+   * Normalize a description for comparison.
+   *
+   * Delegates to the shared merchant key so that "the same merchant" means the
+   * same thing here as it does anywhere else that keys on a description.
    */
   private normalizeDescription(desc: string): string {
-    return desc
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, '')  // Remove non-alphanumeric
-      .trim();
+    return normalizeMerchantKey(desc);
   }
 
   /**
