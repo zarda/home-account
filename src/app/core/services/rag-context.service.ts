@@ -3,6 +3,7 @@ import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { CategoryTotal, RAG_TIER_CONFIGS, RagTierConfig, Transaction } from '../../models';
+import { normalizeMerchantKey } from '../utils/merchant-key.utils';
 import {
   computeAmountAnomalies,
   computeCategoryDeltas,
@@ -78,6 +79,73 @@ export class RagContextService {
       expenses, previousByCategory, toBase, amount, baseCurrency, config.categoryDeltas);
     if (deltas) {
       sections.push(deltas);
+    }
+
+    return sections.join('\n\n');
+  }
+
+  /**
+   * Build the grounding block for import categorization: how this user has
+   * actually filed things, so the model's suggestions match their habits
+   * instead of a generic notion of what a merchant sells.
+   *
+   * Only merchants and category names — no amounts, dates or notes. A
+   * categorizer does not need them, and the smallest context that answers the
+   * question is the one to send.
+   *
+   * Returns an empty string when there is no history to ground in, which keeps
+   * the prompt byte-identical to its ungrounded form.
+   */
+  buildCategorizationGrounding(opts: {
+    transactions: Transaction[];
+    /** Distinct merchants to describe. */
+    merchantLimit?: number;
+    /** Recently used categories to list. */
+    recentLimit?: number;
+  }): string {
+    const { transactions } = opts;
+    const merchantLimit = opts.merchantLimit ?? 15;
+    const recentLimit = opts.recentLimit ?? 8;
+    if (transactions.length === 0) {
+      return '';
+    }
+
+    const sections: string[] = [];
+
+    // Most-repeated merchant → the category this user files it under. Ties go
+    // to the most recent decision, since a re-categorization is a correction.
+    const byMerchant = new Map<string, { description: string; categoryId: string; count: number }>();
+    for (const t of transactions) {
+      const key = normalizeMerchantKey(t.description);
+      if (!key) continue;
+      const existing = byMerchant.get(key);
+      byMerchant.set(key, {
+        description: t.description,
+        categoryId: existing?.categoryId ?? t.categoryId,
+        count: (existing?.count ?? 0) + 1,
+      });
+    }
+
+    const merchantLines = [...byMerchant.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, merchantLimit)
+      .map(m => `- ${m.description} → ${this.categoryName(m.categoryId)} (${m.categoryId})`);
+
+    if (merchantLines.length > 0) {
+      sections.push(`How this user usually categorizes these merchants:\n${merchantLines.join('\n')}`);
+    }
+
+    const recentCategories: string[] = [];
+    for (const t of transactions) {
+      const label = `${this.categoryName(t.categoryId)} (${t.categoryId})`;
+      if (!recentCategories.includes(label)) {
+        recentCategories.push(label);
+      }
+      if (recentCategories.length >= recentLimit) break;
+    }
+
+    if (recentCategories.length > 0) {
+      sections.push(`Categories this user has used recently:\n${recentCategories.map(c => `- ${c}`).join('\n')}`);
     }
 
     return sections.join('\n\n');

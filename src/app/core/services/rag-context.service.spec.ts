@@ -403,4 +403,78 @@ describe('RagContextService', () => {
     // Mean over the six distinct rows (each counted once): (100+2000+110+90+105+95)/6 = 416.67
     expect(unusualSection).toContain('typical: 417 TWD');
   });
+  describe('buildCategorizationGrounding', () => {
+    it('is empty when there is no history to ground in', () => {
+      // An empty block keeps the prompt byte-identical to its ungrounded form.
+      expect(service.buildCategorizationGrounding({ transactions: [] })).toBe('');
+    });
+
+    it('describes how the user files their most frequent merchants', () => {
+      const grounding = service.buildCategorizationGrounding({
+        transactions: [
+          expense({ description: 'STARBUCKS', categoryId: 'food_groceries' }),
+          expense({ description: 'Starbucks', categoryId: 'food_groceries' }),
+          expense({ description: 'CINEMA', categoryId: 'entertainment' }),
+        ],
+      });
+
+      expect(grounding).toContain('How this user usually categorizes these merchants:');
+      // The two spellings are one merchant, listed once and ahead of the cinema.
+      expect((grounding.match(/Starbucks|STARBUCKS/gi) ?? []).length).toBe(1);
+      expect(grounding.indexOf('STARBUCKS')).toBeLessThan(grounding.indexOf('CINEMA'));
+      expect(grounding).toContain('(food_groceries)');
+    });
+
+    it('lists the categories the user has been using', () => {
+      const grounding = service.buildCategorizationGrounding({
+        transactions: [
+          expense({ description: 'A', categoryId: 'food_groceries' }),
+          expense({ description: 'B', categoryId: 'entertainment' }),
+        ],
+      });
+
+      expect(grounding).toContain('Categories this user has used recently:');
+      expect(grounding).toContain('Groceries (food_groceries)');
+      expect(grounding).toContain('Entertainment (entertainment)');
+    });
+
+    it('never includes amounts, dates or notes', () => {
+      // A categorizer does not need them, so they are not sent.
+      const grounding = service.buildCategorizationGrounding({
+        transactions: [expense({ description: 'STARBUCKS', amount: 1234.56 })],
+      });
+
+      expect(grounding).not.toContain('1234');
+      expect(grounding).not.toContain('2026-06-01');
+    });
+
+    it('caps how many merchants and categories it names', () => {
+      const many = Array.from({ length: 40 }, (_, i) =>
+        expense({ description: `SHOP ${i}`, categoryId: 'food_groceries' })
+      );
+
+      const grounding = service.buildCategorizationGrounding({
+        transactions: many,
+        merchantLimit: 3,
+        recentLimit: 1,
+      });
+
+      const merchantLines = grounding
+        .split('\n')
+        .filter(line => line.startsWith('- SHOP'));
+      expect(merchantLines.length).toBe(3);
+    });
+
+    it('skips a description with no merchant to key on', () => {
+      const grounding = service.buildCategorizationGrounding({
+        transactions: [
+          expense({ description: '---' }),
+          expense({ description: 'REAL SHOP' }),
+        ],
+      });
+
+      expect(grounding).toContain('REAL SHOP');
+      expect(grounding).not.toContain('- ---');
+    });
+  });
 });

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { AIImportService } from './ai-import.service';
 import { GeminiService } from './gemini.service';
@@ -14,6 +14,7 @@ import { AIStrategyService } from './ai-strategy.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { CategoryMemoryService } from './category-memory.service';
+import { RagContextService } from './rag-context.service';
 import { createMockUser } from './testing/mock-auth.service';
 import {
   CategorizedImportTransaction,
@@ -35,6 +36,7 @@ describe('AIImportService', () => {
   let offlineQueue: jasmine.SpyObj<OfflineQueueService>;
   let pwaService: jasmine.SpyObj<PwaService>;
   let categoryMemory: jasmine.SpyObj<CategoryMemoryService>;
+  let ragContext: jasmine.SpyObj<RagContextService>;
   let isOnlineSignal: WritableSignal<boolean>;
 
   const makeFile = (name: string, type: string, content = 'data'): File =>
@@ -63,7 +65,7 @@ describe('AIImportService', () => {
       'failImport',
       'getImportById'
     ]);
-    transactionService = jasmine.createSpyObj('TransactionService', ['addTransaction']);
+    transactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'getTransactions']);
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: jasmine.createSpy('currentUser').and.returnValue(createMockUser('user123')),
       userId: jasmine.createSpy('userId').and.returnValue('user123')
@@ -82,6 +84,10 @@ describe('AIImportService', () => {
       'rememberAll',
     ]);
 
+    ragContext = jasmine.createSpyObj<RagContextService>('RagContextService', [
+      'buildCategorizationGrounding',
+    ]);
+
     // Sensible defaults
     geminiService.isAvailable.and.returnValue(true);
     cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
@@ -96,6 +102,8 @@ describe('AIImportService', () => {
     categoryMemory.ensureLoaded.and.resolveTo(undefined);
     categoryMemory.lookup.and.returnValue(null);
     categoryMemory.rememberAll.and.resolveTo(undefined);
+    transactionService.getTransactions.and.returnValue(of([]));
+    ragContext.buildCategorizationGrounding.and.returnValue('');
 
     TestBed.configureTestingModule({
       providers: [
@@ -110,7 +118,8 @@ describe('AIImportService', () => {
         { provide: AIStrategyService, useValue: strategyService },
         { provide: OfflineQueueService, useValue: offlineQueue },
         { provide: PwaService, useValue: pwaService },
-        { provide: CategoryMemoryService, useValue: categoryMemory }
+        { provide: CategoryMemoryService, useValue: categoryMemory },
+        { provide: RagContextService, useValue: ragContext }
       ]
     });
 
@@ -353,6 +362,49 @@ describe('AIImportService', () => {
       const newPlace = result.transactions.find(t => t.description === 'NEW PLACE');
       expect(starbucks?.suggestedCategoryId).toBe('food_coffee');
       expect(newPlace?.suggestedCategoryId).toBe('food');
+    });
+
+    it('grounds categorization in the user\'s history when RAG is on', async () => {
+      authService.currentUser.and.returnValue({
+        preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'standard' },
+      } as never);
+      ragContext.buildCategorizationGrounding.and.returnValue(
+        'How this user usually categorizes these merchants:\n- STARBUCKS → Coffee (food_coffee)'
+      );
+      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      const grounding = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[1];
+      expect(grounding).toContain('STARBUCKS → Coffee');
+    });
+
+    it('sends no grounding when RAG is off', async () => {
+      // Off must leave the prompt exactly as it was before grounding existed,
+      // and no transaction history leaves the device.
+      authService.currentUser.and.returnValue({
+        preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'off' },
+      } as never);
+      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[1]).toBeUndefined();
+      expect(ragContext.buildCategorizationGrounding).not.toHaveBeenCalled();
+    });
+
+    it('categorizes unaided when the grounding cannot be built', async () => {
+      spyOn(console, 'warn');
+      authService.currentUser.and.returnValue({
+        preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'standard' },
+      } as never);
+      transactionService.getTransactions.and.returnValue(throwError(() => new Error('offline')));
+      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(cloudLLMProvider.categorizeTransactions).toHaveBeenCalled();
+      expect(result.transactions.length).toBe(1);
     });
 
     it('skips the model entirely when every merchant is remembered', async () => {

@@ -1,4 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { GeminiService, RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
@@ -13,6 +14,7 @@ import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
 import { nextImportRowId } from '../utils/import-row-id.utils';
 import { CategoryMemoryService } from './category-memory.service';
+import { RagContextService } from './rag-context.service';
 import {
   ImportResult,
   ImportWarning,
@@ -22,14 +24,22 @@ import {
   ImportFileType,
   CreateTransactionDTO,
   DuplicateCheck,
-  CATEGORY_MEMORY_CONFIDENCE
+  CATEGORY_MEMORY_CONFIDENCE,
+  effectiveRagLevel
 } from '../../models';
+
+/**
+ * How far back the categorization grounding looks. Habits change, so a recent
+ * window describes how the user files things now rather than how they once did.
+ */
+const CATEGORIZATION_HISTORY_MONTHS = 6;
 
 @Injectable({ providedIn: 'root' })
 export class AIImportService {
   private geminiService = inject(GeminiService);
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private categoryMemory = inject(CategoryMemoryService);
+  private ragContext = inject(RagContextService);
   private exportService = inject(ExportService);
   private duplicateService = inject(DuplicateDetectionService);
   private importHistoryService = inject(ImportHistoryService);
@@ -306,7 +316,8 @@ export class AIImportService {
     if (unknownIndexes.length > 0 && this.cloudLLMProvider.hasAnyCloudProvider()) {
       try {
         const asked = await this.cloudLLMProvider.categorizeTransactions(
-          unknownIndexes.map(index => rawTransactions[index])
+          unknownIndexes.map(index => rawTransactions[index]),
+          await this.buildCategorizationGrounding()
         );
         // The provider indexes its answers against what it was sent, so map
         // them back onto the original positions.
@@ -350,6 +361,38 @@ export class AIImportService {
         }
       };
     });
+  }
+
+  /**
+   * How this user has categorized things before, for grounding the model's
+   * suggestions in their habits rather than in what a merchant generally sells.
+   *
+   * Gated on the same `ragInsightsLevel` preference as the insights grounding:
+   * off means the prompt is byte-identical to its ungrounded form, and no
+   * transaction history leaves the device. Failing to build it is not worth
+   * failing an import over — the model just answers unaided, as it did before.
+   */
+  private async buildCategorizationGrounding(): Promise<string | undefined> {
+    const level = effectiveRagLevel(this.authService.currentUser()?.preferences);
+    if (level === 'off') {
+      return undefined;
+    }
+
+    try {
+      // A recent window rather than everything: habits change, and the point
+      // is to describe how this user files things now.
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - CATEGORIZATION_HISTORY_MONTHS);
+
+      const history = await firstValueFrom(
+        this.transactionService.getTransactions({ startDate })
+      );
+      const grounding = this.ragContext.buildCategorizationGrounding({ transactions: history });
+      return grounding || undefined;
+    } catch (error) {
+      console.warn('[AIImport] Could not build categorization grounding:', error);
+      return undefined;
+    }
   }
 
   /**

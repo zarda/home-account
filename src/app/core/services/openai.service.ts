@@ -263,7 +263,10 @@ export class OpenAIService implements CloudLLMProviderAdapter {
   }
 
   // Categorize multiple transactions
-  async categorizeTransactions(transactions: RawTransaction[]): Promise<CategorizedTransaction[]> {
+  async categorizeTransactions(
+    transactions: RawTransaction[],
+    grounding?: string
+  ): Promise<CategorizedTransaction[]> {
     if (!this.client) {
       throw new Error('OpenAI client not available');
     }
@@ -279,6 +282,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
 
       const rendered = renderPrompt('categorizeTransactions', {
         categoryCatalog: categoryList,
+        grounding,
         rows: transactions.map((t, i) => ({
           index: i,
           description: t.description,

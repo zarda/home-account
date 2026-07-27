@@ -250,8 +250,11 @@ export class CloudLLMProviderService {
   }
 
   /** Categorize multiple transactions. */
-  async categorizeTransactions(transactions: RawTransaction[]): Promise<CategorizedTransaction[]> {
-    return this.resolve('categorization').categorizeTransactions(transactions);
+  async categorizeTransactions(
+    transactions: RawTransaction[],
+    grounding?: string
+  ): Promise<CategorizedTransaction[]> {
+    return this.resolve('categorization').categorizeTransactions(transactions, grounding);
   }
 
   /** Detect CSV column mapping. */

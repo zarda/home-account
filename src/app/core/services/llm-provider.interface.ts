@@ -70,7 +70,11 @@ export interface CloudLLMProviderAdapter {
 
   // Categorization
   suggestCategory(description: string, categories: Category[]): Promise<string>;
-  categorizeTransactions(transactions: RawTransaction[]): Promise<CategorizedTransaction[]>;
+  /** `grounding` is the user's own categorization history; omitted when RAG is off. */
+  categorizeTransactions(
+    transactions: RawTransaction[],
+    grounding?: string
+  ): Promise<CategorizedTransaction[]>;
   detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping>;
 
   // Search

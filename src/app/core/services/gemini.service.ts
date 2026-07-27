@@ -325,7 +325,8 @@ export class GeminiService implements CloudLLMProviderAdapter {
 
   // Categorize multiple transactions
   async categorizeTransactions(
-    transactions: RawTransaction[]
+    transactions: RawTransaction[],
+    grounding?: string
   ): Promise<CategorizedTransaction[]> {
     if (!this.textModel) {
       throw new Error('Gemini text model not available');
@@ -342,6 +343,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
 
       const rendered = renderPrompt('categorizeTransactions', {
         categoryCatalog: categoryList,
+        grounding,
         rows: transactions.map((t, i) => ({
           index: i,
           description: t.description,
