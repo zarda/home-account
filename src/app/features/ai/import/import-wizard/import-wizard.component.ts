@@ -24,6 +24,7 @@ import { TransactionPreviewTableComponent } from '../transaction-preview-table/t
 import { DuplicateWarningComponent, DuplicateInfo } from '../duplicate-warning/duplicate-warning.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { AnalyticsService } from '../../../../core/services/analytics.service';
 
 @Component({
   selector: 'app-import-wizard',
@@ -48,6 +49,7 @@ import { NotificationService } from '../../../../core/services/notification.serv
 export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private notifications = inject(NotificationService);
   private importService = inject(AIImportService);
+  private analytics = inject(AnalyticsService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private router = inject(Router);
@@ -257,11 +259,29 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           .map(t => t.id)
       );
       this.selectedTransactionIds.set(nonDuplicateIds);
+
+      // Only images are receipts. This method also handles CSV, PDF and JSON,
+      // and counting a bank statement as a receipt import would make the
+      // reliability figure this event exists to produce meaningless.
+      if (imageFiles.length >= 1) {
+        this.analytics.trackReceiptImport({
+          outcome: this.extractedTransactions().length > 0 ? 'ok' : 'failed',
+        });
+      }
     } catch (error) {
       const parsed = this.importService.parseAIError(error);
       this.processingError.set(parsed.message);
       this.processingErrorType.set(parsed.type);
       this.processingErrorRetryable.set(parsed.retryable);
+
+      if (this.selectedFiles().some(f => f.type.startsWith('image/'))) {
+        // A later non-image file can throw after the images already produced
+        // transactions; the user still has a usable review step, so that is a
+        // success with a broken tail, not a failed import.
+        this.analytics.trackReceiptImport({
+          outcome: this.extractedTransactions().length > 0 ? 'ok' : 'failed',
+        });
+      }
     }
   }
 
