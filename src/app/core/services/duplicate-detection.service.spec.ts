@@ -424,4 +424,82 @@ describe('DuplicateDetectionService', () => {
       expect(service.applyMultiImageDeduplication([])).toEqual([]);
     });
   });
+
+  describe('findWithinBatchDuplicates', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction> = {}) => importTxn({
+      id: `row-${Math.random()}`,
+      ...overrides,
+    });
+
+    it('keeps the first occurrence and flags the later one', () => {
+      // Overlapping exports are the usual cause: the same charge in two files.
+      const checks = service.findWithinBatchDuplicates([
+        row({ id: 'a', description: 'Coffee Shop', amount: 5 }),
+        row({ id: 'b', description: 'Coffee Shop', amount: 5 }),
+      ]);
+
+      expect(checks.length).toBe(1);
+      expect(checks[0].transactionId).toBe('b');
+      expect(checks[0].matchType).toBe('within_batch');
+      expect(checks[0].existingTransactionId).toBe('a');
+    });
+
+    it('flags every later copy, not just the second', () => {
+      const checks = service.findWithinBatchDuplicates([
+        row({ id: 'a', description: 'Coffee Shop', amount: 5 }),
+        row({ id: 'b', description: 'Coffee Shop', amount: 5 }),
+        row({ id: 'c', description: 'Coffee Shop', amount: 5 }),
+      ]);
+
+      expect(checks.map(c => c.transactionId)).toEqual(['b', 'c']);
+    });
+
+    it('leaves genuinely different rows alone', () => {
+      const checks = service.findWithinBatchDuplicates([
+        row({ id: 'a', description: 'Coffee Shop', amount: 5 }),
+        row({ id: 'b', description: 'Bookshop', amount: 5 }),
+        row({ id: 'c', description: 'Coffee Shop', amount: 9 }),
+      ]);
+
+      expect(checks).toEqual([]);
+    });
+
+    it('does not match across different days', () => {
+      // Within one import a neighbouring date is far likelier to be two real
+      // transactions than one duplicated row, so there is no ±1 day window.
+      const checks = service.findWithinBatchDuplicates([
+        row({ id: 'a', description: 'Coffee Shop', amount: 5, date: new Date(2024, 5, 15) }),
+        row({ id: 'b', description: 'Coffee Shop', amount: 5, date: new Date(2024, 5, 16) }),
+      ]);
+
+      expect(checks).toEqual([]);
+    });
+
+    it('does not match an expense against an income of the same amount', () => {
+      const checks = service.findWithinBatchDuplicates([
+        row({ id: 'a', description: 'Transfer', amount: 50, type: 'expense' }),
+        row({ id: 'b', description: 'Transfer', amount: 50, type: 'income' }),
+      ]);
+
+      expect(checks).toEqual([]);
+    });
+
+    it('leaves a row already flagged against stored history alone', () => {
+      // That verdict is more specific; saying it twice would double-count the
+      // row in the duplicate panel.
+      const checks = service.findWithinBatchDuplicates(
+        [
+          row({ id: 'a', description: 'Coffee Shop', amount: 5 }),
+          row({ id: 'b', description: 'Coffee Shop', amount: 5 }),
+        ],
+        [{ transactionId: 'b', isDuplicate: true, matchType: 'exact', confidence: 1 }]
+      );
+
+      expect(checks).toEqual([]);
+    });
+
+    it('returns nothing for an empty batch', () => {
+      expect(service.findWithinBatchDuplicates([])).toEqual([]);
+    });
+  });
 });

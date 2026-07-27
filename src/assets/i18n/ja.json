@@ -801,7 +801,8 @@
     "imageKindReceiptHint": "1枚のレシート内の項目は1件の取引にまとめられます。",
     "imageKindStatementHint": "明細の各行がそれぞれ1件の取引になります。",
     "verifyAmount": "この金額を確認してください。AIの読み取り確信度は{{percent}}%です",
-    "verifyDate": "この日付を確認してください。AIの読み取り確信度は{{percent}}%です"
+    "verifyDate": "この日付を確認してください。AIの読み取り確信度は{{percent}}%です",
+    "matchWithinBatch": "このインポート内で重複"
   },
   "errors": {
     "generic": "エラーが発生しました。もう一度お試しください。",

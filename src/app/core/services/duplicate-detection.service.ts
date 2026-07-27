@@ -150,6 +150,85 @@ export class DuplicateDetectionService {
   }
 
   /**
+   * Find rows that duplicate an earlier row in the same import.
+   *
+   * `checkDuplicates` only compares incoming rows against what is already
+   * stored, so two overlapping exports — or one statement listing the same
+   * charge twice — sailed through and created duplicates the user then had to
+   * find and delete by hand.
+   *
+   * Runs after the wizard has concatenated every file's rows, because a
+   * duplicate spanning two files is the case that matters most and is
+   * invisible to any per-file pass.
+   *
+   * The first occurrence is always kept. Later ones are reported so the wizard
+   * can deselect them while leaving them visible: overlapping exports are
+   * usually genuine duplicates, but a real pair of identical charges on the
+   * same day exists too, and only the user can tell them apart.
+   */
+  findWithinBatchDuplicates(
+    transactions: CategorizedImportTransaction[],
+    existingChecks: DuplicateCheck[] = []
+  ): DuplicateCheck[] {
+    const alreadyFlagged = new Set(
+      existingChecks.filter(c => c.isDuplicate).map(c => c.transactionId)
+    );
+    const checks: DuplicateCheck[] = [];
+    const kept: CategorizedImportTransaction[] = [];
+
+    for (const candidate of transactions) {
+      // A row already flagged against stored history keeps that verdict: it is
+      // more specific, and re-flagging it here would say the same thing twice.
+      if (alreadyFlagged.has(candidate.id)) {
+        continue;
+      }
+
+      const twin = kept.find(earlier => this.isSameRow(earlier, candidate));
+      if (twin) {
+        checks.push({
+          transactionId: candidate.id,
+          isDuplicate: true,
+          matchType: 'within_batch',
+          existingTransactionId: twin.id,
+          confidence: 0.9,
+        });
+      } else {
+        kept.push(candidate);
+      }
+    }
+
+    return checks;
+  }
+
+  /**
+   * Whether two rows in one import describe the same transaction.
+   *
+   * Stricter than the stored-history comparison: same day, same amount, same
+   * direction and a similar description. There is no ±1 day window here,
+   * because within a single import a neighbouring date is far likelier to be
+   * two real transactions than one duplicated row.
+   */
+  private isSameRow(
+    a: CategorizedImportTransaction,
+    b: CategorizedImportTransaction
+  ): boolean {
+    return (
+      a.type === b.type &&
+      this.isSameAmount(a.amount, b.amount) &&
+      this.isSameDay(a.date, b.date) &&
+      this.descriptionsSimilar(a.description, b.description)
+    );
+  }
+
+  private isSameDay(a: Date, b: Date): boolean {
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
+  }
+
+  /**
    * Check if two amounts are the same (within floating point tolerance)
    */
   private isSameAmount(amount1: number, amount2: number): boolean {

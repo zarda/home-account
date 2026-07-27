@@ -6,6 +6,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { AIImportService } from '../../../../core/services/ai-import.service';
+import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
@@ -22,6 +23,7 @@ describe('ImportWizardComponent', () => {
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
   let mockRouter: jasmine.SpyObj<Router>;
+  let mockDuplicateService: jasmine.SpyObj<DuplicateDetectionService>;
 
   const mockCategories: Category[] = [
     {
@@ -118,6 +120,10 @@ describe('ImportWizardComponent', () => {
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockDuplicateService = jasmine.createSpyObj('DuplicateDetectionService', [
+      'findWithinBatchDuplicates',
+    ]);
+    mockDuplicateService.findWithinBatchDuplicates.and.returnValue([]);
 
     await TestBed.configureTestingModule({
       imports: [ImportWizardComponent, NoopAnimationsModule],
@@ -128,7 +134,8 @@ describe('ImportWizardComponent', () => {
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: AnnouncerService, useValue: mockAnnouncer },
-        { provide: Router, useValue: mockRouter }
+        { provide: Router, useValue: mockRouter },
+        { provide: DuplicateDetectionService, useValue: mockDuplicateService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -425,6 +432,70 @@ describe('ImportWizardComponent', () => {
       component.extractedTransactions.set(transactions);
 
       expect(component.duplicatesSkipped()).toBe(1);
+    });
+  });
+
+  describe('in-batch duplicates', () => {
+    it('flags and deselects a row that repeats another in the same import', async () => {
+      // Two overlapping files: the same charge arrives twice, and the
+      // per-file checks only ever compared against stored history.
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([
+        { transactionId: 'txn2', isDuplicate: true, matchType: 'within_batch',
+          existingTransactionId: 'txn1', confidence: 0.9 },
+      ]);
+
+      component.selectedFiles.set([new File([''], 'a.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+
+      const repeated = component.extractedTransactions().find(t => t.id === 'txn2');
+      expect(repeated?.isDuplicate).toBeTrue();
+      expect(repeated?.selected).toBeFalse();
+      expect(component.selectedTransactionIds().has('txn2')).toBeFalse();
+    });
+
+    it('leaves the first occurrence selected', async () => {
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([
+        { transactionId: 'txn2', isDuplicate: true, matchType: 'within_batch',
+          existingTransactionId: 'txn1', confidence: 0.9 },
+      ]);
+
+      component.selectedFiles.set([new File([''], 'a.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+
+      const first = component.extractedTransactions().find(t => t.id === 'txn1');
+      expect(first?.isDuplicate).toBeFalse();
+      expect(component.selectedTransactionIds().has('txn1')).toBeTrue();
+    });
+
+    it('surfaces the repeat in the duplicate panel so it can be recovered', async () => {
+      // Deselected, not dropped: a genuine pair of identical charges on one
+      // day exists, and only the user can tell it from an overlap.
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([
+        { transactionId: 'txn2', isDuplicate: true, matchType: 'within_batch',
+          existingTransactionId: 'txn1', confidence: 0.9 },
+      ]);
+
+      component.selectedFiles.set([new File([''], 'a.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+
+      expect(component.duplicateInfos().some(i => i.check.matchType === 'within_batch')).toBeTrue();
+
+      component.includeAllDuplicates();
+      expect(component.extractedTransactions().find(t => t.id === 'txn2')?.selected).toBeTrue();
+    });
+
+    it('runs the pass over every file\'s rows at once', async () => {
+      component.selectedFiles.set([
+        new File([''], 'a.csv', { type: 'text/csv' }),
+        new File([''], 'b.csv', { type: 'text/csv' }),
+      ]);
+      await component.processFiles();
+
+      // One call, after both files are concatenated — a per-file pass could
+      // never see a duplicate that spans them.
+      expect(mockDuplicateService.findWithinBatchDuplicates).toHaveBeenCalledTimes(1);
+      const rows = mockDuplicateService.findWithinBatchDuplicates.calls.mostRecent().args[0];
+      expect(rows.length).toBe(4);
     });
   });
 });

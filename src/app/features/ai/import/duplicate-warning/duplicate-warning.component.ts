@@ -39,6 +39,8 @@ export class DuplicateWarningComponent {
         return 'warning';
       case 'possible':
         return 'help';
+      case 'within_batch':
+        return 'content_copy';
       default:
         return 'info';
     }
@@ -60,6 +62,8 @@ export class DuplicateWarningComponent {
         return 'import.matchLikely';
       case 'possible':
         return 'import.matchPossible';
+      case 'within_batch':
+        return 'import.matchWithinBatch';
       default:
         return 'import.matchUnknown';
     }

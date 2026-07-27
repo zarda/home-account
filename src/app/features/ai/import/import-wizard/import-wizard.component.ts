@@ -10,6 +10,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 
 import { AIImportService } from '../../../../core/services/ai-import.service';
+import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
@@ -49,6 +50,7 @@ import { AnalyticsService } from '../../../../core/services/analytics.service';
 export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private notifications = inject(NotificationService);
   private importService = inject(AIImportService);
+  private duplicateService = inject(DuplicateDetectionService);
   private analytics = inject(AnalyticsService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
@@ -267,6 +269,25 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         const result: ImportResult = await this.importService.importFromFile(file);
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
+      }
+
+      // Every file's rows are in one array now, which is the only point a
+      // duplicate spanning two files can be seen. Per-file checks compare
+      // against stored history and are blind to each other.
+      const batchDuplicates = this.duplicateService.findWithinBatchDuplicates(
+        this.extractedTransactions(),
+        this.duplicateChecks()
+      );
+      if (batchDuplicates.length > 0) {
+        const flagged = new Set(batchDuplicates.map(c => c.transactionId));
+        this.duplicateChecks.update(checks => [...checks, ...batchDuplicates]);
+        this.extractedTransactions.update(txns =>
+          txns.map(t =>
+            flagged.has(t.id)
+              ? { ...t, isDuplicate: true, duplicateOf: undefined, selected: false }
+              : t
+          )
+        );
       }
 
       // Auto-select non-duplicates

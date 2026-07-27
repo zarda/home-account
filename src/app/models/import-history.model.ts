@@ -89,7 +89,12 @@ export interface CategorizedImportTransaction {
 export interface DuplicateCheck {
   transactionId: string;
   isDuplicate: boolean;
-  matchType: 'exact' | 'likely' | 'possible' | 'none';
+  /**
+   * `within_batch` means the row duplicates another row in the same import,
+   * rather than something already stored. Overlapping exports are the usual
+   * cause — the same charge appearing in two files, or twice on one statement.
+   */
+  matchType: 'exact' | 'likely' | 'possible' | 'within_batch' | 'none';
   existingTransactionId?: string;
   confidence: number;
 }
