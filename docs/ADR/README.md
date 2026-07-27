@@ -9,6 +9,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0002](0002-insights-and-monthly-snapshots.md) | Spending-pattern insights and monthly snapshots | Accepted | 2026-07-26 |
 | [0003](0003-analytics-consent-and-taxonomy.md) | Opt-in analytics: consent gate and event taxonomy | Accepted; consent model superseded by 0004 | 2026-07-27 |
 | [0004](0004-tier-gated-analytics.md) | Usage statistics are part of the free tier | Accepted | 2026-07-27 |
+| [0005](0005-prompt-registry-and-provider-parity.md) | One prompt registry, and a contract the providers must satisfy | Accepted | 2026-07-27 |
 
 ## What belongs here
 

@@ -23,7 +23,7 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Smart Search** - Ask questions in plain language from the app header ("how much did I spend on groceries last month"); the AI only translates the question into filters or an aggregate operation — every number shown is computed locally from your transactions, and it degrades to keyword search offline
 - **Budgets** - Period-based budget limits with recurring transactions management
 - **Reports** - Financial analytics with CSV and PDF export
-- **AI Import** - Import transactions from receipt images with category auto-choose validated against your catalog, sub-category targets, and per-row model confidence that drives the "needs review" flow
+- **AI Import** - Import receipts, bank-statement screenshots and PDF statements. Statements become one transaction per line; receipts collapse to the purchase they add up to. Categories are validated against your catalog, corrections are remembered per merchant so the same shop is never re-asked, and amounts or dates the model was unsure it read are flagged for a second look. PDFs work with any vision-capable provider — see [docs/prompts.md](docs/prompts.md)
 - **AI Insights** - Spending summaries and advice with selectable detail-grounding levels (Off/Light/Standard/Deep) that trade token cost and speed for detail; transaction details are only shared with your configured AI provider when enabled — see [docs/rag-insights.md](docs/rag-insights.md)
 - **Camera Capture** - Take photos directly from the app for receipt scanning
 - **Dark Mode** - Light/dark/system theme support
@@ -199,6 +199,7 @@ The web app is a fully-featured Progressive Web App:
 | `npm run lint` | ESLint |
 | `npm run i18n:check` | Verify every literal translation key resolves in all locales |
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
+| `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `firebase deploy` | Deploy web to Firebase Hosting |
 
 ## Continuous Integration
@@ -212,6 +213,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translatio
 | Doc | Contents |
 |-----|----------|
 | [docs/analytics.md](docs/analytics.md) | GA4 event taxonomy, tagging registry, consent, privacy boundary, console setup |
+| [docs/prompts.md](docs/prompts.md) | The prompt registry, how prompts are written, and what the consistency check can and cannot see |
 | [docs/insights.md](docs/insights.md) | Spending-pattern detectors, monthly snapshots, card contract, privacy boundary |
 | [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
 | [docs/remote-config.md](docs/remote-config.md) | Firebase Remote Config parameters and defaults |
