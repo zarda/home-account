@@ -2,6 +2,12 @@
 
 **Status:** Accepted, implemented · **Date:** 2026-07-27 · **Issues:** #110, #111, #112, #113, #114
 
+> The consent model below — opt-in for everyone, defaulting to off — was
+> superseded the same day by [0004](0004-tier-gated-analytics.md), which makes
+> collection part of the free tier. Everything else here still holds: the lazy
+> initialisation, the enumerated taxonomy, the tagging placement and the CI
+> check are unchanged.
+
 Reference documentation lives in [../analytics.md](../analytics.md). This record
 keeps the decisions and the reasoning, including two places where the
 implementation could not do what the issues asked.
@@ -42,6 +48,10 @@ stored preference. So the gate is a property of the wiring rather than a check
 someone has to remember to write.
 
 ### Consent lives on the user document, not the device
+
+*(Superseded in part by [0004](0004-tier-gated-analytics.md): the storage
+location and absent-means-off still hold, but the preference is now read only
+for premium accounts.)*
 
 It is `enableUsageAnalytics` in the Firestore preferences map, absent by
 default, read through an accessor that treats absent as off — the same shape as

@@ -3,8 +3,11 @@ import {
   RAG_INSIGHTS_LEVELS,
   RAG_TIER_CONFIGS,
   RagInsightsLevel,
+  User,
   UserPreferences,
+  canDisableUsageAnalytics,
   effectiveRagLevel,
+  subscriptionTier,
   usageAnalyticsEnabled,
 } from './user.model';
 
@@ -46,39 +49,98 @@ describe('effectiveRagLevel', () => {
 });
 
 describe('usageAnalyticsEnabled', () => {
-  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
-    ...DEFAULT_USER_PREFERENCES,
-    ...overrides,
-  });
+  const user = (overrides: Partial<User> = {}): User =>
+    ({ id: 'u1', preferences: { ...DEFAULT_USER_PREFERENCES }, ...overrides }) as User;
 
-  it('should be off for missing preferences', () => {
-    // Signed out, and the window before the user document arrives. Neither
-    // may read as consent, which is what keeps the app silent at boot.
+  it('should be off with no account', () => {
+    // A signed-out session and the window before the user document arrives both
+    // land here. Neither can be attributed to a tier, so both stay silent.
     expect(usageAnalyticsEnabled(undefined)).toBeFalse();
     expect(usageAnalyticsEnabled(null)).toBeFalse();
   });
 
-  it('should be off when the field is absent', () => {
-    // Every account created before the setting shipped is in this state, so
-    // absent has to mean off rather than "not migrated yet".
-    expect(usageAnalyticsEnabled(prefs({}))).toBeFalse();
+  it('should be on for a free-tier account', () => {
+    // No subscription record means free tier, which includes collection.
+    expect(usageAnalyticsEnabled(user())).toBeTrue();
+    expect(usageAnalyticsEnabled(user({ subscription: { tier: 'free' } }))).toBeTrue();
   });
 
-  it('should be off unless the stored value is exactly true', () => {
-    expect(usageAnalyticsEnabled(prefs({ enableUsageAnalytics: false }))).toBeFalse();
-    // A map written by another build could hold anything; only a real boolean
-    // true is consent.
+  it('should ignore a stored opt-out on the free tier', () => {
+    // A false left behind by a lapsed premium account must not disable
+    // collection the free tier includes.
+    const optedOut = user({
+      preferences: { ...DEFAULT_USER_PREFERENCES, enableUsageAnalytics: false },
+    });
+
+    expect(usageAnalyticsEnabled(optedOut)).toBeTrue();
+  });
+
+  it('should honour the stored preference on premium', () => {
+    const base = { subscription: { tier: 'premium' as const } };
+
     expect(
-      usageAnalyticsEnabled(prefs({ enableUsageAnalytics: 'yes' as unknown as boolean }))
+      usageAnalyticsEnabled(
+        user({ ...base, preferences: { ...DEFAULT_USER_PREFERENCES, enableUsageAnalytics: false } })
+      )
     ).toBeFalse();
+    expect(
+      usageAnalyticsEnabled(
+        user({ ...base, preferences: { ...DEFAULT_USER_PREFERENCES, enableUsageAnalytics: true } })
+      )
+    ).toBeTrue();
   });
 
-  it('should be on when the account opted in', () => {
-    expect(usageAnalyticsEnabled(prefs({ enableUsageAnalytics: true }))).toBeTrue();
+  it('should default premium to off when the preference is absent', () => {
+    // Premium is where the choice lives, so an unanswered choice is off.
+    expect(usageAnalyticsEnabled(user({ subscription: { tier: 'premium' } }))).toBeFalse();
   });
 
-  it('should stay out of the defaults so a new account starts opted out', () => {
+  it('should require exactly true on premium', () => {
+    const loose = user({
+      subscription: { tier: 'premium' },
+      preferences: {
+        ...DEFAULT_USER_PREFERENCES,
+        enableUsageAnalytics: 'yes' as unknown as boolean,
+      },
+    });
+
+    expect(usageAnalyticsEnabled(loose)).toBeFalse();
+  });
+
+  it('should stay out of the defaults', () => {
     expect('enableUsageAnalytics' in DEFAULT_USER_PREFERENCES).toBeFalse();
+  });
+});
+
+describe('canDisableUsageAnalytics', () => {
+  const user = (tier?: 'free' | 'premium'): User =>
+    ({
+      id: 'u1',
+      preferences: { ...DEFAULT_USER_PREFERENCES },
+      ...(tier ? { subscription: { tier } } : {}),
+    }) as User;
+
+  it('should be a premium entitlement', () => {
+    expect(canDisableUsageAnalytics(user('premium'))).toBeTrue();
+  });
+
+  it('should be denied on the free tier and with no account', () => {
+    expect(canDisableUsageAnalytics(user())).toBeFalse();
+    expect(canDisableUsageAnalytics(user('free'))).toBeFalse();
+    expect(canDisableUsageAnalytics(null)).toBeFalse();
+  });
+});
+
+describe('subscriptionTier', () => {
+  it('should treat an absent subscription as the free tier', () => {
+    expect(subscriptionTier(null)).toBe('free');
+    expect(subscriptionTier({ id: 'u1' } as User)).toBe('free');
+  });
+
+  it('should report a stored tier', () => {
+    expect(subscriptionTier({ id: 'u1', subscription: { tier: 'premium' } } as User)).toBe(
+      'premium'
+    );
   });
 });
 

@@ -15,30 +15,44 @@ The reasoning behind how this is built — and what was rejected — is in
 
 ## Consent
 
-Off until the account turns it on, in **Settings → Preferences → Share
-anonymous usage statistics**.
+Usage statistics are **part of the free plan and always on there**. Turning them
+off is a premium entitlement.
 
-The preference is `enableUsageAnalytics` on the Firestore user document. It is
-absent by default and read through `usageAnalyticsEnabled()`, which treats
-absent as off — so a fresh account, a signed-out session, an account created
-before this shipped, and the moment between app start and the user document
-arriving are all off without needing a migration.
+| Tier | Collection | The setting |
+|---|---|---|
+| Free (no subscription record) | Always on | Shown on, disabled, with the reason |
+| Premium | The stored preference, absent meaning off | Interactive |
+| Signed out | Never | Not reachable |
 
-Turning it on or off takes effect immediately; there is no reload. Both the
-toggle and `AnalyticsService` read the same signal, so the switch cannot
+`enableUsageAnalytics` on the Firestore user document holds the premium choice.
+On the free tier it is **not read at all**, so a `false` left behind by a lapsed
+premium account does not disable collection. Signed out is off regardless: no
+account means nothing to attribute to a tier, which is what keeps the app silent
+between start-up and the user document arriving.
+
+Changing tier or preference takes effect immediately; there is no reload. The
+setting and `AnalyticsService` read the same signal, so the control cannot
 disagree with what is actually happening.
 
-Asking once during first run is not implemented — it belongs with the
-onboarding flow in #83. Until then the setting is discoverable only in
-Settings.
+**Regional caveat, unresolved.** Analytics storage needs freely-given consent
+under GDPR and ePrivacy. Collection that is a condition of the free plan is the
+"consent or pay" model, which the EDPB accepts only where the paid alternative
+genuinely exists and is reasonably priced. Premium is not implemented yet, so
+today there is no alternative to point an EU or UK user at. Making the free tier
+opt-in for those regions — or shipping premium — is what closes this, and until
+one of them happens the exposure is real. See
+[ADR/0004](ADR/0004-tier-gated-analytics.md).
 
 ## Privacy: what leaves the device
 
-Nothing is sent until the toggle is on. While it is off, the SDK is never
-initialised: no gtag script, no cookie, no request to `google-analytics.com`.
-Not a suppressed request — no request. That is why the SDK is created lazily
-rather than created and then disabled; disabling afterwards would already have
-loaded the tag and sent a page view.
+Nothing is sent while collection is off — a signed-out session, or a premium
+account that has not opted in. In that state the SDK is never initialised: no
+gtag script, no cookie, no request to `google-analytics.com`. Not a suppressed
+request — no request. That is why the SDK is created lazily rather than created
+and then disabled; disabling afterwards would already have loaded the tag and
+sent a page view.
+
+On the free tier collection begins as soon as the user document resolves.
 
 What is sent: the event name, the parameter names in the registry below, and
 for each of those parameters one value from the fixed list declared beside it

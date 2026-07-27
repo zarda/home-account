@@ -28,7 +28,7 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Camera Capture** - Take photos directly from the app for receipt scanning
 - **Dark Mode** - Light/dark/system theme support
 - **Multi-language** - English, Traditional Chinese, Japanese
-- **Usage statistics** - Off by default. When switched on in Settings, only which screens are opened and which features are used are shared; never amounts, merchants, categories, notes or anything you typed — see [docs/analytics.md](docs/analytics.md)
+- **Usage statistics** - Included in the free plan; premium accounts can turn it off. Only which screens are opened and which features are used are recorded; never amounts, merchants, categories, notes or anything you typed — see [docs/analytics.md](docs/analytics.md)
 - **PWA Support** - Install as a native app on iOS/Android, works offline
 
 ## Platform-Specific Features

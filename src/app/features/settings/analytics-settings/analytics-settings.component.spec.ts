@@ -6,7 +6,7 @@ import { AnalyticsSettingsComponent } from './analytics-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { User, UserPreferences } from '../../../models';
+import { SubscriptionTier, User, UserPreferences } from '../../../models';
 
 describe('AnalyticsSettingsComponent', () => {
   let fixture: ComponentFixture<AnalyticsSettingsComponent>;
@@ -15,8 +15,15 @@ describe('AnalyticsSettingsComponent', () => {
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let notifications: jasmine.SpyObj<NotificationService>;
 
-  const userWith = (preferences: Partial<UserPreferences>): User =>
-    ({ id: 'user-1', preferences }) as User;
+  const userWith = (
+    preferences: Partial<UserPreferences>,
+    tier?: SubscriptionTier
+  ): User =>
+    ({
+      id: 'user-1',
+      preferences,
+      ...(tier ? { subscription: { tier } } : {}),
+    }) as User;
 
   beforeEach(async () => {
     currentUser = signal<User | null>(userWith({ baseCurrency: 'USD' }));
@@ -43,59 +50,97 @@ describe('AnalyticsSettingsComponent', () => {
     fixture.detectChanges();
   });
 
-  it('should start off when the preference is absent', () => {
-    // Every account created before the setting shipped is in this state.
-    expect(component.enabled()).toBeFalse();
-  });
+  describe('free tier', () => {
+    it('should show collection as on', () => {
+      // Included in the free plan, so there is nothing to opt in to.
+      expect(component.enabled()).toBeTrue();
+    });
 
-  it('should read the stored opt-in', () => {
-    currentUser.set(userWith({ enableUsageAnalytics: true }));
+    it('should not offer the control', () => {
+      expect(component.canDisable()).toBeFalse();
+    });
 
-    expect(component.enabled()).toBeTrue();
-  });
+    it('should show as on even with a stored opt-out', () => {
+      // A false left behind by a lapsed premium account.
+      currentUser.set(userWith({ enableUsageAnalytics: false }));
 
-  it('should save the opt-in without dropping other preferences', async () => {
-    await component.onEnabledChange(true);
+      expect(component.enabled()).toBeTrue();
+    });
 
-    // updateUserPreferences rewrites the whole map, so the spread is what
-    // stops a consent change from wiping the rest of the account's settings.
-    expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
-      baseCurrency: 'USD',
-      enableUsageAnalytics: true,
+    it('should refuse to write a preference it is not entitled to change', async () => {
+      // The template disables the toggle, but a disabled control is a UI
+      // affordance rather than a guarantee — the handler is public.
+      await component.onEnabledChange(false);
+
+      expect(mockAuthService.updateUserPreferences).not.toHaveBeenCalled();
+      expect(component.enabled()).toBeTrue();
     });
   });
 
-  it('should save the opt-out', async () => {
-    currentUser.set(userWith({ baseCurrency: 'USD', enableUsageAnalytics: true }));
-
-    await component.onEnabledChange(false);
-
-    expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
-      baseCurrency: 'USD',
-      enableUsageAnalytics: false,
-    });
-  });
-
-  it('should follow the preference rather than the last click', async () => {
-    mockAuthService.updateUserPreferences.and.callFake(async () => {
-      currentUser.set(userWith({ baseCurrency: 'USD', enableUsageAnalytics: true }));
+  describe('premium', () => {
+    beforeEach(() => {
+      currentUser.set(userWith({ baseCurrency: 'USD' }, 'premium'));
     });
 
-    await component.onEnabledChange(true);
+    it('should default to off when the choice has not been made', () => {
+      expect(component.enabled()).toBeFalse();
+    });
 
-    // The displayed state comes from the same signal AnalyticsService acts on,
-    // so the two cannot disagree — including when the change arrives from
-    // another device.
-    expect(component.enabled()).toBeTrue();
-  });
+    it('should offer the control', () => {
+      expect(component.canDisable()).toBeTrue();
+    });
 
-  it('should report a failed save and leave the toggle showing the stored value', async () => {
-    mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('offline')));
+    it('should read the stored opt-in', () => {
+      currentUser.set(userWith({ enableUsageAnalytics: true }, 'premium'));
 
-    await component.onEnabledChange(true);
+      expect(component.enabled()).toBeTrue();
+    });
 
-    expect(notifications.error).toHaveBeenCalledWith('common.error');
-    // Nothing was persisted, so the toggle must not claim otherwise.
-    expect(component.enabled()).toBeFalse();
+    it('should save the opt-in without dropping other preferences', async () => {
+      await component.onEnabledChange(true);
+
+      // updateUserPreferences rewrites the whole map, so the spread is what
+      // stops a consent change from wiping the rest of the account's settings.
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
+        baseCurrency: 'USD',
+        enableUsageAnalytics: true,
+      });
+    });
+
+    it('should save the opt-out', async () => {
+      currentUser.set(userWith({ baseCurrency: 'USD', enableUsageAnalytics: true }, 'premium'));
+
+      await component.onEnabledChange(false);
+
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
+        baseCurrency: 'USD',
+        enableUsageAnalytics: false,
+      });
+    });
+
+    it('should follow the preference rather than the last click', async () => {
+      mockAuthService.updateUserPreferences.and.callFake(async () => {
+        currentUser.set(
+          userWith({ baseCurrency: 'USD', enableUsageAnalytics: true }, 'premium')
+        );
+      });
+
+      await component.onEnabledChange(true);
+
+      // The displayed state comes from the same signal AnalyticsService acts on,
+      // so the two cannot disagree — including when the change arrives from
+      // another device.
+      expect(component.enabled()).toBeTrue();
+    });
+
+    it('should report a failed save and keep showing the stored value', async () => {
+      mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('offline')));
+
+      await component.onEnabledChange(true);
+
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
+      // Nothing was persisted, so the toggle must not claim otherwise.
+      expect(component.enabled()).toBeFalse();
+    });
   });
 });

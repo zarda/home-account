@@ -82,8 +82,8 @@ export interface UserPreferences {
                                        // legacy boolean (true→'standard', else 'off').
   enableAppLock?: boolean;       // Absent = off. Requires a credential on this device.
   appLockTimeoutMinutes?: number; // Grace period after backgrounding; absent = default.
-  enableUsageAnalytics?: boolean; // Absent = off. Anonymous product usage only — see
-                                  // docs/analytics.md for what is and is not collected.
+  enableUsageAnalytics?: boolean; // Premium only, absent = off. Ignored on the free tier,
+                                  // where collection is always on — see docs/analytics.md.
 }
 
 /** Auto-lock delays offered in settings, in minutes. 0 locks immediately. */
@@ -110,17 +110,39 @@ export function effectiveAppLockTimeoutMinutes(
   return DEFAULT_APP_LOCK_TIMEOUT_MINUTES;
 }
 
+/** The account's tier. No subscription record means the free tier. */
+export function subscriptionTier(user: User | null | undefined): SubscriptionTier {
+  return user?.subscription?.tier ?? 'free';
+}
+
 /**
- * Whether the account opted in to anonymous usage statistics.
+ * Whether anonymous usage statistics are collected for this account.
  *
- * Absent means off, and that is load-bearing rather than merely tidy: a
- * preferences map written by an older build, a signed-out session, and the
- * window before the user document arrives all read as absent, and none of
- * them may be treated as consent. Analytics is never initialised while this
- * is false, so "off" means no request was made rather than a suppressed one.
+ * Free tier: always. Usage statistics are part of what the free tier gives
+ * back, so `enableUsageAnalytics` is not consulted at all — a stored `false`
+ * from a lapsed premium account does not disable collection.
+ *
+ * Premium: the stored preference, absent meaning off. Turning collection off is
+ * a paid entitlement.
+ *
+ * No account: never. A signed-out session and the window before the user
+ * document arrives both land here, and neither can be attributed to a tier, so
+ * both stay silent. Analytics is not initialised while this is false, so "off"
+ * means no request was made rather than a suppressed one.
  */
-export function usageAnalyticsEnabled(prefs: UserPreferences | null | undefined): boolean {
-  return prefs?.enableUsageAnalytics === true;
+export function usageAnalyticsEnabled(user: User | null | undefined): boolean {
+  if (!user) {
+    return false;
+  }
+  if (subscriptionTier(user) === 'premium') {
+    return user.preferences?.enableUsageAnalytics === true;
+  }
+  return true;
+}
+
+/** Whether this account is allowed to turn usage statistics off. */
+export function canDisableUsageAnalytics(user: User | null | undefined): boolean {
+  return subscriptionTier(user) === 'premium';
 }
 
 /** Detail-grounding depth for AI insights — a token/latency vs. detail trade-off. */

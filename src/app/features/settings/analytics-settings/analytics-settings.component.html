@@ -5,12 +5,20 @@
   <div class="setting-row">
     <mat-slide-toggle
       [checked]="enabled()"
+      [disabled]="!canDisable()"
       (change)="onEnabledChange($event.checked)"
       aria-labelledby="usage-analytics-label"
+      [attr.aria-describedby]="canDisable() ? null : 'usage-analytics-tier-note'"
     >
       {{ 'analytics.enable' | translate }}
     </mat-slide-toggle>
   </div>
+
+  @if (!canDisable()) {
+    <p class="analytics-tier-note" id="usage-analytics-tier-note">
+      {{ 'analytics.freeTierNotice' | translate }}
+    </p>
+  }
 
   <p class="analytics-disclaimer">{{ 'analytics.disclaimer' | translate }}</p>
 </div>

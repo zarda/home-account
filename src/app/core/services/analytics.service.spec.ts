@@ -52,12 +52,20 @@ describe('AnalyticsService', () => {
   let isLoading: ReturnType<typeof signal<boolean>>;
   let routerEvents: { subscribe: jasmine.Spy };
 
-  const userWithConsent = (granted: boolean | undefined): User =>
+  /**
+   * Premium, because that is the only tier whose preference is consulted. The
+   * free tier ignores it, so a free user cannot express "off" and is useless
+   * for exercising the consent lifecycle.
+   */
+  const premiumUser = (granted: boolean | undefined): User =>
     ({
       id: 'user-1',
-      preferences:
-        granted === undefined ? {} : { enableUsageAnalytics: granted },
+      subscription: { tier: 'premium' },
+      preferences: granted === undefined ? {} : { enableUsageAnalytics: granted },
     }) as unknown as User;
+
+  /** No subscription record: the free tier, where collection is included. */
+  const freeUser = (): User => ({ id: 'user-1', preferences: {} }) as unknown as User;
 
   function build(): TestAnalyticsService {
     return TestBed.runInInjectionContext(() => new TestAnalyticsService(transport));
@@ -94,22 +102,47 @@ describe('AnalyticsService', () => {
       tick();
 
       // Signed out is indistinguishable from opted out, and both must be off.
-      expect(service.consentGranted()).toBeFalse();
+      expect(service.collectionEnabled()).toBeFalse();
       expect(transport.enabledCalls).toEqual([false]);
     }));
 
-    it('should stay off when the preference is absent', fakeAsync(() => {
-      currentUser.set(userWithConsent(undefined));
+    it('should stay off when a premium account has not answered', fakeAsync(() => {
+      currentUser.set(premiumUser(undefined));
       build();
       TestBed.tick();
       tick();
 
-      // Every account created before the setting shipped looks like this.
+      // Premium is where the choice lives, so an unanswered choice is off.
       expect(transport.enabledCalls).toEqual([false]);
     }));
 
+    it('should collect on the free tier without any stored preference', fakeAsync(() => {
+      currentUser.set(freeUser());
+      build();
+      TestBed.tick();
+      tick();
+
+      // Usage statistics are part of the free tier, so there is nothing to opt
+      // in to and no preference to read.
+      expect(transport.enabledCalls).toEqual([true]);
+    }));
+
+    it('should ignore a stored opt-out on the free tier', fakeAsync(() => {
+      currentUser.set({
+        id: 'user-1',
+        preferences: { enableUsageAnalytics: false },
+      } as unknown as User);
+      build();
+      TestBed.tick();
+      tick();
+
+      // A false left behind by a lapsed premium account must not disable
+      // collection the free tier includes.
+      expect(transport.enabledCalls).toEqual([true]);
+    }));
+
     it('should enable collection once the account opts in', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       build();
       TestBed.tick();
       tick();
@@ -118,16 +151,16 @@ describe('AnalyticsService', () => {
     }));
 
     it('should follow the toggle without a reload', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       build();
       TestBed.tick();
       tick();
 
-      currentUser.set(userWithConsent(false));
+      currentUser.set(premiumUser(false));
       TestBed.tick();
       tick();
 
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       TestBed.tick();
       tick();
 
@@ -146,7 +179,7 @@ describe('AnalyticsService', () => {
       expect(transport.enabledCalls).toEqual([]);
 
       isLoading.set(false);
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       TestBed.tick();
       tick();
 
@@ -159,7 +192,7 @@ describe('AnalyticsService', () => {
         releaseEnable = resolve;
       });
 
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       const service = build();
       TestBed.tick();
       tick();
@@ -168,7 +201,7 @@ describe('AnalyticsService', () => {
       // isSupported() or the plugin import would suspend in production.
       expect(transport.enabledCalls).toEqual([]);
 
-      currentUser.set(userWithConsent(false));
+      currentUser.set(premiumUser(false));
       TestBed.tick();
       tick();
 
@@ -180,7 +213,7 @@ describe('AnalyticsService', () => {
       // withdrawal lands after it and collection ends up off. Without that
       // ordering the stale enable resolved last and left analytics running
       // against a preference that said otherwise.
-      expect(service.consentGranted()).toBeFalse();
+      expect(service.collectionEnabled()).toBeFalse();
       expect(transport.enabledCalls.at(-1)).toBeFalse();
       // And the stale enable must not have started reporting screens on its
       // way past — that is what the generation check covers.
@@ -201,7 +234,7 @@ describe('AnalyticsService', () => {
     }));
 
     it('should send events once consent is granted', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       const service = build();
       TestBed.tick();
       tick();
@@ -215,12 +248,12 @@ describe('AnalyticsService', () => {
     }));
 
     it('should stop sending as soon as consent is withdrawn', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       const service = build();
       TestBed.tick();
       tick();
 
-      currentUser.set(userWithConsent(false));
+      currentUser.set(premiumUser(false));
       TestBed.tick();
       tick();
 
@@ -231,7 +264,7 @@ describe('AnalyticsService', () => {
     }));
 
     it('should drop an event carrying an undeclared parameter', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       const service = build();
       TestBed.tick();
       tick();
@@ -248,7 +281,7 @@ describe('AnalyticsService', () => {
     }));
 
     it('should drop an event whose value is outside the taxonomy', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       const service = build();
       TestBed.tick();
       tick();
@@ -261,7 +294,7 @@ describe('AnalyticsService', () => {
     }));
 
     it('should not log the offending value when dropping an event', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       const service = build();
       TestBed.tick();
       tick();
@@ -278,7 +311,7 @@ describe('AnalyticsService', () => {
     }));
 
     it('should send through the typed wrappers', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       const service = build();
       TestBed.tick();
       tick();
@@ -294,7 +327,7 @@ describe('AnalyticsService', () => {
     }));
 
     it('should never throw when the transport fails', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       const service = build();
       TestBed.tick();
       tick();
@@ -321,7 +354,7 @@ describe('AnalyticsService', () => {
     }));
 
     it('should subscribe once consent is granted', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       build();
       TestBed.tick();
       tick();
@@ -330,7 +363,7 @@ describe('AnalyticsService', () => {
     }));
 
     it('should not report a screen before anything is activated', fakeAsync(() => {
-      currentUser.set(userWithConsent(true));
+      currentUser.set(premiumUser(true));
       build();
       TestBed.tick();
       tick();
