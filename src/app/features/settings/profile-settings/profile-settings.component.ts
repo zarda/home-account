@@ -18,6 +18,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../core/services/notification.service';
 import { SecurityActivityComponent } from '../security-activity/security-activity.component';
 import { SecuritySettingsComponent } from '../security-settings/security-settings.component';
+import { AnalyticsSettingsComponent } from '../analytics-settings/analytics-settings.component';
 
 @Component({
   selector: 'app-profile-settings',
@@ -34,6 +35,7 @@ import { SecuritySettingsComponent } from '../security-settings/security-setting
     TranslatePipe,
     SecurityActivityComponent,
     SecuritySettingsComponent,
+    AnalyticsSettingsComponent,
   ],
   templateUrl: './profile-settings.component.html',
   styleUrl: './profile-settings.component.scss',

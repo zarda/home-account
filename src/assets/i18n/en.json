@@ -902,6 +902,12 @@
     "convertFailed": "Converting the image failed, so it was kept.",
     "empty": "No stored receipt images."
   },
+  "analytics": {
+    "settingsTitle": "Usage statistics",
+    "settingsDescription": "Help decide what to build next by sharing which parts of the app you use.",
+    "enable": "Share anonymous usage statistics",
+    "disclaimer": "Off unless you turn it on. Only which screens you open and which features you use are sent \u2014 never amounts, merchants, categories, notes or anything you typed."
+  },
   "appLock": {
     "title": "App Locked",
     "subtitle": "Enter your PIN to continue",
