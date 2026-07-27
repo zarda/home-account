@@ -30,10 +30,11 @@ import {
   renderPreviousPeriodSection,
   renderPrompt,
 } from '../prompts';
+import { CloudLLMProviderAdapter, ProviderCapabilities } from './llm-provider.interface';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 
 @Injectable({ providedIn: 'root' })
-export class OpenAIService {
+export class OpenAIService implements CloudLLMProviderAdapter {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
@@ -119,6 +120,15 @@ export class OpenAIService {
   // Check if OpenAI is available
   isAvailable(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * Every model in the OpenAI catalog is multimodal, so one selectable model
+   * serves both text and vision. PDFs are not accepted directly — the pages
+   * have to be rasterized first.
+   */
+  get capabilities(): ProviderCapabilities {
+    return { vision: true, nativePdf: false };
   }
 
   // Parse receipt image

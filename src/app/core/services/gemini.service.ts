@@ -29,6 +29,7 @@ import {
   renderPreviousPeriodSection,
   renderPrompt,
 } from '../prompts';
+import { CloudLLMProviderAdapter, ProviderCapabilities } from './llm-provider.interface';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -106,7 +107,7 @@ export function isRateLimitMessage(message: string): boolean {
 }
 
 @Injectable({ providedIn: 'root' })
-export class GeminiService {
+export class GeminiService implements CloudLLMProviderAdapter {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
@@ -197,6 +198,18 @@ export class GeminiService {
   // Check if Gemini is available
   isAvailable(): boolean {
     return this.genAI !== null && this.textModel !== null;
+  }
+
+  /**
+   * Gemini is the only provider with separate text and vision handles, so it is
+   * the only one that can be available for text while unable to see an image —
+   * every vision method here used to fail at the point of use with 'Gemini
+   * Vision model not available' rather than being routed around.
+   *
+   * It is also the only provider that accepts a PDF directly.
+   */
+  get capabilities(): ProviderCapabilities {
+    return { vision: this.visionModel !== null, nativePdf: this.visionModel !== null };
   }
 
   // Parse receipt image

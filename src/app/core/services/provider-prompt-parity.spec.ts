@@ -257,6 +257,26 @@ describe('provider prompt parity', () => {
     });
   });
 
+  describe('capabilities', () => {
+    it('reports OpenAI and Claude as vision-capable without native PDF', () => {
+      // Every model in both catalogs is multimodal, but neither accepts a PDF
+      // directly — the pages have to be rasterized first.
+      expect(openai.capabilities).toEqual({ vision: true, nativePdf: false });
+      expect(claude.capabilities).toEqual({ vision: true, nativePdf: false });
+    });
+
+    it('reports Gemini as vision-capable when it has a vision model', () => {
+      expect(gemini.capabilities).toEqual({ vision: true, nativePdf: true });
+    });
+
+    it('reports Gemini as text-only when the vision model is absent', () => {
+      // Gemini is the only provider that can be available for text while unable
+      // to see an image; every vision method used to fail at the point of use.
+      (gemini as unknown as { visionModel: unknown }).visionModel = null;
+      expect(gemini.capabilities).toEqual({ vision: false, nativePdf: false });
+    });
+  });
+
   describe('the Gemini JSON preamble', () => {
     it('is prepended for Gemini only', async () => {
       const rows = [{ description: 'X', amount: 1, date: new Date('2026-07-01') }];

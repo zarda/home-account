@@ -30,10 +30,11 @@ import {
   renderPreviousPeriodSection,
   renderPrompt,
 } from '../prompts';
+import { CloudLLMProviderAdapter, ProviderCapabilities } from './llm-provider.interface';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 
 @Injectable({ providedIn: 'root' })
-export class ClaudeService {
+export class ClaudeService implements CloudLLMProviderAdapter {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
@@ -121,6 +122,14 @@ export class ClaudeService {
   // Check if Claude is available
   isAvailable(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * Every entry in the Claude catalog is vision-capable. PDFs are not accepted
+   * directly — the pages have to be rasterized first.
+   */
+  get capabilities(): ProviderCapabilities {
+    return { vision: true, nativePdf: false };
   }
 
   // Parse receipt image
