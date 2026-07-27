@@ -609,6 +609,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   private async fetchCategorySuggestion(description: string): Promise<void> {
+    this.analytics.trackAiAssistUsed({ feature: 'categorization' });
     this.isSuggesting.set(true);
     this.suggestedCategory.set(null);
 

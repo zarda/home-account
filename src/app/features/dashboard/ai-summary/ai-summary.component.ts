@@ -12,6 +12,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import {
   Budget, CategoryTotal, Transaction, MonthlyTotal,
   RAG_TIER_CONFIGS, effectiveRagLevel,
@@ -46,6 +47,7 @@ export class AiSummaryComponent {
   private authService = inject(AuthService);
   private categoryService = inject(CategoryService);
   private ragContextService = inject(RagContextService);
+  private analytics = inject(AnalyticsService);
   private sanitizer = inject(DomSanitizer);
 
   // Inputs
@@ -142,6 +144,10 @@ export class AiSummaryComponent {
     if (!this.cloudLLMProvider.hasAnyCloudProvider() || transactions.length < 3 || !this.categoriesReady()) {
       return;
     }
+
+    // The caller has already returned on a cache hit, so this is a real
+    // request rather than a render of a stored summary.
+    this.analytics.trackAiAssistUsed({ feature: 'summary' });
 
     this.isLoading.set(true);
     this.hasError.set(false);

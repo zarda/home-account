@@ -8,6 +8,7 @@ import { CategoryService } from '../../../../core/services/category.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { isRateLimitMessage } from '../../../../core/services/gemini.service';
+import { AnalyticsService } from '../../../../core/services/analytics.service';
 import {
   InsightFacts,
   RAG_TIER_CONFIGS,
@@ -58,6 +59,7 @@ export class InsightNarrativeComponent {
   private categoryService = inject(CategoryService);
   private translation = inject(TranslationService);
   private sanitizer = inject(DomSanitizer);
+  private analytics = inject(AnalyticsService);
 
   facts = input<InsightFacts | null>(null);
   /** The previous month's facts, when one is stored — enables the diff. */
@@ -136,6 +138,10 @@ export class InsightNarrativeComponent {
       return;
     }
     this.isUnchanged.set(false);
+
+    // Past the cache hit and the nothing-changed short circuit, so this counts
+    // requests actually issued rather than times the card was rendered.
+    this.analytics.trackAiAssistUsed({ feature: 'narrative' });
 
     this.isLoading.set(true);
     this.errorKey.set(null);

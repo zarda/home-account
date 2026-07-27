@@ -7,6 +7,7 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { CurrencyService } from './currency.service';
 import { PwaService } from './pwa.service';
 import { SearchHistoryService } from './search-history.service';
+import { AnalyticsService } from './analytics.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
 import {
@@ -38,6 +39,7 @@ export class NlSearchService {
   private translationService = inject(TranslationService);
   private authService = inject(AuthService);
   private searchHistory = inject(SearchHistoryService);
+  private analytics = inject(AnalyticsService);
 
   async search(query: string): Promise<NlSearchResult> {
     const trimmed = query.trim();
@@ -45,6 +47,11 @@ export class NlSearchService {
     if (!this.aiStrategy.canUseCloud()) {
       return this.keywordFallback(trimmed, this.pwaService.isOnline() ? 'noProvider' : 'offline');
     }
+
+    // After the availability guard: offline or without a key this falls back
+    // to a purely local keyword search, and counting that as AI usage would
+    // overstate exactly the cost this event exists to weigh.
+    this.analytics.trackAiAssistUsed({ feature: 'search' });
 
     try {
       const intent = await this.cloudLLMProvider.interpretSearchQuery(trimmed, this.buildContext());
