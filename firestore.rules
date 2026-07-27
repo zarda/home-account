@@ -249,6 +249,25 @@ service cloud.firestore {
         && searchOptionalsValid(d);
     }
 
+    // ---- category memory ----
+
+    // The document id is the normalized merchant key, and the entry repeats it
+    // so a row cannot claim to be about a merchant it is not filed under.
+    // A closed field set is safe here: the collection cannot predate its own
+    // rule, so there are no legacy shapes to accommodate.
+    function categoryMemoryValid(merchantKey) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['merchantKey', 'categoryId', 'sampleDescription', 'count', 'updatedAt'])
+        && d.keys().hasAll(['merchantKey', 'categoryId', 'sampleDescription', 'count'])
+        && d.merchantKey == merchantKey
+        && d.categoryId is string
+        && d.categoryId.size() > 0
+        && d.sampleDescription is string
+        && d.count is int
+        && d.count > 0
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
     // ---- import history ----
 
     function importStatuses() {
@@ -431,6 +450,13 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      // Remembered merchant→category corrections, keyed by merchant
+      match /categoryMemory/{merchantKey} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && categoryMemoryValid(merchantKey);
+        allow delete: if isOwner(userId);
+      }
+
       // Import history subcollection
       match /imports/{importId} {
         allow read: if isOwner(userId);
@@ -501,7 +527,7 @@ service cloud.firestore {
         allow write: if isOwner(userId) && !(subcollection in [
           'transactions', 'budgets', 'categories',
           'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-          'insightSnapshots'
+          'insightSnapshots', 'categoryMemory'
         ]);
       }
     }

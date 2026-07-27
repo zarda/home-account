@@ -13,6 +13,7 @@ import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
+import { CategoryMemoryService } from './category-memory.service';
 import { createMockUser } from './testing/mock-auth.service';
 import {
   CategorizedImportTransaction,
@@ -33,6 +34,7 @@ describe('AIImportService', () => {
   let strategyService: jasmine.SpyObj<AIStrategyService>;
   let offlineQueue: jasmine.SpyObj<OfflineQueueService>;
   let pwaService: jasmine.SpyObj<PwaService>;
+  let categoryMemory: jasmine.SpyObj<CategoryMemoryService>;
   let isOnlineSignal: WritableSignal<boolean>;
 
   const makeFile = (name: string, type: string, content = 'data'): File =>
@@ -73,6 +75,13 @@ describe('AIImportService', () => {
       isOnline: isOnlineSignal
     });
 
+    categoryMemory = jasmine.createSpyObj<CategoryMemoryService>('CategoryMemoryService', [
+      'ensureLoaded',
+      'lookup',
+      'remember',
+      'rememberAll',
+    ]);
+
     // Sensible defaults
     geminiService.isAvailable.and.returnValue(true);
     cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
@@ -84,6 +93,9 @@ describe('AIImportService', () => {
     strategyService.canUseCloud.and.returnValue(true);
     strategyService.canUseNative.and.returnValue(false);
     offlineQueue.queueImage.and.returnValue(Promise.resolve('queued-id'));
+    categoryMemory.ensureLoaded.and.resolveTo(undefined);
+    categoryMemory.lookup.and.returnValue(null);
+    categoryMemory.rememberAll.and.resolveTo(undefined);
 
     TestBed.configureTestingModule({
       providers: [
@@ -97,7 +109,8 @@ describe('AIImportService', () => {
         { provide: AuthService, useValue: authService },
         { provide: AIStrategyService, useValue: strategyService },
         { provide: OfflineQueueService, useValue: offlineQueue },
-        { provide: PwaService, useValue: pwaService }
+        { provide: PwaService, useValue: pwaService },
+        { provide: CategoryMemoryService, useValue: categoryMemory }
       ]
     });
 
@@ -286,6 +299,69 @@ describe('AIImportService', () => {
       await expectAsync(
         service.importFromImage(makeFile('r.png', 'image/png'))
       ).toBeRejectedWithError(/not available/);
+    });
+  });
+
+  describe('remembered categories', () => {
+    const oneItem = () => [
+      { date: '2024-06-01', description: 'STARBUCKS', amount: 5, type: 'expense' as const,
+        currency: 'JPY', imageIndex: 0, positionInImage: 'top' as const, confidence: 0.9, receiptId: 1 },
+    ];
+
+    it('uses a remembered category without asking the model', async () => {
+      // The whole point: a merchant the user has already corrected costs no
+      // tokens and gets the same answer every time.
+      categoryMemory.lookup.and.returnValue('food_coffee');
+      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(cloudLLMProvider.categorizeTransactions).not.toHaveBeenCalled();
+      expect(result.transactions[0].suggestedCategoryId).toBe('food_coffee');
+    });
+
+    it('stamps a remembered category just below certainty', async () => {
+      // 1.0 means "the user confirmed this row". A remembered category is
+      // strong evidence about the merchant, not agreement about this row, so a
+      // wrong memory still reads as a suggestion worth scanning.
+      categoryMemory.lookup.and.returnValue('food_coffee');
+      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions[0].categoryConfidence).toBe(0.95);
+      expect(result.transactions[0].categoryConfidence).toBeLessThan(1);
+    });
+
+    it('asks the model only about the merchants it does not know', async () => {
+      categoryMemory.lookup.and.callFake((d: string) =>
+        d === 'STARBUCKS' ? 'food_coffee' : null
+      );
+      geminiService.extractTransactionsFromMultipleImages.and.resolveTo([
+        ...oneItem(),
+        { date: '2024-06-01', description: 'NEW PLACE', amount: 9, type: 'expense' as const,
+          currency: 'JPY', imageIndex: 0, positionInImage: 'bottom' as const, confidence: 0.9, receiptId: 2 },
+      ]);
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
+      expect(asked.length).toBe(1);
+      expect(asked[0].description).toBe('NEW PLACE');
+      // The model's answers must land back on the rows it was asked about.
+      const starbucks = result.transactions.find(t => t.description === 'STARBUCKS');
+      const newPlace = result.transactions.find(t => t.description === 'NEW PLACE');
+      expect(starbucks?.suggestedCategoryId).toBe('food_coffee');
+      expect(newPlace?.suggestedCategoryId).toBe('food');
+    });
+
+    it('skips the model entirely when every merchant is remembered', async () => {
+      categoryMemory.lookup.and.returnValue('food_coffee');
+      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(cloudLLMProvider.categorizeTransactions).not.toHaveBeenCalled();
     });
   });
 

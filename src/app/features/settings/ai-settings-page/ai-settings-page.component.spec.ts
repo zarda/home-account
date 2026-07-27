@@ -11,6 +11,7 @@ import { OfflineQueueService } from '../../../core/services/offline-queue.servic
 import { GeminiService } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { CategoryMemoryService } from '../../../core/services/category-memory.service';
 import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -26,6 +27,7 @@ describe('AiSettingsPageComponent', () => {
   let cloudLLMProviderMock: jasmine.SpyObj<CloudLLMProviderService>;
   let authServiceMock: jasmine.SpyObj<AuthService>;
   let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
+  let categoryMemoryMock: jasmine.SpyObj<CategoryMemoryService>;
   let providerKeysLoadFailed: ReturnType<typeof signal<boolean>>;
   let announcerMock: jasmine.SpyObj<AnnouncerService>;
 
@@ -88,6 +90,14 @@ describe('AiSettingsPageComponent', () => {
     providerKeysMock.getKey.and.resolveTo(undefined);
     providerKeysMock.setKey.and.resolveTo(undefined);
 
+    categoryMemoryMock = jasmine.createSpyObj<CategoryMemoryService>(
+      'CategoryMemoryService',
+      ['ensureLoaded', 'clear'],
+      { rememberedCount: signal(0) }
+    );
+    categoryMemoryMock.ensureLoaded.and.resolveTo(undefined);
+    categoryMemoryMock.clear.and.resolveTo(undefined);
+
     authServiceMock = jasmine.createSpyObj('AuthService', ['currentUser', 'updateUserPreferences']);
     authServiceMock.currentUser.and.returnValue({
       preferences: {
@@ -120,6 +130,7 @@ describe('AiSettingsPageComponent', () => {
         { provide: AuthService, useValue: authServiceMock },
         { provide: AnnouncerService, useValue: announcerMock },
         { provide: ProviderKeyService, useValue: providerKeysMock },
+        { provide: CategoryMemoryService, useValue: categoryMemoryMock },
       ],
     }).compileComponents();
 

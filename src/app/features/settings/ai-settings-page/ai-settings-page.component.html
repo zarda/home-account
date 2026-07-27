@@ -444,6 +444,33 @@
           </mat-card-actions>
         </mat-card>
 
+        <!-- Remembered category corrections -->
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-icon mat-card-avatar class="storage-icon">bookmark</mat-icon>
+            <mat-card-title>{{ 'aiPage.categoryMemoryTitle' | translate }}</mat-card-title>
+            <mat-card-subtitle>{{ 'aiPage.categoryMemoryHint' | translate }}</mat-card-subtitle>
+          </mat-card-header>
+
+          <mat-card-content>
+            <div class="info-row">
+              <span class="info-label">{{ 'aiPage.categoryMemoryCount' | translate }}</span>
+              <span class="info-value">{{ rememberedCategoryCount() }}</span>
+            </div>
+          </mat-card-content>
+
+          <mat-card-actions>
+            <button
+              mat-stroked-button
+              [disabled]="rememberedCategoryCount() === 0 || clearingCategoryMemory()"
+              (click)="clearCategoryMemory()"
+            >
+              <mat-icon>delete_sweep</mat-icon>
+              {{ 'aiPage.categoryMemoryClear' | translate }}
+            </button>
+          </mat-card-actions>
+        </mat-card>
+
         <!-- Storage Info Card -->
         <mat-card appearance="outlined">
           <mat-card-header>

@@ -398,6 +398,72 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('categoryMemory', () => {
+    // The document id is the merchant key, so these build paths by hand rather
+    // than using path(), which mints an arbitrary id.
+    const memoryPath = (key: string, owner = uid) => `users/${owner}/categoryMemory/${key}`;
+    const validMemory = (overrides: Record<string, unknown> = {}) => ({
+      merchantKey: 'starbucks',
+      categoryId: 'food_coffee',
+      sampleDescription: 'STARBUCKS #123',
+      count: 1,
+      ...overrides,
+    });
+
+    it('accepts a well-formed entry', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, memoryPath('starbucks')), validMemory()),
+        'valid create'
+      );
+    });
+
+    it('rejects an entry filed under a different merchant than it claims', async () => {
+      // Otherwise a row could be written under one key while claiming another,
+      // and the lookup map would answer for a merchant it was never taught.
+      await expectDenied(
+        setDoc(doc(firestore, memoryPath('starbucks')), validMemory({ merchantKey: 'costa' })),
+        'merchantKey disagreeing with the document id'
+      );
+    });
+
+    it('rejects an empty category', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, memoryPath('starbucks')), validMemory({ categoryId: '' })),
+        'empty categoryId'
+      );
+    });
+
+    it('rejects a non-positive count', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, memoryPath('starbucks')), validMemory({ count: 0 })),
+        'zero count'
+      );
+    });
+
+    it('rejects an undeclared field', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, memoryPath('starbucks')), validMemory({ note: 'extra' })),
+        'field outside the closed set'
+      );
+    });
+
+    it('accepts a repeat confirmation raising the count', async () => {
+      const p = memoryPath('starbucks');
+      await setDoc(doc(firestore, p), validMemory());
+      await expectAllowed(
+        setDoc(doc(firestore, p), validMemory({ count: 2 })),
+        'reinforced entry'
+      );
+    });
+
+    it("denies writing to another user's memory", async () => {
+      await expectDenied(
+        setDoc(doc(firestore, memoryPath('starbucks', otherUid)), validMemory()),
+        "stranger's category memory"
+      );
+    });
+  });
+
   describe('imports', () => {
     it('accepts a well-formed import record', async () => {
       await expectAllowed(setDoc(doc(firestore, path('imports')), validImport()), 'valid create');
@@ -794,7 +860,7 @@ describe('firestore.rules (emulator smoke test)', () => {
     const validated = [
       'transactions', 'budgets', 'categories',
       'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-      'insightSnapshots'
+      'insightSnapshots', 'categoryMemory'
     ];
 
     for (const collection of validated) {

@@ -867,7 +867,12 @@
     "ragLevelDescription_deep": "Top 20 expenses, more unusual-amount checks against a 12-month baseline, and the top 10 category changes.",
     "insightsSettings": "AI Insights",
     "insightsSettingsHint": "Configure how your spending insights are generated",
-    "keysUnavailable": "Could not load your saved API keys. Reconnect and reopen this page before editing them."
+    "keysUnavailable": "Could not load your saved API keys. Reconnect and reopen this page before editing them.",
+    "categoryMemoryTitle": "Remembered categories",
+    "categoryMemoryHint": "When you correct a category during an import, that choice is reused for the same merchant next time instead of asking the AI again.",
+    "categoryMemoryCount": "Merchants remembered",
+    "categoryMemoryClear": "Forget all",
+    "categoryMemoryCleared": "Remembered categories cleared"
   },
   "about": {
     "title": "About",

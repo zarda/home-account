@@ -9,3 +9,4 @@ export * from './saved-search.model';
 export * from './security-event.model';
 export * from './nl-search.model';
 export * from './insight-snapshot.model';
+export * from './category-memory.model';

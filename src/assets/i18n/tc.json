@@ -867,7 +867,12 @@
     "ragLevelDescription_deep": "前 20 大支出、以 12 個月為基準的更多異常金額檢查，以及前 10 大類別變化。",
     "insightsSettings": "AI 洞察",
     "insightsSettingsHint": "設定消費洞察的產生方式",
-    "keysUnavailable": "無法載入已儲存的 API 金鑰。請重新連線後再開啟此頁面。"
+    "keysUnavailable": "無法載入已儲存的 API 金鑰。請重新連線後再開啟此頁面。",
+    "categoryMemoryTitle": "已記住的分類",
+    "categoryMemoryHint": "在匯入時修正分類後，下次遇到相同商家會直接沿用該選擇，不再詢問 AI。",
+    "categoryMemoryCount": "已記住的商家數量",
+    "categoryMemoryClear": "全部忘記",
+    "categoryMemoryCleared": "已清除記住的分類"
   },
   "about": {
     "title": "關於",

@@ -28,6 +28,7 @@ import {
 import { TEXT_MODELS, VISION_MODELS, OPENAI_MODELS, CLAUDE_MODELS, DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../../../core/config/ai-models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../core/services/notification.service';
+import { CategoryMemoryService } from '../../../core/services/category-memory.service';
 
 @Component({
   selector: 'app-ai-settings-page',
@@ -61,9 +62,13 @@ export class AiSettingsPageComponent implements OnInit {
   private authService = inject(AuthService);
   private providerKeys = inject(ProviderKeyService);
   private location = inject(Location);
+  private categoryMemory = inject(CategoryMemoryService);
 
   // Form state
   autoSync = signal<boolean>(true);
+  /** Merchants the user has corrected, which imports reuse instead of re-asking the model. */
+  readonly rememberedCategoryCount = this.categoryMemory.rememberedCount;
+  readonly clearingCategoryMemory = signal<boolean>(false);
   ragInsightsLevel = signal<RagInsightsLevel>('off');
   ragLevels = RAG_INSIGHTS_LEVELS;
   selectedTextModel = signal<string>(DEFAULT_TEXT_MODEL);
@@ -186,6 +191,19 @@ export class AiSettingsPageComponent implements OnInit {
     this.notifications.success(message);
   }
 
+  /** Forget every remembered merchant→category correction. */
+  async clearCategoryMemory(): Promise<void> {
+    this.clearingCategoryMemory.set(true);
+    try {
+      await this.categoryMemory.clear();
+      this.notifications.success(this.translationService.t('aiPage.categoryMemoryCleared'));
+    } catch {
+      this.notifications.error(this.translationService.t('common.error'));
+    } finally {
+      this.clearingCategoryMemory.set(false);
+    }
+  }
+
   private async loadApiKeys(): Promise<void> {
     const user = this.authService.currentUser();
     // Merge defaults: stored objects from before a feature existed lack its key.
@@ -194,6 +212,11 @@ export class AiSettingsPageComponent implements OnInit {
       ...user?.preferences?.llmProviderPreferences,
     };
     this.ragInsightsLevel.set(effectiveRagLevel(user?.preferences));
+
+    // The remembered-categories count is display-only, so it must not delay
+    // the key fields — an await here would push every following line a
+    // microtask later for no benefit.
+    void this.categoryMemory.ensureLoaded();
 
     // Keys live outside the user document now, so this is the one place that
     // reads them for display.

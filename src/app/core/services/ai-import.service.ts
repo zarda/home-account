@@ -1,4 +1,3 @@
-import { nextImportRowId } from '../utils/import-row-id.utils';
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { GeminiService, RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
@@ -12,6 +11,8 @@ import { AnalyticsService } from './analytics.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
+import { nextImportRowId } from '../utils/import-row-id.utils';
+import { CategoryMemoryService } from './category-memory.service';
 import {
   ImportResult,
   ImportWarning,
@@ -20,13 +21,15 @@ import {
   ImportSource,
   ImportFileType,
   CreateTransactionDTO,
-  DuplicateCheck
+  DuplicateCheck,
+  CATEGORY_MEMORY_CONFIDENCE
 } from '../../models';
 
 @Injectable({ providedIn: 'root' })
 export class AIImportService {
   private geminiService = inject(GeminiService);
   private cloudLLMProvider = inject(CloudLLMProviderService);
+  private categoryMemory = inject(CategoryMemoryService);
   private exportService = inject(ExportService);
   private duplicateService = inject(DuplicateDetectionService);
   private importHistoryService = inject(ImportHistoryService);
@@ -285,20 +288,41 @@ export class AIImportService {
       date: new Date(t.date)
     }));
 
-    // Categorize with the user's preferred cloud provider if any is available
+    // Anything the user has already corrected is settled — only the rest is
+    // worth a model call.
+    await this.categoryMemory.ensureLoaded();
+    const remembered = rawTransactions.map(t => this.categoryMemory.lookup(t.description));
+
     let categorizedByAI = rawTransactions.map((t) => ({
       ...t,
       suggestedCategoryId: 'other_expense',
       confidence: 0.1
     }));
 
-    if (this.cloudLLMProvider.hasAnyCloudProvider()) {
+    const unknownIndexes = remembered
+      .map((categoryId, index) => (categoryId ? -1 : index))
+      .filter(index => index >= 0);
+
+    if (unknownIndexes.length > 0 && this.cloudLLMProvider.hasAnyCloudProvider()) {
       try {
-        categorizedByAI = await this.cloudLLMProvider.categorizeTransactions(rawTransactions);
+        const asked = await this.cloudLLMProvider.categorizeTransactions(
+          unknownIndexes.map(index => rawTransactions[index])
+        );
+        // The provider indexes its answers against what it was sent, so map
+        // them back onto the original positions.
+        asked.forEach((result, position) => {
+          categorizedByAI[unknownIndexes[position]] = result;
+        });
       } catch (error) {
         console.warn('AI categorization failed, using defaults:', error);
       }
     }
+
+    categorizedByAI = categorizedByAI.map((t, index) =>
+      remembered[index]
+        ? { ...t, suggestedCategoryId: remembered[index], confidence: CATEGORY_MEMORY_CONFIDENCE }
+        : t
+    );
 
     // Convert to CategorizedImportTransaction with image metadata
     return categorizedByAI.map((t, index) => {
@@ -691,6 +715,17 @@ export class AIImportService {
       }
 
       await this.importHistoryService.completeImport(historyId, completeStats);
+
+      // Everything the user confirmed is a decision about that merchant, so
+      // the next import can reuse it instead of re-asking the model. Rows the
+      // memory already answered are written back too — that is what advances
+      // the confirmation count.
+      await this.categoryMemory.rememberAll(
+        selectedTransactions.map(t => ({
+          description: t.description,
+          categoryId: t.suggestedCategoryId,
+        }))
+      );
 
       // Get the completed history record
       const history = await new Promise<ImportHistory>((resolve) => {

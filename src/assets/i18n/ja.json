@@ -867,7 +867,12 @@
     "ragLevelDescription_deep": "上位20件の支出、12か月基準のより多くの異常金額チェック、上位10件のカテゴリ変化。",
     "insightsSettings": "AIインサイト",
     "insightsSettingsHint": "支出インサイトの生成方法を設定します",
-    "keysUnavailable": "保存されたAPIキーを読み込めませんでした。再接続してからこの画面を開き直してください。"
+    "keysUnavailable": "保存されたAPIキーを読み込めませんでした。再接続してからこの画面を開き直してください。",
+    "categoryMemoryTitle": "記憶したカテゴリ",
+    "categoryMemoryHint": "インポート中にカテゴリを修正すると、次回から同じ店舗にはその選択が再利用され、AIに再度問い合わせません。",
+    "categoryMemoryCount": "記憶している店舗数",
+    "categoryMemoryClear": "すべて削除",
+    "categoryMemoryCleared": "記憶したカテゴリを削除しました"
   },
   "about": {
     "title": "について",

@@ -10,3 +10,4 @@ export * from './export.service';
 export * from './translation.service';
 export * from './theme.service';
 export * from './announcer.service';
+export * from './category-memory.service';
