@@ -65,6 +65,13 @@ export interface CloudLLMProviderAdapter {
   extractTransactionsFromMultipleImages(
     imageBase64Array: string[]
   ): Promise<MultiImageExtractedTransaction[]>;
+  /**
+   * Read a statement or other multi-row document into one row per line item.
+   *
+   * Distinct from the receipt methods, which collapse a photo into a single
+   * transaction. A statement screenshot has no single total to extract.
+   */
+  extractStatementTransactions(imageBase64: string): Promise<ExtractedTransaction[]>;
   /** Present only where `capabilities.nativePdf` is true. */
   extractTransactionsFromPDF?(pdfBase64: string): Promise<RawTransaction[]>;
 

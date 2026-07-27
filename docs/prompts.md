@@ -45,7 +45,7 @@ Each provider service then has exactly one adapter — the only place provider v
 | `receiptParse` | receiptScanning | claude, gemini, openai | 1.17.93 | One receipt photo → one transaction, with `receiptCount` so several receipts in one photo are noticed |
 | `receiptSummary` | receiptScanning | gemini | 1.17.93 | One receipt photo → one summary row carrying the full receipt body as notes |
 | `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, with position metadata for overlap detection |
-| `statementTransactions` | receiptScanning | claude, openai | 1.17.93 | A statement or multi-row document image → one row per line item |
+| `statementTransactions` | receiptScanning | claude, gemini, openai | 1.17.93 | A statement or multi-row document image → one row per line item |
 | `pdfStatement` | receiptScanning | gemini | 1.17.93 | A PDF bank statement → one row per transaction |
 | `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges |
 | `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row |
@@ -60,12 +60,11 @@ Each provider service then has exactly one adapter — the only place provider v
 
 ### Single-provider prompts
 
-Four prompts reach only some providers. Each is a capability gap rather than a design choice, and `SINGLE_PROVIDER` in `scripts/check-prompts.mjs` names the issue that closes it — the check fails if a prompt reaches a provider the exemption does not list, so closing a gap means deleting an entry rather than widening one. An empty table is the goal.
+Three prompts reach only some providers. Each is a capability gap rather than a design choice, and `SINGLE_PROVIDER` in `scripts/check-prompts.mjs` names the issue that closes it — the check fails if a prompt reaches a provider the exemption does not list, so closing a gap means deleting an entry rather than widening one. An empty table is the goal.
 
 | Prompt | Sent by | Gap |
 |---|---|---|
 | `pdfStatement` | gemini | PDF import stays Gemini-only until pages are rasterized client-side ([#55](https://github.com/zarda/home-account/issues/55)) |
-| `statementTransactions` | openai, claude | Gemini routes single images through `receiptSummary` instead ([#54](https://github.com/zarda/home-account/issues/54)) |
 | `receiptSummary` | gemini | The other two go straight to statement extraction |
 | `receiptItems` | gemini | Position-aware single-image itemization has no OpenAI/Claude counterpart yet |
 

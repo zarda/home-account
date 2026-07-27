@@ -44,6 +44,33 @@
           (filesSelected)="onFilesSelected($event)"
         ></app-file-dropzone>
 
+        <!-- What kind of image was selected: a receipt collapses to one
+             transaction, a statement stays one row per line. -->
+        @if (hasImageFiles()) {
+          <div class="image-kind">
+            <span class="image-kind-label">{{ 'import.imageKindQuestion' | translate }}</span>
+            <mat-chip-listbox
+              [value]="imageKind()"
+              (change)="imageKind.set($event.value ?? 'receipt')"
+              aria-labelledby="image-kind-label"
+            >
+              <mat-chip-option value="receipt">
+                {{ 'import.imageKindReceipt' | translate }}
+              </mat-chip-option>
+              <mat-chip-option value="statement">
+                {{ 'import.imageKindStatement' | translate }}
+              </mat-chip-option>
+            </mat-chip-listbox>
+            <p class="image-kind-hint">
+              @if (imageKind() === 'statement') {
+                {{ 'import.imageKindStatementHint' | translate }}
+              } @else {
+                {{ 'import.imageKindReceiptHint' | translate }}
+              }
+            </p>
+          </div>
+        }
+
         <!-- Image Preview Section -->
         @if (imagePreviewUrls().length > 0) {
           <div class="image-previews">

@@ -60,10 +60,6 @@ const SINGLE_PROVIDER = {
     providers: ['gemini'],
     reason: 'position-aware single-image itemization has no OpenAI/Claude counterpart yet',
   },
-  statementTransactions: {
-    providers: ['openai', 'claude'],
-    reason: 'Gemini routes single images through receiptSummary instead (#54)',
-  },
 };
 
 /** Literals in the provider files that are not prompts. */

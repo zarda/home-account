@@ -794,7 +794,12 @@
     "errorHintAuth": "您的 API 金鑰可能無效或已過期，請在個人設定中更新。",
     "errorHintNetwork": "請檢查您的網路連線，然後重試。",
     "errorHintQuota": "您的 AI API 帳戶可能已用完額度，請檢查帳單。",
-    "goToSettings": "前往設定"
+    "goToSettings": "前往設定",
+    "imageKindQuestion": "這些圖片是什麼？",
+    "imageKindReceipt": "收據",
+    "imageKindStatement": "對帳單",
+    "imageKindReceiptHint": "同一張收據上的品項會合併為一筆交易。",
+    "imageKindStatementHint": "對帳單上的每一行都會成為獨立的交易。"
   },
   "errors": {
     "generic": "發生錯誤，請重試。",

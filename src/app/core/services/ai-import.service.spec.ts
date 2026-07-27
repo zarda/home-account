@@ -55,7 +55,8 @@ describe('AIImportService', () => {
     ]);
     cloudLLMProvider = jasmine.createSpyObj('CloudLLMProviderService', [
       'hasAnyCloudProvider',
-      'categorizeTransactions'
+      'categorizeTransactions',
+      'extractStatementTransactions'
     ]);
     exportService = jasmine.createSpyObj('ExportService', ['importFromCSV']);
     duplicateService = jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']);
@@ -414,6 +415,57 @@ describe('AIImportService', () => {
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
       expect(cloudLLMProvider.categorizeTransactions).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('importFromStatementImages', () => {
+    const statementRows = () => [
+      { date: '2024-06-01', description: 'AMAZON', amount: 45.99, type: 'expense' as const, currency: 'USD' },
+      { date: '2024-06-02', description: 'SALARY', amount: 3500, type: 'income' as const, currency: 'USD' },
+      { date: '2024-06-03', description: 'WALMART', amount: 125.43, type: 'expense' as const, currency: 'USD' },
+    ];
+
+    beforeEach(() => {
+      cloudLLMProvider.extractStatementTransactions.and.callFake(async () => statementRows());
+    });
+
+    it('keeps one transaction per statement row', async () => {
+      // The receipt pipeline would have merged all three into one: rows the
+      // model does not group share a receiptId and get consolidated.
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+
+      expect(result.transactions.length).toBe(3);
+      expect(result.transactions.map(t => t.description)).toEqual(['AMAZON', 'SALARY', 'WALMART']);
+    });
+
+    it('preserves each row\'s own type and amount', async () => {
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+
+      const salary = result.transactions.find(t => t.description === 'SALARY');
+      expect(salary?.type).toBe('income');
+      expect(salary?.amount).toBe(3500);
+    });
+
+    it('reads every page of a multi-page statement', async () => {
+      const result = await service.importFromStatementImages([
+        makeFile('p1.png', 'image/png'),
+        makeFile('p2.png', 'image/png'),
+      ]);
+
+      expect(cloudLLMProvider.extractStatementTransactions).toHaveBeenCalledTimes(2);
+      expect(result.transactions.length).toBe(6);
+    });
+
+    it('never runs receipt consolidation', async () => {
+      // Consolidation is what collapses a statement; the statement path must
+      // not reach it at all.
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+      expect(result.transactions.every(t => t.imageMetadata === undefined)).toBeTrue();
+    });
+
+    it('rejects an empty file list', async () => {
+      await expectAsync(service.importFromStatementImages([]))
+        .toBeRejectedWithError(/No image files/);
     });
   });
 

@@ -183,6 +183,65 @@ export class AIImportService {
   }
 
   /**
+   * Import statement screenshots as one transaction per line item.
+   *
+   * Deliberately not the multi-image receipt path. That path exists to merge
+   * the line items of a receipt into the single purchase they add up to, and
+   * running a statement through it produced one lumped transaction for a whole
+   * page of unrelated charges — every row folded into `receiptId` 1, because
+   * items the model did not group default to the same group.
+   *
+   * A statement has no total to collapse to, so there is no consolidation here
+   * and each row survives as its own transaction.
+   */
+  async importFromStatementImages(files: File[]): Promise<ImportResult> {
+    if (files.length === 0) {
+      throw new Error('No image files provided');
+    }
+
+    this.isProcessing.set(true);
+    this.processingStatus.set('Reading statement...');
+    this.processingProgress.set(10);
+    this.processingSource.set('cloud');
+
+    try {
+      const extracted: ExtractedTransaction[] = [];
+      for (let i = 0; i < files.length; i++) {
+        this.processingProgress.set(10 + Math.round((i / files.length) * 50));
+        const imageBase64 = await this.fileToBase64(files[i]);
+        extracted.push(
+          ...(await this.withTimeout(
+            this.cloudLLMProvider.extractStatementTransactions(imageBase64),
+            60000,
+            'AI extraction timed out. Please try again.'
+          ))
+        );
+      }
+
+      this.processingStatus.set('Categorizing transactions...');
+      this.processingProgress.set(60);
+      const categorized = await this.categorizeTransactions(extracted);
+
+      this.processingStatus.set('Checking for duplicates...');
+      this.processingProgress.set(80);
+      const duplicates = await this.duplicateService.checkDuplicates(categorized);
+      const marked = this.duplicateService.markDuplicates(categorized, duplicates);
+
+      this.processingProgress.set(100);
+      this.analytics.trackAiAssistUsed({ feature: 'receipt_scan' });
+
+      const result = this.buildImportResult(
+        files[0], 'image', 'receipt_image', marked, duplicates
+      );
+      result.processingSource = 'cloud';
+      return result;
+    } finally {
+      this.isProcessing.set(false);
+      this.processingSource.set(null);
+    }
+  }
+
+  /**
    * Convert strategy service result to categorized import transactions
    */
   private convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {

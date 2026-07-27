@@ -794,7 +794,12 @@
     "errorHintAuth": "APIキーが無効または期限切れの可能性があります。プロフィール設定で更新してください。",
     "errorHintNetwork": "インターネット接続を確認して、再試行してください。",
     "errorHintQuota": "AI APIアカウントのクレジットが不足している可能性があります。請求を確認してください。",
-    "goToSettings": "設定へ"
+    "goToSettings": "設定へ",
+    "imageKindQuestion": "この画像は何ですか？",
+    "imageKindReceipt": "レシート",
+    "imageKindStatement": "明細",
+    "imageKindReceiptHint": "1枚のレシート内の項目は1件の取引にまとめられます。",
+    "imageKindStatementHint": "明細の各行がそれぞれ1件の取引になります。"
   },
   "errors": {
     "generic": "エラーが発生しました。もう一度お試しください。",

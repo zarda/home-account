@@ -65,6 +65,18 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // State signals
   selectedFiles = signal<File[]>([]);
+  /**
+   * What the selected images are, which decides how they are read.
+   *
+   * A receipt photo and a statement screenshot are indistinguishable by MIME
+   * type but need opposite handling, and guessing wrong is expensive in one
+   * direction: a statement read as a receipt collapses a page of unrelated
+   * charges into a single transaction. Receipts stay the default.
+   */
+  imageKind = signal<'receipt' | 'statement'>('receipt');
+  readonly hasImageFiles = computed(() =>
+    this.selectedFiles().some(f => f.type.startsWith('image/'))
+  );
   extractedTransactions = signal<CategorizedImportTransaction[]>([]);
   selectedTransactionIds = signal<Set<string>>(new Set());
   duplicateChecks = signal<DuplicateCheck[]>([]);
@@ -238,9 +250,14 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       const nonImageFiles = files.filter(f => !f.type.startsWith('image/'));
 
       if (imageFiles.length >= 1) {
-        // One receiptId-aware pipeline for any photo count: several photos
-        // may form one receipt, and one photo may hold several receipts
-        const result = await this.importService.importFromMultipleImages(imageFiles);
+        // Receipt and statement images need opposite treatment and look alike
+        // to a MIME check, so the user says which they have. Receipts go
+        // through the receiptId-aware pipeline, which merges the line items of
+        // one purchase; statements skip it, because their rows are unrelated
+        // charges that must stay apart.
+        const result = this.imageKind() === 'statement'
+          ? await this.importService.importFromStatementImages(imageFiles)
+          : await this.importService.importFromMultipleImages(imageFiles);
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
       }

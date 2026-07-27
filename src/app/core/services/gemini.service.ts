@@ -637,6 +637,65 @@ export class GeminiService implements CloudLLMProviderAdapter {
     }
   }
 
+  /**
+   * Read a statement screenshot into one row per line item.
+   *
+   * Separate from extractTransactionsFromImage, which asks for a single
+   * receipt summary — running that over a statement returned one lumped
+   * transaction for the whole page, which is what made statement import
+   * unusable on Gemini.
+   */
+  async extractStatementTransactions(imageBase64: string): Promise<ExtractedTransaction[]> {
+    if (!this.visionModel) {
+      throw new Error('Gemini Vision model not available');
+    }
+
+    this.isProcessing.set(true);
+    this.lastError.set(null);
+
+    try {
+      const rendered = renderPrompt('statementTransactions');
+
+      const result = await this.visionModel.generateContent({
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: this.renderedText(rendered) },
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+              }
+            }
+          ]
+        }],
+        generationConfig: this.generationConfig(rendered)
+      });
+
+      const extracted: ExtractedTransaction[] = JSON.parse(
+        this.extractJson(result.response.text())
+      );
+
+      return extracted.map(t => ({
+        date: t.date || new Date().toISOString().split('T')[0],
+        description: t.description || 'Unknown',
+        amount: Math.abs(t.amount || 0),
+        type: t.type || 'expense',
+        currency: t.currency || 'USD',
+        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+        merchant: t.merchant,
+        details: t.details,
+      }));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.lastError.set(errorMessage);
+      console.error('[GeminiService] ✗ Statement extraction error:', error);
+      throw error;
+    } finally {
+      this.isProcessing.set(false);
+    }
+  }
+
   // Extract transactions from an image (receipt, bank statement screenshot)
   async extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]> {
     if (!this.visionModel) {

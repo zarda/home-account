@@ -1,5 +1,5 @@
 import { Injectable, inject, computed } from '@angular/core';
-import { GeminiService, ParsedReceipt, RawTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
+import { GeminiService, ParsedReceipt, RawTransaction, CategorizedTransaction, PreviousPeriodData, MultiImageExtractedTransaction, ExtractedTransaction, CSVColumnMapping } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
@@ -210,6 +210,20 @@ export class CloudLLMProviderService {
   /** Parse a receipt image using the configured provider. */
   async parseReceipt(imageBase64: string): Promise<ParsedReceipt> {
     return this.resolve('receiptScanning').parseReceipt(imageBase64);
+  }
+
+  /**
+   * Read a statement screenshot into one row per line item.
+   *
+   * Needs a provider that can see, which is not the same as a provider being
+   * available — Gemini can be configured for text with no vision model.
+   */
+  async extractStatementTransactions(imageBase64: string): Promise<ExtractedTransaction[]> {
+    const adapter = this.resolve('receiptScanning');
+    if (!adapter.capabilities.vision) {
+      throw new Error('Reading a statement image needs a vision-capable provider');
+    }
+    return adapter.extractStatementTransactions(imageBase64);
   }
 
   /** Extract transactions from multiple images. */

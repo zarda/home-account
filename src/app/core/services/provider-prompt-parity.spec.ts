@@ -257,6 +257,60 @@ describe('provider prompt parity', () => {
     });
   });
 
+  describe('extractStatementTransactions', () => {
+    const twoRows = JSON.stringify([
+      { date: '2024-01-15', description: 'AMAZON', amount: 45.99, type: 'expense', currency: 'USD' },
+      { date: '2024-01-16', description: 'WALMART', amount: 12.5, type: 'expense', currency: 'USD' },
+    ]);
+
+    beforeEach(() => {
+      geminiTextModel.generateContent.and.resolveTo({
+        response: { text: () => twoRows, candidates: [{ finishReason: 'STOP' }] },
+      });
+      openaiClient.responses.create.and.resolveTo({ output_text: twoRows });
+      claudeClient.messages.create.and.resolveTo({ content: [{ type: 'text', text: twoRows }] });
+    });
+
+    it('sends byte-identical text from all three providers', async () => {
+      // Gemini had no statement extractor at all before this — a statement
+      // went through the single-receipt summary and came back as one row.
+      await gemini.extractStatementTransactions('img');
+      await openai.extractStatementTransactions('img');
+      await claude.extractStatementTransactions('img');
+
+      expect(openaiPrompt()).toBe(geminiPrompt());
+      expect(claudePrompt()).toBe(geminiPrompt());
+    });
+
+    it('returns one row per line item on every provider', async () => {
+      for (const rows of [
+        await gemini.extractStatementTransactions('img'),
+        await openai.extractStatementTransactions('img'),
+        await claude.extractStatementTransactions('img'),
+      ]) {
+        expect(rows.length).toBe(2);
+        expect(rows.map(r => r.description)).toEqual(['AMAZON', 'WALMART']);
+      }
+    });
+
+    it('returns a single row for a single-transaction image on every provider', async () => {
+      // Providers disagree about how they treat one image elsewhere, so the
+      // ordinary-receipt case is asserted per provider rather than assumed.
+      const oneRow = JSON.stringify([
+        { date: '2024-01-15', description: 'CAFE', amount: 4.5, type: 'expense', currency: 'USD' },
+      ]);
+      geminiTextModel.generateContent.and.resolveTo({
+        response: { text: () => oneRow, candidates: [{ finishReason: 'STOP' }] },
+      });
+      openaiClient.responses.create.and.resolveTo({ output_text: oneRow });
+      claudeClient.messages.create.and.resolveTo({ content: [{ type: 'text', text: oneRow }] });
+
+      expect((await gemini.extractStatementTransactions('img')).length).toBe(1);
+      expect((await openai.extractStatementTransactions('img')).length).toBe(1);
+      expect((await claude.extractStatementTransactions('img')).length).toBe(1);
+    });
+  });
+
   describe('capabilities', () => {
     it('reports OpenAI and Claude as vision-capable without native PDF', () => {
       // Every model in both catalogs is multimodal, but neither accepts a PDF

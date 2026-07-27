@@ -537,6 +537,15 @@ export class OpenAIService implements CloudLLMProviderAdapter {
     }
   }
 
+  /**
+   * Statement extraction. Same call as extractTransactionsFromImage here —
+   * this provider has always treated an image as a set of rows — but named for
+   * the intent so the import path can ask for it explicitly.
+   */
+  extractStatementTransactions(imageBase64: string): Promise<ExtractedTransaction[]> {
+    return this.extractTransactionsFromImage(imageBase64);
+  }
+
   // Extract transactions from an image
   async extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]> {
     if (!this.client) {

@@ -794,7 +794,12 @@
     "errorHintAuth": "Your API key may be invalid or expired. Update it in Profile Settings.",
     "errorHintNetwork": "Check your internet connection and try again.",
     "errorHintQuota": "Your AI API account may have run out of credits. Check your billing.",
-    "goToSettings": "Go to Settings"
+    "goToSettings": "Go to Settings",
+    "imageKindQuestion": "What are these images?",
+    "imageKindReceipt": "Receipts",
+    "imageKindStatement": "Statement",
+    "imageKindReceiptHint": "Items on one receipt are combined into a single transaction.",
+    "imageKindStatementHint": "Each line on the statement becomes its own transaction."
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",
