@@ -13,6 +13,7 @@ import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
 import { nextImportRowId } from '../utils/import-row-id.utils';
+import { RasterizedPdf, rasterizePdf } from '../utils/pdf-raster.utils';
 import { CategoryMemoryService } from './category-memory.service';
 import { RagContextService } from './rag-context.service';
 import {
@@ -183,6 +184,14 @@ export class AIImportService {
   }
 
   /**
+   * Seam for the on-demand pdfjs import, so specs can render without a canvas.
+   * Mirrors the loadSdk seam each provider service uses for its own SDK.
+   */
+  protected rasterizePdf(data: ArrayBuffer): Promise<RasterizedPdf> {
+    return rasterizePdf(data);
+  }
+
+  /**
    * Import statement screenshots as one transaction per line item.
    *
    * Deliberately not the multi-image receipt path. That path exists to merge
@@ -276,7 +285,7 @@ export class AIImportService {
     }
 
     if (!this.geminiService.isAvailable()) {
-      throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
+      throw new Error('AI service is not available. Please configure an AI provider in Settings.');
     }
 
     // After the availability guard, so a request that was never issued is not
@@ -521,41 +530,53 @@ export class AIImportService {
   /**
    * Import transactions from a PDF (bank statement)
    */
+  /**
+   * Import a PDF bank statement.
+   *
+   * Gemini is the only provider that takes a PDF directly, so this used to
+   * refuse outright for anyone configured with OpenAI or Claude — "PDF
+   * extraction is only supported with Gemini", naming a provider they had not
+   * chosen. The pages are rasterized here instead, which turns the problem
+   * into one every vision-capable provider already solves.
+   *
+   * Long documents are truncated rather than attempted: each page is a
+   * full-size canvas and another image in the request, and on iOS an
+   * over-long document kills the WebView rather than throwing.
+   */
   async importFromPDF(file: File): Promise<ImportResult> {
-    if (!this.geminiService.isAvailable()) {
-      throw new Error('AI service is not available. Please configure your Gemini API key in Settings.');
-    }
-
     this.analytics.trackAiAssistUsed({ feature: 'pdf_import' });
 
     this.isProcessing.set(true);
     this.processingStatus.set('Reading PDF...');
     this.processingProgress.set(10);
+    this.processingSource.set('cloud');
 
     try {
-      const pdfBase64 = await this.fileToBase64(file);
+      const { pages, totalPages, truncated } = await this.rasterizePdf(await file.arrayBuffer());
+
+      if (pages.length === 0) {
+        throw new Error('No pages could be read from this PDF.');
+      }
 
       this.processingStatus.set('Extracting transactions with AI...');
       this.processingProgress.set(30);
 
-      const extractedTransactions = await this.withTimeout(
-        this.geminiService.extractTransactionsFromPDF(pdfBase64),
-        60000, // 60 second timeout
-        'AI extraction timed out. Please try again.'
-      );
+      // The provider method, not the sibling image import: that one tags its
+      // own analytics event, and one PDF import would report two.
+      const extracted: ExtractedTransaction[] = [];
+      for (let i = 0; i < pages.length; i++) {
+        this.processingProgress.set(30 + Math.round((i / pages.length) * 30));
+        extracted.push(
+          ...(await this.withTimeout(
+            this.cloudLLMProvider.extractStatementTransactions(pages[i]),
+            60000,
+            'AI extraction timed out. Please try again.'
+          ))
+        );
+      }
 
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
-
-      // Convert RawTransaction to ExtractedTransaction format
-      const extracted: ExtractedTransaction[] = extractedTransactions.map(t => ({
-        date: t.date ? t.date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        description: t.description,
-        amount: Math.abs(t.amount),
-        type: t.amount >= 0 ? 'income' : 'expense',
-        currency: 'USD'
-      }));
-
       const categorized = await this.categorizeTransactions(extracted);
 
       this.processingStatus.set('Checking for duplicates...');
@@ -566,9 +587,18 @@ export class AIImportService {
 
       this.processingProgress.set(100);
 
-      return this.buildImportResult(file, 'pdf', 'bank_pdf', markedTransactions, duplicates);
+      const result = this.buildImportResult(file, 'pdf', 'bank_pdf', markedTransactions, duplicates);
+      if (truncated) {
+        result.warnings.push({
+          type: 'info',
+          message: `Only the first ${pages.length} of ${totalPages} pages were read.`,
+        });
+      }
+      result.processingSource = 'cloud';
+      return result;
     } finally {
       this.isProcessing.set(false);
+      this.processingSource.set(null);
     }
   }
 

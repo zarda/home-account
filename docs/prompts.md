@@ -64,7 +64,7 @@ Three prompts reach only some providers. Each is a capability gap rather than a 
 
 | Prompt | Sent by | Gap |
 |---|---|---|
-| `pdfStatement` | gemini | PDF import stays Gemini-only until pages are rasterized client-side ([#55](https://github.com/zarda/home-account/issues/55)) |
+| `pdfStatement` | gemini | Gemini is the only provider that accepts a PDF natively. Everyone else reads rasterized pages through `statementTransactions`, so PDF import itself is no longer provider-gated |
 | `receiptSummary` | gemini | The other two go straight to statement extraction |
 | `receiptItems` | gemini | Position-aware single-image itemization has no OpenAI/Claude counterpart yet |
 

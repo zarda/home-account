@@ -50,7 +50,7 @@ const PROVIDERS = {
 const SINGLE_PROVIDER = {
   pdfStatement: {
     providers: ['gemini'],
-    reason: 'PDF import is Gemini-only until the pages are rasterized client-side (#55)',
+    reason: 'Gemini is the only provider that accepts a PDF natively; the others read rasterized pages via statementTransactions',
   },
   receiptSummary: {
     providers: ['gemini'],

@@ -1,4 +1,5 @@
 import ngswConfig from '../../ngsw-config.json';
+import { PDF_WORKER_SRC } from './core/utils/pdf-raster.utils';
 
 /**
  * Analytics requests must reach the network untouched.
@@ -30,5 +31,20 @@ describe('ngsw-config', () => {
     for (const host of ANALYTICS_HOSTS) {
       expect(serialized.includes(host)).withContext(host).toBeFalse();
     }
+  });
+
+  it('caches the pdfjs worker through an asset group', () => {
+    // The worker is copied to /assets rather than left at the bundle root: the
+    // app group globs '/*.js', which does not match '.mjs', so a root-level
+    // worker would be uncached and the first offline PDF import would fail
+    // with a worker error rather than a network one.
+    const groups = (ngswConfig as { assetGroups: { resources: { files?: string[] } }[] }).assetGroups;
+    const patterns = groups.flatMap(g => g.resources.files ?? []);
+
+    expect(patterns).toContain('/assets/**');
+    expect(PDF_WORKER_SRC.startsWith('assets/')).toBeTrue();
+    expect(PDF_WORKER_SRC.endsWith('.mjs')).toBeTrue();
+    // The root-level globs genuinely do not cover it, which is why it moved.
+    expect(patterns).not.toContain('/*.mjs');
   });
 });

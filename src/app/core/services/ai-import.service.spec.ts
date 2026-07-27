@@ -15,6 +15,7 @@ import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { CategoryMemoryService } from './category-memory.service';
 import { RagContextService } from './rag-context.service';
+import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
 import {
   CategorizedImportTransaction,
@@ -37,6 +38,8 @@ describe('AIImportService', () => {
   let pwaService: jasmine.SpyObj<PwaService>;
   let categoryMemory: jasmine.SpyObj<CategoryMemoryService>;
   let ragContext: jasmine.SpyObj<RagContextService>;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
+  let rasterize: jasmine.Spy;
   let isOnlineSignal: WritableSignal<boolean>;
 
   const makeFile = (name: string, type: string, content = 'data'): File =>
@@ -88,6 +91,9 @@ describe('AIImportService', () => {
     ragContext = jasmine.createSpyObj<RagContextService>('RagContextService', [
       'buildCategorizationGrounding',
     ]);
+    analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', [
+      'trackAiAssistUsed',
+    ]);
 
     // Sensible defaults
     geminiService.isAvailable.and.returnValue(true);
@@ -120,11 +126,17 @@ describe('AIImportService', () => {
         { provide: OfflineQueueService, useValue: offlineQueue },
         { provide: PwaService, useValue: pwaService },
         { provide: CategoryMemoryService, useValue: categoryMemory },
-        { provide: RagContextService, useValue: ragContext }
+        { provide: RagContextService, useValue: ragContext },
+        { provide: AnalyticsService, useValue: analytics }
       ]
     });
 
     service = TestBed.inject(AIImportService);
+    // The pdfjs import is behind a protected seam so specs never need a canvas.
+    rasterize = spyOn(
+      service as unknown as { rasterizePdf: (d: ArrayBuffer) => Promise<unknown> },
+      'rasterizePdf'
+    );
   });
 
   it('should be created', () => {
@@ -610,34 +622,82 @@ describe('AIImportService', () => {
   });
 
   describe('importFromPDF', () => {
-    it('should throw when gemini is unavailable', async () => {
-      geminiService.isAvailable.and.returnValue(false);
-      await expectAsync(
-        service.importFromPDF(makeFile('s.pdf', 'application/pdf'))
-      ).toBeRejectedWithError(/not available/);
+    const pdfFile = () => {
+      const file = makeFile('s.pdf', 'application/pdf');
+      // jsdom's File has no arrayBuffer in this harness.
+      (file as unknown as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer =
+        () => Promise.resolve(new ArrayBuffer(8));
+      return file;
+    };
+
+    beforeEach(() => {
+      rasterize.and.resolveTo({
+        pages: ['data:image/jpeg;base64,page1'],
+        totalPages: 1,
+        truncated: false,
+      });
+      cloudLLMProvider.extractStatementTransactions.and.resolveTo([
+        { date: '2024-06-01', description: 'Deposit', amount: 500, type: 'income', currency: 'USD' },
+        { date: '2024-06-02', description: 'Withdrawal', amount: 50, type: 'expense', currency: 'USD' },
+      ]);
     });
 
-    it('should extract, categorize and build a pdf result', async () => {
-      geminiService.extractTransactionsFromPDF.and.returnValue(Promise.resolve([
-        { description: 'Deposit', amount: 500, date: new Date(2024, 5, 1) },
-        { description: 'Withdrawal', amount: -50, date: new Date(2024, 5, 2) }
-      ]));
+    it('reads a PDF without Gemini configured', async () => {
+      // The whole point of #55: this used to refuse outright, naming a
+      // provider the user may never have chosen.
+      geminiService.isAvailable.and.returnValue(false);
 
-      const result = await service.importFromPDF(makeFile('s.pdf', 'application/pdf'));
+      const result = await service.importFromPDF(pdfFile());
 
       expect(result.source).toBe('pdf');
       expect(result.fileType).toBe('bank_pdf');
       expect(result.transactions.length).toBe(2);
+    });
+
+    it('sends every rasterized page to the provider', async () => {
+      rasterize.and.resolveTo({
+        pages: ['page1', 'page2', 'page3'],
+        totalPages: 3,
+        truncated: false,
+      });
+
+      const result = await service.importFromPDF(pdfFile());
+
+      expect(cloudLLMProvider.extractStatementTransactions).toHaveBeenCalledTimes(3);
+      expect(result.transactions.length).toBe(6);
+    });
+
+    it('warns rather than silently dropping pages past the cap', async () => {
+      rasterize.and.resolveTo({ pages: ['p1', 'p2'], totalPages: 40, truncated: true });
+
+      const result = await service.importFromPDF(pdfFile());
+
+      expect(result.warnings.some(w => w.message.includes('40'))).toBeTrue();
+    });
+
+    it('reports one analytics event, not two', async () => {
+      // Routing through the sibling image import would tag receipt_scan as
+      // well, and one PDF import would report twice.
+      await service.importFromPDF(pdfFile());
+
+      expect(analytics.trackAiAssistUsed).toHaveBeenCalledOnceWith({ feature: 'pdf_import' });
+    });
+
+    it('fails clearly when no page could be read', async () => {
+      rasterize.and.resolveTo({ pages: [], totalPages: 0, truncated: false });
+
+      await expectAsync(service.importFromPDF(pdfFile()))
+        .toBeRejectedWithError(/No pages could be read/);
       expect(service.isProcessing()).toBeFalse();
     });
 
-    it('should default missing extracted dates to today', async () => {
-      geminiService.extractTransactionsFromPDF.and.returnValue(Promise.resolve([
-        { description: 'No date', amount: 10, date: undefined as unknown as Date }
-      ]));
+    it('surfaces a provider with no vision as a usable message', async () => {
+      cloudLLMProvider.extractStatementTransactions.and.rejectWith(
+        new Error('Reading a statement image needs a vision-capable provider')
+      );
 
-      const result = await service.importFromPDF(makeFile('s.pdf', 'application/pdf'));
-      expect(result.transactions.length).toBe(1);
+      await expectAsync(service.importFromPDF(pdfFile()))
+        .toBeRejectedWithError(/vision-capable provider/);
     });
   });
 
