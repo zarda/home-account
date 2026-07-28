@@ -40,11 +40,21 @@ html.dark-theme {
    boxes clip the glyph bottom-right whenever the root font size isn't 16px.
    mat-icon.mat-icon outranks the component-injected .mat-icon { 24px } rule;
    styles that deliberately need a decorated box larger than the glyph
-   (badge tiles) must flex-center the glyph instead. */
+   (badge tiles) must flex-center the glyph instead.
+
+   flex-shrink: 0 because Material gives mat-icon overflow:hidden, and an
+   overflow that isn't visible collapses a flex item's automatic minimum size
+   to zero. An icon sitting beside text in a flex row therefore shrinks
+   whenever the line is tight — and with overflow hidden the glyph is clipped
+   rather than scaled, so it thins to a sliver instead of just looking small.
+   Whether it happens depends on how long the neighbouring text is, which
+   means it varies by locale and viewport and can look fine right up until a
+   translation lands. An icon is never usefully narrower than its glyph. */
 mat-icon.mat-icon {
   width: 1em;
   height: 1em;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 /* Icon buttons: center the icon geometrically. By default the icon sits on
