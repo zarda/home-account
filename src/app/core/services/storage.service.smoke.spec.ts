@@ -5,8 +5,15 @@
 import { TestBed } from '@angular/core/testing';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
-import { getStorage, connectStorageEmulator, FirebaseStorage, Storage } from '@angular/fire/storage';
-import { StorageService } from './storage.service';
+import {
+  getStorage,
+  connectStorageEmulator,
+  ref,
+  uploadBytes,
+  FirebaseStorage,
+  Storage
+} from '@angular/fire/storage';
+import { StorageService, MAX_RECEIPT_BYTES } from './storage.service';
 
 /**
  * Integration smoke test for StorageService against the Firebase emulators.
@@ -33,6 +40,15 @@ describe('StorageService (emulator smoke test)', () => {
   // Minimal JPEG-typed payload; the emulator checks contentType/size, not pixels.
   const imageFile = () =>
     new File([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], 'receipt.jpg', { type: 'image/jpeg' });
+
+  // Payload whose bytes identify it, so slot↔object assertions compare content.
+  const markedFile = (marker: number) =>
+    new File([new Uint8Array([0xff, 0xd8, marker, 0xd9])], `receipt-${marker}.jpg`, {
+      type: 'image/jpeg'
+    });
+
+  const markerOf = async (blob: Blob): Promise<number> =>
+    new Uint8Array(await blob.arrayBuffer())[2];
 
   beforeAll(async () => {
     app = initializeApp(
@@ -87,6 +103,73 @@ describe('StorageService (emulator smoke test)', () => {
   it('enforces storage.rules: writing to another user\'s path is rejected', async () => {
     await expectAsync(
       service.uploadReceipt('a-different-user', 'smoke-denied', imageFile())
+    ).toBeRejected();
+  });
+
+  it('uploads several images for one transaction into distinct slots', async () => {
+    const id = 'smoke-multi';
+    const urls = await Promise.all([
+      service.uploadReceipt(uid, id, markedFile(0x10), 0),
+      service.uploadReceipt(uid, id, markedFile(0x11), 1),
+      service.uploadReceipt(uid, id, markedFile(0x12), 2)
+    ]);
+
+    expect(new Set(urls).size).toBe(3);
+
+    // Content proves the slot→object mapping instead of assuming it.
+    expect(await markerOf(await service.downloadReceipt(uid, id, 0))).toBe(0x10);
+    expect(await markerOf(await service.downloadReceipt(uid, id, 1))).toBe(0x11);
+    expect(await markerOf(await service.downloadReceipt(uid, id, 2))).toBe(0x12);
+  });
+
+  it('keeps slot 0 at the unsuffixed legacy key', async () => {
+    const id = 'smoke-legacy-slot';
+    // The pre-slot call signature: what every object in production was
+    // uploaded with. Slot 0 must resolve to the same object.
+    await service.uploadReceipt(uid, id, markedFile(0x21));
+
+    expect(await markerOf(await service.downloadReceipt(uid, id))).toBe(0x21);
+    expect(await markerOf(await service.downloadReceipt(uid, id, 0))).toBe(0x21);
+  });
+
+  it('deletes one slot without touching the others', async () => {
+    const id = 'smoke-slot-delete';
+    await service.uploadReceipt(uid, id, markedFile(0x30), 0);
+    await service.uploadReceipt(uid, id, markedFile(0x31), 1);
+    await service.uploadReceipt(uid, id, markedFile(0x32), 2);
+
+    await service.deleteReceipt(uid, id, 1);
+
+    await expectAsync(service.downloadReceipt(uid, id, 1)).toBeRejected();
+    expect(await markerOf(await service.downloadReceipt(uid, id, 0))).toBe(0x30);
+    expect(await markerOf(await service.downloadReceipt(uid, id, 2))).toBe(0x32);
+  });
+
+  it('deleteReceiptSlots tolerates gaps', async () => {
+    const id = 'smoke-slot-sweep';
+    // Slot 1 deliberately missing — the shape a middle removal leaves behind.
+    await service.uploadReceipt(uid, id, markedFile(0x40), 0);
+    await service.uploadReceipt(uid, id, markedFile(0x42), 2);
+
+    await expectAsync(service.deleteReceiptSlots(uid, id, [0, 1, 2])).toBeResolved();
+
+    await expectAsync(service.downloadReceipt(uid, id, 0)).toBeRejected();
+    await expectAsync(service.downloadReceipt(uid, id, 2)).toBeRejected();
+  });
+
+  it('storage.rules cover suffixed slot names too', async () => {
+    // Owner check reaches a suffixed object name.
+    await expectAsync(
+      service.uploadReceipt('a-different-user', 'smoke-denied', imageFile(), 3)
+    ).toBeRejected();
+
+    // Size limit reaches a suffixed name: bypass the client-side guard and
+    // upload raw bytes, proving `{fileName}` matched `_1` server-side rather
+    // than falling through to the deny-all rule.
+    const oversized = new Uint8Array(MAX_RECEIPT_BYTES + 1);
+    const suffixedRef = ref(storage, `users/${uid}/receipts/smoke-oversized_1`);
+    await expectAsync(
+      uploadBytes(suffixedRef, oversized, { contentType: 'image/jpeg' })
     ).toBeRejected();
   });
 });

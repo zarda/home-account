@@ -12,53 +12,77 @@ import {
 export const MAX_RECEIPT_BYTES = 2 * 1024 * 1024;
 
 /**
+ * Maximum receipt images one transaction may hold. Mirrored server-side by
+ * firestore.rules, which caps the receiptUrls array at the same size.
+ */
+export const MAX_RECEIPTS_PER_TRANSACTION = 5;
+
+/**
  * Wraps Firebase Storage operations for transaction receipts.
  *
- * Receipts are stored at `users/{userId}/receipts/{transactionId}` — one
- * object per transaction — so re-uploading overwrites the previous image and
- * the storage path can be derived from the transaction id alone.
+ * Receipts are stored at `users/{userId}/receipts/{objectName}` where the
+ * object name is derived from the transaction id and a slot number:
+ * slot 0 is the bare transaction id, slot n > 0 appends `_{n}`.
+ *
+ * Slot 0 stays unsuffixed so every object uploaded before slots existed is
+ * still addressable at its original key — no migration, no dual-path
+ * lookup. The suffix cannot alias another transaction's slot 0 because no
+ * transaction id contains an underscore: Firestore auto-ids draw from
+ * [A-Za-z0-9], and the only caller-supplied ids are the recurring engine's
+ * `rec-{ruleId}-{timestamp}`, which are hyphen-separated.
+ *
+ * The name is a single path segment either way, so storage.rules'
+ * `users/{userId}/receipts/{fileName}` match covers every slot; a nested
+ * scheme would fall through to the deny-all rule.
  */
 @Injectable({ providedIn: 'root' })
 export class StorageService {
   private storage = inject(Storage);
 
-  private receiptPath(userId: string, transactionId: string): string {
-    return `users/${userId}/receipts/${transactionId}`;
+  private receiptPath(userId: string, transactionId: string, slot: number): string {
+    const objectName = slot === 0 ? transactionId : `${transactionId}_${slot}`;
+    return `users/${userId}/receipts/${objectName}`;
   }
 
   /**
-   * Upload (or overwrite) a transaction's receipt image and return its
-   * download URL. Rejects oversized files before hitting the network so the
-   * caller gets a clear error instead of an opaque storage-rules rejection.
+   * Upload (or overwrite) one of a transaction's receipt images and return
+   * its download URL. Rejects oversized files before hitting the network so
+   * the caller gets a clear error instead of an opaque storage-rules
+   * rejection.
    */
-  async uploadReceipt(userId: string, transactionId: string, file: File): Promise<string> {
+  async uploadReceipt(
+    userId: string,
+    transactionId: string,
+    file: File,
+    slot = 0
+  ): Promise<string> {
     if (file.size > MAX_RECEIPT_BYTES) {
       throw new Error(`Receipt image exceeds the ${MAX_RECEIPT_BYTES} byte limit`);
     }
 
-    const storageRef = ref(this.storage, this.receiptPath(userId, transactionId));
+    const storageRef = ref(this.storage, this.receiptPath(userId, transactionId, slot));
     await uploadBytes(storageRef, file, { contentType: file.type || 'image/jpeg' });
     return getDownloadURL(storageRef);
   }
 
   /**
-   * Download a transaction's receipt image through the Storage SDK.
+   * Download one of a transaction's receipt images through the Storage SDK.
    * Unlike fetch()ing the public download URL, this authenticates via
    * headers and uses a token-less URL, so it can't collide with the
    * browser's cached <img> responses (which lack CORS headers and make a
    * plain fetch fail with a CORS error).
    */
-  downloadReceipt(userId: string, transactionId: string): Promise<Blob> {
-    const storageRef = ref(this.storage, this.receiptPath(userId, transactionId));
+  downloadReceipt(userId: string, transactionId: string, slot = 0): Promise<Blob> {
+    const storageRef = ref(this.storage, this.receiptPath(userId, transactionId, slot));
     return getBlob(storageRef);
   }
 
   /**
-   * Delete a transaction's receipt image. A missing object is treated as
-   * success so deleting a receiptless transaction never fails.
+   * Delete one of a transaction's receipt images. A missing object is
+   * treated as success so deleting an empty slot never fails.
    */
-  async deleteReceipt(userId: string, transactionId: string): Promise<void> {
-    const storageRef = ref(this.storage, this.receiptPath(userId, transactionId));
+  async deleteReceipt(userId: string, transactionId: string, slot = 0): Promise<void> {
+    const storageRef = ref(this.storage, this.receiptPath(userId, transactionId, slot));
     try {
       await deleteObject(storageRef);
     } catch (error) {
@@ -66,5 +90,15 @@ export class StorageService {
         throw error;
       }
     }
+  }
+
+  /**
+   * Delete several of a transaction's receipt slots, tolerating gaps: a
+   * slot whose object is already gone (a tombstoned removal, or a rolled
+   * back upload) counts as deleted. Never rejects — callers use this for
+   * best-effort cleanup where the document delete must win either way.
+   */
+  async deleteReceiptSlots(userId: string, transactionId: string, slots: number[]): Promise<void> {
+    await Promise.allSettled(slots.map(slot => this.deleteReceipt(userId, transactionId, slot)));
   }
 }
