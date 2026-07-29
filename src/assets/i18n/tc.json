@@ -919,7 +919,14 @@
     "convertFailedNoDetails": "無法從此圖片讀取詳細內容，圖片已保留。",
     "convertFailedDownload": "無法下載圖片。若持續發生，儲存空間值區需要一次性的 CORS 設定（請參閱 docs/storage-cors-setup.md）。",
     "convertFailed": "圖片轉換失敗，圖片已保留。",
-    "empty": "沒有已儲存的收據圖片。"
+    "empty": "沒有已儲存的收據圖片。",
+    "addAnother": "新增圖片",
+    "imageNumber": "第 {{index}} 張收據圖片（共 {{total}} 張）",
+    "removeOneConfirmTitle": "要刪除這張收據圖片嗎？",
+    "removeOneConfirmMessage": "只會刪除這張圖片，交易與其他圖片會保留。",
+    "maxPerTransaction": "一筆交易最多可儲存 {{max}} 張收據圖片。",
+    "attachFailed": "無法附加圖片，因此未儲存任何圖片。",
+    "countBadge": "{{count}} 張圖片"
   },
   "analytics": {
     "settingsTitle": "使用統計",

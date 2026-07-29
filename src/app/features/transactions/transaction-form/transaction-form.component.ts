@@ -17,7 +17,11 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from '../../../core/services/transaction.service';
+import {
+  TransactionService,
+  RECEIPT_IMAGE_LIMIT_ERROR,
+  RECEIPT_ATTACH_FAILED,
+} from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import {
   ReceiptToNoteService,
@@ -39,7 +43,10 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { formatReceiptItemLines } from '../../../core/utils/receipt-consolidation';
-import { MAX_RECEIPT_BYTES } from '../../../core/services/storage.service';
+import {
+  MAX_RECEIPT_BYTES,
+  MAX_RECEIPTS_PER_TRANSACTION,
+} from '../../../core/services/storage.service';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
@@ -102,11 +109,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private categoryIdSignal = signal<string>('');
 
   // AI Receipt Scanner signals
-  receiptPreview = signal<string | null>(null);
   isScanning = signal(false);
   scanError = signal<string | null>(null);
-  // Compressed receipt image to upload alongside the transaction.
-  receiptFile = signal<File | null>(null);
+  // Compressed receipt images queued for upload alongside the transaction,
+  // each with its preview data URL. On edit these append after the stored
+  // images — replacing one is remove-then-attach.
+  pendingReceipts = signal<{ file: File; preview: string }[]>([]);
 
   /**
    * Whether a receipt scan filled any of this form.
@@ -120,16 +128,23 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * user then filled in by hand.
    */
   private filledByScan = false;
+  // The queued image the scan ran against; discarding it clears filledByScan.
+  private scannedReceipt: { file: File; preview: string } | null = null;
 
-  // Existing stored receipt (edit mode). Cleared locally after the user
-  // removes it or converts it into note text.
-  private existingReceiptGone = signal(false);
-  isConvertingReceipt = signal(false);
+  // Images already stored on the item being edited, by storage slot. Kept as
+  // local state so per-image removal and conversion update the strip without
+  // re-reading the document.
+  storedReceipts = signal<{ url: string; slot: number }[]>([]);
+  // Slot with an in-flight remove/convert, so one image's spinner does not
+  // lock its siblings.
+  busyStoredSlot = signal<number | null>(null);
 
-  get existingReceiptUrl(): string | null {
-    if (this.existingReceiptGone()) return null;
-    return this.data.transaction?.receiptUrl ?? null;
-  }
+  /** True while another image can be queued under the per-transaction cap. */
+  canQueueMore = computed(
+    () =>
+      this.storedReceipts().length + this.pendingReceipts().length <
+      MAX_RECEIPTS_PER_TRANSACTION
+  );
 
   // AI Category Suggestion signals
   suggestedCategory = signal<Category | null>(null);
@@ -180,6 +195,23 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   ngOnInit(): void {
     this.initForm();
+    this.seedStoredReceipts();
+  }
+
+  /**
+   * Snapshot the edited item's stored images as {url, slot} pairs. The slot
+   * is the entry's index in receiptUrls (a legacy row's single receiptUrl is
+   * slot 0); tombstoned entries are skipped but the survivors keep their
+   * original slots, which is what per-image removal and conversion act on.
+   */
+  private seedStoredReceipts(): void {
+    const transaction = this.data.transaction;
+    if (this.data.mode !== 'edit' || !transaction) return;
+    const slots = transaction.receiptUrls
+      ?? (transaction.receiptUrl ? [transaction.receiptUrl] : []);
+    this.storedReceipts.set(
+      slots.map((url, slot) => ({ url, slot })).filter(entry => !!entry.url)
+    );
   }
 
   ngAfterViewInit(): void {
@@ -308,7 +340,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
     try {
       const formValue = this.form.value;
-      const receipt = this.receiptFile();
+      const receipts = this.pendingReceipts().map(pending => pending.file);
 
       const transactionData: CreateTransactionDTO = {
         type: formValue.type,
@@ -319,7 +351,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         date: formValue.date,
         ...(formValue.note ? { note: formValue.note } : {}),
         ...(formValue.period ? { period: formValue.period } : {}),
-        ...(receipt ? { receiptFiles: [receipt] } : {}),
+        ...(receipts.length ? { receiptFiles: receipts } : {}),
       };
 
       if (this.data.mode === 'add') {
@@ -343,6 +375,10 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     } catch (error) {
       if (error instanceof Error && error.message === RECEIPT_IMAGE_LIMIT_ERROR) {
         this.openLimitDialog();
+      } else if (error instanceof Error && error.message === RECEIPT_ATTACH_FAILED) {
+        // The batch rolled back: the transaction is unchanged and none of
+        // the queued images were kept.
+        this.notifications.error(this.translationService.t('receiptImages.attachFailed'));
       }
       // Other save failures - could add snackbar notification here
     } finally {
@@ -378,48 +414,86 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   async onReceiptSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
+    const files = Array.from(input.files ?? []);
 
-    // Reset input so the same file can be selected again
+    // Reset input so the same files can be selected again
     input.value = '';
 
-    if (!file) return;
+    if (files.length === 0) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
+    // Validate file types
+    if (files.some(file => !file.type.startsWith('image/'))) {
       const message = this.translationService.t('ai.invalidFileType');
       this.notifications.error(message);
       return;
     }
 
-    // Storing this image consumes a quota slot unless the item already
-    // has one to replace — at the limit, offer cleanup/upgrade instead
-    if (!this.existingReceiptUrl && !(await this.receiptQuota.canAddImages(1))) {
+    // Cap the queue at what the transaction can still hold.
+    const capacity = MAX_RECEIPTS_PER_TRANSACTION
+      - this.storedReceipts().length
+      - this.pendingReceipts().length;
+    if (capacity <= 0) {
+      this.notifications.error(
+        this.translationService.t('receiptImages.maxPerTransaction', {
+          max: MAX_RECEIPTS_PER_TRANSACTION,
+        })
+      );
+      return;
+    }
+    const accepted = files.slice(0, capacity);
+    if (accepted.length < files.length) {
+      this.notifications.info(
+        this.translationService.t('receiptImages.maxPerTransaction', {
+          max: MAX_RECEIPTS_PER_TRANSACTION,
+        })
+      );
+    }
+
+    // Every queued image stores a NEW one — at the limit, offer
+    // cleanup/upgrade instead. All or nothing: a partial queue would save
+    // a different set of images than the user picked.
+    if (!(await this.receiptQuota.canAddImages(accepted.length))) {
       this.openLimitDialog();
       return;
     }
 
-    // Compress/resize and cap at the receipt size limit before keeping the file.
-    let receipt: File;
+    // Compress/resize and cap at the receipt size limit before keeping them.
+    let queued: { file: File; preview: string }[];
     try {
-      receipt = await compressImage(file, { maxBytes: MAX_RECEIPT_BYTES });
+      queued = await Promise.all(
+        accepted.map(async file => {
+          let receipt: File;
+          try {
+            receipt = await compressImage(file, { maxBytes: MAX_RECEIPT_BYTES });
+          } catch {
+            receipt = file;
+          }
+          return { file: receipt, preview: await this.readAsDataUrl(receipt) };
+        })
+      );
     } catch {
-      receipt = file;
+      this.notifications.error(this.translationService.t('ai.readError'));
+      return;
     }
-    this.receiptFile.set(receipt);
 
-    // Build a preview and run the AI scan from the (compressed) file.
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result as string;
-      this.receiptPreview.set(base64);
-      this.scanReceipt(base64);
-    };
-    reader.onerror = () => {
-      const message = this.translationService.t('ai.readError');
-      this.notifications.error(message);
-    };
-    reader.readAsDataURL(receipt);
+    const wasEmpty = this.pendingReceipts().length === 0;
+    this.pendingReceipts.update(list => [...list, ...queued]);
+
+    // The AI scan fills the form from one receipt; run it for the first
+    // image queued into an empty strip, as before multi-select existed.
+    if (wasEmpty && queued.length > 0) {
+      this.scannedReceipt = queued[0];
+      this.scanReceipt(queued[0].preview);
+    }
+  }
+
+  private readAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read receipt image'));
+      reader.readAsDataURL(file);
+    });
   }
 
   private async scanReceipt(base64Image: string): Promise<void> {
@@ -481,7 +555,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * declining keeps the already-patched form.
    */
   private async offerMultiReceiptReview(count: number): Promise<void> {
-    const file = this.receiptFile();
+    const file = this.pendingReceipts()[0]?.file;
     if (!file) return;
 
     const data: ConfirmDialogData = {
@@ -514,24 +588,29 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     }
   }
 
-  clearReceipt(): void {
-    this.receiptPreview.set(null);
-    this.scanError.set(null);
-    this.receiptFile.set(null);
-    this.filledByScan = false;
+  removePendingReceipt(index: number): void {
+    const removed = this.pendingReceipts()[index];
+    this.pendingReceipts.update(list => list.filter((_, i) => i !== index));
+    // Discarding the image the scan ran against withdraws the scan's claim
+    // on this form — whatever the user keeps typing is manual entry.
+    if (removed && removed === this.scannedReceipt) {
+      this.scannedReceipt = null;
+      this.filledByScan = false;
+      this.scanError.set(null);
+    }
   }
 
   /**
-   * Remove the stored receipt image from the item being edited,
-   * freeing one slot of the receipt-image quota.
+   * Remove one stored receipt image from the item being edited, freeing one
+   * slot of the receipt-image quota. The rest of the strip is untouched.
    */
-  async removeExistingReceipt(): Promise<void> {
+  async removeStoredReceipt(stored: { url: string; slot: number }): Promise<void> {
     const transaction = this.data.transaction;
-    if (!transaction?.receiptUrl) return;
+    if (!transaction || this.busyStoredSlot() !== null) return;
 
     const data: ConfirmDialogData = {
-      title: this.translationService.t('receiptImages.removeConfirmTitle'),
-      message: this.translationService.t('receiptImages.removeConfirmMessage'),
+      title: this.translationService.t('receiptImages.removeOneConfirmTitle'),
+      message: this.translationService.t('receiptImages.removeOneConfirmMessage'),
       confirmLabel: this.translationService.t('common.remove'),
       confirmColor: 'warn',
       icon: 'delete',
@@ -542,33 +621,39 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     });
     if (!confirmed) return;
 
+    this.busyStoredSlot.set(stored.slot);
     try {
-      await this.transactionService.removeAllReceipts(transaction.id);
-      this.existingReceiptGone.set(true);
+      await this.transactionService.removeReceiptAt(transaction.id, stored.slot);
+      this.storedReceipts.update(list => list.filter(entry => entry.slot !== stored.slot));
       this.notifications.success(this.translationService.t('receiptImages.removed'));
     } catch {
       this.notifications.error(this.translationService.t('common.error'));
+    } finally {
+      this.busyStoredSlot.set(null);
     }
   }
 
   /**
-   * Convert the stored receipt image into detailed note text and remove
-   * the image. The note control picks up the new text so the form stays
+   * Convert one stored receipt image into detailed note text and remove
+   * that image. The note control picks up the new text so the form stays
    * consistent with what was persisted.
    */
-  async convertExistingReceiptToNote(): Promise<void> {
+  async convertStoredReceiptToNote(stored: { url: string; slot: number }): Promise<void> {
     const transaction = this.data.transaction;
-    if (!transaction?.receiptUrl || this.isConvertingReceipt()) return;
+    if (!transaction || this.busyStoredSlot() !== null) return;
 
-    this.isConvertingReceipt.set(true);
+    this.busyStoredSlot.set(stored.slot);
     try {
       // Convert against the note currently in the form, not the stored one
-      const note = await this.receiptToNote.convertReceiptToNote({
-        ...transaction,
-        note: this.form.get('note')?.value || transaction.note,
-      });
+      const note = await this.receiptToNote.convertReceiptToNote(
+        {
+          ...transaction,
+          note: this.form.get('note')?.value || transaction.note,
+        },
+        stored.slot
+      );
       this.form.patchValue({ note });
-      this.existingReceiptGone.set(true);
+      this.storedReceipts.update(list => list.filter(entry => entry.slot !== stored.slot));
       this.notifications.success(this.translationService.t('receiptImages.converted'));
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
@@ -582,7 +667,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         this.notifications.error(this.translationService.t('receiptImages.convertFailed'));
       }
     } finally {
-      this.isConvertingReceipt.set(false);
+      this.busyStoredSlot.set(null);
     }
   }
 

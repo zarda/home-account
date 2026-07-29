@@ -170,8 +170,16 @@
 
 .receipt-icon-link {
   display: inline-flex;
+  align-items: center;
   vertical-align: middle;
   margin-left: 4px;
+  line-height: 1;
+}
+
+// Image count next to the icon, only shown past one image
+.receipt-count-badge {
+  font-size: var(--text-xs);
+  @apply text-gray-400 dark:text-gray-500;
   line-height: 1;
 }
 

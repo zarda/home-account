@@ -919,7 +919,14 @@
     "convertFailedNoDetails": "No details could be read from this image, so it was kept.",
     "convertFailedDownload": "The image could not be downloaded. If this keeps happening, the storage bucket needs a one-time CORS setup — see docs/storage-cors-setup.md.",
     "convertFailed": "Converting the image failed, so it was kept.",
-    "empty": "No stored receipt images."
+    "empty": "No stored receipt images.",
+    "addAnother": "Add another image",
+    "imageNumber": "Receipt image {{index}} of {{total}}",
+    "removeOneConfirmTitle": "Remove this receipt image?",
+    "removeOneConfirmMessage": "Only this image is deleted. The transaction and any other images are kept.",
+    "maxPerTransaction": "A transaction can hold up to {{max}} receipt images.",
+    "attachFailed": "The images could not be attached, so none were saved.",
+    "countBadge": "{{count}} images"
   },
   "analytics": {
     "settingsTitle": "Usage statistics",

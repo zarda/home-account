@@ -129,9 +129,14 @@
               target="_blank"
               rel="noopener"
               (click)="$event.stopPropagation()"
-              [matTooltip]="'transactions.viewReceipt' | translate"
+              [matTooltip]="receiptCount(transaction) > 1
+                ? ('receiptImages.countBadge' | translate: { count: receiptCount(transaction) })
+                : ('transactions.viewReceipt' | translate)"
             >
               <mat-icon class="receipt-icon">receipt_long</mat-icon>
+              @if (receiptCount(transaction) > 1) {
+                <span class="receipt-count-badge">{{ receiptCount(transaction) }}</span>
+              }
             </a>
           }
         </td>

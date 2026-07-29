@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, input, output } from '@angu
 
 import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category } from '../../../models';
+import { Transaction, Category, receiptImageCount } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
@@ -54,6 +54,12 @@ export class TransactionRowComponent {
       this.transaction().categoryId,
       this.categories()
     );
+  }
+
+  // Templates cannot call module functions, so the model helper is exposed
+  // through the component.
+  receiptCount(): number {
+    return receiptImageCount(this.transaction());
   }
 
   formatAmount(): string {

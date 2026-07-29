@@ -84,6 +84,23 @@ describe('TransactionRowComponent', () => {
     expect(fixture.nativeElement.querySelector('.receipt-indicator')).toBeNull();
   });
 
+  it('badges the indicator with the image count only past one image', () => {
+    setTransaction({
+      receiptUrl: 'https://example.com/r0.png',
+      receiptUrls: ['https://example.com/r0.png', 'https://example.com/r1.png'],
+      receiptCount: 2,
+    } as Partial<Transaction>);
+    expect(fixture.nativeElement.querySelector('.receipt-count-badge')?.textContent?.trim()).toBe('2');
+
+    // A single image needs no count — including on a legacy row that
+    // predates receiptUrls and carries only the url.
+    setTransaction({ receiptUrl: 'https://example.com/r0.png' } as Partial<Transaction>);
+    expect(fixture.nativeElement.querySelector('.receipt-count-badge')).toBeNull();
+
+    setTransaction({});
+    expect(fixture.nativeElement.querySelector('.receipt-count-badge')).toBeNull();
+  });
+
   it('emits activate on click and keyboard activation', () => {
     setTransaction({});
     const emitted: Transaction[] = [];

@@ -919,7 +919,14 @@
     "convertFailedNoDetails": "この画像から詳細を読み取れなかったため、画像は保持されました。",
     "convertFailedDownload": "画像をダウンロードできませんでした。繰り返し発生する場合は、ストレージバケットに一度だけCORS設定が必要です（docs/storage-cors-setup.md 参照）。",
     "convertFailed": "画像の変換に失敗したため、画像は保持されました。",
-    "empty": "保存されたレシート画像はありません。"
+    "empty": "保存されたレシート画像はありません。",
+    "addAnother": "画像を追加",
+    "imageNumber": "レシート画像 {{total}} 枚中 {{index}} 枚目",
+    "removeOneConfirmTitle": "このレシート画像を削除しますか？",
+    "removeOneConfirmMessage": "この画像のみ削除されます。取引と他の画像は残ります。",
+    "maxPerTransaction": "1件の取引に保存できるレシート画像は最大 {{max}} 枚です。",
+    "attachFailed": "画像を添付できなかったため、いずれも保存されませんでした。",
+    "countBadge": "画像 {{count}} 枚"
   },
   "analytics": {
     "settingsTitle": "利用状況の統計",

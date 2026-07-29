@@ -14,7 +14,12 @@
     <span class="row-description">
       {{ transaction().description }}
       @if (transaction().receiptUrl) {
-        <mat-icon class="receipt-indicator">receipt_long</mat-icon>
+        <span class="receipt-indicator-group">
+          <mat-icon class="receipt-indicator">receipt_long</mat-icon>
+          @if (receiptCount() > 1) {
+            <span class="receipt-count-badge">{{ receiptCount() }}</span>
+          }
+        </span>
       }
     </span>
     <span class="row-category">{{ categoryName() }}</span>

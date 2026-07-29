@@ -6,8 +6,8 @@
 
   <form [formGroup]="form" (ngSubmit)="onSubmit()">
     <mat-dialog-content class="dialog-content">
-      <!-- Attach or rescan a receipt. Available when editing too: the service
-           side has always accepted a replacement, only the UI withheld it. -->
+      <!-- Attach receipts. Available when editing too; queued images append
+           after the stored ones — replacing is remove-then-attach. -->
       @if (isAiAvailable()) {
         <div class="receipt-scanner-section">
           <!-- Hidden file input -->
@@ -16,27 +16,47 @@
             #receiptInput
             accept="image/*"
             capture="environment"
+            multiple
             (change)="onReceiptSelected($event)"
             class="hidden-input"
           />
 
-          <!-- Receipt preview -->
-          @if (receiptPreview()) {
-            <div class="receipt-preview">
-              <img [src]="receiptPreview()" alt="Receipt preview" />
-              <button
-                mat-icon-button
-                type="button"
-                class="clear-receipt-btn"
-                (click)="clearReceipt()"
-                [attr.aria-label]="'common.remove' | translate"
-              >
-                <mat-icon>close</mat-icon>
-              </button>
-              @if (isScanning()) {
-                <div class="scanning-overlay">
-                  <app-loading-spinner [message]="'ai.scanning' | translate" />
+          <!-- Queued receipts -->
+          @if (pendingReceipts().length > 0) {
+            <div class="receipt-strip">
+              @for (pending of pendingReceipts(); track pending.preview; let i = $index) {
+                <div class="receipt-preview">
+                  <img
+                    [src]="pending.preview"
+                    [alt]="'receiptImages.imageNumber' | translate: { index: i + 1, total: pendingReceipts().length }"
+                  />
+                  <button
+                    mat-icon-button
+                    type="button"
+                    class="clear-receipt-btn"
+                    (click)="removePendingReceipt(i)"
+                    [attr.aria-label]="'common.remove' | translate"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
+                  @if (isScanning() && i === 0) {
+                    <div class="scanning-overlay">
+                      <app-loading-spinner [message]="'ai.scanning' | translate" />
+                    </div>
+                  }
                 </div>
+              }
+              @if (canQueueMore()) {
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="add-receipt-tile"
+                  (click)="receiptInput.click()"
+                  [disabled]="isScanning()"
+                >
+                  <mat-icon>add_photo_alternate</mat-icon>
+                  <span>{{ 'receiptImages.addAnother' | translate }}</span>
+                </button>
               }
             </div>
           } @else {
@@ -66,46 +86,56 @@
         </div>
       }
 
-      <!-- Existing receipt (edit mode): thumbnail plus quota housekeeping actions -->
-      <!-- The stored receipt. Hidden once a replacement is queued, so the
-           dialog does not show the old image next to the new one. -->
-      @if (data.mode === 'edit' && existingReceiptUrl && !receiptFile()) {
+      <!-- Stored receipts (edit mode): one tile per image, each with its own
+           housekeeping actions. Queued additions render above, so the user
+           sees stored and incoming images side by side. -->
+      @if (data.mode === 'edit' && storedReceipts().length > 0) {
         <div class="receipt-scanner-section">
-          <a
-            class="receipt-preview receipt-link"
-            [href]="existingReceiptUrl"
-            target="_blank"
-            rel="noopener"
-            [matTooltip]="'transactions.viewReceipt' | translate"
-          >
-            <img [src]="existingReceiptUrl" [alt]="'transactions.receipt' | translate" />
-            @if (isConvertingReceipt()) {
-              <div class="scanning-overlay">
-                <app-loading-spinner [message]="'receiptImages.converting' | translate" />
+          <div class="receipt-strip">
+            @for (stored of storedReceipts(); track stored.slot; let i = $index) {
+              <div class="stored-receipt">
+                <a
+                  class="receipt-preview receipt-link"
+                  [href]="stored.url"
+                  target="_blank"
+                  rel="noopener"
+                  [matTooltip]="'transactions.viewReceipt' | translate"
+                >
+                  <img
+                    [src]="stored.url"
+                    [alt]="'receiptImages.imageNumber' | translate: { index: i + 1, total: storedReceipts().length }"
+                  />
+                  @if (busyStoredSlot() === stored.slot) {
+                    <div class="scanning-overlay">
+                      <app-loading-spinner [message]="'receiptImages.converting' | translate" />
+                    </div>
+                  }
+                </a>
+                <div class="existing-receipt-actions">
+                  <button
+                    mat-icon-button
+                    type="button"
+                    (click)="convertStoredReceiptToNote(stored)"
+                    [disabled]="busyStoredSlot() !== null"
+                    [matTooltip]="'receiptImages.convertToNoteHint' | translate"
+                    [attr.aria-label]="'receiptImages.convertToNote' | translate"
+                  >
+                    <mat-icon>notes</mat-icon>
+                  </button>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    class="remove-receipt-btn"
+                    (click)="removeStoredReceipt(stored)"
+                    [disabled]="busyStoredSlot() !== null"
+                    [matTooltip]="'receiptImages.removeImage' | translate"
+                    [attr.aria-label]="'receiptImages.removeImage' | translate"
+                  >
+                    <mat-icon>delete</mat-icon>
+                  </button>
+                </div>
               </div>
             }
-          </a>
-          <div class="existing-receipt-actions">
-            <button
-              mat-stroked-button
-              type="button"
-              (click)="convertExistingReceiptToNote()"
-              [disabled]="isConvertingReceipt()"
-              [matTooltip]="'receiptImages.convertToNoteHint' | translate"
-            >
-              <mat-icon>notes</mat-icon>
-              <span>{{ 'receiptImages.convertToNote' | translate }}</span>
-            </button>
-            <button
-              mat-stroked-button
-              type="button"
-              class="remove-receipt-btn"
-              (click)="removeExistingReceipt()"
-              [disabled]="isConvertingReceipt()"
-            >
-              <mat-icon>delete</mat-icon>
-              <span>{{ 'receiptImages.removeImage' | translate }}</span>
-            </button>
           </div>
         </div>
       }

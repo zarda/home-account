@@ -27,7 +27,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category } from '../../../models';
+import { Transaction, Category, receiptImageCount } from '../../../models';
 import {
   TransactionWindowService,
   WindowSortDirection
@@ -95,6 +95,12 @@ export class TransactionListComponent {
   private dialog = inject(MatDialog);
 
   displayedColumns = ['date', 'category', 'description', 'amount', 'actions'];
+
+  // Templates cannot call module functions, so the model helper is exposed
+  // through the component.
+  receiptCount(transaction: Transaction): number {
+    return receiptImageCount(transaction);
+  }
 
   // Only one of the two views is instantiated; previously both were rendered
   // and the inactive one merely hidden with CSS, doubling the DOM.

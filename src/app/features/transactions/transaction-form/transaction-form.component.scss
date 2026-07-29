@@ -76,7 +76,64 @@
   }
 }
 
-// Actions under the stored receipt thumbnail (edit mode)
+// Several receipts side by side: queued additions or the stored strip.
+.receipt-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+
+  .receipt-preview {
+    width: 132px;
+
+    img {
+      width: 132px;
+      height: 132px;
+      object-fit: cover;
+    }
+
+    .clear-receipt-btn {
+      top: 4px;
+      right: 4px;
+      transform: scale(0.8);
+    }
+  }
+}
+
+// Dashed square inviting one more image, sized to match the thumbnails.
+.add-receipt-tile {
+  width: 132px;
+  height: 132px;
+  @apply border-2 border-dashed border-gray-300 dark:border-gray-600;
+  background: var(--surface-subtle);
+  border-radius: var(--radius-md);
+
+  ::ng-deep .mdc-button__label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  mat-icon {
+    @apply text-gray-500 dark:text-gray-400;
+  }
+
+  span {
+    @apply text-gray-600 dark:text-gray-300;
+    font-size: 12px;
+  }
+}
+
+// One stored image with its own housekeeping actions beneath it
+.stored-receipt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+// Actions under the stored receipt thumbnails (edit mode)
 .existing-receipt-actions {
   display: flex;
   gap: 8px;
