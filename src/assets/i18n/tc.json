@@ -926,7 +926,11 @@
     "removeOneConfirmMessage": "只會刪除這張圖片，交易與其他圖片會保留。",
     "maxPerTransaction": "一筆交易最多可儲存 {{max}} 張收據圖片。",
     "attachFailed": "無法附加圖片，因此未儲存任何圖片。",
-    "countBadge": "{{count}} 張圖片"
+    "countBadge": "{{count}} 張圖片",
+    "removeAllImages": "刪除所有圖片",
+    "removeAllConfirmTitle": "要刪除所有收據圖片嗎？",
+    "removeAllConfirmMessage": "全部 {{count}} 張圖片將被永久刪除，交易本身會保留。",
+    "removedAll": "已刪除 {{count}} 張收據圖片"
   },
   "analytics": {
     "settingsTitle": "使用統計",

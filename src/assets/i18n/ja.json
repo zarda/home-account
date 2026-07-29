@@ -926,7 +926,11 @@
     "removeOneConfirmMessage": "この画像のみ削除されます。取引と他の画像は残ります。",
     "maxPerTransaction": "1件の取引に保存できるレシート画像は最大 {{max}} 枚です。",
     "attachFailed": "画像を添付できなかったため、いずれも保存されませんでした。",
-    "countBadge": "画像 {{count}} 枚"
+    "countBadge": "画像 {{count}} 枚",
+    "removeAllImages": "すべての画像を削除",
+    "removeAllConfirmTitle": "すべてのレシート画像を削除しますか？",
+    "removeAllConfirmMessage": "{{count}} 枚の画像がすべて完全に削除されます。取引自体は残ります。",
+    "removedAll": "レシート画像 {{count}} 枚を削除しました"
   },
   "analytics": {
     "settingsTitle": "利用状況の統計",

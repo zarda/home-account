@@ -926,7 +926,11 @@
     "removeOneConfirmMessage": "Only this image is deleted. The transaction and any other images are kept.",
     "maxPerTransaction": "A transaction can hold up to {{max}} receipt images.",
     "attachFailed": "The images could not be attached, so none were saved.",
-    "countBadge": "{{count}} images"
+    "countBadge": "{{count}} images",
+    "removeAllImages": "Remove all images",
+    "removeAllConfirmTitle": "Remove all receipt images?",
+    "removeAllConfirmMessage": "All {{count}} images are deleted permanently. The transaction itself is kept.",
+    "removedAll": "{{count}} receipt images removed"
   },
   "analytics": {
     "settingsTitle": "Usage statistics",
