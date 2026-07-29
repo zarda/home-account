@@ -1,5 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
+import {
+  TransactionService,
+  RECEIPT_IMAGE_LIMIT_ERROR,
+  RECEIPT_ATTACH_FAILED
+} from './transaction.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
@@ -26,9 +30,9 @@ describe('TransactionService', () => {
 
   beforeEach(() => {
     mockQuota = jasmine.createSpyObj<ReceiptQuotaService>('ReceiptQuotaService', [
-      'canAddImage', 'noteImageAdded', 'noteImageRemoved', 'invalidateCount',
+      'canAddImages', 'noteImagesAdded', 'noteImagesRemoved', 'invalidateCount',
     ]);
-    mockQuota.canAddImage.and.resolveTo(true);
+    mockQuota.canAddImages.and.resolveTo(true);
 
     // The real CurrencyService starts a rates refresh in its constructor.
     // On CI runners that fetch can actually succeed and then write cached
@@ -282,38 +286,46 @@ describe('TransactionService', () => {
       expect(written.baseCurrency).toBe('USD');
     });
 
-    it('uploads the receipt and persists receiptUrl when a receiptFile is present', async () => {
-      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+    it('uploads every receipt into consecutive slots and persists the array', async () => {
+      const files = [0, 1, 2].map(
+        i => new File([`receipt-${i}`], `receipt-${i}.jpg`, { type: 'image/jpeg' })
+      );
 
       const id = await service.addTransaction({
         type: 'expense',
         amount: 100,
         currency: 'USD',
         categoryId: 'food',
-        description: 'With receipt',
+        description: 'With receipts',
         date: new Date(),
-        receiptFile
+        receiptFiles: files
       });
 
-      // Receipt uploaded under the generated transaction id.
-      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(1);
-      const uploadArgs = mockStorage.uploadReceiptSpy.mostRecent()?.args ?? [];
-      expect(uploadArgs[0]).toBe('test-user-123');
-      expect(uploadArgs[1]).toBe(id);
-      expect(uploadArgs[2]).toBe(receiptFile);
+      // Each file lands in its own slot under the generated transaction id.
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(3);
+      mockStorage.uploadReceiptSpy.calls.forEach((call, i) => {
+        expect(call.args[0]).toBe('test-user-123');
+        expect(call.args[1]).toBe(id);
+        expect(call.args[2]).toBe(files[i]);
+        expect(call.args[3]).toBe(i);
+      });
 
-      // Saved with setDocument (id pre-generated) and the resulting URL.
+      // Saved with setDocument (id pre-generated); the pointer is the first
+      // entry of the array and the count matches.
       expect(mockFirestore.setDocumentSpy.calls.length).toBe(1);
       const setArgs = mockFirestore.setDocumentSpy.mostRecent()?.args ?? [];
       const savedDoc = setArgs[1] as Record<string, unknown>;
-      expect(savedDoc['receiptUrl']).toBe(mockStorage.uploadResult);
+      const urls = savedDoc['receiptUrls'] as string[];
+      expect(urls.length).toBe(3);
+      expect(savedDoc['receiptUrl']).toBe(urls[0]);
+      expect(savedDoc['receiptCount']).toBe(3);
 
-      // The new image is recorded against the quota.
-      expect(mockQuota.noteImageAdded).toHaveBeenCalled();
+      // The new images are recorded against the quota.
+      expect(mockQuota.noteImagesAdded).toHaveBeenCalledWith(3);
     });
 
     it('rejects a receipt upload when the image quota is exhausted', async () => {
-      mockQuota.canAddImage.and.resolveTo(false);
+      mockQuota.canAddImages.and.resolveTo(false);
       const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
 
       await expectAsync(service.addTransaction({
@@ -323,12 +335,59 @@ describe('TransactionService', () => {
         categoryId: 'food',
         description: 'Over quota',
         date: new Date(),
-        receiptFile
+        receiptFiles: [receiptFile]
       })).toBeRejectedWithError(RECEIPT_IMAGE_LIMIT_ERROR);
 
       expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
       expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
-      expect(mockQuota.noteImageAdded).not.toHaveBeenCalled();
+      expect(mockQuota.noteImagesAdded).not.toHaveBeenCalled();
+    });
+
+    it('rejects a batch larger than the per-transaction cap before uploading', async () => {
+      const files = Array.from(
+        { length: 6 },
+        (_, i) => new File([`r${i}`], `r${i}.jpg`, { type: 'image/jpeg' })
+      );
+
+      await expectAsync(service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Too many',
+        date: new Date(),
+        receiptFiles: files
+      })).toBeRejectedWithError(RECEIPT_ATTACH_FAILED);
+
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('writes nothing and rolls back landed uploads when one in the batch fails', async () => {
+      // Slot 1 (and beyond) reject; slot 0 lands and must be swept.
+      mockStorage.failFromSlot = 1;
+      const files = [0, 1, 2].map(
+        i => new File([`receipt-${i}`], `receipt-${i}.jpg`, { type: 'image/jpeg' })
+      );
+
+      await expectAsync(service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Partial failure',
+        date: new Date(),
+        receiptFiles: files
+      })).toBeRejectedWithError(RECEIPT_ATTACH_FAILED);
+
+      // No document was created and the quota never moved.
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
+      expect(mockQuota.noteImagesAdded).not.toHaveBeenCalled();
+
+      // The slot that landed was deleted best-effort.
+      expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(1);
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args[2]).toEqual([0]);
     });
 
     it('does not upload when no receiptFile is provided', async () => {
@@ -415,80 +474,245 @@ describe('TransactionService', () => {
       expect(service.isLoading()).toBe(false);
     });
 
-    it('uploads a new receipt and persists receiptUrl', async () => {
+    it('appends an image to a receiptless transaction at slot 0', async () => {
       mockFirestore.setMockDocument('users/test-user-123/transactions/txn-1', createTransaction({ id: 'txn-1' }));
       const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
 
-      await service.updateTransaction('txn-1', { receiptFile });
+      await service.updateTransaction('txn-1', { receiptFiles: [receiptFile] });
 
       expect(mockStorage.uploadReceiptSpy.calls.length).toBe(1);
       const uploadArgs = mockStorage.uploadReceiptSpy.mostRecent()?.args ?? [];
       expect(uploadArgs[1]).toBe('txn-1');
+      expect(uploadArgs[3]).toBe(0);
 
       const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
       const updateData = updateArgs[1] as Record<string, unknown>;
       expect(updateData['receiptUrl']).toBe(mockStorage.uploadResult);
-      expect(mockQuota.noteImageAdded).toHaveBeenCalled();
+      expect(updateData['receiptUrls']).toEqual([mockStorage.uploadResult]);
+      expect(updateData['receiptCount']).toBe(1);
+      expect(mockQuota.noteImagesAdded).toHaveBeenCalledWith(1);
     });
 
-    it('rejects a first-time receipt upload when the quota is exhausted', async () => {
-      mockQuota.canAddImage.and.resolveTo(false);
+    it('rejects an appended image when the quota is exhausted', async () => {
+      mockQuota.canAddImages.and.resolveTo(false);
       mockFirestore.setMockDocument('users/test-user-123/transactions/txn-1', createTransaction({ id: 'txn-1' }));
       const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
 
-      await expectAsync(service.updateTransaction('txn-1', { receiptFile }))
+      await expectAsync(service.updateTransaction('txn-1', { receiptFiles: [receiptFile] }))
         .toBeRejectedWithError(RECEIPT_IMAGE_LIMIT_ERROR);
       expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
     });
 
-    it('allows replacing an existing receipt even at the quota limit', async () => {
-      mockQuota.canAddImage.and.resolveTo(false);
+    it('appends after a legacy single-image row, keeping its stored URL', async () => {
+      // A row written before receiptUrls existed: its one image is slot 0.
       mockFirestore.setMockDocument(
         'users/test-user-123/transactions/txn-1',
         createTransaction({ id: 'txn-1', receiptUrl: 'https://storage.example.com/old.jpg' })
       );
       const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
 
-      await service.updateTransaction('txn-1', { receiptFile });
+      await service.updateTransaction('txn-1', { receiptFiles: [receiptFile] });
 
-      // Replacement reuses the existing quota slot.
-      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(1);
-      expect(mockQuota.noteImageAdded).not.toHaveBeenCalled();
+      // The new image lands at slot 1; slot 0's object is never touched.
+      const uploadArgs = mockStorage.uploadReceiptSpy.mostRecent()?.args ?? [];
+      expect(uploadArgs[3]).toBe(1);
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect(updateData['receiptUrls']).toEqual([
+        'https://storage.example.com/old.jpg',
+        `${mockStorage.uploadResult}_1`
+      ]);
+      expect(updateData['receiptUrl']).toBe('https://storage.example.com/old.jpg');
+      expect(updateData['receiptCount']).toBe(2);
+      expect(mockQuota.noteImagesAdded).toHaveBeenCalledWith(1);
+    });
+
+    it('rejects an append that would exceed the per-transaction cap', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1', 'u2', 'u3'],
+          receiptCount: 4
+        })
+      );
+      const files = [0, 1].map(
+        i => new File([`r${i}`], `r${i}.jpg`, { type: 'image/jpeg' })
+      );
+
+      await expectAsync(service.updateTransaction('txn-1', { receiptFiles: files }))
+        .toBeRejectedWithError(RECEIPT_ATTACH_FAILED);
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
+    });
+
+    it('leaves the stored row untouched when an appended batch fails midway', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'https://storage.example.com/old.jpg',
+          receiptUrls: ['https://storage.example.com/old.jpg'],
+          receiptCount: 1
+        })
+      );
+      // The append targets slots 1..2; slot 2 rejects.
+      mockStorage.failFromSlot = 2;
+      const files = [0, 1].map(
+        i => new File([`r${i}`], `r${i}.jpg`, { type: 'image/jpeg' })
+      );
+
+      await expectAsync(service.updateTransaction('txn-1', { receiptFiles: files }))
+        .toBeRejectedWithError(RECEIPT_ATTACH_FAILED);
+
+      // No update reached Firestore and the landed slot was swept.
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+      expect(mockQuota.noteImagesAdded).not.toHaveBeenCalled();
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args[2]).toEqual([1]);
     });
   });
 
-  describe('removeReceipt', () => {
-    it('deletes the stored image, clears receiptUrl, and frees a quota slot', async () => {
+  describe('removeReceiptAt', () => {
+    it('tombstones a middle slot without touching its neighbours', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1', 'u2'],
+          receiptCount: 3
+        })
+      );
+
+      await service.removeReceiptAt('txn-1', 1);
+
+      // Only slot 1's object is deleted.
+      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(1);
+      expect(mockStorage.deleteReceiptSpy.mostRecent()?.args).toEqual(['test-user-123', 'txn-1', 1]);
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect(updateData['receiptUrls']).toEqual(['u0', '', 'u2']);
+      expect(updateData['receiptUrl']).toBe('u0');
+      expect(updateData['receiptCount']).toBe(2);
+      expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(1);
+    });
+
+    it('promotes the next live image when the first is removed', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1'],
+          receiptCount: 2
+        })
+      );
+
+      await service.removeReceiptAt('txn-1', 0);
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      // The pointer follows the first live image so the quota query and the
+      // single-image read sites keep resolving.
+      expect(updateData['receiptUrl']).toBe('u1');
+      expect(updateData['receiptUrls']).toEqual(['', 'u1']);
+      expect(updateData['receiptCount']).toBe(1);
+    });
+
+    it('clears every receipt field when the last image is removed', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u2',
+          receiptUrls: ['', '', 'u2'],
+          receiptCount: 1
+        })
+      );
+
+      await service.removeReceiptAt('txn-1', 2);
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      // deleteField() sentinels, not empty strings — the row must drop out
+      // of the receiptUrl > '' quota query.
+      expect('receiptUrl' in updateData).toBeTrue();
+      expect('receiptUrls' in updateData).toBeTrue();
+      expect(updateData['receiptCount']).toBe(0);
+      expect(typeof updateData['receiptUrl']).not.toBe('string');
+    });
+
+    it('removes a legacy single-image row via slot 0', async () => {
       mockFirestore.setMockDocument(
         'users/test-user-123/transactions/txn-1',
         createTransaction({ id: 'txn-1', receiptUrl: 'https://storage.example.com/receipt.jpg' })
       );
 
-      await service.removeReceipt('txn-1');
+      await service.removeReceiptAt('txn-1', 0);
 
-      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(1);
-      const deleteArgs = mockStorage.deleteReceiptSpy.mostRecent()?.args ?? [];
-      expect(deleteArgs[0]).toBe('test-user-123');
-      expect(deleteArgs[1]).toBe('txn-1');
+      expect(mockStorage.deleteReceiptSpy.mostRecent()?.args).toEqual(['test-user-123', 'txn-1', 0]);
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect(updateData['receiptCount']).toBe(0);
+      expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(1);
+    });
+
+    it('is a no-op for an empty or out-of-range slot', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', '', 'u2'],
+          receiptCount: 2
+        })
+      );
+
+      await service.removeReceiptAt('txn-1', 1);
+      await service.removeReceiptAt('txn-1', 9);
+
+      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(0);
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+      expect(mockQuota.noteImagesRemoved).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeAllReceipts', () => {
+    it('sweeps every slot and clears the receipt fields', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', '', 'u2'],
+          receiptCount: 2
+        })
+      );
+
+      await service.removeAllReceipts('txn-1');
+
+      // The sweep spans the whole array, tombstones included.
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
+        'test-user-123', 'txn-1', [0, 1, 2]
+      ]);
 
       const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
       expect(updateArgs[0]).toBe('users/test-user-123/transactions/txn-1');
-      expect('receiptUrl' in (updateArgs[1] as object)).toBeTrue();
+      const updateData = updateArgs[1] as Record<string, unknown>;
+      expect(updateData['receiptCount']).toBe(0);
 
-      expect(mockQuota.noteImageRemoved).toHaveBeenCalled();
+      // Two live images freed.
+      expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(2);
     });
 
-    it('is a no-op for a transaction without a stored image', async () => {
+    it('is a no-op for a transaction without stored images', async () => {
       mockFirestore.setMockDocument(
         'users/test-user-123/transactions/txn-1',
         createTransaction({ id: 'txn-1' })
       );
 
-      await service.removeReceipt('txn-1');
+      await service.removeAllReceipts('txn-1');
 
-      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(0);
+      expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(0);
       expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
-      expect(mockQuota.noteImageRemoved).not.toHaveBeenCalled();
+      expect(mockQuota.noteImagesRemoved).not.toHaveBeenCalled();
     });
   });
 
@@ -517,11 +741,31 @@ describe('TransactionService', () => {
 
       await service.deleteTransaction('txn-1');
 
-      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(1);
-      const args = mockStorage.deleteReceiptSpy.mostRecent()?.args ?? [];
-      expect(args[0]).toBe('test-user-123');
-      expect(args[1]).toBe('txn-1');
-      expect(mockQuota.noteImageRemoved).toHaveBeenCalled();
+      // A legacy row spans one slot.
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
+        'test-user-123', 'txn-1', [0]
+      ]);
+      expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(1);
+    });
+
+    it('sweeps every slot of a multi-image transaction, gaps included', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', '', 'u2'],
+          receiptCount: 2
+        })
+      );
+
+      await service.deleteTransaction('txn-1');
+
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
+        'test-user-123', 'txn-1', [0, 1, 2]
+      ]);
+      // Only the live images count against the quota.
+      expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(2);
     });
 
     it('does not call storage cleanup when there is no receipt', async () => {
@@ -532,7 +776,7 @@ describe('TransactionService', () => {
 
       await service.deleteTransaction('txn-1');
 
-      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(0);
+      expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(0);
     });
   });
 

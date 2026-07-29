@@ -33,10 +33,10 @@ describe('ReceiptImageManagerComponent', () => {
 
   beforeEach(async () => {
     transactionService = jasmine.createSpyObj('TransactionService', [
-      'getTransactionsWithReceipts', 'removeReceipt',
+      'getTransactionsWithReceipts', 'removeAllReceipts',
     ]);
     transactionService.getTransactionsWithReceipts.and.returnValue(of(transactions));
-    transactionService.removeReceipt.and.resolveTo(undefined);
+    transactionService.removeAllReceipts.and.resolveTo(undefined);
 
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
     receiptToNote.convertReceiptToNote.and.resolveTo('details');
@@ -89,7 +89,7 @@ describe('ReceiptImageManagerComponent', () => {
 
     await component.removeImage(transactions[0]);
 
-    expect(transactionService.removeReceipt).toHaveBeenCalledWith('t1');
+    expect(transactionService.removeAllReceipts).toHaveBeenCalledWith('t1');
     expect(component.transactions().map(t => t.id)).toEqual(['t2']);
     expect(notifications.success).toHaveBeenCalledWith('receiptImages.removed');
   });
@@ -101,7 +101,7 @@ describe('ReceiptImageManagerComponent', () => {
 
     await component.removeImage(transactions[0]);
 
-    expect(transactionService.removeReceipt).not.toHaveBeenCalled();
+    expect(transactionService.removeAllReceipts).not.toHaveBeenCalled();
     expect(component.transactions().length).toBe(2);
   });
 

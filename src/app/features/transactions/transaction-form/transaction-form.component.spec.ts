@@ -56,11 +56,11 @@ describe('TransactionFormComponent', () => {
 
   beforeEach(async () => {
     transactionService = jasmine.createSpyObj('TransactionService', [
-      'addTransaction', 'updateTransaction', 'removeReceipt', 'getTransactionDatesForMonth',
+      'addTransaction', 'updateTransaction', 'removeAllReceipts', 'getTransactionDatesForMonth',
     ]);
     transactionService.addTransaction.and.resolveTo('new-id');
     transactionService.updateTransaction.and.resolveTo(undefined);
-    transactionService.removeReceipt.and.resolveTo(undefined);
+    transactionService.removeAllReceipts.and.resolveTo(undefined);
     transactionService.getTransactionDatesForMonth.and.returnValue(of(new Map()));
 
     categoryService = {
@@ -82,8 +82,8 @@ describe('TransactionFormComponent', () => {
     dialogRef.afterClosed.and.returnValue(of(undefined) as never);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
-    receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImage']);
-    receiptQuota.canAddImage.and.resolveTo(true);
+    receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']);
+    receiptQuota.canAddImages.and.resolveTo(true);
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
     currentUser = signal<User | null>(createUser());
 
@@ -195,19 +195,19 @@ describe('TransactionFormComponent', () => {
       component.receiptFile.set(receipt);
       await component.onSubmit();
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
-      expect(dto.receiptFile).toBe(receipt);
+      expect(dto.receiptFiles).toEqual([receipt]);
     });
 
-    it('omits receiptFile when none was captured', async () => {
+    it('omits receiptFiles when none was captured', async () => {
       const component = build().componentInstance;
       validForm(component);
       await component.onSubmit();
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
-      expect(dto.receiptFile).toBeUndefined();
+      expect(dto.receiptFiles).toBeUndefined();
     });
 
     it('sends a newly attached receipt when editing', async () => {
-      // updateTransaction has always accepted receiptFile; only the UI
+      // updateTransaction has always accepted a receipt file; only the UI
       // withheld the scanner in edit mode, so it could never be set.
       const txn = createTransaction({ id: 'e1' });
       const component = build({ mode: 'edit', transaction: txn }).componentInstance;
@@ -218,7 +218,7 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
 
       const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
-      expect(dto.receiptFile).toBe(file);
+      expect(dto.receiptFiles).toEqual([file]);
     });
 
     it('replaces an existing receipt when editing', async () => {
@@ -231,7 +231,7 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
 
       const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
-      expect(dto.receiptFile).toBe(file);
+      expect(dto.receiptFiles).toEqual([file]);
     });
 
     it('updates an existing transaction in edit mode', async () => {
@@ -287,7 +287,7 @@ describe('TransactionFormComponent', () => {
 
       await component.removeExistingReceipt();
 
-      expect(transactionService.removeReceipt).toHaveBeenCalledWith('e1');
+      expect(transactionService.removeAllReceipts).toHaveBeenCalledWith('e1');
       expect(component.existingReceiptUrl).toBeNull();
       expect(notifications.success).toHaveBeenCalledWith('receiptImages.removed');
     });
@@ -298,7 +298,7 @@ describe('TransactionFormComponent', () => {
 
       await component.removeExistingReceipt();
 
-      expect(transactionService.removeReceipt).not.toHaveBeenCalled();
+      expect(transactionService.removeAllReceipts).not.toHaveBeenCalled();
       expect(component.existingReceiptUrl).not.toBeNull();
     });
 
@@ -340,7 +340,7 @@ describe('TransactionFormComponent', () => {
     });
 
     it('blocks attaching a new image at the quota limit and shows the limit dialog', async () => {
-      receiptQuota.canAddImage.and.resolveTo(false);
+      receiptQuota.canAddImages.and.resolveTo(false);
       const component = build().componentInstance;
       const file = new File(['x'], 'r.jpg', { type: 'image/jpeg' });
       await component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);

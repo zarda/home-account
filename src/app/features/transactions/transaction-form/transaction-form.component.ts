@@ -319,7 +319,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         date: formValue.date,
         ...(formValue.note ? { note: formValue.note } : {}),
         ...(formValue.period ? { period: formValue.period } : {}),
-        ...(receipt ? { receiptFile: receipt } : {}),
+        ...(receipt ? { receiptFiles: [receipt] } : {}),
       };
 
       if (this.data.mode === 'add') {
@@ -394,7 +394,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
     // Storing this image consumes a quota slot unless the item already
     // has one to replace — at the limit, offer cleanup/upgrade instead
-    if (!this.existingReceiptUrl && !(await this.receiptQuota.canAddImage())) {
+    if (!this.existingReceiptUrl && !(await this.receiptQuota.canAddImages(1))) {
       this.openLimitDialog();
       return;
     }
@@ -543,7 +543,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (!confirmed) return;
 
     try {
-      await this.transactionService.removeReceipt(transaction.id);
+      await this.transactionService.removeAllReceipts(transaction.id);
       this.existingReceiptGone.set(true);
       this.notifications.success(this.translationService.t('receiptImages.removed'));
     } catch {

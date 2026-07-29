@@ -236,6 +236,176 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a transaction carrying an array of receipt URLs', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrl: 'https://example.test/r0.png',
+          receiptUrls: ['https://example.test/r0.png', 'https://example.test/r1.png'],
+          receiptCount: 2
+        })),
+        'multi-image create'
+      );
+    });
+
+    it('rejects a receiptUrls that is not a list', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrls: 'https://example.test/r0.png'
+        })),
+        'string receiptUrls'
+      );
+    });
+
+    it('rejects a receiptUrl that is not a string', async () => {
+      // The whole image quota rests on this: the count query filters on
+      // `receiptUrl > ''`, and Firestore range filters only match values of
+      // the operand's type — an array smuggled into this field would drop
+      // the row out of the count entirely, and multi-image users would sail
+      // past the limit with nothing throwing.
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrl: ['https://example.test/r0.png']
+        })),
+        'array receiptUrl'
+      );
+    });
+
+    it('accepts the tombstoned array a middle removal leaves', async () => {
+      const p = path('transactions');
+      await setDoc(doc(firestore, p), validTransaction({
+        receiptUrl: 'https://example.test/r0.png',
+        receiptUrls: [
+          'https://example.test/r0.png',
+          'https://example.test/r1.png',
+          'https://example.test/r2.png'
+        ],
+        receiptCount: 3
+      }));
+      await expectAllowed(
+        updateDoc(doc(firestore, p), {
+          receiptUrls: ['https://example.test/r0.png', '', 'https://example.test/r2.png'],
+          receiptCount: 2
+        }),
+        'tombstoned removal update'
+      );
+    });
+
+    it('accepts clearing every image', async () => {
+      const p = path('transactions');
+      await setDoc(doc(firestore, p), validTransaction({
+        receiptUrl: 'https://example.test/r0.png',
+        receiptUrls: ['https://example.test/r0.png'],
+        receiptCount: 1
+      }));
+      await expectAllowed(
+        updateDoc(doc(firestore, p), {
+          receiptUrl: deleteField(),
+          receiptUrls: deleteField(),
+          receiptCount: 0
+        }),
+        'clearing every image'
+      );
+    });
+
+    it('rejects a negative receiptCount', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ receiptCount: -1 })),
+        'negative receiptCount'
+      );
+    });
+
+    it('rejects a receiptUrls array past the per-transaction cap', async () => {
+      // Client code caps at MAX_RECEIPTS_PER_TRANSACTION; this asserts the
+      // cap holds server-side, so a direct SDK write cannot walk past it.
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrl: 'https://example.test/r0.png',
+          receiptUrls: Array.from({ length: 6 }, (_, i) => `https://example.test/r${i}.png`),
+          receiptCount: 6
+        })),
+        'six receipt urls'
+      );
+    });
+
+    it('constrains the receiptUrl scheme in both directions', async () => {
+      // javascript: and data: payloads are stopped at the boundary rather
+      // than relying solely on Angular's URL sanitizer.
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrl: 'javascript:alert(1)'
+        })),
+        'javascript: receiptUrl'
+      );
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrl: 'data:image/png;base64,AAAA'
+        })),
+        'data: receiptUrl'
+      );
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrl: 'https://example.test/r.png'
+        })),
+        'https receiptUrl'
+      );
+      // Plain http must stay allowed: the storage emulator issues
+      // http://127.0.0.1:9199 download URLs and this same rules file runs
+      // against it.
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrl: 'http://127.0.0.1:9199/v0/b/demo/o/receipt.png?alt=media'
+        })),
+        'emulator http receiptUrl'
+      );
+    });
+
+    it('rejects a receiptUrl past the length cap', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          receiptUrl: `https://example.test/${'r'.repeat(3000)}.png`
+        })),
+        'oversized receiptUrl'
+      );
+    });
+
+    it('accepts a tags list and rejects a non-list', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          tags: ['groceries', 'reimbursable']
+        })),
+        'tags list'
+      );
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ tags: 'groceries' })),
+        'string tags'
+      );
+    });
+
+    it('accepts a location map and rejects a non-map', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 }
+        })),
+        'location map'
+      );
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ location: 'Aoyama Market' })),
+        'string location'
+      );
+    });
+
+    it('accepts the partial update the tag and location editor issues', async () => {
+      const p = path('transactions');
+      await setDoc(doc(firestore, p), validTransaction());
+      await expectAllowed(
+        updateDoc(doc(firestore, p), {
+          tags: ['groceries'],
+          location: { name: 'Aoyama Market' }
+        }),
+        'tags and location partial update'
+      );
+    });
+
     it('accepts the base-currency re-snapshot update', async () => {
       const p = path('transactions');
       await setDoc(doc(firestore, p), validTransaction());

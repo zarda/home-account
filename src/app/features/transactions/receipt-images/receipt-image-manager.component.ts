@@ -107,7 +107,7 @@ export class ReceiptImageManagerComponent implements OnInit {
 
     this.setBusy(transaction.id, true);
     try {
-      await this.transactionService.removeReceipt(transaction.id);
+      await this.transactionService.removeAllReceipts(transaction.id);
       this.dropFromList(transaction.id);
       this.notifications.success(this.translationService.t('receiptImages.removed'));
     } catch {

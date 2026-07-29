@@ -4,7 +4,7 @@ import { Observable, map, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
-import { StorageService } from './storage.service';
+import { StorageService, MAX_RECEIPTS_PER_TRANSACTION } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 
 /**
@@ -12,6 +12,14 @@ import { ReceiptQuotaService } from './receipt-quota.service';
  * Callers surface the quota dialog instead of a generic error message.
  */
 export const RECEIPT_IMAGE_LIMIT_ERROR = 'RECEIPT_IMAGE_LIMIT_REACHED';
+
+/**
+ * Thrown when a batch of receipt images could not be stored — one upload
+ * failed and the ones that landed were rolled back, or the batch would push
+ * the transaction past MAX_RECEIPTS_PER_TRANSACTION. Nothing was saved;
+ * callers can say so instead of showing a generic error.
+ */
+export const RECEIPT_ATTACH_FAILED = 'RECEIPT_ATTACH_FAILED';
 
 /**
  * Thrown when an amount is zero, negative or not a number. Import sources
@@ -24,7 +32,8 @@ import {
   TransactionFilters,
   CreateTransactionDTO,
   MonthlyTotal,
-  CategoryTotal
+  CategoryTotal,
+  receiptImageCount
 } from '../../models';
 import {
   applyClientTransactionFilters,
@@ -180,25 +189,27 @@ export class TransactionService {
       };
 
       let id: string;
-      if (data.receiptFile) {
-        // A new transaction always stores a NEW image — enforce the tier quota
-        if (!(await this.receiptQuota.canAddImage())) {
+      const receiptFiles = data.receiptFiles ?? [];
+      if (receiptFiles.length > 0) {
+        if (receiptFiles.length > MAX_RECEIPTS_PER_TRANSACTION) {
+          throw new Error(RECEIPT_ATTACH_FAILED);
+        }
+        // A new transaction always stores NEW images — enforce the tier quota
+        if (!(await this.receiptQuota.canAddImages(receiptFiles.length))) {
           throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
         }
-        // Pre-generate the id so the receipt's storage object and the
+        // Pre-generate the id so the receipts' storage objects and the
         // Firestore document share the same key, then upload before saving.
         id = this.firestoreService.generateId(this.userTransactionsPath);
-        transaction.receiptUrl = await this.storageService.uploadReceipt(
-          userId,
-          id,
-          data.receiptFile
-        );
-        transaction.receiptCount = 1;
+        const urls = await this.uploadReceiptBatch(userId, id, receiptFiles, 0);
+        transaction.receiptUrl = urls[0];
+        transaction.receiptUrls = urls;
+        transaction.receiptCount = urls.length;
         await this.firestoreService.setDocument(
           `${this.userTransactionsPath}/${id}`,
           transaction
         );
-        this.receiptQuota.noteImageAdded();
+        this.receiptQuota.noteImagesAdded(urls.length);
       } else if (options?.id) {
         // Caller-supplied deterministic id (recurring engine idempotency):
         // posting the same occurrence twice overwrites one document instead
@@ -268,25 +279,41 @@ export class TransactionService {
         }
       }
 
-      // Upload a new receipt if one was provided (overwrites the per-id object).
-      if (data.receiptFile) {
+      // Append newly provided receipt images after the existing ones.
+      // Replacing an image is remove-then-attach; an update never overwrites
+      // a stored object.
+      if (data.receiptFiles?.length) {
         const userId = this.authService.userId();
         if (userId) {
-          // Replacing an existing image reuses its quota slot; only a
-          // transaction without a stored receipt consumes a new one
-          const isNewImage = !currentTransaction?.receiptUrl;
-          if (isNewImage && !(await this.receiptQuota.canAddImage())) {
+          // The slot array as stored: a legacy row's single receiptUrl is its
+          // slot 0. Length (tombstones included) is the next free slot —
+          // interior tombstones are never reused so images keep their order.
+          const existingSlots = currentTransaction?.receiptUrls
+            ? [...currentTransaction.receiptUrls]
+            : currentTransaction?.receiptUrl
+              ? [currentTransaction.receiptUrl]
+              : [];
+
+          const total = receiptImageCount(currentTransaction) + data.receiptFiles.length;
+          if (total > MAX_RECEIPTS_PER_TRANSACTION) {
+            throw new Error(RECEIPT_ATTACH_FAILED);
+          }
+          // Appended images are always new — enforce the tier quota
+          if (!(await this.receiptQuota.canAddImages(data.receiptFiles.length))) {
             throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
           }
-          updateData.receiptUrl = await this.storageService.uploadReceipt(
+
+          const urls = await this.uploadReceiptBatch(
             userId,
             id,
-            data.receiptFile
+            data.receiptFiles,
+            existingSlots.length
           );
-          updateData.receiptCount = 1;
-          if (isNewImage) {
-            this.receiptQuota.noteImageAdded();
-          }
+          const merged = [...existingSlots, ...urls];
+          updateData.receiptUrl = merged.find(url => !!url);
+          updateData.receiptUrls = merged;
+          updateData.receiptCount = merged.filter(url => !!url).length;
+          this.receiptQuota.noteImagesAdded(urls.length);
         }
       }
 
@@ -322,25 +349,113 @@ export class TransactionService {
   }
 
   /**
-   * Remove a transaction's stored receipt image, freeing one quota slot.
-   * Deletes the storage object and clears the receiptUrl field; the
-   * transaction itself is untouched.
+   * Upload a batch of receipt images into consecutive slots, all-or-nothing:
+   * if any upload rejects, the slots that did land are deleted best-effort
+   * and the whole batch fails. The caller writes the document only after
+   * this resolves, so a failed batch leaves the row exactly as it was — and
+   * because the document never referenced the attempted slots, a retry
+   * simply overwrites them, so even a rollback whose deletes fail leaves no
+   * permanent orphan.
    */
-  async removeReceipt(id: string): Promise<void> {
+  private async uploadReceiptBatch(
+    userId: string,
+    transactionId: string,
+    files: File[],
+    firstSlot: number
+  ): Promise<string[]> {
+    const results = await Promise.allSettled(
+      files.map((file, i) =>
+        this.storageService.uploadReceipt(userId, transactionId, file, firstSlot + i)
+      )
+    );
+
+    if (results.some(result => result.status === 'rejected')) {
+      const landed = results
+        .map((result, i) => (result.status === 'fulfilled' ? firstSlot + i : -1))
+        .filter(slot => slot >= 0);
+      await this.storageService.deleteReceiptSlots(userId, transactionId, landed);
+      throw new Error(RECEIPT_ATTACH_FAILED);
+    }
+
+    return results.map(result => (result as PromiseFulfilledResult<string>).value);
+  }
+
+  /**
+   * Remove one of a transaction's stored receipt images, freeing one quota
+   * slot. The slot is tombstoned in receiptUrls (never re-indexed) so the
+   * remaining entries keep matching their storage keys; the transaction
+   * itself is untouched. Removing an already-empty slot is a no-op.
+   */
+  async removeReceiptAt(id: string, slot: number): Promise<void> {
     const userId = this.authService.userId();
     if (!userId) throw new Error('User not authenticated');
 
     const transaction = await this.firestoreService.getDocument<Transaction>(
       `${this.userTransactionsPath}/${id}`
     );
-    if (!transaction?.receiptUrl) return;
+    if (!transaction) return;
 
-    await this.storageService.deleteReceipt(userId, id);
+    const slots = transaction.receiptUrls
+      ? [...transaction.receiptUrls]
+      : transaction.receiptUrl
+        ? [transaction.receiptUrl]
+        : [];
+    if (!slots[slot]) return;
+
+    await this.storageService.deleteReceipt(userId, id, slot);
+
+    slots[slot] = '';
+    // Truncate trailing tombstones so the array never grows past the highest
+    // live slot; a truncated slot is safe to append into later because its
+    // object is confirmed gone.
+    while (slots.length > 0 && !slots[slots.length - 1]) slots.pop();
+
+    const remaining = slots.filter(url => !!url).length;
+    if (remaining === 0) {
+      await this.firestoreService.updateDocument(
+        `${this.userTransactionsPath}/${id}`,
+        { receiptUrl: deleteField(), receiptUrls: deleteField(), receiptCount: 0 }
+      );
+    } else {
+      await this.firestoreService.updateDocument(
+        `${this.userTransactionsPath}/${id}`,
+        {
+          // The pointer follows the first live image so the quota query and
+          // single-image read sites keep resolving.
+          receiptUrl: slots.find(url => !!url),
+          receiptUrls: slots,
+          receiptCount: remaining
+        }
+      );
+    }
+    this.receiptQuota.noteImagesRemoved(1);
+  }
+
+  /**
+   * Remove every stored receipt image of a transaction, freeing their quota
+   * slots. The transaction itself is untouched.
+   */
+  async removeAllReceipts(id: string): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) throw new Error('User not authenticated');
+
+    const transaction = await this.firestoreService.getDocument<Transaction>(
+      `${this.userTransactionsPath}/${id}`
+    );
+    const count = receiptImageCount(transaction);
+    if (!transaction || count === 0) return;
+
+    const slotSpan = transaction.receiptUrls?.length ?? 1;
+    await this.storageService.deleteReceiptSlots(
+      userId,
+      id,
+      Array.from({ length: slotSpan }, (_, slot) => slot)
+    );
     await this.firestoreService.updateDocument(
       `${this.userTransactionsPath}/${id}`,
-      { receiptUrl: deleteField(), receiptCount: 0 }
+      { receiptUrl: deleteField(), receiptUrls: deleteField(), receiptCount: 0 }
     );
-    this.receiptQuota.noteImageRemoved();
+    this.receiptQuota.noteImagesRemoved(count);
   }
 
   // Delete a transaction
@@ -357,19 +472,23 @@ export class TransactionService {
         `${this.userTransactionsPath}/${id}`
       );
 
-      // Remove the stored receipt object to avoid orphaned files.
-      if (transaction?.receiptUrl) {
+      // Remove the stored receipt objects to avoid orphaned files. The slot
+      // sweep tolerates gaps (tombstoned removals) and never rejects, so the
+      // document delete wins either way.
+      const imageCount = receiptImageCount(transaction);
+      if (transaction && imageCount > 0) {
         const userId = this.authService.userId();
         if (userId) {
-          try {
-            await this.storageService.deleteReceipt(userId, id);
-          } catch {
-            // Don't fail the transaction delete if receipt cleanup fails.
-          }
+          const slotSpan = transaction.receiptUrls?.length ?? 1;
+          await this.storageService.deleteReceiptSlots(
+            userId,
+            id,
+            Array.from({ length: slotSpan }, (_, slot) => slot)
+          );
         }
-        // The document is gone either way, so the image no longer counts
+        // The document is gone either way, so the images no longer count
         // against the quota
-        this.receiptQuota.noteImageRemoved();
+        this.receiptQuota.noteImagesRemoved(imageCount);
       }
 
       // Update affected budget if this was an expense
@@ -437,13 +556,15 @@ export class TransactionService {
           `${this.userTransactionsPath}/${transaction.id}`
         );
 
-        // Remove any stored receipt to avoid orphaned files.
-        if (userId && transaction.receiptUrl) {
-          try {
-            await this.storageService.deleteReceipt(userId, transaction.id);
-          } catch {
-            // Best-effort cleanup; continue clearing the rest.
-          }
+        // Remove any stored receipts to avoid orphaned files. Best-effort:
+        // the slot sweep never rejects.
+        if (userId && receiptImageCount(transaction) > 0) {
+          const slotSpan = transaction.receiptUrls?.length ?? 1;
+          await this.storageService.deleteReceiptSlots(
+            userId,
+            transaction.id,
+            Array.from({ length: slotSpan }, (_, slot) => slot)
+          );
         }
       }
 

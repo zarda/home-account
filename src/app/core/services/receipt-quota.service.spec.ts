@@ -62,7 +62,7 @@ describe('ReceiptQuotaService', () => {
       Array.from({ length: 2 }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
     );
 
-    expect(await service.canAddImage()).toBeFalse();
+    expect(await service.canAddImages(1)).toBeFalse();
     expect(service.isAtLimit()).toBeTrue();
 
     // Raising the remote value immediately lifts the limit
@@ -79,7 +79,7 @@ describe('ReceiptQuotaService', () => {
     );
 
     expect(service.hasUnlimitedImages()).toBeFalse();
-    expect(await service.canAddImage()).toBeFalse();
+    expect(await service.canAddImages(1)).toBeFalse();
   });
 
   it('counts stored images via a receiptUrl aggregation query', async () => {
@@ -102,27 +102,27 @@ describe('ReceiptQuotaService', () => {
     firestoreMock.getCollection.and.resolveTo(
       Array.from({ length: FREE_TIER_RECEIPT_IMAGE_LIMIT - 1 }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
     );
-    expect(await service.canAddImage()).toBeTrue();
+    expect(await service.canAddImages(1)).toBeTrue();
     expect(service.isAtLimit()).toBeFalse();
 
-    service.noteImageAdded();
+    service.noteImagesAdded(1);
     expect(service.imageCount()).toBe(FREE_TIER_RECEIPT_IMAGE_LIMIT);
-    expect(await service.canAddImage()).toBeFalse();
+    expect(await service.canAddImages(1)).toBeFalse();
     expect(service.isAtLimit()).toBeTrue();
     expect(service.remaining()).toBe(0);
   });
 
   it('reuses the cached count instead of re-querying', async () => {
-    await service.canAddImage();
-    await service.canAddImage();
+    await service.canAddImages(1);
+    await service.canAddImages(1);
     expect(firestoreMock.getCollection).toHaveBeenCalledTimes(1);
   });
 
   it('re-queries after the count is invalidated', async () => {
-    await service.canAddImage();
+    await service.canAddImages(1);
     service.invalidateCount();
     expect(service.imageCount()).toBeNull();
-    await service.canAddImage();
+    await service.canAddImages(1);
     expect(firestoreMock.getCollection).toHaveBeenCalledTimes(2);
   });
 
@@ -133,23 +133,43 @@ describe('ReceiptQuotaService', () => {
     await service.refreshCount();
     expect(service.isAtLimit()).toBeTrue();
 
-    service.noteImageRemoved();
+    service.noteImagesRemoved(1);
     expect(service.isAtLimit()).toBeFalse();
-    expect(await service.canAddImage()).toBeTrue();
+    expect(await service.canAddImages(1)).toBeTrue();
   });
 
   it('fails open when the count query errors', async () => {
     firestoreMock.getCollection.and.rejectWith(new Error('offline'));
-    expect(await service.canAddImage()).toBeTrue();
+    expect(await service.canAddImages(1)).toBeTrue();
   });
 
   it('does not go below zero when removals outnumber the cached count', async () => {
     await service.refreshCount();
-    service.noteImageRemoved();
+    service.noteImagesRemoved(1);
     expect(service.imageCount()).toBe(0);
   });
 
+  it('admits a batch only when every image in it fits', async () => {
+    freeLimit.set(10);
+    firestoreMock.getCollection.and.resolveTo(
+      Array.from({ length: 7 }, (_, i) => ({ id: `t${i}`, receiptUrl: 'u', receiptCount: 1 })) as never
+    );
+
+    expect(await service.canAddImages(3)).toBeTrue();
+    expect(await service.canAddImages(4)).toBeFalse();
+  });
+
   describe('counting images rather than transactions', () => {
+    it('sums the receiptUrls array where present, tombstones excluded', () => {
+      // The array outranks a drifted denormalized count.
+      firestoreMock.getCollection.and.resolveTo([
+        { id: 'a', receiptUrl: 'u0', receiptUrls: ['u0', '', 'u2'], receiptCount: 3 },
+        { id: 'b', receiptUrl: 'u', receiptCount: 1 },
+      ] as never);
+
+      return service.refreshCount().then(count => expect(count).toBe(3));
+    });
+
     it('counts every image on a multi-image transaction', () => {
       // The quota limits images, and one transaction can hold several.
       firestoreMock.getCollection.and.resolveTo([
