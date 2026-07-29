@@ -155,7 +155,15 @@
     "tags": "Tags (Optional)",
     "tagsPlaceholder": "Add a tag and press Enter",
     "removeTag": "Remove tag {{tag}}",
-    "tagFilterHint": "Shows only transactions carrying every selected tag"
+    "tagFilterHint": "Shows only transactions carrying every selected tag",
+    "location": "Location (Optional)",
+    "locationPlaceholder": "Where was this?",
+    "useMyLocation": "Use my location",
+    "locating": "Finding your location…",
+    "locationCaptured": "Coordinates attached",
+    "locationDenied": "Location permission was denied. You can still type a place name.",
+    "locationUnavailable": "Your location could not be found. You can still type a place name.",
+    "clearCoordinates": "Remove coordinates"
   },
   "budget": {
     "title": "Budget",

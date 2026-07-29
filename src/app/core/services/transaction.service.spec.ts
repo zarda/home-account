@@ -474,6 +474,32 @@ describe('TransactionService', () => {
       expect(service.isLoading()).toBe(false);
     });
 
+    it('clears the stored location when the update carries an undefined one', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', location: { name: 'Aoyama Market' } })
+      );
+
+      await service.updateTransaction('txn-1', { location: undefined });
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      // Key present but not a map: the deleteField() sentinel.
+      expect('location' in updateData).toBeTrue();
+      expect(updateData['location']).not.toEqual({ name: 'Aoyama Market' });
+    });
+
+    it('leaves the stored location alone when the update omits the key', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', location: { name: 'Aoyama Market' } })
+      );
+
+      await service.updateTransaction('txn-1', { note: 'updated' });
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect('location' in updateData).toBeFalse();
+    });
+
     it('appends an image to a receiptless transaction at slot 0', async () => {
       mockFirestore.setMockDocument('users/test-user-123/transactions/txn-1', createTransaction({ id: 'txn-1' }));
       const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });

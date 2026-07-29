@@ -255,7 +255,13 @@ export class TransactionService {
       if (data.description !== undefined) updateData.description = data.description;
       if (data.note !== undefined) updateData.note = data.note;
       if (data.tags !== undefined) updateData.tags = data.tags;
-      if (data.location !== undefined) updateData.location = data.location;
+      // Distinguish "not part of this update" (key absent — e.g. the
+      // note-only update conversion issues) from "cleared" (key present,
+      // value undefined): a cleared location is removed from the document.
+      if ('location' in data) {
+        updateData.location = data.location
+          ?? (deleteField() as unknown as Transaction['location']);
+      }
 
       if (data.date !== undefined) {
         updateData.date = this.firestoreService.dateToTimestamp(data.date);

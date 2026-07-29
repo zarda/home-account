@@ -379,3 +379,8 @@
     width: 100%;
   }
 }
+
+// Location suffix icon once coordinates are attached
+.coords-attached {
+  @apply text-primary-600 dark:text-primary-400;
+}

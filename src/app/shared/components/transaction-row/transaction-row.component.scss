@@ -85,6 +85,37 @@
   white-space: nowrap;
 }
 
+// Where the transaction happened; a link only when coordinates exist
+.location-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 12em;
+}
+
+.location-link {
+  text-decoration: none;
+  color: var(--text-muted);
+
+  &:hover {
+    color: var(--color-primary);
+    text-decoration: underline;
+  }
+}
+
+.location-icon {
+  font-size: var(--text-sm);
+  width: 1em;
+  height: 1em;
+  line-height: 1em;
+  flex-shrink: 0;
+}
+
 .row-amount {
   display: flex;
   flex-direction: column;

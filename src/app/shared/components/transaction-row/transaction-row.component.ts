@@ -72,6 +72,18 @@ export class TransactionRowComponent {
     return Math.max(0, (this.transaction().tags?.length ?? 0) - 3);
   }
 
+  /**
+   * Maps link for the row's location — only when coordinates exist. A
+   * name-only location stays plain text: linking a typed name would send a
+   * typo to a confidently wrong destination. The URL form is the documented
+   * cross-platform Maps search, which resolves on web, Android and WKWebView.
+   */
+  mapsUrl(): string | null {
+    const location = this.transaction().location;
+    if (location?.lat === undefined || location?.lng === undefined) return null;
+    return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
+  }
+
   formatAmount(): string {
     const transaction = this.transaction();
     return this.currencyService.formatCurrency(transaction.amount, transaction.currency);

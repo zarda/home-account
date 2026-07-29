@@ -291,6 +291,59 @@ describe('TransactionFormComponent', () => {
       expect(dto.tags).toEqual([]);
     });
 
+    it('writes a name-only location without coordinates', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.form.patchValue({ locationName: '  Aoyama Market ' });
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'Aoyama Market' });
+    });
+
+    it('attaches captured coordinates to the location', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.form.patchValue({ locationName: 'Aoyama Market' });
+      component.locationCoords.set({ lat: 35.66, lng: 139.71 });
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
+    });
+
+    it('omits the location entirely when the name is blank', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      // Coordinates without a name are meaningless to render; they hang off
+      // the name.
+      component.locationCoords.set({ lat: 35.66, lng: 139.71 });
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect('location' in dto).toBeFalse();
+    });
+
+    it('clears a stored location when the name is emptied in edit mode', async () => {
+      const txn = createTransaction({
+        id: 'e1',
+        location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+      });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      validForm(component);
+      component.form.patchValue({ locationName: '' });
+
+      await component.onSubmit();
+
+      const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+      // Key present, value undefined: the service reads that as "clear".
+      expect('location' in dto).toBeTrue();
+      expect(dto.location).toBeUndefined();
+    });
+
     it('updates an existing transaction in edit mode', async () => {
       const txn = createTransaction({ id: 'e1' });
       const component = build({ mode: 'edit', transaction: txn }).componentInstance;
@@ -566,6 +619,55 @@ describe('TransactionFormComponent', () => {
         expect(router.navigate).not.toHaveBeenCalled();
         expect(component.isScanning()).toBeFalse();
       });
+    });
+
+    it('useMyLocation captures coordinates on success', () => {
+      const component = build().componentInstance;
+      spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake(success => {
+        (success as PositionCallback)({
+          coords: { latitude: 35.66, longitude: 139.71 },
+        } as GeolocationPosition);
+      });
+
+      component.useMyLocation();
+
+      expect(component.locationCoords()).toEqual({ lat: 35.66, lng: 139.71 });
+      expect(component.isLocating()).toBeFalse();
+      expect(notifications.success).toHaveBeenCalledWith('transactions.locationCaptured');
+    });
+
+    it('useMyLocation degrades to name-only when permission is denied', () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ locationName: 'Aoyama Market' });
+      spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake((success, error) => {
+        (error as PositionErrorCallback)({ code: 1 } as GeolocationPositionError);
+      });
+
+      component.useMyLocation();
+
+      expect(component.locationCoords()).toBeNull();
+      // The typed name survives; only the coordinates are refused.
+      expect(component.form.get('locationName')?.value).toBe('Aoyama Market');
+      expect(notifications.error).toHaveBeenCalledWith('transactions.locationDenied');
+      expect(component.isLocating()).toBeFalse();
+    });
+
+    it('useMyLocation reports an unavailable position distinctly', () => {
+      const component = build().componentInstance;
+      spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake((success, error) => {
+        (error as PositionErrorCallback)({ code: 2 } as GeolocationPositionError);
+      });
+
+      component.useMyLocation();
+
+      expect(notifications.error).toHaveBeenCalledWith('transactions.locationUnavailable');
+    });
+
+    it('clearCoordinates detaches them', () => {
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 1, lng: 2 });
+      component.clearCoordinates();
+      expect(component.locationCoords()).toBeNull();
     });
 
     it('tag input trims, lowercases, dedupes and seeds from the transaction', () => {

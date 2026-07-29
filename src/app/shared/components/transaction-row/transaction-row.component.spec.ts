@@ -115,6 +115,41 @@ describe('TransactionRowComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.tag-chip').length).toBe(0);
   });
 
+  it('links the location to a map only when coordinates exist', () => {
+    setTransaction({
+      location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+    } as Partial<Transaction>);
+    const link = fixture.nativeElement.querySelector('.location-link') as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    expect(link.href).toBe('https://www.google.com/maps/search/?api=1&query=35.66,139.71');
+
+    // A name-only location renders as plain text — a typed name must not
+    // become a confidently wrong maps destination.
+    setTransaction({ location: { name: 'Aoyama Market' } } as Partial<Transaction>);
+    expect(fixture.nativeElement.querySelector('.location-link')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.location-chip')?.textContent
+    ).toContain('Aoyama Market');
+
+    setTransaction({});
+    expect(fixture.nativeElement.querySelector('.location-chip')).toBeNull();
+  });
+
+  it('a maps link click does not activate the row', () => {
+    setTransaction({
+      location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+    } as Partial<Transaction>);
+    const emitted: Transaction[] = [];
+    component.activate.subscribe((t: Transaction) => emitted.push(t));
+
+    const link = fixture.nativeElement.querySelector('.location-link') as HTMLAnchorElement;
+    // Neuter navigation, keep propagation semantics.
+    link.addEventListener('click', event => event.preventDefault());
+    link.click();
+
+    expect(emitted.length).toBe(0);
+  });
+
   it('emits activate on click and keyboard activation', () => {
     setTransaction({});
     const emitted: Transaction[] = [];

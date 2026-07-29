@@ -111,6 +111,17 @@ export class TransactionListComponent {
     return Math.max(0, (transaction.tags?.length ?? 0) - 3);
   }
 
+  /**
+   * Maps link for the location — only when coordinates exist. A name-only
+   * location stays plain text: linking a typed name would send a typo to a
+   * confidently wrong destination.
+   */
+  mapsUrl(transaction: Transaction): string | null {
+    const location = transaction.location;
+    if (location?.lat === undefined || location?.lng === undefined) return null;
+    return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
+  }
+
   // Only one of the two views is instantiated; previously both were rendered
   // and the inactive one merely hidden with CSS, doubling the DOM.
   isDesktopTable = toSignal(

@@ -49,6 +49,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera is used to scan receipts for transaction import</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is used to record where a transaction happened. It is optional.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Photo library access is used to import receipt images</string>
 	<!-- Usage statistics are opt-in. The measurement SDK starts as soon as

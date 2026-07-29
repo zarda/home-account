@@ -288,6 +288,44 @@
         </mat-chip-grid>
       </mat-form-field>
 
+      <!-- Location (Optional): a place name, with optional device coordinates -->
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>{{ 'transactions.location' | translate }}</mat-label>
+        <input
+          matInput
+          formControlName="locationName"
+          [placeholder]="'transactions.locationPlaceholder' | translate"
+        />
+        @if (locationCoords()) {
+          <button
+            matIconSuffix
+            mat-icon-button
+            type="button"
+            (click)="clearCoordinates()"
+            [matTooltip]="'transactions.clearCoordinates' | translate"
+            [attr.aria-label]="'transactions.clearCoordinates' | translate"
+          >
+            <mat-icon class="coords-attached">location_on</mat-icon>
+          </button>
+        } @else if (geolocationAvailable) {
+          <button
+            matIconSuffix
+            mat-icon-button
+            type="button"
+            (click)="useMyLocation()"
+            [disabled]="isLocating()"
+            [matTooltip]="(isLocating() ? 'transactions.locating' : 'transactions.useMyLocation') | translate"
+            [attr.aria-label]="'transactions.useMyLocation' | translate"
+          >
+            @if (isLocating()) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              <mat-icon>my_location</mat-icon>
+            }
+          </button>
+        }
+      </mat-form-field>
+
       <!-- Note (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.noteOptional' | translate }}</mat-label>

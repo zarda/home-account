@@ -154,6 +154,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   /** Longest accepted tag; anything past this is silently truncated. */
   private static readonly MAX_TAG_LENGTH = 30;
 
+  // Coordinates captured for the location field; the name is a form control.
+  locationCoords = signal<{ lat: number; lng: number } | null>(null);
+  isLocating = signal(false);
+  /** Hide the capture button entirely where the API does not exist. */
+  readonly geolocationAvailable = 'geolocation' in navigator;
+
   // AI Category Suggestion signals
   suggestedCategory = signal<Category | null>(null);
   isSuggesting = signal(false);
@@ -205,6 +211,44 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.initForm();
     this.seedStoredReceipts();
     this.tags.set([...(this.data.transaction?.tags ?? [])]);
+    const location = this.data.transaction?.location;
+    if (location?.lat !== undefined && location?.lng !== undefined) {
+      this.locationCoords.set({ lat: location.lat, lng: location.lng });
+    }
+  }
+
+  /**
+   * Attach the device's coordinates to the location. Denial or failure
+   * degrades to whatever name was typed — the form never blocks on this.
+   * Coarse accuracy is enough for "where was this shop" and avoids the long
+   * cold-start wait GPS-grade accuracy costs.
+   */
+  useMyLocation(): void {
+    if (!this.geolocationAvailable || this.isLocating()) return;
+
+    this.isLocating.set(true);
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        this.locationCoords.set({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+        this.isLocating.set(false);
+        this.notifications.success(this.translationService.t('transactions.locationCaptured'));
+      },
+      positionError => {
+        this.isLocating.set(false);
+        const key = positionError.code === 1
+          ? 'transactions.locationDenied'
+          : 'transactions.locationUnavailable';
+        this.notifications.error(this.translationService.t(key));
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    );
+  }
+
+  clearCoordinates(): void {
+    this.locationCoords.set(null);
   }
 
   addTag(event: MatChipInputEvent): void {
@@ -327,6 +371,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       date: [transaction?.date?.toDate?.() || new Date(), Validators.required],
       note: [transaction?.note || ''],
       period: [transaction?.period || null],
+      locationName: [transaction?.location?.name || ''],
     });
 
     // Watch for type changes
@@ -382,6 +427,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           : this.tags().length
             ? { tags: this.tags() }
             : {}),
+        ...this.locationField(formValue.locationName),
       };
 
       if (this.data.mode === 'add') {
@@ -414,6 +460,21 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     } finally {
       this.isSubmitting.set(false);
     }
+  }
+
+  /**
+   * The DTO's location fragment. A blank name means no location: the field
+   * is omitted on add, and cleared on edit (coordinates hang off the name —
+   * a bare lat/lng with nothing human-readable would render as an empty
+   * chip, so clearing the name discards them too).
+   */
+  private locationField(rawName: unknown): Partial<CreateTransactionDTO> {
+    const name = typeof rawName === 'string' ? rawName.trim() : '';
+    if (!name) {
+      return this.data.mode === 'edit' ? { location: undefined } : {};
+    }
+    const coords = this.locationCoords();
+    return { location: { name, ...(coords ? { lat: coords.lat, lng: coords.lng } : {}) } };
   }
 
   private openLimitDialog(): void {

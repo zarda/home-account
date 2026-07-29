@@ -155,7 +155,15 @@
     "tags": "タグ（任意）",
     "tagsPlaceholder": "タグを入力して Enter を押してください",
     "removeTag": "タグ {{tag}} を削除",
-    "tagFilterHint": "選択したすべてのタグが付いた取引のみ表示します"
+    "tagFilterHint": "選択したすべてのタグが付いた取引のみ表示します",
+    "location": "場所（任意）",
+    "locationPlaceholder": "どこでの取引ですか？",
+    "useMyLocation": "現在地を使用",
+    "locating": "現在地を取得中…",
+    "locationCaptured": "座標を添付しました",
+    "locationDenied": "位置情報の利用が許可されませんでした。場所名の入力は引き続き可能です。",
+    "locationUnavailable": "現在地を取得できませんでした。場所名の入力は引き続き可能です。",
+    "clearCoordinates": "座標を削除"
   },
   "budget": {
     "title": "予算",
