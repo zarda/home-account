@@ -206,6 +206,52 @@ describe('DataManagementComponent', () => {
 
       expect(mockExportService.importFromCSV).not.toHaveBeenCalled();
     });
+
+    it('carries a backup row\'s details into the preview but never its receipts', async () => {
+      const backup = {
+        transactions: [{
+          description: 'Fruit',
+          amount: 12.5,
+          type: 'expense',
+          date: { seconds: 1_780_000_000, nanoseconds: 0 },
+          currency: 'JPY',
+          categoryId: 'food_groceries',
+          note: 'weekly shop',
+          tags: ['groceries'],
+          location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+          isRecurring: false,
+          period: 'monthly',
+          // A backup holds no storage objects — these must not survive the
+          // restore, or the quota would count images that don't exist.
+          receiptUrl: 'https://example.test/r0.png',
+          receiptUrls: ['https://example.test/r0.png'],
+          receiptCount: 1
+        }]
+      };
+      const file = new File([JSON.stringify(backup)], 'backup.json', {
+        type: 'application/json'
+      });
+      const event = { target: { files: [file], value: '' } } as unknown as Event;
+
+      component.onFileSelected(event);
+
+      // importJSON reads the file asynchronously; poll for the preview.
+      const deadline = Date.now() + 3000;
+      while (component.importedTransactions().length === 0 && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+
+      const row = component.importedTransactions()[0] as unknown as Record<string, unknown>;
+      expect(row['currency']).toBe('JPY');
+      expect(row['categoryId']).toBe('food_groceries');
+      expect(row['note']).toBe('weekly shop');
+      expect(row['tags']).toEqual(['groceries']);
+      expect(row['location']).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
+      expect(row['period']).toBe('monthly');
+      expect('receiptUrl' in row).toBeFalse();
+      expect('receiptUrls' in row).toBeFalse();
+      expect('receiptCount' in row).toBeFalse();
+    });
   });
 
   describe('cancelImport', () => {

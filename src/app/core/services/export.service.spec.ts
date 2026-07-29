@@ -391,8 +391,35 @@ describe('ExportService', () => {
       expect(result.length).toBe(1);
       expect(result[0].type).toBe('expense');
       expect(result[0].amount).toBe(100);
+      // A bank CSV row carries no currency or category — the defaults hold.
       expect(result[0].currency).toBe('USD');
       expect(result[0].categoryId).toBe('other_expense');
+    });
+
+    it('round-trips the details a backup row carries', () => {
+      const raw = [{
+        description: 'Fruit',
+        amount: 12.5,
+        date: new Date(2026, 5, 1),
+        type: 'expense' as const,
+        currency: 'JPY',
+        categoryId: 'food_groceries',
+        note: 'weekly shop',
+        tags: ['groceries', 'reimbursable'],
+        location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+        isRecurring: false,
+        period: 'monthly' as const,
+      }];
+
+      const result = service.parseImportedData(raw);
+
+      // Nothing the backup carried is flattened back to a default.
+      expect(result[0].currency).toBe('JPY');
+      expect(result[0].categoryId).toBe('food_groceries');
+      expect(result[0].note).toBe('weekly shop');
+      expect(result[0].tags).toEqual(['groceries', 'reimbursable']);
+      expect(result[0].location).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
+      expect(result[0].period).toBe('monthly');
     });
 
     it('should use absolute value for amount', () => {

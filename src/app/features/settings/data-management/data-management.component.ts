@@ -190,12 +190,28 @@ export class DataManagementComponent {
           throw new Error('Invalid backup format');
         }
 
-        // Convert to ImportedTransaction format for preview
+        // Convert to ImportedTransaction format for preview. Everything the
+        // backup carries rides along so a restore round-trips the whole
+        // record — except the receipt fields: a backup holds no storage
+        // objects, so a restored receiptUrl would point at a dead (or
+        // another account's) object and inflate the image quota with
+        // pictures that don't exist.
         const transactions: ImportedTransaction[] = data.transactions.map((t: Record<string, unknown>) => ({
           description: t['description'] as string,
           amount: t['amount'] as number,
           date: new Date((t['date'] as { seconds: number }).seconds * 1000),
-          type: t['type'] as 'income' | 'expense'
+          type: t['type'] as 'income' | 'expense',
+          ...(typeof t['currency'] === 'string' ? { currency: t['currency'] } : {}),
+          ...(typeof t['categoryId'] === 'string' ? { categoryId: t['categoryId'] } : {}),
+          ...(typeof t['note'] === 'string' ? { note: t['note'] } : {}),
+          ...(Array.isArray(t['tags']) ? { tags: t['tags'] as string[] } : {}),
+          ...(t['location'] && typeof t['location'] === 'object'
+            ? { location: t['location'] as ImportedTransaction['location'] }
+            : {}),
+          ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {}),
+          ...(typeof t['period'] === 'string'
+            ? { period: t['period'] as ImportedTransaction['period'] }
+            : {})
         }));
 
         this.importedTransactions.set(transactions);
