@@ -37,6 +37,12 @@
   white-space: nowrap;
 }
 
+.receipt-indicator-group {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .receipt-indicator {
   font-size: var(--text-sm);
   width: 1em;
@@ -46,9 +52,68 @@
   flex-shrink: 0;
 }
 
+// Image count next to the icon, only shown past one image
+.receipt-count-badge {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1;
+}
+
 .row-category {
   font-size: var(--text-sm);
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.tag-chip {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+// Where the transaction happened; a link only when coordinates exist
+.location-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 12em;
+}
+
+.location-link {
+  text-decoration: none;
+  color: var(--text-muted);
+
+  &:hover {
+    color: var(--color-primary);
+    text-decoration: underline;
+  }
+}
+
+.location-icon {
+  font-size: var(--text-sm);
+  width: 1em;
+  height: 1em;
+  line-height: 1em;
+  flex-shrink: 0;
 }
 
 .row-amount {

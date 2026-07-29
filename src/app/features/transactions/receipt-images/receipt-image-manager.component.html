@@ -12,58 +12,81 @@
 
   @if (isLoading()) {
     <app-loading-spinner [message]="'common.loading' | translate" />
-  } @else if (transactions().length === 0) {
+  } @else if (groups().length === 0) {
     <p class="empty-message">{{ 'receiptImages.empty' | translate }}</p>
   } @else {
     <ul class="receipt-list">
-      @for (transaction of transactions(); track transaction.id) {
-        <li class="receipt-item">
-          <a
-            class="thumbnail-link"
-            [href]="transaction.receiptUrl"
-            target="_blank"
-            rel="noopener"
-            [matTooltip]="'receiptImages.viewImage' | translate"
-          >
-            <img
-              class="thumbnail"
-              [src]="transaction.receiptUrl"
-              [alt]="'transactions.receipt' | translate"
-              loading="lazy"
-            />
-          </a>
-
-          <div class="item-info">
-            <span class="item-description">{{ transaction.description }}</span>
-            <span class="item-meta">
-              {{ dateOf(transaction) | date: 'mediumDate' }}
-              · {{ transaction.currency }} {{ transaction.amount | number: '1.0-2' }}
-            </span>
+      @for (group of groups(); track group.transaction.id) {
+        <li class="receipt-group">
+          <div class="group-header">
+            <div class="item-info">
+              <span class="item-description">{{ group.transaction.description }}</span>
+              <span class="item-meta">
+                {{ dateOf(group) | date: 'mediumDate' }}
+                · {{ group.transaction.currency }} {{ group.transaction.amount | number: '1.0-2' }}
+              </span>
+            </div>
+            @if (group.images.length > 1) {
+              <button
+                mat-icon-button
+                type="button"
+                class="remove-all-btn"
+                (click)="removeAllImages(group)"
+                [disabled]="isBusy(group.transaction.id)"
+                [matTooltip]="'receiptImages.removeAllImages' | translate"
+                [attr.aria-label]="'receiptImages.removeAllImages' | translate"
+              >
+                <mat-icon>delete_sweep</mat-icon>
+              </button>
+            }
           </div>
 
-          <div class="item-actions">
-            @if (isBusy(transaction.id)) {
-              <mat-spinner diameter="24" />
-            } @else {
-              <button
-                mat-icon-button
-                type="button"
-                (click)="convertToNote(transaction)"
-                [matTooltip]="'receiptImages.convertToNote' | translate"
-                [attr.aria-label]="'receiptImages.convertToNote' | translate"
-              >
-                <mat-icon>notes</mat-icon>
-              </button>
-              <button
-                mat-icon-button
-                type="button"
-                class="remove-btn"
-                (click)="removeImage(transaction)"
-                [matTooltip]="'receiptImages.removeImage' | translate"
-                [attr.aria-label]="'receiptImages.removeImage' | translate"
-              >
-                <mat-icon>delete</mat-icon>
-              </button>
+          <div class="image-tiles">
+            @for (image of group.images; track image.slot; let i = $index) {
+              <div class="image-tile">
+                <a
+                  class="thumbnail-link"
+                  [href]="image.url"
+                  target="_blank"
+                  rel="noopener"
+                  [matTooltip]="'receiptImages.viewImage' | translate"
+                >
+                  <img
+                    class="thumbnail"
+                    [src]="image.url"
+                    [alt]="'receiptImages.imageNumber' | translate: { index: i + 1, total: group.images.length }"
+                    loading="lazy"
+                  />
+                </a>
+
+                <div class="tile-actions">
+                  @if (isBusy(group.transaction.id, image.slot)) {
+                    <mat-spinner diameter="24" />
+                  } @else {
+                    <button
+                      mat-icon-button
+                      type="button"
+                      (click)="convertToNote(group, image)"
+                      [disabled]="isBusy(group.transaction.id)"
+                      [matTooltip]="'receiptImages.convertToNote' | translate"
+                      [attr.aria-label]="'receiptImages.convertToNote' | translate"
+                    >
+                      <mat-icon>notes</mat-icon>
+                    </button>
+                    <button
+                      mat-icon-button
+                      type="button"
+                      class="remove-btn"
+                      (click)="removeImage(group, image)"
+                      [disabled]="isBusy(group.transaction.id)"
+                      [matTooltip]="'receiptImages.removeImage' | translate"
+                      [attr.aria-label]="'receiptImages.removeImage' | translate"
+                    >
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  }
+                </div>
+              </div>
             }
           </div>
         </li>

@@ -14,10 +14,44 @@
     <span class="row-description">
       {{ transaction().description }}
       @if (transaction().receiptUrl) {
-        <mat-icon class="receipt-indicator">receipt_long</mat-icon>
+        <span class="receipt-indicator-group">
+          <mat-icon class="receipt-indicator">receipt_long</mat-icon>
+          @if (receiptCount() > 1) {
+            <span class="receipt-count-badge">{{ receiptCount() }}</span>
+          }
+        </span>
       }
     </span>
-    <span class="row-category">{{ categoryName() }}</span>
+    <span class="row-category">
+      {{ categoryName() }}
+      @if (transaction().location?.name; as locationName) {
+        @if (mapsUrl(); as url) {
+          <a
+            class="location-chip location-link"
+            [href]="url"
+            target="_blank"
+            rel="noopener"
+            (click)="$event.stopPropagation()"
+          >
+            <mat-icon class="location-icon">place</mat-icon>{{ locationName }}
+          </a>
+        } @else {
+          <span class="location-chip">
+            <mat-icon class="location-icon">place</mat-icon>{{ locationName }}
+          </span>
+        }
+      }
+      @if (visibleTags().length > 0) {
+        <span class="row-tags">
+          @for (tag of visibleTags(); track tag) {
+            <span class="tag-chip">{{ tag }}</span>
+          }
+          @if (overflowTagCount() > 0) {
+            <span class="tag-chip tag-overflow">+{{ overflowTagCount() }}</span>
+          }
+        </span>
+      }
+    </span>
   </div>
 
   <!-- Amount & Date -->

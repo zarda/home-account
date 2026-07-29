@@ -170,9 +170,69 @@
 
 .receipt-icon-link {
   display: inline-flex;
+  align-items: center;
   vertical-align: middle;
   margin-left: 4px;
   line-height: 1;
+}
+
+// Image count next to the icon, only shown past one image
+.receipt-count-badge {
+  font-size: var(--text-xs);
+  @apply text-gray-400 dark:text-gray-500;
+  line-height: 1;
+}
+
+// Where the transaction happened; a link only when coordinates exist
+.location-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  vertical-align: middle;
+  max-width: 14em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.location-link {
+  text-decoration: none;
+  color: var(--text-muted);
+
+  &:hover {
+    color: var(--color-primary);
+    text-decoration: underline;
+  }
+}
+
+.location-icon {
+  font-size: var(--text-sm) !important;
+  width: 1em !important;
+  height: 1em !important;
+  line-height: 1em;
+  flex-shrink: 0;
+}
+
+// Tag chips in the description cell, capped at three plus "+N"
+.cell-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.tag-chip {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .receipt-icon {

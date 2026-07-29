@@ -27,7 +27,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category } from '../../../models';
+import { Transaction, Category, receiptImageCount } from '../../../models';
 import {
   TransactionWindowService,
   WindowSortDirection
@@ -95,6 +95,32 @@ export class TransactionListComponent {
   private dialog = inject(MatDialog);
 
   displayedColumns = ['date', 'category', 'description', 'amount', 'actions'];
+
+  // Templates cannot call module functions, so the model helper is exposed
+  // through the component.
+  receiptCount(transaction: Transaction): number {
+    return receiptImageCount(transaction);
+  }
+
+  // At most three tag chips in the description cell; the rest fold into "+N".
+  visibleTags(transaction: Transaction): string[] {
+    return transaction.tags?.slice(0, 3) ?? [];
+  }
+
+  overflowTagCount(transaction: Transaction): number {
+    return Math.max(0, (transaction.tags?.length ?? 0) - 3);
+  }
+
+  /**
+   * Maps link for the location — only when coordinates exist. A name-only
+   * location stays plain text: linking a typed name would send a typo to a
+   * confidently wrong destination.
+   */
+  mapsUrl(transaction: Transaction): string | null {
+    const location = transaction.location;
+    if (location?.lat === undefined || location?.lng === undefined) return null;
+    return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
+  }
 
   // Only one of the two views is instantiated; previously both were rendered
   // and the inactive one merely hidden with CSS, doubling the DOM.

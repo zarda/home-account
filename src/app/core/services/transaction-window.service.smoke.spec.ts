@@ -57,8 +57,9 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
       categoryId: string;
       type: 'expense' | 'income';
       hoursAgo: number;
-      location: { name: string };
+      location: { name: string; lat?: number; lng?: number };
       note: string;
+      tags: string[];
     }>
   ) => ({
     id,
@@ -72,16 +73,32 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     date: Timestamp.fromMillis(BASE - (overrides.hoursAgo ?? 0) * HOUR),
     isRecurring: false,
     ...(overrides.location ? { location: overrides.location } : {}),
-    ...(overrides.note ? { note: overrides.note } : {})
+    ...(overrides.note ? { note: overrides.note } : {}),
+    ...(overrides.tags ? { tags: overrides.tags } : {})
   });
 
   const SEEDED = [
-    txn('txn-espresso', { description: 'Morning espresso', categoryId: 'cat-coffee', hoursAgo: 0 }),
-    txn('txn-bus', { description: 'Bus ticket', hoursAgo: 1 }),
-    txn('txn-market', { description: 'Fruit', hoursAgo: 2, location: { name: 'Aoyama Market' } }),
+    txn('txn-espresso', {
+      description: 'Morning espresso',
+      categoryId: 'cat-coffee',
+      hoursAgo: 0,
+      tags: ['reimbursable']
+    }),
+    txn('txn-bus', {
+      description: 'Bus ticket',
+      hoursAgo: 1,
+      tags: ['reimbursable', 'travel']
+    }),
+    txn('txn-market', {
+      description: 'Fruit',
+      hoursAgo: 2,
+      // Coordinates on the map: searchableFields reads only location.name,
+      // so a widened location must not disturb the name match below.
+      location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 }
+    }),
     txn('txn-salary', { description: 'Salary', categoryId: 'cat-salary', type: 'income', hoursAgo: 3 }),
     txn('txn-toffee', { description: 'Toffee crisps', hoursAgo: 4 }),
-    txn('txn-old', { description: 'Old espresso machine', hoursAgo: 24 * 40 })
+    txn('txn-old', { description: 'Old espresso machine', hoursAgo: 24 * 40, tags: ['travel'] })
   ];
 
   const CATEGORIES = [
@@ -186,8 +203,50 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
   });
 
   it('matches transactions by location name', async () => {
+    // The seeded location also carries lat/lng — the name match must not
+    // depend on the map holding only a name.
     await service.reset({ searchQuery: 'aoyama' });
     expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-market']);
+  });
+
+  it('narrows the window to transactions carrying a tag', async () => {
+    await service.reset({ tags: ['reimbursable'] });
+    // Server date order is preserved through the client-side narrowing.
+    expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso', 'txn-bus']);
+  });
+
+  it('requires every selected tag', async () => {
+    await service.reset({ tags: ['reimbursable', 'travel'] });
+    expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-bus']);
+  });
+
+  it('matches a tag through free-text search too', async () => {
+    // Tags were already in the searchable field set before they became
+    // filterable; the filter must not have displaced the search path.
+    await service.reset({ searchQuery: 'reimbursable' });
+    expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso', 'txn-bus']);
+  });
+
+  it('keeps server-side filters constraining the window alongside a tag filter', async () => {
+    await service.reset({
+      type: 'expense',
+      startDate: new Date(BASE - 12 * HOUR),
+      endDate: new Date(BASE),
+      tags: ['travel']
+    });
+
+    // txn-old carries the tag but is outside the server-side date range;
+    // txn-bus is the only in-range expense with it.
+    expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-bus']);
+
+    // The aggregate total still reports the SERVER count (4 in-range
+    // expenses): the tag narrows client-side, which is why the page header
+    // must treat a tag filter as client-only and show N+ instead.
+    const deadline = Date.now() + 5000;
+    while (service.totalCount() === null && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    expect(service.totalCount()).toBe(4);
   });
 
   it('keeps server-side filters constraining the window alongside search', async () => {

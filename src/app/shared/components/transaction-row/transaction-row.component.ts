@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, input, output } from '@angu
 
 import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category } from '../../../models';
+import { Transaction, Category, receiptImageCount } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
@@ -54,6 +54,34 @@ export class TransactionRowComponent {
       this.transaction().categoryId,
       this.categories()
     );
+  }
+
+  // Templates cannot call module functions, so the model helper is exposed
+  // through the component.
+  receiptCount(): number {
+    return receiptImageCount(this.transaction());
+  }
+
+  // At most three tag chips on the category line; the rest fold into "+N".
+  // The row is shared with the dashboard card, so tags must not add a line.
+  visibleTags(): string[] {
+    return this.transaction().tags?.slice(0, 3) ?? [];
+  }
+
+  overflowTagCount(): number {
+    return Math.max(0, (this.transaction().tags?.length ?? 0) - 3);
+  }
+
+  /**
+   * Maps link for the row's location — only when coordinates exist. A
+   * name-only location stays plain text: linking a typed name would send a
+   * typo to a confidently wrong destination. The URL form is the documented
+   * cross-platform Maps search, which resolves on web, Android and WKWebView.
+   */
+  mapsUrl(): string | null {
+    const location = this.transaction().location;
+    if (location?.lat === undefined || location?.lng === undefined) return null;
+    return `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`;
   }
 
   formatAmount(): string {

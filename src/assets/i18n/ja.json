@@ -151,7 +151,19 @@
     "insightChipsLabel": "今月の注目すべき支出",
     "chipUnusual": "異常値: {{category}}",
     "chipNewCategory": "今月新規: {{category}}",
-    "chipTopCategory": "最多: {{category}}"
+    "chipTopCategory": "最多: {{category}}",
+    "tags": "タグ（任意）",
+    "tagsPlaceholder": "タグを入力して Enter を押してください",
+    "removeTag": "タグ {{tag}} を削除",
+    "tagFilterHint": "選択したすべてのタグが付いた取引のみ表示します",
+    "location": "場所（任意）",
+    "locationPlaceholder": "どこでの取引ですか？",
+    "useMyLocation": "現在地を使用",
+    "locating": "現在地を取得中…",
+    "locationCaptured": "座標を添付しました",
+    "locationDenied": "位置情報の利用が許可されませんでした。場所名の入力は引き続き可能です。",
+    "locationUnavailable": "現在地を取得できませんでした。場所名の入力は引き続き可能です。",
+    "clearCoordinates": "座標を削除"
   },
   "budget": {
     "title": "予算",
@@ -919,7 +931,18 @@
     "convertFailedNoDetails": "この画像から詳細を読み取れなかったため、画像は保持されました。",
     "convertFailedDownload": "画像をダウンロードできませんでした。繰り返し発生する場合は、ストレージバケットに一度だけCORS設定が必要です（docs/storage-cors-setup.md 参照）。",
     "convertFailed": "画像の変換に失敗したため、画像は保持されました。",
-    "empty": "保存されたレシート画像はありません。"
+    "empty": "保存されたレシート画像はありません。",
+    "addAnother": "画像を追加",
+    "imageNumber": "レシート画像 {{total}} 枚中 {{index}} 枚目",
+    "removeOneConfirmTitle": "このレシート画像を削除しますか？",
+    "removeOneConfirmMessage": "この画像のみ削除されます。取引と他の画像は残ります。",
+    "maxPerTransaction": "1件の取引に保存できるレシート画像は最大 {{max}} 枚です。",
+    "attachFailed": "画像を添付できなかったため、いずれも保存されませんでした。",
+    "countBadge": "画像 {{count}} 枚",
+    "removeAllImages": "すべての画像を削除",
+    "removeAllConfirmTitle": "すべてのレシート画像を削除しますか？",
+    "removeAllConfirmMessage": "{{count}} 枚の画像がすべて完全に削除されます。取引自体は残ります。",
+    "removedAll": "レシート画像 {{count}} 枚を削除しました"
   },
   "analytics": {
     "settingsTitle": "利用状況の統計",

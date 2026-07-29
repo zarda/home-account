@@ -43,10 +43,11 @@
   flex-direction: column;
 }
 
-.receipt-item {
+// One transaction and every image it holds
+.receipt-group {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border-primary, rgba(0, 0, 0, 0.06));
 
@@ -55,14 +56,47 @@
   }
 }
 
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.remove-all-btn {
+  color: var(--color-warn, #d32f2f);
+  flex-shrink: 0;
+}
+
+// The transaction's images, one tile per image with its own actions
+.image-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.image-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.tile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 40px;
+}
+
 .thumbnail-link {
   flex-shrink: 0;
   line-height: 0;
 }
 
 .thumbnail {
-  width: 48px;
-  height: 48px;
+  width: 72px;
+  height: 72px;
   object-fit: cover;
   border-radius: var(--radius-xs, 4px);
   border: 1px solid var(--border-primary, rgba(0, 0, 0, 0.1));
@@ -87,13 +121,6 @@
 .item-meta {
   font-size: var(--text-sm);
   color: var(--text-muted);
-}
-
-.item-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
 }
 
 .remove-btn {

@@ -64,7 +64,10 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   transactionCount = computed(() => {
     const filters = this.currentFilters();
     const hasClientOnlyFilter =
-      filters.minAmount !== undefined || filters.maxAmount !== undefined || !!filters.searchQuery;
+      filters.minAmount !== undefined ||
+      filters.maxAmount !== undefined ||
+      !!filters.searchQuery ||
+      !!filters.tags?.length;
 
     if (!hasClientOnlyFilter) {
       const total = this.windowSource.totalCount();

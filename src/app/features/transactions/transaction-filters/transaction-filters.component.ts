@@ -1,5 +1,6 @@
 import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, EventEmitter, inject, Input, OnChanges, OnDestroy, OnInit, Output, signal, SimpleChanges, ViewChild } from '@angular/core';
 
+import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
@@ -7,8 +8,10 @@ import { MatInputModule } from '@angular/material/input';
 import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatChipInputEvent, MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subject, Subscription, debounceTime } from 'rxjs';
 import { Category, CurrencyInfo, SavedSearch, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
@@ -29,8 +32,10 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatDatepickerModule,
     MatNativeDateModule,
     MatButtonModule,
+    MatChipsModule,
     MatIconModule,
     MatMenuModule,
+    MatTooltipModule,
     TranslatePipe
   ],
   templateUrl: './transaction-filters.component.html',
@@ -64,6 +69,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   expanded = signal(false);
   activeQuickFilter = signal<string | null>(null);
+  readonly tagSeparatorKeys = [ENTER, COMMA] as const;
 
   filters: TransactionFilters = {};
 
@@ -201,6 +207,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
       !!this.filters.currency ||
       this.filters.minAmount !== undefined ||
       this.filters.maxAmount !== undefined ||
+      !!this.filters.tags?.length ||
       this.activeQuickFilter() !== 'thisMonth'
     );
   }
@@ -358,7 +365,25 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (this.filters.minAmount !== undefined) count++;
     if (this.filters.maxAmount !== undefined) count++;
     if (this.filters.currency) count++;
+    if (this.filters.tags?.length) count++;
     return count;
+  }
+
+  addTagFilter(event: MatChipInputEvent): void {
+    // Same normalization as the form's tag input, so a chip typed here
+    // matches a tag typed there.
+    const tag = event.value.trim().toLowerCase();
+    if (tag && !(this.filters.tags ?? []).includes(tag)) {
+      this.filters.tags = [...(this.filters.tags ?? []), tag];
+      this.onFilterChange();
+    }
+    event.chipInput.clear();
+  }
+
+  removeTagFilter(tag: string): void {
+    this.filters.tags = (this.filters.tags ?? []).filter(existing => existing !== tag);
+    if (this.filters.tags.length === 0) delete this.filters.tags;
+    this.onFilterChange();
   }
 
   onFilterChange(): void {
@@ -451,6 +476,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (this.filters.minAmount !== undefined) cleanFilters.minAmount = this.filters.minAmount;
     if (this.filters.maxAmount !== undefined) cleanFilters.maxAmount = this.filters.maxAmount;
     if (this.filters.currency) cleanFilters.currency = this.filters.currency;
+    if (this.filters.tags?.length) cleanFilters.tags = this.filters.tags;
 
     this.filtersChanged.emit(cleanFilters);
   }

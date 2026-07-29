@@ -35,6 +35,52 @@ describe('applyClientTransactionFilters', () => {
     });
   });
 
+  describe('tags filter', () => {
+    const transactions = [
+      createTransaction({ id: 't1', description: 'Flight', tags: ['travel', 'reimbursable'] }),
+      createTransaction({ id: 't2', description: 'Hotel', tags: ['travel'] }),
+      createTransaction({ id: 't3', description: 'Lunch', tags: ['reimbursable'] }),
+      createTransaction({ id: 't4', description: 'Gym' })
+    ];
+
+    it('narrows to rows carrying the tag', () => {
+      const result = applyClientTransactionFilters(transactions, { tags: ['travel'] });
+      expect(result.map(t => t.id)).toEqual(['t1', 't2']);
+    });
+
+    it('requires every selected tag', () => {
+      // Filter chips narrow: two chips mean both, not either.
+      const result = applyClientTransactionFilters(transactions, {
+        tags: ['travel', 'reimbursable']
+      });
+      expect(result.map(t => t.id)).toEqual(['t1']);
+    });
+
+    it('never matches an untagged row', () => {
+      const result = applyClientTransactionFilters(transactions, { tags: ['gym'] });
+      expect(result).toEqual([]);
+    });
+
+    it('is a no-op for an empty tag list', () => {
+      expect(applyClientTransactionFilters(transactions, { tags: [] })).toEqual(transactions);
+    });
+
+    it('composes with the amount range and the search query', () => {
+      const rows = [
+        createTransaction({ id: 'a', description: 'Team lunch', amount: 40, tags: ['work'] }),
+        createTransaction({ id: 'b', description: 'Team lunch', amount: 8, tags: ['work'] }),
+        createTransaction({ id: 'c', description: 'Team lunch', amount: 40, tags: ['family'] }),
+        createTransaction({ id: 'd', description: 'Groceries', amount: 40, tags: ['work'] })
+      ];
+      const result = applyClientTransactionFilters(rows, {
+        tags: ['work'],
+        minAmount: 10,
+        searchQuery: 'lunch'
+      });
+      expect(result.map(t => t.id)).toEqual(['a']);
+    });
+  });
+
   describe('searchQuery over location names', () => {
     const transactions = [
       createTransaction({

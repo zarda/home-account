@@ -35,11 +35,29 @@ service cloud.firestore {
 
     // ---- transactions ----
 
+    // The receiptUrl scheme allows plain http because the storage emulator
+    // issues http://127.0.0.1:9199 download URLs and this same file runs
+    // against it; the length cap and scheme check exist so the field can
+    // only ever hold a fetchable URL, not a script: payload or a blob of
+    // data. receiptUrl must stay a string (never an array): the image quota
+    // filters on `receiptUrl > ''`, and Firestore range filters only match
+    // values of the operand's type, so an array here would silently drop
+    // the row out of the quota count.
+    function receiptUrlValid(url) {
+      return url is string
+        && url.size() < 2048
+        && url.matches('https?://.*');
+    }
+
     function txOptionalsValid(d) {
       return (!('baseCurrency' in d) || d.baseCurrency is string)
         && (!('note' in d) || d.note is string)
         && (!('tags' in d) || d.tags is list)
-        && (!('receiptUrl' in d) || d.receiptUrl is string)
+        && (!('receiptUrl' in d) || receiptUrlValid(d.receiptUrl))
+        // Entries are not individually type-checked (rules cannot iterate a
+        // list); the cap mirrors MAX_RECEIPTS_PER_TRANSACTION client-side
+        // and bounds document growth.
+        && (!('receiptUrls' in d) || (d.receiptUrls is list && d.receiptUrls.size() <= 5))
         && (!('receiptCount' in d) || (d.receiptCount is int && d.receiptCount >= 0))
         && (!('recurringId' in d) || d.recurringId is string)
         && (!('location' in d) || d.location is map)

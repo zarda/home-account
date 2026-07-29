@@ -41,4 +41,16 @@ describe('StorageService', () => {
       service.uploadReceipt('uid', 'txn-1', oversized)
     ).toBeRejectedWithError(/limit/);
   });
+
+  it('rejects an oversized receipt on a non-zero slot too', async () => {
+    const oversized = {
+      size: MAX_RECEIPT_BYTES + 1,
+      type: 'image/jpeg',
+      name: 'big.jpg'
+    } as File;
+
+    await expectAsync(
+      service.uploadReceipt('uid', 'txn-1', oversized, 2)
+    ).toBeRejectedWithError(/limit/);
+  });
 });

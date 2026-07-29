@@ -151,7 +151,19 @@
     "insightChipsLabel": "本月值得注意的支出",
     "chipUnusual": "異常: {{category}}",
     "chipNewCategory": "本月新增: {{category}}",
-    "chipTopCategory": "最高: {{category}}"
+    "chipTopCategory": "最高: {{category}}",
+    "tags": "標籤（選填）",
+    "tagsPlaceholder": "輸入標籤後按 Enter",
+    "removeTag": "移除標籤 {{tag}}",
+    "tagFilterHint": "只顯示帶有所有所選標籤的交易",
+    "location": "地點（選填）",
+    "locationPlaceholder": "在哪裡消費的？",
+    "useMyLocation": "使用目前位置",
+    "locating": "正在取得位置…",
+    "locationCaptured": "已附加座標",
+    "locationDenied": "位置權限遭拒。您仍可輸入地點名稱。",
+    "locationUnavailable": "無法取得您的位置。您仍可輸入地點名稱。",
+    "clearCoordinates": "移除座標"
   },
   "budget": {
     "title": "預算",
@@ -919,7 +931,18 @@
     "convertFailedNoDetails": "無法從此圖片讀取詳細內容，圖片已保留。",
     "convertFailedDownload": "無法下載圖片。若持續發生，儲存空間值區需要一次性的 CORS 設定（請參閱 docs/storage-cors-setup.md）。",
     "convertFailed": "圖片轉換失敗，圖片已保留。",
-    "empty": "沒有已儲存的收據圖片。"
+    "empty": "沒有已儲存的收據圖片。",
+    "addAnother": "新增圖片",
+    "imageNumber": "第 {{index}} 張收據圖片（共 {{total}} 張）",
+    "removeOneConfirmTitle": "要刪除這張收據圖片嗎？",
+    "removeOneConfirmMessage": "只會刪除這張圖片，交易與其他圖片會保留。",
+    "maxPerTransaction": "一筆交易最多可儲存 {{max}} 張收據圖片。",
+    "attachFailed": "無法附加圖片，因此未儲存任何圖片。",
+    "countBadge": "{{count}} 張圖片",
+    "removeAllImages": "刪除所有圖片",
+    "removeAllConfirmTitle": "要刪除所有收據圖片嗎？",
+    "removeAllConfirmMessage": "全部 {{count}} 張圖片將被永久刪除，交易本身會保留。",
+    "removedAll": "已刪除 {{count}} 張收據圖片"
   },
   "analytics": {
     "settingsTitle": "使用統計",

@@ -6,7 +6,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFormComponent } from './transaction-form.component';
-import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from '../../../core/services/transaction.service';
+import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR, RECEIPT_ATTACH_FAILED } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { ReceiptToNoteService } from '../../../core/services/receipt-to-note.service';
 import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
@@ -56,11 +56,12 @@ describe('TransactionFormComponent', () => {
 
   beforeEach(async () => {
     transactionService = jasmine.createSpyObj('TransactionService', [
-      'addTransaction', 'updateTransaction', 'removeReceipt', 'getTransactionDatesForMonth',
+      'addTransaction', 'updateTransaction', 'removeReceiptAt', 'removeAllReceipts', 'getTransactionDatesForMonth',
     ]);
     transactionService.addTransaction.and.resolveTo('new-id');
     transactionService.updateTransaction.and.resolveTo(undefined);
-    transactionService.removeReceipt.and.resolveTo(undefined);
+    transactionService.removeReceiptAt.and.resolveTo(undefined);
+    transactionService.removeAllReceipts.and.resolveTo(undefined);
     transactionService.getTransactionDatesForMonth.and.returnValue(of(new Map()));
 
     categoryService = {
@@ -82,8 +83,8 @@ describe('TransactionFormComponent', () => {
     dialogRef.afterClosed.and.returnValue(of(undefined) as never);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
-    receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImage']);
-    receiptQuota.canAddImage.and.resolveTo(true);
+    receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']);
+    receiptQuota.canAddImages.and.resolveTo(true);
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
     currentUser = signal<User | null>(createUser());
 
@@ -185,6 +186,8 @@ describe('TransactionFormComponent', () => {
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
       expect(dto.amount).toBe(15.5);
       expect(dto.note).toBe('tasty');
+      // No tags typed and add mode: the field is omitted entirely.
+      expect(dto.tags).toBeUndefined();
       expect(dialogRef.close).toHaveBeenCalledWith(true);
     });
 
@@ -192,46 +195,153 @@ describe('TransactionFormComponent', () => {
       const component = build().componentInstance;
       validForm(component);
       const receipt = new File(['x'], 'r.jpg', { type: 'image/jpeg' });
-      component.receiptFile.set(receipt);
+      component.pendingReceipts.set([{ file: receipt, preview: 'data:image/jpeg;base64,x' }]);
       await component.onSubmit();
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
-      expect(dto.receiptFile).toBe(receipt);
+      expect(dto.receiptFiles).toEqual([receipt]);
     });
 
-    it('omits receiptFile when none was captured', async () => {
+    it('omits receiptFiles when none was captured', async () => {
       const component = build().componentInstance;
       validForm(component);
       await component.onSubmit();
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
-      expect(dto.receiptFile).toBeUndefined();
+      expect(dto.receiptFiles).toBeUndefined();
     });
 
     it('sends a newly attached receipt when editing', async () => {
-      // updateTransaction has always accepted receiptFile; only the UI
+      // updateTransaction has always accepted a receipt file; only the UI
       // withheld the scanner in edit mode, so it could never be set.
       const txn = createTransaction({ id: 'e1' });
       const component = build({ mode: 'edit', transaction: txn }).componentInstance;
       validForm(component);
       const file = new File([''], 'receipt.jpg', { type: 'image/jpeg' });
-      component.receiptFile.set(file);
+      component.pendingReceipts.set([{ file, preview: 'data:image/jpeg;base64,x' }]);
 
       await component.onSubmit();
 
       const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
-      expect(dto.receiptFile).toBe(file);
+      expect(dto.receiptFiles).toEqual([file]);
     });
 
-    it('replaces an existing receipt when editing', async () => {
+    it('appends a queued receipt alongside a stored one when editing', async () => {
+      // Since images became a list, a queued image adds to the strip rather
+      // than replacing the stored one; replacing is remove-then-attach.
       const stored = createTransaction({ id: 'e2', receiptUrl: 'https://example.test/old.jpg' });
       const component = build({ mode: 'edit', transaction: stored }).componentInstance;
       validForm(component);
       const file = new File([''], 'new-receipt.jpg', { type: 'image/jpeg' });
-      component.receiptFile.set(file);
+      component.pendingReceipts.set([{ file, preview: 'data:image/jpeg;base64,x' }]);
 
       await component.onSubmit();
 
       const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
-      expect(dto.receiptFile).toBe(file);
+      expect(dto.receiptFiles).toEqual([file]);
+      // The stored image stays visible next to the queued one.
+      expect(component.storedReceipts()).toEqual([
+        { url: 'https://example.test/old.jpg', slot: 0 },
+      ]);
+    });
+
+    it('queues several files and submits them in pick order', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      const files = [0, 1, 2].map(
+        i => new File([`r${i}`], `r${i}.jpg`, { type: 'image/jpeg' })
+      );
+
+      await component.onReceiptSelected({ target: { files, value: '' } } as unknown as Event);
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.receiptFiles?.length).toBe(3);
+      expect(dto.receiptFiles?.map(f => f.name)).toEqual(['r0.jpg', 'r1.jpg', 'r2.jpg']);
+    });
+
+    it('reports a rolled-back batch without closing the dialog', async () => {
+      transactionService.addTransaction.and.rejectWith(new Error(RECEIPT_ATTACH_FAILED));
+      const component = build().componentInstance;
+      validForm(component);
+
+      await component.onSubmit();
+
+      expect(notifications.error).toHaveBeenCalledWith('receiptImages.attachFailed');
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('carries the typed tags in the DTO', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.tags.set(['groceries', 'reimbursable']);
+      await component.onSubmit();
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.tags).toEqual(['groceries', 'reimbursable']);
+    });
+
+    it('sends an emptied tag list in edit mode so stored tags clear', async () => {
+      const txn = createTransaction({ id: 'e1', tags: ['old'] });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      validForm(component);
+      component.tags.set([]);
+
+      await component.onSubmit();
+
+      const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+      // Omitting the field would leave the stored tags in place.
+      expect(dto.tags).toEqual([]);
+    });
+
+    it('writes a name-only location without coordinates', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.form.patchValue({ locationName: '  Aoyama Market ' });
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'Aoyama Market' });
+    });
+
+    it('attaches captured coordinates to the location', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.form.patchValue({ locationName: 'Aoyama Market' });
+      component.locationCoords.set({ lat: 35.66, lng: 139.71 });
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
+    });
+
+    it('omits the location entirely when the name is blank', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      // Coordinates without a name are meaningless to render; they hang off
+      // the name.
+      component.locationCoords.set({ lat: 35.66, lng: 139.71 });
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect('location' in dto).toBeFalse();
+    });
+
+    it('clears a stored location when the name is emptied in edit mode', async () => {
+      const txn = createTransaction({
+        id: 'e1',
+        location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+      });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      validForm(component);
+      component.form.patchValue({ locationName: '' });
+
+      await component.onSubmit();
+
+      const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+      // Key present, value undefined: the service reads that as "clear".
+      expect('location' in dto).toBeTrue();
+      expect(dto.location).toBeUndefined();
     });
 
     it('updates an existing transaction in edit mode', async () => {
@@ -282,13 +392,48 @@ describe('TransactionFormComponent', () => {
     const txnWithReceipt = () =>
       createTransaction({ id: 'e1', receiptUrl: 'https://storage.example.com/r.jpg' });
 
-    it('removes the stored image after confirmation', async () => {
-      const component = build({ mode: 'edit', transaction: txnWithReceipt() }).componentInstance;
+    const multiImageTxn = () =>
+      createTransaction({
+        id: 'e1',
+        receiptUrl: 'https://storage.example.com/r0.jpg',
+        receiptUrls: [
+          'https://storage.example.com/r0.jpg',
+          'https://storage.example.com/r1.jpg',
+        ],
+        receiptCount: 2,
+      });
 
-      await component.removeExistingReceipt();
+    it('seeds one stored entry per image, keyed by slot', () => {
+      const component = build({ mode: 'edit', transaction: multiImageTxn() }).componentInstance;
+      expect(component.storedReceipts()).toEqual([
+        { url: 'https://storage.example.com/r0.jpg', slot: 0 },
+        { url: 'https://storage.example.com/r1.jpg', slot: 1 },
+      ]);
+    });
 
-      expect(transactionService.removeReceipt).toHaveBeenCalledWith('e1');
-      expect(component.existingReceiptUrl).toBeNull();
+    it('keeps surviving slots when seeding across a tombstone', () => {
+      const txn = createTransaction({
+        id: 'e1',
+        receiptUrl: 'https://storage.example.com/r2.jpg',
+        receiptUrls: ['', '', 'https://storage.example.com/r2.jpg'],
+        receiptCount: 1,
+      });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      expect(component.storedReceipts()).toEqual([
+        { url: 'https://storage.example.com/r2.jpg', slot: 2 },
+      ]);
+    });
+
+    it('removes one stored image by its slot after confirmation', async () => {
+      const component = build({ mode: 'edit', transaction: multiImageTxn() }).componentInstance;
+
+      await component.removeStoredReceipt({ url: 'https://storage.example.com/r1.jpg', slot: 1 });
+
+      expect(transactionService.removeReceiptAt).toHaveBeenCalledWith('e1', 1);
+      // Only the removed image leaves the strip.
+      expect(component.storedReceipts()).toEqual([
+        { url: 'https://storage.example.com/r0.jpg', slot: 0 },
+      ]);
       expect(notifications.success).toHaveBeenCalledWith('receiptImages.removed');
     });
 
@@ -296,21 +441,24 @@ describe('TransactionFormComponent', () => {
       dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
       const component = build({ mode: 'edit', transaction: txnWithReceipt() }).componentInstance;
 
-      await component.removeExistingReceipt();
+      await component.removeStoredReceipt({ url: 'https://storage.example.com/r.jpg', slot: 0 });
 
-      expect(transactionService.removeReceipt).not.toHaveBeenCalled();
-      expect(component.existingReceiptUrl).not.toBeNull();
+      expect(transactionService.removeReceiptAt).not.toHaveBeenCalled();
+      expect(component.storedReceipts().length).toBe(1);
     });
 
-    it('converts the stored image into the note field', async () => {
+    it('converts one stored image by its slot into the note field', async () => {
       receiptToNote.convertReceiptToNote.and.resolveTo('Latte — 5.00\nTotal 5.00');
-      const component = build({ mode: 'edit', transaction: txnWithReceipt() }).componentInstance;
+      const component = build({ mode: 'edit', transaction: multiImageTxn() }).componentInstance;
 
-      await component.convertExistingReceiptToNote();
+      await component.convertStoredReceiptToNote({ url: 'https://storage.example.com/r1.jpg', slot: 1 });
 
-      expect(receiptToNote.convertReceiptToNote).toHaveBeenCalled();
+      expect(receiptToNote.convertReceiptToNote).toHaveBeenCalledWith(jasmine.any(Object), 1);
       expect(component.form.get('note')?.value).toBe('Latte — 5.00\nTotal 5.00');
-      expect(component.existingReceiptUrl).toBeNull();
+      // The converted image leaves the strip; the other stays.
+      expect(component.storedReceipts()).toEqual([
+        { url: 'https://storage.example.com/r0.jpg', slot: 0 },
+      ]);
       expect(notifications.success).toHaveBeenCalledWith('receiptImages.converted');
     });
 
@@ -318,9 +466,9 @@ describe('TransactionFormComponent', () => {
       receiptToNote.convertReceiptToNote.and.rejectWith(new Error('RECEIPT_TO_NOTE_NO_DETAILS'));
       const component = build({ mode: 'edit', transaction: txnWithReceipt() }).componentInstance;
 
-      await component.convertExistingReceiptToNote();
+      await component.convertStoredReceiptToNote({ url: 'https://storage.example.com/r.jpg', slot: 0 });
 
-      expect(component.existingReceiptUrl).not.toBeNull();
+      expect(component.storedReceipts().length).toBe(1);
       expect(notifications.error).toHaveBeenCalledWith('receiptImages.convertFailedNoDetails');
     });
   });
@@ -340,12 +488,27 @@ describe('TransactionFormComponent', () => {
     });
 
     it('blocks attaching a new image at the quota limit and shows the limit dialog', async () => {
-      receiptQuota.canAddImage.and.resolveTo(false);
+      receiptQuota.canAddImages.and.resolveTo(false);
       const component = build().componentInstance;
       const file = new File(['x'], 'r.jpg', { type: 'image/jpeg' });
       await component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
       expect(dialog.open).toHaveBeenCalledWith(ReceiptLimitDialogComponent, jasmine.any(Object));
-      expect(component.receiptFile()).toBeNull();
+      // Nothing is queued: a partial queue would save a different set of
+      // images than the user picked.
+      expect(component.pendingReceipts()).toEqual([]);
+    });
+
+    it('caps a pick at the per-transaction maximum', async () => {
+      const component = build().componentInstance;
+      const files = Array.from(
+        { length: 6 },
+        (_, i) => new File([`r${i}`], `r${i}.jpg`, { type: 'image/jpeg' })
+      );
+
+      await component.onReceiptSelected({ target: { files, value: '' } } as unknown as Event);
+
+      expect(component.pendingReceipts().length).toBe(5);
+      expect(notifications.info).toHaveBeenCalledWith('receiptImages.maxPerTransaction');
     });
 
     it('scanReceipt fills the form on success', async () => {
@@ -402,13 +565,17 @@ describe('TransactionFormComponent', () => {
           suggestedCategory: 'food', receiptCount: count,
         } as never);
         const component = build().componentInstance;
-        component.receiptFile.set(new File(['x'], 'r.jpg', { type: 'image/jpeg' }));
+        component.pendingReceipts.set([
+          { file: new File(['x'], 'r.jpg', { type: 'image/jpeg' }), preview: 'data:image/jpeg;base64,x' },
+        ]);
         return component;
       }
 
       it('does not offer the chooser for a single-receipt photo', async () => {
         const component = build().componentInstance;
-        component.receiptFile.set(new File(['x'], 'r.jpg', { type: 'image/jpeg' }));
+        component.pendingReceipts.set([
+          { file: new File(['x'], 'r.jpg', { type: 'image/jpeg' }), preview: 'data:image/jpeg;base64,x' },
+        ]);
         await scan(component);
         expect(dialog.open).not.toHaveBeenCalledWith(ConfirmDialogComponent, jasmine.any(Object));
       });
@@ -433,7 +600,7 @@ describe('TransactionFormComponent', () => {
 
         await scan(component);
 
-        expect(aiImport.importFromMultipleImages).toHaveBeenCalledWith([component.receiptFile()!]);
+        expect(aiImport.importFromMultipleImages).toHaveBeenCalledWith([component.pendingReceipts()[0].file]);
         expect(dialogRef.close).toHaveBeenCalledWith(false);
         expect(router.navigate).toHaveBeenCalledWith(['/import/file'], {
           state: { importResult, fromCamera: true, multiImage: false },
@@ -454,15 +621,85 @@ describe('TransactionFormComponent', () => {
       });
     });
 
-    it('clearReceipt resets preview, error and captured file', () => {
+    it('useMyLocation captures coordinates on success', () => {
       const component = build().componentInstance;
-      component.receiptPreview.set('x');
-      component.scanError.set('y');
-      component.receiptFile.set(new File(['x'], 'r.jpg', { type: 'image/jpeg' }));
-      component.clearReceipt();
-      expect(component.receiptPreview()).toBeNull();
-      expect(component.scanError()).toBeNull();
-      expect(component.receiptFile()).toBeNull();
+      spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake(success => {
+        (success as PositionCallback)({
+          coords: { latitude: 35.66, longitude: 139.71 },
+        } as GeolocationPosition);
+      });
+
+      component.useMyLocation();
+
+      expect(component.locationCoords()).toEqual({ lat: 35.66, lng: 139.71 });
+      expect(component.isLocating()).toBeFalse();
+      expect(notifications.success).toHaveBeenCalledWith('transactions.locationCaptured');
+    });
+
+    it('useMyLocation degrades to name-only when permission is denied', () => {
+      const component = build().componentInstance;
+      component.form.patchValue({ locationName: 'Aoyama Market' });
+      spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake((success, error) => {
+        (error as PositionErrorCallback)({ code: 1 } as GeolocationPositionError);
+      });
+
+      component.useMyLocation();
+
+      expect(component.locationCoords()).toBeNull();
+      // The typed name survives; only the coordinates are refused.
+      expect(component.form.get('locationName')?.value).toBe('Aoyama Market');
+      expect(notifications.error).toHaveBeenCalledWith('transactions.locationDenied');
+      expect(component.isLocating()).toBeFalse();
+    });
+
+    it('useMyLocation reports an unavailable position distinctly', () => {
+      const component = build().componentInstance;
+      spyOn(navigator.geolocation, 'getCurrentPosition').and.callFake((success, error) => {
+        (error as PositionErrorCallback)({ code: 2 } as GeolocationPositionError);
+      });
+
+      component.useMyLocation();
+
+      expect(notifications.error).toHaveBeenCalledWith('transactions.locationUnavailable');
+    });
+
+    it('clearCoordinates detaches them', () => {
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 1, lng: 2 });
+      component.clearCoordinates();
+      expect(component.locationCoords()).toBeNull();
+    });
+
+    it('tag input trims, lowercases, dedupes and seeds from the transaction', () => {
+      const txn = createTransaction({ id: 'e1', tags: ['coffee'] });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      expect(component.tags()).toEqual(['coffee']);
+
+      const chipInput = { clear: jasmine.createSpy('clear') };
+      component.addTag({ value: '  Coffee ', chipInput } as never);
+      // "Coffee" is already there once lowercased.
+      expect(component.tags()).toEqual(['coffee']);
+
+      component.addTag({ value: 'Reimbursable', chipInput } as never);
+      expect(component.tags()).toEqual(['coffee', 'reimbursable']);
+
+      component.addTag({ value: '   ', chipInput } as never);
+      expect(component.tags()).toEqual(['coffee', 'reimbursable']);
+      expect(chipInput.clear).toHaveBeenCalledTimes(3);
+
+      component.removeTag('coffee');
+      expect(component.tags()).toEqual(['reimbursable']);
+    });
+
+    it('removing a queued image drops it from the strip', () => {
+      const component = build().componentInstance;
+      const keep = { file: new File(['a'], 'a.jpg', { type: 'image/jpeg' }), preview: 'data:a' };
+      const drop = { file: new File(['b'], 'b.jpg', { type: 'image/jpeg' }), preview: 'data:b' };
+      component.pendingReceipts.set([keep, drop]);
+
+      component.removePendingReceipt(1);
+
+      expect(component.pendingReceipts()).toEqual([keep]);
     });
   });
 

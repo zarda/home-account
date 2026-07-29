@@ -111,6 +111,40 @@ describe('ExportService', () => {
       reader.readAsText(blob);
     });
 
+    it('ends the detailed header with Tags and Location', (done) => {
+      const blob = service.exportToCSV([createTransaction()]);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const headerLine = (reader.result as string).split('\n')[0];
+        expect(headerLine.endsWith('Note,Tags,Location')).toBeTrue();
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
+    it('emits the location name, escaped, and an empty cell without one', (done) => {
+      const transactions = [
+        createTransaction({
+          description: 'With location',
+          location: { name: 'Aoyama, Market', lat: 35.66, lng: 139.71 },
+        }),
+        createTransaction({ description: 'Without location' }),
+      ];
+      const blob = service.exportToCSV(transactions);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const lines = (reader.result as string).split('\n');
+        // Name only — the coordinates stay out of the CSV.
+        expect(lines[1].endsWith(',"Aoyama, Market"')).toBeTrue();
+        expect(lines[1]).not.toContain('35.66');
+        expect(lines[2].endsWith(',')).toBeTrue();
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
     it('should apply date range filter', () => {
       const now = new Date();
       const oldDate = new Date(now.getFullYear() - 1, 0, 1);
@@ -357,8 +391,35 @@ describe('ExportService', () => {
       expect(result.length).toBe(1);
       expect(result[0].type).toBe('expense');
       expect(result[0].amount).toBe(100);
+      // A bank CSV row carries no currency or category — the defaults hold.
       expect(result[0].currency).toBe('USD');
       expect(result[0].categoryId).toBe('other_expense');
+    });
+
+    it('round-trips the details a backup row carries', () => {
+      const raw = [{
+        description: 'Fruit',
+        amount: 12.5,
+        date: new Date(2026, 5, 1),
+        type: 'expense' as const,
+        currency: 'JPY',
+        categoryId: 'food_groceries',
+        note: 'weekly shop',
+        tags: ['groceries', 'reimbursable'],
+        location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+        isRecurring: false,
+        period: 'monthly' as const,
+      }];
+
+      const result = service.parseImportedData(raw);
+
+      // Nothing the backup carried is flattened back to a default.
+      expect(result[0].currency).toBe('JPY');
+      expect(result[0].categoryId).toBe('food_groceries');
+      expect(result[0].note).toBe('weekly shop');
+      expect(result[0].tags).toEqual(['groceries', 'reimbursable']);
+      expect(result[0].location).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
+      expect(result[0].period).toBe('monthly');
     });
 
     it('should use absolute value for amount', () => {

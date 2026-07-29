@@ -23,10 +23,24 @@ import { LoadingSpinnerComponent } from '../../../shared/components/loading-spin
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { Transaction } from '../../../models';
 
+/** One stored image of a transaction, addressed by its storage slot. */
+interface ReceiptImage {
+  url: string;
+  slot: number;
+}
+
+/** A transaction and every image it holds — one group in the manager. */
+interface ReceiptGroup {
+  transaction: Transaction;
+  images: ReceiptImage[];
+}
+
 /**
- * Lists every transaction with a stored receipt image so the user can
- * free up quota: view the image, remove it from the item, or convert it
- * into detailed note text (which also removes the image).
+ * Lists every stored receipt image, grouped by transaction, so the user can
+ * free up quota one image at a time: view an image, remove it, or convert it
+ * into detailed note text (which also removes it). The quota counts images,
+ * not transactions, so the housekeeping acts on images too — a per-group
+ * remove-all keeps the bulk path for clearing a whole transaction.
  */
 @Component({
   selector: 'app-receipt-image-manager',
@@ -55,12 +69,15 @@ export class ReceiptImageManagerComponent implements OnInit {
   quota = inject(ReceiptQuotaService);
 
   isLoading = signal(true);
-  transactions = signal<Transaction[]>([]);
-  /** Transaction ids with an in-flight remove/convert action. */
-  busyIds = signal<Set<string>>(new Set());
+  groups = signal<ReceiptGroup[]>([]);
+  /** `${transactionId}:${slot}` keys with an in-flight remove/convert, plus
+   * `${transactionId}:*` while a whole group is being cleared. Per-image so
+   * converting one image does not lock its siblings. */
+  busyKeys = signal<Set<string>>(new Set());
 
   usageText = computed(() => {
-    const used = this.quota.imageCount() ?? this.transactions().length;
+    const used = this.quota.imageCount()
+      ?? this.groups().reduce((total, group) => total + group.images.length, 0);
     if (this.quota.hasUnlimitedImages()) {
       return this.translationService.t('receiptImages.usageUnlimited', { used });
     }
@@ -76,7 +93,10 @@ export class ReceiptImageManagerComponent implements OnInit {
         firstValueFrom(this.transactionService.getTransactionsWithReceipts()),
         this.quota.refreshCount().catch(() => null),
       ]);
-      this.transactions.set(transactions);
+      this.groups.set(transactions.map(transaction => ({
+        transaction,
+        images: this.imagesOf(transaction),
+      })));
     } catch {
       this.notifications.error(this.translationService.t('common.error'));
     } finally {
@@ -84,18 +104,20 @@ export class ReceiptImageManagerComponent implements OnInit {
     }
   }
 
-  isBusy(id: string): boolean {
-    return this.busyIds().has(id);
+  isBusy(transactionId: string, slot?: number): boolean {
+    const keys = this.busyKeys();
+    return keys.has(`${transactionId}:*`)
+      || (slot !== undefined && keys.has(`${transactionId}:${slot}`));
   }
 
-  dateOf(transaction: Transaction): Date {
-    return transaction.date.toDate();
+  dateOf(group: ReceiptGroup): Date {
+    return group.transaction.date.toDate();
   }
 
-  async removeImage(transaction: Transaction): Promise<void> {
+  async removeImage(group: ReceiptGroup, image: ReceiptImage): Promise<void> {
     const data: ConfirmDialogData = {
-      title: this.translationService.t('receiptImages.removeConfirmTitle'),
-      message: this.translationService.t('receiptImages.removeConfirmMessage'),
+      title: this.translationService.t('receiptImages.removeOneConfirmTitle'),
+      message: this.translationService.t('receiptImages.removeOneConfirmMessage'),
       confirmLabel: this.translationService.t('common.remove'),
       confirmColor: 'warn',
       icon: 'delete',
@@ -105,33 +127,85 @@ export class ReceiptImageManagerComponent implements OnInit {
     );
     if (!confirmed) return;
 
-    this.setBusy(transaction.id, true);
+    const id = group.transaction.id;
+    this.setBusy(`${id}:${image.slot}`, true);
     try {
-      await this.transactionService.removeReceipt(transaction.id);
-      this.dropFromList(transaction.id);
+      await this.transactionService.removeReceiptAt(id, image.slot);
+      this.dropImage(id, image.slot);
       this.notifications.success(this.translationService.t('receiptImages.removed'));
     } catch {
       this.notifications.error(this.translationService.t('common.error'));
     } finally {
-      this.setBusy(transaction.id, false);
+      this.setBusy(`${id}:${image.slot}`, false);
     }
   }
 
-  async convertToNote(transaction: Transaction): Promise<void> {
-    this.setBusy(transaction.id, true);
+  async removeAllImages(group: ReceiptGroup): Promise<void> {
+    const count = group.images.length;
+    const data: ConfirmDialogData = {
+      title: this.translationService.t('receiptImages.removeAllConfirmTitle'),
+      message: this.translationService.t('receiptImages.removeAllConfirmMessage', { count }),
+      confirmLabel: this.translationService.t('common.remove'),
+      confirmColor: 'warn',
+      icon: 'delete',
+    };
+    const confirmed = await firstValueFrom(
+      this.dialog.open(ConfirmDialogComponent, { data }).afterClosed()
+    );
+    if (!confirmed) return;
+
+    const id = group.transaction.id;
+    this.setBusy(`${id}:*`, true);
     try {
-      await this.receiptToNote.convertReceiptToNote(transaction);
-      this.dropFromList(transaction.id);
+      await this.transactionService.removeAllReceipts(id);
+      this.groups.update(list => list.filter(g => g.transaction.id !== id));
+      this.notifications.success(
+        this.translationService.t('receiptImages.removedAll', { count })
+      );
+    } catch {
+      this.notifications.error(this.translationService.t('common.error'));
+    } finally {
+      this.setBusy(`${id}:*`, false);
+    }
+  }
+
+  async convertToNote(group: ReceiptGroup, image: ReceiptImage): Promise<void> {
+    const id = group.transaction.id;
+    this.setBusy(`${id}:${image.slot}`, true);
+    try {
+      const note = await this.receiptToNote.convertReceiptToNote(
+        group.transaction,
+        image.slot
+      );
+      // Carry the appended note on the local row: converting a second image
+      // of the same transaction must build on this note, not the stale one.
+      this.groups.update(list => list.map(g =>
+        g.transaction.id === id
+          ? { ...g, transaction: { ...g.transaction, note } }
+          : g
+      ));
+      this.dropImage(id, image.slot);
       this.notifications.success(this.translationService.t('receiptImages.converted'));
     } catch (error) {
       this.notifications.error(this.convertErrorMessage(error));
     } finally {
-      this.setBusy(transaction.id, false);
+      this.setBusy(`${id}:${image.slot}`, false);
     }
   }
 
   close(): void {
     this.dialogRef.close();
+  }
+
+  /**
+   * A transaction's images as {url, slot} pairs: the slot is the entry's
+   * index in receiptUrls (a legacy row's single receiptUrl is slot 0);
+   * tombstones are skipped but survivors keep their original slots.
+   */
+  private imagesOf(transaction: Transaction): ReceiptImage[] {
+    const slots = transaction.receiptUrls
+      ?? (transaction.receiptUrl ? [transaction.receiptUrl] : []);
+    return slots.map((url, slot) => ({ url, slot })).filter(image => !!image.url);
   }
 
   private convertErrorMessage(error: unknown): string {
@@ -148,15 +222,20 @@ export class ReceiptImageManagerComponent implements OnInit {
     return this.translationService.t('receiptImages.convertFailed');
   }
 
-  private dropFromList(id: string): void {
-    this.transactions.update(list => list.filter(t => t.id !== id));
+  /** Drop one image from its group; a group with no images left leaves the list. */
+  private dropImage(transactionId: string, slot: number): void {
+    this.groups.update(list => list
+      .map(group => group.transaction.id === transactionId
+        ? { ...group, images: group.images.filter(image => image.slot !== slot) }
+        : group)
+      .filter(group => group.images.length > 0));
   }
 
-  private setBusy(id: string, busy: boolean): void {
-    this.busyIds.update(ids => {
-      const next = new Set(ids);
-      if (busy) next.add(id);
-      else next.delete(id);
+  private setBusy(key: string, busy: boolean): void {
+    this.busyKeys.update(keys => {
+      const next = new Set(keys);
+      if (busy) next.add(key);
+      else next.delete(key);
       return next;
     });
   }

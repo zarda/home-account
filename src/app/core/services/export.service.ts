@@ -4,7 +4,15 @@ import autoTable from 'jspdf-autotable';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Transaction, Category, InsightSnapshot, MonthlyTotal } from '../../models';
+import {
+  Transaction,
+  TransactionLocation,
+  Category,
+  CreateTransactionDTO,
+  BudgetPeriod,
+  InsightSnapshot,
+  MonthlyTotal
+} from '../../models';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -61,12 +69,25 @@ export interface ExportData {
   version: string;
 }
 
+/**
+ * One row on its way into the importer — the shared shape behind the CSV
+ * import and the JSON backup restore. Everything beyond the four core
+ * fields is optional: a bank CSV carries none of it, a backup carries all
+ * of it, and parseImportedData falls back per field so both keep working.
+ */
 export interface ImportedTransaction {
   description: string;
   amount: number;
   date: Date;
   type?: 'income' | 'expense';
   category?: string;
+  currency?: string;
+  categoryId?: string;
+  note?: string;
+  tags?: string[];
+  location?: TransactionLocation;
+  isRecurring?: boolean;
+  period?: BudgetPeriod;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -149,7 +170,7 @@ export class ExportService {
     // Build CSV header
     const headers = options?.format === 'summary'
       ? ['Date', 'Type', 'Category', 'Amount', 'Currency']
-      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags'];
+      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags', 'Location'];
 
     // Build CSV rows
     const rows = filtered.map(t => {
@@ -175,7 +196,10 @@ export class ExportService {
         t.currency,
         t.amountInBaseCurrency.toString(),
         this.escapeCSV(t.note ?? ''),
-        (t.tags ?? []).join('; ')
+        (t.tags ?? []).join('; '),
+        // Name only: coordinates belong in the JSON backup, which carries
+        // the whole transaction.
+        this.escapeCSV(t.location?.name ?? '')
       ];
     });
 
@@ -346,21 +370,21 @@ export class ExportService {
   }
 
   // Parse imported data and convert to transaction DTOs
-  parseImportedData(raw: ImportedTransaction[]): {
-    type: 'income' | 'expense';
-    amount: number;
-    currency: string;
-    categoryId: string;
-    description: string;
-    date: Date;
-  }[] {
+  parseImportedData(raw: ImportedTransaction[]): CreateTransactionDTO[] {
     return raw.map(r => ({
       type: r.type ?? (r.amount >= 0 ? 'income' : 'expense'),
       amount: Math.abs(r.amount),
-      currency: 'USD', // Default, can be enhanced
-      categoryId: 'other_expense', // Will be categorized by AI
+      // Rows from a backup carry their own currency and category; rows from
+      // a bank CSV carry neither and keep the old defaults.
+      currency: r.currency ?? 'USD',
+      categoryId: r.categoryId ?? 'other_expense',
       description: r.description,
-      date: r.date
+      date: r.date,
+      ...(r.note ? { note: r.note } : {}),
+      ...(r.tags?.length ? { tags: r.tags } : {}),
+      ...(r.location ? { location: r.location } : {}),
+      ...(r.isRecurring !== undefined ? { isRecurring: r.isRecurring } : {}),
+      ...(r.period ? { period: r.period } : {})
     }));
   }
 

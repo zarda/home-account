@@ -84,6 +84,72 @@ describe('TransactionRowComponent', () => {
     expect(fixture.nativeElement.querySelector('.receipt-indicator')).toBeNull();
   });
 
+  it('badges the indicator with the image count only past one image', () => {
+    setTransaction({
+      receiptUrl: 'https://example.com/r0.png',
+      receiptUrls: ['https://example.com/r0.png', 'https://example.com/r1.png'],
+      receiptCount: 2,
+    } as Partial<Transaction>);
+    expect(fixture.nativeElement.querySelector('.receipt-count-badge')?.textContent?.trim()).toBe('2');
+
+    // A single image needs no count — including on a legacy row that
+    // predates receiptUrls and carries only the url.
+    setTransaction({ receiptUrl: 'https://example.com/r0.png' } as Partial<Transaction>);
+    expect(fixture.nativeElement.querySelector('.receipt-count-badge')).toBeNull();
+
+    setTransaction({});
+    expect(fixture.nativeElement.querySelector('.receipt-count-badge')).toBeNull();
+  });
+
+  it('renders up to three tag chips and folds the rest into +N', () => {
+    setTransaction({ tags: ['a', 'b', 'c', 'd', 'e'] } as Partial<Transaction>);
+    const chips = Array.from(
+      fixture.nativeElement.querySelectorAll('.tag-chip')
+    ).map(chip => (chip as HTMLElement).textContent?.trim());
+    expect(chips).toEqual(['a', 'b', 'c', '+2']);
+
+    setTransaction({ tags: ['solo'] } as Partial<Transaction>);
+    expect(fixture.nativeElement.querySelectorAll('.tag-chip').length).toBe(1);
+
+    setTransaction({});
+    expect(fixture.nativeElement.querySelectorAll('.tag-chip').length).toBe(0);
+  });
+
+  it('links the location to a map only when coordinates exist', () => {
+    setTransaction({
+      location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+    } as Partial<Transaction>);
+    const link = fixture.nativeElement.querySelector('.location-link') as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    expect(link.href).toBe('https://www.google.com/maps/search/?api=1&query=35.66,139.71');
+
+    // A name-only location renders as plain text — a typed name must not
+    // become a confidently wrong maps destination.
+    setTransaction({ location: { name: 'Aoyama Market' } } as Partial<Transaction>);
+    expect(fixture.nativeElement.querySelector('.location-link')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.location-chip')?.textContent
+    ).toContain('Aoyama Market');
+
+    setTransaction({});
+    expect(fixture.nativeElement.querySelector('.location-chip')).toBeNull();
+  });
+
+  it('a maps link click does not activate the row', () => {
+    setTransaction({
+      location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
+    } as Partial<Transaction>);
+    const emitted: Transaction[] = [];
+    component.activate.subscribe((t: Transaction) => emitted.push(t));
+
+    const link = fixture.nativeElement.querySelector('.location-link') as HTMLAnchorElement;
+    // Neuter navigation, keep propagation semantics.
+    link.addEventListener('click', event => event.preventDefault());
+    link.click();
+
+    expect(emitted.length).toBe(0);
+  });
+
   it('emits activate on click and keyboard activation', () => {
     setTransaction({});
     const emitted: Transaction[] = [];

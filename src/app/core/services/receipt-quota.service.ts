@@ -50,14 +50,14 @@ export class ReceiptQuotaService {
   });
 
   /**
-   * Load (or reuse) the stored-image count and report whether another
-   * image may be added. Fails open when the count cannot be loaded so a
+   * Load (or reuse) the stored-image count and report whether `count` more
+   * images may be added. Fails open when the count cannot be loaded so a
    * transient error never blocks saving a transaction.
    */
-  async canAddImage(): Promise<boolean> {
+  async canAddImages(count: number): Promise<boolean> {
     try {
-      const count = await this.ensureCountLoaded();
-      return count < this.imageLimit();
+      const used = await this.ensureCountLoaded();
+      return used + count <= this.imageLimit();
     } catch (error) {
       console.warn('[ReceiptQuota] Count unavailable, allowing upload:', error);
       return true;
@@ -70,11 +70,12 @@ export class ReceiptQuotaService {
     if (!userId) throw new Error('User not authenticated');
 
     // Sums images rather than counting documents, for two reasons. The quota
-    // is a limit on images, and a transaction can hold more than one. And the
-    // filter stays on receiptUrl, which is always a string — an inequality
-    // against a field that can hold an array would match every document,
-    // because Firestore orders arrays after strings, and every user would
-    // trip the limit at once.
+    // is a limit on images, and a transaction can hold more than one — the
+    // sum reads the receiptUrls array where present. And the filter stays on
+    // receiptUrl, which is always a string — Firestore range filters only
+    // match values of the operand's type, so an inequality against a field
+    // that can hold arrays would silently skip every array-valued row, count
+    // zero images for multi-image users, and never trip the limit.
     //
     // Reading the rows rather than counting them is affordable precisely
     // because the quota bounds them: a user at the limit has at most a few
@@ -89,36 +90,22 @@ export class ReceiptQuotaService {
     return count;
   }
 
-  /** Record a newly stored image without re-querying. */
-  noteImageAdded(): void {
-    const count = this._imageCount();
-    if (count !== null) this._imageCount.set(count + 1);
+  /** Record newly stored images without re-querying. */
+  noteImagesAdded(count: number): void {
+    const current = this._imageCount();
+    if (current !== null) this._imageCount.set(current + count);
   }
 
-  /** Record a removed image without re-querying. */
-  noteImageRemoved(): void {
-    const count = this._imageCount();
-    if (count !== null) this._imageCount.set(Math.max(0, count - 1));
+  /** Record removed images without re-querying. */
+  noteImagesRemoved(count: number): void {
+    const current = this._imageCount();
+    if (current !== null) this._imageCount.set(Math.max(0, current - count));
   }
 
   /** Drop the cached count (e.g. after bulk deletes). */
   invalidateCount(): void {
     this._imageCount.set(null);
     this.countedForUserId = null;
-  }
-
-  /**
-   * True when this transaction change would store a NEW image.
-   *
-   * Reads receiptCount where it is present and falls back to receiptUrl for
-   * rows written before the count existed — a row with an image but no count
-   * must not be treated as empty, or replacing its receipt would consume a
-   * second quota slot for the same picture.
-   */
-  isNewImage(
-    existing: Pick<Transaction, 'receiptUrl' | 'receiptCount'> | null | undefined
-  ): boolean {
-    return receiptImageCount(existing) === 0;
   }
 
   private async ensureCountLoaded(): Promise<number> {
