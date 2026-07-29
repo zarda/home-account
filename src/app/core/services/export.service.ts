@@ -149,7 +149,7 @@ export class ExportService {
     // Build CSV header
     const headers = options?.format === 'summary'
       ? ['Date', 'Type', 'Category', 'Amount', 'Currency']
-      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags'];
+      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags', 'Location'];
 
     // Build CSV rows
     const rows = filtered.map(t => {
@@ -175,7 +175,10 @@ export class ExportService {
         t.currency,
         t.amountInBaseCurrency.toString(),
         this.escapeCSV(t.note ?? ''),
-        (t.tags ?? []).join('; ')
+        (t.tags ?? []).join('; '),
+        // Name only: coordinates belong in the JSON backup, which carries
+        // the whole transaction.
+        this.escapeCSV(t.location?.name ?? '')
       ];
     });
 

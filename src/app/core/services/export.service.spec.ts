@@ -111,6 +111,40 @@ describe('ExportService', () => {
       reader.readAsText(blob);
     });
 
+    it('ends the detailed header with Tags and Location', (done) => {
+      const blob = service.exportToCSV([createTransaction()]);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const headerLine = (reader.result as string).split('\n')[0];
+        expect(headerLine.endsWith('Note,Tags,Location')).toBeTrue();
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
+    it('emits the location name, escaped, and an empty cell without one', (done) => {
+      const transactions = [
+        createTransaction({
+          description: 'With location',
+          location: { name: 'Aoyama, Market', lat: 35.66, lng: 139.71 },
+        }),
+        createTransaction({ description: 'Without location' }),
+      ];
+      const blob = service.exportToCSV(transactions);
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const lines = (reader.result as string).split('\n');
+        // Name only — the coordinates stay out of the CSV.
+        expect(lines[1].endsWith(',"Aoyama, Market"')).toBeTrue();
+        expect(lines[1]).not.toContain('35.66');
+        expect(lines[2].endsWith(',')).toBeTrue();
+        done();
+      };
+      reader.readAsText(blob);
+    });
+
     it('should apply date range filter', () => {
       const now = new Date();
       const oldDate = new Date(now.getFullYear() - 1, 0, 1);
