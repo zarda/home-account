@@ -151,7 +151,10 @@
     "insightChipsLabel": "Notable spending this month",
     "chipUnusual": "Unusual: {{category}}",
     "chipNewCategory": "New this month: {{category}}",
-    "chipTopCategory": "Top: {{category}}"
+    "chipTopCategory": "Top: {{category}}",
+    "tags": "Tags (Optional)",
+    "tagsPlaceholder": "Add a tag and press Enter",
+    "removeTag": "Remove tag {{tag}}"
   },
   "budget": {
     "title": "Budget",

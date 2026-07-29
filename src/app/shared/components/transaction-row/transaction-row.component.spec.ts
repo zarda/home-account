@@ -101,6 +101,20 @@ describe('TransactionRowComponent', () => {
     expect(fixture.nativeElement.querySelector('.receipt-count-badge')).toBeNull();
   });
 
+  it('renders up to three tag chips and folds the rest into +N', () => {
+    setTransaction({ tags: ['a', 'b', 'c', 'd', 'e'] } as Partial<Transaction>);
+    const chips = Array.from(
+      fixture.nativeElement.querySelectorAll('.tag-chip')
+    ).map(chip => (chip as HTMLElement).textContent?.trim());
+    expect(chips).toEqual(['a', 'b', 'c', '+2']);
+
+    setTransaction({ tags: ['solo'] } as Partial<Transaction>);
+    expect(fixture.nativeElement.querySelectorAll('.tag-chip').length).toBe(1);
+
+    setTransaction({});
+    expect(fixture.nativeElement.querySelectorAll('.tag-chip').length).toBe(0);
+  });
+
   it('emits activate on click and keyboard activation', () => {
     setTransaction({});
     const emitted: Transaction[] = [];

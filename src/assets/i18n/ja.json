@@ -151,7 +151,10 @@
     "insightChipsLabel": "今月の注目すべき支出",
     "chipUnusual": "異常値: {{category}}",
     "chipNewCategory": "今月新規: {{category}}",
-    "chipTopCategory": "最多: {{category}}"
+    "chipTopCategory": "最多: {{category}}",
+    "tags": "タグ（任意）",
+    "tagsPlaceholder": "タグを入力して Enter を押してください",
+    "removeTag": "タグ {{tag}} を削除"
   },
   "budget": {
     "title": "予算",

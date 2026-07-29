@@ -62,6 +62,16 @@ export class TransactionRowComponent {
     return receiptImageCount(this.transaction());
   }
 
+  // At most three tag chips on the category line; the rest fold into "+N".
+  // The row is shared with the dashboard card, so tags must not add a line.
+  visibleTags(): string[] {
+    return this.transaction().tags?.slice(0, 3) ?? [];
+  }
+
+  overflowTagCount(): number {
+    return Math.max(0, (this.transaction().tags?.length ?? 0) - 3);
+  }
+
   formatAmount(): string {
     const transaction = this.transaction();
     return this.currencyService.formatCurrency(transaction.amount, transaction.currency);

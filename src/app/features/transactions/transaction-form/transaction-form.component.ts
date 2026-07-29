@@ -1,5 +1,6 @@
 import { AfterViewInit, ChangeDetectorRef, Component, computed, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
+import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { CommonModule } from '@angular/common';
 
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -15,7 +16,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatChipsModule } from '@angular/material/chips';
+import { MatChipInputEvent, MatChipsModule } from '@angular/material/chips';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
   TransactionService,
@@ -146,6 +147,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       MAX_RECEIPTS_PER_TRANSACTION
   );
 
+  // Tags live in a signal rather than a form control: Material's chip grid
+  // is not a value accessor for the array, it emits add/remove events.
+  tags = signal<string[]>([]);
+  readonly tagSeparatorKeys = [ENTER, COMMA] as const;
+  /** Longest accepted tag; anything past this is silently truncated. */
+  private static readonly MAX_TAG_LENGTH = 30;
+
   // AI Category Suggestion signals
   suggestedCategory = signal<Category | null>(null);
   isSuggesting = signal(false);
@@ -196,6 +204,21 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   ngOnInit(): void {
     this.initForm();
     this.seedStoredReceipts();
+    this.tags.set([...(this.data.transaction?.tags ?? [])]);
+  }
+
+  addTag(event: MatChipInputEvent): void {
+    // Lowercased so "Coffee" and "coffee" are one tag when filtering.
+    const tag = event.value.trim().toLowerCase()
+      .slice(0, TransactionFormComponent.MAX_TAG_LENGTH);
+    if (tag && !this.tags().includes(tag)) {
+      this.tags.update(tags => [...tags, tag]);
+    }
+    event.chipInput.clear();
+  }
+
+  removeTag(tag: string): void {
+    this.tags.update(tags => tags.filter(existing => existing !== tag));
   }
 
   /**
@@ -352,6 +375,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         ...(formValue.note ? { note: formValue.note } : {}),
         ...(formValue.period ? { period: formValue.period } : {}),
         ...(receipts.length ? { receiptFiles: receipts } : {}),
+        // Edit always sends tags — an emptied list must clear the stored
+        // ones, which an omitted field would leave in place.
+        ...(this.data.mode === 'edit'
+          ? { tags: this.tags() }
+          : this.tags().length
+            ? { tags: this.tags() }
+            : {}),
       };
 
       if (this.data.mode === 'add') {

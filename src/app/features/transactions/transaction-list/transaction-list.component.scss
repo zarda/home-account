@@ -183,6 +183,25 @@
   line-height: 1;
 }
 
+// Tag chips in the description cell, capped at three plus "+N"
+.cell-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.tag-chip {
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .receipt-icon {
   font-size: var(--text-sm) !important;
   width: 1em !important;

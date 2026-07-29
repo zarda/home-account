@@ -263,6 +263,31 @@
         </mat-select>
       </mat-form-field>
 
+      <!-- Tags (Optional) -->
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>{{ 'transactions.tags' | translate }}</mat-label>
+        <mat-chip-grid #tagGrid [attr.aria-label]="'transactions.tags' | translate">
+          @for (tag of tags(); track tag) {
+            <mat-chip-row (removed)="removeTag(tag)">
+              {{ tag }}
+              <button
+                matChipRemove
+                type="button"
+                [attr.aria-label]="'transactions.removeTag' | translate: { tag }"
+              >
+                <mat-icon>cancel</mat-icon>
+              </button>
+            </mat-chip-row>
+          }
+          <input
+            [placeholder]="'transactions.tagsPlaceholder' | translate"
+            [matChipInputFor]="tagGrid"
+            [matChipInputSeparatorKeyCodes]="tagSeparatorKeys"
+            (matChipInputTokenEnd)="addTag($event)"
+          />
+        </mat-chip-grid>
+      </mat-form-field>
+
       <!-- Note (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.noteOptional' | translate }}</mat-label>

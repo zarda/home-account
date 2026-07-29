@@ -186,6 +186,8 @@ describe('TransactionFormComponent', () => {
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
       expect(dto.amount).toBe(15.5);
       expect(dto.note).toBe('tasty');
+      // No tags typed and add mode: the field is omitted entirely.
+      expect(dto.tags).toBeUndefined();
       expect(dialogRef.close).toHaveBeenCalledWith(true);
     });
 
@@ -265,6 +267,28 @@ describe('TransactionFormComponent', () => {
 
       expect(notifications.error).toHaveBeenCalledWith('receiptImages.attachFailed');
       expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('carries the typed tags in the DTO', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.tags.set(['groceries', 'reimbursable']);
+      await component.onSubmit();
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.tags).toEqual(['groceries', 'reimbursable']);
+    });
+
+    it('sends an emptied tag list in edit mode so stored tags clear', async () => {
+      const txn = createTransaction({ id: 'e1', tags: ['old'] });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      validForm(component);
+      component.tags.set([]);
+
+      await component.onSubmit();
+
+      const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+      // Omitting the field would leave the stored tags in place.
+      expect(dto.tags).toEqual([]);
     });
 
     it('updates an existing transaction in edit mode', async () => {
@@ -542,6 +566,27 @@ describe('TransactionFormComponent', () => {
         expect(router.navigate).not.toHaveBeenCalled();
         expect(component.isScanning()).toBeFalse();
       });
+    });
+
+    it('tag input trims, lowercases, dedupes and seeds from the transaction', () => {
+      const txn = createTransaction({ id: 'e1', tags: ['coffee'] });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      expect(component.tags()).toEqual(['coffee']);
+
+      const chipInput = { clear: jasmine.createSpy('clear') };
+      component.addTag({ value: '  Coffee ', chipInput } as never);
+      // "Coffee" is already there once lowercased.
+      expect(component.tags()).toEqual(['coffee']);
+
+      component.addTag({ value: 'Reimbursable', chipInput } as never);
+      expect(component.tags()).toEqual(['coffee', 'reimbursable']);
+
+      component.addTag({ value: '   ', chipInput } as never);
+      expect(component.tags()).toEqual(['coffee', 'reimbursable']);
+      expect(chipInput.clear).toHaveBeenCalledTimes(3);
+
+      component.removeTag('coffee');
+      expect(component.tags()).toEqual(['reimbursable']);
     });
 
     it('removing a queued image drops it from the strip', () => {

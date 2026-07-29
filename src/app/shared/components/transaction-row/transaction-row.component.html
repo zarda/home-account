@@ -22,7 +22,19 @@
         </span>
       }
     </span>
-    <span class="row-category">{{ categoryName() }}</span>
+    <span class="row-category">
+      {{ categoryName() }}
+      @if (visibleTags().length > 0) {
+        <span class="row-tags">
+          @for (tag of visibleTags(); track tag) {
+            <span class="tag-chip">{{ tag }}</span>
+          }
+          @if (overflowTagCount() > 0) {
+            <span class="tag-chip tag-overflow">+{{ overflowTagCount() }}</span>
+          }
+        </span>
+      }
+    </span>
   </div>
 
   <!-- Amount & Date -->

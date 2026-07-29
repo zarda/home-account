@@ -119,6 +119,16 @@
         >{{ 'transactions.description' | translate }}</th>
         <td mat-cell *matCellDef="let transaction" class="col-description">
           <span class="description-text">{{ transaction.description }}</span>
+          @if (visibleTags(transaction).length > 0) {
+            <span class="cell-tags">
+              @for (tag of visibleTags(transaction); track tag) {
+                <span class="tag-chip">{{ tag }}</span>
+              }
+              @if (overflowTagCount(transaction) > 0) {
+                <span class="tag-chip">+{{ overflowTagCount(transaction) }}</span>
+              }
+            </span>
+          }
           @if (transaction.note) {
             <mat-icon class="note-icon" [matTooltip]="transaction.note">notes</mat-icon>
           }

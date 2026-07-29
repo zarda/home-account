@@ -102,6 +102,15 @@ export class TransactionListComponent {
     return receiptImageCount(transaction);
   }
 
+  // At most three tag chips in the description cell; the rest fold into "+N".
+  visibleTags(transaction: Transaction): string[] {
+    return transaction.tags?.slice(0, 3) ?? [];
+  }
+
+  overflowTagCount(transaction: Transaction): number {
+    return Math.max(0, (transaction.tags?.length ?? 0) - 3);
+  }
+
   // Only one of the two views is instantiated; previously both were rendered
   // and the inactive one merely hidden with CSS, doubling the DOM.
   isDesktopTable = toSignal(
