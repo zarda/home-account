@@ -145,6 +145,17 @@ describe('TransactionsComponent', () => {
       component.onFiltersChanged({ searchQuery: 'coffee' });
       expect(component.transactionCount()).toBe('1');
     });
+
+    it('treats a tag filter as client-only and marks a partial window', () => {
+      // The server total counts rows the tag filter then hides; showing it
+      // would contradict the list.
+      const component = build().componentInstance;
+      windowSource.totalCount.set(240);
+      windowSource.visibleWindow.set([createTransaction()]);
+      windowSource.reachedEnd.set(false);
+      component.onFiltersChanged({ tags: ['travel'] });
+      expect(component.transactionCount()).toBe('1+');
+    });
   });
 
   it('ngOnInit loads categories', () => {

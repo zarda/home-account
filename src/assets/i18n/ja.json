@@ -154,7 +154,8 @@
     "chipTopCategory": "最多: {{category}}",
     "tags": "タグ（任意）",
     "tagsPlaceholder": "タグを入力して Enter を押してください",
-    "removeTag": "タグ {{tag}} を削除"
+    "removeTag": "タグ {{tag}} を削除",
+    "tagFilterHint": "選択したすべてのタグが付いた取引のみ表示します"
   },
   "budget": {
     "title": "予算",

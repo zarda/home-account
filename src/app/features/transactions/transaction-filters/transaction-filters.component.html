@@ -269,6 +269,35 @@
             }
           </mat-select>
         </mat-form-field>
+
+        <!-- Tags: rows must carry every selected tag -->
+        <mat-form-field
+          appearance="outline"
+          class="compact-field tags-field"
+          [matTooltip]="'transactions.tagFilterHint' | translate"
+        >
+          <mat-label>{{ 'transactions.tags' | translate }}</mat-label>
+          <mat-chip-grid #tagFilterGrid [attr.aria-label]="'transactions.tags' | translate">
+            @for (tag of filters.tags ?? []; track tag) {
+              <mat-chip-row (removed)="removeTagFilter(tag)">
+                {{ tag }}
+                <button
+                  matChipRemove
+                  type="button"
+                  [attr.aria-label]="'transactions.removeTag' | translate: { tag }"
+                >
+                  <mat-icon>cancel</mat-icon>
+                </button>
+              </mat-chip-row>
+            }
+            <input
+              [placeholder]="'transactions.tagsPlaceholder' | translate"
+              [matChipInputFor]="tagFilterGrid"
+              [matChipInputSeparatorKeyCodes]="tagSeparatorKeys"
+              (matChipInputTokenEnd)="addTagFilter($event)"
+            />
+          </mat-chip-grid>
+        </mat-form-field>
       </div>
 
       @if (activeFilterCount() > 0) {

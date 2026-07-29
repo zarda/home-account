@@ -260,6 +260,50 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  describe('tag filter chips', () => {
+    const chipInput = () => ({ clear: jasmine.createSpy('clear') });
+
+    it('adds a normalized chip and emits filters carrying it', () => {
+      spyOn(component.filtersChanged, 'emit');
+
+      component.addTagFilter({ value: '  Travel ', chipInput: chipInput() } as never);
+
+      expect(component.filters.tags).toEqual(['travel']);
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent()
+        .args[0] as { tags?: string[] };
+      expect(emitted.tags).toEqual(['travel']);
+    });
+
+    it('ignores duplicates and blank input', () => {
+      component.filters.tags = ['travel'];
+      spyOn(component.filtersChanged, 'emit');
+
+      component.addTagFilter({ value: 'TRAVEL', chipInput: chipInput() } as never);
+      component.addTagFilter({ value: '   ', chipInput: chipInput() } as never);
+
+      expect(component.filters.tags).toEqual(['travel']);
+      expect(component.filtersChanged.emit).not.toHaveBeenCalled();
+    });
+
+    it('removing the last chip drops tags from the emitted filters', () => {
+      component.filters.tags = ['travel'];
+      spyOn(component.filtersChanged, 'emit');
+
+      component.removeTagFilter('travel');
+
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent()
+        .args[0] as { tags?: string[] };
+      expect(emitted.tags).toBeUndefined();
+      expect(component.filters.tags).toBeUndefined();
+    });
+
+    it('clearFilters clears the chips too', () => {
+      component.filters.tags = ['travel'];
+      component.clearFilters();
+      expect(component.filters.tags).toBeUndefined();
+    });
+  });
+
   describe('activeFilterCount', () => {
     it('should return 0 when only date filters are set (from quick filters)', () => {
       // Quick filters set startDate and endDate, which count as 2
@@ -289,6 +333,11 @@ describe('TransactionFiltersComponent', () => {
 
     it('should count maxAmount filter', () => {
       component.filters = { maxAmount: 500 };
+      expect(component.activeFilterCount()).toBe(1);
+    });
+
+    it('counts the tag filter once regardless of chip count', () => {
+      component.filters = { tags: ['travel', 'reimbursable'] };
       expect(component.activeFilterCount()).toBe(1);
     });
 

@@ -154,7 +154,8 @@
     "chipTopCategory": "Top: {{category}}",
     "tags": "Tags (Optional)",
     "tagsPlaceholder": "Add a tag and press Enter",
-    "removeTag": "Remove tag {{tag}}"
+    "removeTag": "Remove tag {{tag}}",
+    "tagFilterHint": "Shows only transactions carrying every selected tag"
   },
   "budget": {
     "title": "Budget",

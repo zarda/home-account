@@ -134,6 +134,9 @@ export interface TransactionFilters {
   maxAmount?: number;
   currency?: string;
   searchQuery?: string;
+  /** Rows must carry every listed tag. Applied client-side, like the amount
+   * range and search — see applyClientTransactionFilters. */
+  tags?: string[];
 }
 
 export interface CreateTransactionDTO {

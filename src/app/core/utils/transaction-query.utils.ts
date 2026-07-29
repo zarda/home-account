@@ -85,6 +85,14 @@ export function applyClientTransactionFilters(
     result = result.filter(t => t.amount <= filters.maxAmount!);
   }
 
+  // Client-side by design. Server-side would need array-contains — which
+  // cannot express AND across several tags at all, and would demand a
+  // composite index for every combination with the equality filters above.
+  // Every selected tag must be present: filter chips narrow.
+  if (filters?.tags?.length) {
+    result = result.filter(t => filters.tags!.every(tag => t.tags?.includes(tag)));
+  }
+
   if (filters?.searchQuery) {
     const query = filters.searchQuery.toLowerCase();
     const beforeSearch = result;

@@ -154,7 +154,8 @@
     "chipTopCategory": "最高: {{category}}",
     "tags": "標籤（選填）",
     "tagsPlaceholder": "輸入標籤後按 Enter",
-    "removeTag": "移除標籤 {{tag}}"
+    "removeTag": "移除標籤 {{tag}}",
+    "tagFilterHint": "只顯示帶有所有所選標籤的交易"
   },
   "budget": {
     "title": "預算",
