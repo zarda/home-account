@@ -511,7 +511,8 @@ describe('TransactionService', () => {
       expect(uploadArgs[1]).toBe('txn-1');
       expect(uploadArgs[3]).toBe(0);
 
-      const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
+      // Appends commit through a transaction, not a blind update.
+      const updateArgs = mockFirestore.txUpdateSpy.mostRecent()?.args ?? [];
       const updateData = updateArgs[1] as Record<string, unknown>;
       expect(updateData['receiptUrl']).toBe(mockStorage.uploadResult);
       expect(updateData['receiptUrls']).toEqual([mockStorage.uploadResult]);
@@ -543,7 +544,7 @@ describe('TransactionService', () => {
       const uploadArgs = mockStorage.uploadReceiptSpy.mostRecent()?.args ?? [];
       expect(uploadArgs[3]).toBe(1);
 
-      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
       expect(updateData['receiptUrls']).toEqual([
         'https://storage.example.com/old.jpg',
         `${mockStorage.uploadResult}_1`
@@ -593,8 +594,95 @@ describe('TransactionService', () => {
 
       // No update reached Firestore and the landed slot was swept.
       expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
       expect(mockQuota.noteImagesAdded).not.toHaveBeenCalled();
       expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args[2]).toEqual([1]);
+    });
+
+    it('retries at fresh slots when a rival append claimed the optimistic ones', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', receiptUrl: 'u0', receiptUrls: ['u0'], receiptCount: 1 })
+      );
+      // A rival appended at slot 1 after our optimistic read chose it.
+      mockFirestore.beforeTransaction = () => {
+        mockFirestore.setMockDocument(
+          'users/test-user-123/transactions/txn-1',
+          createTransaction({
+            id: 'txn-1',
+            receiptUrl: 'u0',
+            receiptUrls: ['u0', 'rival'],
+            receiptCount: 2
+          })
+        );
+        mockFirestore.beforeTransaction = undefined;
+      };
+      const file = new File(['mine'], 'mine.jpg', { type: 'image/jpeg' });
+
+      await service.updateTransaction('txn-1', { receiptFiles: [file] });
+
+      // First upload at the contested slot 1, retry at the fresh slot 2.
+      expect(mockStorage.uploadReceiptSpy.calls.map(c => c.args[3])).toEqual([1, 2]);
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect(updateData['receiptUrls']).toEqual(['u0', 'rival', `${mockStorage.uploadResult}_2`]);
+      expect(updateData['receiptCount']).toBe(3);
+      // One image landed, counted once, after the commit.
+      expect(mockQuota.noteImagesAdded).toHaveBeenCalledTimes(1);
+      expect(mockQuota.noteImagesAdded).toHaveBeenCalledWith(1);
+      // The contested slot belongs to the rival now — it is never swept.
+      expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(0);
+    });
+
+    it('pads with tombstones when a removal truncated the array under the upload', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1'],
+          receiptCount: 2
+        })
+      );
+      // A rival removed slot 1 (truncating the array) while our upload
+      // targeted slot 2.
+      mockFirestore.beforeTransaction = () => {
+        mockFirestore.setMockDocument(
+          'users/test-user-123/transactions/txn-1',
+          createTransaction({ id: 'txn-1', receiptUrl: 'u0', receiptUrls: ['u0'], receiptCount: 1 })
+        );
+        mockFirestore.beforeTransaction = undefined;
+      };
+      const file = new File(['mine'], 'mine.jpg', { type: 'image/jpeg' });
+
+      await service.updateTransaction('txn-1', { receiptFiles: [file] });
+
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      // Slot 1 is padded back as a tombstone so index == storage slot holds
+      // for the image uploaded at slot 2.
+      expect(updateData['receiptUrls']).toEqual(['u0', '', `${mockStorage.uploadResult}_2`]);
+      expect(updateData['receiptUrl']).toBe('u0');
+      expect(updateData['receiptCount']).toBe(2);
+    });
+
+    it('sweeps its uploads and fails when the transaction vanished mid-append', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', receiptUrl: 'u0', receiptUrls: ['u0'], receiptCount: 1 })
+      );
+      // The transaction was deleted between our read and our commit.
+      mockFirestore.beforeTransaction = () => {
+        mockFirestore.setMockDocument('users/test-user-123/transactions/txn-1', undefined);
+      };
+      const file = new File(['mine'], 'mine.jpg', { type: 'image/jpeg' });
+
+      await expectAsync(service.updateTransaction('txn-1', { receiptFiles: [file] }))
+        .toBeRejectedWithError(RECEIPT_ATTACH_FAILED);
+
+      // Nothing committed, the orphaned upload at slot 1 was swept, and the
+      // quota never counted an image that never landed.
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args[2]).toEqual([1]);
+      expect(mockQuota.noteImagesAdded).not.toHaveBeenCalled();
     });
   });
 
@@ -616,7 +704,7 @@ describe('TransactionService', () => {
       expect(mockStorage.deleteReceiptSpy.calls.length).toBe(1);
       expect(mockStorage.deleteReceiptSpy.mostRecent()?.args).toEqual(['test-user-123', 'txn-1', 1]);
 
-      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
       expect(updateData['receiptUrls']).toEqual(['u0', '', 'u2']);
       expect(updateData['receiptUrl']).toBe('u0');
       expect(updateData['receiptCount']).toBe(2);
@@ -636,7 +724,7 @@ describe('TransactionService', () => {
 
       await service.removeReceiptAt('txn-1', 0);
 
-      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
       // The pointer follows the first live image so the quota query and the
       // single-image read sites keep resolving.
       expect(updateData['receiptUrl']).toBe('u1');
@@ -657,7 +745,7 @@ describe('TransactionService', () => {
 
       await service.removeReceiptAt('txn-1', 2);
 
-      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
       // deleteField() sentinels, not empty strings — the row must drop out
       // of the receiptUrl > '' quota query.
       expect('receiptUrl' in updateData).toBeTrue();
@@ -675,7 +763,7 @@ describe('TransactionService', () => {
       await service.removeReceiptAt('txn-1', 0);
 
       expect(mockStorage.deleteReceiptSpy.mostRecent()?.args).toEqual(['test-user-123', 'txn-1', 0]);
-      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
       expect(updateData['receiptCount']).toBe(0);
       expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(1);
     });
@@ -695,8 +783,93 @@ describe('TransactionService', () => {
       await service.removeReceiptAt('txn-1', 9);
 
       expect(mockStorage.deleteReceiptSpy.calls.length).toBe(0);
-      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
       expect(mockQuota.noteImagesRemoved).not.toHaveBeenCalled();
+    });
+
+    it('tombstones against the transaction fresh read, not the stale one', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1', 'u2'],
+          receiptCount: 3
+        })
+      );
+      // A rival removed slot 2 (with truncation) between our pre-check read
+      // and our transaction.
+      mockFirestore.beforeTransaction = () => {
+        mockFirestore.setMockDocument(
+          'users/test-user-123/transactions/txn-1',
+          createTransaction({
+            id: 'txn-1',
+            receiptUrl: 'u0',
+            receiptUrls: ['u0', 'u1'],
+            receiptCount: 2
+          })
+        );
+      };
+
+      await service.removeReceiptAt('txn-1', 1);
+
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      // Committed against the rival's array: u2 is not resurrected.
+      expect(updateData['receiptUrls']).toEqual(['u0']);
+      expect(updateData['receiptCount']).toBe(1);
+      expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(1);
+    });
+
+    it('skips the write and the quota decrement when a rival emptied the slot first', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1'],
+          receiptCount: 2
+        })
+      );
+      mockFirestore.beforeTransaction = () => {
+        mockFirestore.setMockDocument(
+          'users/test-user-123/transactions/txn-1',
+          createTransaction({
+            id: 'txn-1',
+            receiptUrl: 'u0',
+            receiptUrls: ['u0'],
+            receiptCount: 1
+          })
+        );
+      };
+
+      await service.removeReceiptAt('txn-1', 1);
+
+      // The storage delete already happened (idempotent, object-not-found is
+      // success), but the rival's commit owns the tombstone and its quota
+      // decrement — ours must not double-count.
+      expect(mockStorage.deleteReceiptSpy.calls.length).toBe(1);
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
+      expect(mockQuota.noteImagesRemoved).not.toHaveBeenCalled();
+    });
+
+    it('stamps updatedAt inside the transaction payload', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1'],
+          receiptCount: 2
+        })
+      );
+
+      await service.removeReceiptAt('txn-1', 1);
+
+      // tx.update bypasses the wrapper's automatic updatedAt injection, so
+      // the transactional path has to stamp it itself.
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect(updateData['updatedAt'] instanceof Timestamp).toBeTrue();
     });
   });
 
@@ -719,7 +892,7 @@ describe('TransactionService', () => {
         'test-user-123', 'txn-1', [0, 1, 2]
       ]);
 
-      const updateArgs = mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [];
+      const updateArgs = mockFirestore.txUpdateSpy.mostRecent()?.args ?? [];
       expect(updateArgs[0]).toBe('users/test-user-123/transactions/txn-1');
       const updateData = updateArgs[1] as Record<string, unknown>;
       expect(updateData['receiptCount']).toBe(0);
@@ -737,8 +910,48 @@ describe('TransactionService', () => {
       await service.removeAllReceipts('txn-1');
 
       expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(0);
-      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+      expect(mockFirestore.txUpdateSpy.calls.length).toBe(0);
       expect(mockQuota.noteImagesRemoved).not.toHaveBeenCalled();
+    });
+
+    it('leaves a racing append\'s entries in place', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1'],
+          receiptCount: 2
+        })
+      );
+      // A rival appended at slot 2 after our read chose the sweep span [0, 1].
+      mockFirestore.beforeTransaction = () => {
+        mockFirestore.setMockDocument(
+          'users/test-user-123/transactions/txn-1',
+          createTransaction({
+            id: 'txn-1',
+            receiptUrl: 'u0',
+            receiptUrls: ['u0', 'u1', 'u2'],
+            receiptCount: 3
+          })
+        );
+      };
+
+      await service.removeAllReceipts('txn-1');
+
+      // The sweep stayed inside the span seen at read time, so the rival's
+      // object at slot 2 was never deleted...
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
+        'test-user-123', 'txn-1', [0, 1]
+      ]);
+      // ...and its committed entry survives the clear.
+      const updateData = (mockFirestore.txUpdateSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect(updateData['receiptUrls']).toEqual(['', '', 'u2']);
+      expect(updateData['receiptUrl']).toBe('u2');
+      expect(updateData['receiptCount']).toBe(1);
+      // Only what this call actually tombstoned is decremented.
+      expect(mockQuota.noteImagesRemoved).toHaveBeenCalledWith(2);
     });
   });
 
