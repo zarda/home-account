@@ -279,7 +279,12 @@
       "generatedOn": "產生於 {{date}}"
     },
     "insights": "消費模式",
-    "tabInsights": "模式"
+    "tabInsights": "模式",
+    "recurringVsOneOff": "定期與一次性支出明細",
+    "recurringExpenses": "定期",
+    "oneOffExpenses": "一次性",
+    "noRecurringExpenses": "沒有定期支出",
+    "noRecurringExpensesHint": "由定期規則建立的交易，或標記為定期的交易，將顯示於此。"
   },
   "settings": {
     "title": "設定",

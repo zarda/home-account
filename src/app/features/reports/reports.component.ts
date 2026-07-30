@@ -22,6 +22,7 @@ import {
 } from '../../shared/components/period-selector/period-selector.component';
 import { SpendingAnalysisComponent } from './spending-analysis/spending-analysis.component';
 import { CategoryBreakdownComponent } from './category-breakdown/category-breakdown.component';
+import { RecurringBreakdownComponent } from './recurring-breakdown/recurring-breakdown.component';
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
 import { InsightsTabComponent } from './insights/insights-tab.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
@@ -47,6 +48,7 @@ import { addMonths } from '../../core/utils/transaction-date.utils';
     LoadingSpinnerComponent,
     SpendingAnalysisComponent,
     CategoryBreakdownComponent,
+    RecurringBreakdownComponent,
     MonthlyComparisonComponent,
     InsightsTabComponent,
     TranslatePipe,

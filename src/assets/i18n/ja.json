@@ -279,7 +279,12 @@
       "generatedOn": "作成日: {{date}}"
     },
     "insights": "消費パターン",
-    "tabInsights": "パターン"
+    "tabInsights": "パターン",
+    "recurringVsOneOff": "定期支出と単発支出の内訳",
+    "recurringExpenses": "定期",
+    "oneOffExpenses": "単発",
+    "noRecurringExpenses": "定期支出はありません",
+    "noRecurringExpensesHint": "定期ルールで作成された取引や、定期としてマークされた取引がここに表示されます。"
   },
   "settings": {
     "title": "設定",
