@@ -112,6 +112,11 @@ export class SpendingAnalysisComponent {
           callbacks: {
             label: (context) => {
               const value = context.parsed.y ?? 0;
+              // The savings-rate series shares this callback with the two
+              // currency series, so it needs its own percent formatting.
+              if (context.dataset.yAxisID === 'y1') {
+                return `${context.dataset.label}: ${value.toFixed(1)}%`;
+              }
               return `${context.dataset.label}: ${symbol}${value.toLocaleString(locale, { minimumFractionDigits: 2 })}`;
             },
           },
@@ -127,6 +132,17 @@ export class SpendingAnalysisComponent {
             callback: (value) => {
               return `${symbol}${Number(value).toLocaleString(locale)}`;
             },
+          },
+        },
+        // Percent axis for the savings-rate line, kept separate so it never
+        // fights with the currency scale for its range (no beginAtZero:
+        // negative rates need to plot below the line).
+        y1: {
+          position: 'right',
+          grid: { ...axis.grid, drawOnChartArea: false },
+          ticks: {
+            ...axis.ticks,
+            callback: (v) => `${Number(v).toFixed(0)}%`,
           },
         },
       },
@@ -250,35 +266,108 @@ export class SpendingAnalysisComponent {
     this.granularity() === 'day' ? this.dailyData() : this.monthlyData()
   );
 
+  // Per-month savings rate as a percentage. Guarded on `income > 0` rather
+  // than `!== 0` so pathological negative income also yields null instead of
+  // a nonsensical rate; negative rates from expenses exceeding income are
+  // kept as real values. Month granularity only — the daily series is
+  // cumulative, so a per-day rate would be measuring something else.
+  monthlySavingsRates = computed<(number | null)[]>(() =>
+    this.monthlyData().map(({ income, expense }) =>
+      income > 0 ? ((income - expense) / income) * 100 : null
+    )
+  );
+
   // Chart data as computed signal to prevent re-renders
   chartData = computed((): ChartData<'line'> => {
     const data = this.trendData();
     // Drop point markers on the dense daily line; keep them on sparse months.
     const pointRadius = this.granularity() === 'day' ? 0 : 3;
 
+    const datasets: ChartData<'line'>['datasets'] = [
+      {
+        label: this.translationService.t('common.income'),
+        data: data.map(d => d.income),
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius,
+      },
+      {
+        label: this.translationService.t('common.totalExpenses'),
+        data: data.map(d => d.expense),
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius,
+      },
+    ];
+
+    if (this.granularity() === 'month') {
+      const rates = this.monthlySavingsRates();
+      // No line at all beats a legend entry for a series that is entirely
+      // gaps (e.g. every month in range has zero income).
+      if (rates.some(rate => rate !== null)) {
+        datasets.push({
+          label: this.translationService.t('reports.savingsRate'),
+          data: rates,
+          yAxisID: 'y1',
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          fill: false,
+          tension: 0.3,
+          spanGaps: true,
+          pointRadius: 3,
+          borderDash: [6, 4],
+        });
+      }
+    }
+
     return {
       labels: data.map(d => d.month),
-      datasets: [
-        {
-          label: this.translationService.t('common.income'),
-          data: data.map(d => d.income),
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34, 197, 94, 0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius,
-        },
-        {
-          label: this.translationService.t('common.totalExpenses'),
-          data: data.map(d => d.expense),
-          borderColor: '#ef4444',
-          backgroundColor: 'rgba(239, 68, 68, 0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius,
-        },
-      ],
+      datasets,
     };
+  });
+
+  /** Ordinary least-squares slope over arbitrary (x, y) points. */
+  private leastSquaresSlope(points: { x: number; y: number }[]): number {
+    const n = points.length;
+    if (n < 2) {
+      return 0;
+    }
+    const meanX = points.reduce((sum, p) => sum + p.x, 0) / n;
+    const meanY = points.reduce((sum, p) => sum + p.y, 0) / n;
+
+    let covariance = 0;
+    let variance = 0;
+    for (const p of points) {
+      covariance += (p.x - meanX) * (p.y - meanY);
+      variance += (p.x - meanX) ** 2;
+    }
+    return variance === 0 ? 0 : covariance / variance;
+  }
+
+  // Improving/declining/steady badge for the savings-rate line. Month
+  // granularity only, and needs at least two real (non-null) months —
+  // a single point has no slope to speak of.
+  savingsTrend = computed<'improving' | 'declining' | 'steady' | null>(() => {
+    if (this.granularity() !== 'month') {
+      return null;
+    }
+
+    const points = this.monthlySavingsRates()
+      .map((rate, index) => (rate === null ? null : { x: index, y: rate }))
+      .filter((p): p is { x: number; y: number } => p !== null);
+
+    if (points.length < 2) {
+      return null;
+    }
+
+    const slope = this.leastSquaresSlope(points);
+    if (slope > 0.5) return 'improving';
+    if (slope < -0.5) return 'declining';
+    return 'steady';
   });
 
   // Computed: Summary statistics (using dynamic conversion)
