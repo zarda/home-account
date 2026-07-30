@@ -1,5 +1,6 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Subscription } from 'rxjs';
 
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatIconModule } from '@angular/material/icon';
@@ -30,6 +31,7 @@ import {
   groupExpensesByCategory,
   sumByType,
 } from '../../core/utils/transaction-aggregation.utils';
+import { addMonths } from '../../core/utils/transaction-date.utils';
 
 @Component({
   selector: 'app-reports',
@@ -52,7 +54,7 @@ import {
   templateUrl: './reports.component.html',
   styleUrl: './reports.component.scss',
 })
-export class ReportsComponent implements OnInit {
+export class ReportsComponent implements OnInit, OnDestroy {
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
   private authService = inject(AuthService);
@@ -87,6 +89,15 @@ export class ReportsComponent implements OnInit {
   transactions = this.transactionService.transactions;
   categories = this.categoryService.categories;
 
+  /**
+   * The selected window shifted back a year, for the monthly comparison's
+   * year-over-year figures. Kept apart from `transactions` on purpose: that
+   * signal is what all four tabs render, so the prior-year rows must never
+   * reach it.
+   */
+  priorYearTransactions = signal<Transaction[]>([]);
+  private priorYearSub?: Subscription;
+
   categoriesMap = computed(() => {
     const map = new Map<string, Category>();
     for (const cat of this.categories()) {
@@ -114,6 +125,13 @@ export class ReportsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadData();
+  }
+
+  ngOnDestroy(): void {
+    // The Firestore wrapper behind the prior-year window never completes, so
+    // dropping the page without this leaves a listener running for the rest
+    // of the session.
+    this.priorYearSub?.unsubscribe();
   }
 
   /**
@@ -175,6 +193,23 @@ export class ReportsComponent implements OnInit {
   private loadData(): void {
     this.isLoading.set(true);
     const range = this.dateRange();
+
+    // Same window a year back, through the non-mutating reader: getByDateRange
+    // would publish these rows to the shared `transactions` signal and every
+    // tab would start showing last year's figures. Cleared first so a period
+    // change cannot flash the old year's comparison against the new period,
+    // and deliberately outside the isLoading gate — the page renders as soon
+    // as the current window is in, and the comparison fills in behind it.
+    this.priorYearSub?.unsubscribe();
+    this.priorYearTransactions.set([]);
+    this.priorYearSub = this.transactionService
+      .getTransactionsInRange(addMonths(range.start, -12), addMonths(range.end, -12))
+      .subscribe({
+        next: rows => this.priorYearTransactions.set(rows),
+        // A prior-year window that fails to load is not a page failure: the
+        // comparison just has nothing to compare against.
+        error: () => this.priorYearTransactions.set([]),
+      });
 
     this.transactionService.getByDateRange(range.start, range.end).subscribe({
       next: () => this.finishLoading(),

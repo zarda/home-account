@@ -128,6 +128,21 @@
               </td>
             </ng-container>
 
+            <!-- Same month last year -->
+            <ng-container matColumnDef="yoy">
+              <th mat-header-cell *matHeaderCellDef>{{ 'reports.yoyChange' | translate }}</th>
+              <td mat-cell *matCellDef="let row">
+                @if (row.yoyExpenseChange !== null) {
+                  <span class="change-indicator" [class.positive]="row.yoyExpenseChange < 0" [class.negative]="row.yoyExpenseChange >= 0">
+                    <mat-icon>{{ row.yoyExpenseChange >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
+                    {{ row.yoyExpenseChange | number:'1.1-1' }}%
+                  </span>
+                } @else {
+                  <span class="no-data">—</span>
+                }
+              </td>
+            </ng-container>
+
             <tr mat-header-row *matHeaderRowDef="displayedColumns()"></tr>
             <tr mat-row *matRowDef="let row; columns: displayedColumns();"></tr>
           </table>

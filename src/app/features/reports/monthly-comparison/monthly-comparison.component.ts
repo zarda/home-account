@@ -19,7 +19,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
-import { monthKey } from '../../../core/utils/transaction-date.utils';
+import { addMonths, monthKey, parseMonthKey } from '../../../core/utils/transaction-date.utils';
 
 interface MonthlyComparison {
   month: string;
@@ -29,6 +29,11 @@ interface MonthlyComparison {
   balance: number;
   incomeChange: number | null;
   expenseChange: number | null;
+  /** Same month one year earlier; null when that month has no rows at all. */
+  prevYearIncome: number | null;
+  prevYearExpense: number | null;
+  yoyIncomeChange: number | null;
+  yoyExpenseChange: number | null;
 }
 
 @Component({
@@ -59,6 +64,15 @@ export class MonthlyComparisonComponent {
     this._transactions.set(value);
   }
 
+  /**
+   * The same window one year earlier, fetched separately by the page. Arrives
+   * after the current window, so every prior-year figure has to tolerate being
+   * empty.
+   */
+  @Input() set priorYearTransactions(value: Transaction[]) {
+    this._priorYearTransactions.set(value);
+  }
+
   @Input() set dateRange(value: { start: Date; end: Date }) {
     this._dateRange.set(value);
   }
@@ -68,6 +82,7 @@ export class MonthlyComparisonComponent {
   }
 
   private _transactions = signal<Transaction[]>([]);
+  private _priorYearTransactions = signal<Transaction[]>([]);
   private _dateRange = signal<{ start: Date; end: Date }>({ start: new Date(), end: new Date() });
   private _currency = signal('USD');
 
@@ -89,7 +104,7 @@ export class MonthlyComparisonComponent {
   displayedColumns = computed(() =>
     this.isMobile()
       ? ['month', 'income', 'expense', 'balance']
-      : ['month', 'income', 'expense', 'balance', 'change']
+      : ['month', 'income', 'expense', 'balance', 'change', 'yoy']
   );
 
   // Get currency symbol dynamically
@@ -147,6 +162,38 @@ export class MonthlyComparisonComponent {
     };
   });
 
+  // Prior-year rows bucketed by their OWN month, so a month with no history
+  // is a missing key rather than a zero — the two read very differently in a
+  // year-over-year column.
+  private priorYearBuckets = computed<Map<string, { income: number; expense: number }>>(() => {
+    const buckets = new Map<string, { income: number; expense: number }>();
+
+    for (const t of this._priorYearTransactions()) {
+      const key = monthKey(t.date.toDate());
+      const bucket = buckets.get(key) ?? { income: 0, expense: 0 };
+      const amount = this.toBaseCurrency(t);
+      if (t.type === 'income') {
+        bucket.income += amount;
+      } else {
+        bucket.expense += amount;
+      }
+      buckets.set(key, bucket);
+    }
+
+    return buckets;
+  });
+
+  hasPriorYearData = computed(() => this._priorYearTransactions().length > 0);
+
+  /** The `yyyy-MM` twelve months before `key`. */
+  private priorYearKey(key: string): string | null {
+    const parsed = parseMonthKey(key);
+    if (!parsed) {
+      return null;
+    }
+    return monthKey(addMonths(new Date(parsed.year, parsed.month, 1), -12));
+  }
+
   // Computed: Monthly data
   monthlyData = computed<MonthlyComparison[]>(() => {
     const transactions = this._transactions();
@@ -184,6 +231,7 @@ export class MonthlyComparisonComponent {
 
     // Convert to array and calculate changes
     const sortedKeys = Array.from(monthlyMap.keys()).sort();
+    const priorYear = this.priorYearBuckets();
     const result: MonthlyComparison[] = [];
 
     for (let i = 0; i < sortedKeys.length; i++) {
@@ -206,6 +254,22 @@ export class MonthlyComparisonComponent {
         }
       }
 
+      // Same month, one year back
+      const lastYearKey = this.priorYearKey(key);
+      const lastYear = lastYearKey ? priorYear.get(lastYearKey) : undefined;
+
+      let yoyIncomeChange: number | null = null;
+      let yoyExpenseChange: number | null = null;
+
+      if (lastYear) {
+        if (lastYear.income > 0) {
+          yoyIncomeChange = ((data.income - lastYear.income) / lastYear.income) * 100;
+        }
+        if (lastYear.expense > 0) {
+          yoyExpenseChange = ((data.expense - lastYear.expense) / lastYear.expense) * 100;
+        }
+      }
+
       // Use locale-aware month name
       const monthDate = new Date(parseInt(year), parseInt(month) - 1);
       const monthLabel = monthDate.toLocaleDateString(locale, { month: 'short', year: 'numeric' });
@@ -218,6 +282,10 @@ export class MonthlyComparisonComponent {
         balance: data.income - data.expense,
         incomeChange,
         expenseChange,
+        prevYearIncome: lastYear ? lastYear.income : null,
+        prevYearExpense: lastYear ? lastYear.expense : null,
+        yoyIncomeChange,
+        yoyExpenseChange,
       });
     }
 
@@ -228,24 +296,51 @@ export class MonthlyComparisonComponent {
   chartData = computed((): ChartData<'bar'> => {
     const data = this.monthlyData();
 
+    const datasets: ChartData<'bar'>['datasets'] = [
+      {
+        label: this.translationService.t('common.income'),
+        data: data.map(d => d.income),
+        backgroundColor: 'rgba(34, 197, 94, 0.8)',
+        borderColor: '#22c55e',
+        borderWidth: 1,
+        maxBarThickness: 32,
+      },
+      {
+        label: this.translationService.t('common.totalExpenses'),
+        data: data.map(d => d.expense),
+        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+        borderColor: '#ef4444',
+        borderWidth: 1,
+        maxBarThickness: 32,
+      },
+    ];
+
+    // Only when there is history to show: empty prior-year bars would add two
+    // legend entries standing for nothing.
+    if (this.hasPriorYearData()) {
+      datasets.push(
+        {
+          label: this.translationService.t('reports.incomeLastYear'),
+          data: data.map(d => d.prevYearIncome ?? 0),
+          backgroundColor: 'rgba(34, 197, 94, 0.35)',
+          borderColor: 'rgba(34, 197, 94, 0.5)',
+          borderWidth: 1,
+          maxBarThickness: 32,
+        },
+        {
+          label: this.translationService.t('reports.expensesLastYear'),
+          data: data.map(d => d.prevYearExpense ?? 0),
+          backgroundColor: 'rgba(239, 68, 68, 0.35)',
+          borderColor: 'rgba(239, 68, 68, 0.5)',
+          borderWidth: 1,
+          maxBarThickness: 32,
+        }
+      );
+    }
+
     return {
       labels: data.map(d => d.month),
-      datasets: [
-        {
-          label: this.translationService.t('common.income'),
-          data: data.map(d => d.income),
-          backgroundColor: 'rgba(34, 197, 94, 0.8)',
-          borderColor: '#22c55e',
-          borderWidth: 1,
-        },
-        {
-          label: this.translationService.t('common.totalExpenses'),
-          data: data.map(d => d.expense),
-          backgroundColor: 'rgba(239, 68, 68, 0.8)',
-          borderColor: '#ef4444',
-          borderWidth: 1,
-        },
-      ],
+      datasets,
     };
   });
 
