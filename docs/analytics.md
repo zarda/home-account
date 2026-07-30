@@ -84,7 +84,7 @@ Every place the app reports an event. `Since` is the release the row shipped
 in. `scripts/check-analytics-registry.mjs` fails the build when this table and
 the code disagree. `Since` covers the event, not its parameters —
 `transaction_add`'s `has_tags`, `has_location` and `receipt_image_count`
-arrived in 1.18.x.
+arrived in 1.18.95.
 
 <!-- analytics-registry:start -->
 | Event | Trigger | Params | Source | Since |
