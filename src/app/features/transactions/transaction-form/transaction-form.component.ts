@@ -439,6 +439,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         this.analytics.trackTransactionAdd({
           method: this.filledByScan ? 'receipt_scan' : 'manual',
           type: transactionData.type === 'income' ? 'income' : 'expense',
+          has_tags: this.tags().length > 0,
+          has_location: !!transactionData.location,
+          receipt_image_count: receipts.length,
         });
       } else if (this.data.transaction) {
         await this.transactionService.updateTransaction(

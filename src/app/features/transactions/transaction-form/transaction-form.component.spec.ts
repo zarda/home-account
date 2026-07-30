@@ -20,6 +20,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { GeminiService } from '../../../core/services/gemini.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Transaction, Category, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -42,6 +43,7 @@ describe('TransactionFormComponent', () => {
   let dialog: jasmine.SpyObj<MatDialog>;
   let receiptQuota: jasmine.SpyObj<ReceiptQuotaService>;
   let receiptToNote: jasmine.SpyObj<ReceiptToNoteService>;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
 
   const expense = createCategory({ id: 'food', type: 'expense' });
@@ -86,6 +88,7 @@ describe('TransactionFormComponent', () => {
     receiptQuota = jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']);
     receiptQuota.canAddImages.and.resolveTo(true);
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']);
     currentUser = signal<User | null>(createUser());
 
     const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies']);
@@ -111,6 +114,7 @@ describe('TransactionFormComponent', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: ReceiptQuotaService, useValue: receiptQuota },
         { provide: ReceiptToNoteService, useValue: receiptToNote },
+        { provide: AnalyticsService, useValue: analytics },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     })
@@ -189,6 +193,44 @@ describe('TransactionFormComponent', () => {
       // No tags typed and add mode: the field is omitted entirely.
       expect(dto.tags).toBeUndefined();
       expect(dialogRef.close).toHaveBeenCalledWith(true);
+      expect(analytics.trackTransactionAdd).toHaveBeenCalledWith({
+        method: 'manual',
+        type: 'expense',
+        has_tags: false,
+        has_location: false,
+        receipt_image_count: 0,
+      });
+    });
+
+    it('reports tag, location and image usage on the add event', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.tags.set(['groceries']);
+      component.form.patchValue({ locationName: 'Aoyama Market' });
+      component.pendingReceipts.set([
+        { file: new File(['a'], 'a.jpg', { type: 'image/jpeg' }), preview: 'data:image/jpeg;base64,a' },
+        { file: new File(['b'], 'b.jpg', { type: 'image/jpeg' }), preview: 'data:image/jpeg;base64,b' },
+      ]);
+
+      await component.onSubmit();
+
+      expect(analytics.trackTransactionAdd).toHaveBeenCalledWith({
+        method: 'manual',
+        type: 'expense',
+        has_tags: true,
+        has_location: true,
+        receipt_image_count: 2,
+      });
+    });
+
+    it('does not report transaction_add when editing', async () => {
+      const txn = createTransaction({ id: 'e1' });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      validForm(component);
+
+      await component.onSubmit();
+
+      expect(analytics.trackTransactionAdd).not.toHaveBeenCalled();
     });
 
     it('forwards the captured receipt file in the DTO', async () => {

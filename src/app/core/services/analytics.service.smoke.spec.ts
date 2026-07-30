@@ -255,4 +255,42 @@ describe('Analytics opt-in (emulator smoke test)', () => {
     // Still one: the second call was dropped by the consent gate.
     expect(transport.events.length).toBe(1);
   }));
+
+  it('should coerce the transaction_add usage params through the real pipeline', fakeAsync(() => {
+    // The unit specs prove the validator coerces in isolation; this proves the
+    // typed wrapper's booleans and count survive the consent gate and reach
+    // the transport as the enumerated strings the taxonomy declares.
+    authService.currentUser.set({
+      id: uid,
+      subscription: { tier: 'premium' },
+      preferences: {
+        ...authService.currentUser()?.preferences,
+        enableUsageAnalytics: true,
+      },
+    } as User);
+    TestBed.tick();
+    tick();
+
+    service.trackTransactionAdd({
+      method: 'manual',
+      type: 'expense',
+      has_tags: true,
+      has_location: false,
+      receipt_image_count: 2,
+    });
+    tick();
+
+    expect(transport.events).toEqual([
+      {
+        name: 'transaction_add',
+        params: {
+          method: 'manual',
+          type: 'expense',
+          has_tags: 'true',
+          has_location: 'false',
+          receipt_image_count: '2',
+        },
+      },
+    ]);
+  }));
 });
