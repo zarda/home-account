@@ -2,8 +2,15 @@
 // packages). @angular/fire bundles its own pinned Firebase major, and mixing
 // the two produces instances that do not interoperate.
 import { TestBed } from '@angular/core/testing';
+import { createEnvironmentInjector, EnvironmentInjector } from '@angular/core';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
-import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
+import {
+  getAuth,
+  connectAuthEmulator,
+  signInAnonymously,
+  signInWithCustomToken,
+  Auth
+} from '@angular/fire/auth';
 import {
   getFirestore,
   connectFirestoreEmulator,
@@ -59,6 +66,15 @@ describe('TransactionService receipts (emulator smoke test)', () => {
   let service: TransactionService;
   let storageService: StorageService;
 
+  // A second Firebase app signed in as the SAME uid: a genuinely separate
+  // client (own connection, own SDK state) for the concurrency cases, the
+  // closest the emulator gets to a second device.
+  let rivalApp: FirebaseApp;
+  let rivalFirestore: Firestore;
+  let rivalStorage: ReturnType<typeof getStorage>;
+  let rivalInjector: EnvironmentInjector;
+  let rivalService: TransactionService;
+
   /** Ids created through the service, swept in afterAll. */
   const createdIds: string[] = [];
 
@@ -113,6 +129,41 @@ describe('TransactionService receipts (emulator smoke test)', () => {
 
     const credential = await signInAnonymously(auth);
     uid = credential.user.uid;
+
+    rivalApp = initializeApp(
+      {
+        apiKey: 'fake-api-key',
+        projectId: 'demo-home-account',
+        storageBucket: 'demo-home-account.appspot.com'
+      },
+      `transaction-receipts-smoke-rival-${Date.now()}`
+    );
+    const rivalAuth = getAuth(rivalApp);
+    connectAuthEmulator(rivalAuth, AUTH_URL, { disableWarnings: true });
+    rivalFirestore = getFirestore(rivalApp);
+    connectFirestoreEmulator(rivalFirestore, FIRESTORE_HOST, FIRESTORE_PORT);
+    rivalStorage = getStorage(rivalApp);
+    connectStorageEmulator(rivalStorage, STORAGE_HOST, STORAGE_PORT);
+
+    // The auth emulator accepts unsigned custom tokens, which is what lets a
+    // second client authenticate as the uid the first one was granted. JWT
+    // segments are base64url without padding — plain btoa is not enough.
+    const base64url = (value: unknown): string =>
+      btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const now = Math.floor(Date.now() / 1000);
+    const unsignedToken = [
+      base64url({ alg: 'none', typ: 'JWT' }),
+      base64url({
+        iss: 'firebase-auth-emulator@example.com',
+        sub: 'firebase-auth-emulator@example.com',
+        aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
+        iat: now,
+        exp: now + 3600,
+        uid
+      }),
+      ''
+    ].join('.');
+    await signInWithCustomToken(rivalAuth, unsignedToken);
   });
 
   afterAll(async () => {
@@ -121,6 +172,7 @@ describe('TransactionService receipts (emulator smoke test)', () => {
         deleteDoc(doc(firestore, `users/${uid}/transactions/${id}`)).catch(() => undefined)
       )
     );
+    await deleteApp(rivalApp).catch(() => undefined);
     await deleteApp(app).catch(() => undefined);
   });
 
@@ -161,6 +213,43 @@ describe('TransactionService receipts (emulator smoke test)', () => {
     });
     service = TestBed.inject(TransactionService);
     storageService = TestBed.inject(StorageService);
+
+    // The rival service stack, identical except for the second app's
+    // Firestore and Storage instances.
+    rivalInjector = createEnvironmentInjector(
+      [
+        TransactionService,
+        FirestoreService,
+        StorageService,
+        { provide: Firestore, useValue: rivalFirestore },
+        { provide: Storage, useValue: rivalStorage },
+        { provide: AuthService, useValue: { userId: () => uid, currentUser: () => null } },
+        {
+          provide: CurrencyService,
+          useValue: {
+            ensureRatesLoaded: async () => undefined,
+            getExchangeRate: () => 1,
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency
+          }
+        },
+        { provide: BudgetService, useValue: { recalculateBudgetsForCategory: async () => undefined } },
+        {
+          provide: ReceiptQuotaService,
+          useValue: {
+            canAddImages: async () => true,
+            noteImagesAdded: () => undefined,
+            noteImagesRemoved: () => undefined,
+            invalidateCount: () => undefined
+          }
+        }
+      ],
+      TestBed.inject(EnvironmentInjector)
+    );
+    rivalService = rivalInjector.get(TransactionService);
+  });
+
+  afterEach(() => {
+    rivalInjector.destroy();
   });
 
   it('attaches three images to a new transaction, slots aligned with the array', async () => {
@@ -384,5 +473,64 @@ describe('TransactionService receipts (emulator smoke test)', () => {
     expect(await markerOf(await storageService.downloadReceipt(uid, id, 0))).toBe(0xd0);
     // The landed slot of the failed batch was rolled back.
     await expectAsync(storageService.downloadReceipt(uid, id, 1)).toBeRejected();
+  }, 20000);
+
+  it('lands two clients\' removals of different slots, neither resurrected', async () => {
+    const id = await service.addTransaction(dto('race removals', [
+      markedFile(0xe0),
+      markedFile(0xe1),
+      markedFile(0xe2)
+    ]));
+    createdIds.push(id);
+    const before = (await readDoc(id))['receiptUrls'] as string[];
+
+    // Two separate clients, one document, different slots, at once. Without
+    // the transaction this is the last-write-wins case of ADR 0006: whichever
+    // client wrote second would resurrect the other's tombstoned image.
+    await Promise.all([
+      service.removeReceiptAt(id, 1),
+      rivalService.removeReceiptAt(id, 2)
+    ]);
+
+    const row = await readDoc(id);
+    // Both tombstones landed; whichever commit came second truncated the
+    // trailing tombstones down to the surviving slot 0.
+    expect(row['receiptUrls']).toEqual([before[0]]);
+    expect(row['receiptCount']).toBe(1);
+    expect(row['receiptUrl']).toBe(before[0]);
+    expect(await markerOf(await storageService.downloadReceipt(uid, id, 0))).toBe(0xe0);
+    await expectAsync(storageService.downloadReceipt(uid, id, 1)).toBeRejected();
+    await expectAsync(storageService.downloadReceipt(uid, id, 2)).toBeRejected();
+  }, 20000);
+
+  it('keeps every committed entry fetchable when an append races a removal', async () => {
+    const id = await service.addTransaction(dto('race append', [
+      markedFile(0xf0),
+      markedFile(0xf1)
+    ]));
+    createdIds.push(id);
+
+    await Promise.all([
+      rivalService.updateTransaction(id, { receiptFiles: [markedFile(0xf2)] }),
+      service.removeReceiptAt(id, 0)
+    ]);
+
+    // Whatever the interleaving, the committed state must hold the invariant:
+    // slot 0 tombstoned, the surviving original and the appended image both
+    // present, and every non-tombstone entry's object fetchable at its slot.
+    const row = await readDoc(id);
+    const urls = row['receiptUrls'] as string[];
+    const liveSlots = urls
+      .map((url, slot) => ({ url, slot }))
+      .filter(entry => !!entry.url);
+
+    expect(urls[0]).toBe('');
+    expect(liveSlots.length).toBe(2);
+    expect(row['receiptCount']).toBe(2);
+    expect(row['receiptUrl']).toBe(liveSlots[0].url);
+    await expectAsync(storageService.downloadReceipt(uid, id, 0)).toBeRejected();
+    for (const entry of liveSlots) {
+      await expectAsync(storageService.downloadReceipt(uid, id, entry.slot)).toBeResolved();
+    }
   }, 20000);
 });
