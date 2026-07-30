@@ -53,9 +53,21 @@ describe('the analytics taxonomy', () => {
 
 describe('validateAnalyticsParams', () => {
   it('should accept a payload that matches the taxonomy', () => {
-    expect(validateAnalyticsParams('transaction_add', { method: 'manual', type: 'expense' })).toEqual(
-      { method: 'manual', type: 'expense' }
-    );
+    expect(
+      validateAnalyticsParams('transaction_add', {
+        method: 'manual',
+        type: 'expense',
+        has_tags: 'false',
+        has_location: 'false',
+        receipt_image_count: '0',
+      })
+    ).toEqual({
+      method: 'manual',
+      type: 'expense',
+      has_tags: 'false',
+      has_location: 'false',
+      receipt_image_count: '0',
+    });
   });
 
   it('should accept an event that declares no parameters', () => {
@@ -73,6 +85,9 @@ describe('validateAnalyticsParams', () => {
       validateAnalyticsParams('transaction_add', {
         method: 'manual',
         type: 'expense',
+        has_tags: 'false',
+        has_location: 'false',
+        receipt_image_count: '0',
         merchant: 'Blue Bottle Coffee',
       })
     ).toBeNull();
@@ -90,10 +105,26 @@ describe('validateAnalyticsParams', () => {
     ).toBeNull();
   });
 
-  it('should reject numbers and objects', () => {
-    expect(validateAnalyticsParams('transaction_add', { method: 1, type: 'expense' })).toBeNull();
+  it('should reject objects, and numbers whose stringified value is not enumerated', () => {
+    // Numbers are stringified before the check (like booleans), so rejection
+    // happens at the enumeration: '1' is not a declared method value.
     expect(
-      validateAnalyticsParams('transaction_add', { method: { toString: () => 'manual' }, type: 'expense' })
+      validateAnalyticsParams('transaction_add', {
+        method: 1,
+        type: 'expense',
+        has_tags: false,
+        has_location: false,
+        receipt_image_count: 0,
+      })
+    ).toBeNull();
+    expect(
+      validateAnalyticsParams('transaction_add', {
+        method: { toString: () => 'manual' },
+        type: 'expense',
+        has_tags: false,
+        has_location: false,
+        receipt_image_count: 0,
+      })
     ).toBeNull();
   });
 
@@ -106,6 +137,52 @@ describe('validateAnalyticsParams', () => {
     expect(validateAnalyticsParams('transaction_search', { has_filters: false })).toEqual({
       has_filters: 'false',
     });
+  });
+
+  it('should coerce the transaction_add usage flags and image count', () => {
+    expect(
+      validateAnalyticsParams('transaction_add', {
+        method: 'manual',
+        type: 'expense',
+        has_tags: true,
+        has_location: false,
+        receipt_image_count: 5,
+      })
+    ).toEqual({
+      method: 'manual',
+      type: 'expense',
+      has_tags: 'true',
+      has_location: 'false',
+      receipt_image_count: '5',
+    });
+  });
+
+  it('should accept an already-stringified image count', () => {
+    expect(
+      validateAnalyticsParams('transaction_add', {
+        method: 'manual',
+        type: 'expense',
+        has_tags: false,
+        has_location: false,
+        receipt_image_count: '3',
+      })
+    ).toEqual(
+      jasmine.objectContaining({ receipt_image_count: '3' })
+    );
+  });
+
+  it('should reject an image count outside the enumerated range', () => {
+    // The enumeration stays the boundary after coercion: 6 stringifies to '6',
+    // which the taxonomy does not list.
+    expect(
+      validateAnalyticsParams('transaction_add', {
+        method: 'manual',
+        type: 'expense',
+        has_tags: false,
+        has_location: false,
+        receipt_image_count: 6,
+      })
+    ).toBeNull();
   });
 
   it('should reject a payload missing a declared parameter', () => {

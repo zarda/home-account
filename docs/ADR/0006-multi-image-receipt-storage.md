@@ -99,7 +99,7 @@ characters — `http` stays allowed because the storage emulator issues
   `arrayUnion` cannot express positional tombstones, so making this safe
   needs a Firestore transaction around the read-modify-write. The
   single-image path had the identical exposure; the array makes it more
-  visible, not worse.
+  visible, not worse. *Closed by [0007](0007-transactional-receipt-edits.md).*
 - The image quota itself remains client-side enforcement only; the rules
   validate shape, not count-across-documents. Enforcing it server-side means
   App Check plus a function that owns the count.

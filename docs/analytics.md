@@ -63,7 +63,8 @@ call site cannot widen the payload by accident. Screen views additionally carry
 the route path (`transactions`, `import/file`) and a constant page title.
 
 **Never sent**: amounts, currencies, merchant or payee names, category names,
-budget names, descriptions, notes, tags, dates, transaction or budget ids,
+budget names, descriptions, notes, tag names, place names, coordinates, dates,
+transaction or budget ids,
 filenames, receipt images, search text, AI prompts or AI output, email
 addresses, display names, or the Firebase user id. There is no `setUserId`
 call and no `UserTrackingService`. Google signals and ads personalisation are
@@ -81,12 +82,14 @@ added by receipt scan. It cannot say what was bought, for how much, or where.
 
 Every place the app reports an event. `Since` is the release the row shipped
 in. `scripts/check-analytics-registry.mjs` fails the build when this table and
-the code disagree.
+the code disagree. `Since` covers the event, not its parameters —
+`transaction_add`'s `has_tags`, `has_location` and `receipt_image_count`
+arrived in 1.18.95.
 
 <!-- analytics-registry:start -->
 | Event | Trigger | Params | Source | Since |
 |---|---|---|---|---|
-| `transaction_add` | The add-transaction form saved a new transaction. Not restore or offline replay. | `method`, `type` | `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 1.16.91 |
+| `transaction_add` | The add-transaction form saved a new transaction. Not restore or offline replay. | `method`, `type`, `has_tags`, `has_location`, `receipt_image_count` | `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 1.16.91 |
 | `transaction_search` | A search was committed on the transaction list and recorded as new. | `has_filters` | `src/app/features/transactions/transaction-filters/transaction-filters.component.ts` | 1.16.91 |
 | `receipt_import` | A receipt import reached a terminal outcome. Images only. | `outcome` | `src/app/features/transactions/camera-capture/camera-capture.component.ts`, `src/app/features/ai/import/import-wizard/import-wizard.component.ts` | 1.16.91 |
 | `budget_create` | A budget was created from the budgets page. | — | `src/app/features/budgets/budget-form/budget-form.component.ts` | 1.16.91 |
@@ -102,6 +105,9 @@ the code disagree.
 |---|---|
 | `method` | `manual`, `receipt_scan`, `ai_import` |
 | `type` | `income`, `expense`, `mixed` |
+| `has_tags` | `true`, `false` — whether any tag was attached; the tag names themselves are never sent |
+| `has_location` | `true`, `false` — whether a location was attached; the place name and coordinates are never sent |
+| `receipt_image_count` | `0`–`5` — images attached at creation; later appends and removals are not re-reported |
 | `has_filters` | `true`, `false` — any of type, category, currency, amount range, or a date range other than the default month |
 | `outcome` | `ok`, `failed`, `queued_offline` |
 | `severity` | `warning`, `critical`, `exceeded` |
@@ -267,7 +273,8 @@ it simply reports nothing.
    Google signals **off**, ads personalisation off.
 4. **Register custom dimensions.** GA4 admin → Data display → Custom
    definitions → one event-scoped dimension per parameter: `method`, `type`,
-   `has_filters`, `outcome`, `severity`, `report_type`, `feature`, `setting`.
+   `has_tags`, `has_location`, `receipt_image_count`, `has_filters`, `outcome`,
+   `severity`, `report_type`, `feature`, `setting`.
    Unregistered parameters are still collected but appear in no report, and GA4
    does not backfill.
 5. **Add an internal traffic filter** for developer IPs. `ng serve` uses the

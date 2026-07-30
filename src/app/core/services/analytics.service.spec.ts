@@ -239,11 +239,26 @@ describe('AnalyticsService', () => {
       TestBed.tick();
       tick();
 
-      service.track('transaction_add', { method: 'manual', type: 'expense' });
+      service.track('transaction_add', {
+        method: 'manual',
+        type: 'expense',
+        has_tags: 'false',
+        has_location: 'false',
+        receipt_image_count: '0',
+      });
       tick();
 
       expect(transport.events).toEqual([
-        { name: 'transaction_add', params: { method: 'manual', type: 'expense' } },
+        {
+          name: 'transaction_add',
+          params: {
+            method: 'manual',
+            type: 'expense',
+            has_tags: 'false',
+            has_location: 'false',
+            receipt_image_count: '0',
+          },
+        },
       ]);
     }));
 
@@ -273,6 +288,9 @@ describe('AnalyticsService', () => {
       service.track('transaction_add', {
         method: 'manual',
         type: 'expense',
+        has_tags: 'false',
+        has_location: 'false',
+        receipt_image_count: '0',
         merchant: 'Blue Bottle Coffee',
       });
       tick();
@@ -318,11 +336,28 @@ describe('AnalyticsService', () => {
 
       service.trackBudgetCreate();
       service.trackReportView({ report_type: 'insights' });
+      service.trackTransactionAdd({
+        method: 'manual',
+        type: 'expense',
+        has_tags: true,
+        has_location: false,
+        receipt_image_count: 2,
+      });
       tick();
 
       expect(transport.events).toEqual([
         { name: 'budget_create', params: {} },
         { name: 'report_view', params: { report_type: 'insights' } },
+        {
+          name: 'transaction_add',
+          params: {
+            method: 'manual',
+            type: 'expense',
+            has_tags: 'true',
+            has_location: 'false',
+            receipt_image_count: '2',
+          },
+        },
       ]);
     }));
 

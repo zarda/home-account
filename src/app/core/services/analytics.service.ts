@@ -102,8 +102,22 @@ export class AnalyticsService {
     });
   }
 
-  /** A transaction was created by a user action. */
-  trackTransactionAdd(params: AnalyticsEventParams<'transaction_add'>): void {
+  /**
+   * A transaction was created by a user action.
+   *
+   * The usage flags are booleans and the count a number here, enumerated
+   * strings in the taxonomy — same trade-off as trackTransactionSearch: the
+   * validator coerces, and in exchange a new taxonomy param no longer breaks
+   * this signature at compile time (the validator drops the event loudly
+   * instead).
+   */
+  trackTransactionAdd(params: {
+    method: AnalyticsEventParams<'transaction_add'>['method'];
+    type: AnalyticsEventParams<'transaction_add'>['type'];
+    has_tags: boolean;
+    has_location: boolean;
+    receipt_image_count: number;
+  }): void {
     this.send('transaction_add', params);
   }
 

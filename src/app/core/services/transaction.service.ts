@@ -287,46 +287,34 @@ export class TransactionService {
 
       // Append newly provided receipt images after the existing ones.
       // Replacing an image is remove-then-attach; an update never overwrites
-      // a stored object.
-      if (data.receiptFiles?.length) {
-        const userId = this.authService.userId();
-        if (userId) {
-          // The slot array as stored: a legacy row's single receiptUrl is its
-          // slot 0. Length (tombstones included) is the next free slot —
-          // interior tombstones are never reused so images keep their order.
-          const existingSlots = currentTransaction?.receiptUrls
-            ? [...currentTransaction.receiptUrls]
-            : currentTransaction?.receiptUrl
-              ? [currentTransaction.receiptUrl]
-              : [];
-
-          const total = receiptImageCount(currentTransaction) + data.receiptFiles.length;
-          if (total > MAX_RECEIPTS_PER_TRANSACTION) {
-            throw new Error(RECEIPT_ATTACH_FAILED);
-          }
-          // Appended images are always new — enforce the tier quota
-          if (!(await this.receiptQuota.canAddImages(data.receiptFiles.length))) {
-            throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
-          }
-
-          const urls = await this.uploadReceiptBatch(
-            userId,
-            id,
-            data.receiptFiles,
-            existingSlots.length
-          );
-          const merged = [...existingSlots, ...urls];
-          updateData.receiptUrl = merged.find(url => !!url);
-          updateData.receiptUrls = merged;
-          updateData.receiptCount = merged.filter(url => !!url).length;
-          this.receiptQuota.noteImagesAdded(urls.length);
+      // a stored object another writer still references.
+      const appendUserId = data.receiptFiles?.length ? this.authService.userId() : null;
+      if (data.receiptFiles?.length && appendUserId) {
+        const total = receiptImageCount(currentTransaction) + data.receiptFiles.length;
+        if (total > MAX_RECEIPTS_PER_TRANSACTION) {
+          throw new Error(RECEIPT_ATTACH_FAILED);
         }
-      }
+        // Appended images are always new — enforce the tier quota
+        if (!(await this.receiptQuota.canAddImages(data.receiptFiles.length))) {
+          throw new Error(RECEIPT_IMAGE_LIMIT_ERROR);
+        }
 
-      await this.firestoreService.updateDocument(
-        `${this.userTransactionsPath}/${id}`,
-        updateData
-      );
+        const appended = await this.appendReceiptsTransactionally(
+          id,
+          appendUserId,
+          data.receiptFiles,
+          this.receiptSlotsOf(currentTransaction).length,
+          updateData
+        );
+        // After the commit, not before: a placement retry or abort must not
+        // bump the local quota count for images that never landed.
+        this.receiptQuota.noteImagesAdded(appended);
+      } else {
+        await this.firestoreService.updateDocument(
+          `${this.userTransactionsPath}/${id}`,
+          updateData
+        );
+      }
 
       // Update affected budgets for expense transactions
       if (currentTransaction) {
@@ -387,6 +375,128 @@ export class TransactionService {
   }
 
   /**
+   * The slot array as stored: a legacy row's single receiptUrl is its slot 0.
+   * Length (tombstones included) is the next free slot — interior tombstones
+   * are never reused so images keep their order.
+   */
+  private receiptSlotsOf(
+    transaction: Pick<Transaction, 'receiptUrl' | 'receiptUrls'> | null | undefined
+  ): string[] {
+    return transaction?.receiptUrls
+      ? [...transaction.receiptUrls]
+      : transaction?.receiptUrl
+        ? [transaction.receiptUrl]
+        : [];
+  }
+
+  /**
+   * The three receipt fields for a slot array, trailing tombstones truncated.
+   * A truncated slot is safe to append into later because its object is
+   * confirmed gone. Clearing the last image deletes the fields rather than
+   * writing [] or '' — the quota query's receiptUrl > '' range filter
+   * requires it (ADR 0006).
+   */
+  private receiptFieldPayload(slots: string[]): Record<string, unknown> {
+    const truncated = [...slots];
+    while (truncated.length > 0 && !truncated[truncated.length - 1]) truncated.pop();
+
+    const remaining = truncated.filter(url => !!url).length;
+    if (remaining === 0) {
+      return { receiptUrl: deleteField(), receiptUrls: deleteField(), receiptCount: 0 };
+    }
+    return {
+      // The pointer follows the first live image so the quota query and
+      // single-image read sites keep resolving.
+      receiptUrl: truncated.find(url => !!url),
+      receiptUrls: truncated,
+      receiptCount: remaining
+    };
+  }
+
+  /**
+   * Upload the files at optimistically chosen slots, then place their URLs
+   * into receiptUrls inside a Firestore transaction that re-reads the
+   * document, so a rival's concurrent slot edit is never clobbered by a
+   * stale array. The upload has to happen before the transaction (a
+   * transaction cannot wait on Storage), which is why placement can fail:
+   *
+   * - A rival append committed the same indices first: back off and retry at
+   *   fresh slots (bounded). The contested keys hold our bytes but the
+   *   rival's committed URLs — never delete them; the orphaned uncontested
+   *   uploads are invisible and get overwritten by any later append.
+   * - The document vanished, or fresh state is at the cap: sweep whatever we
+   *   uploaded that no committed entry references, and fail the attach whole.
+   *
+   * Returns the number of images appended. The scalar fields of updateData
+   * commit in the same transaction so an update is atomic as a whole.
+   */
+  private async appendReceiptsTransactionally(
+    id: string,
+    userId: string,
+    files: File[],
+    optimisticFirstSlot: number,
+    updateData: Partial<Transaction>
+  ): Promise<number> {
+    const path = `${this.userTransactionsPath}/${id}`;
+    const docRef = this.firestoreService.getDocRef(path);
+    const maxPlacementAttempts = 3;
+
+    let firstSlot = optimisticFirstSlot;
+    let uploadedSlots: number[] = [];
+
+    for (let attempt = 1; attempt <= maxPlacementAttempts; attempt++) {
+      const urls = await this.uploadReceiptBatch(userId, id, files, firstSlot);
+      uploadedSlots = urls.map((_, i) => firstSlot + i);
+
+      const outcome = await this.firestoreService.runTransaction(async tx => {
+        const snapshot = await tx.get(docRef);
+        if (!snapshot.exists()) return 'vanished';
+
+        const slots = this.receiptSlotsOf(snapshot.data() as Transaction);
+        // A live entry at one of our indices means a rival append won them.
+        if (uploadedSlots.some(slot => !!slots[slot])) return 'collision';
+
+        const liveCount = slots.filter(url => !!url).length;
+        if (liveCount + urls.length > MAX_RECEIPTS_PER_TRANSACTION) return 'over_cap';
+
+        // Pad up to our first index with tombstones — a racing removal may
+        // have truncated the array underneath the upload — so that
+        // index == storage slot keeps holding.
+        while (slots.length < firstSlot) slots.push('');
+        urls.forEach((url, i) => {
+          slots[firstSlot + i] = url;
+        });
+
+        tx.update(docRef, {
+          ...updateData,
+          ...this.receiptFieldPayload(slots),
+          updatedAt: this.firestoreService.getTimestamp()
+        });
+        return 'committed';
+      });
+
+      if (outcome === 'committed') return urls.length;
+
+      if (outcome === 'collision' && attempt < maxPlacementAttempts) {
+        const fresh = await this.firestoreService.getDocument<Transaction>(path);
+        if (fresh) {
+          firstSlot = this.receiptSlotsOf(fresh).length;
+          continue;
+        }
+      }
+      break;
+    }
+
+    // Sweep only what no committed entry references: a contested slot is the
+    // rival's now, and deleting it would break their committed image.
+    const fresh = await this.firestoreService.getDocument<Transaction>(path);
+    const freshSlots = this.receiptSlotsOf(fresh);
+    const orphaned = uploadedSlots.filter(slot => !freshSlots[slot]);
+    await this.storageService.deleteReceiptSlots(userId, id, orphaned);
+    throw new Error(RECEIPT_ATTACH_FAILED);
+  }
+
+  /**
    * Remove one of a transaction's stored receipt images, freeing one quota
    * slot. The slot is tombstoned in receiptUrls (never re-indexed) so the
    * remaining entries keep matching their storage keys; the transaction
@@ -396,45 +506,43 @@ export class TransactionService {
     const userId = this.authService.userId();
     if (!userId) throw new Error('User not authenticated');
 
-    const transaction = await this.firestoreService.getDocument<Transaction>(
-      `${this.userTransactionsPath}/${id}`
-    );
+    const path = `${this.userTransactionsPath}/${id}`;
+    const transaction = await this.firestoreService.getDocument<Transaction>(path);
     if (!transaction) return;
+    if (!this.receiptSlotsOf(transaction)[slot]) return;
 
-    const slots = transaction.receiptUrls
-      ? [...transaction.receiptUrls]
-      : transaction.receiptUrl
-        ? [transaction.receiptUrl]
-        : [];
-    if (!slots[slot]) return;
-
+    // Storage before Firestore, deliberately: the truncation invariant ("a
+    // truncated slot is safe to append into because its object is confirmed
+    // gone") only holds if the object is deleted before the array commits.
+    // Committing first would let this delete land after a racing append
+    // reused the slot, silently destroying the appender's object. The
+    // residual the other way — this delete lands, then the commit fails —
+    // leaves a visibly broken image that retrying the removal heals, since
+    // deleteReceipt treats object-not-found as success. See ADR 0007.
     await this.storageService.deleteReceipt(userId, id, slot);
 
-    slots[slot] = '';
-    // Truncate trailing tombstones so the array never grows past the highest
-    // live slot; a truncated slot is safe to append into later because its
-    // object is confirmed gone.
-    while (slots.length > 0 && !slots[slots.length - 1]) slots.pop();
+    const docRef = this.firestoreService.getDocRef(path);
+    const removed = await this.firestoreService.runTransaction(async tx => {
+      const snapshot = await tx.get(docRef);
+      if (!snapshot.exists()) return false;
 
-    const remaining = slots.filter(url => !!url).length;
-    if (remaining === 0) {
-      await this.firestoreService.updateDocument(
-        `${this.userTransactionsPath}/${id}`,
-        { receiptUrl: deleteField(), receiptUrls: deleteField(), receiptCount: 0 }
-      );
-    } else {
-      await this.firestoreService.updateDocument(
-        `${this.userTransactionsPath}/${id}`,
-        {
-          // The pointer follows the first live image so the quota query and
-          // single-image read sites keep resolving.
-          receiptUrl: slots.find(url => !!url),
-          receiptUrls: slots,
-          receiptCount: remaining
-        }
-      );
-    }
-    this.receiptQuota.noteImagesRemoved(1);
+      // Tombstone against the transaction's fresh read, never the earlier
+      // one: a rival's tombstone or truncation must not be resurrected by a
+      // stale copy of the array.
+      const slots = this.receiptSlotsOf(snapshot.data() as Transaction);
+      if (!slots[slot]) return false;
+
+      slots[slot] = '';
+      tx.update(docRef, {
+        ...this.receiptFieldPayload(slots),
+        updatedAt: this.firestoreService.getTimestamp()
+      });
+      return true;
+    });
+
+    // Only a commit that actually tombstoned the slot frees a quota slot — a
+    // rival that emptied it first already took the decrement.
+    if (removed) this.receiptQuota.noteImagesRemoved(1);
   }
 
   /**
@@ -445,23 +553,48 @@ export class TransactionService {
     const userId = this.authService.userId();
     if (!userId) throw new Error('User not authenticated');
 
-    const transaction = await this.firestoreService.getDocument<Transaction>(
-      `${this.userTransactionsPath}/${id}`
-    );
+    const path = `${this.userTransactionsPath}/${id}`;
+    const transaction = await this.firestoreService.getDocument<Transaction>(path);
     const count = receiptImageCount(transaction);
     if (!transaction || count === 0) return;
 
+    // "Remove what existed when clicked": the sweep covers only the span
+    // seen at read time. An appender always targets slots at or past this
+    // length, so the sweep cannot hit a racing append's fresh object — its
+    // entries survive the clear instead. Storage before Firestore for the
+    // same reason as removeReceiptAt.
     const slotSpan = transaction.receiptUrls?.length ?? 1;
     await this.storageService.deleteReceiptSlots(
       userId,
       id,
       Array.from({ length: slotSpan }, (_, slot) => slot)
     );
-    await this.firestoreService.updateDocument(
-      `${this.userTransactionsPath}/${id}`,
-      { receiptUrl: deleteField(), receiptUrls: deleteField(), receiptCount: 0 }
-    );
-    this.receiptQuota.noteImagesRemoved(count);
+
+    const docRef = this.firestoreService.getDocRef(path);
+    const removed = await this.firestoreService.runTransaction(async tx => {
+      const snapshot = await tx.get(docRef);
+      if (!snapshot.exists()) return 0;
+
+      const slots = this.receiptSlotsOf(snapshot.data() as Transaction);
+      let tombstoned = 0;
+      for (let slot = 0; slot < slotSpan && slot < slots.length; slot++) {
+        if (slots[slot]) {
+          slots[slot] = '';
+          tombstoned += 1;
+        }
+      }
+      if (tombstoned === 0) return 0;
+
+      tx.update(docRef, {
+        ...this.receiptFieldPayload(slots),
+        updatedAt: this.firestoreService.getTimestamp()
+      });
+      return tombstoned;
+    });
+
+    // The delta is what the commit actually tombstoned, not the count seen
+    // at read time — a rival removal may have taken some slots first.
+    if (removed > 0) this.receiptQuota.noteImagesRemoved(removed);
   }
 
   // Delete a transaction

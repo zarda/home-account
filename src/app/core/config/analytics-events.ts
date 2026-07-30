@@ -46,6 +46,11 @@ export const ANALYTICS_EVENT_NAMES = Object.keys(ANALYTICS_EVENTS) as AnalyticsE
  * call site is passing something derived from user data, and dropping the
  * parameter while still sending the event would hide that. The offending value
  * is never logged, for the same reason it is not sent.
+ *
+ * Booleans and numbers are stringified before the check — GA4 params are
+ * strings here, and forcing call sites to hand-stringify is how typos like
+ * 'yes' get sent. The enumeration stays the boundary: a stringified value
+ * still has to appear in the taxonomy's list.
  */
 export function validateAnalyticsParams(
   event: string,
@@ -68,7 +73,8 @@ export function validateAnalyticsParams(
       // let an undocumented dimension accumulate in the property.
       return null;
     }
-    const asString = typeof value === 'boolean' ? String(value) : value;
+    const asString =
+      typeof value === 'boolean' || typeof value === 'number' ? String(value) : value;
     if (typeof asString !== 'string' || !permitted.includes(asString)) {
       return null;
     }
