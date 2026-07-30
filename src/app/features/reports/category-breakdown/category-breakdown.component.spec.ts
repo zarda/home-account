@@ -1,11 +1,26 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { Component, input, output, signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { CategoryBreakdownComponent } from './category-breakdown.component';
 import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { TranslationService } from '../../../core/services/translation.service';
+import { SpendingChartComponent } from '../../dashboard/spending-chart/spending-chart.component';
+import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+
+// Stands in for the reused donut when the real breakdown template is
+// rendered, so the drill-down wiring can be exercised without a live chart.
+@Component({ selector: 'app-spending-chart', standalone: true, template: '' })
+class SpendingChartStubComponent {
+  categoryTotals = input<{ categoryId: string; total: number; count: number }[]>([]);
+  categories = input<Category[]>([]);
+  categoryActivated = output<string>();
+}
 
 describe('CategoryBreakdownComponent', () => {
   let component: CategoryBreakdownComponent;
@@ -254,6 +269,78 @@ describe('CategoryBreakdownComponent', () => {
     it('should return empty array for category with no transactions', () => {
       const transactions = component.getTransactionsForCategory('nonexistent');
       expect(transactions.length).toBe(0);
+    });
+  });
+
+  // The shared TestBed above blanks the template, so it cannot catch the
+  // donut's drill-down being left unwired. Re-configure to render the REAL
+  // breakdown template with the chart swapped for a stub.
+  describe('chart drill-down (real template)', () => {
+    let realFixture: ComponentFixture<CategoryBreakdownComponent>;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      const mockTranslationService = { t: (key: string) => key, currentLocale: signal('en') };
+      await TestBed.configureTestingModule({
+        imports: [CategoryBreakdownComponent, NoopAnimationsModule],
+        providers: [
+          {
+            provide: CurrencyService,
+            useValue: {
+              currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
+              getCurrencyInfo: () => ({ code: 'USD', name: 'US Dollar', symbol: '$' }),
+              convert: (amount: number) => amount
+            }
+          },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ]
+      })
+        .overrideComponent(CategoryBreakdownComponent, {
+          remove: {
+            imports: [
+              SpendingChartComponent,
+              AmountDisplayComponent,
+              CategoryChipComponent,
+              EmptyStateComponent
+            ]
+          },
+          add: { imports: [SpendingChartStubComponent], schemas: [NO_ERRORS_SCHEMA] }
+        })
+        .compileComponents();
+
+      realFixture = TestBed.createComponent(CategoryBreakdownComponent);
+      realFixture.componentInstance.transactions = mockTransactions;
+      realFixture.componentInstance.categories = mockCategories;
+      realFixture.detectChanges();
+    });
+
+    function innerChart(): SpendingChartStubComponent {
+      const chart = realFixture.debugElement.query(By.directive(SpendingChartStubComponent))
+        ?.componentInstance as SpendingChartStubComponent;
+      expect(chart).withContext('app-spending-chart rendered').toBeTruthy();
+      return chart;
+    }
+
+    it('should re-emit the donut activation with the active type', () => {
+      const activated: { categoryId: string; type: 'expense' | 'income' }[] = [];
+      realFixture.componentInstance.categoryActivated.subscribe(e => activated.push(e));
+
+      innerChart().categoryActivated.emit('cat1');
+
+      expect(activated).toEqual([{ categoryId: 'cat1', type: 'expense' }]);
+    });
+
+    it('should carry the income type when the toggle is on income', () => {
+      const activated: { categoryId: string; type: 'expense' | 'income' }[] = [];
+      realFixture.componentInstance.categoryActivated.subscribe(e => activated.push(e));
+
+      realFixture.componentInstance.selectedType.set('income');
+      realFixture.detectChanges();
+      // The donut is showing income categories here, so a hardcoded expense
+      // type would open a list that can only ever be empty.
+      innerChart().categoryActivated.emit('cat3');
+
+      expect(activated).toEqual([{ categoryId: 'cat3', type: 'income' }]);
     });
   });
 });

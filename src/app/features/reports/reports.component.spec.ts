@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA, WritableSignal } from '@angular/core';
+import { Router } from '@angular/router';
 import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 
@@ -9,6 +10,7 @@ import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
+import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction } from '../../models';
 import { addMonths } from '../../core/utils/transaction-date.utils';
 
@@ -46,6 +48,8 @@ describe('ReportsComponent', () => {
   let mockTransactionService: jasmine.SpyObj<TransactionService>;
   let mockCategoryService: jasmine.SpyObj<CategoryService>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
+  let mockPendingFilters: jasmine.SpyObj<PendingFiltersService>;
+  let mockRouter: jasmine.SpyObj<Router>;
 
   beforeEach(async () => {
     mockTransactionService = jasmine.createSpyObj(
@@ -72,13 +76,19 @@ describe('ReportsComponent', () => {
         t.amountInBaseCurrency ?? t.amount
     };
 
+    mockPendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']);
+    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockRouter.navigate.and.returnValue(Promise.resolve(true));
+
     await TestBed.configureTestingModule({
       imports: [ReportsComponent, NoopAnimationsModule],
       providers: [
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: AuthService, useValue: mockAuthService },
-        { provide: CurrencyService, useValue: mockCurrencyService }
+        { provide: CurrencyService, useValue: mockCurrencyService },
+        { provide: PendingFiltersService, useValue: mockPendingFilters },
+        { provide: Router, useValue: mockRouter }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -212,6 +222,42 @@ describe('ReportsComponent', () => {
       // would leave a listener behind for the life of the session.
       expect(component.priorYearTransactions()).toEqual([]);
       expect(pending.observed).toBeFalse();
+    });
+  });
+
+  describe('category drill-down', () => {
+    it('should hand the selected window and category to the transactions page', () => {
+      const start = new Date(2024, 5, 1);
+      const end = new Date(2024, 5, 30, 23, 59, 59);
+      component.onPeriodSelection(selection('custom', start, end));
+
+      component.onCategoryDrillDown({ categoryId: 'cat1', type: 'expense' });
+
+      expect(mockPendingFilters.apply).toHaveBeenCalledWith({
+        categoryId: 'cat1',
+        type: 'expense',
+        startDate: start,
+        endDate: end
+      });
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/transactions']);
+    });
+
+    it('should follow the breakdown onto the income side of the toggle', () => {
+      const start = new Date(2024, 5, 1);
+      const end = new Date(2024, 5, 30, 23, 59, 59);
+      component.onPeriodSelection(selection('custom', start, end));
+
+      component.onCategoryDrillDown({ categoryId: 'cat3', type: 'income' });
+
+      // Forcing expense here would open a list that cannot contain the income
+      // slice the user just clicked.
+      expect(mockPendingFilters.apply).toHaveBeenCalledWith({
+        categoryId: 'cat3',
+        type: 'income',
+        startDate: start,
+        endDate: end
+      });
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/transactions']);
     });
   });
 

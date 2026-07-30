@@ -40,6 +40,7 @@
       class="breakdown-chart"
       [categoryTotals]="chartTotals()"
       [categories]="chartCategories()"
+      (categoryActivated)="onChartCategoryActivated($event)"
     />
 
     <!-- Category Panels -->

@@ -1,5 +1,6 @@
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { MatTabsModule } from '@angular/material/tabs';
@@ -12,6 +13,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AnalyticsService } from '../../core/services/analytics.service';
+import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
@@ -63,6 +65,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private currencyService = inject(CurrencyService);
   private dialog = inject(MatDialog);
   private analytics = inject(AnalyticsService);
+  private pendingFilters = inject(PendingFiltersService);
+  private router = inject(Router);
 
   isLoading = signal(true);
   selectedTabIndex = 0;
@@ -177,6 +181,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
   onPeriodSelection(selection: PeriodSelection): void {
     this.selectedPeriod.set(selection);
     this.loadData();
+  }
+
+  /**
+   * A category picked in the breakdown donut: open the transaction list on the
+   * rows behind it. Handing the set over as live filters (rather than a query
+   * param) is what makes it arrive visible and clearable in the filter surface.
+   * The type travels with the event because the tab's toggle decides which
+   * side of the ledger the donut is showing.
+   */
+  onCategoryDrillDown(event: { categoryId: string; type: 'expense' | 'income' }): void {
+    const range = this.dateRange();
+    this.pendingFilters.apply({
+      categoryId: event.categoryId,
+      type: event.type,
+      startDate: range.start,
+      endDate: range.end,
+    });
+    void this.router.navigate(['/transactions']);
   }
 
   openExportDialog(): void {

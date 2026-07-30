@@ -1,4 +1,4 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -34,6 +34,9 @@ export class SpendingChartComponent {
   // Modern Angular 21: signal-based inputs
   categoryTotals = input<CategoryTotal[]>([]);
   categories = input<Category[]>([]);
+
+  /** A category the user picked, from either the doughnut or the legend. */
+  categoryActivated = output<string>();
 
   chartType = 'doughnut' as const;
 
@@ -103,6 +106,35 @@ export class SpendingChartComponent {
       ],
     };
   });
+
+  /** A slice click; ng2-charts hands over the Chart.js hit-test result. */
+  onChartClick(event: { active?: object[] }): void {
+    const active = event.active?.[0] as { index?: number } | undefined;
+    if (active?.index === undefined) return;
+    // chartData() is built from this same topCategories() computed, so the
+    // positional index is the category — keep them derived from one source.
+    const categoryId = this.topCategories()[active.index]?.categoryId;
+    if (categoryId) this.categoryActivated.emit(categoryId);
+  }
+
+  onLegendActivate(categoryId: string): void {
+    this.categoryActivated.emit(categoryId);
+  }
+
+  /**
+   * The legend row is a button, so it needs to say what activating it does.
+   * An aria-label wins the accessible-name computation outright, hiding the
+   * amount and share rendered inside the button — so they are composed into
+   * the label here and the row still reads completely.
+   */
+  legendAriaLabel(item: CategoryTotal): string {
+    const action = this.translationService.t('dashboard.viewCategoryTransactions', {
+      category: this.getCategoryName(item.categoryId),
+    });
+    // Same rounding as the visible percentage, so the two never disagree.
+    const share = this.getPercentage(item.total).toFixed(0);
+    return `${action}, ${this.formatAmount(item.total)}, ${share}%`;
+  }
 
   getCategoryName(categoryId: string): string {
     const category = this.categories().find(c => c.id === categoryId);

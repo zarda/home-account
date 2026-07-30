@@ -249,6 +249,32 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     expect(service.totalCount()).toBe(4);
   });
 
+  it('narrows the window to a category inside a date range (chart drill-down shape)', async () => {
+    // Exactly what the spending chart hands over when a slice is clicked.
+    await service.reset({
+      categoryId: 'cat-transport',
+      type: 'expense',
+      startDate: new Date(BASE - 12 * HOUR),
+      endDate: new Date(BASE)
+    });
+
+    // txn-espresso is another category, txn-salary another type, txn-old
+    // outside the range — all three excluded server-side.
+    expect(service.visibleWindow().map(t => t.id)).toEqual([
+      'txn-bus',
+      'txn-market',
+      'txn-toffee'
+    ]);
+
+    const deadline = Date.now() + 5000;
+    while (service.totalCount() === null && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    // Every constraint is server-side here, so the count is exact rather
+    // than the N+ a client-side narrowing would force.
+    expect(service.totalCount()).toBe(3);
+  });
+
   it('keeps server-side filters constraining the window alongside search', async () => {
     await service.reset({
       type: 'expense',

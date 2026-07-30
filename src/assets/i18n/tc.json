@@ -90,7 +90,8 @@
     "noExpenses": "尚無支出",
     "addFirstTransaction": "新增您的第一筆交易",
     "addExpensesToSeeBreakdown": "開始新增支出以查看支出明細",
-    "vsPreviousPeriod": "與上期相比"
+    "vsPreviousPeriod": "與上期相比",
+    "viewCategoryTransactions": "查看{{category}}的交易"
   },
   "transactions": {
     "title": "交易紀錄",

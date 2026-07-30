@@ -47,6 +47,7 @@
             [transactions]="transactions()"
             [categories]="categories()"
             [currency]="baseCurrency()"
+            (categoryActivated)="onCategoryDrillDown($event)"
           />
           <app-recurring-breakdown [transactions]="transactions()" [currency]="baseCurrency()" />
         </div>

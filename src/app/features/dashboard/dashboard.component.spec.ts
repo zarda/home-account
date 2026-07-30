@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { Router } from '@angular/router';
 import { of, Subject, throwError } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
@@ -21,6 +22,7 @@ import { RecurringService } from '../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
+import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { BudgetAlert, Transaction, User } from '../../models';
 import { createTransaction, createCategory, createUser } from '../../core/services/testing';
 import {
@@ -67,6 +69,8 @@ describe('DashboardComponent', () => {
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let announcer: jasmine.SpyObj<AnnouncerService>;
   let translation: jasmine.SpyObj<TranslationService>;
+  let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
+  let router: jasmine.SpyObj<Router>;
 
   function build() {
     return TestBed.createComponent(DashboardComponent);
@@ -116,6 +120,9 @@ describe('DashboardComponent', () => {
     translation.t.and.callFake((k: string) => k);
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
+    pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']);
+    router = jasmine.createSpyObj('Router', ['navigate']);
+    router.navigate.and.returnValue(Promise.resolve(true));
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
@@ -130,6 +137,8 @@ describe('DashboardComponent', () => {
         { provide: TranslationService, useValue: translation },
         { provide: MatSnackBar, useValue: snackBar },
         { provide: AnnouncerService, useValue: announcer },
+        { provide: PendingFiltersService, useValue: pendingFilters },
+        { provide: Router, useValue: router },
       ],
     })
       .overrideComponent(DashboardComponent, { set: { imports: [], template: '' } })
@@ -433,6 +442,42 @@ describe('DashboardComponent', () => {
       budgetService.budgetAlerts.set([warningAlert, exceededAlert]);
       build().detectChanges();
       expect(budgetService.budgetAlerts()).toEqual([warningAlert, exceededAlert]);
+    });
+  });
+
+  describe('spending-chart drill-down', () => {
+    it('hands the category and the shown period to the transactions page', () => {
+      const component = build().componentInstance;
+      component.onPeriodSelection(
+        selection('custom', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+
+      component.onCategoryActivated('cat1');
+
+      expect(pendingFilters.apply).toHaveBeenCalledWith({
+        categoryId: 'cat1',
+        type: 'expense',
+        startDate: new Date(2025, 3, 1),
+        endDate: new Date(2025, 3, 30, 23, 59, 59),
+      });
+      expect(router.navigate).toHaveBeenCalledWith(['/transactions']);
+    });
+
+    it('clamps a future-running period the same way the chart data does', () => {
+      const component = build().componentInstance;
+      const now = new Date();
+      component.onPeriodSelection(
+        selection(
+          'thisMonth',
+          new Date(now.getFullYear(), now.getMonth(), 1),
+          new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)));
+
+      component.onCategoryActivated('cat1');
+
+      // A filter running past today would show a wider window than the slice
+      // that was clicked was computed from.
+      const filters = pendingFilters.apply.calls.mostRecent().args[0];
+      expect(filters.endDate?.getDate()).toBe(now.getDate());
+      expect(filters.startDate).toEqual(new Date(now.getFullYear(), now.getMonth(), 1));
     });
   });
 
