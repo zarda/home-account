@@ -8,8 +8,15 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 
-import { AIImportService } from '../../../core/services/ai-import.service';
-import { AIStrategyService } from '../../../core/services/ai-strategy.service';
+import {
+  AIImportService,
+  AI_NO_PROVIDER,
+  AI_QUEUED_OFFLINE,
+} from '../../../core/services/ai-import.service';
+import {
+  AIStrategyService,
+  AI_CLOUD_UNAVAILABLE,
+} from '../../../core/services/ai-strategy.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -110,10 +117,26 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     return 'unavailable';
   });
 
-  // Show if cloud AI (Gemini) is available and will be used
+  // Show if a cloud provider is available and will be used
   willUseCloudAI = computed(() => {
     if (!this.isOnline()) return false;
     return this.strategyService.canUseCloud();
+  });
+
+  /**
+   * The provider the chip names, as it brands itself.
+   *
+   * The chip used to say "Gemini Vision" whenever any provider was configured,
+   * so a user running only OpenAI or Claude was told the wrong thing about
+   * where their receipt was going. Brand names are not translated.
+   */
+  cloudProviderLabel = computed(() => {
+    const labels: Record<string, string> = {
+      gemini: 'Gemini',
+      openai: 'OpenAI',
+      claude: 'Claude',
+    };
+    return labels[this.strategyService.receiptProvider() ?? ''] ?? '';
   });
 
   // Show if native OCR is available (iOS)
@@ -274,7 +297,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
 
       // Check if AI is available
       if (!this.strategyService.canUseCloud() && !this.strategyService.canUseNative()) {
-        this.error.set('AI service is not available. Please configure your API key in Profile Settings.');
+        this.error.set(this.translationService.t('import.errorNoProvider'));
         this.reportImport('failed');
         return;
       }
@@ -309,9 +332,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         this.handleImportResult(result, multiImage);
       }
     } catch (err) {
-      this.error.set(
-        err instanceof Error ? err.message : 'Failed to process image(s). Please try again.'
-      );
+      this.error.set(this.describeError(err));
       this.reportImport('failed');
     } finally {
       this.isProcessing.set(false);
@@ -322,6 +343,26 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   /**
    * Queue images for later processing when offline.
    */
+  /**
+   * Turn a failure into something worth reading.
+   *
+   * The import path raises codes rather than sentences so they can be said in
+   * the user's language; anything else is a provider's own wording, which
+   * cannot be translated and is shown as-is.
+   */
+  private describeError(err: unknown): string {
+    const raw = err instanceof Error ? err.message : '';
+    const keys: Record<string, string> = {
+      [AI_NO_PROVIDER]: 'import.errorNoProvider',
+      [AI_QUEUED_OFFLINE]: 'import.errorQueuedOffline',
+      [AI_CLOUD_UNAVAILABLE]: 'import.errorCloudUnavailable',
+    };
+    if (keys[raw]) {
+      return this.translationService.t(keys[raw]);
+    }
+    return raw || this.translationService.t('import.errorProcessingFailed');
+  }
+
   private async queueForLaterProcessing(files: File[]): Promise<void> {
     this.processingStatus.set('Saving for later processing...');
 

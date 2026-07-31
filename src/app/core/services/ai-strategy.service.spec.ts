@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 
-import { AIStrategyService } from './ai-strategy.service';
+import { AIStrategyService, AI_CLOUD_UNAVAILABLE } from './ai-strategy.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
@@ -181,7 +181,7 @@ describe('AIStrategyService', () => {
       const service = createService('web');
 
       await expectAsync(service.processReceipt(imageFile()))
-        .toBeRejectedWithError(/Cloud AI is not available/);
+        .toBeRejectedWithError(AI_CLOUD_UNAVAILABLE);
     });
 
     it('should process with the native pipeline on iOS', async () => {

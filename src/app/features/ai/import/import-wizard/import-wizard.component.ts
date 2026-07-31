@@ -83,6 +83,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   selectedTransactionIds = signal<Set<string>>(new Set());
   duplicateChecks = signal<DuplicateCheck[]>([]);
   processingError = signal<string | null>(null);
+  /** Set when the app raised the error itself and can say it in the user's language. */
+  processingErrorKey = signal<string | null>(null);
   processingErrorType = signal<string>('unknown');
   processingErrorRetryable = signal<boolean>(true);
   isImporting = signal(false);
@@ -309,6 +311,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     } catch (error) {
       const parsed = this.importService.parseAIError(error);
       this.processingError.set(parsed.message);
+      this.processingErrorKey.set(parsed.messageKey ?? null);
       this.processingErrorType.set(parsed.type);
       this.processingErrorRetryable.set(parsed.retryable);
 
@@ -415,6 +418,16 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  /**
+   * What to show as the error body. A provider's own wording cannot be
+   * translated, so it is shown as-is; anything the app raised itself has a
+   * key and is shown in the user's language.
+   */
+  getErrorMessage(): string {
+    const key = this.processingErrorKey();
+    return key ? this.t(key) : (this.processingError() ?? '');
+  }
+
   getErrorTitle(): string {
     switch (this.processingErrorType()) {
       case 'rate_limit': return this.t('import.errorTitleRateLimit');
@@ -429,12 +442,15 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   retryProcessing(): void {
     this.processingError.set(null);
+    this.processingErrorKey.set(null);
     this.processingErrorType.set('unknown');
     this.processingErrorRetryable.set(true);
     this.processFiles();
   }
 
   goToSettings(): void {
-    this.router.navigate(['/profile']);
+    // /profile was never a registered route, so this silently landed on the
+    // dashboard via the catch-all. The API keys live on the AI screen.
+    this.router.navigate(['/ai']);
   }
 }

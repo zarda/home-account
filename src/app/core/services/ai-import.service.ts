@@ -7,7 +7,7 @@ import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
 import { TransactionService } from './transaction.service';
 import { AuthService } from './auth.service';
-import { AIStrategyService, ProcessingResult } from './ai-strategy.service';
+import { AIStrategyService, AI_CLOUD_UNAVAILABLE, ProcessingResult } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
@@ -35,6 +35,28 @@ import {
  * window describes how the user files things now rather than how they once did.
  */
 const CATEGORIZATION_HISTORY_MONTHS = 6;
+
+export interface AIErrorInfo {
+  /** English, for logs and for the cases only a provider can describe. */
+  message: string;
+  /** Present when the app raised this itself and the screen can translate it. */
+  messageKey?: string;
+  type: 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout' | 'unknown';
+  retryable: boolean;
+}
+
+/**
+ * Thrown when no AI provider is configured at all.
+ *
+ * A code rather than a sentence, so the screen can say it in the user's
+ * language. parseAIError used to recognize these throws by substring-matching
+ * English prose, which meant rewording one silently reclassified it as an
+ * unknown failure.
+ */
+export const AI_NO_PROVIDER = 'AI_NO_PROVIDER';
+
+/** Thrown when an image was queued instead of processed, having no connection. */
+export const AI_QUEUED_OFFLINE = 'AI_QUEUED_OFFLINE';
 
 @Injectable({ providedIn: 'root' })
 export class AIImportService {
@@ -95,9 +117,9 @@ export class AIImportService {
       // Queue for later if offline
       if (!isOnline) {
         await this.offlineQueue.queueImage(file);
-        throw new Error('Offline. Image queued for later processing.');
+        throw new Error(AI_QUEUED_OFFLINE);
       }
-      throw new Error('AI service is not available. Please configure your API key in Profile Settings.');
+      throw new Error(AI_NO_PROVIDER);
     }
 
     this.isProcessing.set(true);
@@ -145,7 +167,7 @@ export class AIImportService {
 
       // Fall back to single-shot extraction through the configured provider
       if (!this.cloudLLMProvider.hasAnyCloudProvider()) {
-        throw new Error('AI service is not available. Please configure your API key in AI Settings.');
+        throw new Error(AI_NO_PROVIDER);
       }
 
       const imageBase64 = await this.fileToBase64(file);
@@ -285,7 +307,7 @@ export class AIImportService {
     }
 
     if (!this.cloudLLMProvider.hasAnyCloudProvider()) {
-      throw new Error('AI service is not available. Please configure an AI provider in Settings.');
+      throw new Error(AI_NO_PROVIDER);
     }
 
     // After the availability guard, so a request that was never issued is not
@@ -1039,7 +1061,7 @@ export class AIImportService {
   /**
    * Parse raw AI API errors into user-friendly messages with error type classification.
    */
-  parseAIError(error: unknown): { message: string; type: 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout' | 'unknown'; retryable: boolean } {
+  parseAIError(error: unknown): AIErrorInfo {
     const raw = error instanceof Error ? error.message : String(error);
     const lower = raw.toLowerCase();
 
@@ -1055,7 +1077,8 @@ export class AIImportService {
     // Authentication / invalid API key (401, 403)
     if (lower.includes('401') || lower.includes('403') || lower.includes('unauthorized') || lower.includes('forbidden') || lower.includes('invalid api key') || lower.includes('api_key_invalid') || lower.includes('permission_denied')) {
       return {
-        message: 'AI API key is invalid or expired. Please check your API key in Profile Settings.',
+        message: 'AI API key is invalid or expired.',
+        messageKey: 'import.errorInvalidKey',
         type: 'auth',
         retryable: false
       };
@@ -1102,11 +1125,29 @@ export class AIImportService {
       };
     }
 
-    // Pass through already user-friendly messages (our own throws)
-    if (raw.includes('Please configure') || raw.includes('not available') || raw.includes('Offline')) {
+    // Our own throws carry a code, not prose, so they are matched exactly and
+    // handed to the screen as a key rather than as English.
+    if (raw === AI_NO_PROVIDER) {
       return {
-        message: raw,
-        type: 'unknown',
+        message: 'No AI provider is configured.',
+        messageKey: 'import.errorNoProvider',
+        type: 'auth',
+        retryable: false
+      };
+    }
+    if (raw === AI_CLOUD_UNAVAILABLE) {
+      return {
+        message: 'Cloud AI is not reachable.',
+        messageKey: 'import.errorCloudUnavailable',
+        type: 'network',
+        retryable: true
+      };
+    }
+    if (raw === AI_QUEUED_OFFLINE) {
+      return {
+        message: 'Image queued for processing when back online.',
+        messageKey: 'import.errorQueuedOffline',
+        type: 'network',
         retryable: false
       };
     }

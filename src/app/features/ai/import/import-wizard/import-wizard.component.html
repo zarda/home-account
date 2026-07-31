@@ -183,7 +183,7 @@
           <div class="error-card" [class]="'error-card error-' + processingErrorType()">
             <mat-icon class="error-icon">{{ getErrorIcon() }}</mat-icon>
             <h2 class="error-title">{{ getErrorTitle() }}</h2>
-            <p class="error-message">{{ processingError() }}</p>
+            <p class="error-message">{{ getErrorMessage() }}</p>
             @if (processingErrorType() === 'rate_limit') {
               <p class="error-hint">{{ 'import.errorHintRateLimit' | translate }}</p>
             } @else if (processingErrorType() === 'auth') {

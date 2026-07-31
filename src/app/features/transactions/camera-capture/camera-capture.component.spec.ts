@@ -262,7 +262,7 @@ describe('CameraCaptureComponent', () => {
       const component = build().componentInstance;
       withImages(component, 1);
       await component.processImage();
-      expect(component.error()).toContain('AI service is not available');
+      expect(component.error()).toBe('import.errorNoProvider');
     });
 
     it('processes a single image through the multi-image pipeline and navigates to review', async () => {
