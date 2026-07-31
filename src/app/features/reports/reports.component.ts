@@ -34,7 +34,7 @@ import {
   groupExpensesByCategory,
   sumByType,
 } from '../../core/utils/transaction-aggregation.utils';
-import { addMonths } from '../../core/utils/transaction-date.utils';
+import { addMonths, clampToEndOfToday } from '../../core/utils/transaction-date.utils';
 
 @Component({
   selector: 'app-reports',
@@ -218,6 +218,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.isLoading.set(true);
     const range = this.dateRange();
 
+    // The period selector hands out whole calendar bounds, so "This Month" on
+    // the 15th runs to the 31st. Shifting that end back a year unchanged would
+    // weigh a month-to-date window against a complete one — roughly -50% read
+    // as an improvement — and would give months that have not happened yet a
+    // full year-ago figure to be "-100%" against. Clamping first makes the
+    // comparison month-to-date vs month-to-date, the same semantic the
+    // dashboard's getPeriodDates() documents.
+    const clampedEnd = clampToEndOfToday(range.end, new Date());
+
     // Same window a year back, through the non-mutating reader: getByDateRange
     // would publish these rows to the shared `transactions` signal and every
     // tab would start showing last year's figures. Cleared first so a period
@@ -227,7 +236,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.priorYearSub?.unsubscribe();
     this.priorYearTransactions.set([]);
     this.priorYearSub = this.transactionService
-      .getTransactionsInRange(addMonths(range.start, -12), addMonths(range.end, -12))
+      .getTransactionsInRange(addMonths(range.start, -12), addMonths(clampedEnd, -12))
       .subscribe({
         next: rows => this.priorYearTransactions.set(rows),
         // A prior-year window that fails to load is not a page failure: the

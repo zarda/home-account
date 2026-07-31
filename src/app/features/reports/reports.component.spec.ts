@@ -12,7 +12,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction } from '../../models';
-import { addMonths } from '../../core/utils/transaction-date.utils';
+import { addMonths, clampToEndOfToday } from '../../core/utils/transaction-date.utils';
 
 import {
   PeriodSelection,
@@ -154,7 +154,27 @@ describe('ReportsComponent', () => {
       const [start, end] = mockTransactionService.getTransactionsInRange.calls.mostRecent().args;
 
       expect(start.getTime()).toBe(addMonths(expected.start, -12).getTime());
-      expect(end.getTime()).toBe(addMonths(expected.end, -12).getTime());
+      // Clamped: "This Month" runs to the end of the calendar month, and a
+      // whole month a year ago is not comparable with a month-to-date one.
+      expect(end.getTime()).toBe(
+        addMonths(clampToEndOfToday(expected.end, new Date()), -12).getTime()
+      );
+    });
+
+    it('should stop the prior-year window at today when the period runs past it', () => {
+      mockTransactionService.getTransactionsInRange.calls.reset();
+      const now = new Date();
+      const endOfToday = new Date(
+        now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const futureEnd = new Date(now.getFullYear() + 1, 0, 31, 23, 59, 59);
+
+      component.onPeriodSelection(selection('custom', start, futureEnd));
+
+      const [, end] = mockTransactionService.getTransactionsInRange.calls.mostRecent().args;
+      // Unclamped, months that have not happened yet compare an empty bucket
+      // against a full year-ago one and render a green "-100%".
+      expect(end.getTime()).toBe(addMonths(endOfToday, -12).getTime());
     });
 
     it('should refetch the shifted window when the period changes', () => {

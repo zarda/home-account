@@ -394,16 +394,30 @@ describe('MonthlyComparisonComponent', () => {
   });
 
   describe('displayedColumns', () => {
-    it('should show the year-over-year column on desktop', () => {
+    it('should show the year-over-year column on desktop once there is history', () => {
+      component.priorYearTransactions = mockPriorYearTransactions;
+      fixture.detectChanges();
+
       expect(component.displayedColumns()).toContain('yoy');
     });
 
     it('should drop the year-over-year column on mobile with the trend column', () => {
+      component.priorYearTransactions = mockPriorYearTransactions;
       breakpoint$.next(breakpointState(true));
       fixture.detectChanges();
 
       expect(component.displayedColumns()).not.toContain('yoy');
       expect(component.displayedColumns()).not.toContain('change');
+    });
+
+    it('should withhold the year-over-year column without prior-year data', () => {
+      component.priorYearTransactions = [];
+      fixture.detectChanges();
+
+      // Same rule the chart follows: under a year of history would otherwise
+      // buy a permanent column of em-dashes in an already-scrolling table.
+      expect(component.displayedColumns()).not.toContain('yoy');
+      expect(component.displayedColumns()).toContain('change');
     });
   });
 });

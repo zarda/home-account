@@ -101,11 +101,16 @@ export class MonthlyComparisonComponent {
     { initialValue: false }
   );
 
-  displayedColumns = computed(() =>
-    this.isMobile()
-      ? ['month', 'income', 'expense', 'balance']
-      : ['month', 'income', 'expense', 'balance', 'change', 'yoy']
-  );
+  // The year-over-year column follows the rule the chart already follows for
+  // its prior-year bars: with no history behind it, it is a permanent column
+  // of em-dashes in a table that is already 500px wide and scrolling.
+  displayedColumns = computed(() => {
+    if (this.isMobile()) {
+      return ['month', 'income', 'expense', 'balance'];
+    }
+    const columns = ['month', 'income', 'expense', 'balance', 'change'];
+    return this.hasPriorYearData() ? [...columns, 'yoy'] : columns;
+  });
 
   // Get currency symbol dynamically
   private getCurrencySymbol(): string {
