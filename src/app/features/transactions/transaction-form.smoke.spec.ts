@@ -219,10 +219,15 @@ describe('TransactionFormComponent tags and location (emulator smoke test)', () 
 
     await component.onSubmit();
 
-    // The document made it through firestore.rules with both fields intact.
+    // The document made it through firestore.rules with every field intact,
+    // including the country derived from the coordinates on device — the rules
+    // now check its shape, so a bad one would be rejected here rather than
+    // stored.
     const row = await readBack(description);
     expect(row['tags']).toEqual(['groceries', 'reimbursable']);
-    expect(row['location']).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
+    expect(row['location']).toEqual({
+      name: 'Aoyama Market', lat: 35.66, lng: 139.71, country: 'JP',
+    });
 
     fixture.destroy();
   }, 20000);

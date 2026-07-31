@@ -60,7 +60,12 @@ service cloud.firestore {
         && (!('receiptUrls' in d) || (d.receiptUrls is list && d.receiptUrls.size() <= 5))
         && (!('receiptCount' in d) || (d.receiptCount is int && d.receiptCount >= 0))
         && (!('recurringId' in d) || d.recurringId is string)
-        && (!('location' in d) || d.location is map)
+        // The map itself was the whole check; country is derived on device
+        // from coordinates, so it is worth pinning to the shape the client
+        // produces rather than accepting any string.
+        && (!('location' in d) || (d.location is map
+             && (!('country' in d.location)
+                 || (d.location.country is string && d.location.country.size() == 2))))
         && (!('createdAt' in d) || d.createdAt is timestamp)
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }

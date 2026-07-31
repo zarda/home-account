@@ -380,6 +380,7 @@ export class AIStrategyService {
       amount: t.amount,
       type: t.type,
       currency: t.currency || fallbackCurrency,
+      currencyFellBack: !t.currency,
       confidence: t.confidence,
       source: 'cloud' as const,
       notes: t.details,
@@ -442,6 +443,7 @@ export class AIStrategyService {
         || '',
       suggestedCategoryId: receipt.suggestedCategory,
       fieldConfidence: receipt.fieldConfidence,
+      currencyFellBack: !receipt.currency,
     };
   }
 

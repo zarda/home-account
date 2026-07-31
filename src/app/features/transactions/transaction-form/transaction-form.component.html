@@ -224,6 +224,25 @@
         }
       </mat-form-field>
 
+      <!-- Currency guessed from where the device is, when the receipt was silent -->
+      @if (suggestedCurrency(); as suggestion) {
+        <div class="ai-suggestion-container">
+          <mat-chip class="suggestion-chip" (click)="acceptCurrencySuggestion()">
+            <mat-icon class="ai-icon">public</mat-icon>
+            <span>{{ 'transactions.currencyFromLocation' | translate: { currency: suggestion.code } }}</span>
+          </mat-chip>
+          <button
+            mat-icon-button
+            type="button"
+            class="suggestion-dismiss"
+            [attr.aria-label]="'common.close' | translate"
+            (click)="dismissCurrencySuggestion()"
+          >
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+      }
+
       <!-- AI Category Suggestion -->
       @if (isAiAvailable() && (suggestedCategory() || isSuggesting()) && !form.get('categoryId')?.value) {
         <div class="ai-suggestion-container">

@@ -207,6 +207,44 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a location carrying the country its coordinates fall in', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71, country: 'JP' }
+        })),
+        'location with country'
+      );
+    });
+
+    it('accepts a location with no country, which is what open water gives', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { name: 'Somewhere', lat: 0, lng: -140 }
+        })),
+        'location without country'
+      );
+    });
+
+    it('rejects a country that is not a two-letter code', async () => {
+      // The rule used to accept any map at all, so nothing stopped a client
+      // writing prose into a field the reports will later group by.
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { name: 'Aoyama Market', country: 'Japan' }
+        })),
+        'country as a name'
+      );
+    });
+
+    it('rejects a non-string country', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { name: 'Aoyama Market', country: 81 }
+        })),
+        'country as a number'
+      );
+    });
+
     it('rejects a missing required field', async () => {
       const payload = validTransaction();
       delete (payload as Record<string, unknown>)['categoryId'];

@@ -164,7 +164,8 @@
     "locationCaptured": "已附加座標",
     "locationDenied": "位置權限遭拒。您仍可輸入地點名稱。",
     "locationUnavailable": "無法取得您的位置。您仍可輸入地點名稱。",
-    "clearCoordinates": "移除座標"
+    "clearCoordinates": "移除座標",
+    "currencyFromLocation": "您目前所在地區使用 {{currency}}，要套用嗎？"
   },
   "budget": {
     "title": "預算",
