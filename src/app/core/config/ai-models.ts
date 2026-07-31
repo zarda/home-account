@@ -41,6 +41,3 @@ export const CLAUDE_MODELS: AIModelOption[] = [
   { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
 ];
 export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5';
-
-/** Languages requested from Vision OCR for receipt recognition. */
-export const OCR_LANGUAGES = ['en-US', 'ja-JP', 'zh-Hant'];

@@ -1,10 +1,16 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import type { GoogleGenerativeAI, GenerativeModel, GenerateContentResult } from '@google/generative-ai';
+import type {
+  GoogleGenerativeAI,
+  GenerativeModel,
+  GenerateContentResult,
+  SingleRequestOptions,
+} from '@google/generative-ai';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
+import { Budget, Category, Transaction, MonthlyTotal, FieldConfidence } from '../../models';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import { readCurrencyCode, readFieldConfidence } from '../utils/receipt-extraction.utils';
 import {
   trimToLastCompleteSentence,
   dropIncompleteTrailingLine,
@@ -29,7 +35,11 @@ import {
   renderPreviousPeriodSection,
   renderPrompt,
 } from '../prompts';
-import { CloudLLMProviderAdapter, ProviderCapabilities } from './llm-provider.interface';
+import {
+  AIRequestOptions,
+  CloudLLMProviderAdapter,
+  ProviderCapabilities,
+} from './llm-provider.interface';
 import { environment } from '../../../environments/environment';
 
 export interface ParsedReceipt {
@@ -42,6 +52,12 @@ export interface ParsedReceipt {
   suggestedCategory: string;
   confidence: number;
   receiptCount?: number;            // Distinct receipts visible in the photo (defaults to 1)
+  /**
+   * How clearly the model read the total and the date. The receipt prompt has
+   * always asked for these; nothing used to carry them out of the response,
+   * so a blurred total looked exactly like a crisp one.
+   */
+  fieldConfidence?: FieldConfidence;
 }
 
 export interface ReceiptItem {
@@ -215,7 +231,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
   }
 
   // Parse receipt image
-  async parseReceipt(imageBase64: string): Promise<ParsedReceipt> {
+  async parseReceipt(imageBase64: string, options?: AIRequestOptions): Promise<ParsedReceipt> {
     // Try textModel first (more capable), fall back to visionModel on rate limit
     const models = [this.textModel, this.visionModel].filter(Boolean);
     if (models.length === 0) {
@@ -246,7 +262,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
             ]
           }],
           generationConfig: this.generationConfig(rendered)
-        });
+        }, this.requestOptions(options));
 
         const responseText = result.response.text();
         const cleanedJson = this.extractJson(responseText);
@@ -258,13 +274,14 @@ export class GeminiService implements CloudLLMProviderAdapter {
         return {
           merchant: parsed.merchant || 'Unknown',
           amount: Number(parsed.amount) || 0,
-          currency: parsed.currency || 'USD',
+          currency: readCurrencyCode(parsed.currency),
           date: parsed.date ? new Date(parsed.date) : new Date(),
           items: parsed.items || [],
           receiptDetails: parsed.receiptDetails,
           suggestedCategory: categoryId,
           confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
-          receiptCount: Number(parsed.receiptCount) || 1
+          receiptCount: Number(parsed.receiptCount) || 1,
+          fieldConfidence: readFieldConfidence(parsed)
         };
       } catch (error) {
         lastError = error;
@@ -647,7 +664,10 @@ export class GeminiService implements CloudLLMProviderAdapter {
    * transaction for the whole page, which is what made statement import
    * unusable on Gemini.
    */
-  async extractStatementTransactions(imageBase64: string): Promise<ExtractedTransaction[]> {
+  async extractStatementTransactions(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]> {
     if (!this.visionModel) {
       throw new Error('Gemini Vision model not available');
     }
@@ -672,7 +692,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
           ]
         }],
         generationConfig: this.generationConfig(rendered)
-      });
+      }, this.requestOptions(options));
 
       const extracted: ExtractedTransaction[] = JSON.parse(
         this.extractJson(result.response.text())
@@ -683,7 +703,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
-        currency: t.currency || 'USD',
+        currency: readCurrencyCode(t.currency),
         category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
         merchant: t.merchant,
         details: t.details,
@@ -701,7 +721,10 @@ export class GeminiService implements CloudLLMProviderAdapter {
   }
 
   // Extract transactions from an image (receipt, bank statement screenshot)
-  async extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]> {
+  async extractTransactionsFromImage(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]> {
     if (!this.visionModel) {
       throw new Error('Gemini Vision model not available');
     }
@@ -727,7 +750,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
           ]
         }],
         generationConfig: this.generationConfig(rendered)
-      });
+      }, this.requestOptions(options));
 
       const responseText = extractResult.response.text();
       const cleanedJson = this.extractJsonStrict(responseText);
@@ -743,7 +766,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
         description: receiptData.merchant || 'Receipt',
         amount: Math.abs(receiptData.totalAmount || 0),
         type: 'expense',
-        currency: receiptData.currency || 'CNY',
+        currency: readCurrencyCode(receiptData.currency),
         merchant: receiptData.merchant,
         category: categoryId,
         details: receiptData.receiptDetails || receiptData.itemsSummary || receiptData.items || receiptData.description || ''
@@ -755,7 +778,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
-        currency: t.currency || 'JPY',
+        currency: readCurrencyCode(t.currency),
         category: t.category,
         merchant: t.merchant,
         details: t.details,
@@ -823,7 +846,8 @@ export class GeminiService implements CloudLLMProviderAdapter {
    * Images should be ordered top-to-bottom as they appear on the receipt.
    */
   async extractTransactionsFromMultipleImages(
-    imageBase64Array: string[]
+    imageBase64Array: string[],
+    options?: AIRequestOptions
   ): Promise<MultiImageExtractedTransaction[]> {
     const models = [this.textModel, this.visionModel].filter(Boolean);
     if (models.length === 0) {
@@ -836,7 +860,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
 
     // For single image, use simpler extraction with position metadata
     if (imageBase64Array.length === 1) {
-      return this.extractWithPositionMetadata(imageBase64Array[0], 0);
+      return this.extractWithPositionMetadata(imageBase64Array[0], 0, options);
     }
 
     this.isProcessing.set(true);
@@ -864,7 +888,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
             parts: [{ text: this.renderedText(rendered) }, ...imageParts]
           }],
           generationConfig: this.generationConfig(rendered)
-        });
+        }, this.requestOptions(options));
         const responseText = result.response.text();
         const cleanedJson = this.extractJson(responseText);
         const extracted: MultiImageExtractedTransaction[] = JSON.parse(cleanedJson);
@@ -877,7 +901,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
           description: t.description || 'Unknown',
           amount: Math.abs(t.amount || 0),
           type: t.type || 'expense',
-          currency: t.currency || 'USD',
+          currency: readCurrencyCode(t.currency),
           category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
           merchant: t.merchant,
           details: t.details,
@@ -913,7 +937,8 @@ export class GeminiService implements CloudLLMProviderAdapter {
    */
   private async extractWithPositionMetadata(
     imageBase64: string,
-    imageIndex: number
+    imageIndex: number,
+    options?: AIRequestOptions
   ): Promise<MultiImageExtractedTransaction[]> {
     if (!this.visionModel) {
       throw new Error('Gemini Vision model not available');
@@ -939,7 +964,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
           ]
         }],
         generationConfig: this.generationConfig(rendered)
-      });
+      }, this.requestOptions(options));
 
       const responseText = result.response.text();
       const cleanedJson = this.extractJson(responseText);
@@ -951,7 +976,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
-        currency: t.currency || 'USD',
+        currency: readCurrencyCode(t.currency),
         category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
         merchant: t.merchant,
         details: t.details,
@@ -1039,6 +1064,18 @@ export class GeminiService implements CloudLLMProviderAdapter {
       temperature: rendered.temperature,
       ...(rendered.topP !== undefined ? { topP: rendered.topP } : {}),
     };
+  }
+
+  /**
+   * The caller's cancellation, in the shape `generateContent` takes as its
+   * second argument.
+   *
+   * Undefined when there is nothing to cancel with, so a request without a
+   * signal reaches fetch exactly as it did before — the SDK wires up an
+   * AbortController of its own for any options object it is handed.
+   */
+  private requestOptions(options?: AIRequestOptions): SingleRequestOptions | undefined {
+    return options?.signal ? { signal: options.signal } : undefined;
   }
 
   // Helper: Extract JSON from response that might have markdown formatting or reasoning

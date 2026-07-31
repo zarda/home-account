@@ -5,7 +5,6 @@ import { CategoryService } from './category.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { parseReceiptOcrText } from './receipt-text-parser';
 import { fileToBase64 } from '../utils/file.utils';
-import { OCR_LANGUAGES } from '../config/ai-models';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
 
 /**
@@ -34,7 +33,7 @@ export class NativeReceiptService {
     return {
       transactions: [transaction],
       source: 'native',
-      confidence: ocrResult.confidence,
+      confidence: transaction.confidence,
       processingTimeMs: 0,
     };
   }
@@ -50,8 +49,9 @@ export class NativeReceiptService {
 
     for (const file of imageFiles) {
       const ocrResult = await this.recognize(file);
-      transactions.push(await this.structureOcrResult(ocrResult));
-      totalConfidence += ocrResult.confidence;
+      const transaction = await this.structureOcrResult(ocrResult);
+      transactions.push(transaction);
+      totalConfidence += transaction.confidence;
     }
 
     return {
@@ -71,10 +71,9 @@ export class NativeReceiptService {
 
   private async recognize(imageFile: File): Promise<VisionOCRResult> {
     const imageBase64 = await fileToBase64(imageFile);
-    return this.visionOcr.recognizeText({
-      image: imageBase64,
-      languages: OCR_LANGUAGES,
-    });
+    // No languages: Vision detects the script itself, and naming any would only
+    // move the ones we did not name further down its list.
+    return this.visionOcr.recognizeText({ image: imageBase64 });
   }
 
   /**
@@ -127,8 +126,15 @@ export class NativeReceiptService {
       description: parsed.merchant,
       amount: parsed.amount,
       type: 'expense',
-      currency: parsed.currency,
-      confidence: ocrResult.confidence,
+      // The parser reports no currency rather than inventing one; the receipt
+      // still has to land somewhere, so the fallback is picked here.
+      currency: parsed.currency || 'USD',
+      // Vision says how clearly it read the characters, the parser says how
+      // much of a transaction it found in them. Both have to count: a receipt
+      // in a script the parser has no hold on scans perfectly and parses to
+      // nothing, and a caller looking only at Vision's number would take that
+      // for a good result.
+      confidence: ocrResult.confidence * parsed.confidence,
       source: 'native',
       // The regex parser cannot itemize, but the recognized text IS the
       // receipt's line-by-line content — record it so item details reach

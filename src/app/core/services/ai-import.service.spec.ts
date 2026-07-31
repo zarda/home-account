@@ -3,7 +3,6 @@ import { signal, WritableSignal } from '@angular/core';
 import { of, throwError } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { AIImportService } from './ai-import.service';
-import { GeminiService } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -26,7 +25,6 @@ import {
 
 describe('AIImportService', () => {
   let service: AIImportService;
-  let geminiService: jasmine.SpyObj<GeminiService>;
   let cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService>;
   let exportService: jasmine.SpyObj<ExportService>;
   let duplicateService: jasmine.SpyObj<DuplicateDetectionService>;
@@ -49,17 +47,12 @@ describe('AIImportService', () => {
     txns.map(t => ({ transactionId: t.id, isDuplicate: false, matchType: 'none' as const, confidence: 0 }));
 
   beforeEach(() => {
-    geminiService = jasmine.createSpyObj('GeminiService', [
-      'isAvailable',
-      'extractTransactionsFromImage',
-      'extractTransactionsFromPDF',
-      'extractTransactionsFromMultipleImages',
-      'categorizeTransactions'
-    ]);
     cloudLLMProvider = jasmine.createSpyObj('CloudLLMProviderService', [
       'hasAnyCloudProvider',
       'categorizeTransactions',
-      'extractStatementTransactions'
+      'extractStatementTransactions',
+      'extractTransactionsFromImage',
+      'extractTransactionsFromMultipleImages'
     ]);
     exportService = jasmine.createSpyObj('ExportService', ['importFromCSV']);
     duplicateService = jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']);
@@ -96,8 +89,7 @@ describe('AIImportService', () => {
     ]);
 
     // Sensible defaults
-    geminiService.isAvailable.and.returnValue(true);
-    cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+        cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
     cloudLLMProvider.categorizeTransactions.and.callFake(async (raws) =>
       raws.map(r => ({ ...r, suggestedCategoryId: 'food', confidence: 0.8 }))
     );
@@ -115,7 +107,6 @@ describe('AIImportService', () => {
     TestBed.configureTestingModule({
       providers: [
         AIImportService,
-        { provide: GeminiService, useValue: geminiService },
         { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
         { provide: ExportService, useValue: exportService },
         { provide: DuplicateDetectionService, useValue: duplicateService },
@@ -278,12 +269,12 @@ describe('AIImportService', () => {
       await expectAsync(
         service.importFromImage(makeFile('r.png', 'image/png'))
       ).toBeRejectedWithError(/API key/);
-      expect(geminiService.extractTransactionsFromImage).not.toHaveBeenCalled();
+      expect(cloudLLMProvider.extractTransactionsFromImage).not.toHaveBeenCalled();
     });
 
-    it('should fall back to gemini extraction on a retryable strategy error', async () => {
+    it('should fall back to provider extraction on a retryable strategy error', async () => {
       strategyService.processReceipt.and.returnValue(Promise.reject(new Error('503 service unavailable')));
-      geminiService.extractTransactionsFromImage.and.returnValue(Promise.resolve([{
+      cloudLLMProvider.extractTransactionsFromImage.and.returnValue(Promise.resolve([{
         date: '2024-06-01',
         description: 'Fallback item',
         amount: 7,
@@ -293,30 +284,30 @@ describe('AIImportService', () => {
 
       const result = await service.importFromImage(makeFile('r.png', 'image/png'));
 
-      expect(geminiService.extractTransactionsFromImage).toHaveBeenCalled();
+      expect(cloudLLMProvider.extractTransactionsFromImage).toHaveBeenCalled();
       expect(result.processingSource).toBe('cloud');
       expect(result.transactions.length).toBe(1);
     });
 
-    it('should fall back to gemini when the strategy returns zero transactions', async () => {
+    it('should fall back to provider extraction when the strategy returns zero transactions', async () => {
       strategyService.processReceipt.and.returnValue(Promise.resolve({
         source: 'cloud', confidence: 0, processingTimeMs: 1, transactions: []
       }));
-      geminiService.extractTransactionsFromImage.and.returnValue(Promise.resolve([{
+      cloudLLMProvider.extractTransactionsFromImage.and.returnValue(Promise.resolve([{
         date: '2024-06-02', description: 'Item', amount: 4, type: 'expense', currency: 'USD'
       }]));
 
       const result = await service.importFromImage(makeFile('r.png', 'image/png'));
 
-      expect(geminiService.extractTransactionsFromImage).toHaveBeenCalled();
+      expect(cloudLLMProvider.extractTransactionsFromImage).toHaveBeenCalled();
       expect(result.transactions.length).toBe(1);
     });
 
-    it('should throw when falling back but gemini is unavailable', async () => {
+    it('should throw when falling back but no provider is configured', async () => {
       strategyService.processReceipt.and.returnValue(Promise.resolve({
         source: 'cloud', confidence: 0, processingTimeMs: 1, transactions: []
       }));
-      geminiService.isAvailable.and.returnValue(false);
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(false);
 
       await expectAsync(
         service.importFromImage(makeFile('r.png', 'image/png'))
@@ -334,7 +325,7 @@ describe('AIImportService', () => {
       // The whole point: a merchant the user has already corrected costs no
       // tokens and gets the same answer every time.
       categoryMemory.lookup.and.returnValue('food_coffee');
-      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
@@ -347,7 +338,7 @@ describe('AIImportService', () => {
       // strong evidence about the merchant, not agreement about this row, so a
       // wrong memory still reads as a suggestion worth scanning.
       categoryMemory.lookup.and.returnValue('food_coffee');
-      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
@@ -359,7 +350,7 @@ describe('AIImportService', () => {
       categoryMemory.lookup.and.callFake((d: string) =>
         d === 'STARBUCKS' ? 'food_coffee' : null
       );
-      geminiService.extractTransactionsFromMultipleImages.and.resolveTo([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
         ...oneItem(),
         { date: '2024-06-01', description: 'NEW PLACE', amount: 9, type: 'expense' as const,
           currency: 'JPY', imageIndex: 0, positionInImage: 'bottom' as const, confidence: 0.9, receiptId: 2 },
@@ -384,7 +375,7 @@ describe('AIImportService', () => {
       ragContext.buildCategorizationGrounding.and.returnValue(
         'How this user usually categorizes these merchants:\n- STARBUCKS → Coffee (food_coffee)'
       );
-      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
@@ -398,7 +389,7 @@ describe('AIImportService', () => {
       authService.currentUser.and.returnValue({
         preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'off' },
       } as never);
-      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
@@ -412,7 +403,7 @@ describe('AIImportService', () => {
         preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'standard' },
       } as never);
       transactionService.getTransactions.and.returnValue(throwError(() => new Error('offline')));
-      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
@@ -422,7 +413,7 @@ describe('AIImportService', () => {
 
     it('skips the model entirely when every merchant is remembered', async () => {
       categoryMemory.lookup.and.returnValue('food_coffee');
-      geminiService.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
@@ -488,7 +479,7 @@ describe('AIImportService', () => {
 
     it('should run a single file through the receipt-aware extraction, not importFromImage', async () => {
       spyOn(service, 'importFromImage');
-      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo item', amount: 5, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
       ]));
@@ -496,12 +487,12 @@ describe('AIImportService', () => {
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
       expect(service.importFromImage).not.toHaveBeenCalled();
-      expect(geminiService.extractTransactionsFromMultipleImages).toHaveBeenCalled();
+      expect(cloudLLMProvider.extractTransactionsFromMultipleImages).toHaveBeenCalled();
       expect(result.transactions.length).toBe(1);
     });
 
     it('should split one photo containing two receipts into two transactions with their groups', async () => {
-      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop A' },
         { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
@@ -514,15 +505,15 @@ describe('AIImportService', () => {
       expect(result.transactions.map(t => t.imageMetadata?.receiptId)).toEqual([1, 2]);
     });
 
-    it('should throw when gemini is unavailable', async () => {
-      geminiService.isAvailable.and.returnValue(false);
+    it('should throw when no provider is configured', async () => {
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(false);
       await expectAsync(
         service.importFromMultipleImages([makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')])
       ).toBeRejectedWithError(/not available/);
     });
 
     it('should consolidate single-item receipts as standalone transactions', async () => {
-      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo item', amount: 5, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 7 }
       ]));
@@ -539,7 +530,7 @@ describe('AIImportService', () => {
     });
 
     it('should merge multiple items sharing a receiptId into one transaction', async () => {
-      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
         { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
@@ -556,7 +547,7 @@ describe('AIImportService', () => {
     });
 
     it('should count items the AI already flagged as merged', async () => {
-      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo', amount: 10, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 4, wasMerged: true }
       ]));
@@ -569,7 +560,7 @@ describe('AIImportService', () => {
     });
 
     it('should merge using AI-provided receipt details and a non-JPY currency', async () => {
-      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 1.5, type: 'expense', currency: 'USD',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 2,
           receiptDetails: 'Full receipt body' },
@@ -587,7 +578,7 @@ describe('AIImportService', () => {
     });
 
     it('should fall back to defaults when AI categorization throws', async () => {
-      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
         { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
@@ -605,7 +596,7 @@ describe('AIImportService', () => {
     });
 
     it('should add a duplicate warning when duplicates are detected', async () => {
-      geminiService.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
       ]));
@@ -645,7 +636,7 @@ describe('AIImportService', () => {
     it('reads a PDF without Gemini configured', async () => {
       // The whole point of #55: this used to refuse outright, naming a
       // provider the user may never have chosen.
-      geminiService.isAvailable.and.returnValue(false);
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(false);
 
       const result = await service.importFromPDF(pdfFile());
 
@@ -698,6 +689,82 @@ describe('AIImportService', () => {
 
       await expectAsync(service.importFromPDF(pdfFile()))
         .toBeRejectedWithError(/vision-capable provider/);
+    });
+  });
+
+  /**
+   * Driven through the PDF path because it is the one extraction route that
+   * reaches the timeout without a FileReader in the way: the rasterized pages
+   * arrive on promises alone, so the request exists after a few microtasks and
+   * the clock can be moved past it.
+   */
+  describe('extraction timeout', () => {
+    const pdfFile = (): File => {
+      const file = makeFile('s.pdf', 'application/pdf');
+      (file as unknown as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer =
+        () => Promise.resolve(new ArrayBuffer(8));
+      return file;
+    };
+
+    /** Yield until the provider has been called, without needing a timer. */
+    /**
+     * Spin the microtask queue until the request has actually been issued.
+     *
+     * The clock is mocked by the time this runs, so a timer-based wait would
+     * never fire — only microtasks make progress. The bound is generous
+     * because how many of them the import path takes to reach the provider
+     * depends on how many awaits sit in front of it, and a helper that gives
+     * up early turns into an intermittent failure rather than a clear one.
+     */
+    const untilRequested = async (issued: () => boolean): Promise<void> => {
+      for (let i = 0; i < 500 && !issued(); i++) {
+        await Promise.resolve();
+      }
+    };
+
+    beforeEach(() => {
+      rasterize.and.resolveTo({ pages: ['page1'], totalPages: 1, truncated: false });
+    });
+
+    it('aborts the request it has stopped waiting for', async () => {
+      // The failure this exists for: the UI reported a timeout while the
+      // upload and download ran on to completion in the background, spending
+      // the user's data on a result nobody was waiting for any more.
+      let seen: AbortSignal | undefined;
+      cloudLLMProvider.extractStatementTransactions.and.callFake((_page, options) => {
+        seen = options?.signal;
+        return new Promise<never>(() => undefined);
+      });
+
+      jasmine.clock().install();
+      try {
+        const pending = service.importFromPDF(pdfFile());
+        await untilRequested(() => seen !== undefined);
+
+        jasmine.clock().tick(60000);
+
+        await expectAsync(pending).toBeRejectedWithError(/timed out/);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+
+      expect(seen?.aborted).toBeTrue();
+    });
+
+    it('leaves a request that answered in time alone', async () => {
+      let seen: AbortSignal | undefined;
+      cloudLLMProvider.extractStatementTransactions.and.callFake((_page, options) => {
+        seen = options?.signal;
+        return Promise.resolve([
+          { date: '2024-06-01', description: 'Deposit', amount: 500, type: 'income' as const,
+            currency: 'USD' },
+        ]);
+      });
+
+      const result = await service.importFromPDF(pdfFile());
+
+      expect(result.transactions.length).toBe(1);
+      expect(seen?.aborted).toBeFalse();
     });
   });
 
@@ -952,7 +1019,8 @@ describe('AIImportService', () => {
       { input: 'network failure: failed to fetch', type: 'network', retryable: true },
       { input: '402 payment required billing', type: 'quota', retryable: false },
       { input: '503 service unavailable', type: 'server', retryable: true },
-      { input: 'request timed out', type: 'timeout', retryable: true }
+      { input: 'request timed out', type: 'timeout', retryable: true },
+      { input: 'Request was aborted.', type: 'timeout', retryable: true }
     ];
 
     cases.forEach(({ input, type, retryable }) => {
@@ -962,6 +1030,19 @@ describe('AIImportService', () => {
         expect(parsed.retryable).toBe(retryable);
         expect(parsed.message.length).toBeGreaterThan(0);
       });
+    });
+
+    it('should read a cancelled request as the timeout that caused it', () => {
+      // Our own timeout is what fires the abort, but the SDKs report it in
+      // whatever words they like — 'AI processing failed: …' would tell the
+      // user nothing about the minute they had just spent waiting.
+      const cancelled = new Error('The operation was cancelled');
+      cancelled.name = 'AbortError';
+
+      const parsed = service.parseAIError(cancelled);
+
+      expect(parsed.type).toBe('timeout');
+      expect(parsed.message).toContain('timed out');
     });
 
     it('should pass through our own user-friendly messages', () => {

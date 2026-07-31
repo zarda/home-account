@@ -130,11 +130,20 @@ describe('CameraCaptureComponent', () => {
       strategyService.canUseCloud.and.returnValue(false);
       expect(build().componentInstance.processingMode()).toBe('unavailable');
 
-      // isOnline is a signal, so going offline re-evaluates on the same instance.
+      pwaService.isOnline.and.returnValue(false);
       const component = build().componentInstance;
-      component.isOnline.set(false);
       expect(component.processingMode()).toBe('offline');
       expect(component.willUseCloudAI()).toBeFalse();
+    });
+
+    it('reads connectivity from PwaService rather than a local copy', () => {
+      const component = build().componentInstance;
+      expect(component.isOnline()).toBeTrue();
+
+      // PwaService's reachability probe demotes this behind the component's
+      // back; nothing here should shadow it with navigator.onLine.
+      pwaService.isOnline.and.returnValue(false);
+      expect(component.isOnline()).toBeFalse();
     });
 
     it('exposes legacy single-image accessors', () => {
@@ -359,5 +368,17 @@ describe('CameraCaptureComponent', () => {
     withImages(fixture.componentInstance, 1);
     fixture.destroy();
     expect(URL.revokeObjectURL).toHaveBeenCalled();
+  });
+
+  it('registers no window connectivity listeners', () => {
+    // These used to be added with .bind(this) and removed with a fresh
+    // .bind(this), so every dialog left a live pair on window.
+    const addEventListener = spyOn(window, 'addEventListener').and.callThrough();
+    const fixture = build();
+    fixture.destroy();
+
+    const events = addEventListener.calls.allArgs().map(args => args[0]);
+    expect(events).not.toContain('online');
+    expect(events).not.toContain('offline');
   });
 });

@@ -671,6 +671,7 @@
     "scanning": "正在分析收據...",
     "scanSuccess": "收據掃描成功",
     "scanError": "無法讀取收據，請重試。",
+    "scanOffline": "已附上收據。掃描需要網路連線，請手動填寫內容。",
     "invalidFileType": "請選擇圖片檔案",
     "readError": "讀取檔案失敗",
     "suggesting": "建議中...",

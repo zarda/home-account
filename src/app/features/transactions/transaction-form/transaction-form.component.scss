@@ -384,3 +384,14 @@
 .coords-attached {
   @apply text-primary-600 dark:text-primary-400;
 }
+
+// Scanned field the model was unsure of. Same treatment as the import
+// preview's flag, so the two places that raise this read as one thing.
+.verify-flag {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--color-warning);
+  cursor: help;
+  flex-shrink: 0;
+}

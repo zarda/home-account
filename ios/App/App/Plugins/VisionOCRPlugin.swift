@@ -24,14 +24,57 @@ public class VisionOCRPlugin: CAPPlugin, CAPBridgedPlugin {
         if #available(iOS 13.0, *) {
             call.resolve([
                 "available": true,
-                "isMacEnvironment": isMacEnvironment
+                "isMacEnvironment": isMacEnvironment,
+                "supportedLanguages": Self.supportedRecognitionLanguages()
             ])
         } else {
             call.resolve([
                 "available": false,
-                "isMacEnvironment": isMacEnvironment
+                "isMacEnvironment": isMacEnvironment,
+                "supportedLanguages": [String]()
             ])
         }
+    }
+
+    /// Everything this device can read, asked of a request configured exactly
+    /// like the one recognizeText runs — the answer depends on both the
+    /// recognition level and the revision. The web layer routes on this rather
+    /// than on a list of languages shipped in the app.
+    @available(iOS 13.0, *)
+    private static func supportedRecognitionLanguages() -> [String] {
+        // The class method that answers this on iOS 13 and 14 has been
+        // deprecated since iOS 15; older devices report nothing and the caller
+        // reads that as "unknown".
+        guard #available(iOS 15.0, *) else { return [] }
+
+        let request = VNRecognizeTextRequest()
+        configure(request)
+        return (try? request.supportedRecognitionLanguages()) ?? []
+    }
+
+    /// Shared so the languages isAvailable reports are the ones recognizeText
+    /// will actually use.
+    @available(iOS 13.0, *)
+    private static func configure(_ request: VNRecognizeTextRequest) {
+        request.recognitionLevel = .accurate
+
+        // Newest revision this OS offers: each one has read more scripts than
+        // the last, and automatic language detection is a no-op before
+        // revision 3.
+        if let latestRevision = VNRecognizeTextRequest.supportedRevisions.max() {
+            request.revision = latestRevision
+        }
+
+        if #available(iOS 16.0, *), request.revision >= VNRecognizeTextRequestRevision3 {
+            request.automaticallyDetectsLanguage = true
+        }
+
+        // Correction rewrites recognized characters to fit the language model it
+        // runs against, so a receipt in a script that model does not cover comes
+        // back as confident nonsense in a script it does. What matters on a
+        // receipt is amounts, dates and merchant names, and a lexicon improves
+        // none of them. (#142)
+        request.usesLanguageCorrection = false
     }
     
     /// Recognize text from a base64-encoded image
@@ -55,9 +98,10 @@ public class VisionOCRPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        // Get preferred languages from call or use defaults
-        let languages = call.getArray("languages", String.self) ?? ["en-US", "ja-JP", "zh-Hant"]
-        
+        // Languages the caller wants tried first, if it has any reason to
+        // prefer one. Empty is the normal case.
+        let languages = call.getArray("languages", String.self) ?? []
+
         // Perform text recognition
         if #available(iOS 13.0, *) {
             performTextRecognition(cgImage: cgImage, languages: languages, call: call)
@@ -120,15 +164,19 @@ public class VisionOCRPlugin: CAPPlugin, CAPBridgedPlugin {
             ])
         }
         
-        // Configure the request
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        
-        // Set recognition languages if available (iOS 16+)
-        if #available(iOS 16.0, *) {
-            request.recognitionLanguages = languages
+        Self.configure(request)
+
+        // recognitionLanguages orders the languages Vision works through; it
+        // never widens them, so anything missing from a non-empty list is a
+        // language Vision stops reading. A caller hint is therefore appended to
+        // everything the device supports rather than substituted for it — the
+        // fixed list of three we used to send here is why receipts in any other
+        // script came back empty or transliterated. (#142)
+        if #available(iOS 15.0, *), !languages.isEmpty {
+            let supported = (try? request.supportedRecognitionLanguages()) ?? []
+            request.recognitionLanguages = languages + supported.filter { !languages.contains($0) }
         }
-        
+
         // Create and execute the request handler
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         

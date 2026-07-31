@@ -11,7 +11,7 @@ import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
-import { LLMProvider } from '../../models';
+import { Category, LLMProvider } from '../../models';
 
 export type { ProcessedTransaction, ProcessingResult } from './ai-types';
 
@@ -32,6 +32,15 @@ const DEFAULT_PREFERENCES: AIPreferences = {
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
+
+/**
+ * Confidence below which a result counts as "did not read the receipt".
+ *
+ * Set beneath the review threshold rather than at it: a row worth a second
+ * look is still worth keeping, and only a result that read almost nothing is
+ * worth spending a second engine on.
+ */
+const USABLE_CONFIDENCE = 0.4;
 
 /**
  * Routes receipt processing to the best available engine:
@@ -87,6 +96,21 @@ export class AIStrategyService {
     this.canUseNative() &&
     (this.canUseAppleIntelligence() || !(this.isMacEnvironment() && this.canUseCloud()))
   );
+
+  /**
+   * Some engine is configured, whatever the connectivity.
+   *
+   * This is what gates the receipt UI, not `canUseCloud()`. Attaching and
+   * previewing receipt images has to keep working with no signal, and
+   * `canUseCloud()` folds connectivity in — gating the UI on it would make the
+   * whole receipt block vanish the moment the connection drops.
+   */
+  hasAnyEngine = computed(() =>
+    this.cloudLLMProvider.hasAnyCloudProvider() || this.canUseNative()
+  );
+
+  /** An engine can actually run a scan right now. Gates issuing one. */
+  canProcessNow = computed(() => this.canUseCloud() || this.useNativeOCR());
 
   // Computed: Available cloud providers
   availableCloudProviders = computed(() => this.cloudLLMProvider.availableProviders());
@@ -208,8 +232,45 @@ export class AIStrategyService {
   }
 
   /**
-   * Run native or cloud processing per the routing strategy, falling back
-   * to the other engine when the preferred one fails.
+   * Whether a result is worth keeping when another engine could still try.
+   *
+   * An engine handed a script it cannot read does not throw. Vision returns
+   * whatever few characters it managed and the parser reports how little that
+   * was, so a fallback that fires only on an exception never fires for the
+   * case that needs it most: a confidently-shaped transaction assembled out of
+   * noise. Anything below this is treated as "did not read it".
+   */
+  private isUsableResult(result: ProcessingResult): boolean {
+    return (
+      result.transactions.length > 0 &&
+      result.confidence >= USABLE_CONFIDENCE &&
+      result.transactions.some(t => t.amount > 0)
+    );
+  }
+
+  /**
+   * Try the other engine, keeping whichever result is actually usable.
+   *
+   * Never returns something worse than what it was given: if the alternative
+   * throws or reads the receipt no better, the original stands.
+   */
+  private async preferUsable(
+    current: ProcessingResult,
+    alternative: () => Promise<ProcessingResult>,
+  ): Promise<ProcessingResult> {
+    try {
+      const other = await alternative();
+      return this.isUsableResult(other) ? other : current;
+    } catch (error) {
+      console.warn('[AIStrategy] Fallback engine also failed, keeping the first result:', error);
+      return current;
+    }
+  }
+
+  /**
+   * Run native or cloud processing per the routing strategy, falling back to
+   * the other engine when the preferred one fails — or when it succeeds
+   * without having read anything.
    */
   private async runProcessing(
     native: () => Promise<ProcessingResult>,
@@ -224,6 +285,10 @@ export class AIStrategyService {
       if (this.useNativeOCR()) {
         try {
           result = await native();
+          if (!this.isUsableResult(result) && this.canUseCloud()) {
+            console.warn('[AIStrategy] Native OCR read too little to trust, trying cloud AI');
+            result = await this.preferUsable(result, cloud);
+          }
         } catch (error) {
           if (!this.canUseCloud()) {
             throw error;
@@ -234,6 +299,10 @@ export class AIStrategyService {
       } else {
         try {
           result = await cloud();
+          if (!this.isUsableResult(result) && this.canUseNative()) {
+            console.warn('[AIStrategy] Cloud AI read too little to trust, trying the native pipeline');
+            result = await this.preferUsable(result, native);
+          }
         } catch (error) {
           if (!this.canUseNative()) {
             throw error;
@@ -269,6 +338,7 @@ export class AIStrategyService {
       source: 'cloud',
       confidence: receipt.confidence,
       processingTimeMs: 0,
+      receiptCount: receipt.receiptCount ?? 1,
     };
   }
 
@@ -290,12 +360,13 @@ export class AIStrategyService {
     // across separate transactions
     const consolidated = consolidateReceiptItems(extracted);
 
+    const fallbackCurrency = this.fallbackCurrency();
     const transactions: ProcessedTransaction[] = consolidated.map(t => ({
       date: new Date(t.date),
       description: t.description,
       amount: t.amount,
       type: t.type,
-      currency: t.currency,
+      currency: t.currency || fallbackCurrency,
       confidence: t.confidence,
       source: 'cloud' as const,
       notes: t.details,
@@ -307,11 +378,17 @@ export class AIStrategyService {
       ? transactions.reduce((sum, t) => sum + t.confidence, 0) / transactions.length
       : 0;
 
+    // Consolidation collapses each receipt to one row, so the distinct ids are
+    // how many receipts the model found across the photos. Rows the model left
+    // ungrouped count as one receipt each rather than collapsing together.
+    const receiptCount = new Set(consolidated.map((t, index) => t.receiptId ?? `ungrouped-${index}`)).size;
+
     return {
       transactions,
       source: 'cloud',
       confidence: avgConfidence,
       processingTimeMs: 0,
+      receiptCount,
     };
   }
 
@@ -322,21 +399,36 @@ export class AIStrategyService {
   }
 
   /**
+   * What to record when the model could not read a currency off the receipt.
+   *
+   * The account's own base currency, because the caller knows something the
+   * model does not. The provider services used to invent one instead, and did
+   * not even agree with each other about which — a receipt whose currency was
+   * unreadable landed as CNY, JPY or USD depending purely on which extraction
+   * path had read it.
+   */
+  private fallbackCurrency(): string {
+    return this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+  }
+
+  /**
    * Convert parsed receipt to processed transaction.
    */
   private convertParsedReceipt(receipt: ParsedReceipt): ProcessedTransaction {
+    const currency = receipt.currency || this.fallbackCurrency();
     return {
       date: receipt.date,
       description: receipt.merchant,
       amount: receipt.amount,
       type: 'expense',
-      currency: receipt.currency,
+      currency,
       confidence: receipt.confidence,
       source: 'cloud',
       notes: receipt.receiptDetails
-        || (receipt.items?.length ? formatReceiptItemLines(receipt.items, receipt.currency) : '')
+        || (receipt.items?.length ? formatReceiptItemLines(receipt.items, currency) : '')
         || '',
       suggestedCategoryId: receipt.suggestedCategory,
+      fieldConfidence: receipt.fieldConfidence,
     };
   }
 
@@ -396,6 +488,17 @@ export class AIStrategyService {
    */
   updateCloudProviderApiKey(provider: LLMProvider, apiKey: string | undefined): void {
     this.cloudLLMProvider.updateProviderApiKey(provider, apiKey);
+  }
+
+  /**
+   * Suggest a category for a description, using whichever provider is
+   * configured for categorization.
+   *
+   * Here so a caller that already depends on the strategy service for scanning
+   * does not have to reach for a second AI service to label the result.
+   */
+  async suggestCategory(description: string, categories: Category[]): Promise<string> {
+    return this.cloudLLMProvider.suggestCategory(description, categories);
   }
 
   /**

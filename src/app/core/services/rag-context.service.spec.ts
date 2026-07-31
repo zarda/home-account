@@ -5,7 +5,7 @@ import { RagContextService } from './rag-context.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Category, RAG_TIER_CONFIGS, Transaction, ZERO_DECIMAL_CURRENCIES } from '../../models';
+import { Category, RAG_TIER_CONFIGS, Transaction, currencyDecimalPlaces } from '../../models';
 
 describe('RagContextService', () => {
   let service: RagContextService;
@@ -36,7 +36,7 @@ describe('RagContextService', () => {
     currencyMock.amountInBase.and.callFake(
       (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount);
     currencyMock.formatAmount.and.callFake(
-      (amount: number, code: string) => amount.toFixed(ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2));
+      (amount: number, code: string) => amount.toFixed(currencyDecimalPlaces(code)));
 
     const translationMock = jasmine.createSpyObj('TranslationService', ['t']);
     translationMock.t.and.callFake((key: string) => translations[key] ?? key);

@@ -7,7 +7,9 @@ import {
   ExchangeRates,
   CachedRates,
   SUPPORTED_CURRENCIES,
-  ZERO_DECIMAL_CURRENCIES
+  currencyDecimalPlaces,
+  currencyInfoFor,
+  isCurrencyCode
 } from '../../models';
 
 const CACHE_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -167,9 +169,8 @@ export class CurrencyService {
 
   // Format currency amount for display
   formatCurrency(amount: number, currencyCode: string): string {
-    const currency = this.currencies().find(c => c.code === currencyCode);
     const locale = this.translationService.getIntlLocale();
-    const digits = ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : 2;
+    const digits = currencyDecimalPlaces(currencyCode);
 
     try {
       return new Intl.NumberFormat(locale, {
@@ -180,7 +181,7 @@ export class CurrencyService {
       }).format(amount);
     } catch {
       // Fallback formatting
-      const symbol = currency?.symbol ?? currencyCode;
+      const symbol = this.getCurrencyInfo(currencyCode)?.symbol ?? currencyCode;
       return `${symbol}${amount.toFixed(digits)}`;
     }
   }
@@ -190,15 +191,33 @@ export class CurrencyService {
    * symbol, no grouping; sub-digits only for currencies that use them.
    */
   formatAmount(amount: number, currencyCode: string): string {
-    return amount.toFixed(ZERO_DECIMAL_CURRENCIES.has(currencyCode) ? 0 : 2);
+    return amount.toFixed(currencyDecimalPlaces(currencyCode));
   }
 
-  // Get currency info by code
+  // Get currency info by code. Falls back to an ISO-code descriptor for the
+  // currencies the picker does not carry: extraction can hand back any of the
+  // 160+ codes the rates endpoint knows, and those must still render.
   getCurrencyInfo(code: string): CurrencyInfo | undefined {
-    return this.currencies().find(c => c.code === code);
+    return this.currencies().find(c => c.code === code) ?? currencyInfoFor(code);
   }
 
-  // Get list of supported currencies
+  /**
+   * Whether an amount in this code can be stored and converted. The seam
+   * between what extraction may produce and what the picker offers: a receipt
+   * in a currency nobody translated still belongs under its own code, so this
+   * is the check import paths want, not membership of SUPPORTED_CURRENCIES.
+   */
+  canRepresentCurrency(code: string): boolean {
+    if (!isCurrencyCode(code)) {
+      return false;
+    }
+    const normalized = code.toUpperCase();
+    // The curated list stays representable before the first rates fetch lands.
+    return this.exchangeRates().has(normalized)
+      || this.supportedCurrencyCodes().includes(normalized);
+  }
+
+  // Get list of supported currencies (the picker's curated list)
   getSupportedCurrencies(): CurrencyInfo[] {
     return this.currencies();
   }

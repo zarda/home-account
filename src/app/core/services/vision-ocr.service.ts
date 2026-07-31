@@ -1,6 +1,6 @@
 import { Injectable, signal, computed } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
-import VisionOCR, { VisionOCRResult } from '../plugins/vision-ocr.plugin';
+import VisionOCR, { VisionOCRAvailability, VisionOCRResult } from '../plugins/vision-ocr.plugin';
 
 /**
  * Injectable wrapper around the native Vision OCR plugin so consumers can be
@@ -14,21 +14,39 @@ export class VisionOcrService {
   private _isMacEnvironment = signal<boolean>(this.detectMacEnvironmentFromUserAgent());
   isMacEnvironment = computed(() => this._isMacEnvironment());
 
+  private _supportedLanguages = signal<string[]>([]);
   /**
-   * Refine Mac detection with the native API (the UA check is a heuristic).
+   * What this device's Vision build can read, empty until the plugin has
+   * answered (and on the web, where there is no Vision at all). Callers route
+   * on this instead of on the three languages we used to name.
+   */
+  supportedLanguages = computed(() => this._supportedLanguages());
+
+  /**
+   * Refine what we know about the device with the native API (the UA check is
+   * a heuristic, and only the device can say which languages it reads).
    */
   detectEnvironment(): void {
-    VisionOCR.isAvailable()
-      .then(({ isMacEnvironment }) => {
-        if (typeof isMacEnvironment === 'boolean') {
-          this._isMacEnvironment.set(isMacEnvironment);
-        }
-      })
-      .catch(() => console.warn('[VisionOCR] Unable to query Mac environment from native plugin'));
+    this.isAvailable().catch(() =>
+      console.warn('[VisionOCR] Unable to query device capabilities from native plugin'),
+    );
   }
 
-  isAvailable(): Promise<{ available: boolean; isMacEnvironment?: boolean }> {
-    return VisionOCR.isAvailable();
+  /**
+   * Every answer is kept, so the signals are current from whichever call
+   * happened to come first — the pipeline asks this before each scan anyway.
+   */
+  async isAvailable(): Promise<VisionOCRAvailability> {
+    const availability = await VisionOCR.isAvailable();
+
+    if (typeof availability.isMacEnvironment === 'boolean') {
+      this._isMacEnvironment.set(availability.isMacEnvironment);
+    }
+    if (availability.supportedLanguages) {
+      this._supportedLanguages.set(availability.supportedLanguages);
+    }
+
+    return availability;
   }
 
   recognizeText(options: { image: string; languages?: string[] }): Promise<VisionOCRResult> {

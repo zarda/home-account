@@ -4,6 +4,7 @@ import {
   buildCategoryPromptCatalog,
   applyCategorizations,
   mapCategoryNameToId,
+  matchCategoryName,
   FALLBACK_CATEGORY_ID,
 } from './categorization.utils';
 import { Category } from '../../models';
@@ -19,6 +20,19 @@ describe('categorization.utils', () => {
     createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
     createCategory({ id: 'dormant', name: 'Dormant', type: 'expense', isActive: false }),
   ];
+
+  // Default catalog entries as CategoryService writes them: the name is the
+  // i18n key, so the display name depends entirely on the reader's locale.
+  const defaultCategories: Category[] = [
+    createCategory({ id: 'food', name: 'categoryNames.food', type: 'expense' }),
+    createCategory({
+      id: 'food_groceries', name: 'categoryNames.groceries', type: 'expense', parentId: 'food',
+    }),
+    createCategory({ id: 'transport', name: 'categoryNames.transport', type: 'expense' }),
+    createCategory({ id: 'other_expense', name: 'categoryNames.otherExpense', type: 'expense' }),
+  ];
+  // The active locale is not loaded, so t() echoes the key back.
+  const untranslated = (name: string) => name;
 
   describe('normalizeConfidence', () => {
     it('clamps values into [0, 1]', () => {
@@ -163,6 +177,36 @@ describe('categorization.utils', () => {
   });
 
   describe('mapCategoryNameToId', () => {
+    it('takes a catalog ID as-is, whatever language the rest of the answer is in', () => {
+      expect(mapCategoryNameToId('food_groceries', defaultCategories, untranslated))
+        .toBe('food_groceries');
+    });
+
+    it('ignores case in a catalog ID', () => {
+      expect(mapCategoryNameToId('Food_Groceries', defaultCategories, untranslated))
+        .toBe('food_groceries');
+    });
+
+    it('prefers a catalog ID over a keyword hiding inside it', () => {
+      const catalog = [
+        createCategory({ id: 'shopping_electronics', name: 'categoryNames.electronics' }),
+      ];
+      expect(mapCategoryNameToId('shopping_electronics', catalog, untranslated))
+        .toBe('shopping_electronics');
+    });
+
+    it('ignores an inactive catalog ID', () => {
+      expect(mapCategoryNameToId('retired_id', [
+        createCategory({ id: 'retired_id', name: 'Zzz', isActive: false }),
+      ], identity)).toBe(FALLBACK_CATEGORY_ID);
+    });
+
+    it('matches a name in a locale that is not the active one', () => {
+      expect(mapCategoryNameToId('食料品', defaultCategories, untranslated)).toBe('food_groceries');
+      expect(mapCategoryNameToId('雜貨', defaultCategories, untranslated)).toBe('food_groceries');
+      expect(mapCategoryNameToId('交通', defaultCategories, untranslated)).toBe('transport');
+    });
+
     it('matches an exact stored or translated name', () => {
       expect(mapCategoryNameToId('Groceries', categories, identity)).toBe('food_groceries');
     });
@@ -180,6 +224,28 @@ describe('categorization.utils', () => {
 
     it('falls back to other_expense when nothing matches', () => {
       expect(mapCategoryNameToId('zzz unmatched', [], identity)).toBe(FALLBACK_CATEGORY_ID);
+    });
+  });
+
+  describe('matchCategoryName', () => {
+    it('separates a deliberate Other from an answer nothing matched', () => {
+      const deliberate = matchCategoryName('その他', defaultCategories, untranslated);
+      expect(deliberate).toEqual({ id: 'other_expense', matched: true });
+
+      const unresolved = matchCategoryName('zzz unmatched', defaultCategories, untranslated);
+      expect(unresolved).toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+    });
+
+    it('reports an empty answer as unmatched', () => {
+      expect(matchCategoryName('   ', categories, identity))
+        .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+    });
+
+    it('counts an ID, a name and a keyword all as matched', () => {
+      expect(matchCategoryName('transport', defaultCategories, untranslated).matched).toBeTrue();
+      expect(matchCategoryName('Groceries', categories, identity).matched).toBeTrue();
+      expect(matchCategoryName('gas station', [], identity))
+        .toEqual({ id: 'transport_fuelAndGas', matched: true });
     });
   });
 });

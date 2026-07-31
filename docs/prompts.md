@@ -32,6 +32,26 @@ const rendered = renderPrompt('categorizeTransactions', {
 
 Each provider service then has exactly one adapter — the only place provider variation is allowed to live. Gemini prepends the JSON-only preamble when `expects === 'json'` and doubles the token budget for Gemma's verbose drafting; OpenAI flattens `system` into the input; Claude hoists `system` to its top-level parameter. Nobody writes "return ONLY valid JSON" for Gemini's benefit again — they set `expects: 'json'`.
 
+### Do not enumerate what the model already knows
+
+A prompt must not carry a hand-written list of currencies, languages or scripts. `npm run prompts:check` fails on one.
+
+The receipt prompts used to name their own currencies — three shortlists, in three prompts, no two the same and none matching the app's catalog. A model reading a receipt in a currency nobody had typed out was being steered towards one that had been, and the failure was invisible: an amount in the wrong currency looks exactly like an amount in the right one. The worked examples had the same problem in a quieter form, all being in one language.
+
+Ask for the shape of the answer, validate the answer on the way back:
+
+```ts
+// in the prompt
+'ISO 4217 code for the money on this receipt … use "" when you genuinely cannot tell'
+
+// in the provider adapter
+currency: readCurrencyCode(parsed.currency),   // '' unless the ISO table knows it
+```
+
+`readCurrencyCode` (`core/utils/receipt-extraction.utils.ts`) checks against `Intl.supportedValuesOf('currency')`, so neither the prompt nor the validator keeps a list. Empty is deliberate: the caller substitutes the account's own base currency, which is a better answer than any constant the prompt layer could name.
+
+The same rule applies to examples. Demonstrate the *shape* with placeholders (`"<item name as printed>"`) rather than a real receipt in one language, and say explicitly that the receipt's own script must be reproduced.
+
 ### Registered in TypeScript, not JSON
 
 `analytics-events.json` is JSON on purpose, and this went the other way on purpose. That check has to read the taxonomy's *values* — parameter names, allowed values — and diff them against a markdown table, which needs `JSON.parse` from Node. This check needs prompt *ids* and call sites, which a regex finds in `.ts` just as well. Meanwhile a prompt in JSON is a `\n`-escaped single line whose diff is unreadable, and prompt wording is exactly the thing a reviewer most needs to see change.
