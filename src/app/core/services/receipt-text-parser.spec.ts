@@ -89,6 +89,7 @@ describe('parseReceiptOcrText', () => {
     it('should detect a currency that was never in the old lexicon', () => {
       expect(parseReceiptOcrText('스타벅스\n합계 ₩12,500').currency).toBe('KRW');
       expect(parseReceiptOcrText('ร้านกาแฟ\n฿250.00').currency).toBe('THB');
+      expect(parseReceiptOcrText('Кофейня\nИТОГО 450,00 RUB').currency).toBe('RUB');
     });
 
     it('should not read a three-letter word as a currency code', () => {
