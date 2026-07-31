@@ -12,7 +12,8 @@ import {
   CreateRecurringDTO,
   RecurringOccurrence,
   Transaction,
-  TransactionType
+  TransactionType,
+  baseCurrencyOf
 } from '../../models';
 
 // Result of atomically claiming a due rule on the server
@@ -393,7 +394,7 @@ export class RecurringService {
     occurrenceDate: Date,
     userId: string
   ): Omit<Transaction, 'id'> {
-    const baseCurrency = this.authService.currentUser()?.preferences.baseCurrency ?? 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     const exchangeRate = this.currencyService.getExchangeRate(rule.currency, baseCurrency);
 
     return {

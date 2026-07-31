@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
 import { of, throwError } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
-import { AIImportService } from './ai-import.service';
+import { AIImportService, AI_NO_PROVIDER, AI_QUEUED_OFFLINE } from './ai-import.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -197,7 +197,7 @@ describe('AIImportService', () => {
 
       await expectAsync(
         service.importFromImage(makeFile('r.png', 'image/png'))
-      ).toBeRejectedWithError(/Offline/);
+      ).toBeRejectedWithError(AI_QUEUED_OFFLINE);
       expect(offlineQueue.queueImage).toHaveBeenCalled();
     });
 
@@ -208,7 +208,7 @@ describe('AIImportService', () => {
 
       await expectAsync(
         service.importFromImage(makeFile('r.png', 'image/png'))
-      ).toBeRejectedWithError(/not available/);
+      ).toBeRejectedWithError(AI_NO_PROVIDER);
       expect(offlineQueue.queueImage).not.toHaveBeenCalled();
     });
 
@@ -311,7 +311,7 @@ describe('AIImportService', () => {
 
       await expectAsync(
         service.importFromImage(makeFile('r.png', 'image/png'))
-      ).toBeRejectedWithError(/not available/);
+      ).toBeRejectedWithError(AI_NO_PROVIDER);
     });
   });
 
@@ -509,7 +509,7 @@ describe('AIImportService', () => {
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(false);
       await expectAsync(
         service.importFromMultipleImages([makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')])
-      ).toBeRejectedWithError(/not available/);
+      ).toBeRejectedWithError(AI_NO_PROVIDER);
     });
 
     it('should consolidate single-item receipts as standalone transactions', async () => {
@@ -1045,11 +1045,25 @@ describe('AIImportService', () => {
       expect(parsed.message).toContain('timed out');
     });
 
-    it('should pass through our own user-friendly messages', () => {
-      const parsed = service.parseAIError(new Error('Please configure your API key'));
-      expect(parsed.type).toBe('unknown');
+    it('hands our own throws to the screen as a key, not as English', () => {
+      // These used to be matched by substring against English prose, so they
+      // could never be translated and rewording one silently reclassified it.
+      const parsed = service.parseAIError(new Error(AI_NO_PROVIDER));
+      expect(parsed.type).toBe('auth');
       expect(parsed.retryable).toBeFalse();
-      expect(parsed.message).toContain('Please configure');
+      expect(parsed.messageKey).toBe('import.errorNoProvider');
+    });
+
+    it('classifies a queued-offline throw as a network condition', () => {
+      const parsed = service.parseAIError(new Error(AI_QUEUED_OFFLINE));
+      expect(parsed.type).toBe('network');
+      expect(parsed.messageKey).toBe('import.errorQueuedOffline');
+    });
+
+    it('leaves a provider its own wording, which cannot be translated', () => {
+      const parsed = service.parseAIError(new Error('something weird happened'));
+      expect(parsed.messageKey).toBeUndefined();
+      expect(parsed.message).toContain('something weird happened');
     });
 
     it('should classify unknown errors as retryable unknown', () => {

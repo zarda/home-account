@@ -11,7 +11,7 @@ import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
-import { Category, LLMProvider } from '../../models';
+import { Category, LLMProvider, baseCurrencyOf} from '../../models';
 
 export type { ProcessedTransaction, ProcessingResult } from './ai-types';
 
@@ -41,6 +41,16 @@ const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
  * worth spending a second engine on.
  */
 const USABLE_CONFIDENCE = 0.4;
+
+/**
+ * Thrown when no cloud provider can be reached for a request that needs one.
+ *
+ * A code rather than a sentence, following the receipt-to-note errors: the
+ * message used to be English prose that AIImportService recognized by
+ * substring and passed straight to the screen, so it could never be
+ * translated, and rewording it would silently have reclassified the error.
+ */
+export const AI_CLOUD_UNAVAILABLE = 'AI_CLOUD_UNAVAILABLE';
 
 /**
  * Routes receipt processing to the best available engine:
@@ -114,6 +124,9 @@ export class AIStrategyService {
 
   // Computed: Available cloud providers
   availableCloudProviders = computed(() => this.cloudLLMProvider.availableProviders());
+
+  /** The provider a receipt scan would actually go to, or null when none can. */
+  receiptProvider = computed(() => this.cloudLLMProvider.resolveProvider('receiptScanning'));
 
   /** Account and connectivity state the cloud providers were last brought up for. */
   private providersInitializedFor = signal<string | null>(null);
@@ -367,6 +380,7 @@ export class AIStrategyService {
       amount: t.amount,
       type: t.type,
       currency: t.currency || fallbackCurrency,
+      currencyFellBack: !t.currency,
       confidence: t.confidence,
       source: 'cloud' as const,
       notes: t.details,
@@ -394,7 +408,7 @@ export class AIStrategyService {
 
   private ensureCloudAvailable(): void {
     if (!this.canUseCloud()) {
-      throw new Error('Cloud AI is not available. Please check your internet connection and configure an API key in Profile Settings.');
+      throw new Error(AI_CLOUD_UNAVAILABLE);
     }
   }
 
@@ -408,7 +422,7 @@ export class AIStrategyService {
    * path had read it.
    */
   private fallbackCurrency(): string {
-    return this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    return baseCurrencyOf(this.authService.currentUser());
   }
 
   /**
@@ -429,6 +443,7 @@ export class AIStrategyService {
         || '',
       suggestedCategoryId: receipt.suggestedCategory,
       fieldConfidence: receipt.fieldConfidence,
+      currencyFellBack: !receipt.currency,
     };
   }
 

@@ -375,7 +375,7 @@ describe('TransactionFormComponent', () => {
       expect(dto.location).toEqual({ name: 'Aoyama Market' });
     });
 
-    it('attaches captured coordinates to the location', async () => {
+    it('attaches captured coordinates and the country they fall in', async () => {
       const component = build().componentInstance;
       validForm(component);
       component.form.patchValue({ locationName: 'Aoyama Market' });
@@ -384,7 +384,21 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
 
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
-      expect(dto.location).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
+      expect(dto.location).toEqual({
+        name: 'Aoyama Market', lat: 35.66, lng: 139.71, country: 'JP',
+      });
+    });
+
+    it('omits the country when the coordinates cannot be placed', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.form.patchValue({ locationName: 'Somewhere at sea' });
+      component.locationCoords.set({ lat: 0, lng: -140 });
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'Somewhere at sea', lat: 0, lng: -140 });
     });
 
     it('omits the location entirely when the name is blank', async () => {
@@ -572,6 +586,95 @@ describe('TransactionFormComponent', () => {
 
       expect(component.currencies().map(c => c.code)).toContain('MXN');
       expect(component.form.get('currency')?.value).toBe('MXN');
+    });
+  });
+
+  describe('currency suggested from location', () => {
+    const scan = (component: TransactionFormComponent) =>
+      (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+    it('offers the local currency when the receipt did not state one', async () => {
+      // currencyFellBack means the amount is sitting in the account's base
+      // currency because nothing was read — where the user is standing is a
+      // better guess than where they live.
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 37.5665, lng: 126.978 }); // Seoul
+
+      await scan(component);
+
+      expect(component.suggestedCurrency()).toEqual({ code: 'KRW', country: 'KR' });
+      // Offered, not applied.
+      expect(component.form.get('currency')?.value).toBe('USD');
+    });
+
+    it('says nothing when the model actually read a currency', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: false }));
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
+
+      await scan(component);
+
+      expect(component.suggestedCurrency()).toBeNull();
+    });
+
+    it('says nothing when the local currency is already in the field', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'KRW', currencyFellBack: true }));
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
+
+      await scan(component);
+
+      expect(component.suggestedCurrency()).toBeNull();
+    });
+
+    it('says nothing when the coordinates cannot be placed', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 0, lng: -140 }); // mid-Pacific
+
+      await scan(component);
+
+      expect(component.suggestedCurrency()).toBeNull();
+    });
+
+    it('says nothing when the platform refuses a position', async () => {
+      // A refusal is silent on purpose: the base currency is already in the
+      // field, and a suggestion nobody asked for is not worth an error.
+      const geolocation = { getCurrentPosition: (_ok: unknown, fail: () => void) => fail() };
+      spyOnProperty(navigator, 'geolocation', 'get').and.returnValue(geolocation as never);
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      expect(component.suggestedCurrency()).toBeNull();
+      expect(notifications.error).not.toHaveBeenCalledWith(jasmine.stringMatching(/location/i));
+    });
+
+    it('accepting applies it and keeps it selectable', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
+      await scan(component);
+
+      component.acceptCurrencySuggestion();
+
+      expect(component.form.get('currency')?.value).toBe('KRW');
+      expect(component.currencies().map(c => c.code)).toContain('KRW');
+      expect(component.suggestedCurrency()).toBeNull();
+    });
+
+    it('dismissing leaves the form alone', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
+      await scan(component);
+
+      component.dismissCurrencySuggestion();
+
+      expect(component.suggestedCurrency()).toBeNull();
+      expect(component.form.get('currency')?.value).toBe('USD');
     });
   });
 

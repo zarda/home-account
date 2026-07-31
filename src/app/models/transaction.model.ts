@@ -123,6 +123,16 @@ export interface TransactionLocation {
   name: string;
   lat?: number;
   lng?: number;
+  /**
+   * ISO 3166-1 alpha-2 country the coordinates fall in, when they could be
+   * placed. Derived on device from a bundled bounding-box table rather than
+   * looked up, so it is coarse near a land border and absent for a coordinate
+   * in open water or a country the table does not cover.
+   *
+   * Recorded because "what did the trip cost" is a question the ledger cannot
+   * answer from a place name someone typed.
+   */
+  country?: string;
 }
 
 export interface TransactionFilters {

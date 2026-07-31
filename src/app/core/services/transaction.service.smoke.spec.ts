@@ -70,7 +70,14 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
     row('smoke-range-2026-07', 'income', new Date(2026, 6, 10, 12)),
     row('smoke-range-2025-06', 'expense', new Date(2025, 5, 15, 12)),
     row('smoke-range-2025-07', 'income', new Date(2025, 6, 10, 12)),
-    row('smoke-range-2024-12', 'expense', new Date(2024, 11, 5, 12))
+    row('smoke-range-2024-12', 'expense', new Date(2024, 11, 5, 12)),
+    // Carries a location, to prove the country derived on device survives a
+    // write and a read back. A field the rules accept but the service drops on
+    // the way through looks exactly like a working feature in unit tests.
+    {
+      ...row('smoke-range-2026-06-located', 'expense', new Date(2026, 5, 16, 12)),
+      location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71, country: 'JP' }
+    }
   ];
 
   const CURRENT_START = new Date(2026, 5, 1);
@@ -142,9 +149,18 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
     expect(rows.map(t => t.id)).toEqual(['smoke-range-2025-07', 'smoke-range-2025-06']);
   }, 20000);
 
+  it('round-trips the country derived from a location', async () => {
+    const rows = await firstValueFrom(service.getTransactionsInRange(CURRENT_START, CURRENT_END));
+    const located = rows.find(t => t.id === 'smoke-range-2026-06-located');
+
+    expect(located?.location).toEqual(
+      jasmine.objectContaining({ name: 'Aoyama Market', country: 'JP' })
+    );
+  }, 20000);
+
   it('leaves the shared transactions signal untouched', async () => {
     await firstValueFrom(service.getByDateRange(CURRENT_START, CURRENT_END));
-    const onScreen = ['smoke-range-2026-07', 'smoke-range-2026-06'];
+    const onScreen = ['smoke-range-2026-07', 'smoke-range-2026-06-located', 'smoke-range-2026-06'];
     expect(service.transactions().map(t => t.id)).toEqual(onScreen);
 
     await firstValueFrom(service.getTransactionsInRange(PRIOR_START, PRIOR_END));

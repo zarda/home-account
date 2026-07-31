@@ -46,11 +46,13 @@ import {
   CurrencyInfo,
   FieldConfidence,
   VERIFY_FIELD_THRESHOLD,
+  baseCurrencyOf
 } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
+import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
 import {
   MAX_RECEIPT_BYTES,
   MAX_RECEIPTS_PER_TRANSACTION,
@@ -180,6 +182,15 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   /** How clearly the scan read the amount and date, when it could say. */
   scanFieldConfidence = signal<FieldConfidence | null>(null);
+
+  /**
+   * A currency the receipt did not state, guessed from where the device is.
+   *
+   * Offered rather than applied. The stored value stays the account's base
+   * currency until the user accepts, because a guess that silently becomes a
+   * stored amount is the failure this whole area has been working away from.
+   */
+  suggestedCurrency = signal<{ code: string; country: string } | null>(null);
 
   /**
    * A currency this transaction uses that the picker does not list.
@@ -399,7 +410,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   private initForm(): void {
     const transaction = this.data.transaction;
-    const defaultCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    const defaultCurrency = baseCurrencyOf(this.authService.currentUser());
     const initialType = transaction?.type || 'expense';
 
     this.transactionType.set(initialType);
@@ -519,7 +530,20 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       return this.data.mode === 'edit' ? { location: undefined } : {};
     }
     const coords = this.locationCoords();
-    return { location: { name, ...(coords ? { lat: coords.lat, lng: coords.lng } : {}) } };
+    if (!coords) {
+      return { location: { name } };
+    }
+    // Placed on device from the bundled table; absent when the coordinates
+    // fall in open water or a country the table does not cover.
+    const country = countryForCoordinates(coords.lat, coords.lng);
+    return {
+      location: {
+        name,
+        lat: coords.lat,
+        lng: coords.lng,
+        ...(country ? { country } : {}),
+      },
+    };
   }
 
   private openLimitDialog(): void {
@@ -685,6 +709,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
       this.scanFieldConfidence.set(primary.fieldConfidence ?? null);
 
+      // The receipt did not say what money this was, so the account's base
+      // currency is sitting in the field. Where the user is standing is a
+      // better guess than where they live — offer it, but do not apply it.
+      this.suggestedCurrency.set(null);
+      if (primary.currencyFellBack) {
+        void this.suggestCurrencyFromLocation();
+      }
+
       // Show success message
       const message = this.translationService.t('ai.scanSuccess');
       this.notifications.success(message);
@@ -705,6 +737,62 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (receiptCount > 1) {
       await this.offerMultiReceiptReview(receiptCount);
     }
+  }
+
+  /**
+   * Offer the currency of wherever the device is, when the receipt did not say.
+   *
+   * Only ever runs after a scan came back without a currency, so an ordinary
+   * import never asks for a position. The browser and iOS own the permission:
+   * a coordinate already attached to this transaction is reused, and otherwise
+   * the platform decides whether to prompt, reuse a recent fix, or refuse —
+   * there is no in-app toggle to keep in step with that decision. Refusal is
+   * silent, because the account's base currency is already in the field and a
+   * suggestion nobody asked for is not worth an error about.
+   */
+  private async suggestCurrencyFromLocation(): Promise<void> {
+    const coords = this.locationCoords() ?? (await this.currentCoordinates());
+    if (!coords) {
+      return;
+    }
+
+    const country = countryForCoordinates(coords.lat, coords.lng);
+    const code = currencyForCountry(country);
+    if (!code || !country || code === this.form.get('currency')?.value) {
+      return;
+    }
+    this.suggestedCurrency.set({ code, country });
+  }
+
+  /** A coarse position, or null for any reason at all. */
+  private currentCoordinates(): Promise<{ lat: number; lng: number } | null> {
+    if (!this.geolocationAvailable) {
+      return Promise.resolve(null);
+    }
+    return new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        position => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+        () => resolve(null),
+        // A country needs nothing better than this, and a cached fix avoids
+        // waking the GPS for an answer that is only a suggestion.
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+      );
+    });
+  }
+
+  /** Take the suggested currency, adding it to the picker if it is uncurated. */
+  acceptCurrencySuggestion(): void {
+    const suggestion = this.suggestedCurrency();
+    if (!suggestion) {
+      return;
+    }
+    this.ensureCurrencyListed(suggestion.code);
+    this.form.patchValue({ currency: suggestion.code });
+    this.suggestedCurrency.set(null);
+  }
+
+  dismissCurrencySuggestion(): void {
+    this.suggestedCurrency.set(null);
   }
 
   /**
@@ -777,6 +865,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.filledByScan = false;
       this.scanError.set(null);
       this.scanFieldConfidence.set(null);
+      this.suggestedCurrency.set(null);
     }
   }
 

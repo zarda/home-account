@@ -140,6 +140,23 @@ export function usageAnalyticsEnabled(user: User | null | undefined): boolean {
   return true;
 }
 
+/**
+ * The currency this account's totals are expressed in.
+ *
+ * Seventeen files used to spell this out themselves, and they did not agree:
+ * ten wrote `?? 'USD'` and the rest `|| 'USD'`, which differ for a preference
+ * saved as an empty string — one yields no currency at all. `CurrencyService`
+ * also carried a `baseCurrency` signal, but nothing ever wrote to it, so it
+ * read USD for everyone; it has been removed in favour of this.
+ *
+ * A pure function over the user rather than a service accessor, so nothing has
+ * to inject anything to ask, and a test that already has a user needs no extra
+ * stubbing to answer it.
+ */
+export function baseCurrencyOf(user: User | null | undefined): string {
+  return user?.preferences?.baseCurrency || 'USD';
+}
+
 /** Whether this account is allowed to turn usage statistics off. */
 export function canDisableUsageAnalytics(user: User | null | undefined): boolean {
   return subscriptionTier(user) === 'premium';

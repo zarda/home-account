@@ -22,6 +22,13 @@ export interface ProcessedTransaction {
    * regex parser has no way to know, and neither does a CSV row.
    */
   fieldConfidence?: FieldConfidence;
+  /**
+   * True when `currency` is the account's fallback rather than something read
+   * off the receipt. Distinguishing the two is what lets a caller offer a
+   * better guess — from where the user is standing — without ever overriding
+   * a currency the model actually read.
+   */
+  currencyFellBack?: boolean;
 }
 
 export interface ProcessingResult {

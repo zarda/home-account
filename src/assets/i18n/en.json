@@ -164,7 +164,8 @@
     "locationCaptured": "Coordinates attached",
     "locationDenied": "Location permission was denied. You can still type a place name.",
     "locationUnavailable": "Your location could not be found. You can still type a place name.",
-    "clearCoordinates": "Remove coordinates"
+    "clearCoordinates": "Remove coordinates",
+    "currencyFromLocation": "Looks like you are in {{currency}} territory — use it?"
   },
   "budget": {
     "title": "Budget",
@@ -685,7 +686,7 @@
     "generating": "Generating insights...",
     "noInsights": "Add more transactions to get AI insights",
     "rateLimited": "The AI service is busy right now (rate limit reached). Please try again in a minute.",
-    "invalidApiKey": "AI Insights unavailable: invalid API key. Please check Settings → AI Settings.",
+    "invalidApiKey": "AI Insights unavailable: invalid API key. Please check Settings → AI Processing.",
     "summaryUnavailable": "Unable to generate the spending summary right now. Tap refresh to try again.",
     "adviceFallback": "Keep tracking your expenses to better understand your spending patterns."
   },
@@ -708,7 +709,7 @@
     "answerMin": "Smallest transaction",
     "answerTopCategories": "Top categories",
     "offlineFallback": "You're offline — showing a plain keyword search instead.",
-    "noProviderFallback": "No AI provider is configured — showing a plain keyword search instead. Add an API key in AI Settings.",
+    "noProviderFallback": "No AI provider is configured — showing a plain keyword search instead. Add an API key in Settings → AI Processing.",
     "errorFallback": "Couldn't interpret the question — showing a plain keyword search instead."
   },
   "import": {
@@ -803,7 +804,7 @@
     "multiImageHint": "Drag to reorder images. Order should match top-to-bottom of receipt.",
     "multiImageSuccess": "Successfully extracted items from {{count}} images with deduplication",
     "offlineMode": "Offline - Images will be processed when online",
-    "cloudAI": "Gemini Vision - Best accuracy",
+    "cloudAI": "Cloud AI ({{provider}}) - Best accuracy",
     "nativeOCR": "Native Vision OCR",
     "configureAI": "Configure API key in Settings",
     "iosInstallHint": "For the best camera experience, add this app to your Home Screen",
@@ -817,7 +818,7 @@
     "errorTitleTimeout": "Processing Timeout",
     "errorTitleGeneral": "Processing Failed",
     "errorHintRateLimit": "The AI service has a request limit. Wait 30-60 seconds before retrying.",
-    "errorHintAuth": "Your API key may be invalid or expired. Update it in Profile Settings.",
+    "errorHintAuth": "Your API key may be invalid or expired. Update it in Settings → AI Processing.",
     "errorHintNetwork": "Check your internet connection and try again.",
     "errorHintQuota": "Your AI API account may have run out of credits. Check your billing.",
     "goToSettings": "Go to Settings",
@@ -828,7 +829,12 @@
     "imageKindStatementHint": "Each line on the statement becomes its own transaction.",
     "verifyAmount": "Double-check this amount — the AI was only {{percent}}% sure it read it correctly",
     "verifyDate": "Double-check this date — the AI was only {{percent}}% sure it read it correctly",
-    "matchWithinBatch": "Repeated in this import"
+    "matchWithinBatch": "Repeated in this import",
+    "errorNoProvider": "No AI provider is configured. Add an API key in Settings → AI Processing.",
+    "errorCloudUnavailable": "Cloud AI could not be reached. Check your connection, or add an API key in Settings → AI Processing.",
+    "errorQueuedOffline": "No connection, so this image was queued. It will be processed when you are back online.",
+    "errorProcessingFailed": "Could not process the image. Please try again.",
+    "errorInvalidKey": "Your AI API key is invalid or expired. Update it in Settings → AI Processing."
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",
@@ -851,7 +857,6 @@
     "howItWorks": "How It Works",
     "howItWorksDescription": "Your receipts are processed using AI for accurate extraction",
     "cloudAI": "Cloud AI",
-    "cloudAIDescription": "Uses Google Gemini for highest accuracy. Requires internet connection.",
     "highestAccuracy": "Highest Accuracy",
     "nativeOCR": "Native Vision OCR",
     "nativeOCRDescription": "Uses Apple Vision framework for fast, private on-device text recognition.",
@@ -864,10 +869,6 @@
     "recommended": "Recommended",
     "aiStatus": "AI Status",
     "platform": "Platform",
-    "geminiVision": "Gemini Vision",
-    "geminiVisionDescription": "Configure Google Gemini for cloud-based receipt processing",
-    "geminiConfigured": "Gemini API configured",
-    "geminiNotConfigured": "Configure Gemini API key in Profile Settings",
     "offlineWarning": "You are offline. Images will be queued for processing when back online.",
     "offlineQueue": "Offline Queue",
     "offlineQueueDescription": "Images captured offline are queued for processing when you're back online",
@@ -941,7 +942,7 @@
     "removeConfirmMessage": "The image will be deleted permanently. The transaction itself is kept.",
     "removed": "Receipt image removed",
     "converted": "Receipt details saved to the note and the image was removed",
-    "convertFailedNoAi": "No AI provider is configured. Add an API key in Profile Settings to convert images.",
+    "convertFailedNoAi": "No AI provider is configured. Add an API key in Settings → AI Processing to convert images.",
     "convertFailedNoDetails": "No details could be read from this image, so it was kept.",
     "convertFailedDownload": "The image could not be downloaded. If this keeps happening, the storage bucket needs a one-time CORS setup — see docs/storage-cors-setup.md.",
     "convertFailed": "Converting the image failed, so it was kept.",

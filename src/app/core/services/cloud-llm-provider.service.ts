@@ -131,6 +131,20 @@ export class CloudLLMProviderService {
   }
 
   /**
+   * Which provider will actually serve this feature right now, or null when
+   * none can.
+   *
+   * Public because the answer is user-visible: the capture dialog told everyone
+   * their receipt was going to Gemini, having no way to ask. Preference and
+   * availability both matter and the fallback order lives here, so a caller
+   * reconstructing it from getPreferredProvider and isProviderAvailable would
+   * be duplicating that order rather than sharing it.
+   */
+  resolveProvider(feature: AIFeatureType): LLMProvider | null {
+    return this.getBestAvailableProvider(feature);
+  }
+
+  /**
    * Get the best available provider for a feature, falling back if preferred is unavailable.
    */
   private getBestAvailableProvider(feature: AIFeatureType): LLMProvider | null {

@@ -13,7 +13,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { ThemeService, ThemePreference } from '../../../core/services/theme.service';
 import { TransactionService } from '../../../core/services/transaction.service';
-import { SUPPORTED_CURRENCIES } from '../../../models';
+import { SUPPORTED_CURRENCIES, baseCurrencyOf} from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../core/services/notification.service';
 import { SecurityActivityComponent } from '../security-activity/security-activity.component';
@@ -55,7 +55,7 @@ export class ProfileSettingsComponent {
   displayName = this.authService.currentUser()?.displayName || '';
 
   // Current preferences
-  baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+  baseCurrency = baseCurrencyOf(this.authService.currentUser());
   theme: ThemePreference = this.authService.currentUser()?.preferences?.theme || 'system';
   dateFormat = this.authService.currentUser()?.preferences?.dateFormat || 'MM/DD/YYYY';
   language: SupportedLocale = (this.authService.currentUser()?.preferences?.language as SupportedLocale) || this.translationService.currentLocale();

@@ -4,7 +4,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
-import { Category } from '../../../models';
+import { Category, baseCurrencyOf} from '../../../models';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -157,7 +157,7 @@ export class SpendingChartComponent {
   }
 
   formatAmount(amount: number): string {
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     return this.currencyService.formatCurrency(amount, baseCurrency);
   }
 }

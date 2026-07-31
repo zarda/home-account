@@ -6,7 +6,7 @@ import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
-import { CategoryTotal, RAG_TIER_CONFIGS, Transaction, TransactionFilters } from '../../models';
+import { CategoryTotal, RAG_TIER_CONFIGS, Transaction, TransactionFilters, baseCurrencyOf} from '../../models';
 import {
   computeAmountAnomalies,
   computeCategoryDeltas,
@@ -93,7 +93,7 @@ export class InsightChipsService {
       return [];
     }
 
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
     const monthFilters: TransactionFilters = {
       type: 'expense',

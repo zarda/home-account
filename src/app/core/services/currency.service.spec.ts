@@ -323,26 +323,6 @@ describe('CurrencyService', () => {
     });
   });
 
-  describe('setBaseCurrency', () => {
-    it('should set base currency for valid code', () => {
-      service.setBaseCurrency('EUR');
-      expect(service.baseCurrency()).toBe('EUR');
-    });
-
-    it('should not change for invalid currency code', () => {
-      const originalBase = service.baseCurrency();
-      service.setBaseCurrency('INVALID');
-      expect(service.baseCurrency()).toBe(originalBase);
-    });
-
-    it('should accept all supported currencies', () => {
-      SUPPORTED_CURRENCIES.forEach(currency => {
-        service.setBaseCurrency(currency.code);
-        expect(service.baseCurrency()).toBe(currency.code);
-      });
-    });
-  });
-
   describe('getCurrencyInfo', () => {
     it('should return info for valid currency', () => {
       const info = service.getCurrencyInfo('USD');
@@ -381,22 +361,6 @@ describe('CurrencyService', () => {
         expect(currencies[0].code).toBe('USD');
         done();
       });
-    });
-  });
-
-  describe('convertToBaseCurrency', () => {
-    it('should convert to current base currency', () => {
-      service.setBaseCurrency('USD');
-      const result = service.convertToBaseCurrency(100, 'EUR');
-      expect(result).toBeCloseTo(100 / 0.92, 2);
-    });
-  });
-
-  describe('convertFromBaseCurrency', () => {
-    it('should convert from current base currency', () => {
-      service.setBaseCurrency('USD');
-      const result = service.convertFromBaseCurrency(100, 'EUR');
-      expect(result).toBeCloseTo(92, 0);
     });
   });
 });

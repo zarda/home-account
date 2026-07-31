@@ -33,7 +33,8 @@ import {
   CreateTransactionDTO,
   MonthlyTotal,
   CategoryTotal,
-  receiptImageCount
+  receiptImageCount,
+  baseCurrencyOf
 } from '../../models';
 import {
   applyClientTransactionFilters,
@@ -84,14 +85,14 @@ export class TransactionService {
   // snapshot is stale (base currency changed) or corrupt (written against
   // unloaded rates) are converted live instead of summed as raw amounts.
   totalIncome = computed(() => {
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     return this.transactions()
       .filter(t => t.type === 'income')
       .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
   });
 
   totalExpense = computed(() => {
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     return this.transactions()
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
@@ -159,7 +160,7 @@ export class TransactionService {
         throw new Error(INVALID_AMOUNT_ERROR);
       }
 
-      const baseCurrency = this.authService.currentUser()?.preferences.baseCurrency ?? 'USD';
+      const baseCurrency = baseCurrencyOf(this.authService.currentUser());
       // The persisted base-currency snapshot must never be computed against
       // the not-yet-loaded default rate table (which silently maps unknown
       // currencies to 1:1 and stores raw foreign amounts as base amounts).
@@ -272,7 +273,7 @@ export class TransactionService {
         if (currentTransaction) {
           const amount = data.amount ?? currentTransaction.amount;
           const currency = data.currency ?? currentTransaction.currency;
-          const baseCurrency = this.authService.currentUser()?.preferences.baseCurrency ?? 'USD';
+          const baseCurrency = baseCurrencyOf(this.authService.currentUser());
           // Same guard as addTransaction: never snapshot against unloaded rates.
           await this.currencyService.ensureRatesLoaded();
           const exchangeRate = this.currencyService.getExchangeRate(currency, baseCurrency);
@@ -741,7 +742,7 @@ export class TransactionService {
       options
     ).pipe(
       map(transactions => {
-        const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+        const baseCurrency = baseCurrencyOf(this.authService.currentUser());
         const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
 
         const income = transactions
@@ -767,7 +768,7 @@ export class TransactionService {
 
     return this.getByDateRange(startDate, endDate).pipe(
       map(transactions => {
-        const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+        const baseCurrency = baseCurrencyOf(this.authService.currentUser());
         const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
 
         const income = transactions
@@ -813,7 +814,7 @@ export class TransactionService {
       options
     ).pipe(
       map(transactions => {
-        const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+        const baseCurrency = baseCurrencyOf(this.authService.currentUser());
         const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
 
         let income = 0;
@@ -892,7 +893,7 @@ export class TransactionService {
   }
 
   private groupByCategory(transactions: Transaction[]): CategoryTotal[] {
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     const categoryMap = new Map<string, number>();
 
     for (const transaction of transactions) {

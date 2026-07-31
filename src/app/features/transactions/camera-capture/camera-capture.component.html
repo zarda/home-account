@@ -24,7 +24,7 @@
         } @else if (willUseNativeAI()) {
           {{ 'import.nativeOCR' | translate }}
         } @else if (willUseCloudAI()) {
-          {{ 'import.cloudAI' | translate }}
+          {{ 'import.cloudAI' | translate: { provider: cloudProviderLabel() } }}
         } @else {
           {{ 'import.configureAI' | translate }}
         }

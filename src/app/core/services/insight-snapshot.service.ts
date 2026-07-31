@@ -11,6 +11,7 @@ import {
   INSIGHT_SNAPSHOT_SCHEMA_VERSION,
   InsightSnapshot,
   Transaction,
+  baseCurrencyOf
 } from '../../models';
 import { toStorableCards, buildInsightCards } from '../utils/insight-card.utils';
 import { computeInsightFacts, transactionFingerprint } from '../utils/insight-facts.utils';
@@ -77,7 +78,7 @@ export class InsightSnapshotService {
   }
 
   private baseCurrency(): string {
-    return this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    return baseCurrencyOf(this.authService.currentUser());
   }
 
   private timeZone(): string {

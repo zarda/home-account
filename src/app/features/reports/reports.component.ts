@@ -28,7 +28,7 @@ import { RecurringBreakdownComponent } from './recurring-breakdown/recurring-bre
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
 import { InsightsTabComponent } from './insights/insights-tab.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
-import { Category, Transaction } from '../../models';
+import { Category, Transaction, baseCurrencyOf} from '../../models';
 import { tabAnimationDuration } from '../../core/layout/motion';
 import {
   groupExpensesByCategory,
@@ -75,9 +75,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   readonly tabAnimationDuration = tabAnimationDuration();
 
   // User info
-  baseCurrency = computed(() => {
-    return this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
-  });
+  baseCurrency = computed(() => baseCurrencyOf(this.authService.currentUser()));
 
   /**
    * The whole selection, not just its dates. The insights tab derives a trailing

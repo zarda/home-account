@@ -27,7 +27,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category, receiptImageCount } from '../../../models';
+import { Transaction, Category, receiptImageCount, baseCurrencyOf} from '../../../models';
 import {
   TransactionWindowService,
   WindowSortDirection
@@ -236,7 +236,7 @@ export class TransactionListComponent {
   // user's base currency (write-time snapshot; live conversion for legacy
   // rows). Null for rows already in the base currency.
   convertedAmount(transaction: Transaction): string | null {
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     if (transaction.currency === baseCurrency) return null;
     const inBase = this.currencyService.amountInBase(transaction, baseCurrency);
     return `≈ ${this.currencyService.formatCurrency(inBase, baseCurrency)}`;

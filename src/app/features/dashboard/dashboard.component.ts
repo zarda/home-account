@@ -12,7 +12,7 @@ import { RecurringService } from '../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
-import { Transaction, Category, CategoryTotal, RAG_TIER_CONFIGS, effectiveRagLevel } from '../../models';
+import { Transaction, Category, CategoryTotal, RAG_TIER_CONFIGS, effectiveRagLevel, baseCurrencyOf} from '../../models';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
@@ -82,9 +82,7 @@ export class DashboardComponent implements OnInit {
     return user?.displayName?.split(' ')[0] || 'User';
   });
 
-  baseCurrency = computed(() => {
-    return this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
-  });
+  baseCurrency = computed(() => baseCurrencyOf(this.authService.currentUser()));
 
   // Transaction data
   transactions = this.transactionService.transactions;
