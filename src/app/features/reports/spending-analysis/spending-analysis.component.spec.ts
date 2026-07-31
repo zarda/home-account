@@ -355,24 +355,54 @@ describe('SpendingAnalysisComponent', () => {
   });
 
   describe('chartOptions y1 axis', () => {
+    const monthGranularityRange = { start: new Date(2024, 0, 1), end: new Date(2024, 2, 31) };
+
+    function scalesOf() {
+      return component.chartOptions()!.scales as Record<
+        string,
+        { position?: string; ticks?: { callback?: (v: number) => string } } | undefined
+      >;
+    }
+
     beforeEach(() => {
-      component.transactions = mockTransactions;
+      component.transactions = [
+        makeTransaction('income', 5000, new Date(2024, 0, 5)),
+        makeTransaction('expense', 4000, new Date(2024, 0, 20))
+      ];
       component.categories = mockCategories;
-      component.dateRange = { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) };
+      component.dateRange = monthGranularityRange;
       fixture.detectChanges();
     });
 
     it('positions the y1 axis on the right', () => {
-      const scales = component.chartOptions()!.scales as Record<string, { position?: string }>;
-      expect(scales['y1'].position).toBe('right');
+      expect(scalesOf()['y1']!.position).toBe('right');
     });
 
     it('formats y1 ticks as a percentage', () => {
-      const scales = component.chartOptions()!.scales as Record<
-        string,
-        { ticks?: { callback?: (v: number) => string } }
-      >;
-      expect(scales['y1'].ticks!.callback!(12)).toBe('12%');
+      expect(scalesOf()['y1']!.ticks!.callback!(12)).toBe('12%');
+    });
+
+    it('omits the axis at day granularity, where nothing plots on it', () => {
+      component.dateRange = { start: new Date(2024, 5, 1), end: new Date(2024, 5, 30) };
+      fixture.detectChanges();
+
+      // Chart.js defaults a declared scale to display: true, so a dataset-less
+      // y1 still lays out and draws its own 0%–1% ticks down the right edge.
+      expect(component.granularity()).toBe('day');
+      expect(scalesOf()['y1']).toBeUndefined();
+    });
+
+    it('omits the axis when every month has zero income', () => {
+      component.transactions = [
+        makeTransaction('expense', 100, new Date(2024, 0, 10)),
+        makeTransaction('expense', 200, new Date(2024, 1, 10)),
+        makeTransaction('expense', 300, new Date(2024, 2, 10))
+      ];
+      fixture.detectChanges();
+
+      expect(component.granularity()).toBe('month');
+      expect(component.chartData().datasets.length).toBe(2);
+      expect(scalesOf()['y1']).toBeUndefined();
     });
   });
 

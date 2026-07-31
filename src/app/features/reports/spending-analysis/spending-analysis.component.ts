@@ -92,6 +92,17 @@ export class SpendingAnalysisComponent {
     const locale = this.translationService.getIntlLocale();
     const axis = this.chartTheme.axis();
     const palette = this.chartTheme.palette();
+    // Percent axis for the savings-rate line, kept separate so it never
+    // fights with the currency scale for its range (no beginAtZero: negative
+    // rates need to plot below the line).
+    const percentAxis = {
+      position: 'right' as const,
+      grid: { ...axis.grid, drawOnChartArea: false },
+      ticks: {
+        ...axis.ticks,
+        callback: (v: string | number) => `${Number(v).toFixed(0)}%`,
+      },
+    };
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -134,17 +145,10 @@ export class SpendingAnalysisComponent {
             },
           },
         },
-        // Percent axis for the savings-rate line, kept separate so it never
-        // fights with the currency scale for its range (no beginAtZero:
-        // negative rates need to plot below the line).
-        y1: {
-          position: 'right',
-          grid: { ...axis.grid, drawOnChartArea: false },
-          ticks: {
-            ...axis.ticks,
-            callback: (v) => `${Number(v).toFixed(0)}%`,
-          },
-        },
+        // Declared only when the line is there to use it: Chart.js defaults a
+        // scale to display: true rather than 'auto', so an unreferenced y1 is
+        // still laid out and drawn — a bare 0%–1% axis down the right edge.
+        ...(this.showSavingsSeries() ? { y1: percentAxis } : {}),
       },
     };
   });
@@ -277,6 +281,20 @@ export class SpendingAnalysisComponent {
     )
   );
 
+  /**
+   * Whether the savings-rate line is on the chart at all.
+   *
+   * Shared by chartData() and chartOptions() on purpose — the line is the
+   * only thing that plots on the percent axis, so if the two ever disagreed
+   * the chart would carry an axis with nothing on it (or, the other way, a
+   * series with nowhere to sit).
+   */
+  showSavingsSeries = computed(
+    () =>
+      this.granularity() === 'month' &&
+      this.monthlySavingsRates().some(rate => rate !== null)
+  );
+
   // Chart data as computed signal to prevent re-renders
   chartData = computed((): ChartData<'line'> => {
     const data = this.trendData();
@@ -304,24 +322,21 @@ export class SpendingAnalysisComponent {
       },
     ];
 
-    if (this.granularity() === 'month') {
-      const rates = this.monthlySavingsRates();
-      // No line at all beats a legend entry for a series that is entirely
-      // gaps (e.g. every month in range has zero income).
-      if (rates.some(rate => rate !== null)) {
-        datasets.push({
-          label: this.translationService.t('reports.savingsRate'),
-          data: rates,
-          yAxisID: 'y1',
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99, 102, 241, 0.1)',
-          fill: false,
-          tension: 0.3,
-          spanGaps: true,
-          pointRadius: 3,
-          borderDash: [6, 4],
-        });
-      }
+    // No line at all beats a legend entry for a series that is entirely
+    // gaps (e.g. every month in range has zero income).
+    if (this.showSavingsSeries()) {
+      datasets.push({
+        label: this.translationService.t('reports.savingsRate'),
+        data: this.monthlySavingsRates(),
+        yAxisID: 'y1',
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        fill: false,
+        tension: 0.3,
+        spanGaps: true,
+        pointRadius: 3,
+        borderDash: [6, 4],
+      });
     }
 
     return {

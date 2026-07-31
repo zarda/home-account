@@ -1,3 +1,15 @@
+:host {
+  display: block;
+}
+
+// The 24px rhythm the rest of the Category Breakdown tab follows lives inside
+// the sibling component's own flex gap, which cannot reach across to here, and
+// Material 3 cards carry no margin of their own. Kept on the card rather than
+// the host so an empty period leaves no orphan gap behind the categories.
+.recurring-breakdown {
+  margin-top: 24px;
+}
+
 // Stacked share bar: recurring (committed) portion in primary, one-off
 // (discretionary) portion in the same muted track used for progress bars
 // elsewhere in Reports.

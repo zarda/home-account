@@ -227,9 +227,9 @@
     "totalExpenses": "総支出",
     "netSavings": "純貯蓄",
     "savingsRate": "貯蓄率",
-    "savingsTrendImproving": "改善傾向",
-    "savingsTrendDeclining": "悪化傾向",
-    "savingsTrendSteady": "横ばい",
+    "savingsTrendImproving": "貯蓄率が改善傾向",
+    "savingsTrendDeclining": "貯蓄率が悪化傾向",
+    "savingsTrendSteady": "貯蓄率は横ばい",
     "incomeVsExpensesTrend": "収入と支出の推移",
     "topSpendingCategories": "支出上位カテゴリ",
     "noExpenses": "支出なし",
@@ -285,7 +285,7 @@
     "recurringExpenses": "定期",
     "oneOffExpenses": "単発",
     "noRecurringExpenses": "定期支出はありません",
-    "noRecurringExpensesHint": "定期ルールで作成された取引や、定期としてマークされた取引がここに表示されます。"
+    "noRecurringExpensesHint": "定期取引から作成された支出や、定期としてマークされた支出がここに表示されます。"
   },
   "settings": {
     "title": "設定",

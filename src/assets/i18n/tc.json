@@ -227,9 +227,9 @@
     "totalExpenses": "總支出",
     "netSavings": "淨儲蓄",
     "savingsRate": "儲蓄率",
-    "savingsTrendImproving": "改善中",
-    "savingsTrendDeclining": "惡化中",
-    "savingsTrendSteady": "持平",
+    "savingsTrendImproving": "儲蓄率改善中",
+    "savingsTrendDeclining": "儲蓄率惡化中",
+    "savingsTrendSteady": "儲蓄率持平",
     "incomeVsExpensesTrend": "收入與支出趨勢",
     "topSpendingCategories": "支出最多的類別",
     "noExpenses": "無支出",
@@ -285,7 +285,7 @@
     "recurringExpenses": "定期",
     "oneOffExpenses": "一次性",
     "noRecurringExpenses": "沒有定期支出",
-    "noRecurringExpensesHint": "由定期規則建立的交易，或標記為定期的交易，將顯示於此。"
+    "noRecurringExpensesHint": "由定期交易建立的支出，或標記為定期的支出，將顯示於此。"
   },
   "settings": {
     "title": "設定",

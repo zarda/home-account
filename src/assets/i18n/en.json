@@ -227,9 +227,9 @@
     "totalExpenses": "Total Expenses",
     "netSavings": "Net Savings",
     "savingsRate": "Savings Rate",
-    "savingsTrendImproving": "Improving",
-    "savingsTrendDeclining": "Declining",
-    "savingsTrendSteady": "Steady",
+    "savingsTrendImproving": "Savings rate improving",
+    "savingsTrendDeclining": "Savings rate declining",
+    "savingsTrendSteady": "Savings rate steady",
     "incomeVsExpensesTrend": "Income vs Expenses Trend",
     "topSpendingCategories": "Top Spending Categories",
     "noExpenses": "No Expenses",
@@ -285,7 +285,7 @@
     "recurringExpenses": "Recurring",
     "oneOffExpenses": "One-off",
     "noRecurringExpenses": "No recurring expenses",
-    "noRecurringExpensesHint": "Transactions created by recurring rules, or marked as recurring, will appear here."
+    "noRecurringExpensesHint": "Expenses from your recurring transactions, or marked as recurring, will appear here."
   },
   "settings": {
     "title": "Settings",
