@@ -46,6 +46,7 @@ import {
   CurrencyInfo,
   FieldConfidence,
   VERIFY_FIELD_THRESHOLD,
+  baseCurrencyOf
 } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
@@ -399,7 +400,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   private initForm(): void {
     const transaction = this.data.transaction;
-    const defaultCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    const defaultCurrency = baseCurrencyOf(this.authService.currentUser());
     const initialType = transaction?.type || 'expense';
 
     this.transactionType.set(initialType);

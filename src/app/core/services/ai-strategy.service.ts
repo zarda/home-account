@@ -11,7 +11,7 @@ import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
-import { Category, LLMProvider } from '../../models';
+import { Category, LLMProvider, baseCurrencyOf} from '../../models';
 
 export type { ProcessedTransaction, ProcessingResult } from './ai-types';
 
@@ -408,7 +408,7 @@ export class AIStrategyService {
    * path had read it.
    */
   private fallbackCurrency(): string {
-    return this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    return baseCurrencyOf(this.authService.currentUser());
   }
 
   /**

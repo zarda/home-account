@@ -18,6 +18,7 @@ import {
   SearchQueryContext,
   Transaction,
   TransactionFilters,
+  baseCurrencyOf
 } from '../../models';
 import { applyClientTransactionFilters } from '../utils/transaction-query.utils';
 
@@ -228,7 +229,7 @@ export class NlSearchService {
   }
 
   private baseCurrency(): string {
-    return this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    return baseCurrencyOf(this.authService.currentUser());
   }
 
   private toIsoDate(date: Date): string {

@@ -16,7 +16,7 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category } from '../../../../models';
+import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category, baseCurrencyOf} from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 
@@ -57,7 +57,7 @@ export class RecurringFormDialogComponent implements OnInit {
   name = '';
   type: 'income' | 'expense' = 'expense';
   amount: number | null = null;
-  currency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+  currency = baseCurrencyOf(this.authService.currentUser());
   categoryId = '';
   description = '';
   frequencyType: FrequencyType = 'monthly';

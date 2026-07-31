@@ -5,6 +5,7 @@ import {
   RagInsightsLevel,
   User,
   UserPreferences,
+  baseCurrencyOf,
   canDisableUsageAnalytics,
   effectiveRagLevel,
   subscriptionTier,
@@ -109,6 +110,31 @@ describe('usageAnalyticsEnabled', () => {
 
   it('should stay out of the defaults', () => {
     expect('enableUsageAnalytics' in DEFAULT_USER_PREFERENCES).toBeFalse();
+  });
+});
+
+describe('baseCurrencyOf', () => {
+  const user = (baseCurrency: unknown): User =>
+    ({ id: 'u1', preferences: { ...DEFAULT_USER_PREFERENCES, baseCurrency } }) as User;
+
+  it('reports the account preference', () => {
+    expect(baseCurrencyOf(user('KRW'))).toBe('KRW');
+  });
+
+  it('falls back to USD with no account', () => {
+    expect(baseCurrencyOf(null)).toBe('USD');
+    expect(baseCurrencyOf(undefined)).toBe('USD');
+  });
+
+  it('falls back to USD for a preference saved empty', () => {
+    // The reason this is one function now: the seventeen files that used to
+    // spell it out disagreed, and the `??` half kept '' — yielding a
+    // transaction with no currency at all.
+    expect(baseCurrencyOf(user(''))).toBe('USD');
+  });
+
+  it('falls back to USD when preferences are absent entirely', () => {
+    expect(baseCurrencyOf({ id: 'u1' } as User)).toBe('USD');
   });
 });
 

@@ -29,7 +29,6 @@ export class CurrencyService {
   // Signals
   currencies = signal<CurrencyInfo[]>(SUPPORTED_CURRENCIES);
   exchangeRates = signal<Map<string, number>>(new Map([['USD', 1]]));
-  baseCurrency = signal<string>('USD');
   isLoading = signal<boolean>(false);
   lastUpdated = signal<Date | null>(null);
   private ratesInitialized = signal<boolean>(false);
@@ -222,13 +221,6 @@ export class CurrencyService {
     return this.currencies();
   }
 
-  // Set the base currency for conversions
-  setBaseCurrency(code: string): void {
-    if (this.supportedCurrencyCodes().includes(code)) {
-      this.baseCurrency.set(code);
-    }
-  }
-
   // Cache rates on the device
   private cacheRates(rates: ExchangeRates): void {
     try {
@@ -315,15 +307,5 @@ export class CurrencyService {
     const defaultRates = new Map<string, number>(Object.entries(approximateRates));
     this.exchangeRates.set(defaultRates);
     this.lastUpdated.set(new Date());
-  }
-
-  // Convert amount to base currency
-  convertToBaseCurrency(amount: number, fromCurrency: string): number {
-    return this.convert(amount, fromCurrency, this.baseCurrency());
-  }
-
-  // Convert amount from base currency
-  convertFromBaseCurrency(amount: number, toCurrency: string): number {
-    return this.convert(amount, this.baseCurrency(), toCurrency);
   }
 }

@@ -26,7 +26,8 @@ import {
   CreateTransactionDTO,
   DuplicateCheck,
   CATEGORY_MEMORY_CONFIDENCE,
-  effectiveRagLevel
+  effectiveRagLevel,
+  baseCurrencyOf
 } from '../../models';
 
 /**
@@ -253,7 +254,7 @@ export class AIImportService {
    * Convert strategy service result to categorized import transactions
    */
   private convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
     return result.transactions.map(tx => ({
       id: nextImportRowId('strategy'),
@@ -357,7 +358,7 @@ export class AIImportService {
     if (transactions.length === 0) return [];
 
     // Get user's base currency from settings
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
     // Convert to RawTransaction format for categorization
     const rawTransactions: RawTransaction[] = transactions.map(t => ({
@@ -710,7 +711,7 @@ export class AIImportService {
     if (transactions.length === 0) return [];
 
     // Get user's base currency from settings
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
     // Convert ExtractedTransaction to CategorizedImportTransaction
     // If transaction already has a category from extraction, use it; otherwise suggest 'other_expense'
@@ -772,7 +773,7 @@ export class AIImportService {
     const errors: ImportHistory['errors'] = [];
 
     // Get user's base currency for fallback
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
     try {
       for (let i = 0; i < selectedTransactions.length; i++) {

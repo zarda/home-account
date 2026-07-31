@@ -10,6 +10,7 @@ import {
   InsightFacts,
   RAG_TIER_CONFIGS,
   Transaction,
+  baseCurrencyOf
 } from '../../models';
 import { DetectorWindow } from '../utils/spending-pattern.types';
 import { buildInsightCards } from '../utils/insight-card.utils';
@@ -139,7 +140,7 @@ export class InsightsService {
     () => !this.pwa.isOnline() && this.windowTransactions().length === 0 && !this.loading());
 
   private baseCurrency(): string {
-    return this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    return baseCurrencyOf(this.authService.currentUser());
   }
 
   private timeZone(): string {

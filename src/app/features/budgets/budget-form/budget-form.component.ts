@@ -20,7 +20,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
-import { Budget, CreateBudgetDTO, BudgetPeriod } from '../../../models';
+import { Budget, CreateBudgetDTO, BudgetPeriod, baseCurrencyOf} from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 
@@ -98,7 +98,7 @@ export class BudgetFormComponent implements OnInit {
 
   private initForm(): void {
     const budget = this.data.budget;
-    const defaultCurrency = this.authService.currentUser()?.preferences?.baseCurrency || 'USD';
+    const defaultCurrency = baseCurrencyOf(this.authService.currentUser());
 
     // Convert Firestore Timestamp to Date for the form
     const startDate = budget?.startDate?.toDate() || null;

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, input, output } from '@angu
 
 import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction, Category, receiptImageCount } from '../../../models';
+import { Transaction, Category, receiptImageCount, baseCurrencyOf} from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
@@ -94,7 +94,7 @@ export class TransactionRowComponent {
   // rows). Null for rows already in the base currency.
   convertedAmount(): string | null {
     const transaction = this.transaction();
-    const baseCurrency = this.authService.currentUser()?.preferences?.baseCurrency ?? 'USD';
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     if (transaction.currency === baseCurrency) return null;
     const inBase = this.currencyService.amountInBase(transaction, baseCurrency);
     return `≈ ${this.currencyService.formatCurrency(inBase, baseCurrency)}`;
