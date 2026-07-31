@@ -1,4 +1,4 @@
-import { Component, computed, inject, Input, signal } from '@angular/core';
+import { Component, computed, inject, Input, output, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 
 import { MatCardModule } from '@angular/material/card';
@@ -59,6 +59,17 @@ export class CategoryBreakdownComponent {
 
   @Input() set currency(value: string) {
     this._currency.set(value);
+  }
+
+  /**
+   * Forwarded from the reused donut; the reports page owns the navigation.
+   * Carries the active toggle state, because the donut renders whichever side
+   * is selected and knows nothing about it.
+   */
+  categoryActivated = output<{ categoryId: string; type: 'expense' | 'income' }>();
+
+  onChartCategoryActivated(categoryId: string): void {
+    this.categoryActivated.emit({ categoryId, type: this.selectedType() });
   }
 
   private _transactions = signal<Transaction[]>([]);

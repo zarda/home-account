@@ -90,7 +90,8 @@
     "noExpenses": "No expenses yet",
     "addFirstTransaction": "Add your first transaction to get started",
     "addExpensesToSeeBreakdown": "Start adding expenses to see your spending breakdown",
-    "vsPreviousPeriod": "vs previous period"
+    "vsPreviousPeriod": "vs previous period",
+    "viewCategoryTransactions": "View {{category}} transactions"
   },
   "transactions": {
     "title": "Transactions",
@@ -225,6 +226,10 @@
     "totalIncome": "Total Income",
     "totalExpenses": "Total Expenses",
     "netSavings": "Net Savings",
+    "savingsRate": "Savings Rate",
+    "savingsTrendImproving": "Savings rate improving",
+    "savingsTrendDeclining": "Savings rate declining",
+    "savingsTrendSteady": "Savings rate steady",
     "incomeVsExpensesTrend": "Income vs Expenses Trend",
     "topSpendingCategories": "Top Spending Categories",
     "noExpenses": "No Expenses",
@@ -242,6 +247,9 @@
     "monthlyIncomeVsExpenses": "Monthly Income vs Expenses",
     "monthlyDetails": "Monthly Details",
     "trend": "Trend",
+    "yoyChange": "Spending vs last year",
+    "incomeLastYear": "Income (last year)",
+    "expensesLastYear": "Expenses (last year)",
     "exportData": "Export Data",
     "exportFormat": "Export Format",
     "options": "Options",
@@ -272,7 +280,12 @@
       "generatedOn": "Generated on {{date}}"
     },
     "insights": "Spending Patterns",
-    "tabInsights": "Patterns"
+    "tabInsights": "Patterns",
+    "recurringVsOneOff": "Recurring vs One-off Spending",
+    "recurringExpenses": "Recurring",
+    "oneOffExpenses": "One-off",
+    "noRecurringExpenses": "No recurring expenses",
+    "noRecurringExpensesHint": "Expenses from your recurring transactions, or marked as recurring, will appear here."
   },
   "settings": {
     "title": "Settings",

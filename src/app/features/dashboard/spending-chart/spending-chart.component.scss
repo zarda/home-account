@@ -55,6 +55,7 @@
   gap: 6px;
 }
 
+// A button: activating a row drills into that category's transactions.
 .legend-item {
   display: flex;
   align-items: center;
@@ -65,7 +66,15 @@
   background: var(--surface-subtle);
   width: 100%;
   box-sizing: border-box;
+  // Button reset — the row keeps the surrounding typography and layout.
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 
+  // Hover is the pointer affordance; the app-wide :focus-visible ring in
+  // styles.scss is the keyboard one, and nothing here suppresses it.
   &:hover {
     background: var(--surface-muted);
   }

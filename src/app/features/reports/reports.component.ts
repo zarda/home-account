@@ -1,5 +1,7 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatIconModule } from '@angular/material/icon';
@@ -11,6 +13,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AnalyticsService } from '../../core/services/analytics.service';
+import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
@@ -21,6 +24,7 @@ import {
 } from '../../shared/components/period-selector/period-selector.component';
 import { SpendingAnalysisComponent } from './spending-analysis/spending-analysis.component';
 import { CategoryBreakdownComponent } from './category-breakdown/category-breakdown.component';
+import { RecurringBreakdownComponent } from './recurring-breakdown/recurring-breakdown.component';
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
 import { InsightsTabComponent } from './insights/insights-tab.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
@@ -30,6 +34,7 @@ import {
   groupExpensesByCategory,
   sumByType,
 } from '../../core/utils/transaction-aggregation.utils';
+import { addMonths, clampToEndOfToday } from '../../core/utils/transaction-date.utils';
 
 @Component({
   selector: 'app-reports',
@@ -45,6 +50,7 @@ import {
     LoadingSpinnerComponent,
     SpendingAnalysisComponent,
     CategoryBreakdownComponent,
+    RecurringBreakdownComponent,
     MonthlyComparisonComponent,
     InsightsTabComponent,
     TranslatePipe,
@@ -52,13 +58,15 @@ import {
   templateUrl: './reports.component.html',
   styleUrl: './reports.component.scss',
 })
-export class ReportsComponent implements OnInit {
+export class ReportsComponent implements OnInit, OnDestroy {
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
   private authService = inject(AuthService);
   private currencyService = inject(CurrencyService);
   private dialog = inject(MatDialog);
   private analytics = inject(AnalyticsService);
+  private pendingFilters = inject(PendingFiltersService);
+  private router = inject(Router);
 
   isLoading = signal(true);
   selectedTabIndex = 0;
@@ -87,6 +95,15 @@ export class ReportsComponent implements OnInit {
   transactions = this.transactionService.transactions;
   categories = this.categoryService.categories;
 
+  /**
+   * The selected window shifted back a year, for the monthly comparison's
+   * year-over-year figures. Kept apart from `transactions` on purpose: that
+   * signal is what all four tabs render, so the prior-year rows must never
+   * reach it.
+   */
+  priorYearTransactions = signal<Transaction[]>([]);
+  private priorYearSub?: Subscription;
+
   categoriesMap = computed(() => {
     const map = new Map<string, Category>();
     for (const cat of this.categories()) {
@@ -114,6 +131,13 @@ export class ReportsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadData();
+  }
+
+  ngOnDestroy(): void {
+    // The Firestore wrapper behind the prior-year window never completes, so
+    // dropping the page without this leaves a listener running for the rest
+    // of the session.
+    this.priorYearSub?.unsubscribe();
   }
 
   /**
@@ -159,6 +183,24 @@ export class ReportsComponent implements OnInit {
     this.loadData();
   }
 
+  /**
+   * A category picked in the breakdown donut: open the transaction list on the
+   * rows behind it. Handing the set over as live filters (rather than a query
+   * param) is what makes it arrive visible and clearable in the filter surface.
+   * The type travels with the event because the tab's toggle decides which
+   * side of the ledger the donut is showing.
+   */
+  onCategoryDrillDown(event: { categoryId: string; type: 'expense' | 'income' }): void {
+    const range = this.dateRange();
+    this.pendingFilters.apply({
+      categoryId: event.categoryId,
+      type: event.type,
+      startDate: range.start,
+      endDate: range.end,
+    });
+    void this.router.navigate(['/transactions']);
+  }
+
   openExportDialog(): void {
     this.dialog.open(ExportDialogComponent, {
       width: '100%',
@@ -175,6 +217,32 @@ export class ReportsComponent implements OnInit {
   private loadData(): void {
     this.isLoading.set(true);
     const range = this.dateRange();
+
+    // The period selector hands out whole calendar bounds, so "This Month" on
+    // the 15th runs to the 31st. Shifting that end back a year unchanged would
+    // weigh a month-to-date window against a complete one — roughly -50% read
+    // as an improvement — and would give months that have not happened yet a
+    // full year-ago figure to be "-100%" against. Clamping first makes the
+    // comparison month-to-date vs month-to-date, the same semantic the
+    // dashboard's getPeriodDates() documents.
+    const clampedEnd = clampToEndOfToday(range.end, new Date());
+
+    // Same window a year back, through the non-mutating reader: getByDateRange
+    // would publish these rows to the shared `transactions` signal and every
+    // tab would start showing last year's figures. Cleared first so a period
+    // change cannot flash the old year's comparison against the new period,
+    // and deliberately outside the isLoading gate — the page renders as soon
+    // as the current window is in, and the comparison fills in behind it.
+    this.priorYearSub?.unsubscribe();
+    this.priorYearTransactions.set([]);
+    this.priorYearSub = this.transactionService
+      .getTransactionsInRange(addMonths(range.start, -12), addMonths(clampedEnd, -12))
+      .subscribe({
+        next: rows => this.priorYearTransactions.set(rows),
+        // A prior-year window that fails to load is not a page failure: the
+        // comparison just has nothing to compare against.
+        error: () => this.priorYearTransactions.set([]),
+      });
 
     this.transactionService.getByDateRange(range.start, range.end).subscribe({
       next: () => this.finishLoading(),

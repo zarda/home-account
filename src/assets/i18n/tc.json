@@ -90,7 +90,8 @@
     "noExpenses": "尚無支出",
     "addFirstTransaction": "新增您的第一筆交易",
     "addExpensesToSeeBreakdown": "開始新增支出以查看支出明細",
-    "vsPreviousPeriod": "與上期相比"
+    "vsPreviousPeriod": "與上期相比",
+    "viewCategoryTransactions": "查看{{category}}的交易"
   },
   "transactions": {
     "title": "交易紀錄",
@@ -225,6 +226,10 @@
     "totalIncome": "總收入",
     "totalExpenses": "總支出",
     "netSavings": "淨儲蓄",
+    "savingsRate": "儲蓄率",
+    "savingsTrendImproving": "儲蓄率改善中",
+    "savingsTrendDeclining": "儲蓄率惡化中",
+    "savingsTrendSteady": "儲蓄率持平",
     "incomeVsExpensesTrend": "收入與支出趨勢",
     "topSpendingCategories": "支出最多的類別",
     "noExpenses": "無支出",
@@ -242,6 +247,9 @@
     "monthlyIncomeVsExpenses": "月收入與支出",
     "monthlyDetails": "月度明細",
     "trend": "趨勢",
+    "yoyChange": "支出較去年同期",
+    "incomeLastYear": "收入（去年）",
+    "expensesLastYear": "支出（去年）",
     "exportData": "匯出資料",
     "exportFormat": "匯出格式",
     "options": "選項",
@@ -272,7 +280,12 @@
       "generatedOn": "產生於 {{date}}"
     },
     "insights": "消費模式",
-    "tabInsights": "模式"
+    "tabInsights": "模式",
+    "recurringVsOneOff": "定期與一次性支出明細",
+    "recurringExpenses": "定期",
+    "oneOffExpenses": "一次性",
+    "noRecurringExpenses": "沒有定期支出",
+    "noRecurringExpensesHint": "由定期交易建立的支出，或標記為定期的支出，將顯示於此。"
   },
   "settings": {
     "title": "設定",

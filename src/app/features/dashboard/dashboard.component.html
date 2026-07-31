@@ -48,6 +48,7 @@
         class="area-chart"
         [categoryTotals]="categoryTotals()"
         [categories]="categories()"
+        (categoryActivated)="onCategoryActivated($event)"
       />
 
       <app-recent-transactions

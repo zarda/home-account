@@ -1,0 +1,43 @@
+@if (hasExpenses()) {
+  <mat-card class="recurring-breakdown">
+    <mat-card-header>
+      <mat-card-title>{{ 'reports.recurringVsOneOff' | translate }}</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (hasRecurring()) {
+        <div class="share-bar" aria-hidden="true">
+          <div class="share-bar-recurring" [style.width.%]="recurringShare()"></div>
+          <div class="share-bar-oneoff" [style.width.%]="oneOffShare()"></div>
+        </div>
+
+        <div class="breakdown-row">
+          <mat-icon class="row-icon recurring">autorenew</mat-icon>
+          <span class="row-label">
+            {{ 'reports.recurringExpenses' | translate }}
+            <span class="row-count">({{ recurringCount() }})</span>
+          </span>
+          <span class="row-amount">{{ recurringTotal() | currency:currencyCode:'symbol':'1.2-2' }}</span>
+          <span class="row-percentage">{{ recurringShare() | number:'1.0-0' }}%</span>
+        </div>
+      } @else {
+        <app-empty-state
+          size="sm"
+          icon="autorenew"
+          [title]="'reports.noRecurringExpenses' | translate"
+          [description]="'reports.noRecurringExpensesHint' | translate"
+        />
+      }
+
+      <div class="breakdown-row">
+        <mat-icon class="row-icon oneoff">bolt</mat-icon>
+        <span class="row-label">
+          {{ 'reports.oneOffExpenses' | translate }}
+          <span class="row-count">({{ oneOffCount() }})</span>
+        </span>
+        <span class="row-amount">{{ oneOffTotal() | currency:currencyCode:'symbol':'1.2-2' }}</span>
+        <span class="row-percentage">{{ oneOffShare() | number:'1.0-0' }}%</span>
+      </div>
+    </mat-card-content>
+  </mat-card>
+}

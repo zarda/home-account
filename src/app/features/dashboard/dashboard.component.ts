@@ -1,5 +1,6 @@
 import { Component, computed, DestroyRef, effect, inject, OnInit, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Router } from '@angular/router';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { TransactionService } from '../../core/services/transaction.service';
@@ -10,6 +11,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { RecurringService } from '../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, Category, CategoryTotal, RAG_TIER_CONFIGS, effectiveRagLevel } from '../../models';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
@@ -54,6 +56,8 @@ export class DashboardComponent implements OnInit {
   private recurringService = inject(RecurringService);
   private insightSnapshots = inject(InsightSnapshotService);
   private translationService = inject(TranslationService);
+  private pendingFilters = inject(PendingFiltersService);
+  private router = inject(Router);
   private destroyRef = inject(DestroyRef);
 
   isLoading = signal(true);
@@ -355,6 +359,23 @@ export class DashboardComponent implements OnInit {
       default:
         return null;
     }
+  }
+
+  /**
+   * A category picked in the spending chart: open the transaction list on
+   * exactly the rows that slice was computed from. The pending-filters
+   * channel hands the set over as live filters, so it lands in the filter
+   * surface visible and clearable rather than as an invisible query param.
+   */
+  onCategoryActivated(categoryId: string): void {
+    const dates = this.getPeriodDates();
+    this.pendingFilters.apply({
+      categoryId,
+      type: 'expense',
+      startDate: dates.start,
+      endDate: dates.end,
+    });
+    void this.router.navigate(['/transactions']);
   }
 
   // The selector emits full calendar bounds; the dashboard clamps periods

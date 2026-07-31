@@ -96,6 +96,13 @@
   }
 }
 
+// The 8px above trails a currency amount in the income and expense cells. In
+// the year-over-year cell the indicator is the whole content, so the offset
+// only makes rows with a value zig-zag against the "—" of rows without one.
+.yoy-cell .change-indicator {
+  margin-left: 0;
+}
+
 .trend-icon {
   font-size: var(--text-xl);
   width: 1em;

@@ -1,16 +1,24 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
+import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { Timestamp } from '@angular/fire/firestore';
+import { BehaviorSubject } from 'rxjs';
 
 import { MonthlyComparisonComponent } from './monthly-comparison.component';
 import { Transaction } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+
+function breakpointState(matches: boolean): BreakpointState {
+  return { matches, breakpoints: { [APP_BREAKPOINTS.mobile]: matches } };
+}
 
 describe('MonthlyComparisonComponent', () => {
   let component: MonthlyComparisonComponent;
   let fixture: ComponentFixture<MonthlyComparisonComponent>;
+  let breakpoint$: BehaviorSubject<BreakpointState>;
 
   const mockTransactions: Transaction[] = [
     {
@@ -75,6 +83,56 @@ describe('MonthlyComparisonComponent', () => {
     }
   ];
 
+  // Same two months, one year earlier. May 2023 carries income only, which is
+  // what makes the zero-division guard on the expense side observable.
+  const mockPriorYearTransactions: Transaction[] = [
+    {
+      id: 'p1',
+      userId: 'user1',
+      type: 'expense',
+      amount: 160,
+      amountInBaseCurrency: 160,
+      exchangeRate: 1,
+      currency: 'USD',
+      categoryId: 'cat1',
+      description: 'Groceries last June',
+      date: Timestamp.fromDate(new Date(2023, 5, 15)), // June 2023
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      isRecurring: false
+    },
+    {
+      id: 'p2',
+      userId: 'user1',
+      type: 'income',
+      amount: 4000,
+      amountInBaseCurrency: 4000,
+      exchangeRate: 1,
+      currency: 'USD',
+      categoryId: 'cat2',
+      description: 'Salary last June',
+      date: Timestamp.fromDate(new Date(2023, 5, 1)), // June 2023
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      isRecurring: false
+    },
+    {
+      id: 'p3',
+      userId: 'user1',
+      type: 'income',
+      amount: 3000,
+      amountInBaseCurrency: 3000,
+      exchangeRate: 1,
+      currency: 'USD',
+      categoryId: 'cat2',
+      description: 'Salary last May',
+      date: Timestamp.fromDate(new Date(2023, 4, 1)), // May 2023
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      isRecurring: false
+    }
+  ];
+
   beforeEach(async () => {
     const mockCurrencyService = {
       currencies: signal([{ code: 'USD', name: 'US Dollar', symbol: '$' }]),
@@ -88,18 +146,25 @@ describe('MonthlyComparisonComponent', () => {
       t: (key: string) => {
         const translations: Record<string, string> = {
           'common.income': 'Income',
-          'common.totalExpenses': 'Expenses'
+          'common.totalExpenses': 'Expenses',
+          'reports.incomeLastYear': 'Income (last year)',
+          'reports.expensesLastYear': 'Expenses (last year)'
         };
         return translations[key] || key;
       },
       getIntlLocale: () => 'en-US'
     };
 
+    // Desktop by default, matching what the real observer reports in the
+    // headless browser; the mobile cases push a match through it.
+    breakpoint$ = new BehaviorSubject<BreakpointState>(breakpointState(false));
+
     await TestBed.configureTestingModule({
       imports: [MonthlyComparisonComponent, NoopAnimationsModule],
       providers: [
         { provide: CurrencyService, useValue: mockCurrencyService },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        { provide: BreakpointObserver, useValue: { observe: () => breakpoint$.asObservable() } }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -252,6 +317,107 @@ describe('MonthlyComparisonComponent', () => {
       // First month is May
       expect(data.datasets[0].data[0]).toBe(4500); // May income
       expect(data.datasets[1].data[0]).toBe(300); // May expense
+    });
+  });
+
+  describe('year-over-year comparison', () => {
+    beforeEach(() => {
+      component.transactions = mockTransactions;
+      component.priorYearTransactions = mockPriorYearTransactions;
+      component.dateRange = { start: new Date(2024, 4, 1), end: new Date(2024, 5, 30) };
+      fixture.detectChanges();
+    });
+
+    it('should bucket prior-year transactions by their own month', () => {
+      const monthly = component.monthlyData();
+      const june = monthly.find(m => m.month.includes('Jun'));
+      const may = monthly.find(m => m.month.includes('May'));
+
+      expect(june?.prevYearIncome).toBe(4000);
+      expect(june?.prevYearExpense).toBe(160);
+      expect(may?.prevYearIncome).toBe(3000);
+      expect(may?.prevYearExpense).toBe(0);
+    });
+
+    it('should calculate the expense change against the same month last year', () => {
+      const june = component.monthlyData().find(m => m.month.includes('Jun'));
+      // (200 - 160) / 160 * 100 = 25%
+      expect(june?.yoyExpenseChange).toBeCloseTo(25);
+    });
+
+    it('should calculate the income change against the same month last year', () => {
+      const june = component.monthlyData().find(m => m.month.includes('Jun'));
+      // (5000 - 4000) / 4000 * 100 = 25%
+      expect(june?.yoyIncomeChange).toBeCloseTo(25);
+    });
+
+    it('should leave the change null when last year had nothing of that type', () => {
+      // May 2023 holds income only: dividing by a zero expense would be Infinity.
+      const may = component.monthlyData().find(m => m.month.includes('May'));
+      expect(may?.yoyExpenseChange).toBeNull();
+      expect(may?.yoyIncomeChange).toBeCloseTo(50); // (4500 - 3000) / 3000
+    });
+
+    it('should leave last year null for a month with no prior-year data at all', () => {
+      component.priorYearTransactions = mockPriorYearTransactions.filter(t => t.id !== 'p3');
+      fixture.detectChanges();
+
+      const may = component.monthlyData().find(m => m.month.includes('May'));
+      expect(may?.prevYearIncome).toBeNull();
+      expect(may?.prevYearExpense).toBeNull();
+      expect(may?.yoyIncomeChange).toBeNull();
+      expect(may?.yoyExpenseChange).toBeNull();
+    });
+
+    it('should report prior-year data as available', () => {
+      expect(component.hasPriorYearData()).toBeTrue();
+    });
+
+    it('should add muted prior-year datasets to the chart', () => {
+      const data = component.chartData();
+      expect(data.datasets.length).toBe(4);
+      expect(data.datasets[2].label).toBe('Income (last year)');
+      expect(data.datasets[3].label).toBe('Expenses (last year)');
+      // May had no prior-year expense bucket entry, June had 160.
+      expect(data.datasets[3].data).toEqual([0, 160]);
+      expect(data.datasets[2].data).toEqual([3000, 4000]);
+    });
+
+    it('should keep the chart at two datasets without prior-year data', () => {
+      component.priorYearTransactions = [];
+      fixture.detectChanges();
+
+      // No ghost legend entries for a year the user has no history for.
+      expect(component.hasPriorYearData()).toBeFalse();
+      expect(component.chartData().datasets.length).toBe(2);
+    });
+  });
+
+  describe('displayedColumns', () => {
+    it('should show the year-over-year column on desktop once there is history', () => {
+      component.priorYearTransactions = mockPriorYearTransactions;
+      fixture.detectChanges();
+
+      expect(component.displayedColumns()).toContain('yoy');
+    });
+
+    it('should drop the year-over-year column on mobile with the trend column', () => {
+      component.priorYearTransactions = mockPriorYearTransactions;
+      breakpoint$.next(breakpointState(true));
+      fixture.detectChanges();
+
+      expect(component.displayedColumns()).not.toContain('yoy');
+      expect(component.displayedColumns()).not.toContain('change');
+    });
+
+    it('should withhold the year-over-year column without prior-year data', () => {
+      component.priorYearTransactions = [];
+      fixture.detectChanges();
+
+      // Same rule the chart follows: under a year of history would otherwise
+      // buy a permanent column of em-dashes in an already-scrolling table.
+      expect(component.displayedColumns()).not.toContain('yoy');
+      expect(component.displayedColumns()).toContain('change');
     });
   });
 });

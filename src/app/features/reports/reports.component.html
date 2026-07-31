@@ -47,7 +47,9 @@
             [transactions]="transactions()"
             [categories]="categories()"
             [currency]="baseCurrency()"
+            (categoryActivated)="onCategoryDrillDown($event)"
           />
+          <app-recurring-breakdown [transactions]="transactions()" [currency]="baseCurrency()" />
         </div>
       </mat-tab>
 
@@ -60,6 +62,7 @@
         <div class="tab-content">
           <app-monthly-comparison
             [transactions]="transactions()"
+            [priorYearTransactions]="priorYearTransactions()"
             [dateRange]="dateRange()"
             [currency]="baseCurrency()"
           />

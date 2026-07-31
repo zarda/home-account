@@ -90,7 +90,8 @@
     "noExpenses": "支出なし",
     "addFirstTransaction": "最初の取引を追加してください",
     "addExpensesToSeeBreakdown": "支出を追加すると内訳が表示されます",
-    "vsPreviousPeriod": "前期比"
+    "vsPreviousPeriod": "前期比",
+    "viewCategoryTransactions": "{{category}}の取引を表示"
   },
   "transactions": {
     "title": "取引履歴",
@@ -225,6 +226,10 @@
     "totalIncome": "総収入",
     "totalExpenses": "総支出",
     "netSavings": "純貯蓄",
+    "savingsRate": "貯蓄率",
+    "savingsTrendImproving": "貯蓄率が改善傾向",
+    "savingsTrendDeclining": "貯蓄率が悪化傾向",
+    "savingsTrendSteady": "貯蓄率は横ばい",
     "incomeVsExpensesTrend": "収入と支出の推移",
     "topSpendingCategories": "支出上位カテゴリ",
     "noExpenses": "支出なし",
@@ -242,6 +247,9 @@
     "monthlyIncomeVsExpenses": "月別収入と支出",
     "monthlyDetails": "月別詳細",
     "trend": "傾向",
+    "yoyChange": "支出（前年同月比）",
+    "incomeLastYear": "収入（前年）",
+    "expensesLastYear": "支出（前年）",
     "exportData": "データをエクスポート",
     "exportFormat": "エクスポート形式",
     "options": "オプション",
@@ -272,7 +280,12 @@
       "generatedOn": "作成日: {{date}}"
     },
     "insights": "消費パターン",
-    "tabInsights": "パターン"
+    "tabInsights": "パターン",
+    "recurringVsOneOff": "定期支出と単発支出の内訳",
+    "recurringExpenses": "定期",
+    "oneOffExpenses": "単発",
+    "noRecurringExpenses": "定期支出はありません",
+    "noRecurringExpensesHint": "定期取引から作成された支出や、定期としてマークされた支出がここに表示されます。"
   },
   "settings": {
     "title": "設定",
