@@ -34,6 +34,19 @@ export interface ProviderCapabilities {
 }
 
 /**
+ * Per-request options every extraction method accepts.
+ *
+ * `signal` exists because the import timeouts were a `Promise.race` with
+ * nothing on the losing side: the UI gave up after sixty seconds and the
+ * request carried on uploading and downloading in the background. On a metered
+ * or roaming connection that is the user's money, spent on a result no longer
+ * on its way to anywhere.
+ */
+export interface AIRequestOptions {
+  signal?: AbortSignal;
+}
+
+/**
  * The contract every cloud provider service satisfies.
  *
  * `CloudLLMProviderService` used to dispatch to the three services through a
@@ -60,10 +73,14 @@ export interface CloudLLMProviderAdapter {
   reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): Promise<void>;
 
   // Receipt scanning
-  parseReceipt(imageBase64: string): Promise<ParsedReceipt>;
-  extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]>;
+  parseReceipt(imageBase64: string, options?: AIRequestOptions): Promise<ParsedReceipt>;
+  extractTransactionsFromImage(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]>;
   extractTransactionsFromMultipleImages(
-    imageBase64Array: string[]
+    imageBase64Array: string[],
+    options?: AIRequestOptions
   ): Promise<MultiImageExtractedTransaction[]>;
   /**
    * Read a statement or other multi-row document into one row per line item.
@@ -71,7 +88,10 @@ export interface CloudLLMProviderAdapter {
    * Distinct from the receipt methods, which collapse a photo into a single
    * transaction. A statement screenshot has no single total to extract.
    */
-  extractStatementTransactions(imageBase64: string): Promise<ExtractedTransaction[]>;
+  extractStatementTransactions(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]>;
   /** Present only where `capabilities.nativePdf` is true. */
   extractTransactionsFromPDF?(pdfBase64: string): Promise<RawTransaction[]>;
 

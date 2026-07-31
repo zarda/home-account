@@ -19,6 +19,7 @@ import {
   buildCategoryPromptCatalog,
   mapCategoryNameToId,
 } from '../utils/categorization.utils';
+import { readCurrencyCode, readFieldConfidence } from '../utils/receipt-extraction.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
 import { SearchIntent, SearchQueryContext } from '../../models';
 import {
@@ -30,7 +31,11 @@ import {
   renderPreviousPeriodSection,
   renderPrompt,
 } from '../prompts';
-import { CloudLLMProviderAdapter, ProviderCapabilities } from './llm-provider.interface';
+import {
+  AIRequestOptions,
+  CloudLLMProviderAdapter,
+  ProviderCapabilities,
+} from './llm-provider.interface';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 
 @Injectable({ providedIn: 'root' })
@@ -132,7 +137,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
   }
 
   // Parse receipt image
-  async parseReceipt(imageBase64: string): Promise<ParsedReceipt> {
+  async parseReceipt(imageBase64: string, options?: AIRequestOptions): Promise<ParsedReceipt> {
     if (!this.client) {
       throw new Error('OpenAI client not available');
     }
@@ -160,7 +165,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
         ],
         max_output_tokens: rendered.maxOutputTokens,
         store: false,
-      });
+      }, this.requestOptions(options));
 
       const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
@@ -172,13 +177,14 @@ export class OpenAIService implements CloudLLMProviderAdapter {
       return {
         merchant: parsed.merchant || 'Unknown',
         amount: Number(parsed.amount) || 0,
-        currency: parsed.currency || 'USD',
+        currency: readCurrencyCode(parsed.currency),
         date: parsed.date ? new Date(parsed.date) : new Date(),
         items: parsed.items || [],
         receiptDetails: parsed.receiptDetails,
         suggestedCategory: categoryId,
         confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
         receiptCount: Number(parsed.receiptCount) || 1,
+        fieldConfidence: readFieldConfidence(parsed),
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -542,12 +548,18 @@ export class OpenAIService implements CloudLLMProviderAdapter {
    * this provider has always treated an image as a set of rows — but named for
    * the intent so the import path can ask for it explicitly.
    */
-  extractStatementTransactions(imageBase64: string): Promise<ExtractedTransaction[]> {
-    return this.extractTransactionsFromImage(imageBase64);
+  extractStatementTransactions(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]> {
+    return this.extractTransactionsFromImage(imageBase64, options);
   }
 
   // Extract transactions from an image
-  async extractTransactionsFromImage(imageBase64: string): Promise<ExtractedTransaction[]> {
+  async extractTransactionsFromImage(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]> {
     if (!this.client) {
       throw new Error('OpenAI client not available');
     }
@@ -575,7 +587,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
         ],
         max_output_tokens: rendered.maxOutputTokens,
         store: false,
-      });
+      }, this.requestOptions(options));
 
       const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
@@ -586,7 +598,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
-        currency: t.currency || 'USD',
+        currency: readCurrencyCode(t.currency),
         category: t.category,
         merchant: t.merchant,
         details: t.details,
@@ -605,7 +617,8 @@ export class OpenAIService implements CloudLLMProviderAdapter {
 
   // Extract transactions from multiple images
   async extractTransactionsFromMultipleImages(
-    imageBase64Array: string[]
+    imageBase64Array: string[],
+    options?: AIRequestOptions
   ): Promise<MultiImageExtractedTransaction[]> {
     if (!this.client) {
       throw new Error('OpenAI client not available');
@@ -639,7 +652,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
         input: [{ role: 'user', content }],
         max_output_tokens: rendered.maxOutputTokens,
         store: false,
-      });
+      }, this.requestOptions(options));
 
       const responseText = response.output_text || '';
       const cleanedJson = this.extractJson(responseText);
@@ -650,7 +663,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
-        currency: t.currency || 'USD',
+        currency: readCurrencyCode(t.currency),
         category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
         merchant: t.merchant,
         details: t.details,
@@ -721,6 +734,15 @@ export class OpenAIService implements CloudLLMProviderAdapter {
    */
   private renderedText(rendered: RenderedPrompt): string {
     return rendered.system ? `${rendered.system}\n\n${rendered.user}` : rendered.user;
+  }
+
+  /**
+   * The caller's cancellation, in the shape `responses.create` takes as its
+   * second argument. Undefined when there is nothing to cancel with, so a
+   * request without a signal is issued exactly as it was before.
+   */
+  private requestOptions(options?: AIRequestOptions): { signal: AbortSignal } | undefined {
+    return options?.signal ? { signal: options.signal } : undefined;
   }
 
   // Helper: Extract JSON from response

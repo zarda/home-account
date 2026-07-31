@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { GeminiService, RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
+import { RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -37,7 +37,6 @@ const CATEGORIZATION_HISTORY_MONTHS = 6;
 
 @Injectable({ providedIn: 'root' })
 export class AIImportService {
-  private geminiService = inject(GeminiService);
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private categoryMemory = inject(CategoryMemoryService);
   private ragContext = inject(RagContextService);
@@ -143,9 +142,9 @@ export class AIImportService {
         // Otherwise fall through to legacy processing
       }
 
-      // Fall back to legacy Gemini-only processing
-      if (!this.geminiService.isAvailable()) {
-        throw new Error('AI service is not available. Please configure your API key in Profile Settings.');
+      // Fall back to single-shot extraction through the configured provider
+      if (!this.cloudLLMProvider.hasAnyCloudProvider()) {
+        throw new Error('AI service is not available. Please configure your API key in AI Settings.');
       }
 
       const imageBase64 = await this.fileToBase64(file);
@@ -155,7 +154,7 @@ export class AIImportService {
       this.processingSource.set('cloud');
 
       const extractedTransactions = await this.withTimeout(
-        this.geminiService.extractTransactionsFromImage(imageBase64),
+        signal => this.cloudLLMProvider.extractTransactionsFromImage(imageBase64, { signal }),
         60000, // 60 second timeout
         'AI extraction timed out. Please try again.'
       );
@@ -220,7 +219,7 @@ export class AIImportService {
         const imageBase64 = await this.fileToBase64(files[i]);
         extracted.push(
           ...(await this.withTimeout(
-            this.cloudLLMProvider.extractStatementTransactions(imageBase64),
+            signal => this.cloudLLMProvider.extractStatementTransactions(imageBase64, { signal }),
             60000,
             'AI extraction timed out. Please try again.'
           ))
@@ -284,7 +283,7 @@ export class AIImportService {
       throw new Error('No image files provided');
     }
 
-    if (!this.geminiService.isAvailable()) {
+    if (!this.cloudLLMProvider.hasAnyCloudProvider()) {
       throw new Error('AI service is not available. Please configure an AI provider in Settings.');
     }
 
@@ -314,7 +313,8 @@ export class AIImportService {
 
       // Use multi-image extraction with position-aware deduplication
       const extractedTransactions = await this.withTimeout(
-        this.geminiService.extractTransactionsFromMultipleImages(imageBase64Array),
+        signal =>
+          this.cloudLLMProvider.extractTransactionsFromMultipleImages(imageBase64Array, { signal }),
         90000, // 90 second timeout for multiple images
         'AI extraction timed out. Please try again with fewer images.'
       );
@@ -568,7 +568,7 @@ export class AIImportService {
         this.processingProgress.set(30 + Math.round((i / pages.length) * 30));
         extracted.push(
           ...(await this.withTimeout(
-            this.cloudLLMProvider.extractStatementTransactions(pages[i]),
+            signal => this.cloudLLMProvider.extractStatementTransactions(pages[i], { signal }),
             60000,
             'AI extraction timed out. Please try again.'
           ))
@@ -1002,13 +1002,37 @@ export class AIImportService {
   }
 
   /**
-   * Wrap a promise with a timeout
+   * Give up on a request after `ms`, and cancel it.
+   *
+   * This used to race a promise against a timer with nothing on the losing
+   * side: the UI reported a timeout while the upload and the download carried
+   * on to completion in the background. On a metered or roaming connection
+   * that is the user's money spent on a result nobody is waiting for any more,
+   * which is why the work is handed a signal rather than a bare promise.
    */
-  private withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
-    const timeout = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error(timeoutMessage)), ms);
-    });
-    return Promise.race([promise, timeout]);
+  private async withTimeout<T>(
+    work: (signal: AbortSignal) => Promise<T>,
+    ms: number,
+    timeoutMessage: string
+  ): Promise<T> {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      return await Promise.race([
+        work(controller.signal),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            controller.abort();
+            reject(new Error(timeoutMessage));
+          }, ms);
+        }),
+      ]);
+    } finally {
+      // A page that imports several statement pages in a row would otherwise
+      // hold one live timer per settled page.
+      clearTimeout(timer);
+    }
   }
 
   /**
@@ -1063,8 +1087,13 @@ export class AIImportService {
       };
     }
 
-    // Timeout
-    if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('deadline_exceeded')) {
+    // Timeout, including the cancellation our own timeout fires. Every SDK
+    // surfaces that as an abort ('Request was aborted', 'Request aborted when
+    // fetching …') rather than as anything time-shaped, so it used to reach
+    // the user as 'AI processing failed: Request was aborted' — the one
+    // wording that says nothing about the ninety seconds they just waited.
+    const aborted = error instanceof Error && error.name === 'AbortError';
+    if (aborted || lower.includes('timeout') || lower.includes('timed out') || lower.includes('abort') || lower.includes('deadline_exceeded')) {
       return {
         message: 'AI processing timed out. Try with a clearer image or fewer files.',
         type: 'timeout',

@@ -69,9 +69,10 @@ the same file.
 
 All amounts placed in AI prompts (grounding block, totals, budgets) are
 formatted with `CurrencyService.formatAmount()`: plain digits with two decimals,
-except zero-decimal currencies (JPY, KRW, TWD, VND, IDR — see
-`ZERO_DECIMAL_CURRENCIES` in `src/app/models/currency.model.ts`), which are
-written as whole numbers ("1500 JPY", never "1500.00 JPY"). Grounding amounts
+except currencies written without sub-units (JPY, KRW, VND and the rest — the
+digit count comes from `currencyDecimalPlaces()` in
+`src/app/models/currency.model.ts`, which reads Intl's own currency data rather
+than a maintained list), which are written as whole numbers ("1500 JPY", never "1500.00 JPY"). Grounding amounts
 convert through `CurrencyService.amountInBase()`, preferring each transaction's
 write-time exchange-rate snapshot so the numbers match the rest of the app and
 stay correct even before live rates finish loading.

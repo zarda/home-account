@@ -230,6 +230,163 @@ describe('AIStrategyService', () => {
       expect(service.isProcessing()).toBeFalse();
       expect(service.lastProcessingTime()).toBe(result.processingTimeMs);
     });
+
+    it('carries the receipt count out, so the form can offer the multi-receipt review', async () => {
+      // Every provider parses this field; nothing used to carry it past here,
+      // so the chooser could not fire for anyone but Gemini.
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, receiptCount: 3 });
+      const service = createService('web');
+
+      expect((await service.processReceipt(imageFile())).receiptCount).toBe(3);
+    });
+
+    it('reports one receipt when the model did not say', async () => {
+      const service = createService('web');
+      expect((await service.processReceipt(imageFile())).receiptCount).toBe(1);
+    });
+
+    it('carries the per-field confidences out', async () => {
+      cloudMock.parseReceipt.and.resolveTo({
+        ...parsedReceipt,
+        fieldConfidence: { amount: 0.42, date: 0.99 },
+      });
+      const service = createService('web');
+
+      const result = await service.processReceipt(imageFile());
+      expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.42, date: 0.99 });
+    });
+
+    it('falls back to the account base currency when the model read none', async () => {
+      // The provider services used to invent one, and disagreed about which:
+      // the same unreadable currency became CNY, JPY or USD depending only on
+      // which extraction path had run.
+      authMock.currentUser.and.returnValue(
+        { preferences: { baseCurrency: 'KRW' } } as never
+      );
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, currency: '' });
+      const service = createService('web');
+
+      expect((await service.processReceipt(imageFile())).transactions[0].currency).toBe('KRW');
+    });
+
+    it('falls back to USD only when the account has no base currency either', async () => {
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, currency: '' });
+      const service = createService('web');
+
+      expect((await service.processReceipt(imageFile())).transactions[0].currency).toBe('USD');
+    });
+
+    it('builds the note from the item lines when the model reproduced no receipt body', async () => {
+      cloudMock.parseReceipt.and.resolveTo({
+        ...parsedReceipt,
+        receiptDetails: undefined,
+        items: [{ name: 'Latte', amount: 5 }, { name: 'Bagel', amount: 7 }],
+      });
+      const service = createService('web');
+
+      const result = await service.processReceipt(imageFile());
+      expect(result.transactions[0].notes).toBe('Latte — USD 5.00\nBagel — USD 7.00');
+    });
+
+    it('renders the itemized note in the fallback currency, not a blank one', async () => {
+      authMock.currentUser.and.returnValue(
+        { preferences: { baseCurrency: 'KRW' } } as never
+      );
+      cloudMock.parseReceipt.and.resolveTo({
+        ...parsedReceipt,
+        currency: '',
+        receiptDetails: undefined,
+        items: [{ name: 'Latte', amount: 5 }],
+      });
+      const service = createService('web');
+
+      const result = await service.processReceipt(imageFile());
+      expect(result.transactions[0].notes).toContain('KRW');
+    });
+  });
+
+  describe('engine availability', () => {
+    it('offers the receipt UI with a provider configured but no connection', () => {
+      // Attaching and previewing images has to survive losing signal; only
+      // issuing the scan needs a reachable engine.
+      pwaMock.isOnline.and.returnValue(false);
+      const service = createService('web');
+
+      expect(service.hasAnyEngine()).toBeTrue();
+      expect(service.canProcessNow()).toBeFalse();
+    });
+
+    it('offers the receipt UI on iOS with no cloud provider at all', () => {
+      cloudMock.hasAnyCloudProvider.and.returnValue(false);
+      const service = createService('ios');
+
+      expect(service.hasAnyEngine()).toBeTrue();
+    });
+
+    it('offers nothing on the web with no provider configured', () => {
+      cloudMock.hasAnyCloudProvider.and.returnValue(false);
+      const service = createService('web');
+
+      expect(service.hasAnyEngine()).toBeFalse();
+      expect(service.canProcessNow()).toBeFalse();
+    });
+  });
+
+  describe('falling back on an unusable result', () => {
+    /** What an engine handed a script it cannot read comes back with. */
+    const unreadable: ProcessingResult = {
+      ...nativeResult,
+      transactions: [{ ...nativeResult.transactions[0], amount: 0, confidence: 0.1 }],
+      confidence: 0.1,
+    };
+
+    it('tries the cloud when native OCR read too little to trust', async () => {
+      // The case the old exception-only fallback could never catch: Vision
+      // does not throw on an unfamiliar script, it just reads almost nothing.
+      nativeMock.processImage.and.resolveTo(unreadable);
+      const service = createService('ios');
+
+      const result = await service.processReceipt(imageFile());
+
+      expect(cloudMock.parseReceipt).toHaveBeenCalled();
+      expect(result.source).toBe('cloud');
+      expect(result.transactions[0].description).toBe('Coffee Corner');
+    });
+
+    it('keeps the native result when the cloud reads it no better', async () => {
+      nativeMock.processImage.and.resolveTo(unreadable);
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, amount: 0, confidence: 0.1 });
+      const service = createService('ios');
+
+      const result = await service.processReceipt(imageFile());
+      expect(result.source).toBe('native');
+    });
+
+    it('keeps the native result when the cloud attempt throws', async () => {
+      // A second engine failing must not turn a poor result into no result.
+      nativeMock.processImage.and.resolveTo(unreadable);
+      cloudMock.parseReceipt.and.rejectWith(new Error('offline'));
+      const service = createService('ios');
+
+      await expectAsync(service.processReceipt(imageFile())).toBeResolved();
+      expect((await service.processReceipt(imageFile())).source).toBe('native');
+    });
+
+    it('does not spend a second engine on a result that read the receipt', async () => {
+      const service = createService('ios');
+
+      await service.processReceipt(imageFile());
+      expect(cloudMock.parseReceipt).not.toHaveBeenCalled();
+    });
+
+    it('has nothing to fall back to on the web and returns what it got', async () => {
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, amount: 0, confidence: 0.1 });
+      const service = createService('web');
+
+      const result = await service.processReceipt(imageFile());
+      expect(result.source).toBe('cloud');
+      expect(nativeMock.processImage).not.toHaveBeenCalled();
+    });
   });
 
   describe('processMultipleImages', () => {

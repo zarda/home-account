@@ -19,7 +19,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
-import { GeminiService } from '../../../core/services/gemini.service';
+import { AIStrategyService, ProcessingResult, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Transaction, Category, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
@@ -34,7 +34,7 @@ describe('TransactionFormComponent', () => {
     incomeCategories: ReturnType<typeof signal<Category[]>>;
     loadCategories: jasmine.Spy;
   };
-  let gemini: jasmine.SpyObj<GeminiService>;
+  let strategy: jasmine.SpyObj<AIStrategyService>;
   let aiImport: jasmine.SpyObj<AIImportService>;
   let router: jasmine.SpyObj<Router>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
@@ -45,6 +45,32 @@ describe('TransactionFormComponent', () => {
   let receiptToNote: jasmine.SpyObj<ReceiptToNoteService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
+
+  /** One receipt photo, as the strategy service hands it back. */
+  function scanResult(
+    row: Partial<ProcessedTransaction> = {},
+    result: Partial<ProcessingResult> = {},
+  ): ProcessingResult {
+    return {
+      transactions: [{
+        date: new Date(2026, 0, 1),
+        description: 'Cafe',
+        amount: 12,
+        type: 'expense',
+        currency: 'USD',
+        confidence: 0.9,
+        source: 'cloud',
+        suggestedCategoryId: 'food',
+        ...row,
+      }],
+      source: 'cloud',
+      confidence: 0.9,
+      processingTimeMs: 1,
+      ...result,
+    };
+  }
+
+  const receiptFile = () => new File(['x'], 'r.jpg', { type: 'image/jpeg' });
 
   const expense = createCategory({ id: 'food', type: 'expense' });
   const income = createCategory({ id: 'salary', type: 'income' });
@@ -72,13 +98,17 @@ describe('TransactionFormComponent', () => {
       incomeCategories: signal<Category[]>([income]),
       loadCategories: jasmine.createSpy('loadCategories').and.returnValue(of([])),
     };
-    gemini = jasmine.createSpyObj('GeminiService', ['isAvailable', 'parseReceipt', 'suggestCategory']);
+    strategy = jasmine.createSpyObj('AIStrategyService', [
+      'hasAnyEngine', 'canProcessNow', 'canUseCloud', 'processReceipt', 'suggestCategory',
+    ]);
     aiImport = jasmine.createSpyObj('AIImportService', ['importFromMultipleImages']);
     router = jasmine.createSpyObj('Router', ['navigate']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
-    gemini.isAvailable.and.returnValue(true);
-    gemini.parseReceipt.and.resolveTo({ amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1), suggestedCategory: 'food' } as never);
-    gemini.suggestCategory.and.resolveTo('food');
+    strategy.hasAnyEngine.and.returnValue(true);
+    strategy.canProcessNow.and.returnValue(true);
+    strategy.canUseCloud.and.returnValue(true);
+    strategy.processReceipt.and.resolveTo(scanResult());
+    strategy.suggestCategory.and.resolveTo('food');
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close', 'afterClosed']);
@@ -91,8 +121,9 @@ describe('TransactionFormComponent', () => {
     analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']);
     currentUser = signal<User | null>(createUser());
 
-    const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies']);
+    const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
+    currency.getCurrencyInfo.and.callFake((code: string) => ({ code, nameKey: code, symbol: code }));
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((k: string) => k);
 
@@ -105,7 +136,7 @@ describe('TransactionFormComponent', () => {
         { provide: CurrencyService, useValue: currency },
         { provide: AuthService, useValue: { currentUser } },
         { provide: TranslationService, useValue: translation },
-        { provide: GeminiService, useValue: gemini },
+        { provide: AIStrategyService, useValue: strategy },
         { provide: AIImportService, useValue: aiImport },
         { provide: Router, useValue: router },
         { provide: MatSnackBar, useValue: snackBar },
@@ -515,6 +546,35 @@ describe('TransactionFormComponent', () => {
     });
   });
 
+  describe('currency picker', () => {
+    it('lists only the curated currencies for an ordinary transaction', () => {
+      const component = build().componentInstance;
+      expect(component.currencies().map(c => c.code)).toEqual(['USD']);
+    });
+
+    it('keeps a transaction in an uncurated currency selectable when editing it', () => {
+      // Extraction can now read any currency the rates endpoint knows, which
+      // is far more than the picker lists. With no matching option the select
+      // shows nothing selected, and saving would rewrite the currency.
+      const component = build({
+        mode: 'edit',
+        transaction: { ...createTransaction(), currency: 'MXN' },
+      }).componentInstance;
+
+      expect(component.currencies().map(c => c.code)).toContain('MXN');
+    });
+
+    it('makes a scanned currency selectable when it is not curated', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'MXN' }));
+      const component = build().componentInstance;
+
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+      expect(component.currencies().map(c => c.code)).toContain('MXN');
+      expect(component.form.get('currency')?.value).toBe('MXN');
+    });
+  });
+
   describe('receipt scanning', () => {
     it('ignores a non-image file', () => {
       const component = build().componentInstance;
@@ -555,7 +615,7 @@ describe('TransactionFormComponent', () => {
 
     it('scanReceipt fills the form on success', async () => {
       const component = build().componentInstance;
-      await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
       expect(component.form.get('description')?.value).toBe('Cafe');
       expect(component.form.get('categoryId')?.value).toBe('food');
       expect(component.isScanning()).toBeFalse();
@@ -563,49 +623,64 @@ describe('TransactionFormComponent', () => {
     });
 
     it('scanReceipt records the full receipt details in the note field', async () => {
-      gemini.parseReceipt.and.resolveTo({
-        amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1),
-        suggestedCategory: 'food', receiptDetails: 'Latte — 5.00\nBagel — 7.00\nTotal 12.00',
-      } as never);
+      strategy.processReceipt.and.resolveTo(
+        scanResult({ notes: 'Latte — 5.00\nBagel — 7.00\nTotal 12.00' }),
+      );
       const component = build().componentInstance;
-      await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
       expect(component.form.get('note')?.value).toBe('Latte — 5.00\nBagel — 7.00\nTotal 12.00');
     });
 
-    it('scanReceipt falls back to the itemized list for the note field', async () => {
-      gemini.parseReceipt.and.resolveTo({
-        amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1),
-        suggestedCategory: 'food', items: [{ name: 'Latte', amount: 5 }, { name: 'Bagel', amount: 7 }],
-      } as never);
+    // Assembling the itemized fallback is AIStrategyService's job (see its
+    // spec); the form's job is only to surface whatever came back.
+    it('scanReceipt records the itemized fallback the strategy assembled', async () => {
+      strategy.processReceipt.and.resolveTo(
+        scanResult({ notes: 'Latte — USD 5.00\nBagel — USD 7.00' }),
+      );
       const component = build().componentInstance;
-      await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
       expect(component.form.get('note')?.value).toBe('Latte — USD 5.00\nBagel — USD 7.00');
+    });
+
+    it('scanReceipt reports an unreadable photo rather than filling the form', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({}, { transactions: [] }));
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      expect(component.scanError()).toBe('ai.scanError');
+      expect(component.form.get('description')?.value).toBeFalsy();
+    });
+
+    it('scanReceipt flags a field the model was unsure of', async () => {
+      strategy.processReceipt.and.resolveTo(
+        scanResult({ fieldConfidence: { amount: 0.4, date: 0.95 } }),
+      );
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      expect(component.shouldVerifyField('amount')).toBeTrue();
+      expect(component.shouldVerifyField('date')).toBeFalse();
     });
 
     it('scanReceipt leaves an existing note untouched when no details were extracted', async () => {
       const component = build().componentInstance;
       component.form.patchValue({ note: 'my note' });
-      await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
       expect(component.form.get('note')?.value).toBe('my note');
     });
 
     it('scanReceipt records an error on failure', async () => {
-      gemini.parseReceipt.and.rejectWith(new Error('bad'));
+      strategy.processReceipt.and.rejectWith(new Error('bad'));
       const component = build().componentInstance;
-      await (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
       expect(component.scanError()).toBe('ai.scanError');
       expect(notifications.error).toHaveBeenCalledWith('ai.scanError');
     });
 
     describe('multi-receipt chooser', () => {
       const scan = (component: TransactionFormComponent) =>
-        (component as unknown as { scanReceipt: (b: string) => Promise<void> }).scanReceipt('data:image/png;base64,xx');
+        (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
 
       function primeMultiReceiptScan(count = 2) {
-        gemini.parseReceipt.and.resolveTo({
-          amount: 12, currency: 'USD', merchant: 'Cafe', date: new Date(2026, 0, 1),
-          suggestedCategory: 'food', receiptCount: count,
-        } as never);
+        strategy.processReceipt.and.resolveTo(scanResult({}, { receiptCount: count }));
         const component = build().componentInstance;
         component.pendingReceipts.set([
           { file: new File(['x'], 'r.jpg', { type: 'image/jpeg' }), preview: 'data:image/jpeg;base64,x' },
@@ -750,7 +825,7 @@ describe('TransactionFormComponent', () => {
       const component = build().componentInstance;
       component.form.get('description')?.setValue('coffee shop');
       tick(500);
-      expect(gemini.suggestCategory).toHaveBeenCalled();
+      expect(strategy.suggestCategory).toHaveBeenCalled();
       expect(component.suggestedCategory()).toEqual(expense);
     }));
 

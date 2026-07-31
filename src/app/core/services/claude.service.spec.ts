@@ -3,7 +3,7 @@ import { ClaudeService } from './claude.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Category, Transaction, MonthlyTotal, Budget, ZERO_DECIMAL_CURRENCIES } from '../../models';
+import { Category, Transaction, MonthlyTotal, Budget, currencyDecimalPlaces } from '../../models';
 import { createCategory, createTransaction } from './testing';
 import { RawTransaction, PreviousPeriodData } from './gemini.service';
 
@@ -65,7 +65,7 @@ describe('ClaudeService', () => {
     mockCategoryService = jasmine.createSpyObj<CategoryService>('CategoryService', ['categories']);
     mockCurrencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert', 'formatAmount']);
     mockCurrencyService.formatAmount.and.callFake(
-      (amount: number, code: string) => amount.toFixed(ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2));
+      (amount: number, code: string) => amount.toFixed(currencyDecimalPlaces(code)));
     mockTranslationService = jasmine.createSpyObj<TranslationService>('TranslationService', [
       't',
       'currentLocale',
@@ -228,7 +228,9 @@ describe('ClaudeService', () => {
 
       expect(result.merchant).toBe('Unknown');
       expect(result.amount).toBe(0);
-      expect(result.currency).toBe('USD');
+      // Not defaulted here on purpose: an unreadable currency comes back
+      // empty so the caller can substitute the account's base currency.
+      expect(result.currency).toBe('');
       expect(result.confidence).toBe(0.5);
       const imageBlock = fake.messages.create.calls.mostRecent().args[0].messages[0].content[0];
       expect(imageBlock.source.media_type).toBe('image/jpeg');
@@ -668,7 +670,7 @@ describe('ClaudeService', () => {
       expect(result[0].description).toBe('Unknown');
       expect(result[0].amount).toBe(0);
       expect(result[0].type).toBe('expense');
-      expect(result[0].currency).toBe('USD');
+      expect(result[0].currency).toBe('');
       expect(result[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 

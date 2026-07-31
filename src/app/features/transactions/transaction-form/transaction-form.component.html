@@ -160,6 +160,16 @@
           <mat-form-field appearance="outline" class="amount-field">
             <mat-label>{{ 'transactions.amount' | translate }}</mat-label>
             <input matInput type="number" formControlName="amount" step="0.01" min="0" inputmode="decimal">
+            @if (shouldVerifyField('amount')) {
+              <mat-icon
+                matIconSuffix
+                class="verify-flag"
+                [matTooltip]="verifyFieldTooltip('amount')"
+                matTooltipPosition="above"
+                role="img"
+                [attr.aria-label]="verifyFieldTooltip('amount')"
+              >error_outline</mat-icon>
+            }
             @if (form.controls['amount'].hasError('required')) {
               <mat-error>{{ 'transactions.required' | translate }}</mat-error>
             }
@@ -171,7 +181,7 @@
           <mat-form-field appearance="outline" class="currency-field">
             <mat-label>{{ 'settings.currency' | translate }}</mat-label>
             <mat-select formControlName="currency">
-              @for (curr of currencies; track curr.code) {
+              @for (curr of currencies(); track curr.code) {
                 <mat-option [value]="curr.code">{{ curr.code }}</mat-option>
               }
             </mat-select>
@@ -239,6 +249,16 @@
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.date' | translate }}</mat-label>
         <input matInput [matDatepicker]="picker" formControlName="date">
+        @if (shouldVerifyField('date')) {
+          <mat-icon
+            matIconSuffix
+            class="verify-flag"
+            [matTooltip]="verifyFieldTooltip('date')"
+            matTooltipPosition="above"
+            role="img"
+            [attr.aria-label]="verifyFieldTooltip('date')"
+          >error_outline</mat-icon>
+        }
         <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
         <mat-datepicker
           #picker

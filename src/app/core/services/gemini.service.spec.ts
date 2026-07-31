@@ -3,7 +3,7 @@ import { GeminiService, isRateLimitMessage } from './gemini.service';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
-import { Category, Transaction, MonthlyTotal, Budget, ZERO_DECIMAL_CURRENCIES } from '../../models';
+import { Category, Transaction, MonthlyTotal, Budget, currencyDecimalPlaces } from '../../models';
 import { createTransaction, createCategory } from './testing/test-data';
 import { environment } from '../../../environments/environment';
 
@@ -88,7 +88,7 @@ describe('GeminiService', () => {
 
     currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['convert', 'formatAmount']);
     currencyService.formatAmount.and.callFake(
-      (amount: number, code: string) => amount.toFixed(ZERO_DECIMAL_CURRENCIES.has(code) ? 0 : 2));
+      (amount: number, code: string) => amount.toFixed(currencyDecimalPlaces(code)));
     // Identity conversion keeps amounts predictable in assertions.
     currencyService.convert.and.callFake((amount: number) => amount);
 
@@ -241,7 +241,9 @@ describe('GeminiService', () => {
       const result = await service.parseReceipt('abc');
       expect(result.merchant).toBe('Unknown');
       expect(result.amount).toBe(0);
-      expect(result.currency).toBe('USD');
+      // Not defaulted here on purpose: an unreadable currency comes back
+      // empty so the caller can substitute the account's base currency.
+      expect(result.currency).toBe('');
       expect(result.date instanceof Date).toBeTrue();
       expect(result.items).toEqual([]);
       expect(result.confidence).toBe(0.5);
@@ -687,7 +689,10 @@ describe('GeminiService', () => {
       const result = await service.extractTransactionsFromImage('abc');
       expect(result[0].description).toBe('Receipt');
       expect(result[0].amount).toBe(0);
-      expect(result[0].currency).toBe('CNY');
+      // This asserted 'CNY' — a hardcoded default that made an unreadable
+      // currency into a confident wrong one, and disagreed with the 'JPY'
+      // a few lines further down the same method.
+      expect(result[0].currency).toBe('');
       expect(result[0].category).toBeUndefined();
     });
 
@@ -775,7 +780,7 @@ describe('GeminiService', () => {
       // Defaults filled in for the sparse second item.
       expect(result[1].description).toBe('Coffee');
       expect(result[1].amount).toBe(330);
-      expect(result[1].currency).toBe('USD');
+      expect(result[1].currency).toBe('');
       expect(result[1].confidence).toBe(0.7);
       expect(result[1].wasMerged).toBeFalse();
     });
@@ -798,7 +803,7 @@ describe('GeminiService', () => {
       // Defaults for sparse item.
       expect(result[1].receiptId).toBe(1);
       expect(result[1].imageIndex).toBe(0);
-      expect(result[1].currency).toBe('USD');
+      expect(result[1].currency).toBe('');
       expect(result[1].category).toBeUndefined();
     });
 

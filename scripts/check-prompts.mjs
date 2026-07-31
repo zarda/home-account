@@ -8,6 +8,13 @@
  *   3. the table in docs/prompts.md,
  *   4. the rendering assertions in prompt-registry.spec.ts.
  *
+ * It also refuses a hand-written currency or recognition-language list in the
+ * prompts and the OCR surfaces. That is a different kind of check — nothing is
+ * out of sync, the code simply decided on the app's behalf what the model is
+ * allowed to read. It recurs because writing the shortlist is always the
+ * shorter diff, and every language added by hand is one someone has to add
+ * again for the next country.
+ *
  * Before the registry existed each provider carried its own copy of every
  * prompt, and they had already drifted in six places without anything failing:
  * only Gemini asked receipts for `receiptCount` (which the transaction form
@@ -30,7 +37,7 @@
  *     the SDKs importable only from the services that own them.
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
 const REGISTRY = 'src/app/core/prompts/prompt-registry.ts';
 const REGISTRY_SPEC = 'src/app/core/prompts/prompt-registry.spec.ts';
@@ -79,8 +86,45 @@ const NON_PROMPT_CALLERS = /(?:console\.\w+|new Error|throw new \w*Error)\s*\($/
 
 const MAX_LITERAL_LENGTH = 120;
 
+/**
+ * Where a hand-written language or currency list does real damage.
+ *
+ * The prompts, because three different currency shortlists lived in them, none
+ * agreeing with each other or with the app's catalog — so a receipt in a
+ * currency nobody had typed out was steered towards one that had been. And the
+ * OCR surfaces, because the recognition language list silently decided which
+ * scripts the app could read at all, and was duplicated in TypeScript and Swift
+ * where the two could drift apart.
+ *
+ * Deliberately NOT the currency catalog in models/: that list is the picker's,
+ * and a curated picker is a design choice rather than a ceiling on extraction.
+ */
+const PROMPT_DIR = 'src/app/core/prompts';
+const OCR_SURFACES = [
+  'src/app/core/config/ai-models.ts',
+  'src/app/core/plugins/vision-ocr.plugin.ts',
+  'src/app/core/services/vision-ocr.service.ts',
+  'src/app/core/services/native-receipt.service.ts',
+];
+
+/** The runtime's own ISO 4217 table, so this check keeps no list either. */
+const ISO_CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
+
 const failures = [];
-const fail = (message, sites = []) => failures.push({ message, sites });
+
+/**
+ * What to do about a failure, printed once at the end however many failures
+ * share it. The two checks in here fail for unrelated reasons and the fix for
+ * one is no help with the other.
+ */
+const HINTS = {
+  parity: () => `Update ${DOC} and ${REGISTRY} in the same commit as the prompt change.`,
+  vocabulary: () =>
+    'Derive the set instead: ask the engine what it supports, or validate the answer ' +
+    'against the runtime tables. A list written here is a ceiling on what can be read.',
+};
+
+const fail = (message, sites = [], hint = 'parity') => failures.push({ message, sites, hint });
 
 function lineOf(text, index) {
   return text.slice(0, index).split('\n').length;
@@ -95,6 +139,34 @@ function blankComments(text) {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, block => block.replace(/[^\n]/g, ' '))
     .replace(/^[ \t]*\/\/.*$/gm, line => ' '.repeat(line.length));
+}
+
+/**
+ * Runs of hand-written currency codes or recognition language tags.
+ *
+ * Three codes is the threshold because two can be a genuine contrast — "USD
+ * unless the receipt says EUR" is a comparison, not a catalog — while three is
+ * someone starting a list. Comments are blanked first, so a note recording why
+ * a list was removed does not re-trip the check that removed it.
+ */
+export function findHardcodedVocabulary(text) {
+  const source = blankComments(text);
+  const found = [];
+
+  const currencyRun = /\b[A-Z]{3}\b(?:\s*(?:,|\/|\||\bor\b)\s*\b[A-Z]{3}\b){2,}/g;
+  for (const match of source.matchAll(currencyRun)) {
+    const codes = match[0].match(/\b[A-Z]{3}\b/g);
+    if (codes.every(code => ISO_CURRENCIES.has(code))) {
+      found.push({ kind: 'currency', sample: match[0], line: lineOf(text, match.index) });
+    }
+  }
+
+  const languageRun = /(['"])[a-z]{2}-[A-Za-z]{2,4}\1(?:\s*,\s*(['"])[a-z]{2}-[A-Za-z]{2,4}\2)+/g;
+  for (const match of source.matchAll(languageRun)) {
+    found.push({ kind: 'language', sample: match[0], line: lineOf(text, match.index) });
+  }
+
+  return found;
 }
 
 /** Ids and metadata declared in the registry. */
@@ -234,6 +306,26 @@ function run() {
     process.exit(1);
   }
 
+  const vocabularySurfaces = [
+    ...(existsSync(PROMPT_DIR)
+      ? readdirSync(PROMPT_DIR)
+        .filter(name => name.endsWith('.ts') && !name.endsWith('.spec.ts'))
+        .map(name => `${PROMPT_DIR}/${name}`)
+      : []),
+    ...OCR_SURFACES,
+    ...Object.values(PROVIDERS),
+  ].filter(existsSync);
+
+  for (const path of vocabularySurfaces) {
+    for (const { kind, sample, line } of findHardcodedVocabulary(readFileSync(path, 'utf8'))) {
+      fail(
+        `hand-written ${kind} list "${sample.trim()}" — the app is deciding what the model may read`,
+        [`${path}:${line}`],
+        'vocabulary'
+      );
+    }
+  }
+
   const allProviders = Object.keys(PROVIDERS).sort();
 
   for (const [id, meta] of prompts) {
@@ -333,7 +425,9 @@ function run() {
         console.error(`      ${site}`);
       }
     }
-    console.error(`\nUpdate ${DOC} and ${REGISTRY} in the same commit as the prompt change.`);
+    for (const hint of [...new Set(failures.map(f => f.hint))]) {
+      console.error(`\n${HINTS[hint]()}`);
+    }
     process.exit(1);
   }
 
@@ -406,6 +500,42 @@ export const PROMPTS = {
   check(
     'ignores an allowlisted data URL literal',
     findInlineLiterals('const u = `data:image/jpeg;base64,${b}`;').length,
+    0
+  );
+
+  check(
+    'flags a hand-written currency shortlist',
+    findHardcodedVocabulary(`const c = 'USD, EUR, JPY, CNY';`).map(f => f.kind),
+    ['currency']
+  );
+  check(
+    'flags a currency shortlist written with slashes',
+    findHardcodedVocabulary(`const c = 'TWD/CNY/JPY';`).map(f => f.kind),
+    ['currency']
+  );
+  check(
+    'flags a hand-written recognition language list',
+    findHardcodedVocabulary(`const L = ['en-US', 'ja-JP', 'zh-Hant'];`).map(f => f.kind),
+    ['language']
+  );
+  check(
+    'ignores two currencies in a genuine contrast',
+    findHardcodedVocabulary(`if (code === 'USD' || code === 'EUR') {}`).length,
+    0
+  );
+  check(
+    'ignores a comment recording why a list was removed',
+    findHardcodedVocabulary('// used to steer at USD, EUR, JPY, CNY\nconst x = 1;').length,
+    0
+  );
+  check(
+    'ignores three uppercase words that are not currencies',
+    findHardcodedVocabulary(`const s = 'ONE, TWO, SIX';`).length,
+    0
+  );
+  check(
+    'ignores a single language tag',
+    findHardcodedVocabulary(`const l = 'zh-Hant';`).length,
     0
   );
 

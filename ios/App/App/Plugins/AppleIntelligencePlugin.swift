@@ -11,13 +11,13 @@ struct ReceiptExtraction {
     @Guide(description: "Merchant or store name shown on the receipt")
     var merchant: String
 
-    @Guide(description: "Purchase date in YYYY-MM-DD format, or an empty string if not present")
+    @Guide(description: "Purchase date as YYYY-MM-DD on the Gregorian calendar, converted if the receipt prints another calendar or era, or an empty string if not present")
     var date: String
 
-    @Guide(description: "Final total amount paid as a decimal number")
+    @Guide(description: "Final total amount paid as a decimal number, using a dot for the decimal mark and no digit grouping")
     var amount: Double
 
-    @Guide(description: "ISO 4217 currency code such as USD, JPY, EUR, TWD")
+    @Guide(description: "ISO 4217 alphabetic currency code for that total, taken from the currency sign or wording the receipt uses, or an empty string if the receipt does not say")
     var currency: String
 
     @Guide(description: "The single best matching category name from the provided list, or an empty string if none fits")
@@ -76,10 +76,14 @@ public class AppleIntelligencePlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
 
+            // No language is named here. Listing three only ever gave the model
+            // a reason to read a fourth as one of them. (#145)
             var instructions = """
             You extract structured transaction data from receipt text produced by OCR. \
-            The text may contain recognition errors and may be in English, Japanese, or Chinese. \
-            The amount must be the final total that was paid.
+            The text may contain recognition errors. \
+            The amount must be the final total that was paid. \
+            Keep the merchant name and the item text exactly as printed, in the script they \
+            were printed in — never translate or transliterate them.
             """
             if !categories.isEmpty {
                 instructions += " Choose the category only from this list: \(categories.joined(separator: ", "))."

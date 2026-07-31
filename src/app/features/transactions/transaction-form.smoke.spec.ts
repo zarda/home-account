@@ -30,7 +30,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { BudgetService } from '../../core/services/budget.service';
 import { ReceiptQuotaService } from '../../core/services/receipt-quota.service';
-import { GeminiService } from '../../core/services/gemini.service';
+import { AIStrategyService } from '../../core/services/ai-strategy.service';
 import { AIImportService } from '../../core/services/ai-import.service';
 import { ReceiptToNoteService } from '../../core/services/receipt-to-note.service';
 import { Transaction } from '../../models';
@@ -153,10 +153,19 @@ describe('TransactionFormComponent tags and location (emulator smoke test)', () 
             noteImagesRemoved: () => undefined
           }
         },
-        // AI stays inert: this suite is about what the form persists.
+        // AI stays inert: this suite is about what the form persists. The real
+        // AIStrategyService would pull in the provider-key read, the native
+        // plugins and a constructor effect over the stubbed AuthService, none
+        // of which this suite has any use for.
         {
-          provide: GeminiService,
-          useValue: { isAvailable: () => false, suggestCategory: async () => null }
+          provide: AIStrategyService,
+          useValue: {
+            hasAnyEngine: () => false,
+            canProcessNow: () => false,
+            canUseCloud: () => false,
+            processReceipt: async () => { throw new Error('AI is inert in this suite'); },
+            suggestCategory: async () => null,
+          }
         },
         { provide: AIImportService, useValue: {} },
         { provide: ReceiptToNoteService, useValue: {} },

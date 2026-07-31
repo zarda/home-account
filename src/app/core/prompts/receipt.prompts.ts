@@ -9,6 +9,19 @@ const EXTRACTION_CATEGORY_NAMES =
   'Restaurants, Groceries, Coffee & Drinks, Fast Food, Delivery, Shopping, Fuel & Gas, Pharmacy & Medicine, Other';
 
 /**
+ * How every receipt prompt asks for the currency.
+ *
+ * Deliberately not a list. These prompts used to carry three different
+ * hand-typed shortlists — none of which agreed with each other or with the
+ * app's own catalog — so a receipt in a currency nobody had thought to type
+ * out was steered towards one that had been. The code the model reads off the
+ * receipt is checked against the ISO 4217 table on the way back instead, which
+ * costs nothing per prompt and covers every currency there is.
+ */
+const CURRENCY_FIELD =
+  'ISO 4217 code for the money on this receipt, read from the printed symbol, an explicit code, or the receipt\'s own language and country. Use "" when you genuinely cannot tell — never guess a default.';
+
+/**
  * Summarize one receipt photo into a single transaction.
  *
  * Canonical text is Gemini's. It is the only variant that asks for
@@ -22,7 +35,7 @@ export function renderReceiptParse(): RenderedPrompt {
 {
   "merchant": "store/restaurant name",
   "amount": total amount as number,
-  "currency": "detected currency code (USD, EUR, JPY, CNY, TWD, THB, etc.)",
+  "currency": "ISO 4217 code, or empty when unreadable",
   "date": "YYYY-MM-DD format",
   "items": [{"name": "item name", "amount": item price as number}],
   "receiptDetails": "full receipt content line by line",
@@ -35,9 +48,10 @@ export function renderReceiptParse(): RenderedPrompt {
 IMPORTANT:
 - "amount" is the TOTAL amount paid (bottom of receipt).
 - If MORE THAN ONE receipt is visible, extract the LARGEST/primary receipt into the fields above and set receiptCount to how many receipts are visible.
+- "currency": ${CURRENCY_FIELD}
 - "items" array: each purchased item with its individual price.
-- "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep original language.
-- If fields cannot be extracted, use defaults: merchant="Unknown", currency="USD", date=today, items=[], amount=0.
+- "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the receipt's own language and script exactly as printed — do not translate or transliterate.
+- If fields cannot be extracted, use defaults: merchant="Unknown", currency="", date=today, items=[], amount=0.
 - Lower "amountConfidence" and "dateConfidence" when a figure is blurred, cut off, ambiguous or inferred rather than read.
 Return ONLY the JSON, nothing else.`,
     expects: 'json',
@@ -61,7 +75,7 @@ Return ONLY a JSON object (not an array):
   "date": "YYYY-MM-DD",
   "merchant": "Store/Restaurant Name",
   "totalAmount": 123.45,
-  "currency": "CNY",
+  "currency": "ISO 4217 code",
   "receiptDetails": "Full receipt content reproduced line by line",
   "suggestedCategory": "category name"
 }
@@ -70,8 +84,8 @@ Rules:
 - date: Receipt date (YYYY-MM-DD), use today if not visible
 - merchant: Store or restaurant name
 - totalAmount: Total amount paid (positive number only)
-- currency: Currency code (TWD for Taiwan, CNY for Chinese, JPY for Japanese, etc.)
-- receiptDetails: Reproduce the FULL receipt content line by line, preserving all information visible on the receipt: every item with its price, quantity if shown, discounts, subtotals, tax lines, service charges, payment method, change, etc. Use newline to separate each line. Keep the original language. Example: "コーヒー L ×1 — 480\\nサンドイッチ ×2 — 760\\n割引 -100\\n小計 1,140\\n内税(10%) 104\\n合計 1,140\\nVISA ****1234"
+- currency: ${CURRENCY_FIELD}
+- receiptDetails: Reproduce the FULL receipt content line by line, preserving all information visible on the receipt: every item with its price, quantity if shown, discounts, subtotals, tax lines, service charges, payment method, change, etc. Use newline to separate each line. Keep the receipt's own language and script exactly as printed — do not translate or transliterate. Shape: "<item> ×1 — 480\\n<item> ×2 — 760\\n<discount line> -100\\n<subtotal line> 1,140\\n<tax line> 104\\n<total line> 1,140\\nVISA ****1234"
 - suggestedCategory: One of: ${EXTRACTION_CATEGORY_NAMES}
 
 Capture EVERYTHING on the receipt.`,
@@ -95,9 +109,9 @@ For each transaction found, extract:
 - description: merchant/payee name or transaction description
 - amount: as a positive number
 - type: "income" for credits/deposits, "expense" for debits/withdrawals
-- currency: detected currency code (default to USD if unclear)
+- currency: ${CURRENCY_FIELD}
 - merchant: store/business name (optional)
-- details: for receipts, reproduce the FULL receipt content line by line — every item with its price, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the original language. (optional)
+- details: for receipts, reproduce the FULL receipt content line by line — every item with its price, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the receipt's own language and script exactly as printed. (optional)
 - amountConfidence: how clearly the amount was legible, 0.0 to 1.0
 - dateConfidence: how clearly the date was legible, 0.0 to 1.0
 
@@ -110,7 +124,7 @@ Return ONLY a valid JSON array with this structure (no markdown, no explanation)
     "description": "AMAZON.COM",
     "amount": 45.99,
     "type": "expense",
-    "currency": "USD",
+    "currency": "<ISO 4217 code>",
     "merchant": "AMAZON.COM",
     "details": "USB Cable — 12.99\\nBook — 32.00\\nSubtotal 44.99\\nTax 1.00\\nTotal 45.99",
     "amountConfidence": 0.98,
@@ -141,14 +155,14 @@ Return ONLY valid JSON array (no markdown, no explanation, no thinking):
     "description": "DIRECT DEPOSIT - EMPLOYER",
     "amount": 3500.00,
     "type": "income",
-    "currency": "USD"
+    "currency": "<ISO 4217 code>"
   },
   {
     "date": "2024-01-16",
     "description": "WALMART",
     "amount": 125.43,
     "type": "expense",
-    "currency": "USD"
+    "currency": "<ISO 4217 code>"
   }
 ]
 
@@ -194,7 +208,7 @@ For each UNIQUE transaction/line item found, extract:
 - description: item name or transaction description
 - amount: FINAL amount after any discounts applied (as a positive number)
 - type: "income" for credits/refunds, "expense" for purchases/debits
-- currency: detected currency code (default to USD if unclear)
+- currency: ${CURRENCY_FIELD}
 - receiptId: integer grouping items from the same receipt (1, 2, 3...)
 - imageIndex: which image this item appears in (0-based)
 - positionInImage: "top", "middle", or "bottom" based on vertical position
@@ -205,7 +219,7 @@ For each UNIQUE transaction/line item found, extract:
 - wasMerged: true if this item appeared in multiple images and was deduplicated
 - mergedFromImages: [0,1] if from multiple images (optional)
 
-For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items with prices, discounts, subtotals, tax, service charges, payment method, change, etc. Keep the original language.
+For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items with prices, discounts, subtotals, tax, service charges, payment method, change, etc. Keep the receipt's own language and script exactly as printed.
 
 Return ONLY a valid JSON array (no markdown):
 [
@@ -214,7 +228,7 @@ Return ONLY a valid JSON array (no markdown):
     "description": "Item name",
     "amount": 10.99,
     "type": "expense",
-    "currency": "USD",
+    "currency": "<ISO 4217 code>",
     "receiptId": 1,
     "imageIndex": 0,
     "positionInImage": "middle",
@@ -252,7 +266,7 @@ FIELDS PER ITEM:
 - description: product name
 - amount: individual item price
 - type: "expense"
-- currency: JPY, USD, TWD, CNY, etc
+- currency: ${CURRENCY_FIELD}
 - receiptId: Integer grouping items from the same receipt (1, 2, 3...)
 - positionInImage: "top", "middle", "bottom"
 - confidence: 0.0-1.0
@@ -260,12 +274,12 @@ FIELDS PER ITEM:
 - merchant: store name (optional)
 - details: quantity, size, flavor, discount if any (optional)
 
-For the LAST item of each receipt (receiptId group), include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep original language.
+For the LAST item of each receipt (receiptId group), include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep the receipt's own language and script exactly as printed.
 
 Example:
 [
-  {"date":"2024-04-11","description":"おにぎり","amount":151,"type":"expense","currency":"JPY","receiptId":1,"positionInImage":"middle","confidence":0.95,"merchant":"セブン"},
-  {"date":"2024-04-11","description":"コーヒー L","amount":330,"type":"expense","currency":"JPY","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"セブン","receiptDetails":"おにぎり ×1 — 151\\nコーヒー L ×1 — 330\\n小計 481\\n内税(8%) 36\\n合計 481\\n現金 500\\nお釣り 19"}
+  {"date":"2024-04-11","description":"<item name as printed>","amount":151,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"middle","confidence":0.95,"merchant":"<store name as printed>"},
+  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19"}
 ]
 
 Output ONLY JSON array. Nothing else.`,

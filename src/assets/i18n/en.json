@@ -671,6 +671,7 @@
     "scanning": "Analyzing receipt...",
     "scanSuccess": "Receipt scanned successfully",
     "scanError": "Could not read receipt. Please try again.",
+    "scanOffline": "Receipt attached. Scanning needs a connection — fill in the details by hand.",
     "invalidFileType": "Please select an image file",
     "readError": "Failed to read file",
     "suggesting": "Suggesting...",

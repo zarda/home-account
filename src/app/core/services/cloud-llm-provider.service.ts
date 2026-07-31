@@ -5,7 +5,7 @@ import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
 import { ProviderKeyService } from './provider-key.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, MonthlyTotal, SearchIntent, SearchQueryContext } from '../../models';
-import { CloudLLMProviderAdapter } from './llm-provider.interface';
+import { AIRequestOptions, CloudLLMProviderAdapter } from './llm-provider.interface';
 
 export type AIFeatureType = 'receiptScanning' | 'categorization' | 'insights' | 'search';
 
@@ -208,8 +208,8 @@ export class CloudLLMProviderService {
   // ---------------------------------------------- receipt scanning
 
   /** Parse a receipt image using the configured provider. */
-  async parseReceipt(imageBase64: string): Promise<ParsedReceipt> {
-    return this.resolve('receiptScanning').parseReceipt(imageBase64);
+  async parseReceipt(imageBase64: string, options?: AIRequestOptions): Promise<ParsedReceipt> {
+    return this.resolve('receiptScanning').parseReceipt(imageBase64, options);
   }
 
   /**
@@ -218,19 +218,40 @@ export class CloudLLMProviderService {
    * Needs a provider that can see, which is not the same as a provider being
    * available — Gemini can be configured for text with no vision model.
    */
-  async extractStatementTransactions(imageBase64: string): Promise<ExtractedTransaction[]> {
+  async extractStatementTransactions(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]> {
     const adapter = this.resolve('receiptScanning');
     if (!adapter.capabilities.vision) {
       throw new Error('Reading a statement image needs a vision-capable provider');
     }
-    return adapter.extractStatementTransactions(imageBase64);
+    return adapter.extractStatementTransactions(imageBase64, options);
+  }
+
+  /**
+   * Read one image into transaction rows using the configured provider.
+   *
+   * Distinct from extractStatementTransactions in that Gemini answers this
+   * with the receipt-summary prompt — one row carrying the whole receipt body
+   * as notes — while the other providers reuse their statement extraction.
+   */
+  async extractTransactionsFromImage(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]> {
+    return this.resolve('receiptScanning').extractTransactionsFromImage(imageBase64, options);
   }
 
   /** Extract transactions from multiple images. */
   async extractTransactionsFromMultipleImages(
-    imageBase64Array: string[]
+    imageBase64Array: string[],
+    options?: AIRequestOptions
   ): Promise<MultiImageExtractedTransaction[]> {
-    return this.resolve('receiptScanning').extractTransactionsFromMultipleImages(imageBase64Array);
+    return this.resolve('receiptScanning').extractTransactionsFromMultipleImages(
+      imageBase64Array,
+      options
+    );
   }
 
   /**

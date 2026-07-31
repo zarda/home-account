@@ -16,6 +16,8 @@ import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { PwaService } from './pwa.service';
+import { NotificationService } from './notification.service';
+import { TranslationService } from './translation.service';
 
 /**
  * Integration smoke test for the offline-queue transaction handler against the
@@ -104,6 +106,11 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
         },
         { provide: StorageService, useValue: jasmine.createSpyObj('StorageService', ['uploadReceipt', 'deleteReceipt']) },
         { provide: AIStrategyService, useValue: jasmine.createSpyObj('AIStrategyService', ['processReceipt']) },
+        // Stubbed so the processor's user feedback stays out of this test:
+        // the real NotificationService pulls in the snackbar and the HTTP-backed
+        // translation loader, neither of which the emulator run has.
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: TranslationService, useValue: jasmine.createSpyObj('TranslationService', ['t']) },
       ],
     });
 

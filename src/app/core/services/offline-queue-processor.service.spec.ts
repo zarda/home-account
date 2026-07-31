@@ -3,7 +3,9 @@ import { OfflineQueueProcessorService } from './offline-queue-processor.service'
 import { OfflineQueueService, QueuedTransaction } from './offline-queue.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { TransactionService } from './transaction.service';
-import { ProcessingResult } from './ai-types';
+import { NotificationService } from './notification.service';
+import { TranslationService } from './translation.service';
+import { ProcessedTransaction, ProcessingResult } from './ai-types';
 
 async function waitFor(pred: () => boolean, timeout = 2000): Promise<void> {
   const start = Date.now();
@@ -34,18 +36,35 @@ function queuedTransaction(overrides: Partial<QueuedTransaction> = {}): QueuedTr
   };
 }
 
-const processingResult: ProcessingResult = {
-  transactions: [],
-  source: 'cloud',
-  confidence: 1,
-  processingTimeMs: 1,
-};
+function extracted(overrides: Partial<ProcessedTransaction> = {}): ProcessedTransaction {
+  return {
+    date: new Date('2026-06-15T00:00:00Z'),
+    description: 'Konbini',
+    amount: 880,
+    type: 'expense',
+    currency: 'JPY',
+    confidence: 0.9,
+    source: 'cloud',
+    ...overrides,
+  };
+}
+
+function processingResult(transactions: ProcessedTransaction[]): ProcessingResult {
+  return {
+    transactions,
+    source: 'cloud',
+    confidence: 1,
+    processingTimeMs: 1,
+  };
+}
 
 describe('OfflineQueueProcessorService', () => {
   let processor: OfflineQueueProcessorService;
   let queue: jasmine.SpyObj<OfflineQueueService>;
   let ai: jasmine.SpyObj<AIStrategyService>;
   let transactions: jasmine.SpyObj<TransactionService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
+  let translation: jasmine.SpyObj<TranslationService>;
 
   beforeEach(() => {
     queue = jasmine.createSpyObj<OfflineQueueService>('OfflineQueueService', [
@@ -58,6 +77,14 @@ describe('OfflineQueueProcessorService', () => {
 
     ai = jasmine.createSpyObj<AIStrategyService>('AIStrategyService', ['processReceipt']);
     transactions = jasmine.createSpyObj<TransactionService>('TransactionService', ['addTransaction']);
+    transactions.addTransaction.and.resolveTo('new-id');
+    notifications = jasmine.createSpyObj<NotificationService>('NotificationService', [
+      'success',
+      'error',
+      'info',
+    ]);
+    translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
+    translation.t.and.callFake((key: string) => key);
 
     TestBed.configureTestingModule({
       providers: [
@@ -65,6 +92,8 @@ describe('OfflineQueueProcessorService', () => {
         { provide: OfflineQueueService, useValue: queue },
         { provide: AIStrategyService, useValue: ai },
         { provide: TransactionService, useValue: transactions },
+        { provide: NotificationService, useValue: notifications },
+        { provide: TranslationService, useValue: translation },
       ],
     });
     processor = TestBed.inject(OfflineQueueProcessorService);
@@ -84,16 +113,101 @@ describe('OfflineQueueProcessorService', () => {
   }
 
   describe('process-queued-image', () => {
-    it('runs the image through the AI strategy and marks it completed on success', async () => {
+    it('writes what the AI read to the ledger and marks the image completed', async () => {
       const file = imageFile();
       queue.getQueuedImageAsFile.and.resolveTo(file);
-      ai.processReceipt.and.resolveTo(processingResult);
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted({ notes: 'Onigiri — JPY 180', suggestedCategoryId: 'food' })]),
+      );
 
       dispatchImage('img_1');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
       expect(ai.processReceipt).toHaveBeenCalledWith(file);
+      expect(transactions.addTransaction).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          type: 'expense',
+          amount: 880,
+          currency: 'JPY',
+          categoryId: 'food',
+          description: 'Konbini',
+          note: 'Onigiri — JPY 180',
+        }),
+      );
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
+    });
+
+    it('tells the user how many transactions the queued receipt produced', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => notifications.success.calls.any());
+
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(2);
+      expect(translation.t).toHaveBeenCalledWith('settings.transactionsImported', { count: 2 });
+      expect(notifications.success).toHaveBeenCalledWith('settings.transactionsImported');
+    });
+
+    it('falls back to the catch-all category when the model suggested none', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({ suggestedCategoryId: undefined })]));
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction.calls.mostRecent().args[0].categoryId).toBe('other_expense');
+    });
+
+    it('marks the image failed when the AI read nothing off it', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([]));
+
+      dispatchImage('img_4');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).toHaveBeenCalledWith(
+        'img_4',
+        'failed',
+        'No transaction could be read from this receipt',
+      );
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('marks the image failed when none of the extracted rows could be written', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted()]));
+      transactions.addTransaction.and.rejectWith(new Error('INVALID_TRANSACTION_AMOUNT'));
+
+      dispatchImage('img_5');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(queue.updateImageStatus).toHaveBeenCalledWith(
+        'img_5',
+        'failed',
+        'INVALID_TRANSACTION_AMOUNT',
+      );
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('completes on a partial batch so a retry cannot duplicate the rows that landed', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted(), extracted({ description: 'Kiosk' })]),
+      );
+      let call = 0;
+      transactions.addTransaction.and.callFake(() =>
+        ++call === 1 ? Promise.resolve('new-id') : Promise.reject(new Error('Firestore down')),
+      );
+
+      dispatchImage('img_6');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_6', 'completed');
+      expect(translation.t).toHaveBeenCalledWith('settings.transactionsImported', { count: 1 });
     });
 
     it('marks the image failed (with the error) when AI processing throws', async () => {

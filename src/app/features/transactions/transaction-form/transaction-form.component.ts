@@ -36,14 +36,21 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { GeminiService } from '../../../core/services/gemini.service';
+import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { AIImportService } from '../../../core/services/ai-import.service';
-import { Transaction, CreateTransactionDTO, BudgetPeriod, Category } from '../../../models';
+import {
+  Transaction,
+  CreateTransactionDTO,
+  BudgetPeriod,
+  Category,
+  CurrencyInfo,
+  FieldConfidence,
+  VERIFY_FIELD_THRESHOLD,
+} from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
-import { formatReceiptItemLines } from '../../../core/utils/receipt-consolidation';
 import {
   MAX_RECEIPT_BYTES,
   MAX_RECEIPTS_PER_TRANSACTION,
@@ -93,7 +100,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
-  private geminiService = inject(GeminiService);
+  private strategyService = inject(AIStrategyService);
   private receiptQuota = inject(ReceiptQuotaService);
   private receiptToNote = inject(ReceiptToNoteService);
   private dialog = inject(MatDialog);
@@ -164,10 +171,32 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   suggestedCategory = signal<Category | null>(null);
   isSuggesting = signal(false);
 
-  // Check if AI features are available
-  isAiAvailable = computed(() => this.geminiService.isAvailable());
+  /**
+   * Whether to offer the receipt UI at all. Deliberately connectivity-blind:
+   * attaching and previewing images is worth having with no signal, and only
+   * the scan itself needs a reachable engine.
+   */
+  isAiAvailable = computed(() => this.strategyService.hasAnyEngine());
 
-  currencies = this.currencyService.getSupportedCurrencies();
+  /** How clearly the scan read the amount and date, when it could say. */
+  scanFieldConfidence = signal<FieldConfidence | null>(null);
+
+  /**
+   * A currency this transaction uses that the picker does not list.
+   *
+   * Extraction can produce any currency the rates endpoint knows, which is far
+   * more than the nineteen the picker curates. Without an option to match,
+   * `mat-select` finds nothing selected and opening the form to edit anything
+   * else would silently rewrite the currency — so the row's own code is added
+   * for as long as the form is showing it.
+   */
+  private unlistedCurrency = signal<CurrencyInfo | null>(null);
+
+  currencies = computed<CurrencyInfo[]>(() => {
+    const curated = this.currencyService.getSupportedCurrencies();
+    const extra = this.unlistedCurrency();
+    return extra ? [...curated, extra] : curated;
+  });
   expenseCategories = this.categoryService.expenseCategories;
   incomeCategories = this.categoryService.incomeCategories;
 
@@ -207,8 +236,21 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     }
   }
 
+  /**
+   * Keep the picker able to show `code`, whether or not it is curated.
+   * A no-op for the nineteen that already have an option.
+   */
+  private ensureCurrencyListed(code: string | null | undefined): void {
+    if (!code || this.currencyService.getSupportedCurrencies().some(c => c.code === code)) {
+      this.unlistedCurrency.set(null);
+      return;
+    }
+    this.unlistedCurrency.set(this.currencyService.getCurrencyInfo(code) ?? null);
+  }
+
   ngOnInit(): void {
     this.initForm();
+    this.ensureCurrencyListed(this.data.transaction?.currency);
     this.seedStoredReceipts();
     this.tags.set([...(this.data.transaction?.tags ?? [])]);
     const location = this.data.transaction?.location;
@@ -576,8 +618,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     // The AI scan fills the form from one receipt; run it for the first
     // image queued into an empty strip, as before multi-select existed.
     if (wasEmpty && queued.length > 0) {
-      this.scannedReceipt = queued[0];
-      this.scanReceipt(queued[0].preview);
+      if (this.strategyService.canProcessNow()) {
+        this.scannedReceipt = queued[0];
+        this.scanReceipt(queued[0].file);
+      } else {
+        // The image is kept either way — only the scan needs a reachable
+        // engine. Saying so now beats a generic failure after a long wait.
+        this.notifications.info(this.translationService.t('ai.scanOffline'));
+      }
     }
   }
 
@@ -590,37 +638,52 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     });
   }
 
-  private async scanReceipt(base64Image: string): Promise<void> {
+  /**
+   * Fill the form from one receipt photo.
+   *
+   * Routed through AIStrategyService rather than a named provider, so the scan
+   * honours whichever model the user configured and can fall back to the
+   * on-device pipeline where one exists.
+   */
+  private async scanReceipt(file: File): Promise<void> {
     this.isScanning.set(true);
     this.scanError.set(null);
     let receiptCount = 1;
 
     try {
-      const result = await this.geminiService.parseReceipt(base64Image);
+      const result = await this.strategyService.processReceipt(file);
+      const primary = result.transactions[0];
+      // Unlike a parsed receipt, a processing result can legitimately come
+      // back with no rows — an unreadable photo is not an error to the engine.
+      if (!primary) {
+        throw new Error('The scan produced no transaction');
+      }
 
       // Auto-fill form with extracted data
+      this.ensureCurrencyListed(primary.currency);
       this.form.patchValue({
-        amount: result.amount > 0 ? result.amount : '',
-        currency: result.currency || this.form.get('currency')?.value,
-        description: result.merchant || '',
-        date: result.date || new Date(),
+        amount: primary.amount > 0 ? primary.amount : '',
+        currency: primary.currency || this.form.get('currency')?.value,
+        description: primary.description || '',
+        date: primary.date || new Date(),
       });
 
-      // Record the itemized receipt content in the note field
-      const receiptNote = result.receiptDetails
-        || (result.items?.length ? formatReceiptItemLines(result.items, result.currency) : '');
-      if (receiptNote) {
-        this.form.patchValue({ note: receiptNote });
+      // The itemized receipt body is assembled upstream, which already falls
+      // back to the item lines when the model reproduced no receipt text.
+      if (primary.notes) {
+        this.form.patchValue({ note: primary.notes });
       }
 
       // Set category if suggested
-      if (result.suggestedCategory) {
-        const category = this.filteredCategories().find(c => c.id === result.suggestedCategory);
+      if (primary.suggestedCategoryId) {
+        const category = this.filteredCategories().find(c => c.id === primary.suggestedCategoryId);
         if (category) {
-          this.form.patchValue({ categoryId: result.suggestedCategory });
-          this.categoryIdSignal.set(result.suggestedCategory);
+          this.form.patchValue({ categoryId: primary.suggestedCategoryId });
+          this.categoryIdSignal.set(primary.suggestedCategoryId);
         }
       }
+
+      this.scanFieldConfidence.set(primary.fieldConfidence ?? null);
 
       // Show success message
       const message = this.translationService.t('ai.scanSuccess');
@@ -634,6 +697,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.notifications.error(message);
       // A failed scan leaves the user filling the form in by hand.
       this.filledByScan = false;
+      this.scanFieldConfidence.set(null);
     } finally {
       this.isScanning.set(false);
     }
@@ -641,6 +705,27 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (receiptCount > 1) {
       await this.offerMultiReceiptReview(receiptCount);
     }
+  }
+
+  /**
+   * True when the scan was unsure enough about a field to be worth a look.
+   *
+   * This form has no review step — a scanned value goes straight into a field
+   * the user is about to submit — so the flag has to live beside the input
+   * itself, the way the import preview flags its own rows.
+   */
+  shouldVerifyField(field: 'amount' | 'date'): boolean {
+    const confidence = this.scanFieldConfidence()?.[field];
+    return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
+  }
+
+  /** Why a field is flagged, phrased as the import preview phrases it. */
+  verifyFieldTooltip(field: 'amount' | 'date'): string {
+    const percent = Math.round((this.scanFieldConfidence()?.[field] ?? 0) * 100);
+    return this.translationService.t(
+      field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate',
+      { percent }
+    );
   }
 
   /**
@@ -691,6 +776,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scannedReceipt = null;
       this.filledByScan = false;
       this.scanError.set(null);
+      this.scanFieldConfidence.set(null);
     }
   }
 
@@ -768,7 +854,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   // === AI Category Suggestion Methods ===
 
   private setupCategorySuggestion(): void {
-    if (!this.geminiService.isAvailable()) return;
+    if (!this.strategyService.canUseCloud()) return;
 
     const descriptionControl = this.form.get('description');
     if (!descriptionControl) return;
@@ -794,7 +880,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
     try {
       const categories = this.filteredCategories();
-      const suggestedId = await this.geminiService.suggestCategory(description, categories);
+      const suggestedId = await this.strategyService.suggestCategory(description, categories);
 
       if (suggestedId) {
         const category = categories.find(c => c.id === suggestedId);

@@ -2,7 +2,12 @@ import { TestBed } from '@angular/core/testing';
 import { CurrencyService } from './currency.service';
 import { FirestoreService } from './firestore.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
-import { SUPPORTED_CURRENCIES } from '../../models';
+import {
+  SUPPORTED_CURRENCIES,
+  currencyDecimalPlaces,
+  currencyInfoFor,
+  isCurrencyCode
+} from '../../models';
 
 describe('CurrencyService', () => {
   let service: CurrencyService;
@@ -221,6 +226,101 @@ describe('CurrencyService', () => {
       expect(service.formatAmount(1234567, 'JPY')).toBe('1234567');
       expect(service.formatAmount(1234567.891, 'USD')).toBe('1234567.89');
     });
+
+    it('gets sub-digits right for currencies the picker never listed', () => {
+      expect(service.formatAmount(1500, 'CLP')).toBe('1500');
+      expect(service.formatAmount(1500, 'IDR')).toBe('1500');
+      expect(service.formatAmount(1.2345, 'BHD')).toBe('1.234');
+      expect(service.formatAmount(12.345, 'MXN')).toBe('12.35');
+    });
+
+    it('falls back to two decimals for a code Intl rejects', () => {
+      expect(service.formatAmount(12.345, 'DOLLARS')).toBe('12.35');
+    });
+  });
+
+  describe('currencyDecimalPlaces', () => {
+    it('reads sub-digits out of Intl rather than a maintained list', () => {
+      expect(currencyDecimalPlaces('USD')).toBe(2);
+      expect(currencyDecimalPlaces('JPY')).toBe(0);
+      expect(currencyDecimalPlaces('KRW')).toBe(0);
+      expect(currencyDecimalPlaces('VND')).toBe(0);
+      expect(currencyDecimalPlaces('IDR')).toBe(0);
+      expect(currencyDecimalPlaces('BHD')).toBe(3);
+    });
+
+    it('keeps TWD whole where Intl says two decimals', () => {
+      expect(currencyDecimalPlaces('TWD')).toBe(0);
+    });
+
+    it('accepts a lowercase code', () => {
+      expect(currencyDecimalPlaces('jpy')).toBe(0);
+      expect(currencyDecimalPlaces('twd')).toBe(0);
+    });
+
+    it('falls back to two decimals when Intl throws on the code', () => {
+      expect(() => currencyDecimalPlaces('')).not.toThrow();
+      expect(currencyDecimalPlaces('')).toBe(2);
+      expect(currencyDecimalPlaces('US')).toBe(2);
+      expect(currencyDecimalPlaces('日本円')).toBe(2);
+    });
+
+    it('falls back to two decimals for a well-formed code Intl does not know', () => {
+      expect(currencyDecimalPlaces('ZZZ')).toBe(2);
+    });
+  });
+
+  describe('isCurrencyCode', () => {
+    it('accepts any ISO-shaped code, not just the picker list', () => {
+      expect(isCurrencyCode('USD')).toBeTrue();
+      expect(isCurrencyCode('MXN')).toBeTrue();
+      expect(isCurrencyCode('mxn')).toBeTrue();
+    });
+
+    it('rejects anything that is not a three-letter code', () => {
+      expect(isCurrencyCode('INVALID')).toBeFalse();
+      expect(isCurrencyCode('US')).toBeFalse();
+      expect(isCurrencyCode('US1')).toBeFalse();
+      expect(isCurrencyCode('')).toBeFalse();
+    });
+  });
+
+  describe('currencyInfoFor', () => {
+    it('returns the curated entry when there is one', () => {
+      expect(currencyInfoFor('USD')?.symbol).toBe('$');
+      expect(currencyInfoFor('usd')?.code).toBe('USD');
+    });
+
+    it('describes an untranslated currency by its ISO code', () => {
+      expect(currencyInfoFor('MXN')).toEqual({ code: 'MXN', nameKey: 'MXN', symbol: 'MXN' });
+    });
+
+    it('returns nothing for a code that cannot be represented', () => {
+      expect(currencyInfoFor('INVALID')).toBeUndefined();
+    });
+  });
+
+  describe('canRepresentCurrency', () => {
+    it('accepts a currency the rates table knows but the picker does not', () => {
+      service.exchangeRates.set(new Map([['USD', 1], ['MXN', 17.2]]));
+      expect(service.canRepresentCurrency('MXN')).toBeTrue();
+      expect(service.canRepresentCurrency('mxn')).toBeTrue();
+    });
+
+    it('accepts a picker currency before rates have loaded', () => {
+      service.exchangeRates.set(new Map([['USD', 1]]));
+      expect(service.canRepresentCurrency('THB')).toBeTrue();
+    });
+
+    it('rejects a code no rates table carries', () => {
+      service.exchangeRates.set(new Map([['USD', 1]]));
+      expect(service.canRepresentCurrency('ZZZ')).toBeFalse();
+    });
+
+    it('rejects a malformed code', () => {
+      expect(service.canRepresentCurrency('INVALID')).toBeFalse();
+      expect(service.canRepresentCurrency('')).toBeFalse();
+    });
   });
 
   describe('setBaseCurrency', () => {
@@ -255,6 +355,12 @@ describe('CurrencyService', () => {
     it('should return undefined for invalid currency', () => {
       const info = service.getCurrencyInfo('INVALID');
       expect(info).toBeUndefined();
+    });
+
+    it('describes a currency outside the picker by its ISO code', () => {
+      const info = service.getCurrencyInfo('MXN');
+      expect(info?.code).toBe('MXN');
+      expect(info?.symbol).toBe('MXN');
     });
   });
 

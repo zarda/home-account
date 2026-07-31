@@ -83,7 +83,19 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   // Platform state
   isIOS = signal(false);
   isStandalone = signal(false);
-  isOnline = signal(true);
+
+  /**
+   * Connectivity comes straight from PwaService.
+   *
+   * The local copy this replaced was fed by window listeners the component
+   * could not remove — `.bind(this)` returns a new function every call, so
+   * removeEventListener never matched what had been registered and every
+   * opened dialog left a live pair behind. It also read `navigator.onLine`,
+   * which reports a network interface rather than a usable connection, so on a
+   * captive portal this screen went on believing it was online while
+   * PwaService's reachability probe knew better.
+   */
+  isOnline = this.pwaService.isOnline;
 
   // Computed signals
   hasImages = computed(() => this.capturedImages().length > 0);
@@ -127,25 +139,13 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     // Detect iOS and standalone mode
     this.isIOS.set(this.pwaService.isIOS());
     this.isStandalone.set(this.pwaService.isStandalone());
-    this.isOnline.set(this.pwaService.isOnline());
-
-    // Subscribe to online/offline changes
-    window.addEventListener('online', this.handleOnlineChange.bind(this));
-    window.addEventListener('offline', this.handleOnlineChange.bind(this));
   }
 
   ngOnDestroy(): void {
-    window.removeEventListener('online', this.handleOnlineChange.bind(this));
-    window.removeEventListener('offline', this.handleOnlineChange.bind(this));
-    
     // Clean up preview URLs
     this.capturedImages().forEach(img => {
       URL.revokeObjectURL(img.previewUrl);
     });
-  }
-
-  private handleOnlineChange(): void {
-    this.isOnline.set(navigator.onLine);
   }
 
   async onImageCaptured(event: Event): Promise<void> {

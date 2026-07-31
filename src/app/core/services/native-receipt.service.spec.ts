@@ -74,7 +74,10 @@ describe('NativeReceiptService', () => {
 
       expect(appleMock.parseReceiptText).not.toHaveBeenCalled();
       expect(result.source).toBe('native');
-      expect(result.confidence).toBe(0.9);
+      // Vision read the characters at 0.9; the parser is less sure than that of
+      // the transaction it pulled out of them, and the result says so.
+      expect(result.confidence).toBeGreaterThan(0);
+      expect(result.confidence).toBeLessThan(0.9);
 
       const transaction = result.transactions[0];
       expect(transaction.description).toBe('Starbucks');
@@ -91,7 +94,20 @@ describe('NativeReceiptService', () => {
 
       const args = visionMock.recognizeText.calls.mostRecent().args[0];
       expect(args.image).toMatch(/^data:/);
-      expect(args.languages).toContain('ja-JP');
+      // Naming languages puts every language we did not name behind the ones we
+      // did, so the pipeline names none and lets Vision detect the script.
+      expect(args.languages).toBeUndefined();
+    });
+
+    it('should report no confidence when the parser found nothing in the text', async () => {
+      visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'ありがとうございました' });
+
+      const result = await service.processImage(imageFile());
+
+      expect(result.transactions[0].amount).toBe(0);
+      // Vision read this perfectly well; there is just no transaction in it, and
+      // the caller needs to see that so it can try an engine that can read more.
+      expect(result.confidence).toBe(0);
     });
   });
 
@@ -168,8 +184,11 @@ describe('NativeReceiptService', () => {
       const result = await service.processImages([imageFile(), imageFile()]);
 
       expect(result.transactions.length).toBe(2);
-      expect(result.confidence).toBeCloseTo(0.7);
       expect(result.source).toBe('native');
+
+      const [first, second] = result.transactions;
+      expect(first.confidence).toBeGreaterThan(second.confidence);
+      expect(result.confidence).toBeCloseTo((first.confidence + second.confidence) / 2);
     });
 
     it('should reject when Vision OCR is unavailable', async () => {

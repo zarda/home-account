@@ -400,7 +400,17 @@ describe('CloudLLMProviderService', () => {
     it('parseReceipt delegates to gemini', async () => {
       const r = await service.parseReceipt('img');
       expect(r).toBe(sampleReceipt);
-      expect(gemini.parseReceipt).toHaveBeenCalledWith('img');
+      expect(gemini.parseReceipt).toHaveBeenCalledWith('img', undefined);
+    });
+
+    it('hands the caller\'s cancellation to the provider', async () => {
+      // Without this the import timeout has nothing to abort, and a request
+      // the user has stopped waiting for keeps uploading on their data plan.
+      const { signal } = new AbortController();
+
+      await service.parseReceipt('img', { signal });
+
+      expect(gemini.parseReceipt).toHaveBeenCalledWith('img', { signal });
     });
 
     it('parseReceipt delegates to claude when preferred', async () => {
@@ -421,7 +431,20 @@ describe('CloudLLMProviderService', () => {
       gemini.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
       const r = await service.extractTransactionsFromMultipleImages(['a', 'b']);
       expect(r).toBe(extracted);
-      expect(gemini.extractTransactionsFromMultipleImages).toHaveBeenCalledWith(['a', 'b']);
+      expect(gemini.extractTransactionsFromMultipleImages).toHaveBeenCalledWith(
+        ['a', 'b'],
+        undefined
+      );
+    });
+
+    it('extractTransactionsFromMultipleImages carries the cancellation through', async () => {
+      const { signal } = new AbortController();
+
+      await service.extractTransactionsFromMultipleImages(['a', 'b'], { signal });
+
+      expect(gemini.extractTransactionsFromMultipleImages).toHaveBeenCalledWith(['a', 'b'], {
+        signal,
+      });
     });
 
     it('extractTransactionsFromMultipleImages throws when no provider', async () => {
