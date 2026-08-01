@@ -1,6 +1,7 @@
 import { Injectable, inject, signal, computed, OnDestroy } from '@angular/core';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { PwaService } from './pwa.service';
+import { AuthService } from './auth.service';
 
 // Database schema
 interface OfflineQueueDB extends DBSchema {
@@ -23,8 +24,17 @@ interface OfflineQueueDB extends DBSchema {
 
 export type QueueStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
+/** Thrown when something tries to queue an item with nobody signed in. */
+export const QUEUE_NOT_SIGNED_IN = 'QUEUE_NOT_SIGNED_IN';
+
 export interface QueuedImage {
   id: string;
+  /**
+   * The account that captured this image. The queue is one device-global
+   * IndexedDB, so without an owner an item drained on reconnect landed in
+   * whichever account happened to be signed in at that moment.
+   */
+  userId: string;
   fileName: string;
   mimeType: string;
   size: number;
@@ -37,6 +47,8 @@ export interface QueuedImage {
 
 export interface QueuedTransaction {
   id: string;
+  /** The account that queued this row. See QueuedImage.userId. */
+  userId: string;
   date: string;
   description: string;
   amount: number;
@@ -53,6 +65,8 @@ export interface QueuedTransaction {
 
 export interface SyncLogEntry {
   id: string;
+  /** The account the logged item belonged to. */
+  userId: string;
   timestamp: number;
   action: 'sync_started' | 'sync_completed' | 'sync_failed' | 'item_processed' | 'item_failed';
   itemId?: string;
@@ -66,14 +80,21 @@ export interface QueueStats {
   lastSyncTime: number | null;
 }
 
-const DB_NAME = 'homeaccount-offline-queue';
-const DB_VERSION = 1;
+export const DB_NAME = 'homeaccount-offline-queue';
+/**
+ * v2 added `userId` to every queued record. Rows written by v1 carry no owner
+ * and cannot be safely attributed to anyone, so the upgrade drops them: the
+ * queue only fills while offline with no engine available, so in practice
+ * there is rarely anything to drop, and guessing an owner is the bug itself.
+ */
+const DB_VERSION = 2;
 const MAX_RETRY_COUNT = 3;
 
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService implements OnDestroy {
   private pwaService = inject(PwaService);
-  
+  private authService = inject(AuthService);
+
   private db: IDBPDatabase<OfflineQueueDB> | null = null;
   private syncInProgress = false;
   private onlineHandler: (() => void) | null = null;
@@ -103,10 +124,35 @@ export class OfflineQueueService implements OnDestroy {
     this.cleanup();
   }
 
+  /** The signed-in account, or null. Every read is scoped to it. */
+  private currentUserId(): string | null {
+    return this.authService.userId();
+  }
+
+  /**
+   * The signed-in account, refusing to queue without one. Better to fail the
+   * capture loudly than to write a row nobody owns, which is unreachable
+   * afterwards and cannot be attributed later.
+   */
+  private requireUserId(): string {
+    const userId = this.currentUserId();
+    if (!userId) {
+      throw new Error(QUEUE_NOT_SIGNED_IN);
+    }
+    return userId;
+  }
+
+  /** Items belonging to the signed-in account; empty when signed out. */
+  private ownedBy<T extends { userId: string }>(items: T[]): T[] {
+    const userId = this.currentUserId();
+    if (!userId) return [];
+    return items.filter(item => item.userId === userId);
+  }
+
   private async initializeDB(): Promise<void> {
     try {
       this.db = await openDB<OfflineQueueDB>(DB_NAME, DB_VERSION, {
-        upgrade(db) {
+        upgrade(db, oldVersion, _newVersion, transaction) {
           // Pending images store
           if (!db.objectStoreNames.contains('pending-images')) {
             const imageStore = db.createObjectStore('pending-images', { keyPath: 'id' });
@@ -125,6 +171,28 @@ export class OfflineQueueService implements OnDestroy {
             const logStore = db.createObjectStore('sync-log', { keyPath: 'id' });
             logStore.createIndex('by-timestamp', 'timestamp');
           }
+
+          // v1 -> v2: records predate `userId`. An ownerless item can only be
+          // released to an account by guessing, which is the defect this
+          // version exists to fix, so drop them instead. Uses the upgrade
+          // transaction's handles: `this.db` is not assigned yet.
+          if (oldVersion > 0 && oldVersion < 2) {
+            console.warn('[OfflineQueue] Dropping queued items written before per-account ownership');
+            transaction.objectStore('pending-images').clear();
+            transaction.objectStore('pending-transactions').clear();
+            transaction.objectStore('sync-log').clear();
+          }
+        },
+        blocked: () => {
+          console.warn('[OfflineQueue] Upgrade blocked by another open tab');
+        },
+        blocking: () => {
+          // Another tab wants a newer version. Close, or it waits forever and
+          // that tab's queue never initializes.
+          console.warn('[OfflineQueue] Closing so a newer version can open');
+          this.db?.close();
+          this.db = null;
+          this._isReady.set(false);
         },
       });
 
@@ -169,12 +237,14 @@ export class OfflineQueueService implements OnDestroy {
     if (!this.db) {
       throw new Error('Database not initialized');
     }
+    const userId = this.requireUserId();
 
     const id = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const arrayBuffer = await file.arrayBuffer();
 
     const queuedImage: QueuedImage = {
       id,
+      userId,
       fileName: file.name,
       mimeType: file.type,
       size: file.size,
@@ -211,16 +281,18 @@ export class OfflineQueueService implements OnDestroy {
   /**
    * Queue a transaction for later sync.
    */
-  async queueTransaction(transaction: Omit<QueuedTransaction, 'id' | 'createdAt' | 'status' | 'retryCount'>): Promise<string> {
+  async queueTransaction(transaction: Omit<QueuedTransaction, 'id' | 'userId' | 'createdAt' | 'status' | 'retryCount'>): Promise<string> {
     if (!this.db) {
       throw new Error('Database not initialized');
     }
+    const userId = this.requireUserId();
 
     const id = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     const queuedTx: QueuedTransaction = {
       ...transaction,
       id,
+      userId,
       createdAt: Date.now(),
       status: 'pending',
       retryCount: 0,
@@ -245,7 +317,8 @@ export class OfflineQueueService implements OnDestroy {
     if (!this.db) return [];
 
     const all = await this.db.getAllFromIndex('pending-images', 'by-created');
-    return all.filter(img => img.status === 'pending' || img.status === 'failed');
+    return this.ownedBy(all)
+      .filter(img => img.status === 'pending' || img.status === 'failed');
   }
 
   /**
@@ -255,13 +328,27 @@ export class OfflineQueueService implements OnDestroy {
     if (!this.db) return [];
 
     const all = await this.db.getAllFromIndex('pending-transactions', 'by-created');
-    return all.filter(tx => tx.status === 'pending' || tx.status === 'failed');
+    return this.ownedBy(all)
+      .filter(tx => tx.status === 'pending' || tx.status === 'failed');
   }
 
   /**
-   * Get a queued image by ID.
+   * Get a queued image by ID, provided the signed-in account owns it.
    */
   async getQueuedImage(id: string): Promise<QueuedImage | undefined> {
+    if (!this.db) return undefined;
+    const image = await this.db.get('pending-images', id);
+    return image && image.userId === this.currentUserId() ? image : undefined;
+  }
+
+  /**
+   * Get a queued image by ID regardless of owner.
+   *
+   * Only for deciding what to do with someone else's item — never for
+   * processing one. The processor uses it to tell "not mine, leave it for its
+   * own account" apart from "gone", which are different outcomes.
+   */
+  async peekQueuedImage(id: string): Promise<QueuedImage | undefined> {
     if (!this.db) return undefined;
     return this.db.get('pending-images', id);
   }
@@ -339,7 +426,9 @@ export class OfflineQueueService implements OnDestroy {
    * Sync all pending items when online.
    */
   async syncQueue(): Promise<{ success: number; failed: number }> {
-    if (this.syncInProgress || !this.pwaService.isOnline()) {
+    // Nothing to drain into while signed out — and dispatching then is exactly
+    // how a queued item reached the wrong account.
+    if (this.syncInProgress || !this.pwaService.isOnline() || !this.currentUserId()) {
       return { success: 0, failed: 0 };
     }
 
@@ -442,8 +531,8 @@ export class OfflineQueueService implements OnDestroy {
       };
     }
 
-    const images = await this.db.getAll('pending-images');
-    const transactions = await this.db.getAll('pending-transactions');
+    const images = this.ownedBy(await this.db.getAll('pending-images'));
+    const transactions = this.ownedBy(await this.db.getAll('pending-transactions'));
 
     const pendingImages = images.filter(i => i.status === 'pending').length;
     const pendingTransactions = transactions.filter(t => t.status === 'pending').length;
@@ -465,8 +554,8 @@ export class OfflineQueueService implements OnDestroy {
   async clearCompleted(): Promise<void> {
     if (!this.db) return;
 
-    const images = await this.db.getAll('pending-images');
-    const transactions = await this.db.getAll('pending-transactions');
+    const images = this.ownedBy(await this.db.getAll('pending-images'));
+    const transactions = this.ownedBy(await this.db.getAll('pending-transactions'));
 
     for (const img of images) {
       if (img.status === 'completed') {
@@ -490,8 +579,8 @@ export class OfflineQueueService implements OnDestroy {
   async clearFailed(): Promise<void> {
     if (!this.db) return;
 
-    const images = await this.db.getAll('pending-images');
-    const transactions = await this.db.getAll('pending-transactions');
+    const images = this.ownedBy(await this.db.getAll('pending-images'));
+    const transactions = this.ownedBy(await this.db.getAll('pending-transactions'));
 
     for (const img of images) {
       if (img.status === 'failed') {
@@ -515,8 +604,19 @@ export class OfflineQueueService implements OnDestroy {
   async clearAll(): Promise<void> {
     if (!this.db) return;
 
-    await this.db.clear('pending-images');
-    await this.db.clear('pending-transactions');
+    // Scoped to the signed-in account, so one user's "clear queue" no longer
+    // discards another's captures. The sync log goes too: it used to be left
+    // behind entirely, growing without bound.
+    for (const img of this.ownedBy(await this.db.getAll('pending-images'))) {
+      await this.db.delete('pending-images', img.id);
+    }
+    for (const tx of this.ownedBy(await this.db.getAll('pending-transactions'))) {
+      await this.db.delete('pending-transactions', tx.id);
+    }
+    for (const entry of this.ownedBy(await this.db.getAll('sync-log'))) {
+      await this.db.delete('sync-log', entry.id);
+    }
+
     await this.updatePendingCount();
     console.log('[OfflineQueue] Cleared all items');
   }
@@ -527,7 +627,7 @@ export class OfflineQueueService implements OnDestroy {
   async getSyncLog(limit = 50): Promise<SyncLogEntry[]> {
     if (!this.db) return [];
 
-    const all = await this.db.getAllFromIndex('sync-log', 'by-timestamp');
+    const all = this.ownedBy(await this.db.getAllFromIndex('sync-log', 'by-timestamp'));
     return all.slice(-limit).reverse();
   }
 
@@ -559,8 +659,8 @@ export class OfflineQueueService implements OnDestroy {
       return;
     }
 
-    const images = await this.db.getAll('pending-images');
-    const transactions = await this.db.getAll('pending-transactions');
+    const images = this.ownedBy(await this.db.getAll('pending-images'));
+    const transactions = this.ownedBy(await this.db.getAll('pending-transactions'));
 
     const count = 
       images.filter(i => i.status === 'pending' || i.status === 'failed').length +
@@ -577,10 +677,12 @@ export class OfflineQueueService implements OnDestroy {
     itemId?: string,
     details?: string
   ): Promise<void> {
-    if (!this.db) return;
+    const userId = this.currentUserId();
+    if (!this.db || !userId) return;
 
     const entry: SyncLogEntry = {
       id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      userId,
       timestamp: Date.now(),
       action,
       itemId,

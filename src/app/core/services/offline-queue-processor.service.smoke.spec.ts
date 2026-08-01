@@ -46,6 +46,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   let auth: Auth;
   let firestore: ReturnType<typeof getFirestore>;
   let uid: string;
+  let signedInAs: string | null;
 
   let queue: OfflineQueueService;
   let processor: OfflineQueueProcessorService;
@@ -86,9 +87,11 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     const pwa = jasmine.createSpyObj('PwaService', ['isOnline', 'registerBackgroundSync']);
     pwa.isOnline.and.returnValue(true);
 
+    // Mutable so a test can queue as one account and sync as another.
+    signedInAs = uid;
     const authMock = {
-      userId: () => uid,
-      currentUser: () => ({ id: uid, preferences: { baseCurrency: 'USD' } }),
+      userId: () => signedInAs,
+      currentUser: () => ({ id: signedInAs, preferences: { baseCurrency: 'USD' } }),
     };
 
     TestBed.configureTestingModule({
@@ -158,4 +161,53 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     const match = stored.find((t) => t.amount === 123.45 && t.type === 'income');
     expect(match).toBeDefined();
   }, 20000);
+
+  // The whole point of #164, against a real ledger. addTransaction resolves
+  // the account at call time, so before this fix a sync that fired after a
+  // different user signed in wrote the first account's spending into theirs.
+  it('does not write another account\'s queued transaction into the signed-in ledger', async () => {
+    await queue.queueTransaction({
+      date: '2026-06-16',
+      description: 'Smoke leak check',
+      amount: 777.77,
+      type: 'income',
+      currency: 'USD',
+      categoryId: 'salary',
+      source: 'local',
+    });
+
+    const [queued] = await queue.getPendingTransactions();
+    expect(queued.userId).toBe(uid);
+
+    // A second account signs in on the same device before the queue drains.
+    const other = `${uid}-other`;
+    signedInAs = other;
+
+    window.dispatchEvent(
+      new CustomEvent<{ transaction: QueuedTransaction }>('sync-queued-transaction', {
+        detail: { transaction: queued },
+      }),
+    );
+
+    // The processor returns the item to 'pending' rather than completing it.
+    // (The other account's collection is deliberately unreadable from here —
+    // the rules forbid it — so the queue state is what proves no write ran.)
+    await waitFor(async () => {
+      signedInAs = uid;
+      const pending = await queue.getPendingTransactions();
+      const found = pending.find((t) => t.id === queued.id);
+      signedInAs = other;
+      return found?.status === 'pending';
+    });
+
+    signedInAs = uid;
+    // Nothing landed in the capturing account either — it is still queued.
+    const own = await firestoreService.getCollection<{ amount: number }>(
+      `users/${uid}/transactions`,
+    );
+    expect(own.find((t) => t.amount === 777.77)).toBeUndefined();
+
+    const stillPending = await queue.getPendingTransactions();
+    expect(stillPending.map((t) => t.id)).toContain(queued.id);
+  }, 30000);
 });

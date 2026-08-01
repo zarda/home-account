@@ -4,6 +4,7 @@ import { AIStrategyService } from './ai-strategy.service';
 import { TransactionService } from './transaction.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
+import { AuthService } from './auth.service';
 import { ProcessedTransaction } from './ai-types';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
 import { CreateTransactionDTO } from '../../models/transaction.model';
@@ -30,6 +31,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
   private transactionService = inject(TransactionService);
   private notifications = inject(NotificationService);
   private translation = inject(TranslationService);
+  private authService = inject(AuthService);
 
   private imageHandler = (event: Event): void => {
     const { id } = (event as CustomEvent<{ id: string }>).detail;
@@ -63,6 +65,18 @@ export class OfflineQueueProcessorService implements OnDestroy {
    */
   private async processQueuedImage(id: string): Promise<void> {
     try {
+      // Ownership is re-checked here, not just at dispatch. TransactionService
+      // resolves the account at call time, so a sync that fires while a
+      // different account is signed in would write this receipt into their
+      // ledger. Left 'pending' rather than 'failed': it is a perfectly good
+      // item waiting for its own account, and failing it would burn one of the
+      // three retries for something that is not its fault.
+      const queued = await this.queue.peekQueuedImage(id);
+      if (queued && queued.userId !== this.authService.userId()) {
+        await this.queue.updateImageStatus(id, 'pending');
+        return;
+      }
+
       const file = await this.queue.getQueuedImageAsFile(id);
       if (!file) {
         await this.queue.updateImageStatus(id, 'failed', 'Image not found in queue');
@@ -130,6 +144,14 @@ export class OfflineQueueProcessorService implements OnDestroy {
    * Persist a queued transaction to Firestore and record the outcome.
    */
   private async syncQueuedTransaction(tx: QueuedTransaction): Promise<void> {
+    // The event carries the row itself, so this is the last point at which the
+    // owner can be checked before addTransaction resolves the path from
+    // whoever is signed in now.
+    if (tx.userId !== this.authService.userId()) {
+      await this.queue.updateTransactionStatus(tx.id, 'pending');
+      return;
+    }
+
     try {
       const dto: CreateTransactionDTO = {
         type: tx.type,
