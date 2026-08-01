@@ -93,7 +93,8 @@ export class CategoryService {
         icon: data.icon,
         color: data.color,
         type: data.type,
-        parentId: data.parentId,
+        // Only include optional fields if they have values (Firestore rejects undefined)
+        ...(data.parentId ? { parentId: data.parentId } : {}),
         order: maxOrder + 1,
         isActive: true,
         isDefault: false

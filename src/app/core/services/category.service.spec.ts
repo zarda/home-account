@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import { createCategory, createCategoryHierarchy } from './testing/test-data';
+import { findSerializationIssues } from '../utils/firestore-value.utils';
 import { DEFAULT_EXPENSE_GROUPS, DEFAULT_INCOME_GROUPS } from '../../models';
 
 describe('CategoryService', () => {
@@ -266,6 +267,77 @@ describe('CategoryService', () => {
       groups.forEach(g => {
         expect(g.type).toBe('income');
       });
+    });
+  });
+
+  describe('addCategory', () => {
+    function writtenPayload(): Record<string, unknown> {
+      const call = mockFirestore.addDocumentSpy.mostRecent();
+      expect(call).toBeDefined();
+      return call!.args[1] as Record<string, unknown>;
+    }
+
+    // The dialog returns only name, icon and colour, so parentId arrives
+    // undefined on every real call. ignoreUndefinedProperties is deliberately
+    // off, so writing the key at all fails the whole document — which is why
+    // "Add Category" never worked. The mock accepts anything, so assert on the
+    // payload rather than on the call.
+    it('writes no undefined values when the optional parent is omitted', async () => {
+      await service.addCategory({
+        name: 'Bouldering',
+        icon: 'sports_handball',
+        color: '#ff8800',
+        type: 'expense'
+      });
+
+      expect(findSerializationIssues(writtenPayload())).toEqual([]);
+    });
+
+    it('omits the parentId key entirely rather than sending undefined', async () => {
+      await service.addCategory({
+        name: 'Bouldering',
+        icon: 'sports_handball',
+        color: '#ff8800',
+        type: 'expense'
+      });
+
+      expect('parentId' in writtenPayload()).toBeFalse();
+    });
+
+    it('keeps parentId when the caller supplies one', async () => {
+      await service.addCategory({
+        name: 'Indoor',
+        icon: 'sports_handball',
+        color: '#ff8800',
+        type: 'expense',
+        parentId: 'sports'
+      });
+
+      expect(writtenPayload()['parentId']).toBe('sports');
+    });
+
+    it('writes the category under the signed-in account', async () => {
+      await service.addCategory({
+        name: 'Bouldering',
+        icon: 'sports_handball',
+        color: '#ff8800',
+        type: 'expense'
+      });
+
+      const call = mockFirestore.addDocumentSpy.mostRecent();
+      expect(call!.args[0]).toBe('users/test-user-123/categories');
+      expect(writtenPayload()['isDefault']).toBeFalse();
+    });
+
+    it('rejects when nobody is signed in', async () => {
+      mockAuth.setAuthenticated(false);
+
+      await expectAsync(service.addCategory({
+        name: 'Bouldering',
+        icon: 'sports_handball',
+        color: '#ff8800',
+        type: 'expense'
+      })).toBeRejected();
     });
   });
 });

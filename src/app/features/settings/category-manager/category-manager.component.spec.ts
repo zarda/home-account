@@ -95,6 +95,10 @@ describe('CategoryManagerComponent', () => {
         'settings.categoryUpdated': 'Category updated',
         'settings.categoryDeleted': 'Category deleted',
         'settings.categoriesReordered': 'Categories reordered',
+        'settings.categoryCreateFailed': 'Failed to create category',
+        'settings.categoryUpdateFailed': 'Failed to update category',
+        'settings.categoryDeleteFailed': 'Failed to delete category',
+        'settings.categoriesReorderFailed': 'Failed to reorder categories',
         'settings.deleteCategory': 'Delete Category',
         'settings.deleteCategoryConfirm': 'Are you sure you want to delete this category?',
         'common.close': 'Close',
@@ -226,6 +230,20 @@ describe('CategoryManagerComponent', () => {
 
       expect(notifications.success).toHaveBeenCalledWith('Category created');
     }));
+
+    // A rejected write used to vanish: no catch, so the dialog just closed and
+    // the category never appeared.
+    it('reports a failed create instead of closing silently', fakeAsync(() => {
+      const result = { name: 'New Category', icon: 'star', color: '#FF0000' };
+      mockDialog.open.and.returnValue({ afterClosed: () => of(result) } as never);
+      mockCategoryService.addCategory.and.returnValue(Promise.reject(new Error('boom')));
+
+      component.openAddDialog();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith('Failed to create category');
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
   });
 
   describe('openEditDialog', () => {
@@ -257,6 +275,18 @@ describe('CategoryManagerComponent', () => {
         color: '#FF0000'
       });
     }));
+
+    it('reports a failed update instead of closing silently', fakeAsync(() => {
+      const result = { name: 'Updated Name', icon: 'star', color: '#FF0000' };
+      mockDialog.open.and.returnValue({ afterClosed: () => of(result) } as never);
+      mockCategoryService.updateCategory.and.returnValue(Promise.reject(new Error('boom')));
+
+      component.openEditDialog(mockCategories[0]);
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith('Failed to update category');
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
   });
 
   describe('deleteCategory', () => {
@@ -287,6 +317,29 @@ describe('CategoryManagerComponent', () => {
       tick();
 
       expect(mockCategoryService.deleteCategory).not.toHaveBeenCalled();
+    }));
+
+    it('reports a failed delete instead of closing silently', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      mockCategoryService.deleteCategory.and.returnValue(Promise.reject(new Error('boom')));
+
+      component.deleteCategory(mockCategories[0]);
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith('Failed to delete category');
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
+  });
+
+  describe('onDrop', () => {
+    it('reports a failed reorder instead of leaving the new order unsaved', fakeAsync(() => {
+      mockCategoryService.reorderCategories.and.returnValue(Promise.reject(new Error('boom')));
+
+      component.onDrop({ previousIndex: 0, currentIndex: 1 } as never);
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith('Failed to reorder categories');
+      expect(notifications.success).not.toHaveBeenCalled();
     }));
   });
 });

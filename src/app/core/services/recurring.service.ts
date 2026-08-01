@@ -109,9 +109,12 @@ export class RecurringService {
         description: data.description,
         frequency: data.frequency,
         startDate: this.firestoreService.dateToTimestamp(data.startDate),
-        endDate: data.endDate
-          ? this.firestoreService.dateToTimestamp(data.endDate)
-          : undefined,
+        // Omitted rather than set to undefined, which Firestore rejects
+        // outright — a rule with no end date is the default, so writing the
+        // key unconditionally failed every such create.
+        ...(data.endDate
+          ? { endDate: this.firestoreService.dateToTimestamp(data.endDate) }
+          : {}),
         nextOccurrence: this.firestoreService.dateToTimestamp(nextOccurrence),
         isActive: true,
         createdAt: this.firestoreService.getTimestamp(),

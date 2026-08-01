@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
+import { findSerializationIssues } from '../utils/firestore-value.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -295,6 +296,20 @@ describe('RecurringService', () => {
 
       const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
       expect((data as Record<string, unknown>)['endDate']).toBeUndefined();
+    });
+
+    // toBeUndefined() above passes whether the key is absent or present with
+    // an undefined value, and Firestore rejects only the second. A rule with
+    // no end date is the common case, so that write always failed.
+    it('writes no undefined values when no end date is set', async () => {
+      await service.createRecurring(dto);
+
+      const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
+      // Timestamp fields are legitimate here, so only the undefined issues matter.
+      const undefinedFields = findSerializationIssues(data)
+        .filter(issue => issue.reason.startsWith('undefined'));
+      expect(undefinedFields).toEqual([]);
+      expect('endDate' in (data as Record<string, unknown>)).toBeFalse();
     });
 
     it('should reset isLoading after completion', async () => {
