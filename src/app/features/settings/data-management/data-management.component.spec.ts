@@ -50,7 +50,7 @@ describe('DataManagementComponent', () => {
       transactions: signal([])
     });
     mockTransactionService.addTransaction.and.returnValue(Promise.resolve('new-id'));
-    mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve());
+    mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve(0));
     mockTransactionService.getAllTransactions.and.returnValue(of([]));
 
     mockCategoryService = jasmine.createSpyObj('CategoryService', [], {
@@ -277,5 +277,20 @@ describe('DataManagementComponent', () => {
 
       expect(mockDialog.open).toHaveBeenCalled();
     });
+
+    // The old message claimed everything was gone regardless of what the
+    // service managed to remove.
+    it('reports the number of transactions actually deleted', fakeAsync(() => {
+      mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve(488));
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.deleteAllTransactions();
+      tick();
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.allTransactionsDeleted', { count: 488 }
+      );
+      expect(notifications.success).toHaveBeenCalled();
+    }));
   });
 });

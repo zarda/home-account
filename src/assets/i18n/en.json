@@ -367,7 +367,7 @@
     "fileReadFailed": "Failed to read file",
     "transactionsImported": "{{count}} transactions imported",
     "transactionsImportedPartial": "{{count}} transactions imported, {{skipped}} skipped",
-    "allTransactionsDeleted": "All transactions deleted",
+    "allTransactionsDeleted": "{{count}} transactions deleted",
     "deleteTransactionsFailed": "Failed to delete transactions",
     "confirmImport": "Confirm Import",
     "confirmImportMessage": "Import {{count}} transactions? This will add new transactions to your account.",

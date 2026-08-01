@@ -1019,6 +1019,101 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('deleteAllTransactions', () => {
+    const path = 'users/test-user-123/transactions';
+
+    function seedCollection(count: number): void {
+      mockFirestore.setMockCollection(
+        path,
+        Array.from({ length: count }, (_, i) => createTransaction({ id: `txn-${i}` }))
+      );
+    }
+
+    // The regression. The `transactions` signal only ever holds whatever the
+    // last live query published — usually the current month, and nothing at
+    // all when the user deep-links to Settings without visiting the dashboard.
+    // Enumerating it deleted a slice of the account and reported success.
+    it('deletes the whole collection even when the signal is empty', async () => {
+      seedCollection(6);
+      expect(service.transactions().length).toBe(0);
+
+      const deleted = await service.deleteAllTransactions();
+
+      expect(deleted).toBe(6);
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(6);
+    });
+
+    it('deletes the whole collection when the signal holds only a window', async () => {
+      seedCollection(6);
+      service.transactions.set([
+        createTransaction({ id: 'txn-0' }),
+        createTransaction({ id: 'txn-1' })
+      ]);
+
+      const deleted = await service.deleteAllTransactions();
+
+      expect(deleted).toBe(6);
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(6);
+    });
+
+    it('reads the collection rather than the signal', async () => {
+      seedCollection(2);
+
+      await service.deleteAllTransactions();
+
+      expect(mockFirestore.getCollectionSpy.mostRecent()?.args[0]).toBe(path);
+    });
+
+    it('clears the in-memory signal and forces a quota recount', async () => {
+      seedCollection(3);
+      service.transactions.set([createTransaction({ id: 'txn-0' })]);
+
+      await service.deleteAllTransactions();
+
+      expect(service.transactions()).toEqual([]);
+      expect(mockQuota.invalidateCount).toHaveBeenCalledTimes(1);
+    });
+
+    it('sweeps the receipt slots of every row that had images', async () => {
+      mockFirestore.setMockCollection(path, [
+        createTransaction({ id: 'txn-0' }),
+        createTransaction({
+          id: 'txn-1',
+          receiptUrl: 'u0',
+          receiptUrls: ['u0', 'u1'],
+          receiptCount: 2
+        })
+      ]);
+
+      await service.deleteAllTransactions();
+
+      expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(1);
+      expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
+        'test-user-123', 'txn-1', [0, 1]
+      ]);
+    });
+
+    // One refresh for the whole wipe, not one per row: the transactions page
+    // reacts to every emission by refreshing its window.
+    it('emits exactly one delete mutation for the whole wipe', async () => {
+      seedCollection(4);
+
+      await service.deleteAllTransactions();
+
+      expect(service.lastMutation()?.kind).toBe('delete');
+      expect(service.lastMutation()?.seq).toBe(1);
+    });
+
+    it('returns zero and emits nothing when there is nothing to delete', async () => {
+      seedCollection(0);
+
+      const deleted = await service.deleteAllTransactions();
+
+      expect(deleted).toBe(0);
+      expect(service.lastMutation()).toBeNull();
+    });
+  });
+
   describe('getTransactions with filters', () => {
     beforeEach(() => {
       const transactions = createMixedTransactions();

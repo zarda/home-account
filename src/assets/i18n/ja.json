@@ -367,7 +367,7 @@
     "fileReadFailed": "ファイルの読み取りに失敗しました",
     "transactionsImported": "{{count}}件の取引をインポートしました",
     "transactionsImportedPartial": "{{count}}件の取引をインポートしました（{{skipped}}件スキップ）",
-    "allTransactionsDeleted": "すべての取引を削除しました",
+    "allTransactionsDeleted": "{{count}} 件の取引を削除しました",
     "deleteTransactionsFailed": "取引の削除に失敗しました",
     "confirmImport": "インポートの確認",
     "confirmImportMessage": "{{count}}件の取引をインポートしますか？アカウントに新しい取引が追加されます。",

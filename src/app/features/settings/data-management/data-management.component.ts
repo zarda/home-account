@@ -315,8 +315,8 @@ export class DataManagementComponent {
         secondConfirm.afterClosed().subscribe(async (finalConfirm) => {
           if (finalConfirm) {
             try {
-              await this.transactionService.deleteAllTransactions();
-              const message = this.t('settings.allTransactionsDeleted');
+              const deleted = await this.transactionService.deleteAllTransactions();
+              const message = this.t('settings.allTransactionsDeleted', { count: deleted });
               this.notifications.success(message);
             } catch {
               const message = this.t('settings.deleteTransactionsFailed');

@@ -328,8 +328,7 @@ export class InsightSnapshotService {
    * Remove every snapshot, for account deletion.
    *
    * Enumerates the collection rather than the in-memory signal — the signal only
-   * holds what a subscription happened to deliver, which is why
-   * TransactionService.deleteAllTransactions is incomplete for large histories.
+   * holds what a subscription happened to deliver.
    */
   async deleteAll(): Promise<void> {
     const userId = this.authService.userId();

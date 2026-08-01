@@ -367,7 +367,7 @@
     "fileReadFailed": "讀取檔案失敗",
     "transactionsImported": "已匯入 {{count}} 筆交易",
     "transactionsImportedPartial": "已匯入 {{count}} 筆交易，略過 {{skipped}} 筆",
-    "allTransactionsDeleted": "已刪除所有交易",
+    "allTransactionsDeleted": "已刪除 {{count}} 筆交易",
     "deleteTransactionsFailed": "刪除交易失敗",
     "confirmImport": "確認匯入",
     "confirmImportMessage": "匯入 {{count}} 筆交易？這將新增交易到您的帳戶。",
