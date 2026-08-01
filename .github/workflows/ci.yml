@@ -86,6 +86,15 @@ jobs:
       - name: Unit tests
         run: npm run test:ci
 
+      # A runtime at UTC cannot tell local-midnight parsing from UTC-midnight
+      # parsing — at offset 0 they are the same instant — so the specs whose
+      # assertions depend on the zone run again either side of it. Targeted
+      # rather than a second full suite; ChromeHeadless inherits TZ from Karma.
+      - name: Date specs (non-UTC zones)
+        run: |
+          TZ=America/New_York npm run test:dates
+          TZ=Asia/Tokyo npm run test:dates
+
       - name: Upload coverage report
         uses: actions/upload-artifact@v7
         with:

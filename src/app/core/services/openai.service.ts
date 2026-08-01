@@ -37,6 +37,7 @@ import {
   ProviderCapabilities,
 } from './llm-provider.interface';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
+import { dayKey } from '../utils/transaction-date.utils';
 
 @Injectable({ providedIn: 'root' })
 export class OpenAIService implements CloudLLMProviderAdapter {
@@ -594,7 +595,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
       const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
 
       return extracted.map((t) => ({
-        date: t.date || new Date().toISOString().split('T')[0],
+        date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
@@ -659,7 +660,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
       const extracted: MultiImageExtractedTransaction[] = JSON.parse(cleanedJson);
 
       return extracted.map((t) => ({
-        date: t.date || new Date().toISOString().split('T')[0],
+        date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
