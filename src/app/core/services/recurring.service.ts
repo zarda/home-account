@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
+import { dateAtClampedDay } from '../utils/transaction-date.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -527,25 +528,28 @@ export class RecurringService {
         }
         break;
 
+      // Both of these build the target from components rather than shifting
+      // the month on a Date and clamping after. Shifting first overflows —
+      // 31 Jan + 1 month is "31 Feb", which is already 3 March — and the clamp
+      // then reads the length of the month the overflow spilled into. A rule on
+      // the 31st visited only the 31-day months, five short months a year, and
+      // the catch-up loop advanced with the same function so it never
+      // recovered them.
       case 'monthly':
-        next.setMonth(next.getMonth() + frequency.interval);
-        if (frequency.dayOfMonth !== undefined) {
-          // Set to specific day of month (handle month overflow)
-          const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
-          next.setDate(Math.min(frequency.dayOfMonth, lastDay));
-        }
-        break;
+        return dateAtClampedDay(
+          fromDate.getFullYear(),
+          fromDate.getMonth() + frequency.interval,
+          frequency.dayOfMonth ?? fromDate.getDate(),
+          fromDate
+        );
 
       case 'yearly':
-        next.setFullYear(next.getFullYear() + frequency.interval);
-        if (frequency.monthOfYear !== undefined) {
-          next.setMonth(frequency.monthOfYear - 1);
-        }
-        if (frequency.dayOfMonth !== undefined) {
-          const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
-          next.setDate(Math.min(frequency.dayOfMonth, lastDay));
-        }
-        break;
+        return dateAtClampedDay(
+          fromDate.getFullYear() + frequency.interval,
+          (frequency.monthOfYear ?? fromDate.getMonth() + 1) - 1,
+          frequency.dayOfMonth ?? fromDate.getDate(),
+          fromDate
+        );
     }
 
     return next;
