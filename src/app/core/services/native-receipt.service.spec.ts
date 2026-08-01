@@ -160,8 +160,23 @@ describe('NativeReceiptService', () => {
 
       expect(transaction.description).toBe('Unknown Merchant');
       expect(transaction.amount).toBe(42);
-      expect(transaction.currency).toBe('USD');
+      // This service reports what it read, not a guess. AIStrategyService
+      // knows the account's base currency and substitutes it; inventing one
+      // here is what made an unreadable currency land as USD regardless of
+      // whose account it was.
+      expect(transaction.currency).toBe('');
       expect(isNaN(transaction.date.getTime())).toBeFalse();
+    });
+
+    it('reports no currency when the model returns one it cannot read', async () => {
+      appleMock.parseReceiptText.and.resolveTo({
+        merchant: 'Cafe', date: '2026-06-01', amount: 10, currency: 'dollars',
+        category: '', details: '',
+      });
+
+      const result = await service.processImage(imageFile());
+
+      expect(result.transactions[0].currency).toBe('');
     });
 
     it('should fall back to the regex parser when the model fails', async () => {

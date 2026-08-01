@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
+import { readCurrencyCode } from '../utils/receipt-extraction.utils';
 import {
   Transaction,
   TransactionLocation,
@@ -369,14 +370,20 @@ export class ExportService {
     });
   }
 
-  // Parse imported data and convert to transaction DTOs
-  parseImportedData(raw: ImportedTransaction[]): CreateTransactionDTO[] {
+  /**
+   * Parse imported data and convert to transaction DTOs.
+   *
+   * `baseCurrency` is required rather than defaulted so a new call site has to
+   * say what an unlabelled row should become. It used to be a hardcoded 'USD',
+   * which silently relabelled every foreign row a bank CSV carried.
+   */
+  parseImportedData(raw: ImportedTransaction[], baseCurrency: string): CreateTransactionDTO[] {
     return raw.map(r => ({
       type: r.type ?? (r.amount >= 0 ? 'income' : 'expense'),
       amount: Math.abs(r.amount),
-      // Rows from a backup carry their own currency and category; rows from
-      // a bank CSV carry neither and keep the old defaults.
-      currency: r.currency ?? 'USD',
+      // Rows from a backup carry their own currency and category; rows from a
+      // bank CSV may carry neither and fall back to the account's own.
+      currency: r.currency || baseCurrency,
       categoryId: r.categoryId ?? 'other_expense',
       description: r.description,
       date: r.date,
@@ -436,6 +443,11 @@ export class ExportService {
     const debitCol = this.findColumn(headers, ['debit', 'withdrawal', 'expense']);
     const creditCol = this.findColumn(headers, ['credit', 'deposit', 'income']);
     const typeCol = this.findColumn(headers, ['type', 'transaction type']);
+    // exportToCSV writes a Currency column that this parser never read, so the
+    // app could not re-import its own export: a ฿1,200 dinner came back as
+    // $1,200. Optional, so it is left out of the row-length guard below and a
+    // bank CSV without one still imports.
+    const currencyCol = this.findColumn(headers, ['currency']);
 
     for (let i = 1; i < lines.length; i++) {
       const values = this.parseCSVLine(lines[i]);
@@ -465,11 +477,19 @@ export class ExportService {
         type = amount >= 0 ? 'income' : 'expense';
       }
 
+      // Validated against the ISO set rather than SUPPORTED_CURRENCIES, which
+      // is the picker list and not the set the app can handle — refusing a
+      // currency the rates endpoint carries would lose data, not protect it.
+      const currency = currencyCol >= 0 && currencyCol < values.length
+        ? readCurrencyCode(values[currencyCol])
+        : '';
+
       transactions.push({
         date: this.parseDate(values[dateCol] || ''),
         description: values[descCol] || 'Unknown',
         amount: Math.abs(amount),
-        type
+        type,
+        ...(currency ? { currency } : {})
       });
     }
 

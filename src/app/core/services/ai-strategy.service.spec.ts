@@ -303,6 +303,60 @@ describe('AIStrategyService', () => {
       const result = await service.processReceipt(imageFile());
       expect(result.transactions[0].notes).toContain('KRW');
     });
+
+    // The native pipeline reports what OCR read and nothing more — it has no
+    // access to the account. Substituting here is what keeps the on-device and
+    // cloud paths agreeing about an unreadable currency.
+    it('substitutes the base currency into a native row that read none', async () => {
+      authMock.currentUser.and.returnValue(
+        { preferences: { baseCurrency: 'THB' } } as never
+      );
+      nativeMock.processImage.and.resolveTo({
+        ...nativeResult,
+        transactions: [{ ...nativeResult.transactions[0], currency: '' }],
+      });
+      const service = createService('ios');
+
+      const result = await service.processReceipt(imageFile());
+
+      expect(result.transactions[0].currency).toBe('THB');
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+    });
+
+    it('leaves a native row alone when OCR did read a currency', async () => {
+      authMock.currentUser.and.returnValue(
+        { preferences: { baseCurrency: 'THB' } } as never
+      );
+      nativeMock.processImage.and.resolveTo({
+        ...nativeResult,
+        transactions: [{ ...nativeResult.transactions[0], currency: 'JPY' }],
+      });
+      const service = createService('ios');
+
+      const result = await service.processReceipt(imageFile());
+
+      expect(result.transactions[0].currency).toBe('JPY');
+      expect(result.transactions[0].currencyFellBack).toBeUndefined();
+    });
+
+    it('substitutes into a multi-image native result too', async () => {
+      authMock.currentUser.and.returnValue(
+        { preferences: { baseCurrency: 'THB' } } as never
+      );
+      nativeMock.processImages.and.resolveTo({
+        ...nativeResult,
+        transactions: [
+          { ...nativeResult.transactions[0], currency: '' },
+          { ...nativeResult.transactions[0], currency: 'JPY' },
+        ],
+      });
+      const service = createService('ios');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      expect(result.transactions.map(t => t.currency)).toEqual(['THB', 'JPY']);
+      expect(result.transactions.map(t => t.currencyFellBack)).toEqual([true, undefined]);
+    });
   });
 
   describe('engine availability', () => {

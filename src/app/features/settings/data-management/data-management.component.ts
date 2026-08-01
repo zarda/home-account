@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -17,7 +17,9 @@ import { InsightSnapshotService } from '../../../core/services/insight-snapshot.
 import { TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { baseCurrencyOf } from '../../../models';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
@@ -45,6 +47,7 @@ export class DataManagementComponent {
   private insightSnapshots = inject(InsightSnapshotService);
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
+  private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   receiptQuota = inject(ReceiptQuotaService);
@@ -68,6 +71,9 @@ export class DataManagementComponent {
       autoFocus: false,
     });
   }
+
+  /** What an imported row with no currency of its own becomes. */
+  baseCurrency = computed(() => baseCurrencyOf(this.authService.currentUser()));
 
   isExporting = signal(false);
   isImporting = signal(false);
@@ -251,7 +257,7 @@ export class DataManagementComponent {
         this.isImporting.set(true);
         this.importProgress.set(0);
 
-        const parsed = this.exportService.parseImportedData(transactions);
+        const parsed = this.exportService.parseImportedData(transactions, this.baseCurrency());
 
         // One unusable row (a zero amount from a stray CSV column, say) must
         // not abandon the rest of the file half-imported.

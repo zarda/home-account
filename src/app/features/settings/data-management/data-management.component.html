@@ -146,7 +146,7 @@
               <span class="preview-date">{{ transaction.date | date:'MMM d, yyyy' }}</span>
               <span class="preview-desc">{{ transaction.description }}</span>
               <span class="preview-amount" [class.income]="transaction.type === 'income'" [class.expense]="transaction.type === 'expense'">
-                {{ transaction.type === 'expense' ? '-' : '+' }}{{ transaction.amount | currency:'USD':'symbol':'1.2-2' }}
+                {{ transaction.type === 'expense' ? '-' : '+' }}{{ transaction.amount | currency:(transaction.currency || baseCurrency()):'symbol' }}
               </span>
             </div>
           }

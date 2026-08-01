@@ -4,6 +4,7 @@ import { AppleIntelligenceService } from './apple-intelligence.service';
 import { CategoryService } from './category.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { parseReceiptOcrText } from './receipt-text-parser';
+import { readCurrencyCode } from '../utils/receipt-extraction.utils';
 import { fileToBase64 } from '../utils/file.utils';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
 
@@ -111,7 +112,9 @@ export class NativeReceiptService {
       description: extraction.merchant || 'Unknown Merchant',
       amount: Math.abs(extraction.amount) || 0,
       type: 'expense',
-      currency: extraction.currency || 'USD',
+      // Report what was read, empty when nothing was. The consumer knows the
+      // account's base currency; this service does not.
+      currency: readCurrencyCode(extraction.currency),
       confidence: ocrResult.confidence,
       source: 'native',
       notes: extraction.details || undefined,
@@ -126,9 +129,10 @@ export class NativeReceiptService {
       description: parsed.merchant,
       amount: parsed.amount,
       type: 'expense',
-      // The parser reports no currency rather than inventing one; the receipt
-      // still has to land somewhere, so the fallback is picked here.
-      currency: parsed.currency || 'USD',
+      // The parser reports no currency rather than inventing one, and neither
+      // does this service — AIStrategyService substitutes the account's base
+      // currency and flags the row for review.
+      currency: readCurrencyCode(parsed.currency),
       // Vision says how clearly it read the characters, the parser says how
       // much of a transaction it found in them. Both have to count: a receipt
       // in a script the parser has no hold on scans perfectly and parses to

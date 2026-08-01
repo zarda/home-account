@@ -328,10 +328,10 @@ export class AIStrategyService {
       const processingTimeMs = performance.now() - startTime;
       this._lastProcessingTime.set(processingTimeMs);
 
-      return {
+      return this.withFallbackCurrency({
         ...result,
         processingTimeMs,
-      };
+      });
     } finally {
       this._isProcessing.set(false);
     }
@@ -371,9 +371,9 @@ export class AIStrategyService {
     // Merge line items belonging to the same receipt into one transaction so
     // the itemized list is recorded in the note instead of scattering items
     // across separate transactions
-    const consolidated = consolidateReceiptItems(extracted);
-
     const fallbackCurrency = this.fallbackCurrency();
+    const consolidated = consolidateReceiptItems(extracted, fallbackCurrency);
+
     const transactions: ProcessedTransaction[] = consolidated.map(t => ({
       date: new Date(t.date),
       description: t.description,
@@ -423,6 +423,30 @@ export class AIStrategyService {
    */
   private fallbackCurrency(): string {
     return baseCurrencyOf(this.authService.currentUser());
+  }
+
+  /**
+   * Substitute the account's base currency into any row whose currency the
+   * engine could not read, and flag it so the form can offer a better guess.
+   *
+   * Applied at the single exit of runProcessing, which every engine and every
+   * cross-engine fallback passes through. The cloud paths resolve their own
+   * currency before returning, so this is a no-op for them; the native paths
+   * report an empty string because on-device extraction has no idea what the
+   * account's base currency is.
+   */
+  private withFallbackCurrency(result: ProcessingResult): ProcessingResult {
+    if (!result.transactions?.some(t => !t.currency)) {
+      return result;
+    }
+
+    const fallback = this.fallbackCurrency();
+    return {
+      ...result,
+      transactions: result.transactions.map(t => t.currency
+        ? t
+        : { ...t, currency: fallback, currencyFellBack: true }),
+    };
   }
 
   /**
