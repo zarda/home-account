@@ -270,7 +270,8 @@ describe('ExportService', () => {
         // never moved as sections were added, so a schema change was shipping
         // under the same number each time.
         expect(parsed.version).toBe(BACKUP_SCHEMA_VERSION);
-        expect(parsed.version).toBe('1.1');
+        // Last bumped when budgets and recurring rules joined the backup.
+        expect(parsed.version).toBe('1.2');
         done();
       };
       reader.readAsText(blob);

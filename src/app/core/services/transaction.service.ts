@@ -146,8 +146,22 @@ export class TransactionService {
     );
   }
 
-  // Add a new transaction
-  async addTransaction(data: CreateTransactionDTO, options?: { id?: string }): Promise<string> {
+  /**
+   * Add a new transaction.
+   *
+   * `options.id` writes at a caller-chosen id (recurring-engine idempotency,
+   * backup restore). `options.snapshot` writes the base-currency conversion
+   * verbatim instead of recomputing it: a restore must not rewrite a row's
+   * historical rate at today's, which would both change stored figures and
+   * make restoring the same backup twice produce different documents.
+   */
+  async addTransaction(
+    data: CreateTransactionDTO,
+    options?: {
+      id?: string;
+      snapshot?: { exchangeRate: number; baseCurrency: string; amountInBaseCurrency: number };
+    }
+  ): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -160,13 +174,21 @@ export class TransactionService {
         throw new Error(INVALID_AMOUNT_ERROR);
       }
 
-      const baseCurrency = baseCurrencyOf(this.authService.currentUser());
-      // The persisted base-currency snapshot must never be computed against
-      // the not-yet-loaded default rate table (which silently maps unknown
-      // currencies to 1:1 and stores raw foreign amounts as base amounts).
-      await this.currencyService.ensureRatesLoaded();
-      const exchangeRate = this.currencyService.getExchangeRate(data.currency, baseCurrency);
-      const amountInBaseCurrency = data.amount * exchangeRate;
+      let baseCurrency: string;
+      let exchangeRate: number;
+      let amountInBaseCurrency: number;
+      if (options?.snapshot) {
+        // A restore carries the conversion the row was written with; keep it.
+        ({ baseCurrency, exchangeRate, amountInBaseCurrency } = options.snapshot);
+      } else {
+        baseCurrency = baseCurrencyOf(this.authService.currentUser());
+        // The persisted base-currency snapshot must never be computed against
+        // the not-yet-loaded default rate table (which silently maps unknown
+        // currencies to 1:1 and stores raw foreign amounts as base amounts).
+        await this.currencyService.ensureRatesLoaded();
+        exchangeRate = this.currencyService.getExchangeRate(data.currency, baseCurrency);
+        amountInBaseCurrency = data.amount * exchangeRate;
+      }
 
       const transaction: Omit<Transaction, 'id'> = {
         userId,

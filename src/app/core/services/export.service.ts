@@ -11,6 +11,8 @@ import {
   Category,
   CreateTransactionDTO,
   BudgetPeriod,
+  Budget,
+  RecurringTransaction,
   InsightSnapshot,
   MonthlyTotal
 } from '../../models';
@@ -56,7 +58,14 @@ export interface ReportData {
 }
 
 /** Bumped whenever the backup gains or reshapes a section. */
-export const BACKUP_SCHEMA_VERSION = '1.1';
+export const BACKUP_SCHEMA_VERSION = '1.2';
+
+/**
+ * Versions this build can restore. Older ones simply carry fewer sections;
+ * a version not in this list came from a newer build and is refused rather
+ * than half-read.
+ */
+export const SUPPORTED_BACKUP_VERSIONS = ['1.0', '1.1', '1.2'] as const;
 
 export interface ExportData {
   transactions: Transaction[];
@@ -66,6 +75,9 @@ export interface ExportData {
    * they existed still parses as an ExportData.
    */
   insightSnapshots?: InsightSnapshot[];
+  /** Budgets and recurring rules. Optional for the same reason (added in 1.2). */
+  budgets?: Budget[];
+  recurring?: RecurringTransaction[];
   exportDate: string;
   version: string;
 }

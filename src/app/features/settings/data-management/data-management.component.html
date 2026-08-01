@@ -135,6 +135,37 @@
     } @else {
       <!-- Import Preview -->
       <div class="import-preview">
+        @if (backupContents(); as backup) {
+          <!-- A full backup: show what every section will restore, not just
+               the transactions, so the scope of the restore is visible. -->
+          <div class="preview-header">
+            <mat-icon>preview</mat-icon>
+            <span>{{ 'settings.previewBackup' | translate:{ version: backup.version } }}</span>
+          </div>
+
+          <div class="preview-list">
+            <div class="preview-item">
+              <span class="preview-desc">{{ 'settings.sectionTransactions' | translate }}</span>
+              <span class="preview-amount">{{ backup.transactions }}</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-desc">{{ 'settings.sectionCategories' | translate }}</span>
+              <span class="preview-amount">{{ backup.categories }}</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-desc">{{ 'settings.sectionBudgets' | translate }}</span>
+              <span class="preview-amount">{{ backup.budgets }}</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-desc">{{ 'settings.sectionRecurring' | translate }}</span>
+              <span class="preview-amount">{{ backup.recurring }}</span>
+            </div>
+            <div class="preview-item">
+              <span class="preview-desc">{{ 'settings.sectionInsightSnapshots' | translate }}</span>
+              <span class="preview-amount">{{ backup.insightSnapshots }}</span>
+            </div>
+          </div>
+        } @else {
         <div class="preview-header">
           <mat-icon>preview</mat-icon>
           <span>{{ 'settings.previewTransactions' | translate:{ count: importedTransactions().length } }}</span>
@@ -156,6 +187,7 @@
             </div>
           }
         </div>
+        }
 
         @if (importProgress() > 0 && importProgress() < 100) {
           <mat-progress-bar mode="determinate" [value]="importProgress()"></mat-progress-bar>
@@ -170,7 +202,11 @@
             (click)="confirmImport()"
             [disabled]="isImporting()"
           >
-            {{ 'settings.importTransactions' | translate:{ count: importedTransactions().length } }}
+            @if (backupContents()) {
+              {{ 'settings.restoreBackup' | translate }}
+            } @else {
+              {{ 'settings.importTransactions' | translate:{ count: importedTransactions().length } }}
+            }
           </button>
         </div>
       </div>

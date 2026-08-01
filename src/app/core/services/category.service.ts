@@ -74,8 +74,26 @@ export class CategoryService {
     );
   }
 
-  // Add a custom category
-  async addCategory(data: CreateCategoryDTO): Promise<string> {
+  /**
+   * One-shot read of the account's own categories, for the backup export.
+   *
+   * Not the `categories` signal: that holds the built-in defaults merged in,
+   * and only whatever a subscription happened to deliver.
+   */
+  async exportAll(): Promise<Category[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollection<Category>(
+      this.userCategoriesPath, { orderBy: [{ field: 'order', direction: 'asc' }] });
+  }
+
+  /**
+   * Add a custom category.
+   *
+   * `options.id` writes at a caller-chosen id instead of an auto-generated
+   * one, so restoring a backup twice overwrites rather than duplicating.
+   */
+  async addCategory(data: CreateCategoryDTO, options?: { id?: string }): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -99,6 +117,14 @@ export class CategoryService {
         isActive: true,
         isDefault: false
       };
+
+      if (options?.id) {
+        await this.firestoreService.setDocument(
+          `${this.userCategoriesPath}/${options.id}`,
+          category
+        );
+        return options.id;
+      }
 
       return await this.firestoreService.addDocument(
         this.userCategoriesPath,
