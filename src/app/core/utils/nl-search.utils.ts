@@ -5,6 +5,7 @@ import {
   SearchQueryContext,
   TransactionFilters,
 } from '../../models';
+import { parseDayKey } from './transaction-date.utils';
 
 /** Longest free-text remainder carried into the keyword filter. */
 const MAX_SEARCH_QUERY_LENGTH = 100;
@@ -111,20 +112,17 @@ function sanitizeFilters(rawFilters: unknown, context: SearchQueryContext): Tran
   return filters;
 }
 
-/** Strict YYYY-MM-DD -> local-midnight Date; anything else is dropped. */
+/**
+ * Strict YYYY-MM-DD -> local-midnight Date; anything else is dropped.
+ *
+ * The year bound stays here rather than in `parseDayKey`: it is a sanity check
+ * on what a model may hand back for a search scope, not a property of a date
+ * string, and folding it into the shared parser would silently apply it to
+ * receipt and CSV import too.
+ */
 function parseIsoDate(value: unknown): Date | undefined {
-  if (typeof value !== 'string') return undefined;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
-  if (!match) return undefined;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (year < MIN_YEAR || year > MAX_YEAR) return undefined;
-
-  const date = new Date(year, month - 1, day);
-  // Reject rollovers like 2026-02-31.
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+  const date = parseDayKey(value);
+  if (!date || date.getFullYear() < MIN_YEAR || date.getFullYear() > MAX_YEAR) {
     return undefined;
   }
   return date;

@@ -3,13 +3,17 @@ import {
   addMonths,
   clampToEndOfToday,
   countDaysByKind,
+  dateAtClampedDay,
   dateOf,
   dayKey,
   endOfMonth,
   isLastDaysOfMonth,
   isWeekend,
+  localDateFromParts,
   monthKey,
   monthKeysBetween,
+  parseDateInput,
+  parseDayKey,
   parseMonthKey,
   startOfMonth,
   toDate,
@@ -120,6 +124,126 @@ describe('transaction-date.utils', () => {
 
     it('walks backwards across a year boundary', () => {
       expect(monthKey(addMonths(new Date(2026, 2, 15), -6))).toBe('2025-09');
+    });
+  });
+
+  describe('dateAtClampedDay', () => {
+    const noon = new Date(2026, 0, 1, 12, 34, 56, 789);
+
+    it('clamps the 31st down to the length of the month it lands in', () => {
+      const result = dateAtClampedDay(2027, 1, 31, noon);
+      expect(monthKey(result)).toBe('2027-02');
+      expect(result.getDate()).toBe(28);
+    });
+
+    it('reaches the 29th in a leap year', () => {
+      expect(dayKey(dateAtClampedDay(2028, 1, 31, noon))).toBe('2028-02-29');
+    });
+
+    it('leaves a day the month can hold alone', () => {
+      expect(dayKey(dateAtClampedDay(2027, 2, 31, noon))).toBe('2027-03-31');
+    });
+
+    it('normalises a month past December into the next year', () => {
+      expect(dayKey(dateAtClampedDay(2027, 12, 15, noon))).toBe('2028-01-15');
+    });
+
+    it('carries the clock time of the reference date', () => {
+      const result = dateAtClampedDay(2027, 1, 31, noon);
+      expect([result.getHours(), result.getMinutes(), result.getSeconds()]).toEqual([12, 34, 56]);
+      expect(result.getMilliseconds()).toBe(789);
+    });
+  });
+
+  describe('localDateFromParts', () => {
+    it('builds local midnight from 0-11 month parts', () => {
+      expect(localDateFromParts(2026, 7, 1)?.getTime()).toBe(new Date(2026, 7, 1).getTime());
+    });
+
+    it('rejects a day the month does not have rather than rolling into the next', () => {
+      expect(localDateFromParts(2026, 1, 31)).toBeNull();
+    });
+
+    it('accepts the 29th of February in a leap year', () => {
+      expect(dayKey(localDateFromParts(2028, 1, 29)!)).toBe('2028-02-29');
+    });
+  });
+
+  /**
+   * Every assertion here compares against a locally-constructed Date, never
+   * against a UTC constant or an ISO literal. `new Date(2026, 7, 1)` is local
+   * midnight in every zone, while the `new Date('2026-08-01')` this replaces is
+   * UTC midnight — so these fail under the old behaviour anywhere the runtime
+   * is not at offset 0, in both directions. At offset 0 the two are the same
+   * instant and no assertion can tell them apart, which is why CI also runs
+   * this file under TZ=America/New_York and TZ=Asia/Tokyo.
+   */
+  describe('parseDayKey', () => {
+    it('reads a date-only string as local midnight', () => {
+      expect(parseDayKey('2026-08-01')!.getTime()).toBe(new Date(2026, 7, 1).getTime());
+    });
+
+    it('trims surrounding whitespace', () => {
+      expect(parseDayKey('  2026-08-01  ')!.getTime()).toBe(new Date(2026, 7, 1).getTime());
+    });
+
+    it('is the exact inverse of dayKey', () => {
+      const date = new Date(2026, 7, 1, 23, 30);
+      expect(parseDayKey(dayKey(date))!.getTime()).toBe(new Date(2026, 7, 1).getTime());
+    });
+
+    it('rejects a rollover', () => {
+      expect(parseDayKey('2026-02-31')).toBeNull();
+    });
+
+    it('rejects an impossible month', () => {
+      expect(parseDayKey('2026-13-01')).toBeNull();
+    });
+
+    it('rejects unpadded parts, an empty string, and a non-string', () => {
+      expect(parseDayKey('2026-8-1')).toBeNull();
+      expect(parseDayKey('')).toBeNull();
+      expect(parseDayKey(null)).toBeNull();
+      expect(parseDayKey(new Date(2026, 7, 1))).toBeNull();
+    });
+
+    it('does not match a date-only prefix inside a full instant', () => {
+      expect(parseDayKey('2026-08-01T10:30:00Z')).toBeNull();
+    });
+  });
+
+  describe('parseDateInput', () => {
+    it('reads a date-only string as local midnight', () => {
+      expect(parseDateInput('2026-08-01')!.getTime()).toBe(new Date(2026, 7, 1).getTime());
+    });
+
+    it('leaves a full ISO instant meaning the instant it names', () => {
+      expect(parseDateInput('2026-08-01T10:30:00Z')!.getTime()).toBe(
+        Date.parse('2026-08-01T10:30:00Z'),
+      );
+    });
+
+    it('leaves a US-style bank CSV date to the platform', () => {
+      const result = parseDateInput('08/01/2026')!;
+      expect([result.getFullYear(), result.getMonth(), result.getDate()]).toEqual([2026, 7, 1]);
+    });
+
+    it('passes a Date through', () => {
+      const date = new Date(2026, 7, 1);
+      expect(parseDateInput(date)).toBe(date);
+    });
+
+    it('returns null for junk and a missing value', () => {
+      expect(parseDateInput('not a date')).toBeNull();
+      expect(parseDateInput(undefined)).toBeNull();
+      expect(parseDateInput(new Date('nonsense'))).toBeNull();
+    });
+
+    it('rejects a date of the right shape that does not exist', () => {
+      // The platform does not: new Date('2026-02-31') is 3 March in V8. Having
+      // matched the shape, this must not fall through to that.
+      expect(parseDateInput('2026-02-31')).toBeNull();
+      expect(new Date('2026-02-31').getMonth()).toBe(2);
     });
   });
 
