@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { ProcessedTransaction } from './ai-types';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
 import { CreateTransactionDTO } from '../../models/transaction.model';
+import { parseDateInput } from '../utils/transaction-date.utils';
 
 /**
  * Coordinates the asynchronous side of the offline queue.
@@ -159,7 +160,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
         currency: tx.currency,
         categoryId: tx.categoryId,
         description: tx.description,
-        date: new Date(tx.date),
+        date: parseDateInput(tx.date) ?? new Date(),
       };
 
       await this.transactionService.addTransaction(dto);

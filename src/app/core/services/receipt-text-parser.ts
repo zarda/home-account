@@ -10,6 +10,8 @@
  * in `confidence` instead, so the caller can send the receipt to an engine that
  * can actually read it.
  */
+import { localDateFromParts } from '../utils/transaction-date.utils';
+
 export interface ParsedReceiptText {
   date: Date;
   amount: number;
@@ -138,12 +140,10 @@ function readDate(text: string): { date: Date; confidence: number; matched: stri
   return { date: new Date(), confidence: 0, matched: '' };
 }
 
+/** `month` is 1-12 here, as it is written on a receipt. */
 function toDate(year: number, month: number, day: number): Date | undefined {
-  if (month < 1 || month > 12 || day < 1 || day > 31) {
-    return undefined;
-  }
-  const date = new Date(year, month - 1, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+  const date = localDateFromParts(year, month - 1, day);
+  if (!date) {
     return undefined;
   }
   // Nothing has been bought tomorrow yet. This is what keeps an item code or a

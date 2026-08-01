@@ -41,6 +41,7 @@ import {
   ProviderCapabilities,
 } from './llm-provider.interface';
 import { environment } from '../../../environments/environment';
+import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 
 export interface ParsedReceipt {
   merchant: string;
@@ -711,7 +712,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
       );
 
       return extracted.map(t => ({
-        date: t.date || new Date().toISOString().split('T')[0],
+        date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
@@ -774,7 +775,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
         : undefined;
 
       const extracted: ExtractedTransaction[] = [{
-        date: receiptData.date || new Date().toISOString().split('T')[0],
+        date: receiptData.date || dayKey(new Date()),
         description: receiptData.merchant || 'Receipt',
         amount: Math.abs(receiptData.totalAmount || 0),
         type: 'expense',
@@ -786,7 +787,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
 
       // Return full ExtractedTransaction objects with all details
       return extracted.map(t => ({
-        date: t.date || new Date().toISOString().split('T')[0],
+        date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
@@ -841,7 +842,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
       return extracted.map(t => ({
         description: t.description || 'Unknown',
         amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-        date: t.date ? new Date(t.date) : new Date()
+        date: parseDateInput(t.date) ?? new Date()
       }));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -909,7 +910,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
 
         // Validate and normalize the extracted data
         return extracted.map(t => ({
-          date: t.date || new Date().toISOString().split('T')[0],
+          date: t.date || dayKey(new Date()),
           description: t.description || 'Unknown',
           amount: Math.abs(t.amount || 0),
           type: t.type || 'expense',
@@ -984,7 +985,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
 
       // Add imageIndex and normalize data
       return extracted.map((t: Partial<MultiImageExtractedTransaction>) => ({
-        date: t.date || new Date().toISOString().split('T')[0],
+        date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',

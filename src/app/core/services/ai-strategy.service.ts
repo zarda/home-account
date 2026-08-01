@@ -12,6 +12,7 @@ import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { Category, LLMProvider, baseCurrencyOf} from '../../models';
+import { parseDateInput } from '../utils/transaction-date.utils';
 
 export type { ProcessedTransaction, ProcessingResult } from './ai-types';
 
@@ -389,7 +390,7 @@ export class AIStrategyService {
     const consolidated = consolidateReceiptItems(extracted, fallbackCurrency);
 
     const transactions: ProcessedTransaction[] = consolidated.map(t => ({
-      date: new Date(t.date),
+      date: parseDateInput(t.date) ?? new Date(),
       description: t.description,
       amount: t.amount,
       type: t.type,

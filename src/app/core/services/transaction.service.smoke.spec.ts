@@ -9,6 +9,7 @@ import {
   getFirestore,
   connectFirestoreEmulator,
   doc,
+  getDoc,
   setDoc,
   deleteDoc,
   Firestore,
@@ -21,6 +22,7 @@ import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { TransactionService } from './transaction.service';
+import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import { Transaction } from '../../models';
 
 /**
@@ -129,9 +131,14 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
         { provide: Firestore, useValue: firestore },
         { provide: AuthService, useValue: { userId: () => uid, currentUser: () => null } },
         // Rates play no part in a range read; a stub keeps the suite hermetic.
+        // The write path also asks for them, so it gets a loaded 1:1 table.
         {
           provide: CurrencyService,
-          useValue: { amountInBase: (t: Transaction) => t.amountInBaseCurrency ?? t.amount }
+          useValue: {
+            amountInBase: (t: Transaction) => t.amountInBaseCurrency ?? t.amount,
+            ensureRatesLoaded: () => Promise.resolve(),
+            getExchangeRate: () => 1
+          }
         },
         // Receipts and quota are exercised in transaction-receipts.smoke.spec.ts;
         // neither is reachable from the read paths under test.
@@ -177,4 +184,111 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
     // a year-over-year income comparison needs both halves.
     expect(rows.map(t => t.type).sort()).toEqual(['expense', 'income']);
   }, 20000);
+
+  /**
+   * A receipt's date arrives as `YYYY-MM-DD` and has to survive being parsed,
+   * converted to a Timestamp, stored, and matched by a range query. Every step
+   * of that is a chance to lose a day, and the unit suite sees none of it: it
+   * stops at the literal handed to a mocked FirestoreService.
+   *
+   * This is zone-sensitive on purpose. At UTC it passes either way, which is
+   * why the smoke suite is also run under TZ=America/New_York — where the old
+   * UTC parse put a 1 August receipt in July, in July's budget and July's
+   * monthly comparison.
+   */
+  describe('a date-only receipt date', () => {
+    const AUGUST_START = new Date(2026, 7, 1);
+    const AUGUST_END = new Date(2026, 7, 31);
+    let id: string;
+
+    beforeEach(async () => {
+      id = await service.addTransaction({
+        type: 'income',
+        amount: 42.5,
+        currency: 'USD',
+        categoryId: 'cat-salary',
+        description: 'First of the month',
+        date: parseDateInput('2026-08-01')!
+      });
+    });
+
+    afterEach(async () => {
+      await deleteDoc(doc(firestore, `users/${uid}/transactions/${id}`)).catch(() => undefined);
+    });
+
+    it('falls inside the month the receipt names', async () => {
+      const rows = await firstValueFrom(service.getTransactionsInRange(AUGUST_START, AUGUST_END));
+
+      expect(rows.map(t => t.id)).toContain(id);
+    }, 20000);
+
+    it('does not fall into the month before it', async () => {
+      const rows = await firstValueFrom(
+        service.getTransactionsInRange(new Date(2026, 6, 1), new Date(2026, 6, 31))
+      );
+
+      expect(rows.map(t => t.id)).not.toContain(id);
+    }, 20000);
+
+    it('reads back as the first of August, not the last of July', async () => {
+      const snapshot = await getDoc(doc(firestore, `users/${uid}/transactions/${id}`));
+
+      expect(dayKey((snapshot.data()!['date'] as Timestamp).toDate())).toBe('2026-08-01');
+    }, 20000);
+  });
+
+  /**
+   * The unit suite can only assert the literal handed to a mocked
+   * FirestoreService. It cannot catch a rules rejection, and it cannot catch a
+   * deleteField() that never reaches the document — both of which look exactly
+   * like a working feature until someone reopens the transaction.
+   *
+   * Income, so the write does not pull BudgetService in behind it.
+   */
+  describe('budget period round-trip', () => {
+    const written: string[] = [];
+
+    afterAll(async () => {
+      await Promise.all(
+        written.map(id =>
+          deleteDoc(doc(firestore, `users/${uid}/transactions/${id}`)).catch(() => undefined)
+        )
+      );
+    });
+
+    const add = async (period?: 'weekly' | 'monthly' | 'yearly') => {
+      const id = await service.addTransaction({
+        type: 'income',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'cat-salary',
+        description: 'Period round-trip',
+        date: new Date(2026, 5, 20, 12),
+        ...(period ? { period } : {})
+      });
+      written.push(id);
+      return id;
+    };
+
+    const stored = async (id: string) =>
+      (await getDoc(doc(firestore, `users/${uid}/transactions/${id}`))).data() ?? {};
+
+    it('keeps the period through a real write and read back', async () => {
+      const id = await add('monthly');
+      expect((await stored(id))['period']).toBe('monthly');
+    }, 20000);
+
+    it('omits the field entirely when no period was chosen', async () => {
+      const id = await add();
+      expect('period' in (await stored(id))).toBeFalse();
+    }, 20000);
+
+    it('removes the field when the period is cleared, rather than leaving the old one', async () => {
+      const id = await add('monthly');
+
+      await service.updateTransaction(id, { period: undefined });
+
+      expect('period' in (await stored(id))).toBeFalse();
+    }, 20000);
+  });
 });

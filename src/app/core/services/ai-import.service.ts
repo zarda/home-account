@@ -30,6 +30,7 @@ import {
   effectiveRagLevel,
   baseCurrencyOf
 } from '../../models';
+import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 
 /**
  * How far back the categorization grounding looks. Habits change, so a recent
@@ -392,7 +393,7 @@ export class AIImportService {
     const rawTransactions: RawTransaction[] = transactions.map(t => ({
       description: t.description,
       amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-      date: new Date(t.date)
+      date: parseDateInput(t.date) ?? new Date()
     }));
 
     // Anything the user has already corrected is settled — only the rest is
@@ -655,7 +656,7 @@ export class AIImportService {
       // replaced with a hardcoded one, pre-empting the base-currency fallback
       // that categorizeTransactions already applies.
       const extractedTransactions: ExtractedTransaction[] = importedTransactions.map(t => ({
-        date: t.date ? t.date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        date: dayKey(t.date ?? new Date()),
         description: t.description,
         amount: Math.abs(t.amount),
         type: t.amount >= 0 ? 'income' : 'expense',
@@ -750,7 +751,7 @@ export class AIImportService {
         description: t.description,
         amount: Math.abs(t.amount),
         currency: t.currency || baseCurrency,
-        date: t.date ? new Date(t.date) : new Date(),
+        date: parseDateInput(t.date) ?? new Date(),
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
         categoryConfidence: 0.8, // AI extracted categories are fairly confident
@@ -809,20 +810,10 @@ export class AIImportService {
         this.processingStatus.set(`Importing ${i + 1} of ${selectedTransactions.length}...`);
 
         try {
-          // Ensure date is a valid Date object
-          let transactionDate: Date;
-          if (txn.date instanceof Date) {
-            transactionDate = txn.date;
-          } else if (typeof txn.date === 'string') {
-            transactionDate = new Date(txn.date);
-          } else {
-            transactionDate = new Date();
-          }
-
-          // Validate date is not NaN
-          if (isNaN(transactionDate.getTime())) {
-            transactionDate = new Date();
-          }
+          // A Date, a date-only string the model produced, or nothing at all.
+          // parseDateInput covers all three and rejects an unreadable value,
+          // so the separate NaN guard this used to carry is now the ?? branch.
+          const transactionDate = parseDateInput(txn.date) ?? new Date();
 
           const dto: CreateTransactionDTO = {
             type: txn.type,

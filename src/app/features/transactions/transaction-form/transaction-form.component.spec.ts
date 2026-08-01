@@ -221,6 +221,7 @@ describe('TransactionFormComponent', () => {
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
       expect(dto.amount).toBe(15.5);
       expect(dto.note).toBe('tasty');
+      expect(dto.period).toBe('monthly');
       // No tags typed and add mode: the field is omitted entirely.
       expect(dto.tags).toBeUndefined();
       expect(dialogRef.close).toHaveBeenCalledWith(true);
@@ -262,6 +263,21 @@ describe('TransactionFormComponent', () => {
       await component.onSubmit();
 
       expect(analytics.trackTransactionAdd).not.toHaveBeenCalled();
+    });
+
+    it('sends the period key when editing clears it, so the stored one is removed', async () => {
+      const txn = createTransaction({ id: 'e1', period: 'monthly' });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      validForm(component);
+      component.form.patchValue({ period: null });
+
+      await component.onSubmit();
+
+      const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+      // Present-and-undefined, not absent: the service reads the key to tell
+      // "cleared" from "not part of this update".
+      expect('period' in dto).toBeTrue();
+      expect(dto.period).toBeUndefined();
     });
 
     it('forwards the captured receipt file in the DTO', async () => {

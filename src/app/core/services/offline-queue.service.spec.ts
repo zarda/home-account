@@ -384,4 +384,104 @@ describe('OfflineQueueService', () => {
       expect(service.pendingCount()).toBe(1);
     });
   });
+
+  /**
+   * `syncQueue` marks an item `processing` and then only dispatches a DOM
+   * event; the processor's work is `void`-ed, so nothing can await it. If the
+   * tab closes mid-receipt the row is stranded — and `processing` is invisible
+   * to every getter, counter, retry and clear, so the receipt is lost while its
+   * bytes stay in IndexedDB.
+   *
+   * The database name is a constant, so closing this service and opening a
+   * second one is exactly the app relaunching over the same data.
+   */
+  describe('reclaiming work interrupted mid-sync', () => {
+    /** Close this connection and open a fresh service over the same database. */
+    async function relaunch(): Promise<OfflineQueueService> {
+      service.ngOnDestroy();
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          OfflineQueueService,
+          { provide: PwaService, useValue: pwa },
+          { provide: AuthService, useValue: { userId } },
+        ],
+      });
+      const reopened = TestBed.inject(OfflineQueueService);
+      await waitFor(() => reopened.isReady());
+      return reopened;
+    }
+
+    it('hides an item that is in flight, which is why losing one is silent', async () => {
+      const id = await service.queueImage(imageFile('a.jpg'));
+      await service.updateImageStatus(id, 'processing');
+
+      // Documents the hole rather than asserting it is acceptable: none of
+      // these ever sees the row again on its own.
+      expect(await service.getPendingImages()).toEqual([]);
+      expect(service.pendingCount()).toBe(0);
+      expect((await service.getStats()).pendingImages).toBe(0);
+      await service.clearCompleted();
+      await service.clearFailed();
+      // Still there, taking up space, reachable only by id.
+      expect((await service.getQueuedImage(id))?.status).toBe('processing');
+    });
+
+    it('reclaims a stranded image on the next launch', async () => {
+      const id = await service.queueImage(imageFile('a.jpg'));
+      await service.updateImageStatus(id, 'processing');
+
+      service = await relaunch();
+
+      expect((await service.getPendingImages()).map((i) => i.id)).toEqual([id]);
+      expect(service.pendingCount()).toBe(1);
+    });
+
+    it('reclaims a stranded transaction on the next launch', async () => {
+      const id = await service.queueTransaction({
+        date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
+        currency: 'USD', categoryId: 'c', source: 'local',
+      });
+      await service.updateTransactionStatus(id, 'processing');
+
+      service = await relaunch();
+
+      expect((await service.getPendingTransactions()).map((t) => t.id)).toEqual([id]);
+    });
+
+    it('counts the reclaimed item the moment the queue reports ready', async () => {
+      const id = await service.queueImage(imageFile('a.jpg'));
+      await service.updateImageStatus(id, 'processing');
+
+      service = await relaunch();
+
+      // The sweep runs before _isReady flips, so a syncQueue() fired off the
+      // readiness signal cannot race past a row that is still `processing`.
+      expect(service.pendingCount()).toBe(1);
+    });
+
+    it('charges the reclaim a retry, so a row that kills the tab cannot loop forever', async () => {
+      const id = await service.queueImage(imageFile('a.jpg'));
+      await service.updateImageStatus(id, 'processing');
+
+      service = await relaunch();
+
+      const [reclaimed] = await service.getPendingImages();
+      expect(reclaimed.retryCount).toBe(1);
+    });
+
+    it('reclaims another account\'s stranded row too, rather than wedging it', async () => {
+      userId.set('user-b');
+      const id = await service.queueImage(imageFile('b.jpg'));
+      await service.updateImageStatus(id, 'processing');
+
+      // Nobody is signed in when the database opens, which is why the sweep is
+      // the one operation here that is deliberately not scoped by owner.
+      userId.set(null);
+      service = await relaunch();
+
+      userId.set('user-b');
+      expect((await service.getPendingImages()).map((i) => i.id)).toEqual([id]);
+    });
+  });
 });

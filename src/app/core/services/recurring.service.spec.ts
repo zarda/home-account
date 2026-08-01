@@ -8,6 +8,7 @@ import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { findSerializationIssues } from '../utils/firestore-value.utils';
+import { dayKey } from '../utils/transaction-date.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -983,6 +984,85 @@ describe('RecurringService', () => {
         done();
       });
     });
+
+    /**
+     * The sequence is the thing a day-31 rule breaks, and only a sequence shows
+     * it: every individual date the old code produced was a real, in-range date
+     * on the 31st. It was the months in between that went missing.
+     *
+     * `of()` makes the subscription synchronous, so the clock can be restored
+     * in a finally rather than in a callback that a failure would skip.
+     */
+    const occurrencesFrom = (
+      first: Date,
+      frequency: RecurringFrequency,
+      today: Date,
+      days: number
+    ): string[] => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(today);
+        mockFirestoreService.subscribeToCollection.and.returnValue(of([
+          createRecurring({
+            id: 'anchored',
+            frequency,
+            nextOccurrence: Timestamp.fromDate(first)
+          })
+        ]));
+
+        let keys: string[] = [];
+        service.getNextOccurrences(days).subscribe(o => {
+          keys = o.map(occ => dayKey(occ.date));
+        });
+        return keys;
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    };
+
+    it('posts a monthly rule on the 31st in the short months too', () => {
+      // Advancing the month before clamping the day sent 31 Jan to 3 Mar, and
+      // the clamp then read March's length: February was never scheduled.
+      expect(occurrencesFrom(
+        new Date(2027, 0, 31, 9),
+        { type: 'monthly', interval: 1, dayOfMonth: 31 },
+        new Date(2027, 0, 1),
+        100
+      )).toEqual(['2027-01-31', '2027-02-28', '2027-03-31']);
+    });
+
+    it('reaches 29 February in a leap year', () => {
+      // 70 days runs to 11 March, so the window holds February's occurrence
+      // and stops before March's.
+      expect(occurrencesFrom(
+        new Date(2028, 0, 31, 9),
+        { type: 'monthly', interval: 1, dayOfMonth: 31 },
+        new Date(2028, 0, 1),
+        70
+      )).toEqual(['2028-01-31', '2028-02-29']);
+    });
+
+    it('does not let a monthly rule with no target day drift off the 31st', () => {
+      // Without dayOfMonth the old code walked 31 Jan -> 3 Mar -> 3 Apr and
+      // stayed on the 3rd for good.
+      expect(occurrencesFrom(
+        new Date(2027, 0, 31, 9),
+        { type: 'monthly', interval: 1 },
+        new Date(2027, 0, 1),
+        100
+      )).toEqual(['2027-01-31', '2027-02-28', '2027-03-28']);
+    });
+
+    it('clamps a yearly rule anchored on 29 February', () => {
+      // monthOfYear is deliberately unset: with it, the yearly branch happened
+      // to re-land in the target month before clamping and looked correct.
+      expect(occurrencesFrom(
+        new Date(2028, 1, 29, 9),
+        { type: 'yearly', interval: 1 },
+        new Date(2028, 0, 1),
+        800
+      )).toEqual(['2028-02-29', '2029-02-28', '2030-02-28']);
+    });
   });
 
   describe('calculateNextOccurrence (via createRecurring)', () => {
@@ -1066,8 +1146,12 @@ describe('RecurringService', () => {
 
       const next = captureNextOccurrence();
       expect(next.getTime()).toBeGreaterThan(Date.now());
-      // Day must be valid (never rolls into the following month)
-      expect(next.getDate()).toBeLessThanOrEqual(31);
+      // The day this lands on is the last day of whatever month it lands in,
+      // never a day that month does not have. The assertion this replaces was
+      // `getDate() <= 31`, which is true of every Date there is and so passed
+      // for the whole time the rule was skipping five months a year.
+      const lastDayOfItsMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+      expect(next.getDate()).toBe(Math.min(31, lastDayOfItsMonth));
     });
 
     it('should advance a past yearly start with month and day targets', async () => {

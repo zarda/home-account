@@ -16,6 +16,7 @@ import {
   InsightSnapshot,
   MonthlyTotal
 } from '../../models';
+import { parseDayKey } from '../utils/transaction-date.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -567,6 +568,16 @@ export class ExportService {
   // Helper: Parse date string to Date object
   private parseDate(value: string): Date {
     if (!value) return new Date();
+
+    // A date-only column is the app's own export format, and it means a local
+    // calendar day — not the UTC midnight `new Date` would read it as. Checked
+    // first and separately because the patterns below are unanchored: the
+    // YYYY-MM-DD one also matches inside a full ISO instant, so folding this
+    // into the loop would truncate the time off one.
+    const dayOnly = parseDayKey(value.trim());
+    if (dayOnly) {
+      return dayOnly;
+    }
 
     // Try various date formats
     const formats = [

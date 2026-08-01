@@ -18,6 +18,7 @@ import {
   RecurringTransaction,
   Transaction,
 } from '../../models';
+import { parseDateInput } from '../utils/transaction-date.utils';
 
 /** Thrown when a backup's `version` is one this build cannot read. */
 export const UNSUPPORTED_BACKUP_VERSION = 'UNSUPPORTED_BACKUP_VERSION';
@@ -52,7 +53,10 @@ function toDate(value: unknown): Date {
     return new Date((value as { seconds: number }).seconds * 1000);
   }
   if (typeof value === 'string' || typeof value === 'number') {
-    return new Date(value);
+    // Backups serialise timestamps as full ISO instants, which keep meaning the
+    // instant they name. A date-only string reaches here only from a
+    // hand-edited or third-party file, and there it means a local calendar day.
+    return parseDateInput(value) ?? new Date();
   }
   return new Date();
 }
@@ -188,6 +192,7 @@ export class BackupRestoreService {
           isRecurring: transaction.isRecurring ?? false,
           ...(transaction.note ? { note: transaction.note } : {}),
           ...(transaction.tags?.length ? { tags: transaction.tags } : {}),
+          ...(transaction.period ? { period: transaction.period } : {}),
           ...(transaction.location ? { location: transaction.location } : {}),
         };
         // Receipt fields are deliberately not restored: a backup holds no

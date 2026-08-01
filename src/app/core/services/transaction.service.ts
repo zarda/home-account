@@ -208,6 +208,7 @@ export class TransactionService {
         ...(data.note ? { note: data.note } : {}),
         ...(data.tags?.length ? { tags: data.tags } : {}),
         ...(data.recurringId ? { recurringId: data.recurringId } : {}),
+        ...(data.period ? { period: data.period } : {}),
         ...(data.location ? { location: data.location } : {})
       };
 
@@ -280,10 +281,15 @@ export class TransactionService {
       if (data.tags !== undefined) updateData.tags = data.tags;
       // Distinguish "not part of this update" (key absent — e.g. the
       // note-only update conversion issues) from "cleared" (key present,
-      // value undefined): a cleared location is removed from the document.
+      // value undefined): a cleared location or budget period is removed from
+      // the document rather than left at its old value.
       if ('location' in data) {
         updateData.location = data.location
           ?? (deleteField() as unknown as Transaction['location']);
+      }
+      if ('period' in data) {
+        updateData.period = data.period
+          ?? (deleteField() as unknown as Transaction['period']);
       }
 
       if (data.date !== undefined) {

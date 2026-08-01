@@ -330,6 +330,10 @@ describe('ExportService', () => {
       expect(result[0].type).toBe('expense');
     });
 
+    // These read a *local* calendar day off the row. They were already correct
+    // assertions and already zone-dependent — this one failed under
+    // TZ=America/New_York, where `new Date('2024-06-15')` is 14 June — which is
+    // why CI runs this file either side of UTC.
     it('should parse YYYY-MM-DD date format', async () => {
       const csvContent = 'Date,Description,Amount\n2024-06-15,Test,100';
       const file = new File([csvContent], 'test.csv', { type: 'text/csv' });
@@ -347,7 +351,22 @@ describe('ExportService', () => {
 
       const result = await service.importFromCSV(file);
       expect(result.length).toBe(1);
+      // Month and day too: this branch is deliberately left to the platform,
+      // and asserting only the year would not notice if it stopped being.
       expect(result[0].date.getFullYear()).toBe(2024);
+      expect(result[0].date.getMonth()).toBe(5);
+      expect(result[0].date.getDate()).toBe(15);
+    });
+
+    it('leaves a full ISO instant with its time rather than truncating it', async () => {
+      // The date patterns are unanchored, so the YYYY-MM-DD one matches inside
+      // this string too. The date-only check has to be anchored or it steals
+      // the case and drops the time.
+      const csvContent = 'Date,Description,Amount\n2024-06-15T10:30:00Z,Test,100';
+      const file = new File([csvContent], 'test.csv', { type: 'text/csv' });
+
+      const result = await service.importFromCSV(file);
+      expect(result[0].date.getTime()).toBe(Date.parse('2024-06-15T10:30:00Z'));
     });
 
     it('should handle quoted values with commas', async () => {

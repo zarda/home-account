@@ -83,17 +83,23 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     await deleteApp(app).catch(() => undefined);
   });
 
-  beforeEach(async () => {
+  /**
+   * Build the TestBed and take fresh instances.
+   *
+   * Extracted so a test can relaunch the app over the same IndexedDB: both
+   * services are `providedIn: 'root'`, so re-injecting after ngOnDestroy hands
+   * back the same closed instance. Only a module reset gives a new one.
+   */
+  async function configure(): Promise<void> {
     const pwa = jasmine.createSpyObj('PwaService', ['isOnline', 'registerBackgroundSync']);
     pwa.isOnline.and.returnValue(true);
 
-    // Mutable so a test can queue as one account and sync as another.
-    signedInAs = uid;
     const authMock = {
       userId: () => signedInAs,
       currentUser: () => ({ id: signedInAs, preferences: { baseCurrency: 'USD' } }),
     };
 
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
         OfflineQueueService,
@@ -122,6 +128,12 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     firestoreService = TestBed.inject(FirestoreService);
 
     await waitFor(() => queue.isReady());
+  }
+
+  beforeEach(async () => {
+    // Mutable so a test can queue as one account and sync as another.
+    signedInAs = uid;
+    await configure();
     await queue.clearAll();
   });
 
@@ -209,5 +221,48 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
 
     const stillPending = await queue.getPendingTransactions();
     expect(stillPending.map((t) => t.id)).toContain(queued.id);
+  }, 30000);
+
+  // #169, end to end. The unit suite proves the sweep flips the status; this
+  // proves the row it hands back is still a working queue item — that it
+  // drains through the processor into a real Firestore document under real
+  // security rules, rather than merely becoming visible again.
+  it('drains a row stranded mid-sync once the next launch reclaims it', async () => {
+    await queue.queueTransaction({
+      date: '2026-06-17',
+      description: 'Smoke stranded',
+      amount: 246.8,
+      type: 'income',
+      currency: 'USD',
+      categoryId: 'salary',
+      source: 'local',
+    });
+
+    // The tab dies between syncQueue marking the row and the processor
+    // finishing it.
+    const [inFlight] = await queue.getPendingTransactions();
+    await queue.updateTransactionStatus(inFlight.id, 'processing');
+    expect(await queue.getPendingTransactions()).toEqual([]);
+
+    // Relaunch over the same database.
+    processor.ngOnDestroy();
+    queue.ngOnDestroy();
+    await configure();
+
+    const [reclaimed] = await queue.getPendingTransactions();
+    expect(reclaimed?.id).toBe(inFlight.id);
+
+    window.dispatchEvent(
+      new CustomEvent<{ transaction: QueuedTransaction }>('sync-queued-transaction', {
+        detail: { transaction: reclaimed },
+      }),
+    );
+
+    await waitFor(async () => (await queue.getPendingTransactions()).length === 0);
+
+    const stored = await firestoreService.getCollection<{ amount: number }>(
+      `users/${uid}/transactions`,
+    );
+    expect(stored.find((t) => t.amount === 246.8)).toBeDefined();
   }, 30000);
 });
