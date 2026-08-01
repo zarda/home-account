@@ -10,6 +10,12 @@ import { ExportService } from '../../../core/services/export.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
+import { BudgetService } from '../../../core/services/budget.service';
+import { RecurringService } from '../../../core/services/recurring.service';
+import {
+  BackupRestoreService,
+  UNSUPPORTED_BACKUP_VERSION,
+} from '../../../core/services/backup-restore.service';
 import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -29,6 +35,9 @@ describe('DataManagementComponent', () => {
   let mockSnackBar: jasmine.SpyObj<MatSnackBar>;
   let mockTranslationService: jasmine.SpyObj<TranslationService>;
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
+  let mockBudgetService: jasmine.SpyObj<BudgetService>;
+  let mockRecurringService: jasmine.SpyObj<RecurringService>;
+  let mockBackupRestore: jasmine.SpyObj<BackupRestoreService>;
 
   beforeEach(async () => {
     mockExportService = jasmine.createSpyObj('ExportService', [
@@ -50,12 +59,21 @@ describe('DataManagementComponent', () => {
       transactions: signal([])
     });
     mockTransactionService.addTransaction.and.returnValue(Promise.resolve('new-id'));
-    mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve());
+    mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve(0));
     mockTransactionService.getAllTransactions.and.returnValue(of([]));
 
-    mockCategoryService = jasmine.createSpyObj('CategoryService', [], {
+    mockCategoryService = jasmine.createSpyObj('CategoryService', ['exportAll'], {
       categories: signal([])
     });
+    mockCategoryService.exportAll.and.returnValue(Promise.resolve([]));
+
+    // Root-provided like InsightSnapshotService below: without stubs the real
+    // services are constructed and their Firestore injection fails.
+    mockBudgetService = jasmine.createSpyObj('BudgetService', ['exportAll', 'createBudget']);
+    mockBudgetService.exportAll.and.returnValue(Promise.resolve([]));
+    mockRecurringService = jasmine.createSpyObj('RecurringService', ['exportAll', 'createRecurring']);
+    mockRecurringService.exportAll.and.returnValue(Promise.resolve([]));
+    mockBackupRestore = jasmine.createSpyObj('BackupRestoreService', ['parse', 'describe', 'restore']);
 
     // Root-provided, so without this the real service is constructed and its
     // Firestore injection fails.
@@ -89,6 +107,9 @@ describe('DataManagementComponent', () => {
         { provide: ExportService, useValue: mockExportService },
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: CategoryService, useValue: mockCategoryService },
+        { provide: BudgetService, useValue: mockBudgetService },
+        { provide: RecurringService, useValue: mockRecurringService },
+        { provide: BackupRestoreService, useValue: mockBackupRestore },
         { provide: InsightSnapshotService, useValue: mockInsightSnapshots },
         { provide: AuthService, useValue: mockAuthService },
         { provide: MatDialog, useValue: mockDialog },
@@ -207,50 +228,52 @@ describe('DataManagementComponent', () => {
       expect(mockExportService.importFromCSV).not.toHaveBeenCalled();
     });
 
-    it('carries a backup row\'s details into the preview but never its receipts', async () => {
-      const backup = {
-        transactions: [{
-          description: 'Fruit',
-          amount: 12.5,
-          type: 'expense',
-          date: { seconds: 1_780_000_000, nanoseconds: 0 },
-          currency: 'JPY',
-          categoryId: 'food_groceries',
-          note: 'weekly shop',
-          tags: ['groceries'],
-          location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 },
-          isRecurring: false,
-          period: 'monthly',
-          // A backup holds no storage objects — these must not survive the
-          // restore, or the quota would count images that don't exist.
-          receiptUrl: 'https://example.test/r0.png',
-          receiptUrls: ['https://example.test/r0.png'],
-          receiptCount: 1
-        }]
+    // A backup keeps its own shape now rather than being flattened into the
+    // CSV importer's row type, which is what used to drop every section but
+    // transactions. What each section restores to is covered in
+    // backup-restore.service.spec.ts; this covers the wiring.
+    it('hands a backup file to the restore service and previews every section', async () => {
+      const parsed = {
+        transactions: [], categories: [], budgets: [], recurring: [],
+        insightSnapshots: [], exportDate: '2026-08-01', version: '1.2',
       };
-      const file = new File([JSON.stringify(backup)], 'backup.json', {
-        type: 'application/json'
-      });
-      const event = { target: { files: [file], value: '' } } as unknown as Event;
+      const contents = {
+        version: '1.2', exportDate: '2026-08-01',
+        transactions: 12, categories: 3, budgets: 2, recurring: 1, insightSnapshots: 4,
+      };
+      mockBackupRestore.parse.and.returnValue(parsed);
+      mockBackupRestore.describe.and.returnValue(contents);
 
-      component.onFileSelected(event);
+      const file = new File([JSON.stringify({ transactions: [], version: '1.2' })],
+        'backup.json', { type: 'application/json' });
+      component.onFileSelected({ target: { files: [file], value: '' } } as unknown as Event);
 
-      // importJSON reads the file asynchronously; poll for the preview.
       const deadline = Date.now() + 3000;
-      while (component.importedTransactions().length === 0 && Date.now() < deadline) {
+      while (!component.backupContents() && Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, 20));
       }
 
-      const row = component.importedTransactions()[0] as unknown as Record<string, unknown>;
-      expect(row['currency']).toBe('JPY');
-      expect(row['categoryId']).toBe('food_groceries');
-      expect(row['note']).toBe('weekly shop');
-      expect(row['tags']).toEqual(['groceries']);
-      expect(row['location']).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
-      expect(row['period']).toBe('monthly');
-      expect('receiptUrl' in row).toBeFalse();
-      expect('receiptUrls' in row).toBeFalse();
-      expect('receiptCount' in row).toBeFalse();
+      expect(mockBackupRestore.parse).toHaveBeenCalled();
+      expect(component.pendingBackup()).toBe(parsed);
+      expect(component.backupContents()).toEqual(contents);
+      expect(component.showImportPreview()).toBeTrue();
+    });
+
+    it('refuses a backup written by a newer build instead of half-reading it', async () => {
+      mockBackupRestore.parse.and.throwError(new Error(UNSUPPORTED_BACKUP_VERSION));
+
+      const file = new File([JSON.stringify({ transactions: [], version: '9.9' })],
+        'backup.json', { type: 'application/json' });
+      component.onFileSelected({ target: { files: [file], value: '' } } as unknown as Event);
+
+      const deadline = Date.now() + 3000;
+      while (!notifications.error.calls.any() && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+
+      expect(notifications.error).toHaveBeenCalledWith('settings.unsupportedBackupVersion');
+      expect(component.pendingBackup()).toBeNull();
+      expect(component.showImportPreview()).toBeFalse();
     });
   });
 
@@ -277,5 +300,20 @@ describe('DataManagementComponent', () => {
 
       expect(mockDialog.open).toHaveBeenCalled();
     });
+
+    // The old message claimed everything was gone regardless of what the
+    // service managed to remove.
+    it('reports the number of transactions actually deleted', fakeAsync(() => {
+      mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve(488));
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+      component.deleteAllTransactions();
+      tick();
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.allTransactionsDeleted', { count: 488 }
+      );
+      expect(notifications.success).toHaveBeenCalled();
+    }));
   });
 });

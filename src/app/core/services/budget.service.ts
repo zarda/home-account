@@ -87,8 +87,21 @@ export class BudgetService {
     );
   }
 
-  // Create a new budget
-  async createBudget(data: CreateBudgetDTO): Promise<string> {
+  /** One-shot read for the backup export. */
+  async exportAll(): Promise<Budget[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollection<Budget>(
+      this.userBudgetsPath, { orderBy: [{ field: 'name', direction: 'asc' }] });
+  }
+
+  /**
+   * Create a new budget.
+   *
+   * `options.id` writes at a caller-chosen id instead of an auto-generated
+   * one, so restoring a backup twice overwrites rather than duplicating.
+   */
+  async createBudget(data: CreateBudgetDTO, options?: { id?: string }): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -117,10 +130,16 @@ export class BudgetService {
         budget.endDate = this.firestoreService.dateToTimestamp(data.endDate);
       }
 
-      const id = await this.firestoreService.addDocument(
-        this.userBudgetsPath,
-        budget
-      );
+      let id: string;
+      if (options?.id) {
+        id = options.id;
+        await this.firestoreService.setDocument(`${this.userBudgetsPath}/${id}`, budget);
+      } else {
+        id = await this.firestoreService.addDocument(
+          this.userBudgetsPath,
+          budget
+        );
+      }
 
       // Recalculate spent based on existing transactions
       await this.recalculateBudgetSpent(id);

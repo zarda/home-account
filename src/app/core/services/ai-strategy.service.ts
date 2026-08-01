@@ -157,6 +157,20 @@ export class AIStrategyService {
       // reinitialize() is a no-op when the key has not changed.
       const online = this.pwaService.isOnline();
       if (!userId) {
+        // Sign-out. The providers are root singletons and a router navigation
+        // does not touch them, so they have to be told. Guarded on having
+        // actually been up: the effect also runs once at start-up before auth
+        // resolves, and resetting there would clear the environment-key Gemini
+        // the constructor just brought up.
+        //
+        // Driven from here rather than AuthService.signOut() because
+        // ProviderKeyService injects AuthService — calling back the other way
+        // would close a dependency cycle. The cost is that the reset lands a
+        // microtask after sign-out resolves; sign-out navigates away, so
+        // nothing can reach a provider in that window.
+        if (this.providersInitializedFor() !== null) {
+          void this.cloudLLMProvider.resetProviders();
+        }
         this.providersInitializedFor.set(null);
         return;
       }
@@ -328,10 +342,10 @@ export class AIStrategyService {
       const processingTimeMs = performance.now() - startTime;
       this._lastProcessingTime.set(processingTimeMs);
 
-      return {
+      return this.withFallbackCurrency({
         ...result,
         processingTimeMs,
-      };
+      });
     } finally {
       this._isProcessing.set(false);
     }
@@ -371,9 +385,9 @@ export class AIStrategyService {
     // Merge line items belonging to the same receipt into one transaction so
     // the itemized list is recorded in the note instead of scattering items
     // across separate transactions
-    const consolidated = consolidateReceiptItems(extracted);
-
     const fallbackCurrency = this.fallbackCurrency();
+    const consolidated = consolidateReceiptItems(extracted, fallbackCurrency);
+
     const transactions: ProcessedTransaction[] = consolidated.map(t => ({
       date: new Date(t.date),
       description: t.description,
@@ -423,6 +437,30 @@ export class AIStrategyService {
    */
   private fallbackCurrency(): string {
     return baseCurrencyOf(this.authService.currentUser());
+  }
+
+  /**
+   * Substitute the account's base currency into any row whose currency the
+   * engine could not read, and flag it so the form can offer a better guess.
+   *
+   * Applied at the single exit of runProcessing, which every engine and every
+   * cross-engine fallback passes through. The cloud paths resolve their own
+   * currency before returning, so this is a no-op for them; the native paths
+   * report an empty string because on-device extraction has no idea what the
+   * account's base currency is.
+   */
+  private withFallbackCurrency(result: ProcessingResult): ProcessingResult {
+    if (!result.transactions?.some(t => !t.currency)) {
+      return result;
+    }
+
+    const fallback = this.fallbackCurrency();
+    return {
+      ...result,
+      transactions: result.transactions.map(t => t.currency
+        ? t
+        : { ...t, currency: fallback, currencyFellBack: true }),
+    };
   }
 
   /**

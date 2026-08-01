@@ -1,7 +1,8 @@
 import { Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
-import { Budget, Category } from '../../../models';
+import { Budget, Category, baseCurrencyOf } from '../../../models';
+import { AuthService } from '../../../core/services/auth.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { BudgetProgressCardComponent } from '../budget-progress-card/budget-progress-card.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -15,6 +16,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 })
 export class BudgetOverviewComponent {
   private currencyService = inject(CurrencyService);
+  private authService = inject(AuthService);
 
   // Modern Angular 21: signal-based inputs/outputs
   budgets = input.required<Budget[]>();
@@ -24,8 +26,11 @@ export class BudgetOverviewComponent {
   delete = output<Budget>();
 
   // Summary strip totals. Budgets in a period share a currency in practice,
-  // so the strip formats with the first budget's currency.
-  private displayCurrency = computed(() => this.budgets()[0]?.currency ?? 'USD');
+  // so the strip formats with the first budget's currency, falling back to the
+  // account's own rather than a hardcoded one when there are no budgets yet.
+  private displayCurrency = computed(() =>
+    this.budgets()[0]?.currency || baseCurrencyOf(this.authService.currentUser())
+  );
 
   totalBudgeted = computed(() =>
     this.budgets().reduce((sum, b) => sum + b.amount, 0)

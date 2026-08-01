@@ -86,8 +86,21 @@ export class RecurringService {
     );
   }
 
-  // Create a new recurring transaction
-  async createRecurring(data: CreateRecurringDTO): Promise<string> {
+  /** One-shot read for the backup export. */
+  async exportAll(): Promise<RecurringTransaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+    return this.firestoreService.getCollection<RecurringTransaction>(
+      this.userRecurringPath, { orderBy: [{ field: 'nextOccurrence', direction: 'asc' }] });
+  }
+
+  /**
+   * Create a new recurring transaction.
+   *
+   * `options.id` writes at a caller-chosen id instead of an auto-generated
+   * one, so restoring a backup twice overwrites rather than duplicating.
+   */
+  async createRecurring(data: CreateRecurringDTO, options?: { id?: string }): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -109,14 +122,25 @@ export class RecurringService {
         description: data.description,
         frequency: data.frequency,
         startDate: this.firestoreService.dateToTimestamp(data.startDate),
-        endDate: data.endDate
-          ? this.firestoreService.dateToTimestamp(data.endDate)
-          : undefined,
+        // Omitted rather than set to undefined, which Firestore rejects
+        // outright — a rule with no end date is the default, so writing the
+        // key unconditionally failed every such create.
+        ...(data.endDate
+          ? { endDate: this.firestoreService.dateToTimestamp(data.endDate) }
+          : {}),
         nextOccurrence: this.firestoreService.dateToTimestamp(nextOccurrence),
         isActive: true,
         createdAt: this.firestoreService.getTimestamp(),
         updatedAt: this.firestoreService.getTimestamp()
       };
+
+      if (options?.id) {
+        await this.firestoreService.setDocument(
+          `${this.userRecurringPath}/${options.id}`,
+          recurring
+        );
+        return options.id;
+      }
 
       return await this.firestoreService.addDocument(
         this.userRecurringPath,

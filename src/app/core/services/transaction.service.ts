@@ -146,8 +146,22 @@ export class TransactionService {
     );
   }
 
-  // Add a new transaction
-  async addTransaction(data: CreateTransactionDTO, options?: { id?: string }): Promise<string> {
+  /**
+   * Add a new transaction.
+   *
+   * `options.id` writes at a caller-chosen id (recurring-engine idempotency,
+   * backup restore). `options.snapshot` writes the base-currency conversion
+   * verbatim instead of recomputing it: a restore must not rewrite a row's
+   * historical rate at today's, which would both change stored figures and
+   * make restoring the same backup twice produce different documents.
+   */
+  async addTransaction(
+    data: CreateTransactionDTO,
+    options?: {
+      id?: string;
+      snapshot?: { exchangeRate: number; baseCurrency: string; amountInBaseCurrency: number };
+    }
+  ): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -160,13 +174,21 @@ export class TransactionService {
         throw new Error(INVALID_AMOUNT_ERROR);
       }
 
-      const baseCurrency = baseCurrencyOf(this.authService.currentUser());
-      // The persisted base-currency snapshot must never be computed against
-      // the not-yet-loaded default rate table (which silently maps unknown
-      // currencies to 1:1 and stores raw foreign amounts as base amounts).
-      await this.currencyService.ensureRatesLoaded();
-      const exchangeRate = this.currencyService.getExchangeRate(data.currency, baseCurrency);
-      const amountInBaseCurrency = data.amount * exchangeRate;
+      let baseCurrency: string;
+      let exchangeRate: number;
+      let amountInBaseCurrency: number;
+      if (options?.snapshot) {
+        // A restore carries the conversion the row was written with; keep it.
+        ({ baseCurrency, exchangeRate, amountInBaseCurrency } = options.snapshot);
+      } else {
+        baseCurrency = baseCurrencyOf(this.authService.currentUser());
+        // The persisted base-currency snapshot must never be computed against
+        // the not-yet-loaded default rate table (which silently maps unknown
+        // currencies to 1:1 and stores raw foreign amounts as base amounts).
+        await this.currencyService.ensureRatesLoaded();
+        exchangeRate = this.currencyService.getExchangeRate(data.currency, baseCurrency);
+        amountInBaseCurrency = data.amount * exchangeRate;
+      }
 
       const transaction: Omit<Transaction, 'id'> = {
         userId,
@@ -682,19 +704,34 @@ export class TransactionService {
     }
   }
 
-  // Delete all transactions (danger zone)
-  async deleteAllTransactions(): Promise<void> {
+  /**
+   * Delete every transaction in the account (danger zone). Returns how many
+   * documents were actually removed, so the caller can report a number rather
+   * than an unconditional "all deleted".
+   *
+   * Enumerates the collection, never the `transactions` signal: that signal
+   * holds only whatever the last live query published — usually the current
+   * month, and nothing at all if the user reached Settings without visiting
+   * the dashboard first. Reading it deleted a slice of the account and called
+   * it complete.
+   */
+  async deleteAllTransactions(): Promise<number> {
     this.isLoading.set(true);
 
     try {
-      const transactions = this.transactions();
       const userId = this.authService.userId();
+      const transactions = await this.firestoreService.getCollection<Transaction>(
+        this.userTransactionsPath
+      );
 
-      // Delete in batches
+      let deleted = 0;
+      let lastId = '';
       for (const transaction of transactions) {
         await this.firestoreService.deleteDocument(
           `${this.userTransactionsPath}/${transaction.id}`
         );
+        deleted++;
+        lastId = transaction.id;
 
         // Remove any stored receipts to avoid orphaned files. Best-effort:
         // the slot sweep never rejects.
@@ -708,8 +745,16 @@ export class TransactionService {
         }
       }
 
+      this.transactions.set([]);
       // Everything is gone — force a quota recount on next check
       this.receiptQuota.invalidateCount();
+      // One mutation for the whole wipe. Consumers refresh their window per
+      // emission, so emitting per row would trigger a refresh per row.
+      if (deleted > 0) {
+        this.noteMutation('delete', lastId);
+      }
+
+      return deleted;
     } finally {
       this.isLoading.set(false);
     }

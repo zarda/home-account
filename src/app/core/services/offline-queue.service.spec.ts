@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { OfflineQueueService } from './offline-queue.service';
+import { WritableSignal, signal } from '@angular/core';
+import { OfflineQueueService, QUEUE_NOT_SIGNED_IN } from './offline-queue.service';
 import { PwaService } from './pwa.service';
+import { AuthService } from './auth.service';
 
 async function waitFor(pred: () => boolean, timeout = 3000): Promise<void> {
   const start = Date.now();
@@ -14,21 +16,38 @@ function imageFile(name = 'r.jpg'): File {
   return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/jpeg' });
 }
 
+/** Every account this suite signs in as; all of them get cleared between tests. */
+const TEST_ACCOUNTS = ['user-a', 'user-b'] as const;
+
 describe('OfflineQueueService', () => {
   let service: OfflineQueueService;
   let pwa: jasmine.SpyObj<PwaService>;
+  let userId: WritableSignal<string | null>;
 
   beforeEach(async () => {
     pwa = jasmine.createSpyObj('PwaService', ['isOnline', 'registerBackgroundSync']);
     pwa.isOnline.and.returnValue(true);
 
+    userId = signal<string | null>('user-a');
+
     TestBed.configureTestingModule({
-      providers: [OfflineQueueService, { provide: PwaService, useValue: pwa }],
+      providers: [
+        OfflineQueueService,
+        { provide: PwaService, useValue: pwa },
+        { provide: AuthService, useValue: { userId } },
+      ],
     });
     service = TestBed.inject(OfflineQueueService);
     await waitFor(() => service.isReady());
+
     // Reset shared IndexedDB state between tests (the DB name is a constant).
-    await service.clearAll();
+    // clearAll() is scoped to the signed-in account now, so every account the
+    // suite uses has to be cleared, not just the default one.
+    for (const uid of TEST_ACCOUNTS) {
+      userId.set(uid);
+      await service.clearAll();
+    }
+    userId.set(TEST_ACCOUNTS[0]);
   });
 
   afterEach(() => {
@@ -264,6 +283,105 @@ describe('OfflineQueueService', () => {
       const stats = await service.getStats();
       expect(stats.pendingImages).toBe(0);
       expect(service.pendingCount()).toBe(0);
+    });
+  });
+
+  describe('account isolation', () => {
+    // The regression. The queue is one device-global IndexedDB with no owner
+    // recorded, so a receipt captured offline by one account was drained into
+    // whichever account happened to be signed in when the connection came back.
+    it('hides one account\'s queued images from another', async () => {
+      await service.queueImage(imageFile());
+      expect((await service.getPendingImages()).length).toBe(1);
+
+      userId.set('user-b');
+
+      expect(await service.getPendingImages()).toEqual([]);
+      expect((await service.getStats()).pendingImages).toBe(0);
+    });
+
+    it('gives them back when the owning account returns', async () => {
+      const id = await service.queueImage(imageFile());
+
+      userId.set('user-b');
+      expect(await service.getPendingImages()).toEqual([]);
+
+      userId.set('user-a');
+      const pending = await service.getPendingImages();
+      expect(pending.map(i => i.id)).toEqual([id]);
+    });
+
+    it('does not hand a foreign image to a caller by id', async () => {
+      const id = await service.queueImage(imageFile());
+
+      userId.set('user-b');
+
+      expect(await service.getQueuedImage(id)).toBeUndefined();
+      expect(await service.getQueuedImageAsFile(id)).toBeNull();
+      // peek is the deliberate exception, so the processor can tell "not mine"
+      // apart from "gone".
+      expect((await service.peekQueuedImage(id))?.userId).toBe('user-a');
+    });
+
+    it('refuses to queue while signed out rather than writing an ownerless row', async () => {
+      userId.set(null);
+
+      await expectAsync(service.queueImage(imageFile()))
+        .toBeRejectedWithError(QUEUE_NOT_SIGNED_IN);
+    });
+
+    it('does not sync or dispatch while signed out', async () => {
+      await service.queueImage(imageFile());
+      const dispatched = spyOn(window, 'dispatchEvent').and.callThrough();
+
+      userId.set(null);
+      const result = await service.syncQueue();
+
+      expect(result).toEqual({ success: 0, failed: 0 });
+      expect(dispatched).not.toHaveBeenCalled();
+    });
+
+    it('dispatches only the signed-in account\'s items', async () => {
+      await service.queueImage(imageFile('a.jpg'));
+      userId.set('user-b');
+      await service.queueImage(imageFile('b.jpg'));
+
+      const events: string[] = [];
+      spyOn(window, 'dispatchEvent').and.callFake((event: Event) => {
+        const detail = (event as CustomEvent<{ id: string }>).detail;
+        if (event.type === 'process-queued-image') events.push(detail.id);
+        return true;
+      });
+
+      await service.syncQueue();
+
+      const bPending = await service.getPendingImages();
+      expect(events.length).toBe(1);
+      expect(bPending.length).toBe(0); // now 'processing', so no longer pending
+      expect(events[0]).toMatch(/^img_/);
+    });
+
+    it('clears only the signed-in account\'s queue', async () => {
+      await service.queueImage(imageFile('a.jpg'));
+      userId.set('user-b');
+      await service.queueImage(imageFile('b.jpg'));
+
+      await service.clearAll();
+      expect(await service.getPendingImages()).toEqual([]);
+
+      userId.set('user-a');
+      expect((await service.getPendingImages()).length).toBe(1);
+    });
+
+    it('counts only the signed-in account\'s pending items', async () => {
+      await service.queueImage(imageFile('a.jpg'));
+      await service.queueImage(imageFile('a2.jpg'));
+      expect(service.pendingCount()).toBe(2);
+
+      userId.set('user-b');
+      await service.queueImage(imageFile('b.jpg'));
+
+      expect(service.pendingCount()).toBe(1);
     });
   });
 });

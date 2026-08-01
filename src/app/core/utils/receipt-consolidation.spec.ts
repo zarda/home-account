@@ -22,6 +22,11 @@ describe('formatReceiptItemLines', () => {
     );
     expect(lines).toBe('Latte — USD 5.00\nPoint discount');
   });
+
+  it('renders a bare amount when no currency is known, without a stray space', () => {
+    const lines = formatReceiptItemLines([{ name: 'Latte', amount: 5 }], '');
+    expect(lines).toBe('Latte — 5.00');
+  });
 });
 
 describe('consolidateReceiptItems', () => {
@@ -104,5 +109,68 @@ describe('consolidateReceiptItems', () => {
     ]);
     expect(result.length).toBe(1);
     expect(result[0].amount).toBe(3);
+  });
+
+  describe('currency', () => {
+    // The regression. A hardcoded default here made `currency` truthy, which
+    // switched off the caller's base-currency fallback AND its
+    // currencyFellBack flag — so a US receipt printing only "$" was committed
+    // silently as JPY, and a $42.50 dinner became ¥42.50.
+    it('leaves the merged currency empty when no item carried one', () => {
+      const result = consolidateReceiptItems([
+        item({ description: 'Lunch', amount: 10, receiptId: 1, currency: '' }),
+        item({ description: 'Snack', amount: 5, receiptId: 1, currency: '' }),
+      ]);
+
+      expect(result[0].currency).toBe('');
+    });
+
+    it('takes the first currency any item in the group carried', () => {
+      const result = consolidateReceiptItems([
+        item({ description: 'Lunch', amount: 10, receiptId: 1, currency: '' }),
+        item({ description: 'Snack', amount: 5, receiptId: 1, currency: 'THB' }),
+      ]);
+
+      expect(result[0].currency).toBe('THB');
+    });
+
+    // The same receipt used to import as USD with one line and JPY with six.
+    it('resolves the same currency whether the receipt had one line or six', () => {
+      const single = consolidateReceiptItems([
+        item({ description: 'Lunch', amount: 10, receiptId: 1, currency: '' }),
+      ]);
+      const many = consolidateReceiptItems([
+        item({ description: 'A', amount: 1, receiptId: 1, currency: '' }),
+        item({ description: 'B', amount: 2, receiptId: 1, currency: '' }),
+        item({ description: 'C', amount: 3, receiptId: 1, currency: '' }),
+        item({ description: 'D', amount: 4, receiptId: 1, currency: '' }),
+        item({ description: 'E', amount: 5, receiptId: 1, currency: '' }),
+        item({ description: 'F', amount: 6, receiptId: 1, currency: '' }),
+      ]);
+
+      expect(many[0].currency).toBe(single[0].currency);
+    });
+
+    // The note is the one place a fallback belongs: it is prose, not a value
+    // anything converts against.
+    it('labels the itemized note with the caller currency without adopting it', () => {
+      const result = consolidateReceiptItems([
+        item({ description: 'Lunch', amount: 10, receiptId: 1, currency: '' }),
+        item({ description: 'Snack', amount: 5, receiptId: 1, currency: '' }),
+      ], 'THB');
+
+      expect(result[0].details).toBe('Lunch — THB 10.00\nSnack — THB 5.00');
+      expect(result[0].currency).toBe('');
+    });
+
+    it('prefers the receipt currency over the caller fallback in the note', () => {
+      const result = consolidateReceiptItems([
+        item({ description: 'Lunch', amount: 10, receiptId: 1, currency: 'JPY' }),
+        item({ description: 'Snack', amount: 5, receiptId: 1, currency: 'JPY' }),
+      ], 'THB');
+
+      expect(result[0].details).toBe('Lunch — JPY 10\nSnack — JPY 5');
+      expect(result[0].currency).toBe('JPY');
+    });
   });
 });

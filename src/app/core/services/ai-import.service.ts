@@ -12,6 +12,7 @@ import { AnalyticsService } from './analytics.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
+import { readCurrencyCode } from '../utils/receipt-extraction.utils';
 import { nextImportRowId } from '../utils/import-row-id.utils';
 import { RasterizedPdf, rasterizePdf } from '../utils/pdf-raster.utils';
 import { CategoryMemoryService } from './category-memory.service';
@@ -345,8 +346,13 @@ export class AIImportService {
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
 
-      // Consolidate line items into a single receipt transaction
-      const consolidated = consolidateReceiptItems(extractedTransactions);
+      // Consolidate line items into a single receipt transaction. The base
+      // currency only labels the itemized note; the merged row's own currency
+      // stays empty so the fallback in categorizeMultiImageTransactions runs.
+      const consolidated = consolidateReceiptItems(
+        extractedTransactions,
+        baseCurrencyOf(this.authService.currentUser())
+      );
 
       // Convert to CategorizedImportTransaction format with image metadata
       const categorized = await this.categorizeMultiImageTransactions(consolidated);
@@ -640,22 +646,20 @@ export class AIImportService {
       this.processingStatus.set('Converting transactions...');
       this.processingProgress.set(30);
 
-      const rawTransactions: RawTransaction[] = importedTransactions.map(t => ({
-        description: t.description,
-        amount: t.amount,
-        date: t.date
-      }));
-
       this.processingStatus.set('Categorizing with AI...');
       this.processingProgress.set(50);
 
-      // Convert to ExtractedTransaction format
-      const extractedTransactions: ExtractedTransaction[] = rawTransactions.map(t => ({
+      // Convert to ExtractedTransaction format. Mapped straight off the parsed
+      // rows rather than through RawTransaction, which has no currency field —
+      // routing through it meant the row's own currency was dropped and
+      // replaced with a hardcoded one, pre-empting the base-currency fallback
+      // that categorizeTransactions already applies.
+      const extractedTransactions: ExtractedTransaction[] = importedTransactions.map(t => ({
         date: t.date ? t.date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         description: t.description,
         amount: Math.abs(t.amount),
         type: t.amount >= 0 ? 'income' : 'expense',
-        currency: 'USD'
+        currency: readCurrencyCode(t.currency)
       }));
 
       const categorized = await this.categorizeTransactions(extractedTransactions);
@@ -693,12 +697,13 @@ export class AIImportService {
       this.processingStatus.set('Processing transactions...');
       this.processingProgress.set(50);
 
+      const baseCurrency = baseCurrencyOf(this.authService.currentUser());
       const categorized: CategorizedImportTransaction[] = data.transactions.map(
         (t: Record<string, unknown>) => ({
           id: nextImportRowId('json'),
           description: t['description'] as string || 'Unknown',
           amount: Math.abs(t['amount'] as number || 0),
-          currency: (t['currency'] as string) || 'USD',
+          currency: readCurrencyCode(t['currency']) || baseCurrency,
           date: t['date']
             ? new Date((t['date'] as { seconds: number }).seconds * 1000)
             : new Date(),

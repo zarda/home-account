@@ -313,6 +313,26 @@ export class InsightSnapshotService {
     }
   }
 
+  /**
+   * Write a snapshot back from a backup, at its own month-key id.
+   *
+   * Re-stamps `userId` from auth rather than trusting the file, both because
+   * the rules require it and because a backup may legitimately be restored
+   * into a different account.
+   */
+  async restore(snapshot: InsightSnapshot): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+
+    const { id, ...rest } = snapshot;
+    await this.firestoreService.setDocument(
+      `${this.path(userId)}/${id}`,
+      { ...rest, userId },
+    );
+  }
+
   /** One-shot read for the backup export. */
   async exportAll(): Promise<InsightSnapshot[]> {
     const userId = this.authService.userId();
@@ -328,8 +348,7 @@ export class InsightSnapshotService {
    * Remove every snapshot, for account deletion.
    *
    * Enumerates the collection rather than the in-memory signal — the signal only
-   * holds what a subscription happened to deliver, which is why
-   * TransactionService.deleteAllTransactions is incomplete for large histories.
+   * holds what a subscription happened to deliver.
    */
   async deleteAll(): Promise<void> {
     const userId = this.authService.userId();

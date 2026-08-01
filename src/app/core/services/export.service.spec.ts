@@ -270,7 +270,8 @@ describe('ExportService', () => {
         // never moved as sections were added, so a schema change was shipping
         // under the same number each time.
         expect(parsed.version).toBe(BACKUP_SCHEMA_VERSION);
-        expect(parsed.version).toBe('1.1');
+        // Last bumped when budgets and recurring rules joined the backup.
+        expect(parsed.version).toBe('1.2');
         done();
       };
       reader.readAsText(blob);
@@ -387,12 +388,13 @@ describe('ExportService', () => {
         { description: 'Test', amount: 100, date: new Date(), type: 'expense' as const }
       ];
 
-      const result = service.parseImportedData(raw);
+      const result = service.parseImportedData(raw, 'THB');
       expect(result.length).toBe(1);
       expect(result[0].type).toBe('expense');
       expect(result[0].amount).toBe(100);
-      // A bank CSV row carries no currency or category — the defaults hold.
-      expect(result[0].currency).toBe('USD');
+      // A bank CSV row carries no currency, so it lands in the account's own
+      // rather than a hardcoded USD.
+      expect(result[0].currency).toBe('THB');
       expect(result[0].categoryId).toBe('other_expense');
     });
 
@@ -411,7 +413,7 @@ describe('ExportService', () => {
         period: 'monthly' as const,
       }];
 
-      const result = service.parseImportedData(raw);
+      const result = service.parseImportedData(raw, 'USD');
 
       // Nothing the backup carried is flattened back to a default.
       expect(result[0].currency).toBe('JPY');
@@ -427,7 +429,7 @@ describe('ExportService', () => {
         { description: 'Test', amount: -100, date: new Date() }
       ];
 
-      const result = service.parseImportedData(raw);
+      const result = service.parseImportedData(raw, 'USD');
       expect(result[0].amount).toBe(100);
     });
 
@@ -435,11 +437,59 @@ describe('ExportService', () => {
       const rawPositive = [{ description: 'Income', amount: 100, date: new Date() }];
       const rawNegative = [{ description: 'Expense', amount: -50, date: new Date() }];
 
-      const resultPositive = service.parseImportedData(rawPositive);
-      const resultNegative = service.parseImportedData(rawNegative);
+      const resultPositive = service.parseImportedData(rawPositive, 'USD');
+      const resultNegative = service.parseImportedData(rawNegative, 'USD');
 
       expect(resultPositive[0].type).toBe('income');
       expect(resultNegative[0].type).toBe('expense');
+    });
+
+    it('keeps an unlabelled row out of the account currency only when it has one', () => {
+      const raw = [
+        { description: 'Bank row', amount: 100, date: new Date() },
+        { description: 'Backup row', amount: 100, date: new Date(), currency: 'JPY' }
+      ];
+
+      const result = service.parseImportedData(raw, 'THB');
+
+      expect(result[0].currency).toBe('THB');
+      expect(result[1].currency).toBe('JPY');
+    });
+  });
+
+  describe('CSV currency round trip', () => {
+    function csvFile(text: string): File {
+      return new File([text], 'transactions.csv', { type: 'text/csv' });
+    }
+
+    // exportToCSV has always written a Currency column that parseCSV never
+    // read, so the app could not re-import its own export: a THB dinner came
+    // back as USD at the same numeric amount.
+    it('reads the Currency column that exportToCSV writes', async () => {
+      const text = 'Date,Type,Category,Amount,Currency\n2026-06-01,expense,Food,1200,THB\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].currency).toBe('THB');
+      expect(service.parseImportedData(result, 'USD')[0].currency).toBe('THB');
+    });
+
+    it('falls back to the account currency when the column is absent', async () => {
+      const text = 'Date,Description,Amount\n2026-06-01,Coffee,4.50\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].currency).toBeUndefined();
+      expect(service.parseImportedData(result, 'THB')[0].currency).toBe('THB');
+    });
+
+    it('ignores a currency value that is not a real code', async () => {
+      const text = 'Date,Description,Amount,Currency\n2026-06-01,Coffee,4.50,dollars\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].currency).toBeUndefined();
+      expect(service.parseImportedData(result, 'THB')[0].currency).toBe('THB');
     });
   });
 

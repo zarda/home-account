@@ -3,6 +3,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Timestamp } from '@angular/fire/firestore';
 import { BudgetOverviewComponent } from './budget-overview.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { AuthService } from '../../../core/services/auth.service';
 import { Budget, Category } from '../../../models';
 
 describe('BudgetOverviewComponent', () => {
@@ -77,6 +78,12 @@ describe('BudgetOverviewComponent', () => {
             formatCurrency: (amount: number, code: string) =>
               new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).format(amount)
           }
+        },
+        // The summary strip falls back to the account's base currency when no
+        // budget is on screen to supply one.
+        {
+          provide: AuthService,
+          useValue: { currentUser: () => ({ preferences: { baseCurrency: 'THB' } }) }
         }
       ]
     }).compileComponents();

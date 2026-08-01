@@ -81,6 +81,11 @@ export class CategoryManagerComponent implements OnInit {
       const message = this.translationService.t('settings.categoriesReordered');
       this.notifications.success(message);
       this.loadCategories();
+    }).catch(() => {
+      this.notifications.error(this.translationService.t('settings.categoriesReorderFailed'));
+      // The list already shows the new order optimistically; reload so it
+      // matches what was actually stored.
+      this.loadCategories();
     });
   }
 
@@ -101,6 +106,8 @@ export class CategoryManagerComponent implements OnInit {
           const message = this.translationService.t('settings.categoryCreated');
           this.notifications.success(message);
           this.loadCategories();
+        }).catch(() => {
+          this.notifications.error(this.translationService.t('settings.categoryCreateFailed'));
         });
       }
     });
@@ -122,6 +129,8 @@ export class CategoryManagerComponent implements OnInit {
           const message = this.translationService.t('settings.categoryUpdated');
           this.notifications.success(message);
           this.loadCategories();
+        }).catch(() => {
+          this.notifications.error(this.translationService.t('settings.categoryUpdateFailed'));
         });
       }
     });
@@ -145,6 +154,8 @@ export class CategoryManagerComponent implements OnInit {
           const message = this.translationService.t('settings.categoryDeleted');
           this.notifications.success(message);
           this.loadCategories();
+        }).catch(() => {
+          this.notifications.error(this.translationService.t('settings.categoryDeleteFailed'));
         });
       }
     });

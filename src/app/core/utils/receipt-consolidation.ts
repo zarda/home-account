@@ -5,6 +5,10 @@ import { MultiImageExtractedTransaction } from '../services/gemini.service';
  * JPY amounts are whole numbers; other currencies keep two decimals.
  * Items without a numeric amount (e.g. free or discount-label lines from
  * the AI) keep their name only; nameless items are dropped.
+ *
+ * An empty currency means the model could not read one and no caller has
+ * substituted a base currency yet; the amount is then rendered bare rather
+ * than prefixed with a code this code has no business inventing.
  */
 export function formatReceiptItemLines(
   items: { name?: string; amount?: number }[],
@@ -13,9 +17,12 @@ export function formatReceiptItemLines(
   const fractionDigits = currency === 'JPY' ? 0 : 2;
   return items
     .filter(item => item?.name)
-    .map(item => Number.isFinite(item.amount)
-      ? `${item.name} — ${currency} ${(item.amount as number).toLocaleString('en', { minimumFractionDigits: fractionDigits })}`
-      : String(item.name))
+    .map(item => {
+      if (!Number.isFinite(item.amount)) return String(item.name);
+      const amount = (item.amount as number)
+        .toLocaleString('en', { minimumFractionDigits: fractionDigits });
+      return `${item.name} — ${currency ? `${currency} ${amount}` : amount}`;
+    })
     .join('\n');
 }
 
@@ -24,9 +31,15 @@ export function formatReceiptItemLines(
  * Items sharing the same receiptId are merged into one transaction whose
  * details carry the itemized list (preferring the AI's full receiptDetails).
  * Items with unique receiptIds stay as standalone transactions.
+ *
+ * `noteCurrency` is used only to label the itemized note when the receipt
+ * itself carried no readable currency. It is deliberately not written to the
+ * merged row's `currency`: that stays empty so the caller's base-currency
+ * fallback runs and the row is flagged for review.
  */
 export function consolidateReceiptItems(
-  items: MultiImageExtractedTransaction[]
+  items: MultiImageExtractedTransaction[],
+  noteCurrency = ''
 ): MultiImageExtractedTransaction[] {
   if (items.length === 0) return [];
 
@@ -51,7 +64,13 @@ export function consolidateReceiptItems(
       // Amounts are absolute values, so refund/credit lines (type 'income')
       // must reduce the total rather than inflate it
       const first = groupItems[0];
-      const currency = first.currency || 'JPY';
+      // Never invent a currency here. A hardcoded default made `currency`
+      // truthy, which switched off the caller's base-currency fallback and
+      // its currencyFellBack flag, so an unreadable currency was committed
+      // silently under whatever code this file happened to pick. Scan the
+      // group like merchant and category do, and leave it empty if nothing
+      // in the receipt carried one.
+      const currency = first.currency || groupItems.find(i => i.currency)?.currency || '';
       const merchant = first.merchant || groupItems.find(i => i.merchant)?.merchant || 'Receipt';
       const category = first.category || groupItems.find(i => i.category)?.category;
       const netAmount = groupItems.reduce(
@@ -64,7 +83,7 @@ export function consolidateReceiptItems(
       const details = receiptDetailsFromAI
         || formatReceiptItemLines(
           groupItems.map(item => ({ name: item.description, amount: item.amount })),
-          currency
+          currency || noteCurrency
         );
 
       result.push({

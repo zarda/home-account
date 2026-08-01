@@ -23,6 +23,7 @@ import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
+import { AuthService } from '../../../core/services/auth.service';
 
 describe('CameraCaptureComponent offline queue (smoke test)', () => {
   let queue: OfflineQueueService;
@@ -49,6 +50,9 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
       imports: [CameraCaptureComponent],
       providers: [
         OfflineQueueService,
+        // The queue stamps the capturing account onto every item, so it needs
+        // an identity even here where the test only cares that the row lands.
+        { provide: AuthService, useValue: { userId: () => 'smoke-user' } },
         { provide: PwaService, useValue: pwaService },
         { provide: AIImportService, useValue: importService },
         { provide: AIStrategyService, useValue: strategyService },

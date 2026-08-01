@@ -162,6 +162,35 @@ describe('GeminiService', () => {
       expect(service.isAvailable()).toBeFalse();
     });
 
+    // The test that matters for the shared-device leak, and the reason clear()
+    // exists at all. The suite blanks the environment key, so a clear test run
+    // against that state proves nothing — a production build ships one, and
+    // reinitialize(undefined) would quietly re-arm from it. Restore it here.
+    describe('with an environment key present', () => {
+      beforeEach(() => { env.geminiApiKey = 'env-key-from-build'; });
+      afterEach(() => { delete env.geminiApiKey; });
+
+      it('clear() leaves the client unavailable despite the environment key', async () => {
+        await service.reinitialize('account-key');
+        expect(service.isAvailable()).toBeTrue();
+
+        service.clear();
+
+        expect(service.isAvailable()).toBeFalse();
+        expect(service.isAvailableSignal()).toBeFalse();
+      });
+
+      it('reinitialize with no key still falls back to the environment key', async () => {
+        service.clear();
+
+        await service.reinitialize(undefined);
+
+        // Deliberate: this is what brings Gemini up at app start. It is also
+        // exactly why sign-out must call clear() instead.
+        expect(service.isAvailable()).toBeTrue();
+      });
+    });
+
     it('initializes a real client when given a key (offline, no network)', async () => {
       await service.reinitialize('fake-api-key-123');
       expect(service.isAvailable()).toBeTrue();
