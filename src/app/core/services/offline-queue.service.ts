@@ -196,11 +196,78 @@ export class OfflineQueueService implements OnDestroy {
         },
       });
 
+      await this.reclaimInterruptedWork();
+
       this._isReady.set(true);
       await this.updatePendingCount();
       console.log('[OfflineQueue] Database initialized');
     } catch (error) {
       console.error('[OfflineQueue] Failed to initialize database:', error);
+    }
+  }
+
+  /**
+   * Return anything still marked `processing` to `pending`.
+   *
+   * `syncQueue` marks an item `processing` and then only dispatches a DOM
+   * event — it cannot await the processor's work, which is `void`-ed. A tab
+   * closed mid-receipt, an app swiped away, or an iOS WebView killed in the
+   * background therefore strands the row, and `processing` is invisible to
+   * every getter, counter, retry and clear: the receipt is silently lost while
+   * its bytes stay in IndexedDB. Nothing can legitimately be in flight at the
+   * moment the database is opened, so anything wearing that status is wreckage.
+   *
+   * Three deliberate choices:
+   *
+   * - **No `DB_VERSION` bump.** This rewrites a field value, not a schema. A
+   *   bump would fire `blocking`/`blocked` at every other open tab, and v2's
+   *   upgrade clears every row.
+   * - **Not scoped by owner**, unlike everything else here. At open time there
+   *   is usually nobody signed in yet, and `ownedBy()` would leave another
+   *   account's row wedged forever. Ownership is still enforced at every read,
+   *   at dispatch, and again by the processor before it writes.
+   * - **Charged a retry.** Without one, a row whose processing reliably kills
+   *   the tab strands and re-strands on every launch, burning an AI call each
+   *   time. With one it retires to `failed` after MAX_RETRY_COUNT — visible,
+   *   retryable and clearable, rather than a black hole.
+   *
+   * A row reclaimed here can be re-processed after its work already landed;
+   * that window is narrower than losing the receipt outright, and the same
+   * race already exists between two tabs coming online together, since
+   * `syncInProgress` is per-instance.
+   */
+  private async reclaimInterruptedWork(): Promise<void> {
+    if (!this.db) return;
+
+    try {
+      const tx = this.db.transaction(['pending-images', 'pending-transactions'], 'readwrite');
+      let reclaimed = 0;
+
+      for (const store of ['pending-images', 'pending-transactions'] as const) {
+        let cursor = await tx.objectStore(store).openCursor();
+        while (cursor) {
+          const record = cursor.value;
+          if (record.status === 'processing') {
+            await cursor.update({
+              ...record,
+              status: 'pending',
+              lastError: 'Reclaimed after an interrupted sync',
+              retryCount: (record.retryCount ?? 0) + 1,
+            });
+            reclaimed += 1;
+          }
+          cursor = await cursor.continue();
+        }
+      }
+
+      await tx.done;
+      if (reclaimed > 0) {
+        console.warn(`[OfflineQueue] Reclaimed ${reclaimed} item(s) interrupted mid-sync`);
+      }
+    } catch (error) {
+      // A failed sweep must not take the whole queue offline: leaving
+      // _isReady false would strand everything, not just the wreckage.
+      console.error('[OfflineQueue] Failed to reclaim interrupted items:', error);
     }
   }
 
