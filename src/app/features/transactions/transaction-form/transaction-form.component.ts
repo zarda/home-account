@@ -471,7 +471,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         description: formValue.description,
         date: formValue.date,
         ...(formValue.note ? { note: formValue.note } : {}),
-        ...(formValue.period ? { period: formValue.period } : {}),
+        // Edit always sends the period, for the same reason tags does below:
+        // clearing the select has to reach the document, and an omitted key
+        // would leave the old period in place.
+        ...(this.data.mode === 'edit'
+          ? { period: formValue.period ?? undefined }
+          : formValue.period
+            ? { period: formValue.period }
+            : {}),
         ...(receipts.length ? { receiptFiles: receipts } : {}),
         // Edit always sends tags — an emptied list must clear the stored
         // ones, which an omitted field would leave in place.

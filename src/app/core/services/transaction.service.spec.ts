@@ -218,6 +218,36 @@ describe('TransactionService', () => {
       expect(mockFirestore.addDocumentSpy.calls.length).toBeGreaterThan(0);
     });
 
+    it('writes the budget period the form chose', async () => {
+      await service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Test transaction',
+        date: new Date(),
+        period: 'monthly'
+      });
+
+      const written = mockFirestore.addDocumentSpy.mostRecent()?.args[1] as Record<string, unknown>;
+      expect(written['period']).toBe('monthly');
+    });
+
+    it('omits the period key entirely when none was chosen', async () => {
+      await service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Test transaction',
+        date: new Date()
+      });
+
+      // Not `period: undefined` — the SDK rejects the whole write for that.
+      const written = mockFirestore.addDocumentSpy.mostRecent()?.args[1] as Record<string, unknown>;
+      expect('period' in written).toBeFalse();
+    });
+
     it('should set isLoading during operation', async () => {
       const addPromise = service.addTransaction({
         type: 'expense',
@@ -498,6 +528,44 @@ describe('TransactionService', () => {
 
       const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
       expect('location' in updateData).toBeFalse();
+    });
+
+    it('writes the budget period the update carries', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1' })
+      );
+
+      await service.updateTransaction('txn-1', { period: 'yearly' });
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect(updateData['period']).toBe('yearly');
+    });
+
+    it('clears the stored budget period when the update carries an undefined one', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', period: 'monthly' })
+      );
+
+      await service.updateTransaction('txn-1', { period: undefined });
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      // Key present but not a period string: the deleteField() sentinel.
+      expect('period' in updateData).toBeTrue();
+      expect(updateData['period']).not.toBe('monthly');
+    });
+
+    it('leaves the stored budget period alone when the update omits the key', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1', period: 'monthly' })
+      );
+
+      await service.updateTransaction('txn-1', { note: 'updated' });
+
+      const updateData = (mockFirestore.updateDocumentSpy.mostRecent()?.args ?? [])[1] as Record<string, unknown>;
+      expect('period' in updateData).toBeFalse();
     });
 
     it('appends an image to a receiptless transaction at slot 0', async () => {

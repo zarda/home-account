@@ -207,6 +207,15 @@ describe('BackupRestoreService', () => {
       expect('receiptFiles' in written).toBeFalse();
     });
 
+    it('carries the budget period a backed-up transaction was saved with', async () => {
+      await service.restore(backup({
+        transactions: [transaction({ period: 'monthly' })],
+      }));
+
+      const [dto] = transactions.addTransaction.calls.mostRecent().args;
+      expect(dto.period).toBe('monthly');
+    });
+
     // Restoring onto a clean account used to leave every transaction pointing
     // at a category document that was never written.
     it('writes categories before the transactions that reference them', async () => {

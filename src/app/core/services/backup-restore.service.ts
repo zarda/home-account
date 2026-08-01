@@ -188,6 +188,7 @@ export class BackupRestoreService {
           isRecurring: transaction.isRecurring ?? false,
           ...(transaction.note ? { note: transaction.note } : {}),
           ...(transaction.tags?.length ? { tags: transaction.tags } : {}),
+          ...(transaction.period ? { period: transaction.period } : {}),
           ...(transaction.location ? { location: transaction.location } : {}),
         };
         // Receipt fields are deliberately not restored: a backup holds no

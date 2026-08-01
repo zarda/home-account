@@ -245,6 +245,31 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a budget period from the enum the picker offers', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ period: 'monthly' })),
+        'period monthly'
+      );
+    });
+
+    it('rejects a budget period outside that enum', async () => {
+      // The field reached no write until now, so the rule accepted anything a
+      // client cared to put there while budgets pinned the same enum.
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ period: 'quarterly' })),
+        'period quarterly'
+      );
+    });
+
+    it('accepts clearing a stored budget period', async () => {
+      const p = path('transactions');
+      await setDoc(doc(firestore, p), validTransaction({ period: 'monthly' }));
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { period: deleteField() }),
+        'period deletion'
+      );
+    });
+
     it('rejects a missing required field', async () => {
       const payload = validTransaction();
       delete (payload as Record<string, unknown>)['categoryId'];
