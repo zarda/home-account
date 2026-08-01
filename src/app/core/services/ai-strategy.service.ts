@@ -157,6 +157,20 @@ export class AIStrategyService {
       // reinitialize() is a no-op when the key has not changed.
       const online = this.pwaService.isOnline();
       if (!userId) {
+        // Sign-out. The providers are root singletons and a router navigation
+        // does not touch them, so they have to be told. Guarded on having
+        // actually been up: the effect also runs once at start-up before auth
+        // resolves, and resetting there would clear the environment-key Gemini
+        // the constructor just brought up.
+        //
+        // Driven from here rather than AuthService.signOut() because
+        // ProviderKeyService injects AuthService — calling back the other way
+        // would close a dependency cycle. The cost is that the reset lands a
+        // microtask after sign-out resolves; sign-out navigates away, so
+        // nothing can reach a provider in that window.
+        if (this.providersInitializedFor() !== null) {
+          void this.cloudLLMProvider.resetProviders();
+        }
         this.providersInitializedFor.set(null);
         return;
       }

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 
 import { AIStrategyService, AI_CLOUD_UNAVAILABLE } from './ai-strategy.service';
@@ -19,6 +19,7 @@ describe('AIStrategyService', () => {
   let cloudMock: jasmine.SpyObj<CloudLLMProviderService>;
   let pwaMock: jasmine.SpyObj<PwaService>;
   let authMock: jasmine.SpyObj<AuthService>;
+  let authUserId: WritableSignal<string | null>;
   let visionMock: jasmine.SpyObj<VisionOcrService>;
   let appleMock: jasmine.SpyObj<AppleIntelligenceService>;
   let nativeMock: jasmine.SpyObj<NativeReceiptService>;
@@ -53,8 +54,13 @@ describe('AIStrategyService', () => {
   beforeEach(() => {
     localStorage.removeItem(PREFERENCES_STORAGE_KEY);
 
+    // initializeProviders and resetProviders are what the constructor's effect
+    // actually calls. The list used to name initializeFromUserPreferences,
+    // which no longer exists, and omit initializeProviders — so every run of
+    // this suite threw into an unobserved promise.
     cloudMock = jasmine.createSpyObj('CloudLLMProviderService', [
-      'initializeFromUserPreferences',
+      'initializeProviders',
+      'resetProviders',
       'hasAnyCloudProvider',
       'availableProviders',
       'providerStatus',
@@ -65,6 +71,8 @@ describe('AIStrategyService', () => {
       'setOpenAIModel',
       'setClaudeModel',
     ]);
+    cloudMock.initializeProviders.and.resolveTo();
+    cloudMock.resetProviders.and.resolveTo();
     cloudMock.hasAnyCloudProvider.and.returnValue(true);
     cloudMock.availableProviders.and.returnValue(['gemini']);
     cloudMock.providerStatus.and.returnValue({ gemini: true, openai: false, claude: false });
@@ -73,8 +81,9 @@ describe('AIStrategyService', () => {
     pwaMock = jasmine.createSpyObj('PwaService', ['isOnline']);
     pwaMock.isOnline.and.returnValue(true);
 
+    authUserId = signal<string | null>(null);
     authMock = jasmine.createSpyObj('AuthService', ['currentUser'], {
-      userId: signal<string | null>(null),
+      userId: authUserId,
     });
     authMock.currentUser.and.returnValue(null);
 
@@ -118,6 +127,49 @@ describe('AIStrategyService', () => {
     spyOn(Capacitor, 'getPlatform').and.returnValue(platform);
     return TestBed.inject(AIStrategyService);
   }
+
+  describe('provider lifecycle across accounts', () => {
+    // Sign-out is a router navigation, so every root singleton survives it. On
+    // a shared device that meant account B's receipts were sent to account A's
+    // provider on A's key — billed to A, and logged in A's provider account.
+    it('tears the providers down when the account signs out', () => {
+      authUserId.set('user-a');
+      const service = createService('web');
+      TestBed.flushEffects();
+      expect(cloudMock.initializeProviders).toHaveBeenCalled();
+
+      authUserId.set(null);
+      TestBed.flushEffects();
+
+      expect(cloudMock.resetProviders).toHaveBeenCalledTimes(1);
+      expect(service).toBeTruthy();
+    });
+
+    // The effect also runs once before auth resolves. Resetting there would
+    // clear the environment-key Gemini the constructor had just brought up.
+    it('does not reset on the first run before auth has resolved', () => {
+      createService('web');
+      TestBed.flushEffects();
+
+      expect(cloudMock.resetProviders).not.toHaveBeenCalled();
+    });
+
+    it('re-initializes for the next account rather than reusing the last one', () => {
+      authUserId.set('user-a');
+      createService('web');
+      TestBed.flushEffects();
+
+      authUserId.set(null);
+      TestBed.flushEffects();
+      cloudMock.initializeProviders.calls.reset();
+
+      authUserId.set('user-b');
+      TestBed.flushEffects();
+
+      expect(cloudMock.resetProviders).toHaveBeenCalledTimes(1);
+      expect(cloudMock.initializeProviders).toHaveBeenCalledTimes(1);
+    });
+  });
 
   describe('routing', () => {
     it('should not use native OCR on the web', () => {

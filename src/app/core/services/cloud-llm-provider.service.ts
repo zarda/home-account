@@ -54,6 +54,10 @@ export class CloudLLMProviderService {
    * Async because the keys are now a separate document rather than part of
    * the already-loaded user preferences; ProviderKeyService reads it once per
    * session, so this costs one read at startup and none afterwards.
+   *
+   * Every branch runs, including the absent-key one. These used to be guarded
+   * by `if (key)`, so signing in as an account with no key of its own left the
+   * previous account's clients standing and its keys in use.
    */
   async initializeProviders(textModelId?: string, visionModelId?: string): Promise<void> {
     const { gemini, openai, claude } = await this.providerKeys.resolve();
@@ -61,15 +65,37 @@ export class CloudLLMProviderService {
     if (gemini) {
       await this.geminiService.reinitialize(gemini, textModelId, visionModelId);
       console.log(`[CloudLLMProvider] Gemini initialized with API key${textModelId ? ` (text: ${textModelId}, vision: ${visionModelId})` : ''}`);
+    } else {
+      // Not reinitialize(undefined) — that re-arms from the environment key.
+      this.geminiService.clear();
     }
+
     if (openai) {
-      await this.openaiService.reinitialize(openai);
       console.log('[CloudLLMProvider] OpenAI initialized with API key');
     }
+    await this.openaiService.reinitialize(openai);
+
     if (claude) {
-      await this.claudeService.reinitialize(claude);
       console.log('[CloudLLMProvider] Claude initialized with API key');
     }
+    await this.claudeService.reinitialize(claude);
+  }
+
+  /**
+   * Tear every cloud client down and forget the cached keys.
+   *
+   * Sign-out is a router navigation, not a page load, so every providedIn:
+   * 'root' singleton survives it. Without this, account A's key stayed loaded
+   * in the provider clients and account B's receipts went out on it — billed
+   * to A, and landing in A's provider request logs.
+   */
+  async resetProviders(): Promise<void> {
+    this.providerKeys.clearCache();
+    this.geminiService.clear();
+    await Promise.all([
+      this.openaiService.reinitialize(),
+      this.claudeService.reinitialize(),
+    ]);
   }
 
   /**

@@ -75,6 +75,9 @@ describe('CloudLLMProviderService', () => {
     gemini = makeProviderSpy('GeminiService');
     openai = makeProviderSpy('OpenAIService') as unknown as jasmine.SpyObj<OpenAIService>;
     claude = makeProviderSpy('ClaudeService') as unknown as jasmine.SpyObj<ClaudeService>;
+    // Only Gemini has a clear() distinct from reinitialize(): it is the one
+    // provider whose reinitialize falls back to the environment key.
+    (gemini as unknown as { clear: jasmine.Spy }).clear = jasmine.createSpy('geminiClear');
     // OpenAI/Claude additionally expose setModel.
     (openai as unknown as { setModel: jasmine.Spy }).setModel = jasmine.createSpy('openaiSetModel');
     (claude as unknown as { setModel: jasmine.Spy }).setModel = jasmine.createSpy('claudeSetModel');
@@ -86,6 +89,7 @@ describe('CloudLLMProviderService', () => {
       'resolve',
       'getKey',
       'setKey',
+      'clearCache',
     ]);
     providerKeys.resolve.and.resolveTo({});
     providerKeys.getKey.and.resolveTo(undefined);
@@ -142,24 +146,34 @@ describe('CloudLLMProviderService', () => {
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize).toHaveBeenCalledWith('c-key');
     });
 
-    it('skips providers without an API key', async () => {
+    // These two used to assert that a provider without a key was skipped,
+    // which is the defect: signing in as an account with no key of its own
+    // left the previous account's clients standing and its keys in use.
+    it('clears providers the account has no key for', async () => {
       providerKeys.resolve.and.resolveTo({ gemini: 'g-key' });
 
       await service.initializeProviders();
 
       expect(gemini.reinitialize).toHaveBeenCalledWith('g-key', undefined, undefined);
-      expect((openai as unknown as jasmine.SpyObj<GeminiService>).reinitialize).not.toHaveBeenCalled();
-      expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize).not.toHaveBeenCalled();
+      expect((openai as unknown as jasmine.SpyObj<GeminiService>).reinitialize)
+        .toHaveBeenCalledWith(undefined);
+      expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize)
+        .toHaveBeenCalledWith(undefined);
     });
 
-    it('does nothing when no keys are stored', async () => {
+    it('clears every provider when the account has no keys at all', async () => {
       providerKeys.resolve.and.resolveTo({});
 
       await service.initializeProviders();
 
+      // clear(), not reinitialize(undefined) — the latter re-arms Gemini from
+      // the environment key the build ships.
+      expect((gemini as unknown as { clear: jasmine.Spy }).clear).toHaveBeenCalled();
       expect(gemini.reinitialize).not.toHaveBeenCalled();
-      expect((openai as unknown as jasmine.SpyObj<GeminiService>).reinitialize).not.toHaveBeenCalled();
-      expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize).not.toHaveBeenCalled();
+      expect((openai as unknown as jasmine.SpyObj<GeminiService>).reinitialize)
+        .toHaveBeenCalledWith(undefined);
+      expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize)
+        .toHaveBeenCalledWith(undefined);
     });
 
     // The keys never travel through the user document any more.
@@ -170,6 +184,19 @@ describe('CloudLLMProviderService', () => {
 
       expect(providerKeys.resolve).toHaveBeenCalled();
       expect(auth.currentUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetProviders', () => {
+    it('tears down every client and forgets the cached keys', async () => {
+      await service.resetProviders();
+
+      expect((gemini as unknown as { clear: jasmine.Spy }).clear).toHaveBeenCalled();
+      expect((openai as unknown as jasmine.SpyObj<GeminiService>).reinitialize)
+        .toHaveBeenCalledWith();
+      expect((claude as unknown as jasmine.SpyObj<GeminiService>).reinitialize)
+        .toHaveBeenCalledWith();
+      expect(providerKeys.clearCache).toHaveBeenCalled();
     });
   });
 

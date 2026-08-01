@@ -155,11 +155,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
 
     if (!apiKey || apiKey.startsWith('${')) {
       console.warn('[GeminiService] No valid API key found. Custom:', !!customApiKey, 'Environment:', !!(environment as { geminiApiKey?: string }).geminiApiKey);
-      this.genAI = null;
-      this.textModel = null;
-      this.visionModel = null;
-      this.currentApiKey = null;
-      this._isAvailable.set(false);
+      this.clear();
       return;
     }
 
@@ -211,6 +207,22 @@ export class GeminiService implements CloudLLMProviderAdapter {
    */
   reinitialize(apiKey?: string, textModelId?: string, visionModelId?: string): Promise<void> {
     return this.initializeGemini(apiKey, textModelId, visionModelId);
+  }
+
+  /**
+   * Tear the client down and report unavailable.
+   *
+   * Distinct from `reinitialize()` with no key, which falls back to the build's
+   * environment key — right at start-up, wrong at sign-out. On a build that
+   * ships one, clearing via reinitialize would re-arm Gemini under the
+   * departing account's key and leave it available to the next account.
+   */
+  clear(): void {
+    this.genAI = null;
+    this.textModel = null;
+    this.visionModel = null;
+    this.currentApiKey = null;
+    this._isAvailable.set(false);
   }
 
   // Check if Gemini is available
