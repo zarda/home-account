@@ -279,6 +279,35 @@ describe('insight-card.utils', () => {
     });
   });
 
+  describe('from-zero trends', () => {
+    // Spending that starts mid-window: the first-half mean is 0, so the
+    // change ratio is undefined — a card asserting a direction with a
+    // percentage of exactly 0 would be wrong on both counts.
+    function startedMidWindow(): Transaction[] {
+      const transactions: Transaction[] = [];
+      for (let month = 3; month < 6; month += 1) {
+        for (const day of [4, 14, 24]) {
+          transactions.push(expense(new Date(2026, month, day), 40, {
+            description: 'Game Pass', categoryId: 'entertainment_gaming',
+          }));
+        }
+      }
+      return transactions;
+    }
+
+    it('gives a from-zero category its own wording instead of up 0%', () => {
+      const card = cardsFor([...richHistory(), ...startedMidWindow()])
+        .find(c => c.kind === 'categoryTrend' && c.categoryIds[0] === 'entertainment_gaming');
+
+      expect(card).toBeDefined();
+      expect(card!.titleKey).toBe('insights.trendStartedTitle');
+      expect(card!.bodyKey).toBe('insights.trendStartedBody');
+      expect('percent' in card!.params).toBeFalse();
+      expect(card!.params['share']).toBeGreaterThan(0);
+      expect(card!.params['months']).toBe(6);
+    });
+  });
+
   describe('ordering', () => {
     it('puts the recurring portfolio first', () => {
       expect(cardsFor(richHistory())[0].kind).toBe('recurringPortfolio');

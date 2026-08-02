@@ -1028,6 +1028,8 @@
     "trendRisingBody": "Up {{percent}}% over the last {{months}} months, and {{share}}% of your spending.",
     "trendFallingTitle": "Falling",
     "trendFallingBody": "Down {{percent}}% over the last {{months}} months, and {{share}}% of your spending.",
+    "trendStartedTitle": "Newly active",
+    "trendStartedBody": "New spending in the last {{months}} months, and {{share}}% of your total.",
     "weekendLeanTitle": "Weekend days cost more",
     "weekendLeanBody": "{{percent}}% more per weekend day than per weekday, across {{counted}} of {{total}} transactions.",
     "weekdayLeanTitle": "Weekdays cost more",

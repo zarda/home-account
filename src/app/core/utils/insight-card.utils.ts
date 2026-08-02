@@ -63,6 +63,8 @@ export const INSIGHT_CARD_KEYS: readonly string[] = [
   'insights.trendRisingBody',
   'insights.trendFallingTitle',
   'insights.trendFallingBody',
+  'insights.trendStartedTitle',
+  'insights.trendStartedBody',
   'insights.weekendLeanTitle',
   'insights.weekendLeanBody',
   'insights.weekdayLeanTitle',
@@ -223,16 +225,28 @@ export function buildInsightCards(
   // whole category, so this navigates away to the Transactions page.
   for (const trend of facts.trends.slice(0, settings.trendCap)) {
     const rising = trend.direction === 'rising';
+    // A null ratio means the first half of the window had no spending at
+    // all: the category started from zero, and no percentage change exists.
+    // The narrative path already renders this case as n/a; a card must not
+    // claim a direction with "0%" interpolated into it.
+    const started = trend.changeRatio === null;
     cards.push({
       id: `categoryTrend:${trend.categoryId}`,
       kind: 'categoryTrend',
-      titleKey: rising ? 'insights.trendRisingTitle' : 'insights.trendFallingTitle',
-      bodyKey: rising ? 'insights.trendRisingBody' : 'insights.trendFallingBody',
-      params: {
-        months: facts.window.months.length,
-        percent: trend.changeRatio !== null ? Math.abs(percentOf(trend.changeRatio)) : 0,
-        share: percentOf(trend.windowShare),
-      },
+      titleKey: started ? 'insights.trendStartedTitle'
+        : rising ? 'insights.trendRisingTitle' : 'insights.trendFallingTitle',
+      bodyKey: started ? 'insights.trendStartedBody'
+        : rising ? 'insights.trendRisingBody' : 'insights.trendFallingBody',
+      params: started
+        ? {
+            months: facts.window.months.length,
+            share: percentOf(trend.windowShare),
+          }
+        : {
+            months: facts.window.months.length,
+            percent: Math.abs(percentOf(trend.changeRatio ?? 0)),
+            share: percentOf(trend.windowShare),
+          },
       metrics: {
         firstHalfMean: trend.firstHalfMean,
         secondHalfMean: trend.secondHalfMean,
