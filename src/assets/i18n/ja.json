@@ -399,6 +399,7 @@
     "recurringPaused": "定期取引を一時停止しました",
     "recurringResumed": "定期取引を再開しました",
     "recurringDeleted": "定期取引を削除しました",
+    "recurringDeleteFailed": "定期取引を削除できませんでした",
     "recurringCreated": "定期取引を作成しました",
     "recurringCreateFailed": "定期取引の作成に失敗しました",
     "recurringUpdated": "定期取引を更新しました",

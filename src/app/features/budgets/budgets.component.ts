@@ -10,6 +10,7 @@ import { Subscription } from 'rxjs';
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { Budget, Category } from '../../models';
 import { BudgetOverviewComponent } from './budget-overview/budget-overview.component';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form/budget-form.component';
@@ -43,6 +44,7 @@ export class BudgetsComponent implements OnInit, OnDestroy {
   private budgetService = inject(BudgetService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
+  private notifications = inject(NotificationService);
   private dialog = inject(MatDialog);
 
   budgets = this.budgetService.budgets;
@@ -135,8 +137,11 @@ export class BudgetsComponent implements OnInit, OnDestroy {
       if (confirmed) {
         try {
           await this.budgetService.deleteBudget(budget.id);
-        } catch {
-          // Delete failed silently
+        } catch (error) {
+          // The card stays on screen; the user has to be told the delete
+          // did not happen.
+          console.error('[Budgets] Delete failed:', error);
+          this.notifications.error(this.translationService.t('common.error'));
         }
       }
     });

@@ -20,6 +20,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { Budget, CreateBudgetDTO, BudgetPeriod, baseCurrencyOf} from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
@@ -62,6 +63,7 @@ export class BudgetFormComponent implements OnInit {
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
   private analytics = inject(AnalyticsService);
+  private notifications = inject(NotificationService);
 
   form!: FormGroup;
   isSubmitting = signal(false);
@@ -156,8 +158,11 @@ export class BudgetFormComponent implements OnInit {
       }
 
       this.dialogRef.close(true);
-    } catch {
-      // Save failed - could add snackbar notification here
+    } catch (error) {
+      // The dialog stays open with a stopped spinner; without a message the
+      // save just looks ignored.
+      console.error('[BudgetForm] Save failed:', error);
+      this.notifications.error(this.translationService.t('common.error'));
     } finally {
       this.isSubmitting.set(false);
     }

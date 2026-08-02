@@ -408,6 +408,7 @@
     "recurringPaused": "Recurring transaction paused",
     "recurringResumed": "Recurring transaction resumed",
     "recurringDeleted": "Recurring transaction deleted",
+    "recurringDeleteFailed": "Failed to delete recurring transaction",
     "recurringCreated": "Recurring transaction created",
     "recurringCreateFailed": "Failed to create recurring transaction",
     "recurringUpdated": "Recurring transaction updated",

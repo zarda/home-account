@@ -264,6 +264,17 @@ describe('RecurringTransactionsComponent', () => {
       expect(mockRecurringService.deleteRecurring).toHaveBeenCalledWith('rec1');
     }));
 
+    it('reports a failed delete instead of stopping at the confirm dialog', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      mockRecurringService.deleteRecurring.and.rejectWith(new Error('nope'));
+
+      component.deleteRecurring(mockRecurring[0]);
+      tick();
+
+      expect(notifications.error).toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
+
     it('should not delete when not confirmed', fakeAsync(() => {
       const mockDialogRef = { afterClosed: () => of(false) };
       mockDialog.open.and.returnValue(mockDialogRef as never);

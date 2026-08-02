@@ -125,6 +125,8 @@ export class RecurringTransactionsComponent implements OnInit {
         this.recurringService.deleteRecurring(recurring.id).then(() => {
           const message = this.t('settings.recurringDeleted');
           this.notifications.success(message);
+        }).catch(() => {
+          this.notifications.error(this.t('settings.recurringDeleteFailed'));
         });
       }
     });

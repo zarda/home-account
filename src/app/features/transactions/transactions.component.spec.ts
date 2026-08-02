@@ -10,6 +10,7 @@ import { TransactionWindowService } from '../../core/services/transaction-window
 import { CategoryService } from '../../core/services/category.service';
 import { DeviceService } from '../../core/services/device.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
 import { CameraCaptureComponent } from './camera-capture/camera-capture.component';
@@ -99,6 +100,10 @@ describe('TransactionsComponent', () => {
         { provide: CategoryService, useValue: categoryService },
         { provide: DeviceService, useValue: {} },
         { provide: TranslationService, useValue: translation },
+        {
+          provide: NotificationService,
+          useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
+        },
         { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialog, useValue: dialog },
         { provide: Router, useValue: router },
@@ -296,10 +301,16 @@ describe('TransactionsComponent', () => {
     expect(transactionService.deleteTransaction).toHaveBeenCalledWith('x');
   });
 
-  it('onDeleteTransaction swallows errors', async () => {
+  it('onDeleteTransaction reports a failed delete instead of swallowing it', async () => {
     transactionService.deleteTransaction.and.rejectWith(new Error('nope'));
+    spyOn(console, 'error');
     const component = build().componentInstance;
+
     await expectAsync(component.onDeleteTransaction(createTransaction())).toBeResolved();
+
+    const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+    expect(notifications.error).toHaveBeenCalledWith('common.error');
+    expect(console.error).toHaveBeenCalled();
   });
 
   it('navigateToImportFile routes to the import wizard', () => {

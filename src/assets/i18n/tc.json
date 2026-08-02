@@ -408,6 +408,7 @@
     "recurringPaused": "定期交易已暫停",
     "recurringResumed": "定期交易已恢復",
     "recurringDeleted": "定期交易已刪除",
+    "recurringDeleteFailed": "無法刪除定期交易",
     "recurringCreated": "定期交易已建立",
     "recurringCreateFailed": "建立定期交易失敗",
     "recurringUpdated": "定期交易已更新",
