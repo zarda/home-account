@@ -206,12 +206,45 @@
 .dialog-container {
   display: flex;
   flex-direction: column;
+  // Fallback cap for browsers without dvh/min() support.
   max-height: 90vh;
+  // The real bound is the *visible* viewport: iOS resolves vh against the
+  // largest viewport (Safari toolbars collapsed), so a 90vh dialog clips
+  // behind the toolbars and the pinned actions row — with the submit
+  // button — ends up off-screen. dvh tracks the toolbars, the safe-area
+  // insets keep the actions off the home indicator in the installed app,
+  // and 24px is breathing room to the viewport edges.
+  max-height: min(
+    90vh,
+    calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 24px)
+  );
+
+  // The form sits between the header and the container edge; it has to be
+  // a flex column too, or capping the container would clip its children
+  // instead of shrinking the scrollable content between header and actions.
+  form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  // Only the content gives up height — a squeezed viewport must never
+  // shrink the title bar or the actions row instead.
+  app-dialog-header {
+    flex-shrink: 0;
+  }
 }
 
 .dialog-content {
   padding: 24px !important;
   overflow-y: auto !important;
+  // Material caps mat-dialog-content at 65vh with no idea how tall the
+  // header and actions sharing the dialog are. The container cap above is
+  // the honest bound, so let the content take whatever height is left and
+  // scroll within it.
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none !important;
 }
 
 .type-toggle-container {
@@ -292,6 +325,7 @@
   padding: 16px 24px !important;
   @apply border-t border-gray-200 dark:border-gray-700;
   margin: 0 !important;
+  flex-shrink: 0;
 }
 
 .cancel-button {
