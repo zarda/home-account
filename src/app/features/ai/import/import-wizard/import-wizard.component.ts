@@ -382,6 +382,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const file = this.selectedFiles()[0];
+      // The service iterates the selected subset and numbers its per-row
+      // errors against it (1-based); snapshot the same subset now so those
+      // numbers can be mapped back to rows. Safe to take before the await:
+      // the review UI is unreachable while isImporting disables the stepper.
+      const submitted = this.extractedTransactions().filter(t => t.selected);
       const result = await this.importService.confirmImport(
         this.extractedTransactions(),
         file?.name || 'import',
@@ -389,6 +394,34 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         'csv',
         'generic_csv'
       );
+
+      if (result.errorCount > 0) {
+        // Some rows were rejected (a zero-amount summary line, a rules
+        // denial). Navigating away would destroy the only copy of them and
+        // report success, leaving the user's reconciliation silently short.
+        // Keep exactly the failed rows on the review step for correction and
+        // a second confirm — the saved ones are removed so confirming again
+        // cannot double-import them.
+        const failedRows = (result.errors ?? [])
+          .map(e => (typeof e.row === 'number' ? submitted[e.row - 1] : undefined))
+          .filter((t): t is CategorizedImportTransaction => t !== undefined)
+          .map(t => ({ ...t, selected: true, isDuplicate: false }));
+
+        this.extractedTransactions.set(failedRows);
+        this.duplicateChecks.set([]);
+        this.selectedTransactionIds.set(new Set(failedRows.map(t => t.id)));
+
+        this.notifications.error(this.t('import.importPartial', {
+          success: result.successCount,
+          failed: result.errorCount,
+          total: result.successCount + result.errorCount,
+        }));
+
+        if (this.stepper) {
+          this.stepper.selectedIndex = 2;
+        }
+        return;
+      }
 
       const message = this.t('import.importComplete', { count: result.successCount });
       this.notifications.success(message);

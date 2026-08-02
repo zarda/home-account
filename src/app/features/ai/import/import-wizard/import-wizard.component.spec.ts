@@ -414,6 +414,40 @@ describe('ImportWizardComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('import.importFailed');
     }));
 
+    it('keeps exactly the failed rows on screen after a partial import', fakeAsync(() => {
+      const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({
+        ...mockTransactions[0], id, selected, isDuplicate,
+      });
+      // An unselected duplicate sits between selected rows: the service
+      // numbers its errors against the selected subset only, so mapping
+      // row 2 must land on `b`, not on the duplicate.
+      component.extractedTransactions.set([
+        row('a', true), row('dup', false, true), row('b', true), row('c', true),
+      ]);
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'csv' as const, fileType: 'generic_csv' as const,
+        fileName: 'test.csv', fileSize: 1024,
+        transactionCount: 3, successCount: 2, skippedCount: 1, errorCount: 1,
+        totalIncome: 0, totalExpenses: 10, duplicatesSkipped: 1,
+        status: 'partial' as const,
+        errors: [{ row: 2, message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+      }));
+
+      component.confirmImport();
+      tick();
+
+      // No navigation — leaving would destroy the only copy of the rows.
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+      expect(notifications.error).toHaveBeenCalledWith('import.importPartial');
+      expect(notifications.success).not.toHaveBeenCalled();
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['b']);
+      expect(component.extractedTransactions()[0].selected).toBeTrue();
+      expect(component.selectedTransactionIds().has('b')).toBeTrue();
+      expect(component.duplicateChecks()).toEqual([]);
+      expect(component.isImporting()).toBeFalse();
+    }));
+
     it('treats a failed read-back as saved: info toast, still navigates', fakeAsync(() => {
       // The rows were written; only the summary read failed. An error toast
       // here would invite a retry that duplicates the whole batch.
