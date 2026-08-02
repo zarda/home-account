@@ -184,7 +184,7 @@ export class ExportService {
     // Build CSV header
     const headers = options?.format === 'summary'
       ? ['Date', 'Type', 'Category', 'Amount', 'Currency']
-      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags', 'Location'];
+      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags', 'Location', 'Period', 'Recurring'];
 
     // Build CSV rows
     const rows = filtered.map(t => {
@@ -213,7 +213,9 @@ export class ExportService {
         (t.tags ?? []).join('; '),
         // Name only: coordinates belong in the JSON backup, which carries
         // the whole transaction.
-        this.escapeCSV(t.location?.name ?? '')
+        this.escapeCSV(t.location?.name ?? ''),
+        t.period ?? '',
+        t.isRecurring ? 'Yes' : 'No'
       ];
     });
 
@@ -461,6 +463,8 @@ export class ExportService {
     // $1,200. Optional, so it is left out of the row-length guard below and a
     // bank CSV without one still imports.
     const currencyCol = this.findColumn(headers, ['currency']);
+    const periodCol = this.findColumn(headers, ['period']);
+    const recurringCol = this.findColumn(headers, ['recurring']);
 
     for (let i = 1; i < lines.length; i++) {
       const values = this.parseCSVLine(lines[i]);
@@ -502,7 +506,9 @@ export class ExportService {
         description: values[descCol] || 'Unknown',
         amount: Math.abs(amount),
         type,
-        ...(currency ? { currency } : {})
+        ...(currency ? { currency } : {}),
+        ...(periodCol >= 0 && periodCol < values.length && values[periodCol] ? { period: this.parsePeriod(values[periodCol]) } : {}),
+        ...(recurringCol >= 0 && recurringCol < values.length ? { isRecurring: this.parseBool(values[recurringCol]) } : {})
       });
     }
 
@@ -601,6 +607,21 @@ export class ExportService {
     // Fallback to Date.parse
     const parsed = Date.parse(value);
     return isNaN(parsed) ? new Date() : new Date(parsed);
+  }
+
+  // Helper: Parse period string to BudgetPeriod, dropping unrecognised values
+  private parsePeriod(value: string): BudgetPeriod | undefined {
+    const v = value.trim().toLowerCase();
+    if (v === 'weekly' || v === 'monthly' || v === 'yearly') {
+      return v;
+    }
+    return undefined;
+  }
+
+  // Helper: Parse boolean-like strings
+  private parseBool(value: string): boolean {
+    const v = value.trim().toLowerCase();
+    return v === 'yes' || v === 'true' || v === '1';
   }
 
   // Check if File System Access API is available
