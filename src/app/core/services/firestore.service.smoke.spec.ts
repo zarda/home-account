@@ -227,3 +227,300 @@ describe('FirestoreService.getPage (emulator smoke test)', () => {
     );
   });
 });
+
+/**
+ * Integration smoke test for the rest of FirestoreService against the
+ * emulator: one-shot reads, counting, writes and their timestamp stamping,
+ * undefined-field behaviour, live subscriptions with teardown, the
+ * rules-denied error path, and transactions. getPage has its own suite above.
+ *
+ * Every row is a legal transaction per firestore.rules — the service is a
+ * thin wrapper and the rules run on every write, so an illegal fixture would
+ * test the rules, not the wrapper.
+ */
+describe('FirestoreService reads, writes and subscriptions (emulator smoke test)', () => {
+  const FIRESTORE_HOST = '127.0.0.1';
+  const FIRESTORE_PORT = 8080;
+  const AUTH_URL = 'http://127.0.0.1:9099';
+  const BASE = Date.UTC(2026, 5, 30, 12);
+
+  let app: FirebaseApp;
+  let auth: Auth;
+  let firestore: ReturnType<typeof getFirestore>;
+  let uid: string;
+  let service: FirestoreService;
+  let path: string;
+
+  interface Row {
+    id: string;
+    index: number;
+    amount: number;
+    categoryId: string;
+    description: string;
+  }
+
+  function legalRow(index: number, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      date: Timestamp.fromMillis(BASE - index * 86_400_000),
+      index,
+      userId: uid,
+      type: 'expense',
+      amount: 10 + index,
+      currency: 'USD',
+      amountInBaseCurrency: 10 + index,
+      exchangeRate: 1,
+      categoryId: index % 2 === 0 ? 'smoke_even' : 'smoke_odd',
+      description: `rw smoke ${index}`,
+      isRecurring: false,
+      ...overrides
+    };
+  }
+
+  async function waitFor(predicate: () => boolean, what: string, timeoutMs = 5000): Promise<void> {
+    const start = Date.now();
+    while (!predicate()) {
+      if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${what}`);
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+  }
+
+  beforeAll(async () => {
+    app = initializeApp(
+      { apiKey: 'fake-api-key', projectId: 'demo-home-account' },
+      `firestore-rw-smoke-${Date.now()}`
+    );
+    auth = getAuth(app);
+    connectAuthEmulator(auth, AUTH_URL, { disableWarnings: true });
+    firestore = getFirestore(app);
+    connectFirestoreEmulator(firestore, FIRESTORE_HOST, FIRESTORE_PORT);
+
+    const credential = await signInAnonymously(auth);
+    uid = credential.user.uid;
+    path = `users/${uid}/transactions`;
+
+    await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        setDoc(doc(firestore, `${path}/rw-smoke-${i}`), legalRow(i))
+      )
+    );
+  });
+
+  afterAll(async () => {
+    await deleteApp(app).catch(() => undefined);
+  });
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [FirestoreService, { provide: Firestore, useValue: firestore }]
+    });
+    service = TestBed.inject(FirestoreService);
+  });
+
+  describe('one-shot reads', () => {
+    it('getDocument merges the document id into the data', async () => {
+      const row = await service.getDocument<Row>(`${path}/rw-smoke-0`);
+
+      expect(row).not.toBeNull();
+      expect(row!.id).toBe('rw-smoke-0');
+      expect(row!.amount).toBe(10);
+      expect(row!.description).toBe('rw smoke 0');
+    });
+
+    it('getDocument resolves null for a missing document', async () => {
+      expect(await service.getDocument(`${path}/never-written`)).toBeNull();
+    });
+
+    it('getCollection honours where, orderBy and limit together', async () => {
+      const rows = await service.getCollection<Row>(path, {
+        where: [{ field: 'categoryId', op: '==', value: 'smoke_even' }],
+        orderBy: [{ field: 'amount', direction: 'desc' }],
+        limit: 2
+      });
+
+      expect(rows.map(r => r.id)).toEqual(['rw-smoke-4', 'rw-smoke-2']);
+    });
+
+    it('countDocuments counts server-side without downloading', async () => {
+      expect(await service.countDocuments(path, {
+        where: [{ field: 'categoryId', op: '==', value: 'smoke_odd' }]
+      })).toBe(3);
+    });
+  });
+
+  describe('writes', () => {
+    it('addDocument stamps createdAt and updatedAt and returns the new id', async () => {
+      const id = await service.addDocument(path, legalRow(50));
+
+      const written = await service.getDocument<Row & { createdAt: Timestamp; updatedAt: Timestamp }>(
+        `${path}/${id}`);
+      expect(written!.createdAt instanceof Timestamp).toBeTrue();
+      expect(written!.updatedAt instanceof Timestamp).toBeTrue();
+      expect(written!.amount).toBe(60);
+      await deleteDoc(doc(firestore, `${path}/${id}`));
+    });
+
+    it('setDocument with merge keeps untouched fields and bumps updatedAt', async () => {
+      await setDoc(doc(firestore, `${path}/rw-merge`), legalRow(51));
+
+      await service.setDocument(`${path}/rw-merge`, { description: 'merged' }, true);
+
+      const row = await service.getDocument<Row & { updatedAt: Timestamp }>(`${path}/rw-merge`);
+      expect(row!.description).toBe('merged');
+      expect(row!.amount).toBe(61);
+      expect(row!.updatedAt instanceof Timestamp).toBeTrue();
+      await deleteDoc(doc(firestore, `${path}/rw-merge`));
+    });
+
+    it('setDocument without merge replaces the whole document', async () => {
+      await setDoc(doc(firestore, `${path}/rw-replace`), legalRow(52, { note: 'to be dropped' }));
+
+      await service.setDocument(`${path}/rw-replace`, legalRow(53));
+
+      const row = await service.getDocument<Row & { note?: string }>(`${path}/rw-replace`);
+      expect(row!.amount).toBe(63);
+      expect(row!.note).toBeUndefined();
+      await deleteDoc(doc(firestore, `${path}/rw-replace`));
+    });
+
+    it('updateDocument patches fields and stamps updatedAt', async () => {
+      await setDoc(doc(firestore, `${path}/rw-update`), legalRow(54));
+
+      await service.updateDocument(`${path}/rw-update`, { amount: 42 });
+
+      const row = await service.getDocument<Row & { updatedAt: Timestamp }>(`${path}/rw-update`);
+      expect(row!.amount).toBe(42);
+      expect(row!.description).toBe('rw smoke 54');
+      expect(row!.updatedAt instanceof Timestamp).toBeTrue();
+      await deleteDoc(doc(firestore, `${path}/rw-update`));
+    });
+
+    it('deleteDocument removes the document', async () => {
+      await setDoc(doc(firestore, `${path}/rw-delete`), legalRow(55));
+
+      await service.deleteDocument(`${path}/rw-delete`);
+
+      expect(await service.getDocument(`${path}/rw-delete`)).toBeNull();
+    });
+
+    it('rejects a write carrying an undefined field, so callers must strip them', async () => {
+      // The SDK refuses undefined field values outright; the wrapper adds no
+      // sanitisation. This is the contract every caller has to respect —
+      // exactly the surface the tier-3 write-shape defects live on.
+      await expectAsync(
+        service.addDocument(path, legalRow(56, { note: undefined }))
+      ).toBeRejected();
+    });
+  });
+
+  describe('live subscriptions', () => {
+    it('subscribeToCollection emits the initial set, live changes, and stops after unsubscribe', async () => {
+      const probe = { field: 'categoryId', op: '==' as const, value: 'live_probe' };
+      const emissions: Row[][] = [];
+      const sub = service.subscribeToCollection<Row>(path, { where: [probe] })
+        .subscribe(rows => emissions.push(rows));
+
+      await waitFor(() => emissions.length >= 1, 'initial emission');
+      expect(emissions[0]).toEqual([]);
+
+      await setDoc(doc(firestore, `${path}/rw-live-1`), legalRow(57, { categoryId: 'live_probe' }));
+      await waitFor(() => emissions.some(rows => rows.some(r => r.id === 'rw-live-1')),
+        'the live add to arrive');
+
+      const countWhenUnsubscribed = emissions.length;
+      sub.unsubscribe();
+
+      await setDoc(doc(firestore, `${path}/rw-live-2`), legalRow(58, { categoryId: 'live_probe' }));
+      // A fresh listener proves the server processed the second write...
+      const late = service.subscribeToCollection<Row>(path, { where: [probe] });
+      const lateRows: Row[][] = [];
+      const lateSub = late.subscribe(rows => lateRows.push(rows));
+      await waitFor(() => lateRows.some(rows => rows.some(r => r.id === 'rw-live-2')),
+        'the fresh listener to see the second write');
+      lateSub.unsubscribe();
+
+      // ...while the torn-down one never heard about it.
+      expect(emissions.length).toBe(countWhenUnsubscribed);
+
+      await deleteDoc(doc(firestore, `${path}/rw-live-1`));
+      await deleteDoc(doc(firestore, `${path}/rw-live-2`));
+    });
+
+    it('subscribeToDocument emits null for a missing doc, then values, and stops after unsubscribe', async () => {
+      const emissions: (Row | null)[] = [];
+      const sub = service.subscribeToDocument<Row>(`${path}/rw-live-doc`)
+        .subscribe(row => emissions.push(row));
+
+      await waitFor(() => emissions.length >= 1, 'initial emission');
+      expect(emissions[0]).toBeNull();
+
+      await setDoc(doc(firestore, `${path}/rw-live-doc`), legalRow(59));
+      await waitFor(() => emissions.some(row => row?.id === 'rw-live-doc'), 'the created doc');
+
+      const countWhenUnsubscribed = emissions.length;
+      sub.unsubscribe();
+
+      await deleteDoc(doc(firestore, `${path}/rw-live-doc`));
+      await new Promise(resolve => setTimeout(resolve, 150));
+      expect(emissions.length).toBe(countWhenUnsubscribed);
+    });
+
+    it('surfaces a rules denial as a subscription error', async () => {
+      const errors: unknown[] = [];
+      const sub = service.subscribeToCollection('users/somebody-else/transactions')
+        .subscribe({ error: e => errors.push(e) });
+
+      await waitFor(() => errors.length === 1, 'the permission error');
+      sub.unsubscribe();
+    });
+  });
+
+  describe('transactions', () => {
+    it('runTransaction commits a read-modify-write atomically', async () => {
+      await setDoc(doc(firestore, `${path}/rw-txn`), legalRow(60));
+      const ref = service.getDocRef<Row>(`${path}/rw-txn`);
+
+      const result = await service.runTransaction(async txn => {
+        const snap = await txn.get(ref);
+        const amount = (snap.data() as Row).amount;
+        txn.update(ref, { amount: amount + 5 });
+        return amount;
+      });
+
+      expect(result).toBe(70);
+      expect((await service.getDocument<Row>(`${path}/rw-txn`))!.amount).toBe(75);
+      await deleteDoc(doc(firestore, `${path}/rw-txn`));
+    });
+
+    it('runTransaction rejects and applies nothing when the update function throws', async () => {
+      await setDoc(doc(firestore, `${path}/rw-txn-abort`), legalRow(61));
+      const ref = service.getDocRef<Row>(`${path}/rw-txn-abort`);
+
+      await expectAsync(service.runTransaction(async txn => {
+        await txn.get(ref);
+        txn.update(ref, { amount: 999 });
+        throw new Error('abort');
+      })).toBeRejectedWithError('abort');
+
+      expect((await service.getDocument<Row>(`${path}/rw-txn-abort`))!.amount).toBe(71);
+      await deleteDoc(doc(firestore, `${path}/rw-txn-abort`));
+    });
+  });
+
+  describe('reference and timestamp helpers', () => {
+    it('generateId issues distinct non-empty ids', () => {
+      const a = service.generateId(path);
+      const b = service.generateId(path);
+      expect(a.length).toBeGreaterThan(0);
+      expect(a).not.toBe(b);
+    });
+
+    it('converts between Date and Timestamp both ways', () => {
+      const date = new Date(2026, 7, 1, 12, 30);
+      expect(service.timestampToDate(service.dateToTimestamp(date)).getTime())
+        .toBe(date.getTime());
+      expect(service.getTimestamp() instanceof Timestamp).toBeTrue();
+      expect(service.getCollectionRef(path).path).toBe(path);
+      expect(service.getDocRef(`${path}/x`).path).toBe(`${path}/x`);
+    });
+  });
+});
