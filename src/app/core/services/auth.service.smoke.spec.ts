@@ -15,18 +15,22 @@ import {
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
+import { signal } from '@angular/core';
 import { AuthService } from './auth.service';
 import { TranslationService } from './translation.service';
 import { ThemeService } from './theme.service';
 import { SecurityLogService } from './security-log.service';
-import { DEFAULT_USER_PREFERENCES, UserPreferences } from '../../models';
+import { NotificationService } from './notification.service';
+import { PwaService } from './pwa.service';
+import { DEFAULT_USER_PREFERENCES } from '../../models';
 
 /**
  * Integration smoke test for AuthService against the auth and Firestore
  * emulators: the create and existing branches of the profile load, the
  * profile-load failure path (a signed-in auth user whose Firestore is
- * unreachable must land in a clean signed-out state, not a crash), and the
- * three profile/preference write paths with their exact written shapes.
+ * unreachable must stay signed in on a degraded fallback profile, not be
+ * bounced to login), and the three profile/preference write paths with
+ * their exact written shapes.
  *
  * The module-level @angular/fire calls the service makes cannot be spied on,
  * which is why this coverage runs against the emulator rather than in the
@@ -41,13 +45,23 @@ describe('AuthService (emulator smoke test)', () => {
     return [
       {
         provide: TranslationService,
-        useValue: { syncFromDatabase: jasmine.createSpy('syncFromDatabase') }
+        useValue: {
+          syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
+          t: jasmine.createSpy('t').and.callFake((k: string) => k)
+        }
       },
       { provide: ThemeService, useValue: { init: jasmine.createSpy('init') } },
       {
         provide: SecurityLogService,
         useValue: { record: jasmine.createSpy('record').and.resolveTo() }
-      }
+      },
+      {
+        provide: NotificationService,
+        useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
+      },
+      // Offline by default so the profile-retry effect only runs when a
+      // spec flips it deliberately.
+      { provide: PwaService, useValue: { isOnline: signal(false) } }
     ];
   }
 
@@ -135,7 +149,15 @@ describe('AuthService (emulator smoke test)', () => {
       expect(service.currentUser()!.displayName).toBe('Seeded Name');
       expect(service.currentUser()!.email).toBe('seeded@example.com');
 
-      const stored = (await getDoc(userRef())).data()!;
+      // The lastLoginAt bump is deliberately not awaited by the service (an
+      // offline launch must not block on it), so poll for it here.
+      let stored = (await getDoc(userRef())).data()!;
+      const start = Date.now();
+      while ((stored['lastLoginAt'] as Timestamp).toMillis() <= 1_000) {
+        if (Date.now() - start > 5000) break;
+        await new Promise(resolve => setTimeout(resolve, 25));
+        stored = (await getDoc(userRef())).data()!;
+      }
       expect((stored['lastLoginAt'] as Timestamp).toMillis()).toBeGreaterThan(1_000);
       expect((stored['createdAt'] as Timestamp).toMillis()).toBe(1_000);
     });
@@ -151,15 +173,21 @@ describe('AuthService (emulator smoke test)', () => {
       expect(emissions[0]!.id).toBe(uid);
     });
 
-    it('updateUserPreferences writes the whole merged map and mirrors it locally', async () => {
+    it('updateUserPreferences sends only the touched key, so concurrent edits survive', async () => {
       const service = await authedService();
       const before = service.currentUser()!.preferences;
 
+      // An edit from "another device", landing after this session read its
+      // snapshot. The whole-map rewrite this method used to do would revert
+      // it; the per-field write must not.
+      await updateDoc(userRef(), { 'preferences.theme': 'dark' });
+
       await service.updateUserPreferences({ baseCurrency: 'EUR' });
 
-      const written = (await getDoc(userRef())).data()!['preferences'] as UserPreferences;
-      expect(written).toEqual({ ...before, baseCurrency: 'EUR' });
-      expect(service.currentUser()!.preferences).toEqual(written);
+      const written = (await getDoc(userRef())).data()!['preferences'] as Record<string, unknown>;
+      expect(written['baseCurrency']).toBe('EUR');
+      expect(written['theme']).toBe('dark');
+      expect(service.currentUser()!.preferences).toEqual({ ...before, baseCurrency: 'EUR' });
     });
 
     it('clearStoredProviderApiKeys deletes the legacy fields without clobbering the map', async () => {
@@ -226,19 +254,49 @@ describe('AuthService (emulator smoke test)', () => {
       });
     });
 
-    it('lands in a clean signed-out state instead of crashing', async () => {
+    it('stays signed in on a degraded fallback profile instead of bouncing to login', async () => {
+      spyOn(console, 'error');
       const service = TestBed.inject(AuthService);
 
       await waitFor(() => !service.isLoading(), 'the listener to settle');
 
+      // The Firebase session is valid; only the profile read failed. Nulling
+      // the user here used to make isAuthenticated false and the guard
+      // bounce a signed-in user to /login with no explanation.
       expect(service.firebaseUser()).not.toBeNull();
-      expect(service.currentUser()).toBeNull();
-      expect(service.isAuthenticated()).toBeFalse();
+      expect(service.currentUser()).not.toBeNull();
+      expect(service.currentUser()!.id).toBe(auth.currentUser!.uid);
+      expect(service.isAuthenticated()).toBeTrue();
+      expect(service.profileDegraded()).toBeTrue();
+
+      // The cause is logged and the user is told (AC: explanation + retry).
+      expect(console.error).toHaveBeenCalled();
+      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+      expect(notifications.error).toHaveBeenCalledWith('auth.profileLoadDegraded');
     });
 
-    it('getCurrentUser emits null rather than erroring', async () => {
+    it('a reconnect retry against still-broken Firestore stays safely degraded', async () => {
+      spyOn(console, 'error');
       const service = TestBed.inject(AuthService);
-      const emissions: unknown[] = [];
+      await waitFor(() => !service.isLoading(), 'the listener to settle');
+      expect(service.profileDegraded()).toBeTrue();
+
+      const pwa = TestBed.inject(PwaService) as unknown as {
+        isOnline: ReturnType<typeof signal<boolean>>;
+      };
+      pwa.isOnline.set(true);
+      TestBed.tick();
+      // Give the failed re-read a moment to settle.
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(service.isAuthenticated()).toBeTrue();
+      expect(service.profileDegraded()).toBeTrue();
+    });
+
+    it('getCurrentUser emits the fallback rather than null or an error', async () => {
+      spyOn(console, 'error');
+      const service = TestBed.inject(AuthService);
+      const emissions: ({ id: string } | null)[] = [];
       const errors: unknown[] = [];
       const sub = service.getCurrentUser().subscribe({
         next: value => emissions.push(value),
@@ -248,7 +306,8 @@ describe('AuthService (emulator smoke test)', () => {
       await waitFor(() => emissions.length >= 1, 'an emission');
       sub.unsubscribe();
 
-      expect(emissions[0]).toBeNull();
+      expect(emissions[0]).not.toBeNull();
+      expect(emissions[0]!.id).toBe(auth.currentUser!.uid);
       expect(errors).toEqual([]);
     });
   });

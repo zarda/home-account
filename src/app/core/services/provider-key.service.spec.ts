@@ -273,6 +273,42 @@ describe('ProviderKeyService', () => {
       await expectAsync(service.resolve()).toBeResolvedTo({ gemini: 'new-g' });
     });
 
+    it('abandons the migration when the account switches during the secrets read', async () => {
+      withPreferences({ geminiApiKey: 'a-key' });
+      // resolve() captured user-1, but user-2 signs in while the secrets
+      // document is still being fetched. The migration must not merge A's
+      // keys with B's preferences and write them into B's secrets document.
+      firestore.getDocument.and.callFake(async () => {
+        userId.set('user-2');
+        currentUser.set(
+          createMockUser('user-2', {
+            preferences: { geminiApiKey: 'b-key' } as unknown as UserPreferences
+          })
+        );
+        return null;
+      });
+
+      await service.resolve();
+
+      expect(firestore.setDocument).not.toHaveBeenCalled();
+      expect(auth.clearStoredProviderApiKeys).not.toHaveBeenCalled();
+    });
+
+    it('abandons the preference clear when the account switches during the write', async () => {
+      withPreferences({ geminiApiKey: 'a-key' });
+      firestore.setDocument.and.callFake(async () => {
+        // Switch lands between the secrets write and the preference clear:
+        // clearing now would strip user-2's preferences over user-1's
+        // migration.
+        userId.set('user-2');
+      });
+
+      await service.resolve();
+
+      expect(firestore.setDocument).toHaveBeenCalled();
+      expect(auth.clearStoredProviderApiKeys).not.toHaveBeenCalled();
+    });
+
     it('does nothing when preferences hold no keys', async () => {
       withPreferences({ baseCurrency: 'USD' });
 

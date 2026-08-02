@@ -46,8 +46,10 @@ export class AnalyticsSettingsComponent {
     }
 
     try {
+      // Only the touched key: updateUserPreferences writes per-field, so
+      // spreading the whole map back in would re-send — and clobber — keys
+      // another device may have changed since this session read them.
       await this.authService.updateUserPreferences({
-        ...this.authService.currentUser()?.preferences,
         enableUsageAnalytics: enabled,
       });
     } catch {

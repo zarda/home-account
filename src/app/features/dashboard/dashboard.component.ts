@@ -1,6 +1,7 @@
 import { Component, computed, DestroyRef, effect, inject, OnInit, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { TransactionService } from '../../core/services/transaction.service';
@@ -73,6 +74,16 @@ export class DashboardComponent implements OnInit {
 
   // Current selection from the shared period selector (calendar bounds).
   private currentPeriod = signal<PeriodSelection>(defaultPeriodSelection());
+
+  // Every stream below wraps a Firestore onSnapshot that never completes, so
+  // each period change must supersede the previous listener or they stack —
+  // and a write matching an old period would repaint the current one (the
+  // reports page holds priorYearSub for exactly this reason). takeUntilDestroyed
+  // covers leaving the page; these fields cover staying on it.
+  private periodSub?: Subscription;
+  private recentSub?: Subscription;
+  private prevPeriodSub?: Subscription;
+  private baselineSub?: Subscription;
 
   // The option string feeds the AI summary's cache key / prompt context.
   selectedPeriodOption = computed(() => this.currentPeriod().option);
@@ -154,16 +165,12 @@ export class DashboardComponent implements OnInit {
   activeBudgets = this.budgetService.activeBudgets;
 
   constructor() {
-    effect(() => {
-      // Update loading state based on service loading states
-      const txLoading = this.transactionService.isLoading();
-      const budgetLoading = this.budgetService.isLoading();
-      // Don't set loading to true once we have data
-      if (!txLoading && !budgetLoading && this.transactionService.transactions().length >= 0) {
-        this.isLoading.set(false);
-        this.hasLoadedOnce.set(true);
-      }
-    });
+    // Loading state is owned by the getByDateRange subscription callbacks in
+    // loadData(): the first snapshot (or error) of the published window is
+    // the real "first paint" moment. The effect that used to live here fired
+    // at construction — TransactionService.isLoading only tracks CRUD writes
+    // and `length >= 0` is always true — so it cleared the spinner before any
+    // data existed, and any foreign write to the shared signal re-ran it.
 
     // Keep the anomaly-baseline window in sync with both the selected period
     // and the RAG tier, so a mid-session tier change refetches the right
@@ -173,6 +180,9 @@ export class DashboardComponent implements OnInit {
       this.currentPeriod();
       const months = this.baselineWindowMonths();
       if (months === 0) {
+        // A tier downgrade must also release the in-flight baseline listener,
+        // not just blank the data it fed.
+        this.baselineSub?.unsubscribe();
         this.historicalExpenses.set(null);
         return;
       }
@@ -188,6 +198,12 @@ export class DashboardComponent implements OnInit {
     // dashboard instances from reacting to later budget writes made
     // elsewhere in the app.
     this.budgetService.getBudgets()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+
+    // Categories are period-independent, so like budgets they are subscribed
+    // once here rather than re-subscribed on every period change in loadData().
+    this.categoryService.loadCategories()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
 
@@ -221,34 +237,43 @@ export class DashboardComponent implements OnInit {
     const { start, end } = this.getPeriodDates();
 
     // Load transactions for the period
-    this.transactionService.getByDateRange(start, end).subscribe({
-      next: () => {
-        this.isLoading.set(false);
-        this.hasLoadedOnce.set(true);
-      },
-      error: () => {
-        this.isLoading.set(false);
-        this.hasLoadedOnce.set(true);
-      }
-    });
+    this.periodSub?.unsubscribe();
+    this.periodSub = this.transactionService.getByDateRange(start, end)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.isLoading.set(false);
+          this.hasLoadedOnce.set(true);
+        },
+        error: () => {
+          this.isLoading.set(false);
+          this.hasLoadedOnce.set(true);
+        }
+      });
 
     // Load recent transactions
-    this.transactionService.getRecentTransactions(5).subscribe({
-      next: (transactions) => {
-        this.recentTransactions.set(transactions);
-      }
-    });
+    this.recentSub?.unsubscribe();
+    this.recentSub = this.transactionService.getRecentTransactions(5)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (transactions) => {
+          this.recentTransactions.set(transactions);
+        }
+      });
 
     // Load previous period data for AI comparison. (The trailing historical
     // window for the anomaly baseline is loaded by the constructor effect,
-    // which also reacts to period changes via currentPeriod.)
+    // which also reacts to period changes via currentPeriod. Categories are
+    // period-independent and loaded once in ngOnInit.)
     this.loadPreviousPeriodData();
-
-    // Load categories
-    this.categoryService.loadCategories().subscribe();
   }
 
   private loadPreviousPeriodData(): void {
+    // Superseded even on the no-comparison branch: a custom range has no
+    // previous period, and the old period's listener must not keep feeding
+    // the comparison it replaced.
+    this.prevPeriodSub?.unsubscribe();
+
     const prevDates = this.getPreviousPeriodDates();
     if (!prevDates) {
       this.previousPeriodData.set(null);
@@ -258,16 +283,18 @@ export class DashboardComponent implements OnInit {
 
     // Use getPeriodCategoryTotals which doesn't update the main transactions
     // signal; the per-category breakdown feeds the RAG grounding for insights
-    this.transactionService.getPeriodCategoryTotals(prevDates.start, prevDates.end).subscribe({
-      next: (totals) => {
-        this.previousPeriodData.set({ income: totals.income, expense: totals.expense });
-        this.previousPeriodByCategory.set(totals.byCategory);
-      },
-      error: () => {
-        this.previousPeriodData.set(null);
-        this.previousPeriodByCategory.set(null);
-      }
-    });
+    this.prevPeriodSub = this.transactionService.getPeriodCategoryTotals(prevDates.start, prevDates.end)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (totals) => {
+          this.previousPeriodData.set({ income: totals.income, expense: totals.expense });
+          this.previousPeriodByCategory.set(totals.byCategory);
+        },
+        error: () => {
+          this.previousPeriodData.set(null);
+          this.previousPeriodByCategory.set(null);
+        }
+      });
   }
 
   private loadHistoricalBaseline(months: number): void {
@@ -275,14 +302,17 @@ export class DashboardComponent implements OnInit {
 
     // Non-mutating query so the current-period transactions signal is untouched;
     // the trailing window only feeds the RAG anomaly baseline for insights.
-    this.transactionService.getExpensesInRange(start, end).subscribe({
-      next: (expenses) => {
-        this.historicalExpenses.set(expenses);
-      },
-      error: () => {
-        this.historicalExpenses.set(null);
-      }
-    });
+    this.baselineSub?.unsubscribe();
+    this.baselineSub = this.transactionService.getExpensesInRange(start, end)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (expenses) => {
+          this.historicalExpenses.set(expenses);
+        },
+        error: () => {
+          this.historicalExpenses.set(null);
+        }
+      });
   }
 
   // Trailing baseline window: from `months` before the current period's end up

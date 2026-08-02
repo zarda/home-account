@@ -1,5 +1,5 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { filter, firstValueFrom, timeout } from 'rxjs';
 import { RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
@@ -37,6 +37,21 @@ import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
  * window describes how the user files things now rather than how they once did.
  */
 const CATEGORIZATION_HISTORY_MONTHS = 6;
+
+/**
+ * Thrown when every transaction was written but the completed history record
+ * could not be read back. The import itself succeeded — callers must not
+ * present this as a failed import, or the user's natural retry duplicates
+ * the whole batch.
+ */
+export const IMPORT_READBACK_FAILED = 'IMPORT_HISTORY_READBACK_FAILED';
+
+/**
+ * The read-back follows an acknowledged write, so the snapshot normally
+ * arrives from the local cache in milliseconds; this bounds how long the
+ * confirm step can hang when the listener errors or never fires.
+ */
+export const IMPORT_READBACK_TIMEOUT_MS = 5000;
 
 export interface AIErrorInfo {
   /** English, for logs and for the cases only a provider can describe. */
@@ -746,19 +761,26 @@ export class AIImportService {
     return transactions.map(t => {
       const suggestedCategoryId = t.category || 'other_expense';
 
+      // A date the model wrote in a shape parseDateInput rejects ("31/12/2024",
+      // "2024-06-31") defaults to today — but flagged, not silently: zero
+      // confidence puts the preview table's needs-verify chip on the row so
+      // the user can catch it before it is filed under the wrong day.
+      const parsedDate = parseDateInput(t.date);
+      const dateConfidence = parsedDate === null ? 0 : t.dateConfidence;
+
       return {
         id: nextImportRowId('import'),
         description: t.description,
         amount: Math.abs(t.amount),
         currency: t.currency || baseCurrency,
-        date: parseDateInput(t.date) ?? new Date(),
+        date: parsedDate ?? new Date(),
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
         categoryConfidence: 0.8, // AI extracted categories are fairly confident
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         notes: this.formatItemNotes(t.details),
-        fieldConfidence: (t.amountConfidence !== undefined || t.dateConfidence !== undefined)
-          ? { amount: t.amountConfidence, date: t.dateConfidence }
+        fieldConfidence: (t.amountConfidence !== undefined || dateConfidence !== undefined)
+          ? { amount: t.amountConfidence, date: dateConfidence }
           : undefined,
         isDuplicate: false,
         selected: true
@@ -881,14 +903,6 @@ export class AIImportService {
         }))
       );
 
-      // Get the completed history record
-      const history = await new Promise<ImportHistory>((resolve) => {
-        this.importHistoryService.getImportById(historyId).subscribe(h => {
-          if (h) resolve(h);
-        });
-      });
-
-      return history;
     } catch (error) {
       await this.importHistoryService.failImport(historyId, [{
         message: error instanceof Error ? error.message : 'Import failed'
@@ -896,6 +910,24 @@ export class AIImportService {
       throw error;
     } finally {
       this.isProcessing.set(false);
+    }
+
+    // Read back the completed record. Deliberately outside the try above:
+    // the rows are saved and the history says so, so a failing read must not
+    // route through failImport and stamp a completed import as failed. The
+    // old hand-rolled promise here had no reject and no teardown — a
+    // permission-denied left the wizard spinning forever over a finished
+    // import, and even success leaked the document listener for the session.
+    try {
+      return await firstValueFrom(
+        this.importHistoryService.getImportById(historyId).pipe(
+          filter((h): h is ImportHistory => h !== null),
+          timeout(IMPORT_READBACK_TIMEOUT_MS)
+        )
+      );
+    } catch (error) {
+      console.error('[AIImport] Import saved; history read-back failed:', error);
+      throw new Error(IMPORT_READBACK_FAILED);
     }
   }
 

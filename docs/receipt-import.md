@@ -106,6 +106,21 @@ Where a display name still has to be matched, every shipped locale's names are
 considered rather than only the active one, and a name that matched nothing is
 distinguishable from a deliberate "Other" instead of silently becoming it.
 
+## Failure surfacing
+
+A provider failure is thrown, never flattened into an empty result: all three
+cloud providers rethrow after recording the error, so an expired key or a
+billing cap renders as the wizard's typed error card (with its retry or
+go-to-settings action) instead of "no transactions found", and the strategy
+layer can fall back between engines on the throw. A row whose date the model
+wrote in an unreadable shape is flagged for verification on the review table
+rather than silently filed under today, and it cannot fail the batch. A
+partial save keeps exactly the failed rows on the review step — editable and
+re-confirmable, with the saved ones removed so a second confirm cannot
+double-import — and the completion toast carries both counts. When every row
+saved but the summary read-back fails, the wizard says so and moves on; the
+full record, including per-row errors, is on the Import History page.
+
 ## What still bounds coverage
 
 - **The configured model.** This is the intended limit and the only one.

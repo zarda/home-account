@@ -1196,10 +1196,30 @@ describe('TransactionService', () => {
       });
     });
 
-    it('should update transactions signal', (done) => {
-      service.getTransactions().subscribe(() => {
-        expect(service.transactions().length).toBeGreaterThan(0);
+    it('leaves the shared transactions signal untouched', (done) => {
+      service.getTransactions().subscribe(result => {
+        expect(result.length).toBeGreaterThan(0);
+        // Publishing belongs to getByDateRange alone; a bare query must not
+        // move what the dashboard displays.
+        expect(service.transactions()).toEqual([]);
         done();
+      });
+    });
+
+    it('cannot repaint the dashboard from an importer-shaped narrow query', (done) => {
+      // Duplicate detection and AI import both run getTransactions with their
+      // own filters; neither may replace the published window. The min-amount
+      // filter empties this result client-side, so a leaked write would blank
+      // the signal and fail the equality below.
+      service.getByDateRange(new Date(2020, 0, 1), new Date(2030, 11, 31)).subscribe(() => {
+        const published = service.transactions();
+        expect(published.length).toBeGreaterThan(0);
+
+        service.getTransactions({ minAmount: 9_999_999 }).subscribe(result => {
+          expect(result).toEqual([]);
+          expect(service.transactions()).toEqual(published);
+          done();
+        });
       });
     });
 
@@ -1226,6 +1246,53 @@ describe('TransactionService', () => {
 
       service.getByDateRange(start, end).subscribe(() => {
         expect(mockFirestore.getCollectionSpy.calls.length).toBeGreaterThan(0);
+        done();
+      });
+    });
+
+    it('publishes the result to the shared transactions signal', (done) => {
+      const transactions = createMixedTransactions();
+      mockFirestore.setMockCollection('users/test-user-123/transactions', transactions);
+
+      service.getByDateRange(new Date(2020, 0, 1), new Date(2030, 11, 31)).subscribe(result => {
+        expect(result.length).toBeGreaterThan(0);
+        expect(service.transactions()).toEqual(result);
+        done();
+      });
+    });
+  });
+
+  describe('sign-out reset', () => {
+    it('clears the published window and mutation marker on the signed-out edge', (done) => {
+      mockFirestore.setMockCollection('users/test-user-123/transactions', createMixedTransactions());
+
+      service.getByDateRange(new Date(2020, 0, 1), new Date(2030, 11, 31)).subscribe(() => {
+        expect(service.transactions().length).toBeGreaterThan(0);
+
+        mockAuth.setMockUser(null);
+        TestBed.tick();
+
+        // The next account must never render this account's totals.
+        expect(service.transactions()).toEqual([]);
+        expect(service.lastMutation()).toBeNull();
+        done();
+      });
+    });
+
+    it('resets on the signed-out edge only, not on every account change', (done) => {
+      mockFirestore.setMockCollection('users/test-user-123/transactions', createMixedTransactions());
+
+      service.getByDateRange(new Date(2020, 0, 1), new Date(2030, 11, 31)).subscribe(() => {
+        const published = service.transactions();
+        expect(published.length).toBeGreaterThan(0);
+
+        // A direct non-null change (sign-in) must not blank a freshly
+        // published window; Firebase always passes through null on the way
+        // to a different account.
+        mockAuth.setAuthenticated(true, 'another-user');
+        TestBed.tick();
+
+        expect(service.transactions()).toEqual(published);
         done();
       });
     });

@@ -205,8 +205,8 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
       !!this.filters.type ||
       !!this.filters.categoryId ||
       !!this.filters.currency ||
-      this.filters.minAmount !== undefined ||
-      this.filters.maxAmount !== undefined ||
+      typeof this.filters.minAmount === 'number' ||
+      typeof this.filters.maxAmount === 'number' ||
       !!this.filters.tags?.length ||
       this.activeQuickFilter() !== 'thisMonth'
     );
@@ -362,8 +362,9 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (this.filters.startDate) count++;
     if (this.filters.endDate) count++;
     if (this.filters.searchQuery) count++;
-    if (this.filters.minAmount !== undefined) count++;
-    if (this.filters.maxAmount !== undefined) count++;
+    // typeof: a cleared number input holds null, which is not an active bound.
+    if (typeof this.filters.minAmount === 'number') count++;
+    if (typeof this.filters.maxAmount === 'number') count++;
     if (this.filters.currency) count++;
     if (this.filters.tags?.length) count++;
     return count;
@@ -473,8 +474,11 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (this.filters.startDate) cleanFilters.startDate = this.filters.startDate;
     if (this.filters.endDate) cleanFilters.endDate = this.filters.endDate;
     if (this.filters.searchQuery) cleanFilters.searchQuery = this.filters.searchQuery;
-    if (this.filters.minAmount !== undefined) cleanFilters.minAmount = this.filters.minAmount;
-    if (this.filters.maxAmount !== undefined) cleanFilters.maxAmount = this.filters.maxAmount;
+    // A cleared number input writes literal null through ngModel, and
+    // null !== undefined — so an emptied box would ship a bound that
+    // downstream compares as <= 0 and hides every transaction.
+    if (typeof this.filters.minAmount === 'number') cleanFilters.minAmount = this.filters.minAmount;
+    if (typeof this.filters.maxAmount === 'number') cleanFilters.maxAmount = this.filters.maxAmount;
     if (this.filters.currency) cleanFilters.currency = this.filters.currency;
     if (this.filters.tags?.length) cleanFilters.tags = this.filters.tags;
 

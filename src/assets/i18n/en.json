@@ -408,6 +408,7 @@
     "recurringPaused": "Recurring transaction paused",
     "recurringResumed": "Recurring transaction resumed",
     "recurringDeleted": "Recurring transaction deleted",
+    "recurringDeleteFailed": "Failed to delete recurring transaction",
     "recurringCreated": "Recurring transaction created",
     "recurringCreateFailed": "Failed to create recurring transaction",
     "recurringUpdated": "Recurring transaction updated",
@@ -492,6 +493,7 @@
     "custom": "Custom"
   },
   "auth": {
+    "profileLoadDegraded": "Your profile couldn't be loaded — using defaults for now. It will retry automatically.",
     "signInWithGoogle": "Sign in with Google",
     "signOut": "Sign Out",
     "welcome": "Welcome",
@@ -773,6 +775,8 @@
     "confirmImport": "Import {{count}} Transactions",
     "importComplete": "Successfully imported {{count}} transactions",
     "importFailed": "Import failed: {{error}}",
+    "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
+    "importSavedHistoryUnavailable": "Import finished, but the summary could not be loaded. See Import History for details.",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "duplicatesSkipped": "Duplicates skipped",

@@ -109,10 +109,10 @@ export class SecuritySettingsComponent {
 
   private async persist(patch: Record<string, unknown>): Promise<void> {
     try {
-      await this.authService.updateUserPreferences({
-        ...this.authService.currentUser()?.preferences,
-        ...patch,
-      });
+      // Only the touched keys: updateUserPreferences writes per-field, so
+      // spreading the whole map back in would re-send — and clobber — keys
+      // another device may have changed since this session read them.
+      await this.authService.updateUserPreferences(patch);
     } catch {
       this.notifications.error(this.translation.t('common.error'));
     }

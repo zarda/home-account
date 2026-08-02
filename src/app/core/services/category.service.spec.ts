@@ -35,6 +35,76 @@ describe('CategoryService', () => {
     mockAuth.clearMocks();
   });
 
+  describe('sign-out reset', () => {
+    it('clears the cached categories on the signed-out edge', () => {
+      service.categories.set(service.getDefaultCategories());
+      expect(service.categories().length).toBeGreaterThan(0);
+
+      mockAuth.setMockUser(null);
+      TestBed.tick();
+
+      expect(service.categories()).toEqual([]);
+    });
+  });
+
+  describe('editing and reordering built-ins', () => {
+    beforeEach(() => {
+      service.categories.set(service.getDefaultCategories());
+    });
+
+    it('materializes the full row when a built-in is edited', async () => {
+      const target = service.categories().find(c => c.userId === null)!;
+
+      await service.updateCategory(target.id, { name: 'Fancy Groceries' });
+
+      // No update to a document that does not exist — that was the silent
+      // NOT_FOUND this replaces.
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+      const call = mockFirestore.setDocumentSpy.mostRecent()!;
+      expect(call.args[0]).toBe(`users/test-user-123/categories/${target.id}`);
+      const payload = call.args[1] as Record<string, unknown>;
+      // The rules treat a merge onto a missing document as a create and
+      // require the complete field set plus the owner stamp.
+      expect(payload['userId']).toBe('test-user-123');
+      expect(payload['name']).toBe('Fancy Groceries');
+      for (const field of ['icon', 'color', 'type', 'order', 'isActive', 'isDefault']) {
+        expect(field in payload).withContext(field).toBeTrue();
+      }
+      expect(call.args[2]).toBeTrue();
+    });
+
+    it('updates a user category document in place', async () => {
+      const mine = { ...service.getDefaultCategories()[0], id: 'mine', userId: 'test-user-123' };
+      service.categories.set([mine]);
+
+      await service.updateCategory('mine', { name: 'Mine' });
+
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.updateDocumentSpy.mostRecent()!.args[1]).toEqual({ name: 'Mine' });
+    });
+
+    it('reorders a list containing built-ins by materializing them', async () => {
+      const defaults = service.getDefaultCategories().filter(c => c.userId === null).slice(0, 2);
+      const mine = { ...defaults[0], id: 'mine', userId: 'test-user-123', isDefault: false };
+      service.categories.set([...defaults, mine]);
+
+      await service.reorderCategories([mine.id, defaults[0].id, defaults[1].id]);
+
+      // The user document gets a plain order update...
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(1);
+      expect(mockFirestore.updateDocumentSpy.mostRecent()!.args[1]).toEqual({ order: 0 });
+      // ...and each built-in is created whole, carrying its new order.
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(2);
+      const orders = mockFirestore.setDocumentSpy.calls
+        .map(c => (c.args[1] as { order: number }).order)
+        .sort();
+      expect(orders).toEqual([1, 2]);
+      for (const c of mockFirestore.setDocumentSpy.calls) {
+        expect((c.args[1] as { userId: string }).userId).toBe('test-user-123');
+      }
+    });
+  });
+
   describe('getDefaultCategories', () => {
     it('should return default categories', () => {
       const categories = service.getDefaultCategories();

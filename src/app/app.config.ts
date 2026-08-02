@@ -1,4 +1,4 @@
-import { ApplicationConfig, EnvironmentProviders, makeEnvironmentProviders, provideBrowserGlobalErrorListeners, provideZoneChangeDetection, provideAppInitializer, inject } from '@angular/core';
+import { ApplicationConfig, EnvironmentProviders, ErrorHandler, makeEnvironmentProviders, provideBrowserGlobalErrorListeners, provideZoneChangeDetection, provideAppInitializer, inject } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideNativeDateAdapter } from '@angular/material/core';
@@ -27,6 +27,7 @@ import { ThemeService } from './core/services/theme.service';
 import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
 import { AppLockService } from './core/services/app-lock.service';
 import { AnalyticsService } from './core/services/analytics.service';
+import { GlobalErrorHandler } from './core/services/global-error-handler';
 import {
   ANALYTICS_CONSENT_DEFAULTS,
   ANALYTICS_GTAG_CONFIG,
@@ -142,6 +143,9 @@ export function provideAppAnalytics(
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    // Reports errors nothing else caught (unhandled rejections, template
+    // throws) instead of losing them; see GlobalErrorHandler.
+    { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
     provideAnimations(),

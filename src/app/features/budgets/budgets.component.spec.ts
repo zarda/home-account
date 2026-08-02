@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
@@ -6,6 +6,7 @@ import { BudgetsComponent } from './budgets.component';
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { BudgetFormComponent } from './budget-form/budget-form.component';
 import { Budget } from '../../models';
 import { createBudget, createCategory } from '../../core/services/testing';
@@ -48,6 +49,10 @@ describe('BudgetsComponent', () => {
         { provide: CategoryService, useValue: categoryService },
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: dialog },
+        {
+          provide: NotificationService,
+          useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
+        },
       ],
     })
       .overrideComponent(BudgetsComponent, { set: { imports: [], template: '' } })
@@ -115,11 +120,18 @@ describe('BudgetsComponent', () => {
     expect(budgetService.deleteBudget).not.toHaveBeenCalled();
   });
 
-  it('confirmDelete swallows delete errors', () => {
+  it('confirmDelete reports a failed delete instead of swallowing it', fakeAsync(() => {
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
     budgetService.deleteBudget.and.rejectWith(new Error('fail'));
-    expect(() => build().componentInstance.confirmDelete(createBudget())).not.toThrow();
-  });
+    spyOn(console, 'error');
+
+    build().componentInstance.confirmDelete(createBudget());
+    tick();
+
+    const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+    expect(notifications.error).toHaveBeenCalledWith('common.error');
+    expect(console.error).toHaveBeenCalled();
+  }));
 
   it('ngOnDestroy cleans up', () => {
     const fixture = build();

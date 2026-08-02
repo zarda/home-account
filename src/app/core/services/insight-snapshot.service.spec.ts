@@ -101,6 +101,27 @@ describe('InsightSnapshotService', () => {
     service = TestBed.inject(InsightSnapshotService);
   });
 
+  describe('sign-out reset', () => {
+    it('clears the cached snapshots on the signed-out edge', () => {
+      (service as unknown as {
+        snapshotState: ReturnType<typeof signal<InsightSnapshot[]>>;
+        loadedOnce: ReturnType<typeof signal<boolean>>;
+      }).snapshotState.set([{ monthKey: '2026-06' } as InsightSnapshot]);
+      (service as unknown as {
+        loadedOnce: ReturnType<typeof signal<boolean>>;
+      }).loadedOnce.set(true);
+      TestBed.tick();
+      expect(service.snapshots().length).toBe(1);
+
+      userId.set(null);
+      currentUser.set(null);
+      TestBed.tick();
+
+      expect(service.snapshots()).toEqual([]);
+      expect(service.hasLoadedOnce()).toBeFalse();
+    });
+  });
+
   describe('watch', () => {
     it('sorts snapshots newest first', async () => {
       firestoreService.subscribeToCollection.and.returnValue(

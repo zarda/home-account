@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
@@ -159,6 +159,40 @@ describe('CategoryManagerComponent', () => {
     });
   });
 
+  describe('category stream lifecycle', () => {
+    it('keeps the single live subscription across a full mutate cycle', fakeAsync(() => {
+      const formResult = { name: 'X', icon: 'star', color: '#ffffff' };
+      mockDialog.open.and.returnValue({ afterClosed: () => of(formResult) } as never);
+      component.openAddDialog();
+      tick();
+      component.openEditDialog(mockCategories[0]);
+      tick();
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      component.deleteCategory(mockCategories[0]);
+      tick();
+      component.onDrop({ previousIndex: 0, currentIndex: 1 } as never);
+      tick();
+
+      // The held onSnapshot stream carries every refresh; re-subscribing per
+      // mutation used to stack a fresh listener on each action.
+      expect(mockCategoryService.loadCategories).toHaveBeenCalledTimes(1);
+    }));
+
+    it('updates the list from later emissions and releases the stream on destroy', () => {
+      const stream = new Subject<Category[]>();
+      mockCategoryService.loadCategories.and.returnValue(stream);
+      const freshFixture = TestBed.createComponent(CategoryManagerComponent);
+      freshFixture.detectChanges();
+      expect(stream.observed).toBeTrue();
+
+      stream.next([mockCategories[0]]);
+      expect(freshFixture.componentInstance.categories()).toEqual([mockCategories[0]]);
+
+      freshFixture.destroy();
+      expect(stream.observed).toBeFalse();
+    });
+  });
+
   describe('filteredCategories', () => {
     it('should filter by expense type', () => {
       component.selectedType = 'expense';
@@ -247,6 +281,26 @@ describe('CategoryManagerComponent', () => {
   });
 
   describe('openEditDialog', () => {
+    it('pre-fills the dialog with the translated name for a built-in', () => {
+      mockTranslationService.t.and.callFake((key: string) =>
+        key === 'categoryNames.groceries' ? 'Groceries' : key);
+      mockDialog.open.and.returnValue({ afterClosed: () => of(null) } as never);
+      const builtIn = {
+        ...mockCategories[0],
+        name: 'categoryNames.groceries',
+        isDefault: true,
+        userId: null,
+      } as Category;
+
+      component.openEditDialog(builtIn);
+
+      const data = (mockDialog.open.calls.mostRecent().args[1] as {
+        data: { category: Category };
+      }).data;
+      // The user edits what they read on screen, not the raw i18n key.
+      expect(data.category.name).toBe('Groceries');
+    });
+
     it('should open dialog with category data', () => {
       const mockDialogRef = { afterClosed: () => of(null) };
       mockDialog.open.and.returnValue(mockDialogRef as never);

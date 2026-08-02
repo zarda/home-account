@@ -96,13 +96,13 @@ describe('AnalyticsSettingsComponent', () => {
       expect(component.enabled()).toBeTrue();
     });
 
-    it('should save the opt-in without dropping other preferences', async () => {
+    it('should save the opt-in without touching other preferences', async () => {
       await component.onEnabledChange(true);
 
-      // updateUserPreferences rewrites the whole map, so the spread is what
-      // stops a consent change from wiping the rest of the account's settings.
+      // Only the consent key: updateUserPreferences writes per-field now, so
+      // sending the rest of the map would re-send stale copies of keys
+      // another device may have changed.
       expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
-        baseCurrency: 'USD',
         enableUsageAnalytics: true,
       });
     });
@@ -113,7 +113,6 @@ describe('AnalyticsSettingsComponent', () => {
       await component.onEnabledChange(false);
 
       expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
-        baseCurrency: 'USD',
         enableUsageAnalytics: false,
       });
     });

@@ -101,6 +101,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
    */
   priorYearTransactions = signal<Transaction[]>([]);
   private priorYearSub?: Subscription;
+  // The current-window and category streams never complete either; held for
+  // the same supersede-on-reload and release-on-destroy treatment.
+  private rangeSub?: Subscription;
+  private categoriesSub?: Subscription;
 
   categoriesMap = computed(() => {
     const map = new Map<string, Category>();
@@ -128,14 +132,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
     () => groupExpensesByCategory(this.transactions(), t => this.toBaseCurrency(t)));
 
   ngOnInit(): void {
+    // Categories are period-independent: one live subscription for the page's
+    // lifetime, not one per period change inside loadData().
+    this.categoriesSub = this.categoryService.loadCategories().subscribe();
     this.loadData();
   }
 
   ngOnDestroy(): void {
-    // The Firestore wrapper behind the prior-year window never completes, so
-    // dropping the page without this leaves a listener running for the rest
-    // of the session.
+    // The Firestore wrappers behind these windows never complete, so dropping
+    // the page without this leaves listeners running for the rest of the
+    // session.
     this.priorYearSub?.unsubscribe();
+    this.rangeSub?.unsubscribe();
+    this.categoriesSub?.unsubscribe();
   }
 
   /**
@@ -242,12 +251,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
         error: () => this.priorYearTransactions.set([]),
       });
 
-    this.transactionService.getByDateRange(range.start, range.end).subscribe({
+    this.rangeSub?.unsubscribe();
+    this.rangeSub = this.transactionService.getByDateRange(range.start, range.end).subscribe({
       next: () => this.finishLoading(),
       error: () => this.finishLoading()
     });
-
-    this.categoryService.loadCategories().subscribe();
   }
 
   private finishLoading(): void {

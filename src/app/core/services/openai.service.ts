@@ -610,7 +610,11 @@ export class OpenAIService implements CloudLLMProviderAdapter {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.lastError.set(errorMessage);
       console.error('OpenAI image extraction error:', error);
-      return [];
+      // Rethrow, matching GeminiService: an expired key or a billing cap must
+      // reach parseAIError and render as a typed error card, not as "no
+      // transactions found" — and the strategy layer can only fall back to
+      // another provider on a throw, never on a plausible empty result.
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -680,7 +684,8 @@ export class OpenAIService implements CloudLLMProviderAdapter {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       this.lastError.set(errorMessage);
       console.error('OpenAI multi-image extraction error:', error);
-      return [];
+      // Rethrow for the same reason as the single-image path above.
+      throw error;
     } finally {
       this.isProcessing.set(false);
     }

@@ -21,6 +21,7 @@ import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { TranslationService } from '../../core/services/translation.service';
+import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 
 @Component({
@@ -52,6 +53,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private translationService = inject(TranslationService);
+  private notifications = inject(NotificationService);
   private announcer = inject(AnnouncerService);
   private pendingFilters = inject(PendingFiltersService);
 
@@ -64,8 +66,10 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   transactionCount = computed(() => {
     const filters = this.currentFilters();
     const hasClientOnlyFilter =
-      filters.minAmount !== undefined ||
-      filters.maxAmount !== undefined ||
+      // typeof: a cleared amount box arrives as null and is not a filter, so
+      // the header keeps showing the exact server count.
+      typeof filters.minAmount === 'number' ||
+      typeof filters.maxAmount === 'number' ||
       !!filters.searchQuery ||
       !!filters.tags?.length;
 
@@ -237,8 +241,11 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     try {
       await this.transactionService.deleteTransaction(transaction.id);
       // The lastMutation effect refreshes the window.
-    } catch {
-      // Error handled silently - snackbar could be added here
+    } catch (error) {
+      // The row never left the list — no rollback needed, but the user has
+      // to be told the delete did not happen.
+      console.error('[Transactions] Delete failed:', error);
+      this.notifications.error(this.translationService.t('common.error'));
     }
   }
 

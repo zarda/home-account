@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
 import {
@@ -66,6 +67,34 @@ describe('SearchHistoryService', () => {
     });
 
     service = TestBed.inject(SearchHistoryService);
+  });
+
+  describe('sign-out reset', () => {
+    it('clears the search history on the signed-out edge', () => {
+      // Fresh injector with a signal-backed auth stub: the reset effect
+      // tracks userId() reactively, which a jasmine spy cannot express.
+      // History is per user and must not surface on a shared device.
+      TestBed.resetTestingModule();
+      const userId = signal<string | null>('user-1');
+      TestBed.configureTestingModule({
+        providers: [
+          SearchHistoryService,
+          { provide: FirestoreService, useValue: {} },
+          { provide: AuthService, useValue: { userId } },
+        ],
+      });
+      const fresh = TestBed.inject(SearchHistoryService);
+      (fresh as unknown as { allSearches: ReturnType<typeof signal<SavedSearch[]>> })
+        .allSearches.set([{ id: 's1', query: 'coffee' } as SavedSearch]);
+      TestBed.tick();
+      expect(fresh.recentSearches().length).toBe(1);
+
+      userId.set(null);
+      TestBed.tick();
+
+      expect(fresh.recentSearches()).toEqual([]);
+      expect(fresh.savedSearches()).toEqual([]);
+    });
   });
 
   describe('loadSearches', () => {

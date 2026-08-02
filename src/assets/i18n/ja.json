@@ -399,6 +399,7 @@
     "recurringPaused": "定期取引を一時停止しました",
     "recurringResumed": "定期取引を再開しました",
     "recurringDeleted": "定期取引を削除しました",
+    "recurringDeleteFailed": "定期取引を削除できませんでした",
     "recurringCreated": "定期取引を作成しました",
     "recurringCreateFailed": "定期取引の作成に失敗しました",
     "recurringUpdated": "定期取引を更新しました",
@@ -492,6 +493,7 @@
     "custom": "カスタム"
   },
   "auth": {
+    "profileLoadDegraded": "プロフィールを読み込めなかったため、一時的に既定の設定を使用しています。自動的に再試行します。",
     "signInWithGoogle": "Googleでログイン",
     "signOut": "ログアウト",
     "welcome": "ようこそ",
@@ -779,8 +781,10 @@
     "importSummary": "インポートサマリー",
     "duplicatesSkipped": "スキップした重複",
     "confirmImport": "{{count}}件の取引をインポート",
-    "importComplete": "インポート完了",
+    "importComplete": "{{count}}件の取引をインポートしました",
     "importFailed": "インポート失敗",
+    "importPartial": "{{total}}件中{{success}}件をインポートしました（{{failed}}件は保存できませんでした）",
+    "importSavedHistoryUnavailable": "インポートは完了しましたが、概要を読み込めませんでした。詳細はインポート履歴をご覧ください。",
     "noTransactionsFound": "取引が見つかりません",
     "noTransactionsFoundDescription": "このファイルから取引を抽出できませんでした。別のファイルを試すか、画像が鮮明であることを確認してください。",
     "statusCompleted": "完了",
