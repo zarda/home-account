@@ -6,11 +6,13 @@ import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
 import { CurrencyService } from './currency.service';
 import { getBudgetAlertSeverity } from '../utils/budget-alert.utils';
+import { roundMoney } from '../utils/transaction-aggregation.utils';
 import {
   Budget,
   BudgetSummary,
   BudgetAlert,
-  CreateBudgetDTO
+  CreateBudgetDTO,
+  baseCurrencyOf
 } from '../../models';
 
 @Injectable({ providedIn: 'root' })
@@ -274,17 +276,20 @@ export class BudgetService {
     // Ensure exchange rates are loaded before currency conversion
     await this.currencyService.ensureRatesLoaded();
 
-    // Convert each transaction to the budget's currency
+    // Sum the write-time snapshots rather than re-converting each row at
+    // the live rate: budgets must agree with the dashboard and reports,
+    // and spent must not drift when rates move without any transaction
+    // changing. A budget kept in another currency converts once, from the
+    // snapshot base into the budget currency.
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
     const totalSpent = txns.reduce((sum, t) => {
-      const amountInBudgetCurrency = this.currencyService.convert(
-        t.amount,
-        t.currency,
-        budget.currency
-      );
-      return sum + amountInBudgetCurrency;
+      const inBase = this.currencyService.amountInBase(t, baseCurrency);
+      return sum + (budget.currency === baseCurrency
+        ? inBase
+        : this.currencyService.convert(inBase, baseCurrency, budget.currency));
     }, 0);
 
-    await this.updateBudgetSpent(budgetId, totalSpent);
+    await this.updateBudgetSpent(budgetId, roundMoney(totalSpent));
   }
 
   // Recalculate spent for all active budgets in a category

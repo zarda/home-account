@@ -76,7 +76,11 @@ describe('BudgetService', () => {
     ]);
 
     mockAuthService = jasmine.createSpyObj('AuthService', [], {
-      userId: jasmine.createSpy().and.returnValue('user123')
+      userId: jasmine.createSpy().and.returnValue('user123'),
+      currentUser: jasmine.createSpy().and.returnValue({
+        id: 'user123',
+        preferences: { baseCurrency: 'USD' }
+      })
     });
 
     mockTransactionService = jasmine.createSpyObj('TransactionService', [
@@ -464,6 +468,78 @@ describe('BudgetService', () => {
 
       expect(mockTransactionService.getExpensesInRange).not.toHaveBeenCalled();
       expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+    });
+
+    describe('currency of the summed spend', () => {
+      const yen = {
+        amount: 5000, currency: 'JPY',
+        amountInBaseCurrency: 33, exchangeRate: 0.0066, baseCurrency: 'USD'
+      } as Transaction;
+      const euro = {
+        amount: 95, currency: 'EUR',
+        amountInBaseCurrency: 103, exchangeRate: 1.0842, baseCurrency: 'USD'
+      } as Transaction;
+
+      beforeEach(() => {
+        mockTransactionService.getExpensesInRange.and.returnValue(of([yen, euro]));
+      });
+
+      it('sums the write-time snapshots when the budget is in the base currency', async () => {
+        const convert = TestBed.inject(CurrencyService).convert as jasmine.Spy;
+        convert.calls.reset();
+
+        await service.recalculateBudgetSpent('budget1');
+
+        expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+          'users/user123/budgets/budget1',
+          { spent: 136 }
+        );
+        expect(convert).not.toHaveBeenCalled();
+      });
+
+      it('keeps spent stable when live rates move between recalculations', async () => {
+        const convert = TestBed.inject(CurrencyService).convert as jasmine.Spy;
+
+        await service.recalculateBudgetSpent('budget1');
+        convert.and.callFake((amount: number) => amount * 2);
+        await service.recalculateBudgetSpent('budget1');
+
+        const spents = mockFirestoreService.updateDocument.calls.allArgs()
+          .map(args => (args[1] as { spent: number }).spent);
+        expect(spents).toEqual([136, 136]);
+      });
+
+      it('converts once from the snapshot base for a cross-currency budget', async () => {
+        const convert = TestBed.inject(CurrencyService).convert as jasmine.Spy;
+        convert.and.callFake((amount: number) => amount * 0.9);
+        mockFirestoreService.getDocument.and.returnValue(
+          Promise.resolve({ ...mockBudgets[0], currency: 'EUR' })
+        );
+        convert.calls.reset();
+
+        await service.recalculateBudgetSpent('budget1');
+
+        expect(convert).toHaveBeenCalledWith(33, 'USD', 'EUR');
+        expect(convert).toHaveBeenCalledWith(103, 'USD', 'EUR');
+        expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+          'users/user123/budgets/budget1',
+          { spent: 122.4 }
+        );
+      });
+
+      it('rounds the persisted spend to cents', async () => {
+        mockTransactionService.getExpensesInRange.and.returnValue(of([
+          { ...yen, amountInBaseCurrency: 10.111 } as Transaction,
+          { ...yen, amountInBaseCurrency: 10.112 } as Transaction
+        ]));
+
+        await service.recalculateBudgetSpent('budget1');
+
+        expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+          'users/user123/budgets/budget1',
+          { spent: 20.22 }
+        );
+      });
     });
   });
 
