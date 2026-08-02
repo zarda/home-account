@@ -1,9 +1,12 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { Auth, User as FirebaseUser } from '@angular/fire/auth';
 import { Firestore, Timestamp } from '@angular/fire/firestore';
 import { AuthService, buildNewUserProfile } from './auth.service';
 import { TranslationService } from './translation.service';
 import { ThemeService } from './theme.service';
+import { NotificationService } from './notification.service';
+import { PwaService } from './pwa.service';
 
 describe('buildNewUserProfile', () => {
   const firebaseUser = (overrides: Partial<FirebaseUser>): FirebaseUser =>
@@ -58,12 +61,21 @@ describe('AuthService', () => {
         { provide: Firestore, useValue: mockFirestore },
         {
           provide: TranslationService,
-          useValue: { syncFromDatabase: jasmine.createSpy('syncFromDatabase') }
+          useValue: {
+            syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
+            t: jasmine.createSpy('t').and.callFake((k: string) => k)
+          }
         },
         {
           provide: ThemeService,
           useValue: { init: jasmine.createSpy('init') }
-        }
+        },
+        {
+          provide: NotificationService,
+          useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
+        },
+        // Offline by default so the profile-retry effect stays dormant.
+        { provide: PwaService, useValue: { isOnline: signal(false) } }
       ]
     });
 

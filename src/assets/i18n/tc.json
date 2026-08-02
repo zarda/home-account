@@ -493,6 +493,7 @@
     "custom": "自訂"
   },
   "auth": {
+    "profileLoadDegraded": "無法載入您的個人資料，暫時使用預設設定。系統將自動重試。",
     "signInWithGoogle": "使用 Google 登入",
     "signOut": "登出",
     "tagline": "個人理財管家",

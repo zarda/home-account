@@ -29,6 +29,8 @@ import {
 import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService, ThemePreference } from './theme.service';
 import { SecurityLogService } from './security-log.service';
+import { NotificationService } from './notification.service';
+import { PwaService } from './pwa.service';
 
 /**
  * First-sign-in user document built from the Firebase auth profile.
@@ -60,11 +62,22 @@ export class AuthService {
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
   private securityLog = inject(SecurityLogService);
+  private notifications = inject(NotificationService);
+  private pwa = inject(PwaService);
 
   // Signals for reactive state
   currentUser = signal<User | null>(null);
   firebaseUser = signal<FirebaseUser | null>(null);
   isLoading = signal<boolean>(true);
+
+  /**
+   * True while the session is running on the in-memory fallback profile: the
+   * Firebase session is valid but the profile document could not be read
+   * (offline at launch, a rules error, a quota error). The retry effect
+   * clears it once a re-read succeeds.
+   */
+  profileDegraded = signal<boolean>(false);
+  private profileRetryInFlight = false;
 
   // Computed signals
   isAuthenticated = computed(() => !!this.currentUser());
@@ -73,6 +86,7 @@ export class AuthService {
   constructor() {
     this.setupAuthStateListener();
     this.setupPreferencesSyncEffect();
+    this.setupProfileRetryEffect();
   }
 
   /**
@@ -97,6 +111,37 @@ export class AuthService {
     });
   }
 
+  /**
+   * Re-read a degraded profile when connectivity returns. Event-driven rather
+   * than counted retries: PwaService already probes reachability, and a
+   * failed re-read is harmless — the session simply stays on the fallback
+   * until the next flip. A successful re-read never runs the create path
+   * (setDoc only follows a successful getDoc that found nothing), so a
+   * legitimate first sign-in is created and an existing profile is loaded,
+   * never overwritten.
+   */
+  private setupProfileRetryEffect(): void {
+    effect(() => {
+      const online = this.pwa.isOnline();
+      const degraded = this.profileDegraded();
+      const firebaseUser = this.firebaseUser();
+      if (!online || !degraded || !firebaseUser || this.profileRetryInFlight) return;
+
+      this.profileRetryInFlight = true;
+      void runInInjectionContext(this.injector, () => this.getOrCreateUser(firebaseUser))
+        .then(user => {
+          this.currentUser.set(user);
+          this.profileDegraded.set(false);
+        })
+        .catch(error => {
+          console.error('[Auth] Profile retry failed; staying on the fallback profile:', error);
+        })
+        .finally(() => {
+          this.profileRetryInFlight = false;
+        });
+    });
+  }
+
   private setupAuthStateListener(): void {
     // Run within injection context to prevent AngularFire warnings
     runInInjectionContext(this.injector, () => {
@@ -109,11 +154,22 @@ export class AuthService {
               this.getOrCreateUser(firebaseUser)
             );
             this.currentUser.set(user);
-          } catch {
-            this.currentUser.set(null);
+            this.profileDegraded.set(false);
+          } catch (error) {
+            // A transient read failure is not "not signed in": nulling the
+            // user here bounced a valid Firebase session to the login page
+            // with no message, no log and no retry. Continue on an in-memory
+            // fallback (never written — the create path only runs after a
+            // successful read says the document is absent) and let the retry
+            // effect swap the real profile in.
+            console.error('[Auth] Profile load failed; continuing with a fallback profile:', error);
+            this.currentUser.set({ id: firebaseUser.uid, ...buildNewUserProfile(firebaseUser) });
+            this.profileDegraded.set(true);
+            this.notifications.error(this.translationService.t('auth.profileLoadDegraded'));
           }
         } else {
           this.currentUser.set(null);
+          this.profileDegraded.set(false);
         }
 
         this.isLoading.set(false);
@@ -126,10 +182,12 @@ export class AuthService {
     const userSnap = await getDoc(userRef);
 
     if (userSnap.exists()) {
-      // Update last login
-      await updateDoc(userRef, {
+      // Update last login. Not awaited: offline, this write only settles on
+      // reconnect, and blocking session restore on it hung the app at launch
+      // even when the profile itself was served from the local cache.
+      updateDoc(userRef, {
         lastLoginAt: Timestamp.now()
-      });
+      }).catch(() => undefined);
       return { id: firebaseUser.uid, ...userSnap.data() } as User;
     }
 
@@ -217,8 +275,12 @@ export class AuthService {
                 this.getOrCreateUser(firebaseUser)
               );
               subscriber.next(user);
-            } catch {
-              subscriber.next(null);
+            } catch (error) {
+              // Same contract as the state listener: a failed profile read on
+              // a valid session emits the in-memory fallback, not null —
+              // null here reads as "signed out" to every consumer.
+              console.error('[Auth] Profile load failed in getCurrentUser; emitting fallback:', error);
+              subscriber.next({ id: firebaseUser.uid, ...buildNewUserProfile(firebaseUser) });
             }
           } else {
             subscriber.next(null);

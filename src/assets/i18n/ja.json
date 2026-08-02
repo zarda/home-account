@@ -493,6 +493,7 @@
     "custom": "カスタム"
   },
   "auth": {
+    "profileLoadDegraded": "プロフィールを読み込めなかったため、一時的に既定の設定を使用しています。自動的に再試行します。",
     "signInWithGoogle": "Googleでログイン",
     "signOut": "ログアウト",
     "welcome": "ようこそ",

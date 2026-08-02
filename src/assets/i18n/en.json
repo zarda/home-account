@@ -493,6 +493,7 @@
     "custom": "Custom"
   },
   "auth": {
+    "profileLoadDegraded": "Your profile couldn't be loaded — using defaults for now. It will retry automatically.",
     "signInWithGoogle": "Sign in with Google",
     "signOut": "Sign Out",
     "welcome": "Welcome",
