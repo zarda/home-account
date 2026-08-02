@@ -110,9 +110,8 @@ export class NlSearchService {
     const fetched = await firstValueFrom(
       this.transactionService.getTransactionsInRange(scope.startDate!, scope.endDate!)
     );
-    const matches = this.applyScope(fetched, scope);
-
     const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
+    const matches = this.applyScope(fetched, scope, toBase);
     const answer: AggregateAnswer = {
       operation: intent.operation,
       value: 0,
@@ -188,7 +187,11 @@ export class NlSearchService {
   }
 
   /** Apply the non-date scope fields locally, rolling parents up over children. */
-  private applyScope(transactions: Transaction[], scope: TransactionFilters): Transaction[] {
+  private applyScope(
+    transactions: Transaction[],
+    scope: TransactionFilters,
+    toBase: (t: Transaction) => number
+  ): Transaction[] {
     let result = transactions;
 
     if (scope.type) {
@@ -204,10 +207,21 @@ export class NlSearchService {
       result = result.filter(t => t.currency === scope.currency);
     }
 
-    // Amount range and text search reuse the exact list-search semantics.
+    // Amount bounds compare in base currency: the model was told the base
+    // currency, and every figure computed from the matches uses toBase, so
+    // a raw-native comparison would count a ¥5,000 lunch as "over $100"
+    // while dropping a €95 dinner. Only text search keeps the list-search
+    // semantics.
+    const min = scope.minAmount;
+    if (min !== undefined) {
+      result = result.filter(t => toBase(t) >= min);
+    }
+    const max = scope.maxAmount;
+    if (max !== undefined) {
+      result = result.filter(t => toBase(t) <= max);
+    }
+
     return applyClientTransactionFilters(result, {
-      minAmount: scope.minAmount,
-      maxAmount: scope.maxAmount,
       searchQuery: scope.searchQuery,
     }, { categoryNames: this.categoryNamesMap() });
   }
