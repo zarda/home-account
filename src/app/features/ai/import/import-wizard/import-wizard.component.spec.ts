@@ -6,7 +6,7 @@ import { Router } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ImportWizardComponent } from './import-wizard.component';
-import { AIImportService } from '../../../../core/services/ai-import.service';
+import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -412,6 +412,23 @@ describe('ImportWizardComponent', () => {
 
       expect(component.isImporting()).toBeFalse();
       expect(notifications.error).toHaveBeenCalledWith('import.importFailed');
+    }));
+
+    it('treats a failed read-back as saved: info toast, still navigates', fakeAsync(() => {
+      // The rows were written; only the summary read failed. An error toast
+      // here would invite a retry that duplicates the whole batch.
+      mockImportService.confirmImport.and.returnValue(
+        Promise.reject(new Error(IMPORT_READBACK_FAILED)));
+
+      component.confirmImport();
+      tick();
+
+      expect(notifications.info).toHaveBeenCalledWith('import.importSavedHistoryUnavailable');
+      expect(notifications.error).not.toHaveBeenCalled();
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/transactions'], {
+        queryParams: { showAll: 'true' }
+      });
+      expect(component.isImporting()).toBeFalse();
     }));
   });
 

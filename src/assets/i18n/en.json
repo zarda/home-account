@@ -774,6 +774,7 @@
     "confirmImport": "Import {{count}} Transactions",
     "importComplete": "Successfully imported {{count}} transactions",
     "importFailed": "Import failed: {{error}}",
+    "importSavedHistoryUnavailable": "Import finished, but the summary could not be loaded. See Import History for details.",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
     "duplicatesSkipped": "Duplicates skipped",

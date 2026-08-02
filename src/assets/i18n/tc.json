@@ -782,6 +782,7 @@
     "confirmImport": "匯入 {{count}} 筆交易",
     "importComplete": "匯入完成",
     "importFailed": "匯入失敗",
+    "importSavedHistoryUnavailable": "匯入已完成，但無法載入摘要。詳情請見匯入紀錄。",
     "noTransactionsFound": "未找到交易",
     "noTransactionsFoundDescription": "無法從此檔案擷取任何交易。請嘗試使用其他檔案或確保圖片清晰可讀。",
     "statusCompleted": "已完成",

@@ -10,7 +10,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 
-import { AIImportService } from '../../../../core/services/ai-import.service';
+import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -398,6 +398,17 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         queryParams: { showAll: 'true' }
       });
     } catch (error) {
+      if (error instanceof Error && error.message === IMPORT_READBACK_FAILED) {
+        // The rows were saved; only the summary read-back failed. Presenting
+        // that as a failed import would invite a retry that duplicates the
+        // batch — say what happened and continue to the list. The full
+        // record, including any per-row errors, is on the Import History page.
+        this.notifications.info(this.t('import.importSavedHistoryUnavailable'));
+        this.router.navigate(['/transactions'], {
+          queryParams: { showAll: 'true' }
+        });
+        return;
+      }
       const message = this.t('import.importFailed', {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
