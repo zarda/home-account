@@ -511,6 +511,72 @@ describe('DashboardComponent', () => {
     });
   });
 
+  describe('period-scoped listener lifecycle', () => {
+    // Each spy hands out a fresh never-completing Subject per call, the shape
+    // of the real Firestore wrappers: the only way a listener is released is
+    // an explicit unsubscribe, so `observed` tells the truth about leaks.
+    function trackSubjects(spy: jasmine.Spy): Subject<unknown>[] {
+      const created: Subject<unknown>[] = [];
+      spy.and.callFake(() => {
+        const subject = new Subject<unknown>();
+        created.push(subject);
+        return subject;
+      });
+      return created;
+    }
+
+    function trackAllStreams() {
+      // Standard tier so the anomaly-baseline stream participates too.
+      authService.currentUser.set(
+        createUser({ preferences: { ragInsightsLevel: 'standard' } as User['preferences'] }));
+      return {
+        byRange: trackSubjects(transactionService.getByDateRange),
+        recent: trackSubjects(transactionService.getRecentTransactions),
+        prevTotals: trackSubjects(transactionService.getPeriodCategoryTotals),
+        baseline: trackSubjects(transactionService.getExpensesInRange),
+      };
+    }
+
+    it('holds at most one live listener per stream across ten period changes', () => {
+      const streams = trackAllStreams();
+      const fixture = build();
+      fixture.detectChanges();
+
+      for (let i = 0; i < 10; i++) {
+        fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+        fixture.detectChanges();
+      }
+
+      for (const created of Object.values(streams)) {
+        expect(created.length).toBeGreaterThan(1);
+        expect(created.filter(s => s.observed).length).toBe(1);
+        expect(created[created.length - 1].observed).toBeTrue();
+      }
+    });
+
+    it('releases every period-scoped listener on destroy', () => {
+      const streams = trackAllStreams();
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      fixture.detectChanges();
+
+      fixture.destroy();
+
+      for (const created of Object.values(streams)) {
+        expect(created.some(s => s.observed)).toBeFalse();
+      }
+    });
+
+    it('subscribes to categories once, not again on each period change', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      expect(categoryService.loadCategories).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('spending-chart drill-down', () => {
     it('hands the category and the shown period to the transactions page', () => {
       const component = build().componentInstance;

@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { InsightsTabComponent } from './insights-tab.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryService } from '../../../core/services/category.service';
@@ -123,10 +123,42 @@ describe('InsightsTabComponent', () => {
 
   afterEach(() => sessionStorage.clear());
 
-  it('creates and loads on init', async () => {
+  it('creates and loads exactly once on init', async () => {
     await build(history());
     expect(component).toBeTruthy();
-    expect(transactionService.getTransactionsInRange).toHaveBeenCalled();
+    // The constructor effect owns the initial load; ngOnInit loading as well
+    // used to open a second six-month listener on every first render.
+    expect(transactionService.getTransactionsInRange).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the previous window listener when the period moves', async () => {
+    await build(history());
+    const created: Subject<Transaction[]>[] = [];
+    transactionService.getTransactionsInRange.and.callFake(() => {
+      const stream = new Subject<Transaction[]>();
+      created.push(stream);
+      return stream;
+    });
+
+    fixture.componentRef.setInput('period', {
+      ...period,
+      option: 'thisYear',
+      start: new Date(2026, 0, 1),
+    } satisfies PeriodSelection);
+    fixture.detectChanges();
+    expect(created.length).toBe(1);
+    expect(created[0].observed).toBeTrue();
+
+    fixture.componentRef.setInput('period', {
+      ...period,
+      option: 'lastMonth',
+      start: new Date(2026, 4, 1),
+    } satisfies PeriodSelection);
+    fixture.detectChanges();
+
+    expect(created.length).toBe(2);
+    expect(created[0].observed).toBeFalse();
+    expect(created[1].observed).toBeTrue();
   });
 
   it('produces cards from a rich history', async () => {

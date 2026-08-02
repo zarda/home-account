@@ -140,7 +140,9 @@ export class InsightsTabComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.insights.load(this.period());
+    // The constructor effect above performs the initial load once inputs are
+    // bound; loading here as well opened a second six-month listener on every
+    // first render.
     this.snapshots.watch().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     // Also triggered from the dashboard; the service shares one in-flight run,
     // so this only matters for someone deep-linking straight to Reports, who

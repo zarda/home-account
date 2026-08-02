@@ -1,4 +1,5 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, DestroyRef, inject, signal, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
@@ -45,23 +46,27 @@ export class CategoryManagerComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
+  private destroyRef = inject(DestroyRef);
 
   selectedType: 'expense' | 'income' = 'expense';
   categories = signal<Category[]>([]);
   isLoading = signal(true);
 
   ngOnInit(): void {
-    this.loadCategories();
-  }
-
-  private loadCategories(): void {
-    this.categoryService.loadCategories().subscribe({
-      next: (categories) => {
-        this.categories.set(categories);
-        this.isLoading.set(false);
-      },
-      error: () => this.isLoading.set(false)
-    });
+    // One live subscription for the component's lifetime. The stream is an
+    // onSnapshot merge, so every add/edit/delete/reorder echoes back through
+    // it — the success case via latency compensation, a rules-rejected write
+    // via the rollback snapshot. Re-subscribing after each mutation, as this
+    // used to, stacked a fresh listener per action and never released any.
+    this.categoryService.loadCategories()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (categories) => {
+          this.categories.set(categories);
+          this.isLoading.set(false);
+        },
+        error: () => this.isLoading.set(false)
+      });
   }
 
   get filteredCategories(): Category[] {
@@ -80,12 +85,10 @@ export class CategoryManagerComponent implements OnInit {
     this.categoryService.reorderCategories(ids).then(() => {
       const message = this.translationService.t('settings.categoriesReordered');
       this.notifications.success(message);
-      this.loadCategories();
     }).catch(() => {
+      // The held live subscription resyncs the list: a rejected write emits
+      // the rollback snapshot, so the optimistic order snaps back on its own.
       this.notifications.error(this.translationService.t('settings.categoriesReorderFailed'));
-      // The list already shows the new order optimistically; reload so it
-      // matches what was actually stored.
-      this.loadCategories();
     });
   }
 
@@ -105,7 +108,6 @@ export class CategoryManagerComponent implements OnInit {
         }).then(() => {
           const message = this.translationService.t('settings.categoryCreated');
           this.notifications.success(message);
-          this.loadCategories();
         }).catch(() => {
           this.notifications.error(this.translationService.t('settings.categoryCreateFailed'));
         });
@@ -128,7 +130,6 @@ export class CategoryManagerComponent implements OnInit {
         }).then(() => {
           const message = this.translationService.t('settings.categoryUpdated');
           this.notifications.success(message);
-          this.loadCategories();
         }).catch(() => {
           this.notifications.error(this.translationService.t('settings.categoryUpdateFailed'));
         });
@@ -153,7 +154,6 @@ export class CategoryManagerComponent implements OnInit {
         this.categoryService.deleteCategory(category.id).then(() => {
           const message = this.translationService.t('settings.categoryDeleted');
           this.notifications.success(message);
-          this.loadCategories();
         }).catch(() => {
           this.notifications.error(this.translationService.t('settings.categoryDeleteFailed'));
         });

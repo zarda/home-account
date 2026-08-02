@@ -121,6 +121,44 @@ describe('ReportsComponent', () => {
     it('should have default tab index of 0', () => {
       expect(component.selectedTabIndex).toBe(0);
     });
+
+    it('subscribes to categories once, not again on each period change', () => {
+      component.onPeriodSelection(selection('custom', new Date(2024, 5, 1), new Date(2024, 5, 30)));
+      component.onPeriodSelection(selection('custom', new Date(2024, 6, 1), new Date(2024, 6, 31)));
+      expect(mockCategoryService.loadCategories).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases the window and category listeners on destroy', () => {
+      const range$ = new Subject<never[]>();
+      const categories$ = new Subject<never[]>();
+      mockTransactionService.getByDateRange.and.returnValue(range$);
+      mockCategoryService.loadCategories.and.returnValue(categories$);
+
+      const freshFixture = TestBed.createComponent(ReportsComponent);
+      freshFixture.detectChanges();
+      expect(range$.observed).toBeTrue();
+      expect(categories$.observed).toBeTrue();
+
+      freshFixture.destroy();
+      expect(range$.observed).toBeFalse();
+      expect(categories$.observed).toBeFalse();
+    });
+
+    it('supersedes the previous window listener on a period change', () => {
+      const created: Subject<never[]>[] = [];
+      mockTransactionService.getByDateRange.and.callFake(() => {
+        const stream = new Subject<never[]>();
+        created.push(stream);
+        return stream;
+      });
+
+      component.onPeriodSelection(selection('custom', new Date(2024, 5, 1), new Date(2024, 5, 30)));
+      component.onPeriodSelection(selection('custom', new Date(2024, 6, 1), new Date(2024, 6, 31)));
+
+      expect(created.length).toBe(2);
+      expect(created[0].observed).toBeFalse();
+      expect(created[1].observed).toBeTrue();
+    });
   });
 
   describe('period selection', () => {

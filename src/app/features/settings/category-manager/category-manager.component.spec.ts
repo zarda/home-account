@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
@@ -156,6 +156,40 @@ describe('CategoryManagerComponent', () => {
 
     it('should default to expense type', () => {
       expect(component.selectedType).toBe('expense');
+    });
+  });
+
+  describe('category stream lifecycle', () => {
+    it('keeps the single live subscription across a full mutate cycle', fakeAsync(() => {
+      const formResult = { name: 'X', icon: 'star', color: '#ffffff' };
+      mockDialog.open.and.returnValue({ afterClosed: () => of(formResult) } as never);
+      component.openAddDialog();
+      tick();
+      component.openEditDialog(mockCategories[0]);
+      tick();
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      component.deleteCategory(mockCategories[0]);
+      tick();
+      component.onDrop({ previousIndex: 0, currentIndex: 1 } as never);
+      tick();
+
+      // The held onSnapshot stream carries every refresh; re-subscribing per
+      // mutation used to stack a fresh listener on each action.
+      expect(mockCategoryService.loadCategories).toHaveBeenCalledTimes(1);
+    }));
+
+    it('updates the list from later emissions and releases the stream on destroy', () => {
+      const stream = new Subject<Category[]>();
+      mockCategoryService.loadCategories.and.returnValue(stream);
+      const freshFixture = TestBed.createComponent(CategoryManagerComponent);
+      freshFixture.detectChanges();
+      expect(stream.observed).toBeTrue();
+
+      stream.next([mockCategories[0]]);
+      expect(freshFixture.componentInstance.categories()).toEqual([mockCategories[0]]);
+
+      freshFixture.destroy();
+      expect(stream.observed).toBeFalse();
     });
   });
 

@@ -1,5 +1,6 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { PwaService } from './pwa.service';
@@ -99,6 +100,9 @@ export class InsightsService {
   private failed = signal<boolean>(false);
   private windowState = signal<InsightWindow | null>(null);
   private windowTransactions = signal<Transaction[]>([]);
+  // The window stream never completes, so each load() must supersede the
+  // previous listener; takeUntilDestroyed alone only covers leaving the tab.
+  private loadSub?: Subscription;
 
   readonly isLoading = this.loading.asReadonly();
   readonly hasFailed = this.failed.asReadonly();
@@ -165,7 +169,8 @@ export class InsightsService {
     this.loading.set(true);
     this.failed.set(false);
 
-    this.transactionService.getTransactionsInRange(window.start, window.end)
+    this.loadSub?.unsubscribe();
+    this.loadSub = this.transactionService.getTransactionsInRange(window.start, window.end)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: transactions => {

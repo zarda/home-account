@@ -1,4 +1,5 @@
-import { Component, inject, signal, computed, OnDestroy, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { Component, DestroyRef, inject, signal, computed, OnDestroy, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatStepperModule, MatStepper } from '@angular/material/stepper';
@@ -55,6 +56,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private router = inject(Router);
+  private destroyRef = inject(DestroyRef);
 
   @ViewChild('stepper') stepper!: MatStepper;
 
@@ -182,8 +184,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // Load categories for the category selector
-    this.categoryService.loadCategories().subscribe();
+    // Load categories for the category selector. A live stream that never
+    // completes, so it must not outlive the wizard.
+    this.categoryService.loadCategories()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
 
     // Check if we received import result from camera capture via router state
     const state = history.state as {

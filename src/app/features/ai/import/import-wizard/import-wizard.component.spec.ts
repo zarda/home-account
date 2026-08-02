@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { of } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Router } from '@angular/router';
@@ -111,7 +112,7 @@ describe('ImportWizardComponent', () => {
     mockCategoryService = jasmine.createSpyObj('CategoryService', ['loadCategories'], {
       categories: signal(mockCategories)
     });
-    mockCategoryService.loadCategories.and.returnValue({ subscribe: () => ({ unsubscribe: () => undefined }) } as never);
+    mockCategoryService.loadCategories.and.returnValue(of([]));
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
