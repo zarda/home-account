@@ -10,6 +10,7 @@ import {
   connectFirestoreEmulator,
   collection,
   getDocs,
+  getDoc,
   doc,
   setDoc,
   deleteDoc,
@@ -22,7 +23,7 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { RecurringService } from './recurring.service';
+import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service';
 import { dayKey } from '../utils/transaction-date.utils';
 
 /**
@@ -170,6 +171,58 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
       expect(date).toBe(Math.min(31, lastDayOfThatMonth));
     }
   }, 60000);
+
+  it('drains a daily backlog past the per-claim cap without exceeding the write limit', async () => {
+    const DRAIN_ID = 'smoke-daily-dormant';
+    // One full claim plus a remainder, so the drain loop must commit at
+    // least two real transactions — the case the unbounded claim could
+    // never commit at all.
+    const daysBack = MAX_OCCURRENCES_PER_CLAIM + 50;
+    const first = new Date();
+    first.setHours(9, 0, 0, 0);
+    first.setDate(first.getDate() - daysBack);
+
+    await setDoc(doc(firestore, `users/${uid}/recurring/${DRAIN_ID}`), {
+      userId: uid,
+      name: 'Daily dormant',
+      type: 'expense',
+      amount: 3,
+      currency: 'USD',
+      categoryId: 'food_coffee',
+      description: 'Coffee',
+      frequency: { type: 'daily', interval: 1 },
+      startDate: Timestamp.fromDate(first),
+      nextOccurrence: Timestamp.fromDate(first),
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+
+    try {
+      await service.catchUpRecurringTransactions();
+
+      const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const posted = snapshot.docs.filter(d => d.id.startsWith(`rec-${DRAIN_ID}-`));
+
+      // Every due day posted exactly once across the claims.
+      expect(posted.length).toBeGreaterThanOrEqual(daysBack);
+      expect(new Set(posted.map(d => d.id)).size).toBe(posted.length);
+
+      // The rule ends drained: pointer past now, still active.
+      const rule = await getDoc(doc(firestore, `users/${uid}/recurring/${DRAIN_ID}`));
+      const next = (rule.data()!['nextOccurrence'] as Timestamp).toDate();
+      expect(next.getTime()).toBeGreaterThan(Date.now() - 60_000);
+      expect(rule.data()!['isActive']).toBeTrue();
+    } finally {
+      await deleteDoc(doc(firestore, `users/${uid}/recurring/${DRAIN_ID}`)).catch(() => undefined);
+      const leftovers = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      await Promise.all(
+        leftovers.docs
+          .filter(d => d.id.startsWith(`rec-${DRAIN_ID}-`))
+          .map(d => deleteDoc(d.ref).catch(() => undefined))
+      );
+    }
+  }, 120000);
 
   it('is idempotent: a second catch-up adds no documents', async () => {
     await service.catchUpRecurringTransactions();

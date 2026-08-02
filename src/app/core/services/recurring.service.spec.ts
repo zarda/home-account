@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Timestamp, FieldValue, deleteField } from '@angular/fire/firestore';
 import { of } from 'rxjs';
-import { RecurringService } from './recurring.service';
+import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
@@ -585,6 +585,96 @@ describe('RecurringService', () => {
       const record = data as { isActive: boolean; nextOccurrence: Timestamp };
       expect(record.isActive).toBeFalse();
       expect(record.nextOccurrence.toDate()).toEqual(fourth);
+    });
+
+    // The default stub never commits tx.update back to serverDocs, which is
+    // fine for single-claim tests but would make a drain loop re-read the
+    // unadvanced pointer forever. This variant commits updates and counts
+    // occurrence writes per transaction, like the real server would.
+    function installCommittingTransactionStub(): number[] {
+      const setsPerClaim: number[] = [];
+      mockFirestoreService.runTransaction.and.callFake(async updateFn => {
+        const before = txSet.calls.count();
+        const tx = {
+          get: (ref: FakeDocRef) => {
+            const doc = serverDocs.get(ref.path);
+            return Promise.resolve({
+              exists: () => doc !== undefined,
+              id: ref.path.split('/').pop(),
+              data: () => doc
+            });
+          },
+          set: txSet,
+          update: (ref: FakeDocRef, update: Record<string, unknown>) => {
+            txUpdate(ref, update);
+            const doc = serverDocs.get(ref.path);
+            if (doc) {
+              serverDocs.set(ref.path, { ...doc, ...update } as RecurringTransaction);
+            }
+          }
+        };
+        const result = await updateFn(tx as unknown as Parameters<typeof updateFn>[0]);
+        setsPerClaim.push(txSet.calls.count() - before);
+        return result;
+      });
+      return setsPerClaim;
+    }
+
+    it('drains a daily rule dormant for years across capped claims', async () => {
+      const setsPerClaim = installCommittingTransactionStub();
+      const start = new Date(Date.now() - 1500 * DAY);
+      const rule = createRecurring({
+        id: 'dormant',
+        frequency: { type: 'daily', interval: 1 },
+        nextOccurrence: Timestamp.fromDate(start)
+      });
+      service.recurringTransactions.set([rule]);
+      seedServerRule(rule);
+
+      await service.processRecurringTransactions();
+
+      // No single transaction exceeded the write cap, and the backlog fully
+      // drained in one catch-up run across successive claims.
+      expect(setsPerClaim.every(n => n <= MAX_OCCURRENCES_PER_CLAIM)).toBeTrue();
+      const total = txSetPaths().length;
+      expect(total).toBeGreaterThanOrEqual(1500);
+      expect(setsPerClaim.length).toBe(Math.ceil(total / MAX_OCCURRENCES_PER_CLAIM));
+
+      // Deterministic ids and a monotonically advancing pointer: no
+      // occurrence was posted twice across the claims.
+      expect(new Set(txSetPaths()).size).toBe(total);
+
+      // The committed pointer ends past now, so the next catch-up no-ops.
+      const finalRule = serverDocs.get('users/user123/recurring/dormant')!;
+      expect(finalRule.nextOccurrence.toDate().getTime()).toBeGreaterThan(Date.now());
+      expect(finalRule.isActive).toBeTrue();
+    });
+
+    it('deactivates an ended rule only after its backlog drains', async () => {
+      const setsPerClaim = installCommittingTransactionStub();
+      const start = new Date(Date.now() - 900 * DAY);
+      const ended = new Date(Date.now() - 1 * DAY);
+      const rule = createRecurring({
+        id: 'endedBacklog',
+        frequency: { type: 'daily', interval: 1 },
+        nextOccurrence: Timestamp.fromDate(start),
+        endDate: Timestamp.fromDate(ended)
+      });
+      service.recurringTransactions.set([rule]);
+      seedServerRule(rule);
+
+      await service.processRecurringTransactions();
+
+      // Deactivating on a capped batch would strand the rest of the backlog,
+      // because catch-up only claims active rules: only the final, draining
+      // claim may pause the rule.
+      const deactivations = txUpdate.calls.allArgs()
+        .filter(([, data]) => (data as Record<string, unknown>)['isActive'] === false);
+      expect(setsPerClaim.length).toBeGreaterThan(1);
+      expect(deactivations.length).toBe(1);
+      const lastUpdate = txUpdate.calls.mostRecent().args[1] as Record<string, unknown>;
+      expect(lastUpdate['isActive']).toBeFalse();
+      expect(serverDocs.get('users/user123/recurring/endedBacklog')!.isActive).toBeFalse();
     });
 
     it('should pause without posting when the rule came due only after its end date', async () => {
