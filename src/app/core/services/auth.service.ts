@@ -237,16 +237,26 @@ export class AuthService {
     }
 
     const userRef = doc(this.firestore, 'users', user.id);
-    const updatedPreferences = { ...user.preferences, ...prefs };
 
-    await updateDoc(userRef, {
-      preferences: updatedPreferences
-    });
+    // Dotted field paths so only the touched keys are sent — rewriting the
+    // whole map from this session's snapshot reverted anything another
+    // device changed since it was read (change the theme on a phone and the
+    // language on a laptop, and whichever saved second undid the other).
+    // Same approach as clearStoredProviderApiKeys below, and it needs no
+    // rules change: to userUpdateValid the post-merge document still
+    // presents `preferences` as a map.
+    const fieldUpdates: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(prefs)) {
+      fieldUpdates[`preferences.${key}`] = value;
+    }
+    if (Object.keys(fieldUpdates).length === 0) return;
+
+    await updateDoc(userRef, fieldUpdates);
 
     // Update local state
     this.currentUser.set({
       ...user,
-      preferences: updatedPreferences
+      preferences: { ...user.preferences, ...prefs }
     });
   }
 

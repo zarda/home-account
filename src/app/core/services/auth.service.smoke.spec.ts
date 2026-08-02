@@ -151,15 +151,21 @@ describe('AuthService (emulator smoke test)', () => {
       expect(emissions[0]!.id).toBe(uid);
     });
 
-    it('updateUserPreferences writes the whole merged map and mirrors it locally', async () => {
+    it('updateUserPreferences sends only the touched key, so concurrent edits survive', async () => {
       const service = await authedService();
       const before = service.currentUser()!.preferences;
 
+      // An edit from "another device", landing after this session read its
+      // snapshot. The whole-map rewrite this method used to do would revert
+      // it; the per-field write must not.
+      await updateDoc(userRef(), { 'preferences.theme': 'dark' });
+
       await service.updateUserPreferences({ baseCurrency: 'EUR' });
 
-      const written = (await getDoc(userRef())).data()!['preferences'] as UserPreferences;
-      expect(written).toEqual({ ...before, baseCurrency: 'EUR' });
-      expect(service.currentUser()!.preferences).toEqual(written);
+      const written = (await getDoc(userRef())).data()!['preferences'] as Record<string, unknown>;
+      expect(written['baseCurrency']).toBe('EUR');
+      expect(written['theme']).toBe('dark');
+      expect(service.currentUser()!.preferences).toEqual({ ...before, baseCurrency: 'EUR' });
     });
 
     it('clearStoredProviderApiKeys deletes the legacy fields without clobbering the map', async () => {
