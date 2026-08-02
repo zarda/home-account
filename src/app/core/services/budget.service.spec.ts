@@ -467,6 +467,66 @@ describe('BudgetService', () => {
     });
   });
 
+  describe('budget period boundaries (short-month anchors)', () => {
+    const anchor31Budget: Budget = {
+      ...mockBudgets[0],
+      id: 'budget31',
+      startDate: Timestamp.fromDate(new Date(2026, 0, 31))
+    };
+
+    beforeEach(() => {
+      jasmine.clock().install();
+      const currencyService = TestBed.inject(CurrencyService);
+      spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
+      spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(anchor31Budget));
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+      mockTransactionService.getExpensesInRange.and.returnValue(of([]));
+    });
+
+    afterEach(() => {
+      jasmine.clock().uninstall();
+    });
+
+    async function recalcWindowAt(today: Date): Promise<{ start: Date; end: Date }> {
+      jasmine.clock().mockDate(today);
+      mockTransactionService.getExpensesInRange.calls.reset();
+      await service.recalculateBudgetSpent('budget31');
+      const [start, end] = mockTransactionService.getExpensesInRange.calls.mostRecent().args;
+      return { start: start as Date, end: end as Date };
+    }
+
+    it('starts a new period on the last day of a short month for a day-31 anchor', async () => {
+      const { start, end } = await recalcWindowAt(new Date(2026, 1, 28, 12, 0));
+
+      expect(start).toEqual(new Date(2026, 1, 28));
+      expect(end).toEqual(new Date(2026, 2, 30, 23, 59, 59, 999));
+    });
+
+    it('keeps the day before the clamped anchor in the previous period', async () => {
+      const { start, end } = await recalcWindowAt(new Date(2026, 1, 27, 12, 0));
+
+      expect(start).toEqual(new Date(2026, 0, 31));
+      expect(end).toEqual(new Date(2026, 1, 27, 23, 59, 59, 999));
+    });
+
+    it('makes period N+1 start exactly 1 ms after period N ends across a short month', async () => {
+      const previous = await recalcWindowAt(new Date(2026, 1, 27, 12, 0));
+      const next = await recalcWindowAt(new Date(2026, 1, 28, 12, 0));
+
+      expect(next.start.getTime()).toBe(previous.end.getTime() + 1);
+    });
+
+    it('leaves a day-1 anchor unchanged mid-month', async () => {
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(mockBudgets[0]));
+
+      const { start, end } = await recalcWindowAt(new Date(2026, 7, 10, 12, 0));
+
+      expect(start).toEqual(new Date(2026, 7, 1));
+      expect(end).toEqual(new Date(2026, 7, 31, 23, 59, 59, 999));
+    });
+  });
+
   describe('recalculateBudgetsForCategory', () => {
     it('should recalculate each active budget in the category', async () => {
       const currencyService = TestBed.inject(CurrencyService);

@@ -367,8 +367,13 @@ export class BudgetService {
         let year = now.getFullYear();
         let month = now.getMonth();
 
-        // If we haven't reached the start day this month, use previous month
-        if (now.getDate() < startDayOfMonth) {
+        // If we haven't reached the start day this month, use previous month.
+        // Compare against the anchor as THIS month sees it: a day-31 anchor
+        // falls on Feb 28 in February, otherwise the last day of a short
+        // month would belong to no period at all.
+        const daysInThisMonth = new Date(year, month + 1, 0).getDate();
+        const anchorThisMonth = Math.min(startDayOfMonth, daysInThisMonth);
+        if (now.getDate() < anchorThisMonth) {
           month--;
           if (month < 0) {
             month = 11;
