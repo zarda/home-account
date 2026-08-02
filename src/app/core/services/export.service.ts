@@ -16,7 +16,7 @@ import {
   InsightSnapshot,
   MonthlyTotal
 } from '../../models';
-import { parseDayKey } from '../utils/transaction-date.utils';
+import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -189,7 +189,10 @@ export class ExportService {
     // Build CSV rows
     const rows = filtered.map(t => {
       const category = categories.find(c => c.id === t.categoryId);
-      const date = t.date.toDate().toISOString().split('T')[0];
+      // Local calendar day, matching what the app displays — toISOString
+      // would shift any evening (west of UTC) or morning (east) row onto
+      // the neighbouring day.
+      const date = dayKey(t.date.toDate());
 
       if (options?.format === 'summary') {
         return [

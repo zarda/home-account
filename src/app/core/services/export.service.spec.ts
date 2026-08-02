@@ -111,6 +111,45 @@ describe('ExportService', () => {
       reader.readAsText(blob);
     });
 
+    // The Date column is a local calendar day: it must match what the app
+    // displays in every zone, not the UTC rendering of the same instant.
+    // Each of these is red in one hemisphere only, which is why this file
+    // runs under both offsets in CI (test:dates).
+    it('writes the calendar day the user picked, not its UTC rendering', async () => {
+      const transaction = createTransaction({
+        date: Timestamp.fromDate(new Date(2026, 7, 1))
+      });
+
+      const content = await service.exportToCSV([transaction]).text();
+
+      expect(content.split('\n')[1].startsWith('2026-08-01,')).toBeTrue();
+    });
+
+    it('keeps a late-evening transaction on its local day', async () => {
+      const transaction = createTransaction({
+        date: Timestamp.fromDate(new Date(2026, 6, 31, 22, 0))
+      });
+
+      const content = await service.exportToCSV([transaction]).text();
+
+      expect(content.split('\n')[1].startsWith('2026-07-31,')).toBeTrue();
+    });
+
+    it('round-trips its own export to the same local day', async () => {
+      const transaction = createTransaction({
+        date: Timestamp.fromDate(new Date(2026, 7, 1))
+      });
+
+      const blob = service.exportToCSV([transaction]);
+      const file = new File([blob], 'roundtrip.csv', { type: 'text/csv' });
+      const result = await service.importFromCSV(file);
+
+      expect(result.length).toBe(1);
+      expect(result[0].date.getFullYear()).toBe(2026);
+      expect(result[0].date.getMonth()).toBe(7);
+      expect(result[0].date.getDate()).toBe(1);
+    });
+
     it('ends the detailed header with Tags and Location', (done) => {
       const blob = service.exportToCSV([createTransaction()]);
 
