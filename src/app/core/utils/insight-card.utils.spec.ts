@@ -222,6 +222,63 @@ describe('insight-card.utils', () => {
     });
   });
 
+  describe('recurring "new" gating', () => {
+    // Two subscriptions at constant prices for the whole window — richHistory
+    // is unsuitable here because its groceries amounts grow monthly and card
+    // themselves via the price-increase path.
+    function steadyPortfolio(netflixFrom = 0, netflixPrice = () => 15.99): Transaction[] {
+      const transactions: Transaction[] = [];
+      for (let month = netflixFrom; month < 6; month += 1) {
+        transactions.push(expense(new Date(2026, month, 5), netflixPrice(), {
+          description: 'Netflix', categoryId: 'subscriptions_streaming_services',
+        }));
+      }
+      for (let month = 0; month < 6; month += 1) {
+        transactions.push(expense(new Date(2026, month, 9), 9.99, {
+          description: 'Spotify', categoryId: 'subscriptions_music',
+        }));
+      }
+      return transactions;
+    }
+
+    // Weekly sessions from `start` to the window end: enough occurrences to
+    // register as a recurring group whose firstSeen is inside the recency
+    // cutoff (two months before the window end).
+    function gymSince(start: Date): Transaction[] {
+      const sessions: Transaction[] = [];
+      for (let d = new Date(start); d <= window.end; d = new Date(d.getTime() + 7 * 86400000)) {
+        sessions.push(expense(new Date(d), 55, {
+          description: 'Iron Temple Gym', categoryId: 'health_fitness',
+        }));
+      }
+      return sessions;
+    }
+
+    it('cards only the group that actually started recently', () => {
+      const cards = cardsFor([...steadyPortfolio(), ...gymSince(new Date(2026, 4, 15))]);
+      const items = cards.filter(c => c.kind === 'recurringItem');
+
+      expect(items.length).toBe(1);
+      expect(items[0].categoryIds).toEqual(['health_fitness']);
+      expect(items[0].titleKey).toBe('insights.recurringNewTitle');
+    });
+
+    it('cards nothing when every recurring charge is long-running', () => {
+      const items = cardsFor(steadyPortfolio()).filter(c => c.kind === 'recurringItem');
+      expect(items).toEqual([]);
+    });
+
+    it('still cards a long-running charge whose price rose', () => {
+      let month = 0;
+      const risingNetflix = steadyPortfolio(0, () => (month++ >= 3 ? 19.99 : 15.99));
+      const items = cardsFor(risingNetflix).filter(c => c.kind === 'recurringItem');
+
+      expect(items.length).toBe(1);
+      expect(items[0].titleKey).toBe('insights.recurringIncreasedTitle');
+      expect(items[0].categoryIds).toEqual(['subscriptions_streaming_services']);
+    });
+  });
+
   describe('ordering', () => {
     it('puts the recurring portfolio first', () => {
       expect(cardsFor(richHistory())[0].kind).toBe('recurringPortfolio');

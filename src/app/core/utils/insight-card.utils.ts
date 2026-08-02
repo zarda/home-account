@@ -5,8 +5,9 @@ import {
   SerializableFilters,
   StorableRecurringGroup,
 } from '../../models';
-import { RecurringCadence } from './recurring-pattern.utils';
+import { DEFAULT_RECURRING_OPTIONS, RecurringCadence } from './recurring-pattern.utils';
 import { compareIds } from './transaction-aggregation.utils';
+import { addMonths, dayKey, parseDayKey } from './transaction-date.utils';
 
 /**
  * Turns a fact bundle into the cards the Insights tab renders.
@@ -196,10 +197,20 @@ export function buildInsightCards(
     });
   }
 
-  // Individually notable recurring items: a price rise, or one that just started.
-  const newSince = recurring.newGroupCount > 0;
+  // Individually notable recurring items: a price rise, or one that just
+  // started. "Just started" is judged per group against the detector's own
+  // recency cutoff — every firstSeen is inside the window by construction,
+  // so comparing against the window start would flag every group the moment
+  // one of them is new. The cutoff is recomputed from the stored window end
+  // rather than persisted per group, so old snapshots stay correct. If a
+  // caller ever overrides newWithinMonths the count and this cutoff could
+  // disagree; no production caller does.
+  const windowEnd = parseDayKey(facts.window.end);
+  const newCutoff = windowEnd
+    ? dayKey(addMonths(windowEnd, -DEFAULT_RECURRING_OPTIONS.newWithinMonths))
+    : null; // unreadable stored window: claim nothing is new
   const notable = recurring.groups
-    .filter(group => group.priceIncreased || (newSince && group.firstSeen >= facts.window.start))
+    .filter(group => group.priceIncreased || (newCutoff !== null && group.firstSeen >= newCutoff))
     .sort((a, b) => Number(b.priceIncreased) - Number(a.priceIncreased)
       || b.monthlyEquivalent - a.monthlyEquivalent
       || compareIds(a.key, b.key))
