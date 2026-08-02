@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed, Injector } from '@angular/core';
 import { Timestamp, deleteField } from '@angular/fire/firestore';
-import { Observable, map, of } from 'rxjs';
+import { Observable, map, of, tap } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
@@ -106,7 +106,10 @@ export class TransactionService {
     return `users/${userId}/transactions`;
   }
 
-  // Get transactions with optional filters
+  // Get transactions with optional filters. A pure query: it never writes the
+  // shared `transactions` signal, so importers and detectors can run narrow
+  // windows without moving what the dashboard displays. Publishing is owned by
+  // getByDateRange alone.
   getTransactions(filters?: TransactionFilters): Observable<Transaction[]> {
     const userId = this.authService.userId();
     if (!userId) return of([]);
@@ -130,11 +133,7 @@ export class TransactionService {
         // caller of this path searches, so category-name matching (supplied
         // by TransactionWindowService for the transactions page) is not
         // wired here — wire it up before routing a searchQuery through this.
-        const result = applyClientTransactionFilters(transactions, filters);
-
-        // Update the signal
-        this.transactions.set(result);
-        return result;
+        return applyClientTransactionFilters(transactions, filters);
       })
     );
   }
@@ -766,12 +765,17 @@ export class TransactionService {
     }
   }
 
-  // Get transactions by date range
+  // Get transactions by date range. The ONE path that publishes the shared
+  // `transactions` signal the dashboard and reports render from — every other
+  // reader in this service is non-mutating by contract, so a query run for
+  // duplicate detection or AI import cannot repaint the visible window.
   getByDateRange(start: Date, end: Date): Observable<Transaction[]> {
     return this.getTransactions({
       startDate: start,
       endDate: end
-    });
+    }).pipe(
+      tap(result => this.transactions.set(result))
+    );
   }
 
   // Get period totals without updating the main transactions signal
@@ -921,9 +925,9 @@ export class TransactionService {
 
   /**
    * Non-mutating fetch of every transaction (both types) in a date range.
-   * Unlike getTransactions()/getByDateRange(), this leaves the main
-   * `transactions` signal untouched; used for aggregate computations that
-   * must not disturb the visible list (smart search answers).
+   * Unlike getByDateRange(), this leaves the main `transactions` signal
+   * untouched; used for aggregate computations that must not disturb the
+   * visible list (smart search answers).
    */
   getTransactionsInRange(start: Date, end: Date): Observable<Transaction[]> {
     const userId = this.authService.userId();

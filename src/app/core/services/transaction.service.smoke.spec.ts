@@ -177,6 +177,22 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
     expect(service.transactions().map(t => t.id)).toEqual(onScreen);
   }, 20000);
 
+  it('a bare getTransactions query cannot repaint the published window', async () => {
+    await firstValueFrom(service.getByDateRange(CURRENT_START, CURRENT_END));
+    const onScreen = service.transactions().map(t => t.id);
+    expect(onScreen.length).toBeGreaterThan(0);
+
+    // Duplicate detection and AI import run getTransactions with their own
+    // narrow filters. Against the emulator this range returns a different row
+    // set, so a leaked publish would repaint the window and fail the check.
+    const priorRows = await firstValueFrom(
+      service.getTransactions({ startDate: PRIOR_START, endDate: PRIOR_END })
+    );
+    expect(priorRows.map(t => t.id)).not.toEqual(onScreen);
+
+    expect(service.transactions().map(t => t.id)).toEqual(onScreen);
+  }, 20000);
+
   it('includes both income and expense rows in the prior window', async () => {
     const rows = await firstValueFrom(service.getTransactionsInRange(PRIOR_START, PRIOR_END));
 

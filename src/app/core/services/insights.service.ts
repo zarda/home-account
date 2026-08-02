@@ -156,7 +156,7 @@ export class InsightsService {
    *
    * Deliberately one query and deliberately `getTransactionsInRange`: it does not
    * touch the shared `transactions` signal that the other three report tabs
-   * render from, unlike getByDateRange, getTransactions and getMonthlyTotals.
+   * render from, unlike getByDateRange and the getMonthlyTotals built on it.
    * Both transaction types are needed, because the payday detector reads income.
    */
   load(selection: PeriodSelection, now: Date = new Date()): void {
