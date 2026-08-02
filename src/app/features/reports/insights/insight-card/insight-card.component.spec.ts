@@ -155,6 +155,19 @@ describe('InsightCardComponent', () => {
       expect(filters.categoryId).toBe('food_groceries');
     });
 
+    // Day keys mean local calendar days. Revived as UTC midnight they skew
+    // by the zone offset: west of UTC the window loses its whole last day,
+    // east of UTC it swallows the previous evening. Green only at offset 0,
+    // which is why this file runs under both offsets in CI (test:dates).
+    it('revives day-key bounds as local dates covering the whole window', () => {
+      build(card());
+      component.openFilters();
+
+      const filters = pendingFilters.apply.calls.mostRecent().args[0];
+      expect(filters.startDate).toEqual(new Date(2026, 0, 1));
+      expect(filters.endDate).toEqual(new Date(2026, 5, 30));
+    });
+
     it('omits filter keys the card did not carry', () => {
       build(card());
       component.openFilters();

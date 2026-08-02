@@ -15,6 +15,7 @@ import {
   TransactionFilters,
 } from '../../../../models';
 import { cadenceKey } from '../../../../core/utils/insight-card.utils';
+import { parseDayKey } from '../../../../core/utils/transaction-date.utils';
 import { RecurringCadence } from '../../../../core/utils/recurring-pattern.utils';
 import { StatCardComponent } from '../../../../shared/components/stat-card/stat-card.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -158,13 +159,23 @@ export class InsightCardComponent {
     void this.router.navigate(['/transactions']);
   }
 
-  /** ISO strings back to Dates, which is what the filter surface expects. */
+  /**
+   * Stored day keys back to Dates, which is what the filter surface expects.
+   * Day keys are local calendar days, so they must revive as local midnight —
+   * `new Date(string)` would read them as UTC and skew the window by the zone
+   * offset, dropping its whole last day west of UTC. The constructor stays as
+   * the fallback for any legacy snapshot holding a full ISO instant.
+   */
   private toLiveFilters(filters: SerializableFilters): TransactionFilters {
     const live: TransactionFilters = {};
     if (filters.type !== undefined) live.type = filters.type;
     if (filters.categoryId !== undefined) live.categoryId = filters.categoryId;
-    if (filters.startDate !== undefined) live.startDate = new Date(filters.startDate);
-    if (filters.endDate !== undefined) live.endDate = new Date(filters.endDate);
+    if (filters.startDate !== undefined) {
+      live.startDate = parseDayKey(filters.startDate) ?? new Date(filters.startDate);
+    }
+    if (filters.endDate !== undefined) {
+      live.endDate = parseDayKey(filters.endDate) ?? new Date(filters.endDate);
+    }
     if (filters.minAmount !== undefined) live.minAmount = filters.minAmount;
     if (filters.maxAmount !== undefined) live.maxAmount = filters.maxAmount;
     if (filters.currency !== undefined) live.currency = filters.currency;
