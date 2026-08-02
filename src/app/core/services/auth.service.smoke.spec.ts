@@ -22,7 +22,7 @@ import { ThemeService } from './theme.service';
 import { SecurityLogService } from './security-log.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
-import { DEFAULT_USER_PREFERENCES, UserPreferences } from '../../models';
+import { DEFAULT_USER_PREFERENCES } from '../../models';
 
 /**
  * Integration smoke test for AuthService against the auth and Firestore
