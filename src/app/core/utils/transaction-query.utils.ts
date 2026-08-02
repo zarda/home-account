@@ -77,11 +77,15 @@ export function applyClientTransactionFilters(
 ): Transaction[] {
   let result = transactions;
 
-  if (filters?.minAmount !== undefined) {
+  // typeof guards rather than !== undefined: a cleared number input arrives
+  // as literal null, and `t.amount <= null` coerces to `<= 0`, which matches
+  // nothing and sends the auto-fetch paging through the whole collection.
+  // Insight chips and smart search feed this the same filter shape.
+  if (typeof filters?.minAmount === 'number') {
     result = result.filter(t => t.amount >= filters.minAmount!);
   }
 
-  if (filters?.maxAmount !== undefined) {
+  if (typeof filters?.maxAmount === 'number') {
     result = result.filter(t => t.amount <= filters.maxAmount!);
   }
 

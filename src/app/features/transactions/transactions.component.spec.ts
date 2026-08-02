@@ -146,6 +146,18 @@ describe('TransactionsComponent', () => {
       expect(component.transactionCount()).toBe('1');
     });
 
+    it('keeps the exact server total after an amount box is cleared', () => {
+      // ngModel writes literal null for an emptied number input; that must
+      // not flip the header to the client-side "N+" form.
+      const component = build().componentInstance;
+      windowSource.totalCount.set(240);
+      component.onFiltersChanged({
+        minAmount: null as unknown as number,
+        maxAmount: null as unknown as number,
+      });
+      expect(component.transactionCount()).toBe('240');
+    });
+
     it('treats a tag filter as client-only and marks a partial window', () => {
       // The server total counts rows the tag filter then hides; showing it
       // would contradict the list.

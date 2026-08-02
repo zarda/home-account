@@ -215,6 +215,16 @@ describe('applyClientTransactionFilters', () => {
       expect(result.map(t => t.id)).toEqual(['t2', 't3']);
     });
 
+    it('ignores null bounds, which a cleared number input produces', () => {
+      // `amount <= null` coerces to `<= 0` and would hide every row; a
+      // cleared box must behave like an absent filter on both bounds.
+      const result = applyClientTransactionFilters(transactions, {
+        minAmount: null as unknown as number,
+        maxAmount: null as unknown as number,
+      });
+      expect(result).toEqual(transactions);
+    });
+
     it('applies maxAmount inclusively', () => {
       const result = applyClientTransactionFilters(transactions, { maxAmount: 50 });
       expect(result.map(t => t.id)).toEqual(['t1', 't2']);

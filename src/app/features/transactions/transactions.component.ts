@@ -64,8 +64,10 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   transactionCount = computed(() => {
     const filters = this.currentFilters();
     const hasClientOnlyFilter =
-      filters.minAmount !== undefined ||
-      filters.maxAmount !== undefined ||
+      // typeof: a cleared amount box arrives as null and is not a filter, so
+      // the header keeps showing the exact server count.
+      typeof filters.minAmount === 'number' ||
+      typeof filters.maxAmount === 'number' ||
       !!filters.searchQuery ||
       !!filters.tags?.length;
 
