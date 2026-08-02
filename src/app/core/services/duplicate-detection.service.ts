@@ -19,8 +19,24 @@ export class DuplicateDetectionService {
   async checkDuplicates(transactions: CategorizedImportTransaction[]): Promise<DuplicateCheck[]> {
     if (transactions.length === 0) return [];
 
+    // One Invalid Date poisons everything downstream of it: NaN wins both
+    // Math.min and Math.max, Timestamp.fromDate accepts the invalid value
+    // (its range checks compare against NaN), and the query then throws
+    // during serialisation — rejecting the whole batch for one bad row.
+    // Rows without a comparable date skip comparison as non-duplicates.
+    const hasValidDate = (t: CategorizedImportTransaction): boolean =>
+      t.date instanceof Date && Number.isFinite(t.date.getTime());
+    const datedRows = transactions.filter(hasValidDate);
+    const undatedChecks: DuplicateCheck[] = transactions
+      .filter(t => !hasValidDate(t))
+      .map(txn => ({
+        transactionId: txn.id, isDuplicate: false, matchType: 'none' as const, confidence: 0
+      }));
+
+    if (datedRows.length === 0) return undatedChecks;
+
     // Find the date range of import transactions (±2 days for possible match window)
-    const dates = transactions.map(t => t.date.getTime());
+    const dates = datedRows.map(t => t.date.getTime());
     const minDate = new Date(Math.min(...dates));
     const maxDate = new Date(Math.max(...dates));
     minDate.setDate(minDate.getDate() - 2);
@@ -61,12 +77,12 @@ export class DuplicateDetectionService {
     }
 
     const results: DuplicateCheck[] = [];
-    for (const txn of transactions) {
+    for (const txn of datedRows) {
       const result = this.checkSingleTransactionIndexed(txn, dateIndex, descBigramCache);
       results.push(result);
     }
 
-    return results;
+    return [...results, ...undatedChecks];
   }
 
   /**

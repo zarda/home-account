@@ -847,6 +847,24 @@ describe('AIImportService', () => {
       expect(result[0].date instanceof Date).toBeTrue();
     });
 
+    it('flags an unreadable date with zero confidence instead of silently dating it today', async () => {
+      const result = await service.categorizeTransactions([
+        // A day that does not exist: parseDateInput rejects it rather than
+        // letting V8 roll it into 3 March.
+        { date: '2024-06-31', description: 'Ghost', amount: 5, type: 'expense', currency: 'USD',
+          dateConfidence: 0.95 },
+        { date: '2024-06-01', description: 'Real', amount: 5, type: 'expense', currency: 'USD',
+          dateConfidence: 0.95 },
+      ]);
+
+      // Defaulted to a valid date so the row cannot poison a query...
+      expect(result[0].date instanceof Date).toBeTrue();
+      expect(Number.isFinite(result[0].date.getTime())).toBeTrue();
+      // ...but flagged for verification, overriding the model's own optimism.
+      expect(result[0].fieldConfidence?.date).toBe(0);
+      expect(result[1].fieldConfidence?.date).toBe(0.95);
+    });
+
     it('should build originalText from merchant and details', async () => {
       const result = await service.categorizeTransactions([
         { date: '2024-06-01', description: 'Burger', amount: 9, type: 'expense', currency: 'USD',

@@ -746,19 +746,26 @@ export class AIImportService {
     return transactions.map(t => {
       const suggestedCategoryId = t.category || 'other_expense';
 
+      // A date the model wrote in a shape parseDateInput rejects ("31/12/2024",
+      // "2024-06-31") defaults to today — but flagged, not silently: zero
+      // confidence puts the preview table's needs-verify chip on the row so
+      // the user can catch it before it is filed under the wrong day.
+      const parsedDate = parseDateInput(t.date);
+      const dateConfidence = parsedDate === null ? 0 : t.dateConfidence;
+
       return {
         id: nextImportRowId('import'),
         description: t.description,
         amount: Math.abs(t.amount),
         currency: t.currency || baseCurrency,
-        date: parseDateInput(t.date) ?? new Date(),
+        date: parsedDate ?? new Date(),
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
         categoryConfidence: 0.8, // AI extracted categories are fairly confident
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         notes: this.formatItemNotes(t.details),
-        fieldConfidence: (t.amountConfidence !== undefined || t.dateConfidence !== undefined)
-          ? { amount: t.amountConfidence, date: t.dateConfidence }
+        fieldConfidence: (t.amountConfidence !== undefined || dateConfidence !== undefined)
+          ? { amount: t.amountConfidence, date: dateConfidence }
           : undefined,
         isDuplicate: false,
         selected: true
