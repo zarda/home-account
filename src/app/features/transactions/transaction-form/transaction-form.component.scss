@@ -203,10 +203,12 @@
   }
 }
 
+// Height and the flex column that distributes it are handled app-wide in
+// styles.scss, which caps every dialog at the visible viewport and lets the
+// content — not the chrome — absorb the difference.
 .dialog-container {
   display: flex;
   flex-direction: column;
-  max-height: 90vh;
 }
 
 .dialog-content {
@@ -292,6 +294,7 @@
   padding: 16px 24px !important;
   @apply border-t border-gray-200 dark:border-gray-700;
   margin: 0 !important;
+  flex-shrink: 0;
 }
 
 .cancel-button {

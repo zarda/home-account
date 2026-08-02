@@ -72,6 +72,8 @@ into [`docs/ui-audit/`](../).
 | `seed.mjs` | Seeds Firestore emulator: user profile, 40 transactions (3 months, multi-currency), 5 budgets (healthy/warning/exceeded), 4 recurring. Invoked by `capture.mjs`; can run standalone: `node seed.mjs <uid>`. |
 | `capture.mjs` | Creates the demo auth user, seeds data, then screenshots all pages: desktop/mobile × light/dark, ja spot-checks, dialogs, user menu, and the default sidebar-open state. |
 | `capture-scroll.mjs` | The app scrolls inside a fixed `.main-container`, so full-page screenshots clip; this scrolls the container and captures stepped viewport shots for long pages. |
+| `capture-edit-dialog.mjs` | Opens the Edit Transaction dialog on a phone viewport and reports whether the Save Changes button is inside the visible viewport, at 390×844 and at a deliberately short 390×500 (the toolbar-collapsed iOS case). Prints a VERDICT line; run before/after a dialog-height change. `node capture-edit-dialog.mjs <label>`. |
+| `capture-dialogs.mjs` | The same check across every dialog in the app (transaction add/edit, confirm, budget, recurring, category, export, AI search, camera), at four viewport heights from an ordinary portrait phone down to landscape. Prints PASS/FAIL per dialog per height and shoots the tallest and shortest. Run before/after any change to dialog sizing: `node capture-dialogs.mjs <label>`. |
 
 Environment knobs: `CHROMIUM_PATH` (use a pre-installed Chromium instead of Playwright's
 download); shots land in `docs/ui-audit/tools/shots/` (gitignored — commit only curated

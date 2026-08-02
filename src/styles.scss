@@ -301,6 +301,63 @@ html, body {
   justify-content: flex-end;
 }
 
+/* Every dialog is bounded by the viewport the user can actually see.
+
+   iOS resolves `vh` against the *largest* viewport — the one with Safari's
+   toolbars collapsed — so a `vh`-sized dialog is taller than the visible
+   area whenever the toolbars are showing, and what falls off the bottom is
+   the pinned actions row, with the submit button in it. `dvh` tracks the
+   toolbars, and the safe-area insets keep the actions clear of the home
+   indicator in the installed app. Landscape hits the same wall without any
+   iOS involvement: the visible height is small enough that the chrome plus
+   the content no longer fit. */
+.cdk-overlay-pane.mat-mdc-dialog-panel {
+  max-height: 90vh; /* fallback where dvh/min() are unsupported */
+  max-height: min(
+    90vh,
+    calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px)
+  );
+}
+
+/* The content area absorbs the squeeze, never the chrome. Material caps
+   mat-dialog-content at a flat 65vh, which knows nothing about the title row
+   and the actions sharing the dialog with it — at a short viewport that cap
+   plus the chrome adds up to more than the screen, and the actions row is
+   what ends up off it. The cap above is the honest bound, so the content
+   takes whatever height is left and scrolls inside it.
+
+   !important because Material declares its 65vh in a component style, and
+   those are injected into <head> after this stylesheet: an equally specific
+   rule here would lose on source order. */
+.mat-mdc-dialog-content {
+  max-height: none !important;
+  min-height: 0;
+}
+
+/* app-dialog-header is the app's own title row. mat-dialog-title and
+   mat-dialog-actions already refuse to shrink; this one has to say so. */
+.mat-mdc-dialog-surface app-dialog-header {
+  flex-shrink: 0;
+}
+
+/* Dialogs whose template wraps the chrome in an element of its own — a
+   layout div, a <form> around the fields and the submit row, or both nested
+   — have to carry the flex column down, or the cap stops at the wrapper and
+   the content keeps its full height inside a surface too short to show it.
+
+   Matched by what they contain rather than by position: Material inserts the
+   component's host element between the surface and the template with
+   `display: contents`, so a child-combinator chain from the surface does not
+   reach the wrapper, and the class it uses to do that is an internal we
+   should not build on. Anything holding the content area is a wrapper by
+   definition, however deeply the framework decides to nest it. */
+.mat-mdc-dialog-surface :is(div, form):has(.mat-mdc-dialog-content) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 /* Dark mode: the default outlined form-field border is barely visible against
    the dark surface. Raise the resting/hover outline to a legible contrast;
    focus and error states keep their own accent colors. */
