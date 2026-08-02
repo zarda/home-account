@@ -7,6 +7,7 @@ import { TransactionService } from './transaction.service';
 import { CurrencyService } from './currency.service';
 import { getBudgetAlertSeverity } from '../utils/budget-alert.utils';
 import { roundMoney } from '../utils/transaction-aggregation.utils';
+import { dayKey } from '../utils/transaction-date.utils';
 import {
   Budget,
   BudgetSummary,
@@ -76,8 +77,9 @@ export class BudgetService {
       { orderBy: [{ field: 'name', direction: 'asc' }] }
     ).pipe(
       map(budgets => {
-        this.budgets.set(budgets);
-        return budgets;
+        const fresh = budgets.map(b => this.freshenSpent(b));
+        this.budgets.set(fresh);
+        return fresh;
       })
     );
   }
@@ -86,7 +88,42 @@ export class BudgetService {
   getBudgetById(id: string): Observable<Budget | null> {
     return this.firestoreService.subscribeToDocument<Budget>(
       `${this.userBudgetsPath}/${id}`
+    ).pipe(
+      map(budget => budget ? this.freshenSpent(budget) : budget)
     );
+  }
+
+  /** dayKey of the start of the period `spent` would cover right now. */
+  private currentPeriodStamp(budget: Budget): string {
+    return dayKey(this.getBudgetPeriodDates(budget).start);
+  }
+
+  /**
+   * A stored `spent` belongs to the period stamped on it. Read in any later
+   * period — or unstamped, on docs from before the stamp existed — it is a
+   * previous period's number: render 0 instead and queue one self-healing
+   * recalculation, so the first day of a period never shows last period's
+   * spend or raises its exceeded alert.
+   */
+  private freshenSpent(budget: Budget): Budget {
+    if (budget.spentPeriod === this.currentPeriodStamp(budget)) {
+      return budget;
+    }
+    this.queueStaleRecalc(budget.id);
+    return { ...budget, spent: 0 };
+  }
+
+  private spentRecalcsInFlight = new Set<string>();
+
+  private queueStaleRecalc(budgetId: string): void {
+    if (this.spentRecalcsInFlight.has(budgetId)) return;
+    this.spentRecalcsInFlight.add(budgetId);
+    // Fire and forget: the write re-emits through the subscription with a
+    // matching stamp, which makes the next freshen a no-op. On failure
+    // (offline) the display stays at 0 and the next emission retries.
+    this.recalculateBudgetSpent(budgetId)
+      .catch(() => undefined)
+      .finally(() => this.spentRecalcsInFlight.delete(budgetId));
   }
 
   /** One-shot read for the backup export. */
@@ -248,10 +285,11 @@ export class BudgetService {
   }
 
   // Update spent amount for a budget (called when transactions change)
-  async updateBudgetSpent(budgetId: string, spent: number): Promise<void> {
+  async updateBudgetSpent(budgetId: string, spent: number, spentPeriod?: string): Promise<void> {
+    const data: Partial<Budget> = spentPeriod === undefined ? { spent } : { spent, spentPeriod };
     await this.firestoreService.updateDocument(
       `${this.userBudgetsPath}/${budgetId}`,
-      { spent }
+      data
     );
   }
 
@@ -289,7 +327,7 @@ export class BudgetService {
         : this.currencyService.convert(inBase, baseCurrency, budget.currency));
     }, 0);
 
-    await this.updateBudgetSpent(budgetId, roundMoney(totalSpent));
+    await this.updateBudgetSpent(budgetId, roundMoney(totalSpent), dayKey(start));
   }
 
   // Recalculate spent for all active budgets in a category

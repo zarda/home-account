@@ -1,19 +1,25 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
-import { of } from 'rxjs';
+import { of, firstValueFrom } from 'rxjs';
 import { BudgetService } from './budget.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
 import { CurrencyService } from './currency.service';
 import { Budget, Transaction } from '../../models';
+import { dayKey } from '../utils/transaction-date.utils';
 
 describe('BudgetService', () => {
   let service: BudgetService;
   let mockFirestoreService: jasmine.SpyObj<FirestoreService>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let mockTransactionService: jasmine.SpyObj<TransactionService>;
+
+  // All three budgets anchor on day 1, so "fresh" means stamped with the
+  // first of the current real month — the freshen path then passes them
+  // through untouched, as it would for a live, up-to-date document.
+  const freshStamp = dayKey(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
   const mockBudgets: Budget[] = [
     {
@@ -26,6 +32,7 @@ describe('BudgetService', () => {
       period: 'monthly',
       startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
       spent: 250,
+      spentPeriod: freshStamp,
       isActive: true,
       alertThreshold: 80,
       createdAt: Timestamp.fromDate(new Date()),
@@ -41,6 +48,7 @@ describe('BudgetService', () => {
       period: 'monthly',
       startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
       spent: 180,
+      spentPeriod: freshStamp,
       isActive: true,
       alertThreshold: 80,
       createdAt: Timestamp.fromDate(new Date()),
@@ -56,6 +64,7 @@ describe('BudgetService', () => {
       period: 'monthly',
       startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
       spent: 50,
+      spentPeriod: freshStamp,
       isActive: false,
       alertThreshold: 80,
       createdAt: Timestamp.fromDate(new Date()),
@@ -419,6 +428,17 @@ describe('BudgetService', () => {
         { spent: 350 }
       );
     });
+
+    it('should persist the period stamp beside spent when given', async () => {
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+
+      await service.updateBudgetSpent('budget1', 350, '2026-08-01');
+
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+        'users/user123/budgets/budget1',
+        { spent: 350, spentPeriod: '2026-08-01' }
+      );
+    });
   });
 
   describe('recalculateBudgetSpent', () => {
@@ -444,7 +464,7 @@ describe('BudgetService', () => {
       );
       expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
         'users/user123/budgets/budget1',
-        { spent: 150 }
+        { spent: 150, spentPeriod: jasmine.any(String) }
       );
     });
 
@@ -492,7 +512,7 @@ describe('BudgetService', () => {
 
         expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
           'users/user123/budgets/budget1',
-          { spent: 136 }
+          { spent: 136, spentPeriod: jasmine.any(String) }
         );
         expect(convert).not.toHaveBeenCalled();
       });
@@ -523,7 +543,7 @@ describe('BudgetService', () => {
         expect(convert).toHaveBeenCalledWith(103, 'USD', 'EUR');
         expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
           'users/user123/budgets/budget1',
-          { spent: 122.4 }
+          { spent: 122.4, spentPeriod: jasmine.any(String) }
         );
       });
 
@@ -537,9 +557,105 @@ describe('BudgetService', () => {
 
         expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
           'users/user123/budgets/budget1',
-          { spent: 20.22 }
+          { spent: 20.22, spentPeriod: jasmine.any(String) }
         );
       });
+    });
+  });
+
+  describe('stale spent on period rollover', () => {
+    const flush = async () => {
+      for (let i = 0; i < 10; i++) {
+        await Promise.resolve();
+      }
+    };
+
+    beforeEach(() => {
+      jasmine.clock().install();
+      const currencyService = TestBed.inject(CurrencyService);
+      spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+      mockTransactionService.getExpensesInRange.and.returnValue(of([
+        {
+          amount: 25, currency: 'USD',
+          amountInBaseCurrency: 25, exchangeRate: 1, baseCurrency: 'USD'
+        } as Transaction
+      ]));
+    });
+
+    afterEach(() => {
+      jasmine.clock().uninstall();
+    });
+
+    it('shows 0 and recalculates when spent belongs to a previous period', async () => {
+      jasmine.clock().mockDate(new Date(2026, 7, 1, 9, 0));
+      const stale: Budget = { ...mockBudgets[0], spent: 450, spentPeriod: '2026-07-01' };
+      mockFirestoreService.subscribeToCollection.and.returnValue(of([stale]));
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(stale));
+
+      const emitted = await firstValueFrom(service.getBudgets());
+
+      expect(emitted[0].spent).toBe(0);
+      expect(service.budgetAlerts()).toEqual([]);
+
+      await flush();
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+        'users/user123/budgets/budget1',
+        { spent: 25, spentPeriod: '2026-08-01' }
+      );
+    });
+
+    it('passes spent through untouched inside the stamped period', async () => {
+      jasmine.clock().mockDate(new Date(2026, 6, 31, 23, 0));
+      const fresh: Budget = { ...mockBudgets[0], spent: 450, spentPeriod: '2026-07-01' };
+      mockFirestoreService.subscribeToCollection.and.returnValue(of([fresh]));
+
+      const emitted = await firstValueFrom(service.getBudgets());
+      await flush();
+
+      expect(emitted[0].spent).toBe(450);
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
+      expect(service.budgetAlerts().length).toBe(1);
+    });
+
+    it('treats a document without a stamp as stale', async () => {
+      jasmine.clock().mockDate(new Date(2026, 7, 1, 9, 0));
+      const legacy: Budget = { ...mockBudgets[0], spent: 450, spentPeriod: undefined };
+      mockFirestoreService.subscribeToCollection.and.returnValue(of([legacy]));
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(legacy));
+
+      const emitted = await firstValueFrom(service.getBudgets());
+
+      expect(emitted[0].spent).toBe(0);
+      await flush();
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+        'users/user123/budgets/budget1',
+        jasmine.objectContaining({ spentPeriod: '2026-08-01' })
+      );
+    });
+
+    it('queues one recalculation for rapid consecutive emissions', async () => {
+      jasmine.clock().mockDate(new Date(2026, 7, 1, 9, 0));
+      const stale: Budget = { ...mockBudgets[0], spent: 450, spentPeriod: '2026-07-01' };
+      mockFirestoreService.subscribeToCollection.and.returnValue(of([stale], [stale]));
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(stale));
+
+      const sub = service.getBudgets().subscribe();
+      await flush();
+      sub.unsubscribe();
+
+      expect(mockFirestoreService.getDocument).toHaveBeenCalledTimes(1);
+    });
+
+    it('freshens a single budget read through getBudgetById', async () => {
+      jasmine.clock().mockDate(new Date(2026, 7, 1, 9, 0));
+      const stale: Budget = { ...mockBudgets[0], spent: 450, spentPeriod: '2026-07-01' };
+      mockFirestoreService.subscribeToDocument.and.returnValue(of(stale));
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(stale));
+
+      const emitted = await firstValueFrom(service.getBudgetById('budget1'));
+
+      expect(emitted!.spent).toBe(0);
     });
   });
 
