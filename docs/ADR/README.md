@@ -13,6 +13,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0006](0006-multi-image-receipt-storage.md) | Receipt images are addressed by slot; removal tombstones, never renames | Accepted | 2026-07-29 |
 | [0007](0007-transactional-receipt-edits.md) | Receipt slot edits commit through Firestore transactions; storage deletes stay first | Accepted | 2026-07-30 |
 | [0008](0008-universal-receipt-language-support.md) | The app never narrows what the model can read | Accepted | 2026-07-31 |
+| [0009](0009-shared-state-publishing-and-lifecycle.md) | One publisher for shared account state; owners reset it, holders release it | Accepted | 2026-08-02 |
 
 ## What belongs here
 
