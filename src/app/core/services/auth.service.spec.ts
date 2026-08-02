@@ -182,4 +182,18 @@ describe('AuthService', () => {
       ).toBeRejectedWithError('No authenticated user');
     });
   });
+
+  describe('signed-out guards', () => {
+    it('updateUserProfile rejects when no user is signed in', async () => {
+      await expectAsync(
+        service.updateUserProfile({ displayName: 'X' })
+      ).toBeRejectedWithError('No authenticated user');
+    });
+
+    it('clearStoredProviderApiKeys rejects when no user is signed in', async () => {
+      await expectAsync(
+        service.clearStoredProviderApiKeys()
+      ).toBeRejectedWithError('No authenticated user');
+    });
+  });
 });
