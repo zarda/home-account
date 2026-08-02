@@ -13,6 +13,7 @@ import { InsightSnapshotService } from '../../core/services/insight-snapshot.ser
 import { TranslationService } from '../../core/services/translation.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, Category, CategoryTotal, RAG_TIER_CONFIGS, effectiveRagLevel, baseCurrencyOf} from '../../models';
+import { addMonths } from '../../core/utils/transaction-date.utils';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
@@ -300,12 +301,21 @@ export class DashboardComponent implements OnInit {
     const now = new Date();
     const selection = this.currentPeriod();
 
+    // The current window is clamped to end-of-today (getPeriodDates), so a
+    // still-running period compares against the same elapsed span of the
+    // previous one — part of a month against all of the previous month
+    // would read as a large false decline for most of every month, and the
+    // AI summary would assert it. Complete past windows keep their whole
+    // calendar bounds.
+    const truncated = (wholeEnd: Date, monthSpan: number): Date =>
+      selection.end > now ? addMonths(this.getPeriodDates().end, -monthSpan) : wholeEnd;
+
     switch (selection.option) {
       case 'thisMonth':
         // Compare with last month
         return {
           start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
+          end: truncated(new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59), 1)
         };
 
       case 'lastMonth':
@@ -319,14 +329,14 @@ export class DashboardComponent implements OnInit {
         // Compare with previous 3 months (months -5 to -3)
         return {
           start: new Date(now.getFullYear(), now.getMonth() - 5, 1),
-          end: new Date(now.getFullYear(), now.getMonth() - 2, 0, 23, 59, 59)
+          end: truncated(new Date(now.getFullYear(), now.getMonth() - 2, 0, 23, 59, 59), 3)
         };
 
       case 'thisYear':
         // Compare with last year
         return {
           start: new Date(now.getFullYear() - 1, 0, 1),
-          end: new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59)
+          end: truncated(new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59), 12)
         };
 
       case 'custom': {
@@ -340,7 +350,7 @@ export class DashboardComponent implements OnInit {
           const prevYear = start.getFullYear() - 1;
           return {
             start: new Date(prevYear, 0, 1),
-            end: new Date(prevYear, 11, 31, 23, 59, 59)
+            end: truncated(new Date(prevYear, 11, 31, 23, 59, 59), 12)
           };
         }
         // Custom month: compare with the month before it.
@@ -350,7 +360,7 @@ export class DashboardComponent implements OnInit {
         const prevYear = month === 0 ? year - 1 : year;
         return {
           start: new Date(prevYear, prevMonth, 1),
-          end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59)
+          end: truncated(new Date(prevYear, prevMonth + 1, 0, 23, 59, 59), 1)
         };
       }
 
