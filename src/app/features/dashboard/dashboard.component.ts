@@ -165,16 +165,12 @@ export class DashboardComponent implements OnInit {
   activeBudgets = this.budgetService.activeBudgets;
 
   constructor() {
-    effect(() => {
-      // Update loading state based on service loading states
-      const txLoading = this.transactionService.isLoading();
-      const budgetLoading = this.budgetService.isLoading();
-      // Don't set loading to true once we have data
-      if (!txLoading && !budgetLoading && this.transactionService.transactions().length >= 0) {
-        this.isLoading.set(false);
-        this.hasLoadedOnce.set(true);
-      }
-    });
+    // Loading state is owned by the getByDateRange subscription callbacks in
+    // loadData(): the first snapshot (or error) of the published window is
+    // the real "first paint" moment. The effect that used to live here fired
+    // at construction — TransactionService.isLoading only tracks CRUD writes
+    // and `length >= 0` is always true — so it cleared the spinner before any
+    // data existed, and any foreign write to the shared signal re-ran it.
 
     // Keep the anomaly-baseline window in sync with both the selected period
     // and the RAG tier, so a mid-session tier change refetches the right

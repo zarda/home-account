@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, effect, inject, signal, computed } from '@angular/core';
 import { Timestamp, FieldValue, deleteField } from '@angular/fire/firestore';
 import { Observable, map, of, firstValueFrom } from 'rxjs';
 import { FirestoreService } from './firestore.service';
@@ -35,6 +35,16 @@ export class RecurringService {
   // Signals
   recurringTransactions = signal<RecurringTransaction[]>([]);
   isLoading = signal<boolean>(false);
+
+  constructor() {
+    // Signed-out edge only; see TransactionService's reset effect for why the
+    // cache is cleared from the owning service and not from signOut().
+    effect(() => {
+      if (this.authService.userId() === null) {
+        this.recurringTransactions.set([]);
+      }
+    });
+  }
 
   // Shared promise so concurrent catch-up triggers run the engine only once
   private catchUpInFlight: Promise<Transaction[]> | null = null;

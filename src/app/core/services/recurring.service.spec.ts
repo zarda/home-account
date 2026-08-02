@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { Timestamp, FieldValue, deleteField } from '@angular/fire/firestore';
 import { of } from 'rxjs';
 import { RecurringService } from './recurring.service';
@@ -169,6 +170,34 @@ describe('RecurringService', () => {
 
   it('should be created', () => {
     expect(service).toBeTruthy();
+  });
+
+  describe('sign-out reset', () => {
+    it('clears the cached rules on the signed-out edge', () => {
+      // Fresh injector with a signal-backed auth stub: the reset effect
+      // tracks userId() reactively, which a jasmine spy cannot express.
+      TestBed.resetTestingModule();
+      const userId = signal<string | null>('user-1');
+      TestBed.configureTestingModule({
+        providers: [
+          RecurringService,
+          { provide: FirestoreService, useValue: {} },
+          { provide: BudgetService, useValue: {} },
+          { provide: CurrencyService, useValue: {} },
+          { provide: TranslationService, useValue: {} },
+          { provide: AuthService, useValue: { userId } },
+        ],
+      });
+      const fresh = TestBed.inject(RecurringService);
+      fresh.recurringTransactions.set([{ id: 'r1' } as RecurringTransaction]);
+      TestBed.tick();
+      expect(fresh.recurringTransactions().length).toBe(1);
+
+      userId.set(null);
+      TestBed.tick();
+
+      expect(fresh.recurringTransactions()).toEqual([]);
+    });
   });
 
   describe('initial state', () => {

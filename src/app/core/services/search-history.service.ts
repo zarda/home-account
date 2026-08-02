@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { Observable, of, map } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
@@ -20,6 +20,17 @@ export class SearchHistoryService {
 
   // All entries, lastUsedAt desc (the query order).
   private allSearches = signal<SavedSearch[]>([]);
+
+  constructor() {
+    // Signed-out edge only; see TransactionService's reset effect for why the
+    // cache is cleared from the owning service and not from signOut(). Search
+    // history is per user and must not surface on a shared device.
+    effect(() => {
+      if (this.authService.userId() === null) {
+        this.allSearches.set([]);
+      }
+    });
+  }
 
   readonly savedSearches = computed(() => this.allSearches().filter(s => s.pinned));
   readonly recentSearches = computed(() =>

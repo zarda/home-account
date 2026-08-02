@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed, Injector } from '@angular/core';
+import { Injectable, effect, inject, signal, computed, Injector } from '@angular/core';
 import { Timestamp, deleteField } from '@angular/fire/firestore';
 import { Observable, map, of, tap } from 'rxjs';
 import { FirestoreService } from './firestore.service';
@@ -79,6 +79,24 @@ export class TransactionService {
 
   private noteMutation(kind: TransactionMutation['kind'], id: string, date?: Timestamp): void {
     this.lastMutation.set({ kind, id, date, seq: ++this.mutationSeq });
+  }
+
+  constructor() {
+    // Root singletons survive the router navigation a sign-out performs, so
+    // the published window has to be told or the next account renders the
+    // previous account's totals until its first snapshot lands. Driven from
+    // here rather than AuthService.signOut() because this service injects
+    // AuthService — calling back the other way would close a dependency
+    // cycle — and an effect also covers sign-outs the app never initiated
+    // (token revocation, another tab). Reset only on the signed-out edge:
+    // resetting on sign-in as well could race the first snapshot of a fresh
+    // load and blank it with nothing to re-emit.
+    effect(() => {
+      if (this.authService.userId() === null) {
+        this.transactions.set([]);
+        this.lastMutation.set(null);
+      }
+    });
   }
 
   // Computed signals. Totals go through amountInBase so rows whose stored

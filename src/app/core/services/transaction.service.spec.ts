@@ -1262,6 +1262,42 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('sign-out reset', () => {
+    it('clears the published window and mutation marker on the signed-out edge', (done) => {
+      mockFirestore.setMockCollection('users/test-user-123/transactions', createMixedTransactions());
+
+      service.getByDateRange(new Date(2020, 0, 1), new Date(2030, 11, 31)).subscribe(() => {
+        expect(service.transactions().length).toBeGreaterThan(0);
+
+        mockAuth.setMockUser(null);
+        TestBed.tick();
+
+        // The next account must never render this account's totals.
+        expect(service.transactions()).toEqual([]);
+        expect(service.lastMutation()).toBeNull();
+        done();
+      });
+    });
+
+    it('resets on the signed-out edge only, not on every account change', (done) => {
+      mockFirestore.setMockCollection('users/test-user-123/transactions', createMixedTransactions());
+
+      service.getByDateRange(new Date(2020, 0, 1), new Date(2030, 11, 31)).subscribe(() => {
+        const published = service.transactions();
+        expect(published.length).toBeGreaterThan(0);
+
+        // A direct non-null change (sign-in) must not blank a freshly
+        // published window; Firebase always passes through null on the way
+        // to a different account.
+        mockAuth.setAuthenticated(true, 'another-user');
+        TestBed.tick();
+
+        expect(service.transactions()).toEqual(published);
+        done();
+      });
+    });
+  });
+
   describe('getExpensesInRange', () => {
     it('returns only expenses and leaves the transactions signal untouched', (done) => {
       const transactions = createMixedTransactions();

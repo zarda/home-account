@@ -35,6 +35,18 @@ describe('CategoryService', () => {
     mockAuth.clearMocks();
   });
 
+  describe('sign-out reset', () => {
+    it('clears the cached categories on the signed-out edge', () => {
+      service.categories.set(service.getDefaultCategories());
+      expect(service.categories().length).toBeGreaterThan(0);
+
+      mockAuth.setMockUser(null);
+      TestBed.tick();
+
+      expect(service.categories()).toEqual([]);
+    });
+  });
+
   describe('getDefaultCategories', () => {
     it('should return default categories', () => {
       const categories = service.getDefaultCategories();

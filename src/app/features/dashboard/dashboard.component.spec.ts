@@ -228,6 +228,33 @@ describe('DashboardComponent', () => {
       expect(fixture.componentInstance.isLoading()).toBeFalse();
     });
 
+    it('keeps the initial spinner up until the first window snapshot lands', () => {
+      const window$ = new Subject<unknown[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.showInitialSpinner()).toBeTrue();
+
+      window$.next([]);
+      expect(fixture.componentInstance.isLoading()).toBeFalse();
+      expect(fixture.componentInstance.showInitialSpinner()).toBeFalse();
+    });
+
+    it('a foreign publish to the shared signal cannot clear the spinner', () => {
+      // The old constructor effect keyed on the signal's contents and cleared
+      // the spinner before this component's own window had ever loaded.
+      const window$ = new Subject<unknown[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+
+      transactionService.transactions.set([{ id: 'foreign' } as never]);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.showInitialSpinner()).toBeTrue();
+    });
+
     it('reloads with the emitted range on a period selection', () => {
       const component = build().componentInstance;
       component.onPeriodSelection(selection('custom', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
