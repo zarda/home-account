@@ -183,6 +183,52 @@ describe('NlSearchService', () => {
       }
     });
 
+    // The model is told the base currency, so its bounds are base-denominated;
+    // comparing them against raw native amounts would count a ¥5,000 lunch as
+    // "over $100" and drop a €95 dinner. The answer value discriminates every
+    // combination: 33 = JPY kept, 103 = EUR kept, 136 = both.
+    it('applies a minimum bound in base currency, like the totals beside it', async () => {
+      transactionService.getTransactionsInRange.and.returnValue(of([
+        expense(5000, 'food', { currency: 'JPY', amountInBaseCurrency: 33 }),
+        expense(95, 'food', { currency: 'EUR', amountInBaseCurrency: 103 }),
+      ]));
+      mockIntent({
+        kind: 'aggregate',
+        operation: 'sum',
+        filters: { categoryId: 'food', minAmount: 100 },
+        limit: 3,
+      });
+
+      const result = await service.search('food over $100');
+
+      expect(result.kind).toBe('answer');
+      if (result.kind === 'answer') {
+        expect(result.answer.transactionCount).toBe(1);
+        expect(result.answer.value).toBe(103);
+      }
+    });
+
+    it('applies a maximum bound in base currency too', async () => {
+      transactionService.getTransactionsInRange.and.returnValue(of([
+        expense(5000, 'food', { currency: 'JPY', amountInBaseCurrency: 33 }),
+        expense(95, 'food', { currency: 'EUR', amountInBaseCurrency: 103 }),
+      ]));
+      mockIntent({
+        kind: 'aggregate',
+        operation: 'sum',
+        filters: { categoryId: 'food', maxAmount: 50 },
+        limit: 3,
+      });
+
+      const result = await service.search('food under $50');
+
+      expect(result.kind).toBe('answer');
+      if (result.kind === 'answer') {
+        expect(result.answer.transactionCount).toBe(1);
+        expect(result.answer.value).toBe(33);
+      }
+    });
+
     it('"how many transactions last week" counts without a currency', async () => {
       transactionService.getTransactionsInRange.and.returnValue(of([
         expense(5, 'food'), expense(6, 'transport'), expense(7, 'pets'),

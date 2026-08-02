@@ -29,6 +29,7 @@ import {
   PeriodSelection,
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
+import { wholeDaysBetween } from '../../core/utils/transaction-date.utils';
 
 function selection(option: PeriodSelection['option'], start: Date, end: Date): PeriodSelection {
   return { option, start, end, label: '' };
@@ -280,6 +281,71 @@ describe('DashboardComponent', () => {
       const component = build().componentInstance;
       component.onPeriodSelection(defaultPeriodSelection());
       expect(component.previousPeriodData()).toBeNull();
+    });
+
+    // The current window is clamped to end-of-today, so its comparison
+    // window must stop at the same elapsed offset — part of a month against
+    // all of the previous one reads as a large false decline.
+    describe('previous window truncation mid-period', () => {
+      beforeEach(() => {
+        jasmine.clock().install();
+        jasmine.clock().mockDate(new Date(2026, 7, 10, 12, 0));
+      });
+
+      afterEach(() => {
+        jasmine.clock().uninstall();
+      });
+
+      function previousRange() {
+        const args = transactionService.getPeriodCategoryTotals.calls.mostRecent().args;
+        return { start: args[0] as Date, end: args[1] as Date };
+      }
+
+      it('compares this month so far with the same days of last month', () => {
+        const component = build().componentInstance;
+        component.onPeriodSelection(selection(
+          'thisMonth', new Date(2026, 7, 1), new Date(2026, 7, 31, 23, 59, 59)));
+
+        expect(previousRange().start).toEqual(new Date(2026, 6, 1));
+        expect(previousRange().end).toEqual(new Date(2026, 6, 10, 23, 59, 59));
+      });
+
+      it('gives both windows the same number of elapsed days', () => {
+        const component = build().componentInstance;
+        component.onPeriodSelection(selection(
+          'thisMonth', new Date(2026, 7, 1), new Date(2026, 7, 31, 23, 59, 59)));
+
+        const current = lastRange();
+        const previous = previousRange();
+        expect(wholeDaysBetween(previous.start, previous.end))
+          .toBe(wholeDaysBetween(current.start, current.end));
+      });
+
+      it('compares this year so far with the same span of last year', () => {
+        const component = build().componentInstance;
+        component.onPeriodSelection(selection(
+          'thisYear', new Date(2026, 0, 1), new Date(2026, 11, 31, 23, 59, 59)));
+
+        expect(previousRange().start).toEqual(new Date(2025, 0, 1));
+        expect(previousRange().end).toEqual(new Date(2025, 7, 10, 23, 59, 59));
+      });
+
+      it('truncates the three-month comparison the same way', () => {
+        const component = build().componentInstance;
+        component.onPeriodSelection(selection(
+          'last3Months', new Date(2026, 5, 1), new Date(2026, 7, 31, 23, 59, 59)));
+
+        expect(previousRange().end).toEqual(new Date(2026, 4, 10, 23, 59, 59));
+      });
+
+      it('keeps whole-month semantics for a complete past window', () => {
+        const component = build().componentInstance;
+        component.onPeriodSelection(selection(
+          'custom', new Date(2025, 0, 1), new Date(2025, 0, 31, 23, 59, 59)));
+
+        expect(previousRange().start).toEqual(new Date(2024, 11, 1));
+        expect(previousRange().end).toEqual(new Date(2024, 11, 31, 23, 59, 59));
+      });
     });
   });
 

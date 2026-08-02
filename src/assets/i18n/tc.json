@@ -1028,6 +1028,8 @@
     "trendRisingBody": "最近 {{months}} 個月增加 {{percent}}%，佔支出的 {{share}}%。",
     "trendFallingTitle": "下降中",
     "trendFallingBody": "最近 {{months}} 個月減少 {{percent}}%，佔支出的 {{share}}%。",
+    "trendStartedTitle": "新增支出",
+    "trendStartedBody": "最近 {{months}} 個月開始出現的支出，佔支出的 {{share}}%。",
     "weekendLeanTitle": "週末花費較高",
     "weekendLeanBody": "週末每日花費比平日多 {{percent}}%，{{total}} 筆中有 {{counted}} 筆。",
     "weekdayLeanTitle": "平日花費較高",

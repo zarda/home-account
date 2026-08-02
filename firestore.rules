@@ -113,7 +113,8 @@ service cloud.firestore {
     function budgetOptionalsValid(d) {
       return (!('endDate' in d) || d.endDate is timestamp)
         && (!('createdAt' in d) || d.createdAt is timestamp)
-        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+        && (!('updatedAt' in d) || d.updatedAt is timestamp)
+        && (!('spentPeriod' in d) || d.spentPeriod is string);
     }
 
     function budgetCreateValid(userId) {

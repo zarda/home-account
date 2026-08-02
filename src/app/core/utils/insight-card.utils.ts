@@ -5,8 +5,9 @@ import {
   SerializableFilters,
   StorableRecurringGroup,
 } from '../../models';
-import { RecurringCadence } from './recurring-pattern.utils';
+import { DEFAULT_RECURRING_OPTIONS, RecurringCadence } from './recurring-pattern.utils';
 import { compareIds } from './transaction-aggregation.utils';
+import { addMonths, dayKey, parseDayKey } from './transaction-date.utils';
 
 /**
  * Turns a fact bundle into the cards the Insights tab renders.
@@ -62,6 +63,8 @@ export const INSIGHT_CARD_KEYS: readonly string[] = [
   'insights.trendRisingBody',
   'insights.trendFallingTitle',
   'insights.trendFallingBody',
+  'insights.trendStartedTitle',
+  'insights.trendStartedBody',
   'insights.weekendLeanTitle',
   'insights.weekendLeanBody',
   'insights.weekdayLeanTitle',
@@ -196,10 +199,20 @@ export function buildInsightCards(
     });
   }
 
-  // Individually notable recurring items: a price rise, or one that just started.
-  const newSince = recurring.newGroupCount > 0;
+  // Individually notable recurring items: a price rise, or one that just
+  // started. "Just started" is judged per group against the detector's own
+  // recency cutoff — every firstSeen is inside the window by construction,
+  // so comparing against the window start would flag every group the moment
+  // one of them is new. The cutoff is recomputed from the stored window end
+  // rather than persisted per group, so old snapshots stay correct. If a
+  // caller ever overrides newWithinMonths the count and this cutoff could
+  // disagree; no production caller does.
+  const windowEnd = parseDayKey(facts.window.end);
+  const newCutoff = windowEnd
+    ? dayKey(addMonths(windowEnd, -DEFAULT_RECURRING_OPTIONS.newWithinMonths))
+    : null; // unreadable stored window: claim nothing is new
   const notable = recurring.groups
-    .filter(group => group.priceIncreased || (newSince && group.firstSeen >= facts.window.start))
+    .filter(group => group.priceIncreased || (newCutoff !== null && group.firstSeen >= newCutoff))
     .sort((a, b) => Number(b.priceIncreased) - Number(a.priceIncreased)
       || b.monthlyEquivalent - a.monthlyEquivalent
       || compareIds(a.key, b.key))
@@ -212,16 +225,28 @@ export function buildInsightCards(
   // whole category, so this navigates away to the Transactions page.
   for (const trend of facts.trends.slice(0, settings.trendCap)) {
     const rising = trend.direction === 'rising';
+    // A null ratio means the first half of the window had no spending at
+    // all: the category started from zero, and no percentage change exists.
+    // The narrative path already renders this case as n/a; a card must not
+    // claim a direction with "0%" interpolated into it.
+    const started = trend.changeRatio === null;
     cards.push({
       id: `categoryTrend:${trend.categoryId}`,
       kind: 'categoryTrend',
-      titleKey: rising ? 'insights.trendRisingTitle' : 'insights.trendFallingTitle',
-      bodyKey: rising ? 'insights.trendRisingBody' : 'insights.trendFallingBody',
-      params: {
-        months: facts.window.months.length,
-        percent: trend.changeRatio !== null ? Math.abs(percentOf(trend.changeRatio)) : 0,
-        share: percentOf(trend.windowShare),
-      },
+      titleKey: started ? 'insights.trendStartedTitle'
+        : rising ? 'insights.trendRisingTitle' : 'insights.trendFallingTitle',
+      bodyKey: started ? 'insights.trendStartedBody'
+        : rising ? 'insights.trendRisingBody' : 'insights.trendFallingBody',
+      params: started
+        ? {
+            months: facts.window.months.length,
+            share: percentOf(trend.windowShare),
+          }
+        : {
+            months: facts.window.months.length,
+            percent: Math.abs(percentOf(trend.changeRatio ?? 0)),
+            share: percentOf(trend.windowShare),
+          },
       metrics: {
         firstHalfMean: trend.firstHalfMean,
         secondHalfMean: trend.secondHalfMean,

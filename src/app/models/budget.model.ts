@@ -13,6 +13,9 @@ export interface Budget {
   startDate: Timestamp;          // For custom periods
   endDate?: Timestamp;
   spent: number;                 // Calculated field (denormalized)
+  spentPeriod?: string;          // dayKey of the period start `spent` was
+                                 // computed for; absent on docs written
+                                 // before the field existed (reads as stale)
   isActive: boolean;
   alertThreshold: number;        // Percentage (e.g., 80 = alert at 80%)
   createdAt: Timestamp;

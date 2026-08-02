@@ -529,6 +529,25 @@ describe('firestore.rules (emulator smoke test)', () => {
       await setDoc(doc(firestore, p), validBudget());
       await expectAllowed(updateDoc(doc(firestore, p), { isActive: false }), 'isActive update');
     });
+
+    // The rollover freshen path stamps spent with the period it was computed for.
+    it('accepts the { spent, spentPeriod } partial update', async () => {
+      const p = path('budgets');
+      await setDoc(doc(firestore, p), validBudget());
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { spent: 120, spentPeriod: '2026-08-01' }),
+        'stamped spent update'
+      );
+    });
+
+    it('rejects a non-string spentPeriod', async () => {
+      const p = path('budgets');
+      await setDoc(doc(firestore, p), validBudget());
+      await expectDenied(
+        updateDoc(doc(firestore, p), { spent: 120, spentPeriod: 20260801 }),
+        'numeric spentPeriod'
+      );
+    });
   });
 
   describe('categories', () => {

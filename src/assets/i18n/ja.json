@@ -1028,6 +1028,8 @@
     "trendRisingBody": "直近{{months}}か月で{{percent}}%増加し、支出の{{share}}%を占めています。",
     "trendFallingTitle": "減少傾向",
     "trendFallingBody": "直近{{months}}か月で{{percent}}%減少し、支出の{{share}}%を占めています。",
+    "trendStartedTitle": "新たな支出",
+    "trendStartedBody": "直近{{months}}か月で新たに始まった支出で、支出の{{share}}%を占めています。",
     "weekendLeanTitle": "週末の支出が多めです",
     "weekendLeanBody": "週末1日あたりの支出は平日より{{percent}}%多く、{{total}}件中{{counted}}件が該当します。",
     "weekdayLeanTitle": "平日の支出が多めです",
