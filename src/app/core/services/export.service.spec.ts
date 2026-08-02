@@ -163,12 +163,19 @@ describe('ExportService', () => {
     });
 
     it('emits the location name, escaped, and an empty cell without one', (done) => {
+      // Distinct pinned dates: the export sorts rows date-descending, and two
+      // now() fixtures only keep their insertion order when both land in the
+      // same millisecond — a coin-flip that made this spec flaky.
       const transactions = [
         createTransaction({
           description: 'With location',
+          date: Timestamp.fromDate(new Date(2026, 6, 2)),
           location: { name: 'Aoyama, Market', lat: 35.66, lng: 139.71 },
         }),
-        createTransaction({ description: 'Without location' }),
+        createTransaction({
+          description: 'Without location',
+          date: Timestamp.fromDate(new Date(2026, 6, 1)),
+        }),
       ];
       const blob = service.exportToCSV(transactions);
 
