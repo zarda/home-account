@@ -281,6 +281,26 @@ describe('CategoryManagerComponent', () => {
   });
 
   describe('openEditDialog', () => {
+    it('pre-fills the dialog with the translated name for a built-in', () => {
+      mockTranslationService.t.and.callFake((key: string) =>
+        key === 'categoryNames.groceries' ? 'Groceries' : key);
+      mockDialog.open.and.returnValue({ afterClosed: () => of(null) } as never);
+      const builtIn = {
+        ...mockCategories[0],
+        name: 'categoryNames.groceries',
+        isDefault: true,
+        userId: null,
+      } as Category;
+
+      component.openEditDialog(builtIn);
+
+      const data = (mockDialog.open.calls.mostRecent().args[1] as {
+        data: { category: Category };
+      }).data;
+      // The user edits what they read on screen, not the raw i18n key.
+      expect(data.category.name).toBe('Groceries');
+    });
+
     it('should open dialog with category data', () => {
       const mockDialogRef = { afterClosed: () => of(null) };
       mockDialog.open.and.returnValue(mockDialogRef as never);

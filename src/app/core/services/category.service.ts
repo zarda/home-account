@@ -150,6 +150,9 @@ export class CategoryService {
     this.isLoading.set(true);
 
     try {
+      const materialized = await this.materializeDefaultWith(id, data);
+      if (materialized) return;
+
       await this.firestoreService.updateDocument(
         `${this.userCategoriesPath}/${id}`,
         data
@@ -157,6 +160,31 @@ export class CategoryService {
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  /**
+   * Built-in categories exist only in memory until edited: mergeCategories()
+   * supplies them with `userId: null` whenever no user document with the same
+   * id exists. Writing an update to that path would be rejected as NOT_FOUND,
+   * so the first edit creates the document instead — and it must carry the
+   * complete row, because to the rules a merge write onto a missing document
+   * is a create, and categoryCreateValid requires every field plus the owner
+   * stamp. Returns false when the id belongs to a real document (or is not in
+   * the loaded signal), in which case a plain update is correct.
+   */
+  private async materializeDefaultWith(id: string, data: Partial<Category>): Promise<boolean> {
+    const row = this.categories().find(c => c.id === id);
+    if (!row || row.userId !== null) return false;
+
+    const userId = this.authService.userId();
+    if (!userId) throw new Error('User not authenticated');
+
+    await this.firestoreService.setDocument(
+      `${this.userCategoriesPath}/${id}`,
+      { ...row, ...data, userId },
+      true
+    );
+    return true;
   }
 
   // Delete a category (soft delete - set isActive to false)
@@ -186,17 +214,22 @@ export class CategoryService {
     }
   }
 
-  // Reorder categories
+  // Reorder categories. Built-ins in the list are materialized on the way
+  // (see materializeDefaultWith): the old per-id updateDocument rejected on
+  // the first default it met, so no order containing one could ever be saved.
   async reorderCategories(categoryIds: string[]): Promise<void> {
     this.isLoading.set(true);
 
     try {
-      const updates = categoryIds.map((id, index) =>
-        this.firestoreService.updateDocument(
+      const updates = categoryIds.map(async (id, index) => {
+        const materialized = await this.materializeDefaultWith(id, { order: index });
+        if (materialized) return;
+
+        await this.firestoreService.updateDocument(
           `${this.userCategoriesPath}/${id}`,
           { order: index }
-        )
-      );
+        );
+      });
 
       await Promise.all(updates);
     } finally {

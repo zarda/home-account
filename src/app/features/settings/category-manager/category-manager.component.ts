@@ -116,9 +116,13 @@ export class CategoryManagerComponent implements OnInit {
   }
 
   openEditDialog(category: Category): void {
+    // Built-in names are translation keys; the dialog must pre-fill what the
+    // user reads on screen, not `categoryNames.groceries`. User categories
+    // hold literal names, which t() passes through unchanged.
+    const prefill = { ...category, name: this.translationService.t(category.name) };
     const dialogRef = this.dialog.open(CategoryFormDialogComponent, {
       width: 'min(400px, calc(100vw - 32px))',
-      data: { category, type: this.selectedType }
+      data: { category: prefill, type: this.selectedType }
     });
 
     dialogRef.afterClosed().subscribe(result => {
