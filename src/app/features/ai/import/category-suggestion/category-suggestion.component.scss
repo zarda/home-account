@@ -27,6 +27,9 @@
   }
 }
 
+// min-height, not height. The label scales to fit rather than truncating, and
+// at the 12px floor appFitText's last resort is to wrap — which a fixed height
+// would have clipped, turning a shortened label into a hidden one.
 .category-button {
   display: flex;
   align-items: center;
@@ -35,7 +38,7 @@
   border-radius: var(--radius-xl);
   font-size: var(--text-sm);
   min-width: auto;
-  height: 32px;
+  min-height: 32px;
 }
 
 .category-icon {
@@ -45,10 +48,24 @@
   line-height: 1em;
 }
 
+/* The one label in this sweep that cannot wrap: it is the control's own text,
+   inside a chip the reviewer clicks to change a category. So it scales —
+   appFitText in the template, and the nowrap here is what the directive needs
+   from the cascade, since it writes no style at all while the value fits.
+
+   `display: inline-block` is the load-bearing line, and it is new. Material
+   projects button content into its own `.mdc-button__label` span, so this is
+   not a flex item of .category-button — it was a plain inline box, and
+   `overflow`, `text-overflow` and `max-width` none of them apply to one. The
+   truncation here never rendered, and the 120px cap never held either: the
+   chip sized to its label and ran roughly 170px past the row that holds it.
+   Blockifying is what gives the box a width to be capped at, a client box for
+   the directive to measure, and an overflow that can be reasoned about. */
 .category-name {
+  display: inline-block;
+  vertical-align: middle;
+  min-width: 0;
   max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

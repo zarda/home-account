@@ -7,6 +7,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatButtonModule } from '@angular/material/button';
 import { Category } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 
 @Component({
   selector: 'app-category-suggestion',
@@ -17,7 +18,8 @@ import { TranslationService } from '../../../../core/services/translation.servic
     MatIconModule,
     MatTooltipModule,
     MatMenuModule,
-    MatButtonModule
+    MatButtonModule,
+    FitTextDirective
   ],
   templateUrl: './category-suggestion.component.html',
   styleUrl: './category-suggestion.component.scss'
