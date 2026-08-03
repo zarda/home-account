@@ -163,4 +163,17 @@ describe('TransactionRowComponent', () => {
     expect(row.getAttribute('role')).toBe('button');
     expect(row.getAttribute('tabindex')).toBe('0');
   });
+
+  it('collapses the trailing actions slot when nothing is projected into it', () => {
+    setTransaction({});
+
+    // The slot exists so this component can promise the overflow menu is
+    // never squeezed out — projected content carries the *host's*
+    // encapsulation attribute, so the guarantee cannot live in the caller's
+    // stylesheet. The dashboard card projects nothing, and an empty box must
+    // not still claim one of the row's 12px gaps.
+    const actions = fixture.nativeElement.querySelector('.row-actions') as HTMLElement;
+    expect(actions).withContext('slot wrapper is present').not.toBeNull();
+    expect(getComputedStyle(actions).display).toBe('none');
+  });
 });
