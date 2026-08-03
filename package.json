@@ -15,6 +15,7 @@
     "i18n:check": "node scripts/check-i18n.mjs",
     "analytics:check": "node scripts/check-analytics-registry.mjs",
     "prompts:check": "node scripts/check-prompts.mjs --self-test && node scripts/check-prompts.mjs",
+    "truncation:check": "node scripts/check-truncation.mjs",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
     "build:ios": "ng build --configuration=production-local && npx cap sync ios",

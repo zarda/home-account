@@ -102,35 +102,43 @@ the type scale already declares — and wraps only past that.
 min-content size. `break-word` leaves the element still refusing to shrink,
 still pushing its neighbours out, and looking like a fix.
 
-**Two corollaries worth knowing, because they made three rules in this app dead
-code for a long time:**
+**Three corollaries worth knowing, because between them they made four rules in
+this app dead code for a long time:**
 
 - `text-overflow` has no effect on a flex or grid container. A rule that sets
   both `display: flex` and `text-overflow` does nothing.
+- Nor does it apply to a plain **inline** box, and neither do `overflow` or
+  `max-width`. A `<span>` is inline unless something blockified it — being a
+  flex item does, being projected into a Material button's own
+  `.mdc-button__label` does not. Give it `display: inline-block` first.
 - A bare text node inside a flex container is an *anonymous flex item*. No
   selector reaches it, and `min-width: 0` on the parent does not apply to it.
   If you need to style the text, wrap it in an element.
 
-**The ones that were not on a flex container are the ones that bite.**
-`insight-transaction-list.component.ts` set `text-overflow: ellipsis` on a
-plain span, so unlike the three above it really did render an ellipsis and
-really did shorten what the reader saw. It survived the first sweep precisely
-because it worked — a rule that clips is easy to spot in a screenshot, and a
-rule that truncates cleanly looks like a decision somebody made.
+**A dead truncation is not a harmless one.** It is a claim, in the stylesheet,
+that the case is handled, and a reviewer reads it as one. `.category-name` in
+`category-suggestion.component.scss` carried `overflow`, `text-overflow` and a
+120px `max-width` on an inline box, so none of the four declarations did
+anything and the chip quietly sized itself to its label — about 170px past the
+row holding it. Nobody looked, because the stylesheet said it was capped.
+
+**And a live one hides in the opposite way.** `insight-transaction-list`
+truncated for real, on a plain span in a block context, and survived the first
+sweep *because* it worked: a rule that clips is easy to spot in a screenshot,
+and a rule that truncates cleanly reads as a decision somebody made.
 
 **Check:**
 
 ```bash
-grep -rn "text-overflow" src --include='*.scss' --include='*.ts'
+npm run truncation:check
 ```
 
-Every hit is either on a flex or grid container, where it does nothing and
-should be deleted, or it is a live truncation and G3 says it should not be
-there. **This does not come back empty today.** Thirteen declarations survive
-across settings, the import wizard, the filters row, the recurring list and the
-insight card; #216 stated the rule and swept the transaction row, and the rest
-is unfinished work rather than a set of deliberate exceptions. Do not add to
-them, and clear the ones you pass through.
+`scripts/check-truncation.mjs`, which is the grep this section used to ask you
+to run by hand, masked for comments so the notes explaining a deleted rule do
+not trip it. It reads the source rather than the rendered page, so it catches
+the site added next month as well as the ones found so far — which no fixed set
+of component tests can. What it cannot see is whether the replacement works;
+`shared/truncation-guard.spec.ts` measures that.
 
 ---
 
@@ -263,6 +271,8 @@ worst row in the app. Reasoning in [ADR 0011](ADR/0011-a-strip-scrolls-rather-th
 | `shared/overflow-guard.spec.ts` | a hostile row keeps its menu, amount and `+N` inside the clipping card — and an ordinary row still does not reflow at 375px. Also positional, since containment was not enough: the menu sits at the row's right edge, the tile stays on the details column's line, the strip stays one line, and the insight drill-down row does not truncate |
 | `shared/safe-area.spec.ts` | `max()` not sum; one owner per inset |
 | `features/transactions/transaction-overflow.smoke.spec.ts` | the same on a real page, plus the paging root |
+| `shared/truncation-guard.spec.ts` | the two things a deleted truncation is replaced by: text wraps inside its box without shoving its neighbour out, and a label that cannot wrap scales while its control survives |
+| `scripts/check-truncation.mjs` | G3 across the whole source, `npm run truncation:check` |
 | `docs/ui-audit/tools/capture-overflow.mjs` | five pages × seven widths × (en, ja, faked insets), run before/after a layout change |
 
 The first four run in CI. The harness needs a dev server and the emulators, so
