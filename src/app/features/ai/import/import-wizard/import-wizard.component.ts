@@ -1,4 +1,5 @@
-import { Component, inject, signal, computed, OnDestroy, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { Component, DestroyRef, inject, signal, computed, OnDestroy, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatStepperModule, MatStepper } from '@angular/material/stepper';
@@ -9,7 +10,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 
-import { AIImportService } from '../../../../core/services/ai-import.service';
+import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -55,6 +56,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private router = inject(Router);
+  private destroyRef = inject(DestroyRef);
 
   @ViewChild('stepper') stepper!: MatStepper;
 
@@ -182,8 +184,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    // Load categories for the category selector
-    this.categoryService.loadCategories().subscribe();
+    // Load categories for the category selector. A live stream that never
+    // completes, so it must not outlive the wizard.
+    this.categoryService.loadCategories()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
 
     // Check if we received import result from camera capture via router state
     const state = history.state as {
@@ -377,6 +382,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const file = this.selectedFiles()[0];
+      // The service iterates the selected subset and numbers its per-row
+      // errors against it (1-based); snapshot the same subset now so those
+      // numbers can be mapped back to rows. Safe to take before the await:
+      // the review UI is unreachable while isImporting disables the stepper.
+      const submitted = this.extractedTransactions().filter(t => t.selected);
       const result = await this.importService.confirmImport(
         this.extractedTransactions(),
         file?.name || 'import',
@@ -384,6 +394,34 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         'csv',
         'generic_csv'
       );
+
+      if (result.errorCount > 0) {
+        // Some rows were rejected (a zero-amount summary line, a rules
+        // denial). Navigating away would destroy the only copy of them and
+        // report success, leaving the user's reconciliation silently short.
+        // Keep exactly the failed rows on the review step for correction and
+        // a second confirm — the saved ones are removed so confirming again
+        // cannot double-import them.
+        const failedRows = (result.errors ?? [])
+          .map(e => (typeof e.row === 'number' ? submitted[e.row - 1] : undefined))
+          .filter((t): t is CategorizedImportTransaction => t !== undefined)
+          .map(t => ({ ...t, selected: true, isDuplicate: false }));
+
+        this.extractedTransactions.set(failedRows);
+        this.duplicateChecks.set([]);
+        this.selectedTransactionIds.set(new Set(failedRows.map(t => t.id)));
+
+        this.notifications.error(this.t('import.importPartial', {
+          success: result.successCount,
+          failed: result.errorCount,
+          total: result.successCount + result.errorCount,
+        }));
+
+        if (this.stepper) {
+          this.stepper.selectedIndex = 2;
+        }
+        return;
+      }
 
       const message = this.t('import.importComplete', { count: result.successCount });
       this.notifications.success(message);
@@ -393,6 +431,17 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         queryParams: { showAll: 'true' }
       });
     } catch (error) {
+      if (error instanceof Error && error.message === IMPORT_READBACK_FAILED) {
+        // The rows were saved; only the summary read-back failed. Presenting
+        // that as a failed import would invite a retry that duplicates the
+        // batch — say what happened and continue to the list. The full
+        // record, including any per-row errors, is on the Import History page.
+        this.notifications.info(this.t('import.importSavedHistoryUnavailable'));
+        this.router.navigate(['/transactions'], {
+          queryParams: { showAll: 'true' }
+        });
+        return;
+      }
       const message = this.t('import.importFailed', {
         error: error instanceof Error ? error.message : 'Unknown error'
       });

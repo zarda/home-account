@@ -118,6 +118,33 @@ describe('BudgetService', () => {
     expect(service).toBeTruthy();
   });
 
+  describe('sign-out reset', () => {
+    it('clears the cached budgets on the signed-out edge', () => {
+      // Fresh injector with a signal-backed auth stub: the reset effect
+      // tracks userId() reactively, which a jasmine spy cannot express.
+      TestBed.resetTestingModule();
+      const userId = signal<string | null>('user-1');
+      TestBed.configureTestingModule({
+        providers: [
+          BudgetService,
+          { provide: FirestoreService, useValue: {} },
+          { provide: TransactionService, useValue: {} },
+          { provide: CurrencyService, useValue: {} },
+          { provide: AuthService, useValue: { userId } },
+        ],
+      });
+      const fresh = TestBed.inject(BudgetService);
+      fresh.budgets.set([{ id: 'b1' } as Budget]);
+      TestBed.tick();
+      expect(fresh.budgets().length).toBe(1);
+
+      userId.set(null);
+      TestBed.tick();
+
+      expect(fresh.budgets()).toEqual([]);
+    });
+  });
+
   describe('initial state', () => {
     it('should start with empty budgets array', () => {
       expect(service.budgets()).toEqual([]);

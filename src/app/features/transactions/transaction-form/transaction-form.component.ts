@@ -518,8 +518,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         // The batch rolled back: the transaction is unchanged and none of
         // the queued images were kept.
         this.notifications.error(this.translationService.t('receiptImages.attachFailed'));
+      } else {
+        // A rules rejection, a failed rates load, a network error — the
+        // dialog is disableClose, so without this the user pressed Add,
+        // nothing happened, and their only exit discarded the entry.
+        console.error('[TransactionForm] Save failed:', error);
+        this.notifications.error(this.translationService.t('common.error'));
       }
-      // Other save failures - could add snackbar notification here
     } finally {
       this.isSubmitting.set(false);
     }

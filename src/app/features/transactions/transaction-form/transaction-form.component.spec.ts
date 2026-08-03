@@ -234,6 +234,22 @@ describe('TransactionFormComponent', () => {
       });
     });
 
+    it('reports a generic save failure instead of swallowing it', async () => {
+      // Anything outside the two receipt-specific cases used to fall through
+      // a bare comment: dialog open, spinner stopped, no message, no log.
+      transactionService.addTransaction.and.rejectWith(new Error('permission-denied'));
+      spyOn(console, 'error');
+      const component = build().componentInstance;
+      validForm(component);
+
+      await component.onSubmit();
+
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
+      expect(console.error).toHaveBeenCalled();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(component.isSubmitting()).toBeFalse();
+    });
+
     it('reports tag, location and image usage on the add event', async () => {
       const component = build().componentInstance;
       validForm(component);

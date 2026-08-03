@@ -62,6 +62,44 @@ describe('DuplicateDetectionService', () => {
       expect(mockTransactionService.getTransactions).not.toHaveBeenCalled();
     });
 
+    it('one unreadable date does not fail or poison the batch', async () => {
+      // NaN used to win Math.min/Math.max, ride into the Firestore filter,
+      // and reject every row with "Invalid time value" on serialisation.
+      mockTransactionService.getTransactions.and.returnValue(of([existing()]));
+
+      const result = await service.checkDuplicates([
+        importTxn({ id: 'good', date: new Date(2024, 5, 15) }),
+        importTxn({ id: 'bad', date: new Date('2024-06-31') }),
+      ]);
+
+      const filters = mockTransactionService.getTransactions.calls.mostRecent().args[0] as {
+        startDate: Date;
+        endDate: Date;
+      };
+      // The range comes from the valid rows alone.
+      expect(Number.isFinite(filters.startDate.getTime())).toBeTrue();
+      expect(Number.isFinite(filters.endDate.getTime())).toBeTrue();
+
+      // The dated row still gets a real verdict; the undated row passes
+      // through as a non-duplicate instead of sinking the import.
+      expect(result.length).toBe(2);
+      expect(result.find(c => c.transactionId === 'good')?.isDuplicate).toBeTrue();
+      const bad = result.find(c => c.transactionId === 'bad');
+      expect(bad?.isDuplicate).toBeFalse();
+      expect(bad?.matchType).toBe('none');
+    });
+
+    it('skips the query entirely when no row has a readable date', async () => {
+      const result = await service.checkDuplicates([
+        importTxn({ id: 'bad-1', date: new Date('31/12/2024') }),
+        importTxn({ id: 'bad-2', date: new Date(NaN) }),
+      ]);
+
+      expect(mockTransactionService.getTransactions).not.toHaveBeenCalled();
+      expect(result.length).toBe(2);
+      expect(result.every(c => !c.isDuplicate && c.matchType === 'none')).toBeTrue();
+    });
+
     it('should query existing transactions within a padded date range', async () => {
       await service.checkDuplicates([importTxn({ date: new Date(2024, 5, 15) })]);
 

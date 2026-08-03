@@ -555,11 +555,37 @@ describe('firestore.rules (emulator smoke test)', () => {
       await expectAllowed(setDoc(doc(firestore, path('categories')), validCategory()), 'valid create');
     });
 
-    // initializeDefaultCategories copies the document id into the body.
-    it('tolerates the id copy that seeded defaults carry', async () => {
+    // Materializing a built-in spreads the in-memory row, which carries id.
+    it('tolerates the id copy that materialized defaults carry', async () => {
       await expectAllowed(
         setDoc(doc(firestore, path('categories')), validCategory({ id: 'food_groceries' })),
         'create with id field'
+      );
+    });
+
+    // The first edit of a built-in category is a merge write onto a document
+    // that does not exist yet — a create to the rules, which demand the full
+    // field set plus the owner stamp. These two cases pin why
+    // materializeDefaultWith must send the whole row, not just the edits.
+    it('accepts a full-row merge create for a built-in id', async () => {
+      await expectAllowed(
+        setDoc(
+          doc(firestore, path('categories')),
+          validCategory({ id: 'food_groceries', name: 'Renamed Groceries', isDefault: true }),
+          { merge: true }
+        ),
+        'materializing merge create'
+      );
+    });
+
+    it('rejects a partial merge create onto a missing document', async () => {
+      await expectDenied(
+        setDoc(
+          doc(firestore, path('categories')),
+          { name: 'Renamed Groceries' },
+          { merge: true }
+        ),
+        'partial merge create'
       );
     });
 

@@ -341,6 +341,14 @@ describe('TransactionFiltersComponent', () => {
       expect(component.activeFilterCount()).toBe(1);
     });
 
+    it('does not count a cleared amount box, which ngModel leaves as null', () => {
+      component.filters = {
+        minAmount: null as unknown as number,
+        maxAmount: null as unknown as number,
+      };
+      expect(component.activeFilterCount()).toBe(0);
+    });
+
     it('should count currency filter', () => {
       component.filters = { currency: 'USD' };
       expect(component.activeFilterCount()).toBe(1);
@@ -356,6 +364,38 @@ describe('TransactionFiltersComponent', () => {
         currency: 'USD'
       };
       expect(component.activeFilterCount()).toBe(6);
+    });
+  });
+
+  describe('cleared amount inputs', () => {
+    // A bare type="number" input writes literal null through ngModel when
+    // emptied. That null used to pass the !== undefined guards and reach
+    // applyClientTransactionFilters, where `amount <= null` coerces to
+    // `<= 0` and hides every transaction.
+    it('emits neither bound after both boxes are cleared', () => {
+      spyOn(component.filtersChanged, 'emit');
+      component.filters = {
+        minAmount: null as unknown as number,
+        maxAmount: null as unknown as number,
+      };
+
+      component.onFilterChange();
+
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent()
+        .args[0] as Record<string, unknown>;
+      expect('minAmount' in emitted).toBeFalse();
+      expect('maxAmount' in emitted).toBeFalse();
+    });
+
+    it('still emits a genuine zero bound', () => {
+      spyOn(component.filtersChanged, 'emit');
+      component.filters = { minAmount: 0 };
+
+      component.onFilterChange();
+
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent()
+        .args[0] as Record<string, unknown>;
+      expect(emitted['minAmount']).toBe(0);
     });
   });
 

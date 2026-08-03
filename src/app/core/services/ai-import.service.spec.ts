@@ -1,8 +1,14 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
-import { AIImportService, AI_NO_PROVIDER, AI_QUEUED_OFFLINE } from './ai-import.service';
+import {
+  AIImportService,
+  AI_NO_PROVIDER,
+  AI_QUEUED_OFFLINE,
+  IMPORT_READBACK_FAILED,
+  IMPORT_READBACK_TIMEOUT_MS,
+} from './ai-import.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -847,6 +853,24 @@ describe('AIImportService', () => {
       expect(result[0].date instanceof Date).toBeTrue();
     });
 
+    it('flags an unreadable date with zero confidence instead of silently dating it today', async () => {
+      const result = await service.categorizeTransactions([
+        // A day that does not exist: parseDateInput rejects it rather than
+        // letting V8 roll it into 3 March.
+        { date: '2024-06-31', description: 'Ghost', amount: 5, type: 'expense', currency: 'USD',
+          dateConfidence: 0.95 },
+        { date: '2024-06-01', description: 'Real', amount: 5, type: 'expense', currency: 'USD',
+          dateConfidence: 0.95 },
+      ]);
+
+      // Defaulted to a valid date so the row cannot poison a query...
+      expect(result[0].date instanceof Date).toBeTrue();
+      expect(Number.isFinite(result[0].date.getTime())).toBeTrue();
+      // ...but flagged for verification, overriding the model's own optimism.
+      expect(result[0].fieldConfidence?.date).toBe(0);
+      expect(result[1].fieldConfidence?.date).toBe(0.95);
+    });
+
     it('should build originalText from merchant and details', async () => {
       const result = await service.categorizeTransactions([
         { date: '2024-06-01', description: 'Burger', amount: 9, type: 'expense', currency: 'USD',
@@ -923,6 +947,49 @@ describe('AIImportService', () => {
       expect(importHistoryService.completeImport).toHaveBeenCalled();
       expect(history).toEqual(completedHistory);
       expect(service.isProcessing()).toBeFalse();
+    });
+
+    describe('history read-back', () => {
+      it('skips a null first emission and resolves on the record', async () => {
+        // subscribeToDocument emits null while the write is still landing;
+        // the read-back must wait for the document, not resolve on nothing.
+        importHistoryService.getImportById.and.returnValue(of(null, completedHistory));
+
+        const history = await service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image');
+
+        expect(history).toEqual(completedHistory);
+      });
+
+      it('rejects with the read-back constant when the stream errors, without failing the import', async () => {
+        spyOn(console, 'error');
+        importHistoryService.getImportById.and.returnValue(throwError(() => new Error('permission-denied')));
+
+        await expectAsync(
+          service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image')
+        ).toBeRejectedWithError(IMPORT_READBACK_FAILED);
+
+        // Every row was written and completeImport ran; a failing read must
+        // not stamp the completed import as failed.
+        expect(importHistoryService.completeImport).toHaveBeenCalled();
+        expect(importHistoryService.failImport).not.toHaveBeenCalled();
+        expect(service.isProcessing()).toBeFalse();
+      });
+
+      it('times out a read-back that never emits instead of hanging the wizard', fakeAsync(() => {
+        spyOn(console, 'error');
+        importHistoryService.getImportById.and.returnValue(NEVER);
+
+        let rejection: Error | undefined;
+        service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image')
+          .catch((e: Error) => { rejection = e; });
+
+        tick();
+        expect(rejection).toBeUndefined();
+
+        tick(IMPORT_READBACK_TIMEOUT_MS + 1);
+        expect(rejection?.message).toBe(IMPORT_READBACK_FAILED);
+        expect(importHistoryService.failImport).not.toHaveBeenCalled();
+      }));
     });
 
     it('should accumulate income and expense totals', async () => {

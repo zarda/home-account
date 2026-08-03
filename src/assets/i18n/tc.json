@@ -408,6 +408,7 @@
     "recurringPaused": "定期交易已暫停",
     "recurringResumed": "定期交易已恢復",
     "recurringDeleted": "定期交易已刪除",
+    "recurringDeleteFailed": "無法刪除定期交易",
     "recurringCreated": "定期交易已建立",
     "recurringCreateFailed": "建立定期交易失敗",
     "recurringUpdated": "定期交易已更新",
@@ -492,6 +493,7 @@
     "custom": "自訂"
   },
   "auth": {
+    "profileLoadDegraded": "無法載入您的個人資料，暫時使用預設設定。系統將自動重試。",
     "signInWithGoogle": "使用 Google 登入",
     "signOut": "登出",
     "tagline": "個人理財管家",
@@ -779,8 +781,10 @@
     "importSummary": "匯入摘要",
     "duplicatesSkipped": "已跳過重複項目",
     "confirmImport": "匯入 {{count}} 筆交易",
-    "importComplete": "匯入完成",
+    "importComplete": "已成功匯入 {{count}} 筆交易",
     "importFailed": "匯入失敗",
+    "importPartial": "已匯入 {{total}} 筆中的 {{success}} 筆（{{failed}} 筆無法儲存）",
+    "importSavedHistoryUnavailable": "匯入已完成，但無法載入摘要。詳情請見匯入紀錄。",
     "noTransactionsFound": "未找到交易",
     "noTransactionsFoundDescription": "無法從此檔案擷取任何交易。請嘗試使用其他檔案或確保圖片清晰可讀。",
     "statusCompleted": "已完成",

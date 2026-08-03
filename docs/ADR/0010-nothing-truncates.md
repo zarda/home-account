@@ -1,4 +1,4 @@
-# 9. Nothing truncates: text reflows, values scale
+# 10. Nothing truncates: text reflows, values scale
 
 **Status:** Accepted, implemented · **Date:** 2026-08-03 · **Issues:** #216
 

@@ -1,5 +1,6 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription } from 'rxjs';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { PwaService } from './pwa.service';
@@ -99,6 +100,9 @@ export class InsightsService {
   private failed = signal<boolean>(false);
   private windowState = signal<InsightWindow | null>(null);
   private windowTransactions = signal<Transaction[]>([]);
+  // The window stream never completes, so each load() must supersede the
+  // previous listener; takeUntilDestroyed alone only covers leaving the tab.
+  private loadSub?: Subscription;
 
   readonly isLoading = this.loading.asReadonly();
   readonly hasFailed = this.failed.asReadonly();
@@ -156,7 +160,7 @@ export class InsightsService {
    *
    * Deliberately one query and deliberately `getTransactionsInRange`: it does not
    * touch the shared `transactions` signal that the other three report tabs
-   * render from, unlike getByDateRange, getTransactions and getMonthlyTotals.
+   * render from, unlike getByDateRange and the getMonthlyTotals built on it.
    * Both transaction types are needed, because the payday detector reads income.
    */
   load(selection: PeriodSelection, now: Date = new Date()): void {
@@ -165,7 +169,8 @@ export class InsightsService {
     this.loading.set(true);
     this.failed.set(false);
 
-    this.transactionService.getTransactionsInRange(window.start, window.end)
+    this.loadSub?.unsubscribe();
+    this.loadSub = this.transactionService.getTransactionsInRange(window.start, window.end)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: transactions => {

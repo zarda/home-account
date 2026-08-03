@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { Observable, firstValueFrom, of } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
 import { AuthService } from './auth.service';
@@ -66,6 +66,17 @@ export class InsightSnapshotService {
   private loadedOnce = signal<boolean>(false);
 
   private generateInFlight: Promise<InsightSnapshot[]> | null = null;
+
+  constructor() {
+    // Signed-out edge only; see TransactionService's reset effect for why the
+    // cache is cleared from the owning service and not from signOut().
+    effect(() => {
+      if (this.authService.userId() === null) {
+        this.snapshotState.set([]);
+        this.loadedOnce.set(false);
+      }
+    });
+  }
 
   readonly snapshots = this.snapshotState.asReadonly();
   readonly isLoading = this.loading.asReadonly();

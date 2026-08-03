@@ -9,6 +9,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { Budget, Category, User } from '../../../models';
 import { of } from 'rxjs';
 
@@ -151,7 +152,11 @@ describe('BudgetFormComponent', () => {
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: AuthService, useValue: mockAuthService },
-        { provide: TranslationService, useValue: mockTranslationService }
+        { provide: TranslationService, useValue: mockTranslationService },
+        {
+          provide: NotificationService,
+          useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info'])
+        }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -351,6 +356,20 @@ describe('BudgetFormComponent', () => {
         period: 'monthly',
         alertThreshold: 80
       });
+    });
+
+    it('reports a failed save instead of swallowing it', async () => {
+      mockBudgetService.createBudget.and.rejectWith(new Error('permission-denied'));
+      spyOn(console, 'error');
+      component.form.patchValue({ name: 'Test Budget', categoryId: 'cat1', amount: 100 });
+
+      await component.onSubmit();
+
+      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
+      expect(console.error).toHaveBeenCalled();
+      expect(mockDialogRef.close).not.toHaveBeenCalled();
+      expect(component.isSubmitting()).toBeFalse();
     });
 
     it('should close dialog with true on success', async () => {

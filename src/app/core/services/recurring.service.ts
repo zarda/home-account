@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, effect, inject, signal, computed } from '@angular/core';
 import { Timestamp, FieldValue, deleteField } from '@angular/fire/firestore';
 import { Observable, map, of, firstValueFrom } from 'rxjs';
 import { FirestoreService } from './firestore.service';
@@ -24,6 +24,16 @@ interface ClaimResult {
   type: TransactionType;
 }
 
+/**
+ * Most occurrences one claim may post. A Firestore transaction is capped at
+ * 500 writes; one occurrence is one write plus the rule update, so 400 leaves
+ * comfortable headroom. A backlog larger than this drains across successive
+ * claims — without the cap, a daily rule dormant for more than ~500 days
+ * built a transaction that could never commit, and because posting and the
+ * pointer advance commit together, it failed identically forever.
+ */
+export const MAX_OCCURRENCES_PER_CLAIM = 400;
+
 @Injectable({ providedIn: 'root' })
 export class RecurringService {
   private firestoreService = inject(FirestoreService);
@@ -35,6 +45,16 @@ export class RecurringService {
   // Signals
   recurringTransactions = signal<RecurringTransaction[]>([]);
   isLoading = signal<boolean>(false);
+
+  constructor() {
+    // Signed-out edge only; see TransactionService's reset effect for why the
+    // cache is cleared from the owning service and not from signOut().
+    effect(() => {
+      if (this.authService.userId() === null) {
+        this.recurringTransactions.set([]);
+      }
+    });
+  }
 
   // Shared promise so concurrent catch-up triggers run the engine only once
   private catchUpInFlight: Promise<Transaction[]> | null = null;
@@ -306,30 +326,37 @@ export class RecurringService {
       });
 
       for (const recurring of dueRecurring) {
-        let claim: ClaimResult | null;
-        try {
-          claim = await this.claimDueOccurrences(recurring.id, userId, now);
-        } catch {
-          // Firestore transactions require the network: while offline the
-          // claim rejects, so skip silently — the rule is picked up again
-          // by the next online catch-up.
-          continue;
-        }
+        // A backlog past the per-claim cap drains here, one full batch per
+        // committed transaction, so even a rule dormant for years catches up
+        // in a single run without any claim exceeding the write limit.
+        let keepClaiming = true;
+        while (keepClaiming) {
+          let claim: ClaimResult | null;
+          try {
+            claim = await this.claimDueOccurrences(recurring.id, userId, now);
+          } catch {
+            // Firestore transactions require the network: while offline the
+            // claim rejects, so skip silently — the rule is picked up again
+            // by the next online catch-up.
+            break;
+          }
 
-        if (!claim || claim.postedIds.length === 0) continue;
+          if (!claim || claim.postedIds.length === 0) break;
+          keepClaiming = claim.postedIds.length === MAX_OCCURRENCES_PER_CLAIM;
 
-        if (claim.type === 'expense') {
-          affectedExpenseCategories.add(claim.categoryId);
-        }
+          if (claim.type === 'expense') {
+            affectedExpenseCategories.add(claim.categoryId);
+          }
 
-        // Fetch the created transactions
-        for (const transactionId of claim.postedIds) {
-          const transaction = await this.firestoreService.getDocument<Transaction>(
-            `users/${userId}/transactions/${transactionId}`
-          );
+          // Fetch the created transactions
+          for (const transactionId of claim.postedIds) {
+            const transaction = await this.firestoreService.getDocument<Transaction>(
+              `users/${userId}/transactions/${transactionId}`
+            );
 
-          if (transaction) {
-            createdTransactions.push(transaction);
+            if (transaction) {
+              createdTransactions.push(transaction);
+            }
           }
         }
       }
@@ -378,8 +405,10 @@ export class RecurringService {
 
       const postedIds: string[] = [];
 
-      // Catch up every occurrence that came due since the last run
-      while (occurrenceDate <= postUntil) {
+      // Catch up every occurrence that came due since the last run, bounded
+      // by the per-claim cap so the transaction stays under Firestore's
+      // 500-write limit however long the rule was dormant.
+      while (occurrenceDate <= postUntil && postedIds.length < MAX_OCCURRENCES_PER_CLAIM) {
         // Deterministic id keeps posting idempotent across repeated runs
         const transactionId = `rec-${rule.id}-${occurrenceDate.getTime()}`;
         const transactionRef = this.firestoreService.getDocRef(
@@ -395,7 +424,10 @@ export class RecurringService {
       }
 
       // Advance the pointer (and pause an ended rule) in the SAME
-      // transaction so posting and claim commit atomically.
+      // transaction so posting and claim commit atomically. After a capped
+      // batch the pointer lands on the first unposted occurrence, so the
+      // next claim resumes exactly where this one stopped.
+      const capped = postedIds.length >= MAX_OCCURRENCES_PER_CLAIM;
       const update: Partial<RecurringTransaction> = {
         updatedAt: this.firestoreService.getTimestamp()
       };
@@ -403,7 +435,10 @@ export class RecurringService {
         update.nextOccurrence = this.firestoreService.dateToTimestamp(occurrenceDate);
         update.lastProcessed = this.firestoreService.getTimestamp();
       }
-      if (endDatePassed) {
+      if (endDatePassed && !capped) {
+        // Only once the backlog is drained: deactivating on a capped batch
+        // would strand the occurrences that were still due before the end
+        // date, because catch-up only claims active rules.
         update.isActive = false;
       }
       tx.update(ruleRef, update);

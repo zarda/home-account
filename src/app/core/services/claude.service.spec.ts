@@ -674,16 +674,29 @@ describe('ClaudeService', () => {
       expect(result[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
-    it('returns an empty array and records the error on failure', async () => {
+    it('rethrows on failure and records lastError', async () => {
+      // An empty array here used to render as "no transactions found" and
+      // defeat provider fallback; the failure must propagate.
       const errorSpy = spyOn(console, 'error');
       const fake = makeFakeClient();
       fake.messages.create.and.rejectWith(new Error('vision fail'));
       setClient(fake);
 
-      const result = await service.extractTransactionsFromImage('img');
-      expect(result).toEqual([]);
+      await expectAsync(service.extractTransactionsFromImage('img'))
+        .toBeRejectedWithError('vision fail');
       expect(service.lastError()).toBe('vision fail');
       expect(errorSpy).toHaveBeenCalled();
+      expect(service.isProcessing()).toBeFalse();
+    });
+
+    it('throws on a 401 instead of returning an empty result', async () => {
+      const fake = makeFakeClient();
+      spyOn(console, 'error');
+      fake.messages.create.and.rejectWith(new Error('401 invalid x-api-key'));
+      setClient(fake);
+
+      await expectAsync(service.extractTransactionsFromImage('img')).toBeRejected();
+      expect(service.lastError()).toContain('401');
     });
 
     it('uses a generic message for non-Error rejections', async () => {
@@ -692,7 +705,7 @@ describe('ClaudeService', () => {
       fake.messages.create.and.rejectWith(123);
       setClient(fake);
 
-      await service.extractTransactionsFromImage('img');
+      await expectAsync(service.extractTransactionsFromImage('img')).toBeRejected();
       expect(service.lastError()).toBe('Unknown error');
     });
   });
@@ -776,16 +789,17 @@ describe('ClaudeService', () => {
       expect(result[0].category).toBeUndefined();
     });
 
-    it('returns empty and records the error on failure', async () => {
+    it('rethrows on failure and records lastError', async () => {
       const errorSpy = spyOn(console, 'error');
       const fake = makeFakeClient();
       fake.messages.create.and.rejectWith(new Error('multi fail'));
       setClient(fake);
 
-      const result = await service.extractTransactionsFromMultipleImages(['a']);
-      expect(result).toEqual([]);
+      await expectAsync(service.extractTransactionsFromMultipleImages(['a']))
+        .toBeRejectedWithError('multi fail');
       expect(service.lastError()).toBe('multi fail');
       expect(errorSpy).toHaveBeenCalled();
+      expect(service.isProcessing()).toBeFalse();
     });
 
     it('uses a generic message for non-Error rejections', async () => {
@@ -794,7 +808,7 @@ describe('ClaudeService', () => {
       fake.messages.create.and.rejectWith(null);
       setClient(fake);
 
-      await service.extractTransactionsFromMultipleImages(['a']);
+      await expectAsync(service.extractTransactionsFromMultipleImages(['a'])).toBeRejected();
       expect(service.lastError()).toBe('Unknown error');
     });
   });

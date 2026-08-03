@@ -5,7 +5,7 @@ that has to stay on one line scales down to a 12px floor and only then wraps.
 No ellipsis, nothing clipped away, no control pushed out of reach.
 
 Why it is that rule rather than an ellipsis, and what was rejected on the way,
-is in [ADR 0009](ADR/0009-nothing-truncates.md). This document is the part you
+is in [ADR 0010](ADR/0010-nothing-truncates.md). This document is the part you
 need when adding a screen.
 
 ## The five invariants

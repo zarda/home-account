@@ -283,6 +283,18 @@ describe('AIStrategyService', () => {
       expect(service.lastProcessingTime()).toBe(result.processingTimeMs);
     });
 
+    it('propagates a cloud auth failure on the web instead of an empty result', async () => {
+      // OpenAI and Claude used to swallow a 401 into an empty array, which
+      // this layer accepted as a valid answer — the wizard then reported
+      // "no transactions found" for an expired key. The throw has to reach
+      // the caller so parseAIError can classify it.
+      cloudMock.parseReceipt.and.rejectWith(new Error('401 Incorrect API key provided'));
+      const service = createService('web');
+
+      await expectAsync(service.processReceipt(imageFile()))
+        .toBeRejectedWithError('401 Incorrect API key provided');
+    });
+
     it('carries the receipt count out, so the form can offer the multi-receipt review', async () => {
       // Every provider parses this field; nothing used to carry it past here,
       // so the chooser could not fire for anyone but Gemini.

@@ -228,6 +228,33 @@ describe('DashboardComponent', () => {
       expect(fixture.componentInstance.isLoading()).toBeFalse();
     });
 
+    it('keeps the initial spinner up until the first window snapshot lands', () => {
+      const window$ = new Subject<unknown[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.showInitialSpinner()).toBeTrue();
+
+      window$.next([]);
+      expect(fixture.componentInstance.isLoading()).toBeFalse();
+      expect(fixture.componentInstance.showInitialSpinner()).toBeFalse();
+    });
+
+    it('a foreign publish to the shared signal cannot clear the spinner', () => {
+      // The old constructor effect keyed on the signal's contents and cleared
+      // the spinner before this component's own window had ever loaded.
+      const window$ = new Subject<unknown[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+
+      transactionService.transactions.set([{ id: 'foreign' } as never]);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.showInitialSpinner()).toBeTrue();
+    });
+
     it('reloads with the emitted range on a period selection', () => {
       const component = build().componentInstance;
       component.onPeriodSelection(selection('custom', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
@@ -508,6 +535,72 @@ describe('DashboardComponent', () => {
       budgetService.budgetAlerts.set([warningAlert, exceededAlert]);
       build().detectChanges();
       expect(budgetService.budgetAlerts()).toEqual([warningAlert, exceededAlert]);
+    });
+  });
+
+  describe('period-scoped listener lifecycle', () => {
+    // Each spy hands out a fresh never-completing Subject per call, the shape
+    // of the real Firestore wrappers: the only way a listener is released is
+    // an explicit unsubscribe, so `observed` tells the truth about leaks.
+    function trackSubjects(spy: jasmine.Spy): Subject<unknown>[] {
+      const created: Subject<unknown>[] = [];
+      spy.and.callFake(() => {
+        const subject = new Subject<unknown>();
+        created.push(subject);
+        return subject;
+      });
+      return created;
+    }
+
+    function trackAllStreams() {
+      // Standard tier so the anomaly-baseline stream participates too.
+      authService.currentUser.set(
+        createUser({ preferences: { ragInsightsLevel: 'standard' } as User['preferences'] }));
+      return {
+        byRange: trackSubjects(transactionService.getByDateRange),
+        recent: trackSubjects(transactionService.getRecentTransactions),
+        prevTotals: trackSubjects(transactionService.getPeriodCategoryTotals),
+        baseline: trackSubjects(transactionService.getExpensesInRange),
+      };
+    }
+
+    it('holds at most one live listener per stream across ten period changes', () => {
+      const streams = trackAllStreams();
+      const fixture = build();
+      fixture.detectChanges();
+
+      for (let i = 0; i < 10; i++) {
+        fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+        fixture.detectChanges();
+      }
+
+      for (const created of Object.values(streams)) {
+        expect(created.length).toBeGreaterThan(1);
+        expect(created.filter(s => s.observed).length).toBe(1);
+        expect(created[created.length - 1].observed).toBeTrue();
+      }
+    });
+
+    it('releases every period-scoped listener on destroy', () => {
+      const streams = trackAllStreams();
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      fixture.detectChanges();
+
+      fixture.destroy();
+
+      for (const created of Object.values(streams)) {
+        expect(created.some(s => s.observed)).toBeFalse();
+      }
+    });
+
+    it('subscribes to categories once, not again on each period change', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      expect(categoryService.loadCategories).toHaveBeenCalledTimes(1);
     });
   });
 

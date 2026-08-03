@@ -1,4 +1,5 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, DestroyRef, inject, signal, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, DatePipe } from '@angular/common';
 
 import { MatIconModule } from '@angular/material/icon';
@@ -44,6 +45,7 @@ export class RecurringTransactionsComponent implements OnInit {
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
+  private destroyRef = inject(DestroyRef);
 
   private t(key: string, params?: Record<string, string | number>): string {
     return this.translationService.t(key, params);
@@ -58,17 +60,23 @@ export class RecurringTransactionsComponent implements OnInit {
   }
 
   private loadData(): void {
-    this.recurringService.getRecurring().subscribe({
-      next: (recurring) => {
-        this.recurringTransactions.set(recurring);
-        this.isLoading.set(false);
-      },
-      error: () => this.isLoading.set(false)
-    });
+    // Both are live streams that never complete; without the destroy hook a
+    // closed settings page keeps its listeners for the rest of the session.
+    this.recurringService.getRecurring()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (recurring) => {
+          this.recurringTransactions.set(recurring);
+          this.isLoading.set(false);
+        },
+        error: () => this.isLoading.set(false)
+      });
 
-    this.categoryService.loadCategories().subscribe({
-      next: (categories) => this.categories.set(categories)
-    });
+    this.categoryService.loadCategories()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (categories) => this.categories.set(categories)
+      });
   }
 
   getCategoryName(categoryId: string): string {
@@ -117,6 +125,8 @@ export class RecurringTransactionsComponent implements OnInit {
         this.recurringService.deleteRecurring(recurring.id).then(() => {
           const message = this.t('settings.recurringDeleted');
           this.notifications.success(message);
+        }).catch(() => {
+          this.notifications.error(this.t('settings.recurringDeleteFailed'));
         });
       }
     });

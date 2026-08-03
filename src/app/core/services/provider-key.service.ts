@@ -90,7 +90,7 @@ export class ProviderKeyService {
       const raw = await this.firestoreService.getDocument<Record<string, unknown>>(
         this.secretsPath(userId)
       );
-      const stored = await this.migrateFromPreferences(pickProviderSecrets(raw));
+      const stored = await this.migrateFromPreferences(userId, pickProviderSecrets(raw));
 
       this.cache.set(stored);
       this.cachedUserId.set(userId);
@@ -154,12 +154,18 @@ export class ProviderKeyService {
    * onto preferences is cleaned up on the next load instead of being stranded
    * behind a one-shot flag.
    */
-  async migrateFromPreferences(stored: ProviderSecrets): Promise<ProviderSecrets> {
-    const userId = this.authService.userId();
+  async migrateFromPreferences(userId: string, stored: ProviderSecrets): Promise<ProviderSecrets> {
+    // Pinned to the account the caller captured before its Firestore round
+    // trip, not re-read here: `stored` holds that account's keys, and if the
+    // session switched during the read, a re-read would merge account A's
+    // keys with account B's preferences and write them into B's secrets —
+    // readable and usable by B, with no way for A to revoke them in the app.
+    if (this.authService.userId() !== userId) return stored;
+
     const prefs = this.authService.currentUser()?.preferences as
       | (UserPreferences & LegacyProviderApiKeys)
       | undefined;
-    if (!userId || !prefs) return stored;
+    if (!prefs) return stored;
 
     const legacy: ProviderSecrets = {};
     if (prefs.geminiApiKey?.trim()) legacy.gemini = prefs.geminiApiKey.trim();
@@ -172,9 +178,18 @@ export class ProviderKeyService {
     // preferences copy on another device cannot overwrite a rotated key.
     const merged: ProviderSecrets = { ...legacy, ...stored };
 
+    // The account can also switch while awaiting inside this method; abandon
+    // rather than write into the wrong account.
+    if (this.authService.userId() !== userId) return stored;
+
     // Write the new location and wait for the acknowledgement BEFORE clearing
     // the old one, so there is no window where the key looks lost.
     await this.firestoreService.setDocument(this.secretsPath(userId), merged, true);
+
+    // clearStoredProviderApiKeys strips whoever is signed in NOW — re-check
+    // once more so a switch during the write above cannot strip account B's
+    // preferences over account A's migration.
+    if (this.authService.userId() !== userId) return merged;
     await this.authService.clearStoredProviderApiKeys();
 
     return merged;

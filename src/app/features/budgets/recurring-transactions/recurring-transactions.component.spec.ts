@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -164,6 +164,24 @@ describe('RecurringTransactionsComponent', () => {
     });
   });
 
+  describe('listener lifecycle', () => {
+    it('releases both live streams when the component is destroyed', () => {
+      const recurring$ = new Subject<never[]>();
+      const categories$ = new Subject<never[]>();
+      mockRecurringService.getRecurring.and.returnValue(recurring$);
+      mockCategoryService.loadCategories.and.returnValue(categories$);
+
+      const freshFixture = TestBed.createComponent(RecurringTransactionsComponent);
+      freshFixture.detectChanges();
+      expect(recurring$.observed).toBeTrue();
+      expect(categories$.observed).toBeTrue();
+
+      freshFixture.destroy();
+      expect(recurring$.observed).toBeFalse();
+      expect(categories$.observed).toBeFalse();
+    });
+  });
+
   describe('category helpers', () => {
     it('should get category name', () => {
       const name = component.getCategoryName('cat1');
@@ -244,6 +262,17 @@ describe('RecurringTransactionsComponent', () => {
       tick();
 
       expect(mockRecurringService.deleteRecurring).toHaveBeenCalledWith('rec1');
+    }));
+
+    it('reports a failed delete instead of stopping at the confirm dialog', fakeAsync(() => {
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      mockRecurringService.deleteRecurring.and.rejectWith(new Error('nope'));
+
+      component.deleteRecurring(mockRecurring[0]);
+      tick();
+
+      expect(notifications.error).toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
     }));
 
     it('should not delete when not confirmed', fakeAsync(() => {
