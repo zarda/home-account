@@ -1,6 +1,5 @@
 /// <reference types="jasmine" />
 import { Injectable, signal, computed } from '@angular/core';
-import { Observable, of } from 'rxjs';
 import { User, UserPreferences, DEFAULT_USER_PREFERENCES } from '../../../models';
 import { Timestamp } from '@angular/fire/firestore';
 
@@ -59,10 +58,6 @@ export class MockAuthService {
   async signOut(): Promise<void> {
     this.signOutSpy();
     this.currentUser.set(null);
-  }
-
-  getCurrentUser(): Observable<User | null> {
-    return of(this.currentUser());
   }
 
   async updateUserPreferences(prefs: Partial<UserPreferences>): Promise<void> {

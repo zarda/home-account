@@ -17,7 +17,6 @@ import {
   deleteField,
   Timestamp
 } from '@angular/fire/firestore';
-import { Observable } from 'rxjs';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import {
@@ -262,34 +261,6 @@ export class AuthService {
       console.error('Sign out error:', error);
       throw error;
     }
-  }
-
-  getCurrentUser(): Observable<User | null> {
-    return new Observable<User | null>((subscriber) => {
-      // Run within injection context to prevent AngularFire warnings
-      return runInInjectionContext(this.injector, () => {
-        const unsubscribe = onAuthStateChanged(this.auth, async (firebaseUser) => {
-          if (firebaseUser) {
-            try {
-              const user = await runInInjectionContext(this.injector, () =>
-                this.getOrCreateUser(firebaseUser)
-              );
-              subscriber.next(user);
-            } catch (error) {
-              // Same contract as the state listener: a failed profile read on
-              // a valid session emits the in-memory fallback, not null —
-              // null here reads as "signed out" to every consumer.
-              console.error('[Auth] Profile load failed in getCurrentUser; emitting fallback:', error);
-              subscriber.next({ id: firebaseUser.uid, ...buildNewUserProfile(firebaseUser) });
-            }
-          } else {
-            subscriber.next(null);
-          }
-        });
-
-        return () => unsubscribe();
-      });
-    });
   }
 
   async updateUserPreferences(prefs: Partial<UserPreferences>): Promise<void> {
