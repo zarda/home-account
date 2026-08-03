@@ -251,12 +251,12 @@
         <!-- Amount Range -->
         <mat-form-field appearance="outline" class="compact-field">
           <mat-label>{{ 'transactions.minAmount' | translate }}</mat-label>
-          <input matInput type="number" [(ngModel)]="filters.minAmount" (input)="onFilterChange()">
+          <input matInput type="number" [(ngModel)]="filters.minAmount" (input)="onAmountInput()" (blur)="flushAmounts()">
         </mat-form-field>
 
         <mat-form-field appearance="outline" class="compact-field">
           <mat-label>{{ 'transactions.maxAmount' | translate }}</mat-label>
-          <input matInput type="number" [(ngModel)]="filters.maxAmount" (input)="onFilterChange()">
+          <input matInput type="number" [(ngModel)]="filters.maxAmount" (input)="onAmountInput()" (blur)="flushAmounts()">
         </mat-form-field>
 
         <!-- Currency -->

@@ -82,15 +82,26 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   private initialFilterApplied = false;
 
-  // Search input is debounced so a filter pass (and window refetch) runs once
-  // typing pauses, not per keystroke. Every other control emits immediately.
-  private static readonly SEARCH_DEBOUNCE_MS = 250;
+  // The two typed controls — search and the amount bounds — are debounced so a
+  // filter pass (and window refetch) runs once typing pauses, not per
+  // keystroke. Every control the user operates as a single decision (selects,
+  // date pickers, quick filters) still emits immediately.
+  private static readonly TYPING_DEBOUNCE_MS = 250;
   private searchInput$ = new Subject<void>();
   private searchSub?: Subscription;
   private searchHistorySub?: Subscription;
   // Last searchQuery included in any emission; a pending debounce tick whose
   // value already went out (via Enter, blur, or another filter change) no-ops.
   private lastEmittedSearch = '';
+
+  // Typing 1500 into Min Amount used to run four window resets — four count
+  // aggregations and four page fetches — and scroll the list to the top under
+  // the cursor four times, filtering on 1, 15 and 150 along the way: three
+  // bounds nobody asked for.
+  private amountInput$ = new Subject<void>();
+  private amountSub?: Subscription;
+  // Same contract as lastEmittedSearch, over the min/max pair.
+  private lastEmittedAmounts = '';
   // Last query written to search history, so a repeated flush of the same
   // text records it once.
   private lastRecordedQuery = '';
@@ -101,8 +112,12 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   ngOnInit(): void {
     this.searchSub = this.searchInput$
-      .pipe(debounceTime(TransactionFiltersComponent.SEARCH_DEBOUNCE_MS))
+      .pipe(debounceTime(TransactionFiltersComponent.TYPING_DEBOUNCE_MS))
       .subscribe(() => this.commitSearch());
+
+    this.amountSub = this.amountInput$
+      .pipe(debounceTime(TransactionFiltersComponent.TYPING_DEBOUNCE_MS))
+      .subscribe(() => this.commitAmounts());
 
     this.searchHistorySub = this.searchHistory.loadSearches().subscribe();
 
@@ -146,8 +161,10 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   ngOnDestroy(): void {
     this.datesSubs.forEach(sub => sub.unsubscribe());
     this.searchSub?.unsubscribe();
+    this.amountSub?.unsubscribe();
     this.searchHistorySub?.unsubscribe();
     this.searchInput$.complete();
+    this.amountInput$.complete();
   }
 
   onSearchInput(): void {
@@ -174,9 +191,31 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     this.confirmSaveSearch();
   }
 
+  // A keystroke in either amount box. Leaving the box commits straight away
+  // rather than waiting out the debounce, as the search area does on blur.
+  onAmountInput(): void {
+    this.amountInput$.next();
+  }
+
+  flushAmounts(): void {
+    this.commitAmounts();
+  }
+
   private commitSearch(): void {
     if ((this.filters.searchQuery ?? '') === this.lastEmittedSearch) return;
     this.onFilterChange();
+  }
+
+  private commitAmounts(): void {
+    if (this.amountKey() === this.lastEmittedAmounts) return;
+    this.onFilterChange();
+  }
+
+  // A cleared number input writes literal null through ngModel, so the key has
+  // to tell null from undefined from 0 — otherwise clearing a bound looks like
+  // no change and the window keeps the old one.
+  private amountKey(): string {
+    return `${this.filters.minAmount ?? ''}|${this.filters.maxAmount ?? ''}`;
   }
 
   private recordSearch(): void {
@@ -465,6 +504,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   private emitFilters(): void {
     this.lastEmittedSearch = this.filters.searchQuery ?? '';
+    this.lastEmittedAmounts = this.amountKey();
 
     // Clean up undefined values
     const cleanFilters: TransactionFilters = {};
