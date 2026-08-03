@@ -218,6 +218,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translatio
 | [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
 | [docs/remote-config.md](docs/remote-config.md) | Firebase Remote Config parameters and defaults |
 | [docs/storage-cors-setup.md](docs/storage-cors-setup.md) | One-time Cloud Storage CORS setup for in-browser receipt reads |
+| [docs/ui-overflow.md](docs/ui-overflow.md) | What the app does when content does not fit: the five layout invariants, and where each is enforced |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 
