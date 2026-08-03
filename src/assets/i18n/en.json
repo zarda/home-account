@@ -165,7 +165,8 @@
     "locationDenied": "Location permission was denied. You can still type a place name.",
     "locationUnavailable": "Your location could not be found. You can still type a place name.",
     "clearCoordinates": "Remove coordinates",
-    "currencyFromLocation": "Looks like you are in {{currency}} territory — use it?"
+    "currencyFromLocation": "Looks like you are in {{currency}} territory — use it?",
+    "useSuggestedCategory": "Use suggested category {{category}}"
   },
   "budget": {
     "title": "Budget",

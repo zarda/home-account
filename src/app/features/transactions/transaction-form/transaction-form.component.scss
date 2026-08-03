@@ -161,7 +161,23 @@
   gap: 8px;
 }
 
+// Shape used to come from mat-chip. Now that these are a button and a status
+// div, they carry it themselves, following insight-chips — which is the other
+// place in the app where a chip is a real control. Tailwind preflight already
+// resets the button's background, font and border, so only the wanted
+// declarations appear here.
 .suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  // Shrinks and reflows rather than pushing the Dismiss button out of the row
+  // (ui-overflow G1); the trailing control is the one that must not yield.
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   cursor: pointer;
   @apply bg-primary-50 dark:bg-primary-900/30;
   @apply border border-primary-200 dark:border-primary-700;
@@ -172,6 +188,11 @@
     transform: scale(1.02);
   }
 
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
   &.loading {
     cursor: default;
     background: var(--surface-muted);
@@ -179,6 +200,7 @@
 
     mat-spinner {
       margin-right: 8px;
+      flex-shrink: 0;
     }
   }
 
@@ -187,6 +209,7 @@
     width: 1em;
     height: 1em;
     margin-right: 4px;
+    flex-shrink: 0;
     @apply text-primary-500;
   }
 
@@ -195,11 +218,16 @@
     width: 1em;
     height: 1em;
     margin-right: 6px;
+    flex-shrink: 0;
   }
 
   span {
     @apply text-gray-700 dark:text-gray-300;
     font-weight: 500;
+    // Nothing truncates (ADR 0010): a long suggestion wraps onto another line
+    // rather than being clipped or pushing the Dismiss button off the row.
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 }
 

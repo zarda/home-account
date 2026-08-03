@@ -165,7 +165,8 @@
     "locationDenied": "位置權限遭拒。您仍可輸入地點名稱。",
     "locationUnavailable": "無法取得您的位置。您仍可輸入地點名稱。",
     "clearCoordinates": "移除座標",
-    "currencyFromLocation": "您目前所在地區使用 {{currency}}，要套用嗎？"
+    "currencyFromLocation": "您目前所在地區使用 {{currency}}，要套用嗎？",
+    "useSuggestedCategory": "使用建議分類 {{category}}"
   },
   "budget": {
     "title": "預算",
