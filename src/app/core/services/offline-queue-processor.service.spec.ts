@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
-import { OfflineQueueService, QueuedImage, QueuedTransaction } from './offline-queue.service';
+import { OfflineQueueService, QueuedImage } from './offline-queue.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { TransactionService } from './transaction.service';
@@ -19,24 +19,6 @@ async function waitFor(pred: () => boolean, timeout = 2000): Promise<void> {
 
 function imageFile(name = 'r.jpg'): File {
   return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/jpeg' });
-}
-
-function queuedTransaction(overrides: Partial<QueuedTransaction> = {}): QueuedTransaction {
-  return {
-    id: 'tx_1',
-    userId: 'user-a',
-    date: '2026-06-15',
-    description: 'Coffee',
-    amount: 4,
-    type: 'expense',
-    currency: 'USD',
-    categoryId: 'food',
-    source: 'local',
-    createdAt: Date.now(),
-    status: 'processing',
-    retryCount: 0,
-    ...overrides,
-  };
 }
 
 function extracted(overrides: Partial<ProcessedTransaction> = {}): ProcessedTransaction {
@@ -75,10 +57,8 @@ describe('OfflineQueueProcessorService', () => {
       'getQueuedImageAsFile',
       'peekQueuedImage',
       'updateImageStatus',
-      'updateTransactionStatus',
     ]);
     queue.updateImageStatus.and.resolveTo();
-    queue.updateTransactionStatus.and.resolveTo();
     queue.peekQueuedImage.and.resolveTo(undefined);
 
     userId = signal<string | null>('user-a');
@@ -115,10 +95,6 @@ describe('OfflineQueueProcessorService', () => {
 
   function dispatchImage(id: string): void {
     window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
-  }
-
-  function dispatchTransaction(tx: QueuedTransaction): void {
-    window.dispatchEvent(new CustomEvent('sync-queued-transaction', { detail: { transaction: tx } }));
   }
 
   describe('process-queued-image', () => {
@@ -240,36 +216,6 @@ describe('OfflineQueueProcessorService', () => {
     });
   });
 
-  describe('sync-queued-transaction', () => {
-    it('persists the transaction and marks it completed on success', async () => {
-      transactions.addTransaction.and.resolveTo('new-id');
-
-      dispatchTransaction(queuedTransaction({ id: 'tx_1' }));
-      await waitFor(() => queue.updateTransactionStatus.calls.any());
-
-      const dto = transactions.addTransaction.calls.mostRecent().args[0];
-      expect(dto).toEqual(
-        jasmine.objectContaining({
-          type: 'expense',
-          amount: 4,
-          currency: 'USD',
-          categoryId: 'food',
-          description: 'Coffee',
-        }),
-      );
-      expect(dto.date instanceof Date).toBeTrue();
-      expect(queue.updateTransactionStatus).toHaveBeenCalledWith('tx_1', 'completed');
-    });
-
-    it('marks the transaction failed (with the error) when the write throws', async () => {
-      transactions.addTransaction.and.rejectWith(new Error('Firestore down'));
-
-      dispatchTransaction(queuedTransaction({ id: 'tx_2' }));
-      await waitFor(() => queue.updateTransactionStatus.calls.any());
-
-      expect(queue.updateTransactionStatus).toHaveBeenCalledWith('tx_2', 'failed', 'Firestore down');
-    });
-  });
 
   describe('account ownership', () => {
     function queuedImage(overrides: Partial<QueuedImage> = {}): QueuedImage {
@@ -317,24 +263,6 @@ describe('OfflineQueueProcessorService', () => {
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
     });
 
-    it('does not write a queued transaction belonging to another account', async () => {
-      userId.set('user-b');
 
-      dispatchTransaction(queuedTransaction({ id: 'tx_3', userId: 'user-a' }));
-      await waitFor(() => queue.updateTransactionStatus.calls.any());
-
-      expect(transactions.addTransaction).not.toHaveBeenCalled();
-      expect(queue.updateTransactionStatus).toHaveBeenCalledWith('tx_3', 'pending');
-    });
-
-    it('does not write anything while signed out', async () => {
-      userId.set(null);
-
-      dispatchTransaction(queuedTransaction({ id: 'tx_4', userId: 'user-a' }));
-      await waitFor(() => queue.updateTransactionStatus.calls.any());
-
-      expect(transactions.addTransaction).not.toHaveBeenCalled();
-      expect(queue.updateTransactionStatus).toHaveBeenCalledWith('tx_4', 'pending');
-    });
   });
 });
