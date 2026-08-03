@@ -2,7 +2,8 @@
 
 :host {
   display: block;
-  min-height: 100vh;
+  min-height: 100vh; // fallback where dvh is unsupported
+  min-height: 100dvh;
   background-color: var(--surface-background);
 }
 
@@ -68,16 +69,36 @@
   padding-top: calc(64px + var(--safe-top));
 }
 
+/* The home indicator overlaps the bottom of this fixed box on every device
+   that has one — not only the mobile widths that get a bottom nav. Tablet,
+   desktop and landscape phone all land here, and all three used to put the
+   last row of scrolled content underneath it.
+
+   Written as one rule with :not() rather than a rule plus a cancelling rule.
+   Setting the padding unconditionally and zeroing it under .with-bottom-nav
+   would behave identically today and break silently the first time someone
+   edits one of the two without the other; mutually exclusive selectors cannot
+   drift apart. */
+.main-container:not(.with-bottom-nav) {
+  padding-bottom: var(--safe-bottom);
+}
+
 .main-container.with-docked-sidebar {
   left: 256px;
 }
 
 .main-container.with-bottom-nav {
+  // The nav's own container is 64px plus the inset and paints it itself.
   bottom: calc(64px + var(--safe-bottom));
 }
 
+/* viewport-fit=cover puts the page under the landscape cutout and the rounded
+   corners. max(), never a sum: a gutter already wider than the inset it faces
+   costs nothing, and adding the two would indent the content twice. */
 .content-wrapper {
   padding: 24px;
+  padding-left: max(24px, var(--safe-left));
+  padding-right: max(24px, var(--safe-right));
   max-width: 1280px;
   margin: 0 auto;
 }
@@ -101,5 +122,7 @@
 @include bp.mobile {
   .content-wrapper {
     padding: 16px;
+    padding-left: max(16px, var(--safe-left));
+    padding-right: max(16px, var(--safe-right));
   }
 }

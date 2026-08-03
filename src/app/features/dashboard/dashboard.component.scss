@@ -6,8 +6,19 @@
   gap: 24px;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden; // Prevent horizontal overflow
   box-sizing: border-box;
+
+  // Was overflow-x: hidden, which does not prevent overflow so much as
+  // destroy the evidence of it — and, because `visible` computes to `auto`
+  // on the other axis when one axis is not visible, it had quietly made
+  // this a vertical scroll container as well. That is a live trap for
+  // findScrollParent in transaction-list, which adopts the first scrolling
+  // ancestor it finds as its paging root. Letting the children shrink is
+  // the actual fix, and matches what .dashboard-grid already does.
+  > * {
+    min-width: 0;
+    max-width: 100%;
+  }
 }
 
 .header-section {
@@ -30,7 +41,7 @@
 .dashboard-grid {
   display: grid;
   gap: 24px;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     'recent'
     'chart'

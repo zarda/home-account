@@ -8,6 +8,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { CategoryChipComponent } from '../category-chip/category-chip.component';
+import { FitTextDirective } from '../../directives/fit-text.directive';
 
 /**
  * One transaction-row anatomy (category icon chip, description + category,
@@ -18,7 +19,7 @@ import { CategoryChipComponent } from '../category-chip/category-chip.component'
 @Component({
   selector: 'app-transaction-row',
   standalone: true,
-  imports: [MatIconModule, CategoryChipComponent],
+  imports: [MatIconModule, CategoryChipComponent, FitTextDirective],
   templateUrl: './transaction-row.component.html',
   styleUrl: './transaction-row.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

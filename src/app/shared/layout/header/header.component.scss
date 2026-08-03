@@ -25,17 +25,25 @@
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-primary);
   box-shadow: var(--shadow-sm);
-  padding: 0 16px;
+  // Full-bleed under the landscape cutout, so this gutter is the only thing
+  // keeping the hamburger and the account button clear of it. max(), not a
+  // sum — 16px already clears any inset smaller than itself.
+  padding: 0 max(16px, var(--safe-right)) 0 max(16px, var(--safe-left));
 }
 
 .menu-button {
   margin-right: 8px;
 }
 
+// The wordmark gives way, never the buttons: search and the account menu have
+// no other entry point, and the title is decoration. appFitText rather than an
+// ellipsis, so a longer translation is scaled down whole instead of cut.
 .app-title {
   font-size: var(--text-xl);
   font-weight: 600;
   color: var(--color-primary);
+  min-width: 0;
+  white-space: nowrap;
 }
 
 // Brighter wordmark on dark surfaces: the light-mode brand indigo reads

@@ -1,8 +1,10 @@
+// The dialog is already sized by MAT_DIALOG_DEFAULT_OPTIONS, and its
+// maxWidth of calc(100vw - 32px) is 288px on a 320px screen — narrower than
+// the 300px floor this used to insist on.
 .form-content {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-width: 300px;
 
   mat-form-field {
     width: 100%;
@@ -24,7 +26,12 @@
 
 .icons-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  // auto-fill, not minmax(0, 1fr): these tracks hold a fixed 44px button,
+  // and a track allowed to go below its child's width clips it. Five fixed
+  // columns need 5x44 + 4x8 = 252px, which does not fit the 288px dialog a
+  // 320px screen gives — so the column count gives way instead of the
+  // button size.
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
   gap: 8px;
 }
 
@@ -65,7 +72,12 @@
 
 .colors-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  // auto-fill, not minmax(0, 1fr): these tracks hold a fixed 44px button,
+  // and a track allowed to go below its child's width clips it. Five fixed
+  // columns need 5x44 + 4x8 = 252px, which does not fit the 288px dialog a
+  // 320px screen gives — so the column count gives way instead of the
+  // button size.
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
   gap: 8px;
 }
 

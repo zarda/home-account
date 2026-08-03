@@ -48,9 +48,14 @@
   }
 }
 
+// .nav-item is capped at 88px, and this had nothing stopping it from
+// overflowing that — a longer translation simply ran past the tab. It
+// scales instead of truncating: a half-word label is worse than a small one.
 .nav-label {
   font-size: var(--text-xs);
   line-height: 1;
+  max-width: 100%;
+  white-space: nowrap;
 }
 
 .nav-item:hover .icon-pill {

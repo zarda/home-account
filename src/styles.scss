@@ -130,8 +130,21 @@ button.mat-mdc-icon-button {
   // iOS safe areas (viewport-fit=cover is set in index.html). 0 on
   // devices without notch/home-indicator; shell chrome adds these to its
   // heights/offsets so fixed elements never sit under system UI.
+  //
+  // In landscape the cutout and the rounded corners move to the sides, so
+  // the horizontal pair matters exactly as much as the vertical one. Every
+  // full-bleed box takes max(gutter, inset) rather than adding the two: a
+  // gutter already wider than the inset it faces costs nothing, and
+  // stacking them would indent content twice.
+  //
+  // Consumers read these variables and never env() directly. That is what
+  // lets a test set them to a notch-sized value and assert the geometry —
+  // env() cannot be faked, so without the indirection this behaviour would
+  // only ever be observable on real hardware.
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 
   // Brand colors
   --color-primary: #3F51B5;

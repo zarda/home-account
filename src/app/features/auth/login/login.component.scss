@@ -4,11 +4,18 @@
 
 // Gradient background container
 .login-container {
+  // iOS resolves vh against the largest viewport — the one with Safari's
+  // toolbars collapsed — so a vh-sized box is taller than what is on screen
+  // whenever they are showing, and the sign-in card gets pushed below the
+  // fold. vh first as the fallback where dvh is unsupported.
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  // Full-screen and outside the app shell, so it owns its own insets.
+  padding: max(1rem, var(--safe-top)) max(1rem, var(--safe-right))
+    max(1rem, var(--safe-bottom)) max(1rem, var(--safe-left));
   background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
   position: relative;
   overflow: hidden;

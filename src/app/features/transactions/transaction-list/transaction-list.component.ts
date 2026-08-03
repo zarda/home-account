@@ -43,6 +43,7 @@ import { CategoryChipComponent } from '../../../shared/components/category-chip/
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { FitTextDirective } from '../../../shared/directives/fit-text.directive';
 
 // How far outside the scroll container an edge may be and still trigger a
 // prefetch (matches the IntersectionObserver rootMargin).
@@ -59,6 +60,7 @@ const HIGHLIGHT_MS = 2000;
     AmountDisplayComponent,
     CategoryChipComponent,
     TransactionRowComponent,
+    FitTextDirective,
     MatTableModule,
     MatSortModule,
     MatIconModule,

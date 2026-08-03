@@ -1,5 +1,7 @@
+// No min-width below the tablet breakpoint: the global dialog default is
+// width: min(480px, calc(100vw - 32px)) (app.config.ts), which is 288px on a
+// 320px screen — a 300px body overflowed its own dialog by 12px.
 .camera-capture-container {
-  min-width: 300px;
   min-height: 200px;
 
   @media (min-width: 768px) {

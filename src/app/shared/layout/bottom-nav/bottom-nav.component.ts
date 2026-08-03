@@ -8,6 +8,7 @@ import { TransactionFormComponent } from '../../../features/transactions/transac
 import { CameraCaptureComponent } from '../../../features/transactions/camera-capture/camera-capture.component';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { FitTextDirective } from '../../directives/fit-text.directive';
 
 interface NavItem {
   labelKey: string;
@@ -19,7 +20,14 @@ interface NavItem {
 @Component({
   selector: 'app-bottom-nav',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, MatIconModule, MatMenuModule, TranslatePipe],
+  imports: [
+    RouterLink,
+    RouterLinkActive,
+    MatIconModule,
+    MatMenuModule,
+    FitTextDirective,
+    TranslatePipe,
+  ],
   templateUrl: './bottom-nav.component.html',
   styleUrl: './bottom-nav.component.scss',
 })

@@ -45,7 +45,7 @@
 
       <!-- Amount and Currency -->
       <div class="flex gap-4">
-        <mat-form-field appearance="outline" class="flex-1">
+        <mat-form-field appearance="outline" class="flex-1 min-w-0">
           <mat-label>{{ 'budget.budgetAmount' | translate }}</mat-label>
           <input matInput type="number" formControlName="amount" step="0.01" min="0.01">
           @if (form.get('amount')?.hasError('required') && form.get('amount')?.touched) {
@@ -70,7 +70,7 @@
 
       <!-- Period and Start Date -->
       <div class="flex gap-4">
-        <mat-form-field appearance="outline" class="flex-1">
+        <mat-form-field appearance="outline" class="flex-1 min-w-0">
           <mat-label>{{ 'budget.budgetPeriod' | translate }}</mat-label>
           <mat-select formControlName="period">
             @for (period of periods; track period.value) {
@@ -79,7 +79,7 @@
           </mat-select>
         </mat-form-field>
 
-        <mat-form-field appearance="outline" class="flex-1"
+        <mat-form-field appearance="outline" class="flex-1 min-w-0"
                         [matTooltip]="'budget.startDateTooltip' | translate"
                         matTooltipPosition="above">
           <mat-label>{{ 'budget.startDateOptional' | translate }}</mat-label>
