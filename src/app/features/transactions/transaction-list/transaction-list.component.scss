@@ -62,11 +62,36 @@
   background: var(--surface-card);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
+  // Stays hidden: this is what clips the table's square corners to the card's
+  // radius. The horizontal scroller is a separate box inside it, because
+  // overflow-x here would force this element's overflow-y to auto as well and
+  // put a second vertical scroller inside the page's one.
   overflow: hidden;
 }
 
+/* Five columns whose fixed widths already come to 418px, plus a description
+   cell carrying text, a location, up to four tag chips and two icons. The
+   table view switches on at 768px, where the drawer layout leaves 720px of
+   content — and the amount and the overflow menu were simply cut off at the
+   card's edge with no way to reach them.
+
+   overscroll-behavior-x so a horizontal fling inside the table does not
+   trigger the browser's back-swipe. The scrollbar is deliberately left
+   visible: it is the only thing telling the reader there is more to the
+   right. */
+.table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+/* min-width is the floor the columns need, not a fixed size — width: 100%
+   still fills anything wider. 720px is the content width at 768px, the
+   viewport that first shows this view, so the table is never narrower than
+   the screen that introduced it and the scrollbar appears only once the
+   description cell's own content pushes past that. */
 .desktop-table {
   width: 100%;
+  min-width: 720px;
 }
 
 ::ng-deep .desktop-table .mat-mdc-header-row {
@@ -153,9 +178,13 @@
   @apply text-gray-700 dark:text-gray-300;
 }
 
+// anywhere, not break-word: only `anywhere` lowers the element's min-content
+// size, and a pasted URL that refuses to shrink is what pushed the amount and
+// the menu past the card edge in the first place.
 .description-text {
   font-size: var(--text-sm);
   font-weight: 500;
+  overflow-wrap: anywhere;
   @apply text-gray-900 dark:text-gray-100;
 }
 
@@ -183,19 +212,21 @@
   line-height: 1;
 }
 
-// Where the transaction happened; a link only when coordinates exist
+// Where the transaction happened; a link only when coordinates exist. The
+// 14em cap and its ellipsis are gone: text-overflow does nothing on an
+// inline-flex box, and the place name inside it was a bare text node no
+// selector could reach, so it clipped rather than ellipsised. A long name
+// wraps now, like every other piece of text in the app.
 .location-chip {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   margin-left: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: var(--text-xs);
   color: var(--text-muted);
-  white-space: nowrap;
   vertical-align: middle;
-  max-width: 14em;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .location-link {
@@ -232,7 +263,8 @@
   border-radius: 999px;
   background: var(--surface-muted);
   color: var(--text-muted);
-  white-space: nowrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .receipt-icon {
@@ -256,8 +288,12 @@
   vertical-align: middle;
 }
 
+// nowrap on both value lines is what appFitText needs: a number broken across
+// two lines reads worse than a smaller one, so the directive scales first and
+// only wraps once it has hit the 12px floor.
 .amount-text {
   display: inline-flex;
+  white-space: nowrap;
 }
 
 // Converted secondary line under foreign-currency amounts (desktop table)
@@ -266,6 +302,7 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .action-btn {
@@ -292,22 +329,3 @@
   cursor: pointer;
 }
 
-@media (max-width: 480px) {
-  .mobile-item {
-    padding: 10px 14px;
-    gap: 10px;
-  }
-
-  .category-icon {
-    width: 36px;
-    height: 36px;
-  }
-
-  .item-description {
-    font-size: var(--text-sm);
-  }
-
-  .amount {
-    font-size: var(--text-sm);
-  }
-}

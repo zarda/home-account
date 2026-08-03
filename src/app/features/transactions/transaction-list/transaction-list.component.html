@@ -67,10 +67,14 @@
     </div>
   </div>
 } @else {
-  <!-- Desktop Table View -->
+  <!-- Desktop Table View. The scroller is a box of its own inside the card:
+       the card keeps overflow: hidden to clip its corners to the radius, and
+       overflow-x on the card itself would force its overflow-y to auto and
+       nest a second vertical scroller inside the page's one. -->
   <div class="desktop-view">
-    <table
-      mat-table
+    <div class="table-scroll">
+      <table
+        mat-table
       [dataSource]="sortedTransactions()"
       [trackBy]="trackById"
       matSort
@@ -180,8 +184,11 @@
           class="col-amount"
         >{{ 'transactions.amount' | translate }}</th>
         <td mat-cell *matCellDef="let transaction" class="col-amount">
+          <!-- The amount column is a fixed 120px, so a large foreign amount
+               scales to fit rather than losing digits off the end. -->
           <app-amount-display
             class="amount-text"
+            appFitText
             [amount]="transaction.type === 'income' ? transaction.amount : -transaction.amount"
             [currency]="transaction.currency"
             [type]="transaction.type"
@@ -190,7 +197,7 @@
             size="sm"
           />
           @if (convertedAmount(transaction); as converted) {
-            <span class="amount-converted">{{ converted }}</span>
+            <span class="amount-converted" appFitText>{{ converted }}</span>
           }
         </td>
       </ng-container>
@@ -224,7 +231,8 @@
         [class.row-highlight]="row.id === highlightedId()"
         (click)="edit.emit(row)"
       ></tr>
-    </table>
+      </table>
+    </div>
   </div>
 }
 
