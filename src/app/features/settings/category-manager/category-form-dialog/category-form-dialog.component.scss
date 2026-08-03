@@ -1,8 +1,10 @@
+// The dialog is already sized by MAT_DIALOG_DEFAULT_OPTIONS, and its
+// maxWidth of calc(100vw - 32px) is 288px on a 320px screen — narrower than
+// the 300px floor this used to insist on.
 .form-content {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-width: 300px;
 
   mat-form-field {
     width: 100%;
