@@ -26,6 +26,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { AiSearchDialogComponent } from '../../components/ai-search-dialog/ai-search-dialog.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { FitTextDirective } from '../../directives/fit-text.directive';
 import { filter, map, Subscription } from 'rxjs';
 
 @Component({
@@ -38,6 +39,7 @@ import { filter, map, Subscription } from 'rxjs';
     MatButtonModule,
     MatMenuModule,
     MatTooltipModule,
+    FitTextDirective,
     TranslatePipe
   ],
   templateUrl: './header.component.html',

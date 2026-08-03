@@ -1,0 +1,9 @@
+/* Was Tailwind's `min-h-screen`, which is 100vh. iOS resolves vh against the
+   largest viewport — the one with Safari's toolbars collapsed — so it
+   overstates the height actually on screen. A local class rather than
+   redefining the utility: shadowing a Tailwind name would change it wherever
+   else it is used and hide the reason from anyone reading the template. */
+.app-viewport {
+  min-height: 100vh; // fallback where dvh is unsupported
+  min-height: 100dvh;
+}

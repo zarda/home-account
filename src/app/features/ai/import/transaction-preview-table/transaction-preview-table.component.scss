@@ -46,7 +46,13 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  // dvh, for the same reason dialogs moved to it in #214: a vh-sized scroller
+  // is taller than the visible viewport while the iOS toolbars are showing.
+  // This is a routed page rather than a dialog, so it sits inside the app's
+  // own scroll container and the consequence is milder — but the unit is
+  // wrong either way.
   max-height: 70vh;
+  max-height: 70dvh;
   overflow-y: auto;
 }
 
