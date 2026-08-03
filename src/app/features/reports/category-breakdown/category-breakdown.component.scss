@@ -220,19 +220,25 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 12px;
   background: var(--surface-muted);
   border-radius: var(--radius-sm);
 }
 
+// min-width: 0 is the declaration this row was missing. Without it the column
+// floors at its own min-content size, refuses to shrink, and pushes the amount
+// out of the panel instead of wrapping the description.
 .transaction-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 
   .transaction-description {
     font-size: var(--text-sm);
     font-weight: 500;
+    overflow-wrap: anywhere;
     @apply text-gray-800 dark:text-gray-100;
   }
 
@@ -242,8 +248,12 @@
   }
 }
 
+// nowrap is what appFitText needs from the cascade; the directive scales the
+// value rather than letting it break or spill.
 .transaction-amount {
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
   @apply text-gray-800 dark:text-gray-100;
 }
 
