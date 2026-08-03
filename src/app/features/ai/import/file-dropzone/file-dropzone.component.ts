@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, signal, computed } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnDestroy, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -20,7 +20,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
   templateUrl: './file-dropzone.component.html',
   styleUrl: './file-dropzone.component.scss'
 })
-export class FileDropzoneComponent {
+export class FileDropzoneComponent implements OnDestroy {
   @Input() acceptedTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp';
   @Input() maxFileSize = 10 * 1024 * 1024; // 10MB
   @Input() multiple = true;
@@ -105,8 +105,11 @@ export class FileDropzoneComponent {
 
       validFiles.push(file);
 
-      // Generate preview for images
+      // Generate preview for images. The map is keyed by name, so re-picking
+      // a file with the same name would otherwise overwrite the entry and
+      // leave the old blob alive with nothing pointing at it.
       if (this.isImageFile(file)) {
+        this.revokePreview(file.name);
         this.filePreviews.set(file.name, URL.createObjectURL(file));
       }
     }
@@ -120,7 +123,13 @@ export class FileDropzoneComponent {
       if (this.multiple) {
         this.selectedFiles.update(current => [...current, ...validFiles]);
       } else {
-        this.selectedFiles.set(validFiles.slice(0, 1));
+        // Single mode replaces the selection, so whatever it displaced has to
+        // be released — nothing else will ever refer to it again.
+        const kept = validFiles.slice(0, 1);
+        this.selectedFiles().forEach(f => {
+          if (!kept.includes(f)) this.revokePreview(f.name);
+        });
+        this.selectedFiles.set(kept);
       }
       this.filesSelected.emit(this.selectedFiles());
     }
@@ -154,15 +163,26 @@ export class FileDropzoneComponent {
     return false;
   }
 
+  // The component holds blob URLs, so it has to release them when it goes:
+  // the wizard renders one of these, so a session without this leaked two
+  // sets of previews per image, not one.
+  ngOnDestroy(): void {
+    this.filePreviews.forEach(url => URL.revokeObjectURL(url));
+    this.filePreviews.clear();
+  }
+
+  private revokePreview(name: string): void {
+    const preview = this.filePreviews.get(name);
+    if (preview) {
+      URL.revokeObjectURL(preview);
+      this.filePreviews.delete(name);
+    }
+  }
+
   removeFile(file: File, event: Event): void {
     event.stopPropagation();
 
-    // Revoke object URL if exists
-    const preview = this.filePreviews.get(file.name);
-    if (preview) {
-      URL.revokeObjectURL(preview);
-      this.filePreviews.delete(file.name);
-    }
+    this.revokePreview(file.name);
 
     this.selectedFiles.update(files => files.filter(f => f !== file));
     this.filesSelected.emit(this.selectedFiles());

@@ -102,15 +102,20 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   processingProgress = this.importService.processingProgress;
   categories = this.categoryService.categories;
 
-  // Image preview URLs
-  imagePreviewUrls = computed(() => {
-    return this.selectedFiles()
-      .filter(f => f.type.startsWith('image/'))
-      .map(f => ({
-        name: f.name,
-        url: URL.createObjectURL(f)
-      }));
-  });
+  /**
+   * Image previews, minted once per selection.
+   *
+   * This used to be a `computed`, which mints a blob URL as a side effect of
+   * being read: every re-pick orphaned the previous batch, and ngOnDestroy —
+   * which read the computed again — could mint a fresh set and revoke those
+   * instead of the ones the template had rendered. Four 4MB photos re-picked
+   * three times pinned about 50MB for the life of the document, which on the
+   * iOS WebView is the kind of pressure that gets the app killed mid-scan.
+   *
+   * A plain signal written by onFilesSelected makes creation and revocation
+   * a pair, in one place.
+   */
+  imagePreviewUrls = signal<{ name: string; url: string }[]>([]);
 
   // Computed
   uploadComplete = computed(() => this.selectedFiles().length > 0);
@@ -237,15 +242,27 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    // Cleanup object URLs
-    this.imagePreviewUrls().forEach(p => URL.revokeObjectURL(p.url));
+    this.revokePreviews();
   }
 
   onFilesSelected(files: File[]): void {
     this.selectedFiles.set(files);
+    // Revoke before minting, so a re-pick releases the previous batch rather
+    // than leaving it alive with nothing pointing at it.
+    this.revokePreviews();
+    this.imagePreviewUrls.set(
+      files
+        .filter(f => f.type.startsWith('image/'))
+        .map(f => ({ name: f.name, url: URL.createObjectURL(f) }))
+    );
     // Reset processing state
     this.extractedTransactions.set([]);
     this.processingError.set(null);
+  }
+
+  private revokePreviews(): void {
+    this.imagePreviewUrls().forEach(p => URL.revokeObjectURL(p.url));
+    this.imagePreviewUrls.set([]);
   }
 
   async processFiles(): Promise<void> {
