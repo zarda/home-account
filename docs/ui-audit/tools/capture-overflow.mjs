@@ -28,7 +28,9 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 
 const LABEL = process.argv[2] ?? 'shot';
-const APP = 'http://127.0.0.1:4200';
+// localhost, not 127.0.0.1: `ng serve` binds to ::1 only on some setups, and
+// localhost resolves to whichever family is actually listening.
+const APP = 'http://localhost:4200';
 const AUTH = 'http://127.0.0.1:9099';
 const FSTORE = 'http://127.0.0.1:8080/v1/projects/demo-home-account/databases/(default)/documents';
 const OUT = new URL('./shots/', import.meta.url).pathname;
@@ -208,8 +210,18 @@ async function measure(page, watch) {
 
     for (const { sel, what } of watchList) {
       const els = [...document.querySelectorAll(sel)];
-      seen[what] = els.length;
+      let visible = 0;
       for (const el of els.slice(0, 12)) {
+        // Not rendered at all is not the same as clipped. The bottom nav is
+        // display: none above the mobile breakpoint, so its labels are in the
+        // DOM with a 0x0 rect on every desktop width — reporting those as
+        // collapsed buries the real findings under a few hundred of them.
+        const shown = typeof el.checkVisibility === 'function'
+          ? el.checkVisibility()
+          : !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+        if (!shown) continue;
+        visible++;
+
         const r = el.getBoundingClientRect();
         const label = `${what} "${(el.textContent ?? '').trim().slice(0, 24)}"`;
 
@@ -258,6 +270,7 @@ async function measure(page, watch) {
           findings.push({ what, label, kind: 'off-viewport', detail: `${Math.round(r.left)}..${Math.round(r.right)} vs 0..${window.innerWidth}` });
         }
       }
+      seen[what] = visible;
     }
 
     // The page itself must never scroll sideways.
