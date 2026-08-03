@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
 
 import { TransactionRowComponent } from './components/transaction-row/transaction-row.component';
+import { InsightTransactionListComponent } from '../features/reports/insights/insight-card/insight-transaction-list.component';
 import { FitTextRegistry } from './directives/fit-text.registry';
 import { CurrencyService } from '../core/services/currency.service';
 import { AuthService } from '../core/services/auth.service';
@@ -41,19 +42,31 @@ import { createCategory, createTransaction, createUser } from '../core/services/
         <button class="menu-probe" type="button">⋮</button>
       </app-transaction-row>
     </div>
+
+    <!-- A short description with an amount too wide to share the line. This
+         is the case that put the menu at the row's *left* edge: the trailing
+         group wrapped, and the auto margin that was supposed to right-align
+         it sat on the amount, which had stayed behind. -->
+    <div class="brief">
+      <app-transaction-row [transaction]="brief()" [categories]="categories">
+        <button class="menu-probe" type="button">⋮</button>
+      </app-transaction-row>
+    </div>
   `,
   styles: [
     `
       // .mobile-list clips, and reproducing that here is the point: a row that
       // overflows in the app does not merely look wrong, it loses pixels.
       .narrow,
-      .typical {
+      .typical,
+      .brief {
         overflow: hidden;
       }
       .narrow {
         width: 288px;
       }
-      .typical {
+      .typical,
+      .brief {
         width: 343px;
       }
     `,
@@ -84,6 +97,17 @@ class OverflowProbeComponent {
         'supplies and a refill of the pantry staples',
       tags: ['weekly-grocery-run', 'organic-produce', 'household-supplies', 'reimbursable', 'shared'],
       location: { name: 'Ferry Building Marketplace, One Ferry Building, San Francisco' },
+    } as Partial<Transaction>)
+  );
+
+  readonly brief = signal<Transaction>(
+    createTransaction({
+      categoryId: 'food',
+      type: 'expense',
+      currency: 'JPY',
+      amount: 123456789,
+      amountInBaseCurrency: 846296.5,
+      description: 'Coffee',
     } as Partial<Transaction>)
   );
 
@@ -152,6 +176,20 @@ describe('overflow guard', () => {
     return i.left >= o.left - 1 && i.right <= o.right + 1 && i.top >= o.top - 1 && i.bottom <= o.bottom + 1;
   }
 
+  /**
+   * Distance from the menu's right edge to the row's content edge.
+   *
+   * Containment is not enough and never was: a menu that has wrapped to a line
+   * of its own and sits at the row's *left* edge is still inside the row, and
+   * that is exactly the bug these rows shipped with. The trailing padding is
+   * 8px, from `.transaction-row { padding: 12px 8px }`.
+   */
+  function gapToRightEdge(scope: string): number {
+    const row = el(scope, '.transaction-row').getBoundingClientRect();
+    const menu = el(scope, '.menu-probe').getBoundingClientRect();
+    return row.right - 8 - menu.right;
+  }
+
   describe('a row whose content is far too long for it', () => {
     it('keeps the overflow menu inside the row', () => {
       // The menu is the only route to Delete. Before this, a long category
@@ -160,6 +198,50 @@ describe('overflow guard', () => {
       expect(contains(el('.narrow', '.transaction-row'), el('.narrow', '.menu-probe')))
         .withContext('overflow menu inside its row')
         .toBeTrue();
+    });
+
+    it('keeps the overflow menu at the right edge, not merely inside the row', () => {
+      expect(Math.abs(gapToRightEdge('.narrow')))
+        .withContext('menu flush with the row content edge')
+        .toBeLessThanOrEqual(1);
+    });
+
+    it('keeps the category tile on the same line as the details column', () => {
+      // `.row-details` used to be `flex: 1 1 auto`, so line-collection measured
+      // it at the full max-content width of the description and broke the line
+      // before the tile — leaving the tile alone on line 1, the one thing in
+      // the row that is supposed to be read at a glance.
+      const chip = el('.narrow', 'app-category-chip').getBoundingClientRect();
+      const details = el('.narrow', '.row-details').getBoundingClientRect();
+      expect(Math.abs(chip.top - details.top))
+        .withContext('tile and details share a line')
+        .toBeLessThanOrEqual(1);
+    });
+
+    it('scrolls the category strip instead of stacking it', () => {
+      /* ADR 0011. Wrapped, this strip stacked six deep — 111px of category,
+         location and tags on a row 347px tall at this width, which is most of
+         a phone screen for one transaction. It scrolls now, so it costs one
+         line however much it carries, and the row comes in around 240.
+
+         Nothing is lost: a scroller hides nothing that cannot be reached,
+         which is the whole difference between this and a truncation.
+
+         The bound is on the strip, not on the row. Row height still moves with
+         how long the description is, and should — that part wraps, and prose
+         is what the reader came for. What must not vary is this. */
+      const category = el('.narrow', '.row-category');
+      expect(getComputedStyle(category).overflowX)
+        .withContext('category strip is reachable by scrolling')
+        .toMatch(/auto|scroll/);
+      expect(category.scrollWidth)
+        .withContext('there is genuinely more strip off the right edge')
+        .toBeGreaterThan(category.clientWidth);
+      // One 14px line, plus room for a classic horizontal scrollbar on the
+      // platforms that draw one. Six lines was 111.
+      expect(category.getBoundingClientRect().height)
+        .withContext('strip stays one line whatever it carries')
+        .toBeLessThanOrEqual(40);
     });
 
     it('keeps every part of the row inside the clipping container', () => {
@@ -189,9 +271,35 @@ describe('overflow guard', () => {
     });
 
     it('keeps the +N tag indicator, which is what says tags were hidden', () => {
+      // Still inside the row now that the strip scrolls, because the chip is
+      // sticky. Unpinned it would be the last child of a scroller and would
+      // sit past the right edge, out of sight of exactly the reader who needs
+      // to be told there is more.
       const overflow = el('.narrow', '.tag-overflow');
       expect(overflow).withContext('+N chip rendered').not.toBeNull();
       expect(contains(el('.narrow', '.transaction-row'), overflow)).toBeTrue();
+      expect(contains(el('.narrow', '.row-category'), overflow))
+        .withContext('+N pinned inside the visible strip, not scrolled off it')
+        .toBeTrue();
+    });
+  });
+
+  describe('a row whose amount cannot share the line', () => {
+    it('keeps the overflow menu at the right edge when the trailing group wraps', () => {
+      // The reported bug, in the shape it was reported in. A short description
+      // and a nine-figure amount pushes the trailing group onto a line of its
+      // own; while the amount and the menu were separate flex items, only the
+      // amount carried the auto margin, so the menu landed at x = padding —
+      // the far left of the row.
+      expect(Math.abs(gapToRightEdge('.brief')))
+        .withContext('menu flush with the row content edge')
+        .toBeLessThanOrEqual(1);
+    });
+
+    it('keeps the amount and the menu on the same line as each other', () => {
+      const amount = el('.brief', '.row-amount').getBoundingClientRect();
+      const menu = el('.brief', '.menu-probe').getBoundingClientRect();
+      expect(amount.top).withContext('amount and menu travel together').toBeCloseTo(menu.top, 0);
     });
   });
 
@@ -221,5 +329,92 @@ describe('overflow guard', () => {
       // appFitText writes nothing at all unless it has to.
       expect(el('.typical', '.amount').style.fontSize).toBe('');
     });
+  });
+});
+
+/**
+ * The insight drill-down row, which is the same anatomy one screen over:
+ * a description over a date, an amount at the trailing edge, inside a card.
+ *
+ * It is here rather than in insight-card.component.spec.ts because that spec
+ * replaces the card's template with a stub, so nothing it renders has a layout
+ * box. This is the only place the row's own stylesheet is measured.
+ */
+@Component({
+  standalone: true,
+  imports: [InsightTransactionListComponent],
+  template: `
+    <div class="insight-clip">
+      <app-insight-transaction-list [transactionIds]="ids" [lookup]="lookup" />
+    </div>
+  `,
+  styles: [
+    `
+      // The insight card on a 375px phone, less its own padding.
+      .insight-clip {
+        width: 311px;
+        overflow: hidden;
+      }
+    `,
+  ],
+})
+class InsightRowProbeComponent {
+  readonly ids = ['t1'];
+  readonly lookup = new Map<string, Transaction>([
+    [
+      't1',
+      createTransaction({
+        id: 't1',
+        currency: 'USD',
+        amount: 123456789.5,
+        description:
+          'Weekly grocery run at the farmers market on Ferry Building Embarcadero plus ' +
+          'household supplies and a refill of the pantry staples',
+      }),
+    ],
+  ]);
+}
+
+describe('overflow guard: the insight drill-down row', () => {
+  let host: HTMLElement;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({ imports: [InsightRowProbeComponent] }).compileComponents();
+
+    const fixture = TestBed.createComponent(InsightRowProbeComponent);
+    host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.detectChanges();
+    TestBed.inject(FitTextRegistry).flush();
+  });
+
+  afterEach(() => host.remove());
+
+  it('does not truncate the description', () => {
+    // This one really did truncate. The three rules ADR 0010 deleted were dead
+    // — text-overflow on a flex container — but this description is a plain
+    // span, so its ellipsis rendered and really did shorten what the reader
+    // saw, on the row a reader opens an insight to look at.
+    const description = host.querySelector('.transaction-description') as HTMLElement;
+    const style = getComputedStyle(description);
+    expect(style.textOverflow).withContext('no ellipsis').toBe('clip');
+    expect(style.whiteSpace).withContext('text is allowed to wrap').not.toBe('nowrap');
+    expect(description.scrollWidth)
+      .withContext('nothing hiding past the right edge')
+      .toBeLessThanOrEqual(description.clientWidth + 1);
+  });
+
+  it('keeps the amount inside the row', () => {
+    const item = host.querySelector('.transaction-item') as HTMLElement;
+    const amount = host.querySelector('.transaction-amount') as HTMLElement;
+    const i = item.getBoundingClientRect();
+    const a = amount.getBoundingClientRect();
+    expect(a.right).withContext('amount inside its row').toBeLessThanOrEqual(i.right + 1);
+    expect(a.left).withContext('amount not pushed out to the left').toBeGreaterThanOrEqual(i.left - 1);
+  });
+
+  it('shows every digit of the amount, scaling rather than shortening it', () => {
+    const amount = host.querySelector('.transaction-amount') as HTMLElement;
+    expect(amount.textContent).toContain('123,456,789');
   });
 });

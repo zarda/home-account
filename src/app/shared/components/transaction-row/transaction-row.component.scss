@@ -4,16 +4,27 @@
 
 /* This row is rendered inside containers that clip — .mobile-list and the
    dashboard card both set overflow: hidden — so anything that overflows it is
-   not merely untidy, it is destroyed. Nothing here truncates: text reflows
-   onto more lines, and the amount scales (see appFitText in the template).
+   not merely untidy, it is destroyed. Nothing here truncates: the description
+   reflows onto more lines, the category strip scrolls, and the amount scales
+   (see appFitText in the template).
 
    The budget, at the 375px viewport this is tightest on: 343px of card, less
-   16px of row padding, leaves 327. The tile (40), the menu (48) and three
-   12px gaps claim 124 of that and never yield, so 203 is shared between the
-   details column and the amount. An ordinary row spends about 60 of it on the
-   amount and stays on one line; a nine-figure foreign amount cannot, and
-   wraps to a line of its own rather than squeezing the description to
-   nothing. */
+   16px of row padding, leaves 327. The tile (40), the menu (48) and two 12px
+   gaps claim 112 of that and never yield, so 215 is shared between the
+   details column and the amount.
+
+   Two rules keep the row on one line for as long as that budget allows, and
+   both are load-bearing:
+
+   - .row-details is `flex: 1 1 0`, not `1 1 auto`. Flex line-collection
+     measures each item at its *hypothetical* main size, and `flex-basis: auto`
+     resolves to max-content — the full width of the description, before any
+     shrinking is considered. The row then broke before the tile, leaving it
+     alone on a line. A zero basis is measured at the 7rem floor below instead,
+     and the column grows into the leftover afterwards.
+   - Amount and menu are one item, .row-trailing. An auto margin right-aligns
+     only the line its own item is on, so as two items the menu could wrap away
+     from the amount and land at the row's left edge. */
 .transaction-row {
   display: flex;
   flex-wrap: wrap;
@@ -41,13 +52,17 @@ app-category-chip {
 
 /* min-width is a floor, not a width: below about seven characters' worth the
    description wraps one word per line and stops being readable, so at that
-   point the row wraps the amount down instead. Kept under the ~143px an
-   ordinary 375px row can spare, so the common case still fits on one line. */
+   point the row wraps the amount down instead. Kept under the ~155px an
+   ordinary 375px row can spare, so the common case still fits on one line.
+
+   With a zero basis this floor is also the only size line-collection sees for
+   this column, which is what stops a long description breaking the line before
+   the tile. See the note at the top. */
 .row-details {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 7rem;
 }
 
@@ -93,29 +108,39 @@ app-category-chip {
   line-height: 1;
 }
 
-/* Category, location and tags share one line until they cannot, then flow
-   onto the next. Previously the category name was an anonymous flex item at
-   its min-content size with nothing to shrink it, so a long one painted out
-   over the amount and the overflow menu before .mobile-list chopped it. */
+/* Category, location and tags are a strip of discrete chips, and a strip
+   scrolls rather than wrapping. Wrapping it stacked a row four lines deep on
+   the tags alone — 295px tall on a 375px phone — and a list of rows that each
+   pick their own height is the thing this row is read down. ADR 0011.
+
+   The scrollbar stays visible, thinned but never hidden: it is the only thing
+   saying there is more off the right edge. Same reasoning, and the same
+   overscroll guard against the browser's back-swipe, as .quick-filters. */
 .row-category {
   font-size: var(--text-sm);
   color: var(--text-muted);
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   gap: 6px;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .row-tags {
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
   min-width: 0;
 }
 
+// Chips queue along the strip at their own width. Shrinking them would only
+// move the squeeze somewhere the reader cannot scroll to.
 .tag-chip {
   font-size: var(--text-xs);
   line-height: 1.4;
@@ -123,28 +148,35 @@ app-category-chip {
   border-radius: 999px;
   background: var(--surface-muted);
   color: var(--text-muted);
-  max-width: 100%;
-  overflow-wrap: anywhere;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-/* "+2" is the only thing telling the reader that tags were hidden. If it goes
-   first — and as the last child under a squeeze it would — a visible
-   truncation becomes a silent one. An overflow indicator has to outlive the
-   things it counts. */
+/* "+2" is the only thing telling the reader that tags were hidden, and an
+   overflow indicator has to outlive the things it counts.
+
+   Sticky is what that means once the strip scrolls. As the last child it would
+   otherwise sit past the right edge, visible only to a reader who scrolled far
+   enough to no longer need it — the count of what is missing is useless at the
+   point you have already found it. Pinned to the scrollport's right edge it
+   stays put while the tags slide under it, and releases when its own position
+   catches up. It keeps .tag-chip's opaque background, which is what stops the
+   tags showing through. */
 .tag-overflow {
   flex-shrink: 0;
+  position: sticky;
+  right: 0;
 }
 
 // Where the transaction happened; a link only when coordinates exist. The
-// 12em cap and its ellipsis are gone with the rest of the truncation: a long
-// place name wraps like any other text.
+// 12em cap and its ellipsis are long gone, and a long place name now rides
+// the category strip's scroller rather than wrapping the row taller.
 .location-chip {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
@@ -167,11 +199,25 @@ app-category-chip {
   flex-shrink: 0;
 }
 
-/* The amount never shrinks below its content and never truncates, so when it
-   cannot share a line it takes one — margin-left: auto keeps it right-aligned
-   whether it wrapped or not. max-width: 100% is what stops a very large
-   number widening the row past the card; appFitText scales the value inside
-   that cap rather than letting it spill. */
+/* Amount and menu as one item, so they wrap together or not at all, and one
+   auto margin right-aligns both. margin-left: auto used to sit on .row-amount
+   and reached only the line the amount was on — which is why a menu that had
+   wrapped away from it ended up at the row's left edge.
+
+   max-width: 100% is what stops a very large number widening the row past the
+   card; appFitText scales the value inside that cap rather than letting it
+   spill. */
+.row-trailing {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-shrink: 0;
+  max-width: 100%;
+  margin-left: auto;
+}
+
+// The amount never shrinks below its content and never truncates, so when it
+// cannot share a line the whole trailing group takes one.
 .row-amount {
   display: flex;
   flex-direction: column;
@@ -180,7 +226,6 @@ app-category-chip {
   flex-shrink: 0;
   min-width: 0;
   max-width: 100%;
-  margin-left: auto;
 }
 
 // nowrap on both value lines is deliberate and is what appFitText needs: a
@@ -217,7 +262,7 @@ app-category-chip {
 /* The overflow menu is the only route to Delete, so it is the one thing in
    the row that never shrinks and is never clipped. :empty because the
    dashboard card projects nothing into the slot, and an empty box must not
-   claim one of the row's 12px gaps. */
+   claim one of .row-trailing's 12px gaps — a display: none item does not. */
 .row-actions {
   display: flex;
   align-items: center;

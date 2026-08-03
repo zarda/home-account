@@ -164,6 +164,64 @@ describe('TransactionRowComponent', () => {
     expect(row.getAttribute('tabindex')).toBe('0');
   });
 
+  it('keeps the amount and the actions slot inside one trailing group', () => {
+    setTransaction({});
+
+    // They are one flex item so they wrap together. As two, only the amount
+    // carried `margin-left: auto`, and an auto margin right-aligns just the
+    // line its own item is on — so a menu that had wrapped away from the
+    // amount ended up at the row's left edge with nothing to push it back.
+    const trailing = fixture.nativeElement.querySelector('.row-trailing') as HTMLElement;
+    expect(trailing).withContext('trailing group present').not.toBeNull();
+    expect(trailing.querySelector('.row-amount')).withContext('amount inside it').not.toBeNull();
+    expect(trailing.querySelector('.row-actions')).withContext('actions inside it').not.toBeNull();
+    // Where it now ends up on screen is measured in overflow-guard.spec.ts,
+    // against the real cascade at a real width. This one is the structure the
+    // guarantee rests on.
+  });
+
+  it('opens the transaction on an ordinary click on the category strip', () => {
+    setTransaction({});
+    const emitted: Transaction[] = [];
+    component.activate.subscribe((t) => emitted.push(t));
+
+    const strip = fixture.nativeElement.querySelector('.row-category') as HTMLElement;
+    const onText = new MouseEvent('click');
+    Object.defineProperty(onText, 'target', { value: strip });
+    Object.defineProperty(onText, 'offsetY', { value: 2 });
+
+    component.onActivate(onText);
+    expect(emitted.length).withContext('a click on the strip itself still opens the row').toBe(1);
+  });
+
+  it('ignores a click on the category strip scrollbar', () => {
+    setTransaction({});
+    const emitted: Transaction[] = [];
+    component.activate.subscribe((t) => emitted.push(t));
+
+    // `.row-category` scrolls horizontally, and on a platform with classic
+    // scrollbars that scrollbar sits inside the row's hit area. Dragging it is
+    // a scroll, not a tap, but the click still bubbles to the row — which
+    // would open the editor under the reader's cursor. offsetY past the
+    // content box is what identifies it.
+    const strip = fixture.nativeElement.querySelector('.row-category') as HTMLElement;
+    const onScrollbar = new MouseEvent('click');
+    Object.defineProperty(onScrollbar, 'target', { value: strip });
+    Object.defineProperty(onScrollbar, 'offsetY', { value: strip.clientHeight + 4 });
+
+    component.onActivate(onScrollbar);
+    expect(emitted.length).withContext('scrollbar click swallowed').toBe(0);
+  });
+
+  it('still activates on keyboard, which passes no event at all', () => {
+    setTransaction({});
+    const emitted: Transaction[] = [];
+    component.activate.subscribe((t) => emitted.push(t));
+
+    component.onActivate();
+    expect(emitted.length).toBe(1);
+  });
+
   it('collapses the trailing actions slot when nothing is projected into it', () => {
     setTransaction({});
 

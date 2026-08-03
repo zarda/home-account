@@ -218,10 +218,35 @@ describe('Transaction overflow (emulator smoke test)', () => {
         expect(card).withContext('mobile list card rendered').not.toBeNull();
 
         const row = card.querySelector('app-transaction-row .transaction-row') as Element;
-        const menu = card.querySelector('.mobile-menu-btn') as Element;
+        const menu = card.querySelector('.row-actions button') as Element;
         expect(menu).withContext('row overflow menu rendered').not.toBeNull();
         expect(contains(row, menu)).withContext('menu inside its row').toBeTrue();
         expect(contains(card, menu)).withContext('menu inside the clipping card').toBeTrue();
+
+        /* Inside the row is not the same as at the right of it, and the
+           difference is a shipped bug: the menu used to wrap to a line of its
+           own and sit at the row's left edge, which every containment check
+           above is perfectly happy with. 8px is the row's trailing padding. */
+        expect(Math.abs(row.getBoundingClientRect().right - 8 - menu.getBoundingClientRect().right))
+          .withContext('menu at the right edge, not merely inside the row')
+          .toBeLessThanOrEqual(1);
+
+        /* The tile is what the row is read by at a glance, and it belongs on
+           the same line as the text it labels. It was landing alone on line 1
+           whenever the description ran long, because line-collection measured
+           the details column at the full width of that description. */
+        const tile = card.querySelector('app-transaction-row app-category-chip') as Element;
+        const details = card.querySelector('app-transaction-row .row-details') as Element;
+        expect(Math.abs(tile.getBoundingClientRect().top - details.getBoundingClientRect().top))
+          .withContext('category tile shares a line with the details column')
+          .toBeLessThanOrEqual(1);
+
+        /* The category strip carries the long category name, the location and
+           the tags, and scrolls rather than stacking them (ADR 0011). */
+        const strip = card.querySelector('app-transaction-row .row-category') as HTMLElement;
+        expect(getComputedStyle(strip).overflowX)
+          .withContext('category strip is reachable by scrolling')
+          .toMatch(/auto|scroll/);
 
         // The row did not push its own card sideways.
         expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth + 1);
