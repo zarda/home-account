@@ -64,9 +64,7 @@ mat-card-content {
 .row-label {
   font-size: var(--text-sm);
   font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .row-meta {

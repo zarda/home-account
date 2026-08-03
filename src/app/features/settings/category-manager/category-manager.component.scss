@@ -79,9 +79,7 @@
   .category-name {
     font-weight: 500;
     @apply text-gray-800 dark:text-gray-100;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
   }
 
   .default-badge {

@@ -220,12 +220,14 @@
   flex-shrink: 0;
 }
 
+// min-width: 0 alongside the wrap, because `flex: 1` is `flex: 1 1 0%` with
+// min-width: auto — the item floors at its own min-content size and pushes the
+// count out of the row rather than reflowing. G1.
 .preview-desc {
   flex: 1;
+  min-width: 0;
   @apply text-gray-700 dark:text-gray-300;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .preview-amount {

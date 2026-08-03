@@ -73,11 +73,12 @@ mat-card-content {
   gap: 12px;
   font-size: var(--text-sm);
 
+  // min-width: 0 with the wrap: the term is the flexible half of the pair and
+  // would otherwise floor at min-content and push the value out of the row.
   dt {
     color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   dd {

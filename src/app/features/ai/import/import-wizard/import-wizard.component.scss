@@ -149,6 +149,10 @@
   object-fit: cover;
 }
 
+// Anchored to the bottom, so a long filename grows the caption upward over its
+// own thumbnail rather than losing its tail. Covering part of a picture the
+// reader just chose is recoverable; not being able to tell two receipts apart
+// is not.
 .preview-name {
   position: absolute;
   bottom: 0;
@@ -158,9 +162,7 @@
   background: linear-gradient(transparent, rgba(0,0,0,0.7));
   color: white;
   font-size: var(--text-xs);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 /* Processing Step */

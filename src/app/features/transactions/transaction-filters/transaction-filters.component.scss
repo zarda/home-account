@@ -89,10 +89,11 @@
   height: 1em;
 }
 
+// A saved search is the user's own words and can be any length; wrapping the
+// suggestion is better than offering half of one.
 .suggestion-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .suggestion-remove {

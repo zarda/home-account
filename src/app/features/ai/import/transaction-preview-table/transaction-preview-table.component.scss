@@ -147,14 +147,14 @@
 }
 
 
+// The description is what the reviewer checks each parsed row against before
+// committing the import, so it is the last thing that may be shortened.
 .description-text {
   display: block;
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary, #222);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .amount-section {
