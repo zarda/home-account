@@ -11,6 +11,7 @@ import {
   Category,
   CreateTransactionDTO,
   BudgetPeriod,
+  isBudgetPeriod,
   Budget,
   RecurringTransaction,
   InsightSnapshot,
@@ -182,10 +183,12 @@ export class ExportService {
     // Filter transactions based on options
     const filtered = this.filterTransactions(transactions, options);
 
-    // Build CSV header
+    // Build CSV header. Summary is the at-a-glance format and is lossy by
+    // design — it drops description, note, tags, location, period and
+    // recurrence. Detailed is the format that round-trips.
     const headers = options?.format === 'summary'
       ? ['Date', 'Type', 'Category', 'Amount', 'Currency']
-      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags', 'Location'];
+      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags', 'Location', 'Period', 'Recurring'];
 
     // Build CSV rows
     const rows = filtered.map(t => {
@@ -220,7 +223,9 @@ export class ExportService {
         (t.tags ?? []).join('; '),
         // Name only: coordinates belong in the JSON backup, which carries
         // the whole transaction.
-        t.location?.name ?? ''
+        t.location?.name ?? '',
+        t.period ?? '',
+        t.isRecurring ? 'true' : ''
       ];
     });
 
@@ -459,6 +464,12 @@ export class ExportService {
     // $1,200. Optional, so it is left out of the row-length guard below and a
     // bank CSV without one still imports.
     const currencyCol = this.findColumn(headers, ['currency']);
+    // Same contract as Currency: optional, out of the row-length guard, so a
+    // file exported before these columns existed still imports. findColumn
+    // matches by substring, so a bank's "Statement Period" column lands here
+    // too — which is why both values are validated rather than trusted.
+    const periodCol = this.findColumn(headers, ['period']);
+    const recurringCol = this.findColumn(headers, ['recurring']);
 
     for (let i = 1; i < rows.length; i++) {
       const values = rows[i];
@@ -495,16 +506,43 @@ export class ExportService {
         ? readCurrencyCode(values[currencyCol])
         : '';
 
+      const period = periodCol >= 0 && periodCol < values.length
+        ? this.readBudgetPeriod(values[periodCol])
+        : undefined;
+
+      const isRecurring = recurringCol >= 0 && recurringCol < values.length
+        ? this.readFlag(values[recurringCol])
+        : undefined;
+
       transactions.push({
         date: this.parseDate(values[dateCol] || ''),
         description: values[descCol] || 'Unknown',
         amount: Math.abs(amount),
         type,
-        ...(currency ? { currency } : {})
+        ...(currency ? { currency } : {}),
+        ...(period ? { period } : {}),
+        ...(isRecurring ? { isRecurring } : {})
       });
     }
 
     return transactions;
+  }
+
+  // Helper: Read a budget period, ignoring anything outside the enum the
+  // picker offers — a bank's "Statement Period" cell reads "2024-01 to
+  // 2024-02", and Firestore's rules would reject it on write anyway.
+  private readBudgetPeriod(value: string | undefined): BudgetPeriod | undefined {
+    const normalized = (value ?? '').trim().toLowerCase();
+    return isBudgetPeriod(normalized) ? normalized : undefined;
+  }
+
+  // Helper: Read a boolean flag column. Absence and anything unrecognised mean
+  // "not set" rather than false, matching how period and currency behave.
+  private readFlag(value: string | undefined): true | undefined {
+    const normalized = (value ?? '').trim().toLowerCase();
+    return normalized === 'true' || normalized === 'yes' || normalized === '1'
+      ? true
+      : undefined;
   }
 
   // Helper: Find column index by possible names

@@ -69,7 +69,7 @@ describe('ExportService', () => {
 
       expect(headerLine.split(',')).toEqual([
         'Date', 'Type', 'Category', 'Description', 'Amount', 'Currency',
-        'Amount (Base)', 'Note', 'Tags', 'Location'
+        'Amount (Base)', 'Note', 'Tags', 'Location', 'Period', 'Recurring'
       ]);
     });
 
@@ -204,6 +204,8 @@ describe('ExportService', () => {
       // drops description, note, tags and location, so carrying Period would
       // not make it round-trip — it would only cost it its shape.
       expect(headerLine.split(',').length).toBe(5); // Date, Type, Category, Amount, Currency
+      expect(headerLine).not.toContain('Period');
+      expect(headerLine).not.toContain('Recurring');
     });
 
     it('should translate category names using translation keys', (done) => {
@@ -330,6 +332,26 @@ describe('ExportService', () => {
       expect(rows[1][rows[0].indexOf('Amount (Base)')]).toBe('45');
     });
 
+    it('writes the period and recurrence on a row that has them', async () => {
+      const transactions = [
+        createTransaction({
+          date: Timestamp.fromDate(new Date(2026, 6, 2)),
+          period: 'monthly',
+          isRecurring: true
+        }),
+        createTransaction({ date: Timestamp.fromDate(new Date(2026, 6, 1)) }),
+      ];
+      const blob = service.exportToCSV(transactions);
+
+      const rows = parseCsvRows(await blob.text());
+      const periodCol = rows[0].indexOf('Period');
+      const recurringCol = rows[0].indexOf('Recurring');
+
+      expect(rows[1][periodCol]).toBe('monthly');
+      expect(rows[1][recurringCol]).toBe('true');
+      expect(rows[2][periodCol]).toBe('');
+      expect(rows[2][recurringCol]).toBe('');
+    });
   });
 
   describe('exportToJSON', () => {
@@ -630,6 +652,47 @@ describe('ExportService', () => {
       expect(result[0].description).toBe('Coffee');
     });
 
+    it('reads the Period and Recurring columns that exportToCSV writes', async () => {
+      const result = await reimport([createTransaction({
+        period: 'monthly',
+        isRecurring: true
+      })]);
+
+      expect(result[0].period).toBe('monthly');
+      expect(result[0].isRecurring).toBeTrue();
+      expect(service.parseImportedData(result, 'USD')[0].period).toBe('monthly');
+    });
+
+    it('imports a file written before the Period column existed', async () => {
+      const text = 'Date,Type,Category,Description,Amount,Currency,Amount (Base),Note,Tags,Location\n'
+        + '2026-06-01,expense,Food,Coffee,4.50,USD,4.50,,,\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result.length).toBe(1);
+      expect(result[0].description).toBe('Coffee');
+      expect(result[0].period).toBeUndefined();
+    });
+
+    it('drops a period value the app does not know', async () => {
+      const text = 'Date,Description,Amount,Period\n2026-06-01,Coffee,4.50,quarterly\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].period).toBeUndefined();
+      expect(service.parseImportedData(result, 'USD')[0].period).toBeUndefined();
+    });
+
+    it('ignores a Statement Period column a bank CSV carries', async () => {
+      // findColumn matches by substring, so a bank's own Period column lands
+      // on ours. Validation is what keeps that harmless.
+      const text = 'Date,Description,Amount,Statement Period\n2026-06-01,Coffee,4.50,2024-01 to 2024-02\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result.length).toBe(1);
+      expect(result[0].period).toBeUndefined();
+    });
   });
 
   describe('downloadBlob', () => {
