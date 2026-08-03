@@ -20,6 +20,7 @@
 
   .header-content {
     flex: 1;
+    min-width: 0;
 
     h1 {
       margin: 0;
@@ -89,6 +90,7 @@
 
   .status-text {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 2px;

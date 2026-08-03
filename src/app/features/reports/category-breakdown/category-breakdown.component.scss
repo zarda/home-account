@@ -83,6 +83,7 @@
 
     .mat-expansion-panel-header-description {
       flex: 1;
+      min-width: 0;
       justify-content: flex-end;
       margin-right: 0;
     }

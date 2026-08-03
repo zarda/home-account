@@ -100,6 +100,7 @@
   flex-direction: column;
   gap: 2px;
   flex: 1;
+  min-width: 0;
 
   .category-name {
     font-weight: 500;
@@ -120,6 +121,7 @@
 
 .progress-bar {
   flex: 1;
+  min-width: 0;
   height: 8px;
   background: var(--surface-strong);
   border-radius: var(--radius-xs);
@@ -152,10 +154,12 @@
 
   .category-info {
     flex: 1;
+    min-width: 0;
   }
 
   .category-percentage {
     flex: 1;
+    min-width: 0;
     max-width: 300px;
   }
 }

@@ -45,6 +45,7 @@
 
 .app-details {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -190,9 +191,13 @@
   }
 }
 
+// The 200px floor is what makes this wrap onto its own line beside the
+// nowrap donate button, which is wanted — but as a flat value it also
+// refuses to shrink below 200px on a 320px screen. min() keeps the wrap
+// and drops the floor when there is genuinely less room than that.
 .donate-text {
   flex: 1;
-  min-width: 200px;
+  min-width: min(200px, 100%);
 }
 
 .donate-title {

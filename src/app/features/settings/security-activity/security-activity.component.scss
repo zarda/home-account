@@ -40,9 +40,12 @@
   color: var(--text-muted);
 }
 
+// A flex column inside a flex row: without this the whole block is floored
+// at the longest line it contains and pushes the timestamp out.
 .activity-text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .activity-title {
