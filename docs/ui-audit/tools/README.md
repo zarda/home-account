@@ -74,7 +74,12 @@ into [`docs/ui-audit/`](../).
 | `capture-scroll.mjs` | The app scrolls inside a fixed `.main-container`, so full-page screenshots clip; this scrolls the container and captures stepped viewport shots for long pages. |
 | `capture-edit-dialog.mjs` | Opens the Edit Transaction dialog on a phone viewport and reports whether the Save Changes button is inside the visible viewport, at 390×844 and at a deliberately short 390×500 (the toolbar-collapsed iOS case). Prints a VERDICT line; run before/after a dialog-height change. `node capture-edit-dialog.mjs <label>`. |
 | `capture-dialogs.mjs` | The same check across every dialog in the app (transaction add/edit, confirm, budget, recurring, category, export, AI search, camera), at four viewport heights from an ordinary portrait phone down to landscape. Prints PASS/FAIL per dialog per height and shoots the tallest and shortest. Run before/after any change to dialog sizing: `node capture-dialogs.mjs <label>`. |
+| `capture-overflow.mjs` | Hunts content that is clipped, collapsed, or pushed out of reach, on five pages across seven widths (320–1440) in three passes: `en`, `ja`, and one with the safe-area variables overridden to notch-sized values. Seeds four deliberately hostile transactions first — an unbreakable URL, a nine-figure foreign amount, a category and location longer than their columns — because realistic data does not provoke the bug. Distinguishes "outside a scroller" (fine) from "outside `overflow: hidden`" (gone). Prints PASS/FAIL per page per width and exits non-zero on any finding. Run before/after any layout change: `node capture-overflow.mjs <label>`. |
 
 Environment knobs: `CHROMIUM_PATH` (use a pre-installed Chromium instead of Playwright's
 download); shots land in `docs/ui-audit/tools/shots/` (gitignored — commit only curated
 evidence into `docs/ui-audit/`).
+
+`capture-overflow.mjs` is the enforcement half of [docs/ui-overflow.md](../../ui-overflow.md):
+each of the five invariants there has a corresponding check here, so a rule that gets
+broken later fails a run rather than only reading badly in review.
