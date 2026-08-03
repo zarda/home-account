@@ -17,6 +17,7 @@ import {
   MonthlyTotal
 } from '../../models';
 import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
+import { parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -204,29 +205,26 @@ export class ExportService {
         ];
       }
 
+      // Raw values only. Escaping is toCsvText's job, applied to every cell —
+      // it used to be applied here, to three cells of ten, and the category
+      // name and the joined tags were two of the seven that went out unescaped.
       return [
         date,
         t.type,
         this.getCategoryName(category),
-        this.escapeCSV(t.description),
+        t.description,
         t.amount.toString(),
         t.currency,
         t.amountInBaseCurrency.toString(),
-        this.escapeCSV(t.note ?? ''),
+        t.note ?? '',
         (t.tags ?? []).join('; '),
         // Name only: coordinates belong in the JSON backup, which carries
         // the whole transaction.
-        this.escapeCSV(t.location?.name ?? '')
+        t.location?.name ?? ''
       ];
     });
 
-    // Combine headers and rows
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
-
-    return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    return new Blob([toCsvText(headers, rows)], { type: 'text/csv;charset=utf-8;' });
   }
 
   // Helper: Get PDF translation
@@ -436,20 +434,17 @@ export class ExportService {
     );
   }
 
-  // Helper: Escape CSV special characters
-  private escapeCSV(value: string): string {
-    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-      return `"${value.replace(/"/g, '""')}"`;
-    }
-    return value;
-  }
-
   // Helper: Parse CSV text to raw transactions
   private parseCSV(text: string): ImportedTransaction[] {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return [];
+    // Parsed as one document rather than split on newlines first: a newline
+    // inside a quoted note is content, and splitting first tore in half the
+    // very rows the escaper had correctly quoted. Unguarding the whole matrix
+    // here, before any column index is read, means a column added later cannot
+    // forget to do it.
+    const rows = parseCsvRows(text).map(row => row.map(unguardCsvCell));
+    if (rows.length < 2) return [];
 
-    const headers = this.parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+    const headers = rows[0].map(h => h.toLowerCase().trim());
     const transactions: ImportedTransaction[] = [];
 
     // Detect column indices
@@ -465,8 +460,8 @@ export class ExportService {
     // bank CSV without one still imports.
     const currencyCol = this.findColumn(headers, ['currency']);
 
-    for (let i = 1; i < lines.length; i++) {
-      const values = this.parseCSVLine(lines[i]);
+    for (let i = 1; i < rows.length; i++) {
+      const values = rows[i];
       if (values.length < Math.max(dateCol, descCol, amountCol) + 1) continue;
 
       let amount: number;
@@ -510,34 +505,6 @@ export class ExportService {
     }
 
     return transactions;
-  }
-
-  // Helper: Parse a single CSV line handling quoted values
-  private parseCSVLine(line: string): string[] {
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        values.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    values.push(current.trim());
-    return values;
   }
 
   // Helper: Find column index by possible names

