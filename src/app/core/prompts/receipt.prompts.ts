@@ -22,6 +22,17 @@ const CURRENCY_FIELD =
   'ISO 4217 code for the money on this receipt, read from the printed symbol, an explicit code, or the receipt\'s own language and country. Use "" when you genuinely cannot tell — never guess a default.';
 
 /**
+ * How the two item prompts ask for the receipt's printed grand total.
+ *
+ * Requested once per receiptId group on the LAST item, the same convention
+ * receiptDetails already uses. Asked for as its own field because the item
+ * rows deliberately exclude totals/tax/service-charge lines — summing the
+ * items silently drops everything the receipt adds below the item list.
+ */
+const RECEIPT_TOTAL_FIELD =
+  'On that same LAST item, ALSO include a "receiptTotal" field: the grand total the receipt itself prints — the amount actually paid, after tax, service charges and receipt-level discounts. Read it off the receipt; do NOT compute it by summing items, and do NOT use the cash tendered or change lines. Omit "receiptTotal" when no total is printed or legible.';
+
+/**
  * Summarize one receipt photo into a single transaction.
  *
  * Canonical text is Gemini's. It is the only variant that asks for
@@ -220,6 +231,7 @@ For each UNIQUE transaction/line item found, extract:
 - mergedFromImages: [0,1] if from multiple images (optional)
 
 For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items with prices, discounts, subtotals, tax, service charges, payment method, change, etc. Keep the receipt's own language and script exactly as printed.
+${RECEIPT_TOTAL_FIELD}
 
 Return ONLY a valid JSON array (no markdown):
 [
@@ -236,7 +248,8 @@ Return ONLY a valid JSON array (no markdown):
     "merchant": "Store name",
     "details": "×1",
     "wasMerged": false,
-    "receiptDetails": "Item name ×1 — 10.99\\nSubtotal 10.99\\nTax 0.88\\nTotal 11.87"
+    "receiptDetails": "Item name ×1 — 10.99\\nSubtotal 10.99\\nTax 0.88\\nTotal 11.87",
+    "receiptTotal": 11.87
   }
 ]
 
@@ -275,11 +288,12 @@ FIELDS PER ITEM:
 - details: quantity, size, flavor, discount if any (optional)
 
 For the LAST item of each receipt (receiptId group), include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep the receipt's own language and script exactly as printed.
+${RECEIPT_TOTAL_FIELD}
 
 Example:
 [
   {"date":"2024-04-11","description":"<item name as printed>","amount":151,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"middle","confidence":0.95,"merchant":"<store name as printed>"},
-  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19"}
+  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19","receiptTotal":481}
 ]
 
 Output ONLY JSON array. Nothing else.`,
