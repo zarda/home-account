@@ -305,6 +305,22 @@
   white-space: nowrap;
 }
 
+/* The overflow menu projected into the shared row's leading column, stacked
+   under the category tile. Sized here rather than in the row's own stylesheet
+   because projected content carries this component's encapsulation attribute,
+   so the row cannot reach it — the row owns the promise that it is never
+   squeezed, the caller owns how big it is.
+
+   40px rather than Material's 48: the column is tile (32) + gap (4) + this,
+   and every pixel of it is added to every row in the list. Below 40 the target
+   stops being comfortable on a phone, so 40 is where this stopped. */
+.row-menu-btn {
+  width: 40px !important;
+  height: 40px !important;
+  padding: 0 !important;
+  flex-shrink: 0;
+}
+
 .action-btn {
   width: 32px !important;
   height: 32px !important;

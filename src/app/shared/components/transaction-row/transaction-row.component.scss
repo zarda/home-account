@@ -44,8 +44,28 @@
   }
 }
 
-// The coloured tile is a fixed 40px and is what the row is read by at a
-// glance; it is never the thing that gives way.
+/* Tile over menu, both fixed width, so this column's size never depends on
+   what the row contains — it is the only part of the row that is true of, and
+   it is why the menu can no longer be carried somewhere unpredictable by a
+   reflow.
+
+   The tile dropped from 40px to the chip's `sm` 32px to pay for part of the
+   move. It is still what the row is read by at a glance and it is still never
+   the thing that gives way; it is just smaller than it was.
+
+   What this costs: 32 + 4 + 40 = 76px, plus 24 of row padding, makes this
+   column the tallest thing in the row and therefore the thing that sets the
+   height of every row in the list — 100px where it was 80. That is a real
+   trade against how much of a list fits on a screen, it was made knowingly,
+   and issue #219 tracks the layouts that might not need to make it. */
+.row-leading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 app-category-chip {
   flex-shrink: 0;
 }
@@ -199,25 +219,14 @@ app-category-chip {
   flex-shrink: 0;
 }
 
-/* Amount and menu as one item, so they wrap together or not at all, and one
-   auto margin right-aligns both. margin-left: auto used to sit on .row-amount
-   and reached only the line the amount was on — which is why a menu that had
-   wrapped away from it ended up at the row's left edge.
+/* The amount is now the only thing on the trailing side, so the auto margin
+   can sit on it directly and G6 does not apply — there is no second trailing
+   item that could wrap away from it and be left unaligned. Put anything else
+   out here and that stops being true; wrap the pair first.
 
    max-width: 100% is what stops a very large number widening the row past the
    card; appFitText scales the value inside that cap rather than letting it
    spill. */
-.row-trailing {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  flex-shrink: 0;
-  max-width: 100%;
-  margin-left: auto;
-}
-
-// The amount never shrinks below its content and never truncates, so when it
-// cannot share a line the whole trailing group takes one.
 .row-amount {
   display: flex;
   flex-direction: column;
@@ -226,6 +235,7 @@ app-category-chip {
   flex-shrink: 0;
   min-width: 0;
   max-width: 100%;
+  margin-left: auto;
 }
 
 // nowrap on both value lines is deliberate and is what appFitText needs: a
@@ -262,7 +272,12 @@ app-category-chip {
 /* The overflow menu is the only route to Delete, so it is the one thing in
    the row that never shrinks and is never clipped. :empty because the
    dashboard card projects nothing into the slot, and an empty box must not
-   claim one of .row-trailing's 12px gaps — a display: none item does not. */
+   claim .row-leading's gap — a display: none item does not.
+
+   Its size is set by the caller, in transaction-list.component.scss: projected
+   content carries the *host* component's encapsulation attribute, so nothing
+   here can reach the button itself. What this wrapper can still promise is
+   that whatever lands in it is never squeezed. */
 .row-actions {
   display: flex;
   align-items: center;

@@ -69,6 +69,15 @@ import { createCategory, createTransaction, createUser } from '../core/services/
       .brief {
         width: 343px;
       }
+      // Matches .row-menu-btn in transaction-list.component.scss, which is
+      // what the app actually projects here. A default-sized button would
+      // under-report the leading column's height, and the height of that
+      // column is the cost this layout is paying.
+      .menu-probe {
+        width: 40px;
+        height: 40px;
+        padding: 0;
+      }
     `,
   ],
 })
@@ -177,17 +186,19 @@ describe('overflow guard', () => {
   }
 
   /**
-   * Distance from the menu's right edge to the row's content edge.
+   * Distance from the amount's right edge to the row's content edge.
    *
-   * Containment is not enough and never was: a menu that has wrapped to a line
-   * of its own and sits at the row's *left* edge is still inside the row, and
-   * that is exactly the bug these rows shipped with. The trailing padding is
-   * 8px, from `.transaction-row { padding: 12px 8px }`.
+   * Containment is not enough and never was: an item that has wrapped to a
+   * line of its own and sits at the row's *left* edge is still inside the row,
+   * and that is exactly the bug these rows shipped with — measured on the menu
+   * then, on the amount now that the menu has moved to the leading column and
+   * the amount is the only thing trailing. The trailing padding is 8px, from
+   * `.transaction-row { padding: 12px 8px }`.
    */
-  function gapToRightEdge(scope: string): number {
+  function amountGapToRightEdge(scope: string): number {
     const row = el(scope, '.transaction-row').getBoundingClientRect();
-    const menu = el(scope, '.menu-probe').getBoundingClientRect();
-    return row.right - 8 - menu.right;
+    const amount = el(scope, '.row-amount').getBoundingClientRect();
+    return row.right - 8 - amount.right;
   }
 
   describe('a row whose content is far too long for it', () => {
@@ -200,10 +211,25 @@ describe('overflow guard', () => {
         .toBeTrue();
     });
 
-    it('keeps the overflow menu at the right edge, not merely inside the row', () => {
-      expect(Math.abs(gapToRightEdge('.narrow')))
-        .withContext('menu flush with the row content edge')
+    it('keeps the amount at the right edge, not merely inside the row', () => {
+      expect(Math.abs(amountGapToRightEdge('.narrow')))
+        .withContext('amount flush with the row content edge')
         .toBeLessThanOrEqual(1);
+    });
+
+    it('keeps the overflow menu under the tile, in the leading column', () => {
+      // The menu's position no longer depends on anything that can wrap: it is
+      // in a fixed-width column with the tile, which is the whole reason it
+      // moved. Before, it was the last item of a wrapping row and could land
+      // anywhere the reflow put it.
+      const tile = el('.narrow', 'app-category-chip').getBoundingClientRect();
+      const menu = el('.narrow', '.menu-probe').getBoundingClientRect();
+      const row = el('.narrow', '.transaction-row').getBoundingClientRect();
+
+      expect(menu.top).withContext('menu sits below the tile').toBeGreaterThanOrEqual(tile.bottom - 1);
+      expect(menu.left - row.left)
+        .withContext('menu in the leading column, not the trailing edge')
+        .toBeLessThan(row.width / 2);
     });
 
     it('keeps the category tile on the same line as the details column', () => {
@@ -285,21 +311,35 @@ describe('overflow guard', () => {
   });
 
   describe('a row whose amount cannot share the line', () => {
-    it('keeps the overflow menu at the right edge when the trailing group wraps', () => {
-      // The reported bug, in the shape it was reported in. A short description
-      // and a nine-figure amount pushes the trailing group onto a line of its
-      // own; while the amount and the menu were separate flex items, only the
-      // amount carried the auto margin, so the menu landed at x = padding —
-      // the far left of the row.
-      expect(Math.abs(gapToRightEdge('.brief')))
-        .withContext('menu flush with the row content edge')
+    it('keeps the amount at the right edge when it wraps to its own line', () => {
+      // The shape the original bug was reported in — a short description and a
+      // nine-figure amount, which pushes the amount onto a line of its own.
+      // What used to land at the row's left edge here was the overflow menu,
+      // which had wrapped away from the amount carrying the auto margin. The
+      // menu is out of this path entirely now; the assertion that it cannot
+      // recur is the leading-column one above.
+      expect(Math.abs(amountGapToRightEdge('.brief')))
+        .withContext('amount flush with the row content edge')
         .toBeLessThanOrEqual(1);
     });
 
-    it('keeps the amount and the menu on the same line as each other', () => {
-      const amount = el('.brief', '.row-amount').getBoundingClientRect();
+    it('does not move the overflow menu when the amount wraps', () => {
+      // The point of the move. However the rest of the row reflows, the menu
+      // is where it was on the row above it and the row below it.
+      const tile = el('.brief', 'app-category-chip').getBoundingClientRect();
       const menu = el('.brief', '.menu-probe').getBoundingClientRect();
-      expect(amount.top).withContext('amount and menu travel together').toBeCloseTo(menu.top, 0);
+      const row = el('.brief', '.transaction-row').getBoundingClientRect();
+
+      expect(menu.top).withContext('still under the tile').toBeGreaterThanOrEqual(tile.bottom - 1);
+      // Centres, not left edges: the column centres its two items and they are
+      // deliberately different widths.
+      expect(Math.abs((menu.left + menu.right) / 2 - (tile.left + tile.right) / 2))
+        .withContext('still centred under the tile')
+        .toBeLessThanOrEqual(1);
+      expect(contains(el('.brief', '.transaction-row'), el('.brief', '.menu-probe')))
+        .withContext('still inside the row')
+        .toBeTrue();
+      expect(row.width).toBeGreaterThan(0);
     });
   });
 
@@ -320,9 +360,19 @@ describe('overflow guard', () => {
       expect(category.getBoundingClientRect().height)
         .withContext('category, location and tags stay on one line')
         .toBeLessThan(30);
+      /* 100px, and it used to be 80. The overflow menu moved under the tile,
+         so the leading column is now 32 (tile) + 4 (gap) + 40 (menu) = 76 plus
+         24 of row padding, and it — not the text — is what sets the height of
+         every row in the list. The tile went from 40 to 32 to pay for part of
+         that; the rest is the trade.
+
+         Stated as a hard number rather than a loose bound because it is a cost
+         somebody chose and should have to choose again: if this fails, the
+         leading column grew, and that is a decision, not a detail. The
+         alternative layouts are issue #219. */
       expect(el('.typical', '.transaction-row').getBoundingClientRect().height)
-        .withContext('row is still the usual two-line height')
-        .toBeLessThanOrEqual(80);
+        .withContext('row is the leading column plus padding, and no taller')
+        .toBeLessThanOrEqual(100);
     });
 
     it('leaves an amount that fits at its stylesheet size', () => {

@@ -164,18 +164,18 @@ describe('TransactionRowComponent', () => {
     expect(row.getAttribute('tabindex')).toBe('0');
   });
 
-  it('keeps the amount and the actions slot inside one trailing group', () => {
+  it('keeps the tile and the actions slot in one leading column', () => {
     setTransaction({});
 
-    // They are one flex item so they wrap together. As two, only the amount
-    // carried `margin-left: auto`, and an auto margin right-aligns just the
-    // line its own item is on — so a menu that had wrapped away from the
-    // amount ended up at the row's left edge with nothing to push it back.
-    const trailing = fixture.nativeElement.querySelector('.row-trailing') as HTMLElement;
-    expect(trailing).withContext('trailing group present').not.toBeNull();
-    expect(trailing.querySelector('.row-amount')).withContext('amount inside it').not.toBeNull();
-    expect(trailing.querySelector('.row-actions')).withContext('actions inside it').not.toBeNull();
-    // Where it now ends up on screen is measured in overflow-guard.spec.ts,
+    // Both are fixed width, so this column's position never depends on what
+    // the row contains — which is what takes the overflow menu out of the
+    // reflow altogether. While it was the row's last item it could wrap away
+    // from the amount that carried the auto margin and land at the left edge.
+    const leading = fixture.nativeElement.querySelector('.row-leading') as HTMLElement;
+    expect(leading).withContext('leading column present').not.toBeNull();
+    expect(leading.querySelector('app-category-chip')).withContext('tile inside it').not.toBeNull();
+    expect(leading.querySelector('.row-actions')).withContext('actions inside it').not.toBeNull();
+    // Where it ends up on screen is measured in overflow-guard.spec.ts,
     // against the real cascade at a real width. This one is the structure the
     // guarantee rests on.
   });

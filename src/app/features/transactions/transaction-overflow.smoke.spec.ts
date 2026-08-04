@@ -223,19 +223,27 @@ describe('Transaction overflow (emulator smoke test)', () => {
         expect(contains(row, menu)).withContext('menu inside its row').toBeTrue();
         expect(contains(card, menu)).withContext('menu inside the clipping card').toBeTrue();
 
-        /* Inside the row is not the same as at the right of it, and the
-           difference is a shipped bug: the menu used to wrap to a line of its
-           own and sit at the row's left edge, which every containment check
-           above is perfectly happy with. 8px is the row's trailing padding. */
-        expect(Math.abs(row.getBoundingClientRect().right - 8 - menu.getBoundingClientRect().right))
-          .withContext('menu at the right edge, not merely inside the row')
+        /* Inside the row is not the same as at a predictable place in it, and
+           the difference is a shipped bug: the menu used to wrap to a line of
+           its own and sit at the row's left edge, which every containment
+           check above is perfectly happy with. It now lives under the tile in
+           a fixed-width column, out of the reflow entirely. */
+        const tile = card.querySelector('app-transaction-row app-category-chip') as Element;
+        expect(menu.getBoundingClientRect().top)
+          .withContext('menu under the tile')
+          .toBeGreaterThanOrEqual(tile.getBoundingClientRect().bottom - 1);
+
+        /* The amount is the only thing trailing now, and it is what has to be
+           flush right. 8px is the row's trailing padding. */
+        const amount = card.querySelector('app-transaction-row .row-amount') as Element;
+        expect(Math.abs(row.getBoundingClientRect().right - 8 - amount.getBoundingClientRect().right))
+          .withContext('amount at the right edge, not merely inside the row')
           .toBeLessThanOrEqual(1);
 
         /* The tile is what the row is read by at a glance, and it belongs on
            the same line as the text it labels. It was landing alone on line 1
            whenever the description ran long, because line-collection measured
            the details column at the full width of that description. */
-        const tile = card.querySelector('app-transaction-row app-category-chip') as Element;
         const details = card.querySelector('app-transaction-row .row-details') as Element;
         expect(Math.abs(tile.getBoundingClientRect().top - details.getBoundingClientRect().top))
           .withContext('category tile shares a line with the details column')

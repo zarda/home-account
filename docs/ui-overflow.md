@@ -214,6 +214,14 @@ all. The transaction row shipped them as two items and put its overflow menu —
 the only route to Delete — at the left edge of the row whenever the amount was
 wide enough to wrap away from it.
 
+**The stronger version of this is to take the control out of the reflow.** A
+fixed-width column of fixed-width items has a position that does not depend on
+content at all, which is a property no amount of careful wrapping gets you. The
+transaction row now stacks its menu under the category tile for exactly that
+reason, so it has one trailing item and this rule no longer binds there — but
+it binds the moment anything joins the amount, and the cost of the column is
+real: see issue #219.
+
 **Check:** in any wrapping flex row, no trailing item carries `margin-left:
 auto` while a sibling that must stay beside it does not. And assert the
 control's *position*, not its containment — a control at the wrong edge is
