@@ -18,6 +18,14 @@ export interface ParsedReceiptText {
   currency: string;
   merchant: string;
   /**
+   * 0–1: confidence in `amount` on its own, before date and currency are
+   * folded into the combined score below. Lower than the tier it was read at
+   * when the winning figure was demoted as cash tendered, so a caller can
+   * flag the receipt for review even where the combined `confidence` still
+   * looks fine.
+   */
+  amountConfidence: number;
+  /**
    * 0–1: how much of this reading came out of the text rather than out of a
    * default. Zero means every field fell back — today's date, no amount, no
    * currency — not that the receipt itself is worthless.
@@ -101,6 +109,7 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
     amount,
     currency,
     merchant,
+    amountConfidence: Math.round(amountConfidence * 100) / 100,
     confidence: Math.round(confidence * 100) / 100,
   };
 }
@@ -283,6 +292,44 @@ function signFor(code: string, display: 'symbol' | 'narrowSymbol'): string {
   }
 }
 
+/** Confidence multiplier when the winning figure was demoted as cash tendered. */
+const TENDER_DEMOTION_FACTOR = 0.75;
+/** "x + y ≈ M" tolerance: half a cent absorbs float noise, integers must match exactly. */
+const TENDER_SUM_TOLERANCE = 0.005;
+
+/** Round the way handed-over cash is: a whole amount divisible by 5. */
+function isTenderShaped(value: number): boolean {
+  return Number.isInteger(value) && value % 5 === 0;
+}
+
+/**
+ * The candidate the largest figure was change FOR, when the largest figure
+ * looks like cash tendered: M is tender-shaped and two other candidates in
+ * the same tier satisfy x + y ≈ M with x ≥ y — the printed total plus the
+ * change line. Among matching pairs the largest x wins; if that x is itself
+ * tender-shaped ({450, 50, 500} — a 10%-tax total is indistinguishable from
+ * a tendered note) the demotion stands down and largest-wins holds.
+ * Vocabulary-free on purpose: this reads arithmetic, not words.
+ */
+function tenderedDemotion(
+  largest: AmountCandidate,
+  tier: AmountCandidate[],
+): AmountCandidate | undefined {
+  if (!isTenderShaped(largest.value)) return undefined;
+  const rest = tier.filter(c => c !== largest);
+  let bestX: AmountCandidate | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    for (let j = 0; j < rest.length; j++) {
+      if (i === j) continue;
+      const x = rest[i], y = rest[j];
+      if (y.value > x.value) continue;
+      if (Math.abs(x.value + y.value - largest.value) > TENDER_SUM_TOLERANCE) continue;
+      if (!bestX || x.value > bestX.value) bestX = x;
+    }
+  }
+  return bestX && !isTenderShaped(bestX.value) ? bestX : undefined;
+}
+
 function readAmount(lines: string[], marker: string): { amount: number; confidence: number } {
   const candidates: AmountCandidate[] = [];
   for (const line of lines) {
@@ -312,7 +359,10 @@ function readAmount(lines: string[], marker: string): { amount: number; confiden
       undefined,
     );
     if (best) {
-      return { amount: best.value, confidence: tier.confidence };
+      const demoted = tenderedDemotion(best, tier.of);
+      return demoted
+        ? { amount: demoted.value, confidence: tier.confidence * TENDER_DEMOTION_FACTOR }
+        : { amount: best.value, confidence: tier.confidence };
     }
   }
 
