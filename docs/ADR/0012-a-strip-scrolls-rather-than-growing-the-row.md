@@ -1,4 +1,4 @@
-# 11. A strip of chips scrolls rather than growing the row
+# 12. A strip of chips scrolls rather than growing the row
 
 **Status:** Accepted, implemented · **Date:** 2026-08-03 · **Issues:** #216 (follow-up)
 

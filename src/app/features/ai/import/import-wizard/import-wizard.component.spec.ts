@@ -262,6 +262,41 @@ describe('ImportWizardComponent', () => {
     });
   });
 
+  describe('image previews', () => {
+    const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
+
+    it('mints a preview only for the image files', () => {
+      component.onFilesSelected([image('a.jpg'), new File([''], 'b.csv', { type: 'text/csv' })]);
+
+      expect(component.imagePreviewUrls().map(p => p.name)).toEqual(['a.jpg']);
+    });
+
+    it('revokes the previous batch when files are re-picked', () => {
+      component.onFilesSelected([image('a.jpg'), image('b.jpg')]);
+      const first = component.imagePreviewUrls().map(p => p.url);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      component.onFilesSelected([image('c.jpg')]);
+
+      // Without this, re-picking four 4MB photos three times pinned about
+      // 50MB for the life of the document.
+      expect(revoke.calls.allArgs().flat()).toEqual(first);
+      expect(component.imagePreviewUrls().length).toBe(1);
+    });
+
+    it('revokes what is on screen when the wizard is destroyed', () => {
+      component.onFilesSelected([image('a.jpg')]);
+      const shown = component.imagePreviewUrls().map(p => p.url);
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      component.ngOnDestroy();
+
+      // The URLs the template actually rendered — reading a computed here
+      // used to mint a fresh set and revoke those instead.
+      expect(revoke.calls.allArgs().flat()).toEqual(shown);
+    });
+  });
+
   describe('processFiles', () => {
     it('should call importFromFile for each file', fakeAsync(() => {
       const file = new File([''], 'test.csv', { type: 'text/csv' });

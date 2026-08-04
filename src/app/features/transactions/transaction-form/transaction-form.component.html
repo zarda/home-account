@@ -227,10 +227,14 @@
       <!-- Currency guessed from where the device is, when the receipt was silent -->
       @if (suggestedCurrency(); as suggestion) {
         <div class="ai-suggestion-container">
-          <mat-chip class="suggestion-chip" (click)="acceptCurrencySuggestion()">
+          <!-- A real button, not a mat-chip: the static display chip sets no
+               tabindex and holds no focusable action, so Tab skipped the accept
+               while the Dismiss beside it was reachable all along. Its own text
+               says what accepting does, so it needs no aria-label. -->
+          <button type="button" class="suggestion-chip" (click)="acceptCurrencySuggestion()">
             <mat-icon class="ai-icon">public</mat-icon>
             <span>{{ 'transactions.currencyFromLocation' | translate: { currency: suggestion.code } }}</span>
-          </mat-chip>
+          </button>
           <button
             mat-icon-button
             type="button"
@@ -247,19 +251,26 @@
       @if (isAiAvailable() && (suggestedCategory() || isSuggesting()) && !form.get('categoryId')?.value) {
         <div class="ai-suggestion-container">
           @if (isSuggesting()) {
-            <mat-chip class="suggestion-chip loading">
+            <!-- Progress, not a control: a disabled button would be a focus
+                 stop that does nothing, while role=status announces it. -->
+            <div class="suggestion-chip loading" role="status">
               <mat-spinner diameter="16"></mat-spinner>
               <span>{{ 'ai.suggesting' | translate }}</span>
-            </mat-chip>
+            </div>
           } @else if (suggestedCategory(); as category) {
-            <mat-chip
+            <!-- The visible label is only the category name, so this one needs
+                 an accessible name saying what pressing it does. It contains
+                 the visible text, which WCAG 2.5.3 requires. -->
+            <button
+              type="button"
               class="suggestion-chip"
+              [attr.aria-label]="'transactions.useSuggestedCategory' | translate: { category: (category.name | translate) }"
               (click)="acceptSuggestion()"
             >
-              <mat-icon class="ai-icon">auto_awesome</mat-icon>
-              <mat-icon [style.color]="category.color">{{ category.icon }}</mat-icon>
+              <mat-icon class="ai-icon" aria-hidden="true">auto_awesome</mat-icon>
+              <mat-icon [style.color]="category.color" aria-hidden="true">{{ category.icon }}</mat-icon>
               <span>{{ category.name | translate }}</span>
-            </mat-chip>
+            </button>
           }
         </div>
       }

@@ -76,6 +76,50 @@ describe('FileDropzoneComponent', () => {
     });
   });
 
+  describe('image preview lifetime', () => {
+    const image = (name: string) => new File([''], name, { type: 'image/jpeg' });
+
+    /** Drives the private processFiles the way the file input does. */
+    function select(...files: File[]): void {
+      component.onFileSelect({ target: { files, value: 'x' } } as unknown as Event);
+    }
+
+    it('releases the previous blob when a file of the same name is re-picked', () => {
+      select(image('receipt.jpg'));
+      const first = component.getFilePreview(image('receipt.jpg'));
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      select(image('receipt.jpg'));
+
+      // The map is keyed by name, so without this the first URL is overwritten
+      // and stays alive with nothing able to reach it.
+      expect(revoke).toHaveBeenCalledOnceWith(first);
+    });
+
+    it('releases what it displaces when only one file is allowed', () => {
+      component.multiple = false;
+      select(image('first.jpg'));
+      const first = component.getFilePreview(image('first.jpg'));
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      select(image('second.jpg'));
+
+      expect(revoke).toHaveBeenCalledOnceWith(first);
+      expect(component.selectedFiles().map(f => f.name)).toEqual(['second.jpg']);
+    });
+
+    it('releases every preview when the component is destroyed', () => {
+      select(image('a.jpg'), image('b.jpg'));
+      const urls = component.selectedFiles().map(f => component.getFilePreview(f));
+      const revoke = spyOn(URL, 'revokeObjectURL');
+
+      component.ngOnDestroy();
+
+      expect(revoke.calls.allArgs().flat().sort()).toEqual(urls.sort());
+      expect(component.getFilePreview(image('a.jpg'))).toBe('');
+    });
+  });
+
   describe('file type validation', () => {
     it('should return correct icon for CSV files', () => {
       const file = new File([''], 'test.csv', { type: 'text/csv' });

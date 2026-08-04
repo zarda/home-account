@@ -10,11 +10,6 @@ interface OfflineQueueDB extends DBSchema {
     value: QueuedImage;
     indexes: { 'by-created': number };
   };
-  'pending-transactions': {
-    key: string;
-    value: QueuedTransaction;
-    indexes: { 'by-created': number; 'by-status': QueueStatus };
-  };
   'sync-log': {
     key: string;
     value: SyncLogEntry;
@@ -45,24 +40,6 @@ export interface QueuedImage {
   lastError?: string;
 }
 
-export interface QueuedTransaction {
-  id: string;
-  /** The account that queued this row. See QueuedImage.userId. */
-  userId: string;
-  date: string;
-  description: string;
-  amount: number;
-  type: 'income' | 'expense';
-  currency: string;
-  categoryId: string;
-  source: 'local' | 'cloud';
-  createdAt: number;
-  status: QueueStatus;
-  retryCount: number;
-  syncedAt?: number;
-  lastError?: string;
-}
-
 export interface SyncLogEntry {
   id: string;
   /** The account the logged item belonged to. */
@@ -75,7 +52,6 @@ export interface SyncLogEntry {
 
 export interface QueueStats {
   pendingImages: number;
-  pendingTransactions: number;
   failedItems: number;
   lastSyncTime: number | null;
 }
@@ -86,8 +62,14 @@ export const DB_NAME = 'homeaccount-offline-queue';
  * and cannot be safely attributed to anyone, so the upgrade drops them: the
  * queue only fills while offline with no engine available, so in practice
  * there is rarely anything to drop, and guessing an owner is the bug itself.
+ *
+ * v3 removes the `pending-transactions` store. Nothing in the shipped app ever
+ * wrote to it, so it is empty on every device that has one, and deleting an
+ * object store is only legal inside a `versionchange` transaction — which is
+ * what makes the bump necessary rather than optional. It fires
+ * `blocking`/`blocked` at other open tabs, both of which are handled below.
  */
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const MAX_RETRY_COUNT = 3;
 
 @Injectable({ providedIn: 'root' })
@@ -159,13 +141,6 @@ export class OfflineQueueService implements OnDestroy {
             imageStore.createIndex('by-created', 'createdAt');
           }
 
-          // Pending transactions store
-          if (!db.objectStoreNames.contains('pending-transactions')) {
-            const txStore = db.createObjectStore('pending-transactions', { keyPath: 'id' });
-            txStore.createIndex('by-created', 'createdAt');
-            txStore.createIndex('by-status', 'status');
-          }
-
           // Sync log store
           if (!db.objectStoreNames.contains('sync-log')) {
             const logStore = db.createObjectStore('sync-log', { keyPath: 'id' });
@@ -179,8 +154,16 @@ export class OfflineQueueService implements OnDestroy {
           if (oldVersion > 0 && oldVersion < 2) {
             console.warn('[OfflineQueue] Dropping queued items written before per-account ownership');
             transaction.objectStore('pending-images').clear();
-            transaction.objectStore('pending-transactions').clear();
             transaction.objectStore('sync-log').clear();
+          }
+
+          // v2 -> v3: the queued-transaction path never had a caller in the
+          // shipped app, so this store has always been empty. The name is cast
+          // because the schema type no longer admits it — which is the point:
+          // the only place it may still be spelled is the code removing it.
+          const legacyStore = 'pending-transactions' as unknown as 'pending-images';
+          if (db.objectStoreNames.contains(legacyStore)) {
+            db.deleteObjectStore(legacyStore);
           }
         },
         blocked: () => {
@@ -219,9 +202,8 @@ export class OfflineQueueService implements OnDestroy {
    *
    * Three deliberate choices:
    *
-   * - **No `DB_VERSION` bump.** This rewrites a field value, not a schema. A
-   *   bump would fire `blocking`/`blocked` at every other open tab, and v2's
-   *   upgrade clears every row.
+   * - **No `DB_VERSION` bump of its own.** This rewrites a field value, not a
+   *   schema, and a bump fires `blocking`/`blocked` at every other open tab.
    * - **Not scoped by owner**, unlike everything else here. At open time there
    *   is usually nobody signed in yet, and `ownedBy()` would leave another
    *   account's row wedged forever. Ownership is still enforced at every read,
@@ -240,24 +222,22 @@ export class OfflineQueueService implements OnDestroy {
     if (!this.db) return;
 
     try {
-      const tx = this.db.transaction(['pending-images', 'pending-transactions'], 'readwrite');
+      const tx = this.db.transaction('pending-images', 'readwrite');
       let reclaimed = 0;
 
-      for (const store of ['pending-images', 'pending-transactions'] as const) {
-        let cursor = await tx.objectStore(store).openCursor();
-        while (cursor) {
-          const record = cursor.value;
-          if (record.status === 'processing') {
-            await cursor.update({
-              ...record,
-              status: 'pending',
-              lastError: 'Reclaimed after an interrupted sync',
-              retryCount: (record.retryCount ?? 0) + 1,
-            });
-            reclaimed += 1;
-          }
-          cursor = await cursor.continue();
+      let cursor = await tx.store.openCursor();
+      while (cursor) {
+        const record = cursor.value;
+        if (record.status === 'processing') {
+          await cursor.update({
+            ...record,
+            status: 'pending',
+            lastError: 'Reclaimed after an interrupted sync',
+            retryCount: (record.retryCount ?? 0) + 1,
+          });
+          reclaimed += 1;
         }
+        cursor = await cursor.continue();
       }
 
       await tx.done;
@@ -346,38 +326,6 @@ export class OfflineQueueService implements OnDestroy {
   }
 
   /**
-   * Queue a transaction for later sync.
-   */
-  async queueTransaction(transaction: Omit<QueuedTransaction, 'id' | 'userId' | 'createdAt' | 'status' | 'retryCount'>): Promise<string> {
-    if (!this.db) {
-      throw new Error('Database not initialized');
-    }
-    const userId = this.requireUserId();
-
-    const id = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-    const queuedTx: QueuedTransaction = {
-      ...transaction,
-      id,
-      userId,
-      createdAt: Date.now(),
-      status: 'pending',
-      retryCount: 0,
-    };
-
-    await this.db.put('pending-transactions', queuedTx);
-    await this.updatePendingCount();
-    await this.logSync('item_processed', id, 'Transaction queued');
-
-    console.log('[OfflineQueue] Transaction queued:', id);
-    
-    // Register background sync if available
-    this.pwaService.registerBackgroundSync('sync-offline-queue');
-
-    return id;
-  }
-
-  /**
    * Get all pending images.
    */
   async getPendingImages(): Promise<QueuedImage[]> {
@@ -386,17 +334,6 @@ export class OfflineQueueService implements OnDestroy {
     const all = await this.db.getAllFromIndex('pending-images', 'by-created');
     return this.ownedBy(all)
       .filter(img => img.status === 'pending' || img.status === 'failed');
-  }
-
-  /**
-   * Get all pending transactions.
-   */
-  async getPendingTransactions(): Promise<QueuedTransaction[]> {
-    if (!this.db) return [];
-
-    const all = await this.db.getAllFromIndex('pending-transactions', 'by-created');
-    return this.ownedBy(all)
-      .filter(tx => tx.status === 'pending' || tx.status === 'failed');
   }
 
   /**
@@ -451,41 +388,11 @@ export class OfflineQueueService implements OnDestroy {
   }
 
   /**
-   * Update transaction status.
-   */
-  async updateTransactionStatus(id: string, status: QueueStatus, error?: string): Promise<void> {
-    if (!this.db) return;
-
-    const tx = await this.db.get('pending-transactions', id);
-    if (tx) {
-      tx.status = status;
-      if (status === 'completed') {
-        tx.syncedAt = Date.now();
-      }
-      if (error) {
-        tx.lastError = error;
-        tx.retryCount = (tx.retryCount ?? 0) + 1;
-      }
-      await this.db.put('pending-transactions', tx);
-      await this.updatePendingCount();
-    }
-  }
-
-  /**
    * Remove a processed image from queue.
    */
   async removeImage(id: string): Promise<void> {
     if (!this.db) return;
     await this.db.delete('pending-images', id);
-    await this.updatePendingCount();
-  }
-
-  /**
-   * Remove a synced transaction from queue.
-   */
-  async removeTransaction(id: string): Promise<void> {
-    if (!this.db) return;
-    await this.db.delete('pending-transactions', id);
     await this.updatePendingCount();
   }
 
@@ -516,8 +423,7 @@ export class OfflineQueueService implements OnDestroy {
     try {
       // Get pending items
       const pendingImages = await this.getPendingImages();
-      const pendingTxs = await this.getPendingTransactions();
-      const total = pendingImages.length + pendingTxs.length;
+      const total = pendingImages.length;
 
       if (total === 0) {
         this._lastSyncTime.set(Date.now());
@@ -540,27 +446,6 @@ export class OfflineQueueService implements OnDestroy {
           window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id: image.id } }));
           success++;
           await this.logSync('item_processed', image.id, 'Image dispatched for processing');
-        }
-
-        processed++;
-        this._syncProgress.set(Math.round((processed / total) * 100));
-      }
-
-      // Process transactions (these need to be persisted to Firestore).
-      // Like images, the actual write is handled asynchronously by
-      // OfflineQueueProcessorService, which sets the final status from the
-      // real outcome. We only mark the item 'processing' and dispatch here so a
-      // concurrent re-sync won't dispatch the same transaction twice.
-      for (const tx of pendingTxs) {
-        if (tx.retryCount >= MAX_RETRY_COUNT) {
-          await this.updateTransactionStatus(tx.id, 'failed', 'Max retries exceeded');
-          failed++;
-          await this.logSync('item_failed', tx.id, 'Max retries exceeded');
-        } else {
-          await this.updateTransactionStatus(tx.id, 'processing');
-          window.dispatchEvent(new CustomEvent('sync-queued-transaction', { detail: { transaction: tx } }));
-          success++;
-          await this.logSync('item_processed', tx.id, 'Transaction dispatched for sync');
         }
 
         processed++;
@@ -592,25 +477,16 @@ export class OfflineQueueService implements OnDestroy {
     if (!this.db) {
       return {
         pendingImages: 0,
-        pendingTransactions: 0,
         failedItems: 0,
         lastSyncTime: null,
       };
     }
 
     const images = this.ownedBy(await this.db.getAll('pending-images'));
-    const transactions = this.ownedBy(await this.db.getAll('pending-transactions'));
-
-    const pendingImages = images.filter(i => i.status === 'pending').length;
-    const pendingTransactions = transactions.filter(t => t.status === 'pending').length;
-    const failedItems = 
-      images.filter(i => i.status === 'failed').length +
-      transactions.filter(t => t.status === 'failed').length;
 
     return {
-      pendingImages,
-      pendingTransactions,
-      failedItems,
+      pendingImages: images.filter(i => i.status === 'pending').length,
+      failedItems: images.filter(i => i.status === 'failed').length,
       lastSyncTime: this._lastSyncTime(),
     };
   }
@@ -622,17 +498,10 @@ export class OfflineQueueService implements OnDestroy {
     if (!this.db) return;
 
     const images = this.ownedBy(await this.db.getAll('pending-images'));
-    const transactions = this.ownedBy(await this.db.getAll('pending-transactions'));
 
     for (const img of images) {
       if (img.status === 'completed') {
         await this.db.delete('pending-images', img.id);
-      }
-    }
-
-    for (const tx of transactions) {
-      if (tx.status === 'completed') {
-        await this.db.delete('pending-transactions', tx.id);
       }
     }
 
@@ -647,17 +516,10 @@ export class OfflineQueueService implements OnDestroy {
     if (!this.db) return;
 
     const images = this.ownedBy(await this.db.getAll('pending-images'));
-    const transactions = this.ownedBy(await this.db.getAll('pending-transactions'));
 
     for (const img of images) {
       if (img.status === 'failed') {
         await this.db.delete('pending-images', img.id);
-      }
-    }
-
-    for (const tx of transactions) {
-      if (tx.status === 'failed') {
-        await this.db.delete('pending-transactions', tx.id);
       }
     }
 
@@ -676,9 +538,6 @@ export class OfflineQueueService implements OnDestroy {
     // behind entirely, growing without bound.
     for (const img of this.ownedBy(await this.db.getAll('pending-images'))) {
       await this.db.delete('pending-images', img.id);
-    }
-    for (const tx of this.ownedBy(await this.db.getAll('pending-transactions'))) {
-      await this.db.delete('pending-transactions', tx.id);
     }
     for (const entry of this.ownedBy(await this.db.getAll('sync-log'))) {
       await this.db.delete('sync-log', entry.id);
@@ -727,13 +586,10 @@ export class OfflineQueueService implements OnDestroy {
     }
 
     const images = this.ownedBy(await this.db.getAll('pending-images'));
-    const transactions = this.ownedBy(await this.db.getAll('pending-transactions'));
 
-    const count = 
-      images.filter(i => i.status === 'pending' || i.status === 'failed').length +
-      transactions.filter(t => t.status === 'pending' || t.status === 'failed').length;
-
-    this._pendingCount.set(count);
+    this._pendingCount.set(
+      images.filter(i => i.status === 'pending' || i.status === 'failed').length
+    );
   }
 
   /**

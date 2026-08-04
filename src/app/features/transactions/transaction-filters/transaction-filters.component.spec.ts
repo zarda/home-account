@@ -513,6 +513,85 @@ describe('TransactionFiltersComponent', () => {
     }));
   });
 
+  describe('amount debounce', () => {
+    // Same shape as the search-debounce block above: the component has to be
+    // created inside the fakeAsync zone so ngOnInit's setTimeout is consumed
+    // by tick() before anything is spied on.
+    function createSettledComponent(): TransactionFiltersComponent {
+      const freshFixture = TestBed.createComponent(TransactionFiltersComponent);
+      const fresh = freshFixture.componentInstance;
+      fresh.categories = mockCategories;
+      fresh.incomeCategories = mockIncomeCategories;
+      freshFixture.detectChanges();
+      tick();
+      return fresh;
+    }
+
+    it('emits once for a multi-digit amount, not once per digit', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      // Each of these used to be a window reset: a count aggregation, a page
+      // fetch, and a scroll to top, on bounds of 1, 15 and 150.
+      for (const value of [1, 15, 150, 1500]) {
+        fresh.filters.minAmount = value;
+        fresh.onAmountInput();
+        tick(100);
+      }
+      expect(emitSpy).not.toHaveBeenCalled();
+
+      tick(250);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect(emitSpy).toHaveBeenCalledWith(jasmine.objectContaining({ minAmount: 1500 }));
+    }));
+
+    it('commits immediately when the box loses focus', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.maxAmount = 20;
+      fresh.onAmountInput();
+      fresh.flushAmounts();
+
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+
+      // The debounce tick still pending has nothing left to say.
+      flush();
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+    }));
+
+    it('emits when a bound is cleared', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      fresh.filters.minAmount = 50;
+      fresh.onAmountInput();
+      tick(250);
+
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+      // ngModel writes literal null into a cleared number input, which is why
+      // the guard compares a key rather than the raw values.
+      fresh.filters.minAmount = null as unknown as undefined;
+      fresh.onAmountInput();
+      tick(250);
+
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect(emitSpy.calls.mostRecent().args[0]?.minAmount).toBeUndefined();
+    }));
+
+    it('absorbs a pending tick when another filter has already emitted', fakeAsync(() => {
+      const fresh = createSettledComponent();
+      const emitSpy = spyOn(fresh.filtersChanged, 'emit');
+
+      fresh.filters.minAmount = 30;
+      fresh.onAmountInput();
+      fresh.filters.type = 'expense';
+      fresh.onFilterChange();
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+
+      tick(250);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+    }));
+  });
+
   describe('recent and saved searches', () => {
     it('loads the search history on init', () => {
       expect(mockSearchHistory.loadSearches).toHaveBeenCalled();

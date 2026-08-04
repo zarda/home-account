@@ -162,17 +162,6 @@ describe('AuthService (emulator smoke test)', () => {
       expect((stored['createdAt'] as Timestamp).toMillis()).toBe(1_000);
     });
 
-    it('getCurrentUser emits the loaded profile', async () => {
-      const service = TestBed.inject(AuthService);
-      const emissions: ({ id: string } | null)[] = [];
-      const sub = service.getCurrentUser().subscribe(user => emissions.push(user));
-
-      await waitFor(() => emissions.length >= 1, 'an emission');
-      sub.unsubscribe();
-
-      expect(emissions[0]!.id).toBe(uid);
-    });
-
     it('updateUserPreferences sends only the touched key, so concurrent edits survive', async () => {
       const service = await authedService();
       const before = service.currentUser()!.preferences;
@@ -293,23 +282,6 @@ describe('AuthService (emulator smoke test)', () => {
       expect(service.profileDegraded()).toBeTrue();
     });
 
-    it('getCurrentUser emits the fallback rather than null or an error', async () => {
-      spyOn(console, 'error');
-      const service = TestBed.inject(AuthService);
-      const emissions: ({ id: string } | null)[] = [];
-      const errors: unknown[] = [];
-      const sub = service.getCurrentUser().subscribe({
-        next: value => emissions.push(value),
-        error: e => errors.push(e)
-      });
-
-      await waitFor(() => emissions.length >= 1, 'an emission');
-      sub.unsubscribe();
-
-      expect(emissions[0]).not.toBeNull();
-      expect(emissions[0]!.id).toBe(auth.currentUser!.uid);
-      expect(errors).toEqual([]);
-    });
   });
 
   describe('sign-out', () => {

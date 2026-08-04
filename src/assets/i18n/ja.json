@@ -165,7 +165,8 @@
     "locationDenied": "位置情報の利用が許可されませんでした。場所名の入力は引き続き可能です。",
     "locationUnavailable": "現在地を取得できませんでした。場所名の入力は引き続き可能です。",
     "clearCoordinates": "座標を削除",
-    "currencyFromLocation": "現在地の通貨は {{currency}} のようです。使用しますか？"
+    "currencyFromLocation": "現在地の通貨は {{currency}} のようです。使用しますか？",
+    "useSuggestedCategory": "提案されたカテゴリ {{category}} を使用"
   },
   "budget": {
     "title": "予算",

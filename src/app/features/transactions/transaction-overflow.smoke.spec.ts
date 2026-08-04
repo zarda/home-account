@@ -250,7 +250,7 @@ describe('Transaction overflow (emulator smoke test)', () => {
           .toBeLessThanOrEqual(1);
 
         /* The category strip carries the long category name, the location and
-           the tags, and scrolls rather than stacking them (ADR 0011). */
+           the tags, and scrolls rather than stacking them (ADR 0012). */
         const strip = card.querySelector('app-transaction-row .row-category') as HTMLElement;
         expect(getComputedStyle(strip).overflowX)
           .withContext('category strip is reachable by scrolling')

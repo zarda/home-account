@@ -131,7 +131,7 @@ app-category-chip {
 /* Category, location and tags are a strip of discrete chips, and a strip
    scrolls rather than wrapping. Wrapping it stacked a row four lines deep on
    the tags alone — 295px tall on a 375px phone — and a list of rows that each
-   pick their own height is the thing this row is read down. ADR 0011.
+   pick their own height is the thing this row is read down. ADR 0012.
 
    The scrollbar stays visible, thinned but never hidden: it is the only thing
    saying there is more off the right edge. Same reasoning, and the same

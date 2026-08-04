@@ -7,7 +7,7 @@ pushed out of reach.
 
 Why it is that rule rather than an ellipsis, and what was rejected on the way,
 is in [ADR 0010](ADR/0010-nothing-truncates.md). Why a strip may scroll instead
-of reflowing is in [ADR 0011](ADR/0011-a-strip-scrolls-rather-than-growing-the-row.md).
+of reflowing is in [ADR 0012](ADR/0012-a-strip-scrolls-rather-than-growing-the-row.md).
 This document is the part you need when adding a screen.
 
 ## The seven invariants
@@ -267,7 +267,7 @@ Three things that are easy to miss:
 
 Prose does not get this treatment. A description behind a horizontal scrubber
 means scrolling sideways to read what you bought — 689px of it, measured on the
-worst row in the app. Reasoning in [ADR 0011](ADR/0011-a-strip-scrolls-rather-than-growing-the-row.md).
+worst row in the app. Reasoning in [ADR 0012](ADR/0012-a-strip-scrolls-rather-than-growing-the-row.md).
 
 ---
 

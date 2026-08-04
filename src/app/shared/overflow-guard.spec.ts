@@ -245,7 +245,7 @@ describe('overflow guard', () => {
     });
 
     it('scrolls the category strip instead of stacking it', () => {
-      /* ADR 0011. Wrapped, this strip stacked six deep — 111px of category,
+      /* ADR 0012. Wrapped, this strip stacked six deep — 111px of category,
          location and tags on a row 347px tall at this width, which is most of
          a phone screen for one transaction. It scrolls now, so it costs one
          line however much it carries, and the row comes in around 240.
