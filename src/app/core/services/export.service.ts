@@ -11,12 +11,14 @@ import {
   Category,
   CreateTransactionDTO,
   BudgetPeriod,
+  isBudgetPeriod,
   Budget,
   RecurringTransaction,
   InsightSnapshot,
   MonthlyTotal
 } from '../../models';
 import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
+import { parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -181,10 +183,12 @@ export class ExportService {
     // Filter transactions based on options
     const filtered = this.filterTransactions(transactions, options);
 
-    // Build CSV header
+    // Build CSV header. Summary is the at-a-glance format and is lossy by
+    // design — it drops description, note, tags, location, period and
+    // recurrence. Detailed is the format that round-trips.
     const headers = options?.format === 'summary'
       ? ['Date', 'Type', 'Category', 'Amount', 'Currency']
-      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags', 'Location'];
+      : ['Date', 'Type', 'Category', 'Description', 'Amount', 'Currency', 'Amount (Base)', 'Note', 'Tags', 'Location', 'Period', 'Recurring'];
 
     // Build CSV rows
     const rows = filtered.map(t => {
@@ -204,29 +208,28 @@ export class ExportService {
         ];
       }
 
+      // Raw values only. Escaping is toCsvText's job, applied to every cell —
+      // it used to be applied here, to three cells of ten, and the category
+      // name and the joined tags were two of the seven that went out unescaped.
       return [
         date,
         t.type,
         this.getCategoryName(category),
-        this.escapeCSV(t.description),
+        t.description,
         t.amount.toString(),
         t.currency,
         t.amountInBaseCurrency.toString(),
-        this.escapeCSV(t.note ?? ''),
+        t.note ?? '',
         (t.tags ?? []).join('; '),
         // Name only: coordinates belong in the JSON backup, which carries
         // the whole transaction.
-        this.escapeCSV(t.location?.name ?? '')
+        t.location?.name ?? '',
+        t.period ?? '',
+        t.isRecurring ? 'true' : ''
       ];
     });
 
-    // Combine headers and rows
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
-
-    return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    return new Blob([toCsvText(headers, rows)], { type: 'text/csv;charset=utf-8;' });
   }
 
   // Helper: Get PDF translation
@@ -436,20 +439,17 @@ export class ExportService {
     );
   }
 
-  // Helper: Escape CSV special characters
-  private escapeCSV(value: string): string {
-    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-      return `"${value.replace(/"/g, '""')}"`;
-    }
-    return value;
-  }
-
   // Helper: Parse CSV text to raw transactions
   private parseCSV(text: string): ImportedTransaction[] {
-    const lines = text.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return [];
+    // Parsed as one document rather than split on newlines first: a newline
+    // inside a quoted note is content, and splitting first tore in half the
+    // very rows the escaper had correctly quoted. Unguarding the whole matrix
+    // here, before any column index is read, means a column added later cannot
+    // forget to do it.
+    const rows = parseCsvRows(text).map(row => row.map(unguardCsvCell));
+    if (rows.length < 2) return [];
 
-    const headers = this.parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+    const headers = rows[0].map(h => h.toLowerCase().trim());
     const transactions: ImportedTransaction[] = [];
 
     // Detect column indices
@@ -464,9 +464,15 @@ export class ExportService {
     // $1,200. Optional, so it is left out of the row-length guard below and a
     // bank CSV without one still imports.
     const currencyCol = this.findColumn(headers, ['currency']);
+    // Same contract as Currency: optional, out of the row-length guard, so a
+    // file exported before these columns existed still imports. findColumn
+    // matches by substring, so a bank's "Statement Period" column lands here
+    // too — which is why both values are validated rather than trusted.
+    const periodCol = this.findColumn(headers, ['period']);
+    const recurringCol = this.findColumn(headers, ['recurring']);
 
-    for (let i = 1; i < lines.length; i++) {
-      const values = this.parseCSVLine(lines[i]);
+    for (let i = 1; i < rows.length; i++) {
+      const values = rows[i];
       if (values.length < Math.max(dateCol, descCol, amountCol) + 1) continue;
 
       let amount: number;
@@ -500,44 +506,43 @@ export class ExportService {
         ? readCurrencyCode(values[currencyCol])
         : '';
 
+      const period = periodCol >= 0 && periodCol < values.length
+        ? this.readBudgetPeriod(values[periodCol])
+        : undefined;
+
+      const isRecurring = recurringCol >= 0 && recurringCol < values.length
+        ? this.readFlag(values[recurringCol])
+        : undefined;
+
       transactions.push({
         date: this.parseDate(values[dateCol] || ''),
         description: values[descCol] || 'Unknown',
         amount: Math.abs(amount),
         type,
-        ...(currency ? { currency } : {})
+        ...(currency ? { currency } : {}),
+        ...(period ? { period } : {}),
+        ...(isRecurring ? { isRecurring } : {})
       });
     }
 
     return transactions;
   }
 
-  // Helper: Parse a single CSV line handling quoted values
-  private parseCSVLine(line: string): string[] {
-    const values: string[] = [];
-    let current = '';
-    let inQuotes = false;
+  // Helper: Read a budget period, ignoring anything outside the enum the
+  // picker offers — a bank's "Statement Period" cell reads "2024-01 to
+  // 2024-02", and Firestore's rules would reject it on write anyway.
+  private readBudgetPeriod(value: string | undefined): BudgetPeriod | undefined {
+    const normalized = (value ?? '').trim().toLowerCase();
+    return isBudgetPeriod(normalized) ? normalized : undefined;
+  }
 
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        values.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    values.push(current.trim());
-    return values;
+  // Helper: Read a boolean flag column. Absence and anything unrecognised mean
+  // "not set" rather than false, matching how period and currency behave.
+  private readFlag(value: string | undefined): true | undefined {
+    const normalized = (value ?? '').trim().toLowerCase();
+    return normalized === 'true' || normalized === 'yes' || normalized === '1'
+      ? true
+      : undefined;
   }
 
   // Helper: Find column index by possible names

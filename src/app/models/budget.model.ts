@@ -1,6 +1,15 @@
 import { Timestamp } from '@angular/fire/firestore';
 
-export type BudgetPeriod = 'weekly' | 'monthly' | 'yearly';
+// The union is derived from the tuple so the two cannot drift: anything that
+// has to enumerate the periods at runtime — the CSV importer, the form's
+// picker — reads BUDGET_PERIODS rather than pinning the list a second time.
+export const BUDGET_PERIODS = ['weekly', 'monthly', 'yearly'] as const;
+
+export type BudgetPeriod = typeof BUDGET_PERIODS[number];
+
+export function isBudgetPeriod(value: unknown): value is BudgetPeriod {
+  return typeof value === 'string' && (BUDGET_PERIODS as readonly string[]).includes(value);
+}
 
 export interface Budget {
   id: string;

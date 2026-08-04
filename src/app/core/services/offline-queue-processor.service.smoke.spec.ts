@@ -7,7 +7,7 @@ import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import { getFirestore, connectFirestoreEmulator, Firestore } from '@angular/fire/firestore';
 
-import { OfflineQueueService, QueuedTransaction } from './offline-queue.service';
+import { OfflineQueueService } from './offline-queue.service';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
 import { FirestoreService } from './firestore.service';
 import { TransactionService } from './transaction.service';
@@ -20,18 +20,21 @@ import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 
 /**
- * Integration smoke test for the offline-queue transaction handler against the
- * Firebase emulators.
+ * Integration smoke test for the offline-queue processor against the Firebase
+ * emulators.
  *
- * Unlike the mocked unit tests, this drives the real path a transaction takes
- * after reconnecting: the `sync-queued-transaction` event is handled by
- * OfflineQueueProcessorService, which persists it through TransactionService →
- * FirestoreService → Firestore, and only then flips the queued item to
- * `completed`. It proves a queued transaction is actually written before being
- * marked done (issue #18, AC #2).
+ * Unlike the mocked unit tests, this drives the real path a queued receipt
+ * takes after reconnecting: the `process-queued-image` event is handled by
+ * OfflineQueueProcessorService, whose extracted rows are persisted through
+ * TransactionService → FirestoreService → Firestore under real security rules,
+ * and only then is the queued item flipped to `completed`.
  *
- * The image path is intentionally not covered here: it calls external cloud/
- * native AI providers that have no local emulator.
+ * Only the AI call is stubbed — it reaches external cloud or native providers
+ * that have no local emulator. Everything after it is real, which is the part
+ * these three cases exist to prove: that the write lands before the item is
+ * marked done, that another account's item is never drained into the ledger of
+ * whoever happens to be signed in (#164), and that a row stranded mid-sync is
+ * still a working queue item after the next launch reclaims it (#169).
  *
  * Runs only under the emulators:
  *   npm run smoke
@@ -51,6 +54,30 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   let queue: OfflineQueueService;
   let processor: OfflineQueueProcessorService;
   let firestoreService: FirestoreService;
+  let ai: jasmine.SpyObj<AIStrategyService>;
+
+  function receiptFile(name = 'receipt.jpg'): File {
+    return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/jpeg' });
+  }
+
+  /** One income row, so the write path skips budget recalculation. */
+  function reads(amount: number, description: string): void {
+    ai.processReceipt.and.resolveTo({
+      transactions: [{
+        date: new Date(2026, 5, 15),
+        description,
+        amount,
+        type: 'income',
+        currency: 'USD',
+        confidence: 0.9,
+        source: 'cloud',
+        suggestedCategoryId: 'salary',
+      }],
+      source: 'cloud',
+      confidence: 0.9,
+      processingTimeMs: 1,
+    });
+  }
 
   async function waitFor(pred: () => boolean | Promise<boolean>, timeout = 10000): Promise<void> {
     const start = Date.now();
@@ -114,7 +141,9 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
           useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
         },
         { provide: StorageService, useValue: jasmine.createSpyObj('StorageService', ['uploadReceipt', 'deleteReceipt']) },
-        { provide: AIStrategyService, useValue: jasmine.createSpyObj('AIStrategyService', ['processReceipt']) },
+        // The one stub: reading a photo reaches a cloud or native provider with
+        // no local emulator. Everything downstream of it is real.
+        { provide: AIStrategyService, useValue: ai },
         // Stubbed so the processor's user feedback stays out of this test:
         // the real NotificationService pulls in the snackbar and the HTTP-backed
         // translation loader, neither of which the emulator run has.
@@ -133,6 +162,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   beforeEach(async () => {
     // Mutable so a test can queue as one account and sync as another.
     signedInAs = uid;
+    ai = jasmine.createSpyObj<AIStrategyService>('AIStrategyService', ['processReceipt']);
     await configure();
     await queue.clearAll();
   });
@@ -142,75 +172,48 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     queue.ngOnDestroy();
   });
 
-  it('persists a queued transaction to Firestore before marking it completed', async () => {
-    // Use an income transaction so the write path skips budget recalculation.
-    await queue.queueTransaction({
-      date: '2026-06-15',
-      description: 'Smoke salary',
-      amount: 123.45,
-      type: 'income',
-      currency: 'USD',
-      categoryId: 'salary',
-      source: 'local',
-    });
+  it('persists what a queued receipt produced before marking it completed', async () => {
+    reads(123.45, 'Smoke salary');
+    const id = await queue.queueImage(receiptFile());
 
-    const [queued] = await queue.getPendingTransactions();
-    expect(queued).toBeDefined();
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
 
-    window.dispatchEvent(
-      new CustomEvent<{ transaction: QueuedTransaction }>('sync-queued-transaction', {
-        detail: { transaction: queued },
-      }),
-    );
-
-    // The handler is fire-and-forget; wait until the item leaves the pending set
-    // (status flips to 'completed' once the Firestore write resolves).
-    await waitFor(async () => (await queue.getPendingTransactions()).length === 0);
+    // The handler is fire-and-forget; wait until the item leaves the pending
+    // set (status flips to 'completed' once the Firestore write resolves).
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
 
     const stored = await firestoreService.getCollection<{ amount: number; type: string }>(
       `users/${uid}/transactions`,
     );
-    const match = stored.find((t) => t.amount === 123.45 && t.type === 'income');
-    expect(match).toBeDefined();
+    expect(stored.find((t) => t.amount === 123.45 && t.type === 'income')).toBeDefined();
   }, 20000);
 
   // The whole point of #164, against a real ledger. addTransaction resolves
   // the account at call time, so before this fix a sync that fired after a
-  // different user signed in wrote the first account's spending into theirs.
-  it('does not write another account\'s queued transaction into the signed-in ledger', async () => {
-    await queue.queueTransaction({
-      date: '2026-06-16',
-      description: 'Smoke leak check',
-      amount: 777.77,
-      type: 'income',
-      currency: 'USD',
-      categoryId: 'salary',
-      source: 'local',
-    });
-
-    const [queued] = await queue.getPendingTransactions();
-    expect(queued.userId).toBe(uid);
+  // different user signed in wrote the first account's receipt into theirs.
+  it('does not write another account\'s queued receipt into the signed-in ledger', async () => {
+    reads(777.77, 'Smoke leak check');
+    const id = await queue.queueImage(receiptFile());
+    // As syncQueue leaves it before dispatching, so the processor handing it
+    // back is an observable transition rather than a no-op.
+    await queue.updateImageStatus(id, 'processing');
 
     // A second account signs in on the same device before the queue drains.
     const other = `${uid}-other`;
     signedInAs = other;
 
-    window.dispatchEvent(
-      new CustomEvent<{ transaction: QueuedTransaction }>('sync-queued-transaction', {
-        detail: { transaction: queued },
-      }),
-    );
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
 
     // The processor returns the item to 'pending' rather than completing it.
     // (The other account's collection is deliberately unreadable from here —
     // the rules forbid it — so the queue state is what proves no write ran.)
-    await waitFor(async () => {
-      signedInAs = uid;
-      const pending = await queue.getPendingTransactions();
-      const found = pending.find((t) => t.id === queued.id);
-      signedInAs = other;
-      return found?.status === 'pending';
-    });
+    //
+    // Polled through peekQueuedImage, which is owner-blind: reading through an
+    // owner-scoped getter would mean flipping the signed-in account on every
+    // tick, and the processor re-checks ownership after an await — so the poll
+    // itself would hand it a window in which the write looks allowed.
+    await waitFor(async () => (await queue.peekQueuedImage(id))?.status === 'pending');
+    expect(ai.processReceipt).not.toHaveBeenCalled();
 
     signedInAs = uid;
     // Nothing landed in the capturing account either — it is still queued.
@@ -218,9 +221,7 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
       `users/${uid}/transactions`,
     );
     expect(own.find((t) => t.amount === 777.77)).toBeUndefined();
-
-    const stillPending = await queue.getPendingTransactions();
-    expect(stillPending.map((t) => t.id)).toContain(queued.id);
+    expect((await queue.getPendingImages()).map((i) => i.id)).toContain(id);
   }, 30000);
 
   // #169, end to end. The unit suite proves the sweep flips the status; this
@@ -228,37 +229,25 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   // drains through the processor into a real Firestore document under real
   // security rules, rather than merely becoming visible again.
   it('drains a row stranded mid-sync once the next launch reclaims it', async () => {
-    await queue.queueTransaction({
-      date: '2026-06-17',
-      description: 'Smoke stranded',
-      amount: 246.8,
-      type: 'income',
-      currency: 'USD',
-      categoryId: 'salary',
-      source: 'local',
-    });
+    reads(246.8, 'Smoke stranded');
+    const id = await queue.queueImage(receiptFile());
 
     // The tab dies between syncQueue marking the row and the processor
     // finishing it.
-    const [inFlight] = await queue.getPendingTransactions();
-    await queue.updateTransactionStatus(inFlight.id, 'processing');
-    expect(await queue.getPendingTransactions()).toEqual([]);
+    await queue.updateImageStatus(id, 'processing');
+    expect(await queue.getPendingImages()).toEqual([]);
 
     // Relaunch over the same database.
     processor.ngOnDestroy();
     queue.ngOnDestroy();
     await configure();
 
-    const [reclaimed] = await queue.getPendingTransactions();
-    expect(reclaimed?.id).toBe(inFlight.id);
+    const [reclaimed] = await queue.getPendingImages();
+    expect(reclaimed?.id).toBe(id);
 
-    window.dispatchEvent(
-      new CustomEvent<{ transaction: QueuedTransaction }>('sync-queued-transaction', {
-        detail: { transaction: reclaimed },
-      }),
-    );
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
 
-    await waitFor(async () => (await queue.getPendingTransactions()).length === 0);
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
 
     const stored = await firestoreService.getCollection<{ amount: number }>(
       `users/${uid}/transactions`,

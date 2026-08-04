@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { WritableSignal, signal } from '@angular/core';
-import { OfflineQueueService, QUEUE_NOT_SIGNED_IN } from './offline-queue.service';
+import { openDB } from 'idb';
+import { DB_NAME, OfflineQueueService, QUEUE_NOT_SIGNED_IN } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
 
@@ -76,25 +77,9 @@ describe('OfflineQueueService', () => {
       expect(service.pendingCount()).toBe(2);
     });
 
-    it('queues a transaction', async () => {
-      const id = await service.queueTransaction({
-        date: '2026-06-15', description: 'Coffee', amount: 4, type: 'expense',
-        currency: 'USD', categoryId: 'food', source: 'local',
-      });
-      expect(id).toMatch(/^tx_/);
-      const pending = await service.getPendingTransactions();
-      expect(pending[0].description).toBe('Coffee');
-    });
-
     it('throws when queueing without an initialized database', async () => {
       (service as unknown as { db: null }).db = null;
       await expectAsync(service.queueImage(imageFile())).toBeRejectedWithError('Database not initialized');
-      await expectAsync(
-        service.queueTransaction({
-          date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
-          currency: 'USD', categoryId: 'c', source: 'local',
-        }),
-      ).toBeRejectedWithError('Database not initialized');
     });
   });
 
@@ -122,37 +107,12 @@ describe('OfflineQueueService', () => {
       expect(img?.lastError).toBe('boom');
     });
 
-    it('marks a transaction completed with a synced timestamp', async () => {
-      const id = await service.queueTransaction({
-        date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
-        currency: 'USD', categoryId: 'c', source: 'local',
-      });
-      await service.updateTransactionStatus(id, 'completed');
-      const txs = await service.getPendingTransactions();
-      expect(txs.length).toBe(0); // no longer pending
-    });
-
-    it('records an error on a failed transaction', async () => {
-      const id = await service.queueTransaction({
-        date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
-        currency: 'USD', categoryId: 'c', source: 'local',
-      });
-      await service.updateTransactionStatus(id, 'failed', 'nope');
-      const txs = await service.getPendingTransactions();
-      expect(txs[0].lastError).toBe('nope');
-      expect(txs[0].retryCount).toBe(1);
-    });
   });
 
   describe('removal and clearing', () => {
-    it('removes an image and a transaction', async () => {
+    it('removes an image', async () => {
       const imgId = await service.queueImage(imageFile());
-      const txId = await service.queueTransaction({
-        date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
-        currency: 'USD', categoryId: 'c', source: 'local',
-      });
       await service.removeImage(imgId);
-      await service.removeTransaction(txId);
       expect(service.pendingCount()).toBe(0);
     });
 
@@ -184,40 +144,21 @@ describe('OfflineQueueService', () => {
       expect(service.lastSyncTime()).not.toBeNull();
     });
 
-    it('dispatches processing events for pending images and transactions', async () => {
-      await service.queueImage(imageFile());
-      await service.queueTransaction({
-        date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
-        currency: 'USD', categoryId: 'c', source: 'local',
-      });
+    it('dispatches a processing event for each pending image', async () => {
+      await service.queueImage(imageFile('a.jpg'));
+      await service.queueImage(imageFile('b.jpg'));
       const imageEvents: Event[] = [];
-      const txEvents: Event[] = [];
       const imageListener = (e: Event) => imageEvents.push(e);
-      const txListener = (e: Event) => txEvents.push(e);
       window.addEventListener('process-queued-image', imageListener);
-      window.addEventListener('sync-queued-transaction', txListener);
 
       const result = await service.syncQueue();
 
       window.removeEventListener('process-queued-image', imageListener);
-      window.removeEventListener('sync-queued-transaction', txListener);
-      // success now counts items handed off for async processing (image + tx);
-      // the real outcome is set later by OfflineQueueProcessorService.
+      // success counts items handed off for async processing; the real outcome
+      // is set later by OfflineQueueProcessorService.
       expect(result.success).toBe(2);
-      expect(imageEvents.length).toBe(1);
-      expect(txEvents.length).toBe(1);
+      expect(imageEvents.length).toBe(2);
       expect(service.isSyncing()).toBeFalse();
-    });
-
-    it('fails transactions that exceeded the retry limit', async () => {
-      const id = await service.queueTransaction({
-        date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
-        currency: 'USD', categoryId: 'c', source: 'local',
-      });
-      // Push retry count past the limit.
-      for (let i = 0; i < 3; i++) await service.updateTransactionStatus(id, 'failed', 'e');
-      const result = await service.syncQueue();
-      expect(result.failed).toBeGreaterThanOrEqual(1);
     });
 
     it('fails images that exceeded the retry limit', async () => {
@@ -234,7 +175,7 @@ describe('OfflineQueueService', () => {
       await service.queueImage(imageFile());
       const stats = await service.getStats();
       expect(stats.pendingImages).toBe(1);
-      expect(stats.pendingTransactions).toBe(0);
+      expect(stats.failedItems).toBe(0);
     });
 
     it('records and trims the sync log', async () => {
@@ -269,17 +210,14 @@ describe('OfflineQueueService', () => {
 
     it('degrades gracefully on reads and clears', async () => {
       expect(await service.getPendingImages()).toEqual([]);
-      expect(await service.getPendingTransactions()).toEqual([]);
       expect(await service.getQueuedImage('x')).toBeUndefined();
       expect(await service.getSyncLog()).toEqual([]);
       await service.removeImage('x');
-      await service.removeTransaction('x');
       await service.clearCompleted();
       await service.clearFailed();
       await service.clearAll();
       await service.clearOldLogs();
       await service.updateImageStatus('x', 'failed');
-      await service.updateTransactionStatus('x', 'failed');
       const stats = await service.getStats();
       expect(stats.pendingImages).toBe(0);
       expect(service.pendingCount()).toBe(0);
@@ -437,18 +375,6 @@ describe('OfflineQueueService', () => {
       expect(service.pendingCount()).toBe(1);
     });
 
-    it('reclaims a stranded transaction on the next launch', async () => {
-      const id = await service.queueTransaction({
-        date: '2026-06-15', description: 'x', amount: 1, type: 'expense',
-        currency: 'USD', categoryId: 'c', source: 'local',
-      });
-      await service.updateTransactionStatus(id, 'processing');
-
-      service = await relaunch();
-
-      expect((await service.getPendingTransactions()).map((t) => t.id)).toEqual([id]);
-    });
-
     it('counts the reclaimed item the moment the queue reports ready', async () => {
       const id = await service.queueImage(imageFile('a.jpg'));
       await service.updateImageStatus(id, 'processing');
@@ -482,6 +408,30 @@ describe('OfflineQueueService', () => {
 
       userId.set('user-b');
       expect((await service.getPendingImages()).map((i) => i.id)).toEqual([id]);
+    });
+  });
+
+  /**
+   * The queued-transaction path never had a caller in the shipped app, so the
+   * store it wrote to is empty on every device that has one, and deleting an
+   * object store is only legal inside a `versionchange` transaction — which is
+   * why the schema version moved rather than the store being left to rot.
+   *
+   * What this asserts is the shape the app opens, not the v2 → v3 migration
+   * itself. Seeding a real v2 database here needs `deleteDB`, and that blocks
+   * on any connection this suite still holds open, which made the whole file
+   * flaky. The migration branch is a `contains()` guard around one call, and
+   * the store's absence afterwards is what any of it is for.
+   */
+  describe('schema', () => {
+    it('carries no queued-transaction store', async () => {
+      const open = await openDB(DB_NAME);
+      const stores = Array.from(open.objectStoreNames);
+      open.close();
+
+      expect(stores).not.toContain('pending-transactions');
+      expect(stores).toContain('pending-images');
+      expect(stores).toContain('sync-log');
     });
   });
 });

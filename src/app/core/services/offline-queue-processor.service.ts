@@ -1,5 +1,5 @@
 import { Injectable, inject, OnDestroy } from '@angular/core';
-import { OfflineQueueService, QueuedTransaction } from './offline-queue.service';
+import { OfflineQueueService } from './offline-queue.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { TransactionService } from './transaction.service';
 import { NotificationService } from './notification.service';
@@ -7,23 +7,20 @@ import { TranslationService } from './translation.service';
 import { AuthService } from './auth.service';
 import { ProcessedTransaction } from './ai-types';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
-import { CreateTransactionDTO } from '../../models/transaction.model';
-import { parseDateInput } from '../utils/transaction-date.utils';
 
 /**
  * Coordinates the asynchronous side of the offline queue.
  *
  * OfflineQueueService.syncQueue() marks queued items as `processing` and
- * dispatches `process-queued-image` / `sync-queued-transaction` events, but it
- * cannot await the actual work. This service listens for those events and does
- * it: a queued image goes through the AI strategy and the rows it yields are
- * written to the ledger, a queued transaction is persisted straight to
- * Firestore. Each item's queue status then comes from the real outcome — only
- * `completed` after something was actually saved, and `failed` (which
- * increments its retry count) otherwise.
+ * dispatches a `process-queued-image` event, but it cannot await the actual
+ * work. This service listens and does it: a queued image goes through the AI
+ * strategy and the rows it yields are written to the ledger. The item's queue
+ * status then comes from the real outcome — only `completed` after something
+ * was actually saved, and `failed` (which increments its retry count)
+ * otherwise.
  *
  * It is instantiated eagerly at startup (via provideAppInitializer in
- * app.config.ts) so its listeners are attached before any sync fires.
+ * app.config.ts) so its listener is attached before any sync fires.
  */
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueProcessorService implements OnDestroy {
@@ -39,19 +36,12 @@ export class OfflineQueueProcessorService implements OnDestroy {
     void this.processQueuedImage(id);
   };
 
-  private transactionHandler = (event: Event): void => {
-    const { transaction } = (event as CustomEvent<{ transaction: QueuedTransaction }>).detail;
-    void this.syncQueuedTransaction(transaction);
-  };
-
   constructor() {
     window.addEventListener('process-queued-image', this.imageHandler);
-    window.addEventListener('sync-queued-transaction', this.transactionHandler);
   }
 
   ngOnDestroy(): void {
     window.removeEventListener('process-queued-image', this.imageHandler);
-    window.removeEventListener('sync-queued-transaction', this.transactionHandler);
   }
 
   /**
@@ -139,35 +129,6 @@ export class OfflineQueueProcessorService implements OnDestroy {
     }
 
     return created;
-  }
-
-  /**
-   * Persist a queued transaction to Firestore and record the outcome.
-   */
-  private async syncQueuedTransaction(tx: QueuedTransaction): Promise<void> {
-    // The event carries the row itself, so this is the last point at which the
-    // owner can be checked before addTransaction resolves the path from
-    // whoever is signed in now.
-    if (tx.userId !== this.authService.userId()) {
-      await this.queue.updateTransactionStatus(tx.id, 'pending');
-      return;
-    }
-
-    try {
-      const dto: CreateTransactionDTO = {
-        type: tx.type,
-        amount: tx.amount,
-        currency: tx.currency,
-        categoryId: tx.categoryId,
-        description: tx.description,
-        date: parseDateInput(tx.date) ?? new Date(),
-      };
-
-      await this.transactionService.addTransaction(dto);
-      await this.queue.updateTransactionStatus(tx.id, 'completed');
-    } catch (error) {
-      await this.queue.updateTransactionStatus(tx.id, 'failed', this.errorMessage(error));
-    }
   }
 
   private errorMessage(error: unknown): string {
