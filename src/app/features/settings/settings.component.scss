@@ -58,11 +58,14 @@
     color: var(--text-primary);
   }
 
+  // An address is one unbroken token, so `anywhere` rather than break-word:
+  // only anywhere lowers the element's min-content size, and a truncated
+  // address is worse than a wrapped one — it is the thing that says which
+  // account you are signed in to.
   .user-email {
     font-size: var(--text-sm);
     color: var(--text-muted);
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
   }
 }
 

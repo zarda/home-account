@@ -87,9 +87,7 @@
   font-weight: 500;
   font-size: var(--text-base);
   @apply text-gray-800 dark:text-gray-100;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .recurring-category {

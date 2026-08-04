@@ -1,14 +1,16 @@
 # Overflow: what the app does when content does not fit
 
 The rule is that **nothing truncates**. Text reflows onto more lines; a value
-that has to stay on one line scales down to a 12px floor and only then wraps.
-No ellipsis, nothing clipped away, no control pushed out of reach.
+that has to stay on one line scales down to a 12px floor and only then wraps; a
+strip of discrete chips scrolls. No ellipsis, nothing clipped away, no control
+pushed out of reach.
 
 Why it is that rule rather than an ellipsis, and what was rejected on the way,
-is in [ADR 0010](ADR/0010-nothing-truncates.md). This document is the part you
-need when adding a screen.
+is in [ADR 0010](ADR/0010-nothing-truncates.md). Why a strip may scroll instead
+of reflowing is in [ADR 0012](ADR/0012-a-strip-scrolls-rather-than-growing-the-row.md).
+This document is the part you need when adding a screen.
 
-## The five invariants
+## The seven invariants
 
 Each is written so it can be checked, because a rule nobody can check is a rule
 that quietly stops being true.
@@ -37,6 +39,27 @@ everything that will not yield — fixed widths, gaps, caps — must be under th
 narrowest container the row ships in. Write the arithmetic in a comment; see
 the top of `transaction-row.component.scss`, which shows where its 7rem floor
 comes from.
+
+**In a wrapping row, write `flex: 1 1 0`, not `flex: 1 1 auto`.** Declaring the
+minimum is not enough on its own, and this is the part that is easy to get
+wrong because the rule above looks satisfied.
+
+Flex collects items into lines using each item's *hypothetical main size* —
+its basis clamped by min and max — and it does that **before** any growing or
+shrinking is considered. `flex-basis: auto` resolves to the item's content
+size, so a column holding a long description is measured at the full width of
+that description, the line breaks early, and the item to its *left* is pushed
+onto a line of its own. Shrinking later cannot undo a line break already made.
+
+```scss
+.details { flex: 1 1 auto; min-width: 7rem; }  // measured at max-content — breaks the line
+.details { flex: 1 1 0;    min-width: 7rem; }  // measured at 7rem, then grows into the rest
+```
+
+The floor is what the zero basis is clamped up to, so it is still the only
+number line-collection sees. `transaction-row.component.scss` shipped the first
+of these and put its category tile alone on a line whenever a description ran
+long.
 
 ---
 
@@ -79,16 +102,43 @@ the type scale already declares — and wraps only past that.
 min-content size. `break-word` leaves the element still refusing to shrink,
 still pushing its neighbours out, and looking like a fix.
 
-**Two corollaries worth knowing, because they made three rules in this app dead
-code for a long time:**
+**Three corollaries worth knowing, because between them they made four rules in
+this app dead code for a long time:**
 
 - `text-overflow` has no effect on a flex or grid container. A rule that sets
   both `display: flex` and `text-overflow` does nothing.
+- Nor does it apply to a plain **inline** box, and neither do `overflow` or
+  `max-width`. A `<span>` is inline unless something blockified it — being a
+  flex item does, being projected into a Material button's own
+  `.mdc-button__label` does not. Give it `display: inline-block` first.
 - A bare text node inside a flex container is an *anonymous flex item*. No
   selector reaches it, and `min-width: 0` on the parent does not apply to it.
   If you need to style the text, wrap it in an element.
 
-**Check:** no rule sets both `display: (inline-)flex|grid` and `text-overflow`.
+**A dead truncation is not a harmless one.** It is a claim, in the stylesheet,
+that the case is handled, and a reviewer reads it as one. `.category-name` in
+`category-suggestion.component.scss` carried `overflow`, `text-overflow` and a
+120px `max-width` on an inline box, so none of the four declarations did
+anything and the chip quietly sized itself to its label — about 170px past the
+row holding it. Nobody looked, because the stylesheet said it was capped.
+
+**And a live one hides in the opposite way.** `insight-transaction-list`
+truncated for real, on a plain span in a block context, and survived the first
+sweep *because* it worked: a rule that clips is easy to spot in a screenshot,
+and a rule that truncates cleanly reads as a decision somebody made.
+
+**Check:**
+
+```bash
+npm run truncation:check
+```
+
+`scripts/check-truncation.mjs`, which is the grep this section used to ask you
+to run by hand, masked for comments so the notes explaining a deleted rule do
+not trip it. It reads the source rather than the rendered page, so it catches
+the site added next month as well as the ones found so far — which no fixed set
+of component tests can. What it cannot see is whether the replacement works;
+`shared/truncation-guard.spec.ts` measures that.
 
 ---
 
@@ -145,14 +195,92 @@ does.
 
 ---
 
+### G6 — A trailing control group travels as one flex item
+
+`margin-left: auto` right-aligns **only the line its own item is on**. In a
+wrapping row, two trailing items — a value and the control beside it — can end
+up on different lines, and the one without the margin lands at the row's *left*
+edge.
+
+```html
+<div class="row-trailing">   <!-- flex-shrink: 0; margin-left: auto -->
+  <div class="row-amount">…</div>
+  <div class="row-actions"><ng-content /></div>
+</div>
+```
+
+Wrap them, put the auto margin on the wrapper, and they wrap together or not at
+all. The transaction row shipped them as two items and put its overflow menu —
+the only route to Delete — at the left edge of the row whenever the amount was
+wide enough to wrap away from it.
+
+**The stronger version of this is to take the control out of the reflow.** A
+fixed-width column of fixed-width items has a position that does not depend on
+content at all, which is a property no amount of careful wrapping gets you. The
+transaction row now stacks its menu under the category tile for exactly that
+reason, so it has one trailing item and this rule no longer binds there — but
+it binds the moment anything joins the amount, and the cost of the column is
+real: see issue #219.
+
+**Check:** in any wrapping flex row, no trailing item carries `margin-left:
+auto` while a sibling that must stay beside it does not. And assert the
+control's *position*, not its containment — a control at the wrong edge is
+still inside the row, which is how `overflow-guard.spec.ts` passed on this for
+a release.
+
+---
+
+### G7 — A strip of discrete chips scrolls; prose wraps
+
+Reflowing is right for text and wrong for a strip. A row carrying a category, a
+location and five tags stacked six lines deep on a phone, and a list whose rows
+each choose their own height is a list nobody can scan. Give the strip one line
+and a scroller.
+
+```scss
+.row-category {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;   // a fling must not trigger the back-swipe
+  scrollbar-width: thin;            // thin is fine; none is G4
+}
+.tag-chip { flex-shrink: 0; }       // chips queue, they do not squash
+```
+
+Three things that are easy to miss:
+
+- **The overflow indicator has to be pinned, not just present.** `+2` as the
+  last child of a scroller sits past the right edge, visible only to a reader
+  who has already scrolled far enough not to need it. `position: sticky; right:
+  0`, and it must be a **direct child of the scroller** — a sticky element can
+  only travel within its containing block, so nested one box deeper it has
+  nowhere to go.
+- **A scroller inside a clickable row swallows a click it should not.** Where
+  the platform draws a classic scrollbar, that scrollbar is inside the row's
+  hit area and dragging it fires a click on the row. Guard it: a click whose
+  `offsetY` is past the scroller's `clientHeight` is a click on its scrollbar.
+  See `onActivate` in `transaction-row.component.ts`.
+- **`overflow-x: auto` makes the box a vertical scroll container too** (G4).
+  Harmless on a single nowrap line, but it is the same rule that broke paging
+  from `.dashboard-container`, so check nothing walks the tree looking for one.
+
+Prose does not get this treatment. A description behind a horizontal scrubber
+means scrolling sideways to read what you bought — 689px of it, measured on the
+worst row in the app. Reasoning in [ADR 0012](ADR/0012-a-strip-scrolls-rather-than-growing-the-row.md).
+
+---
+
 ## Where each rule is enforced
 
 | | |
 |---|---|
 | `shared/directives/fit-text.directive.spec.ts` | the directive: scales, floors at 12px, writes nothing when the value fits, does not oscillate |
-| `shared/overflow-guard.spec.ts` | a hostile row keeps its menu, amount and `+N` inside the clipping card — and an ordinary row still does not reflow at 375px |
+| `shared/overflow-guard.spec.ts` | a hostile row keeps its menu, amount and `+N` inside the clipping card — and an ordinary row still does not reflow at 375px. Also positional, since containment was not enough: the menu sits at the row's right edge, the tile stays on the details column's line, the strip stays one line, and the insight drill-down row does not truncate |
 | `shared/safe-area.spec.ts` | `max()` not sum; one owner per inset |
 | `features/transactions/transaction-overflow.smoke.spec.ts` | the same on a real page, plus the paging root |
+| `shared/truncation-guard.spec.ts` | the two things a deleted truncation is replaced by: text wraps inside its box without shoving its neighbour out, and a label that cannot wrap scales while its control survives |
+| `scripts/check-truncation.mjs` | G3 across the whole source, `npm run truncation:check` |
 | `docs/ui-audit/tools/capture-overflow.mjs` | five pages × seven widths × (en, ja, faked insets), run before/after a layout change |
 
 The first four run in CI. The harness needs a dev server and the emulators, so

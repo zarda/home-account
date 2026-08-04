@@ -1,6 +1,12 @@
 # 10. Nothing truncates: text reflows, values scale
 
-**Status:** Accepted, implemented · **Date:** 2026-08-03 · **Issues:** #216
+**Status:** Accepted, implemented; amended by [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) · **Date:** 2026-08-03 · **Issues:** #216
+
+0012 does not reverse anything here. It answers the question this record left
+open — reflow says nothing may be destroyed, but nothing about how tall a row
+may become — by letting a strip of discrete chips scroll on one line. A
+scroller hides nothing that cannot be reached, which is the distinction this
+record draws.
 
 Reference documentation lives in [../ui-overflow.md](../ui-overflow.md). This
 record keeps the decision and the reasoning.

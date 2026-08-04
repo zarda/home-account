@@ -316,13 +316,14 @@
   min-width: 0;
 }
 
+// A filename is one unbroken token and is how the reader tells two queued
+// files apart, so it wraps rather than losing its middle. `anywhere` because
+// break-word would leave it refusing to shrink below its own min-content.
 .file-name {
   font-weight: 500;
   font-size: var(--text-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--text-primary);
 }
 

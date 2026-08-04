@@ -105,7 +105,24 @@ export class TransactionRowComponent {
     return this.dateFormatService.formatRelativeDate(this.transaction().date as Date | Timestamp);
   }
 
-  onActivate(): void {
+  /**
+   * The whole row opens the transaction, except for one strip of it.
+   *
+   * `.row-category` scrolls horizontally, and on a platform that draws a
+   * classic scrollbar that scrollbar sits inside the row's hit area. Dragging
+   * it is a scroll, not a tap, but the click still bubbles here and would open
+   * the editor under the reader's cursor. A click below the scroller's content
+   * box is a click on its scrollbar, and nothing else.
+   *
+   * Keyboard activation calls this with no event and is never affected.
+   */
+  onActivate(event?: Event): void {
+    if (event instanceof MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.classList.contains('row-category') && event.offsetY > target.clientHeight) {
+        return;
+      }
+    }
     this.activate.emit(this.transaction());
   }
 }

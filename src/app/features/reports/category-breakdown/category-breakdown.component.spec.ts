@@ -342,5 +342,43 @@ describe('CategoryBreakdownComponent', () => {
 
       expect(activated).toEqual([{ categoryId: 'cat3', type: 'income' }]);
     });
+
+    it('keeps the amount in the row when a description is far too long', () => {
+      /* `.transaction-info` had no `min-width: 0`, so it floored at its own
+         min-content size, refused to shrink, and pushed the amount out of the
+         panel — G1 in docs/ui-overflow.md, the same defect the transaction row
+         had. Measured rather than asserted on the stylesheet, because the
+         declaration only matters if it changes where the amount lands.
+
+         Attached to the document at a fixed width: an element with no layout
+         box has no geometry to check, and a width that came from the browser
+         running the test would make this pass or fail by window size. */
+      realFixture.componentInstance.transactions = [
+        {
+          ...mockTransactions[0],
+          description:
+            'Weekly grocery run at the farmers market on Ferry Building Embarcadero plus ' +
+            'household supplies and a refill of the pantry staples',
+        },
+      ];
+      const host = realFixture.nativeElement as HTMLElement;
+      host.style.width = '311px';
+      document.body.appendChild(host);
+      realFixture.detectChanges();
+
+      const panel = realFixture.debugElement.query(By.css('mat-expansion-panel'));
+      expect(panel).withContext('a category panel rendered').not.toBeNull();
+      panel.componentInstance.open();
+      realFixture.detectChanges();
+
+      const item = host.querySelector('.transaction-item') as HTMLElement;
+      const amount = host.querySelector('.transaction-amount') as HTMLElement;
+      expect(item).withContext('transaction row rendered').not.toBeNull();
+      expect(amount.getBoundingClientRect().right)
+        .withContext('amount inside its row')
+        .toBeLessThanOrEqual(item.getBoundingClientRect().right + 1);
+
+      host.remove();
+    });
   });
 });

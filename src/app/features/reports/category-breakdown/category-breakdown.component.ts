@@ -13,6 +13,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
+import { FitTextDirective } from '../../../shared/directives/fit-text.directive';
 import { SpendingChartComponent } from '../../dashboard/spending-chart/spending-chart.component';
 
 interface CategoryBreakdown {
@@ -40,7 +41,8 @@ interface CategoryBreakdown {
     MatExpansionModule,
     EmptyStateComponent,
     CurrencyPipe,
-    TranslatePipe
+    TranslatePipe,
+    FitTextDirective
   ],
   templateUrl: './category-breakdown.component.html',
   styleUrl: './category-breakdown.component.scss',

@@ -2,12 +2,26 @@
   class="transaction-row"
   role="button"
   tabindex="0"
-  (click)="onActivate()"
+  (click)="onActivate($event)"
   (keydown.enter)="onActivate()"
   (keydown.space)="$event.preventDefault(); onActivate()"
 >
-  <!-- Category Icon -->
-  <app-category-chip appearance="tile" [icon]="categoryIcon()" [color]="categoryColor()" />
+  <!-- Category tile, with the overflow menu stacked beneath it. Both are fixed
+       width and neither ever yields, so this column is the one part of the row
+       whose size does not depend on its content.
+
+       :empty collapses the slot where no menu is projected — the dashboard
+       card projects none — and a display: none item claims no gap, so there
+       the column is just the tile. -->
+  <div class="row-leading">
+    <app-category-chip
+      appearance="tile"
+      size="sm"
+      [icon]="categoryIcon()"
+      [color]="categoryColor()"
+    />
+    <div class="row-actions"><ng-content /></div>
+  </div>
 
   <!-- Details -->
   <div class="row-details">
@@ -46,16 +60,22 @@
           @for (tag of visibleTags(); track tag) {
             <span class="tag-chip">{{ tag }}</span>
           }
-          @if (overflowTagCount() > 0) {
-            <span class="tag-chip tag-overflow">+{{ overflowTagCount() }}</span>
-          }
         </span>
+      }
+      <!-- Outside .row-tags on purpose. It is sticky, and a sticky element can
+           only travel within its containing block — inside .row-tags that is
+           the tag group's own box, whose right edge it already sits on, so it
+           would have nowhere to stick to. Out here the containing block is the
+           scroller's content box and it can pin to the visible edge. -->
+      @if (overflowTagCount() > 0) {
+        <span class="tag-chip tag-overflow">+{{ overflowTagCount() }}</span>
       }
     </span>
   </div>
 
-  <!-- Amount & Date. appFitText rather than a truncation: a shortened amount
-       reads as a different number, so it scales to fit and keeps every digit. -->
+  <!-- Amount & Date, and now the only thing on the trailing side. appFitText
+       rather than a truncation: a shortened amount reads as a different
+       number, so it scales to fit and keeps every digit. -->
   <div class="row-amount">
     <span
       class="amount"
@@ -70,11 +90,4 @@
     }
     <span class="row-date">{{ relativeDate() }}</span>
   </div>
-
-  <!-- Trailing actions (e.g. overflow menu). Wrapped rather than projected
-       bare: projected content carries the *host* component's encapsulation
-       attribute, so this component cannot style what lands here, and the
-       "the menu is never lost" guarantee would have to be restated by every
-       caller. The wrapper keeps it here, where it is promised. -->
-  <div class="row-actions"><ng-content /></div>
 </div>

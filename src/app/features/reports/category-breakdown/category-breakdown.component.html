@@ -111,7 +111,7 @@
                       <span class="transaction-description">{{ transaction.description }}</span>
                       <span class="transaction-date">{{ transaction.date.toDate() | date:'MMM d, yyyy' }}</span>
                     </div>
-                    <span class="transaction-amount">
+                    <span class="transaction-amount" appFitText>
                       {{ transaction.amount | currency:transaction.currency:'symbol':'1.2-2' }}
                     </span>
                   </div>

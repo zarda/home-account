@@ -2,6 +2,7 @@ import { Component, computed, input } from '@angular/core';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { Transaction } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 
 /**
  * The transactions behind an insight, listed in place.
@@ -15,7 +16,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 @Component({
   selector: 'app-insight-transaction-list',
   standalone: true,
-  imports: [CurrencyPipe, DatePipe, TranslatePipe],
+  imports: [CurrencyPipe, DatePipe, TranslatePipe, FitTextDirective],
   template: `
     <div class="insight-transactions">
       @for (transaction of rows(); track transaction.id) {
@@ -24,7 +25,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
             <span class="transaction-description">{{ transaction.description }}</span>
             <span class="transaction-date">{{ transaction.date.toDate() | date:'MMM d, yyyy' }}</span>
           </div>
-          <span class="transaction-amount">
+          <span class="transaction-amount" appFitText>
             {{ transaction.amount | currency:transaction.currency:'symbol':'1.2-2' }}
           </span>
         </div>
@@ -60,11 +61,15 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
       min-width: 0;
     }
 
+    /* Was overflow/text-overflow/white-space: nowrap, and unlike the three
+       dead rules ADR 0010 deleted this one worked — a plain span, so the
+       ellipsis really rendered and really shortened the description. It
+       survived the sweep because it worked: a rule that clips is obvious in a
+       screenshot, one that truncates cleanly reads as somebody's decision.
+       Text wraps now, with anywhere so a pasted URL shrinks too. */
     .transaction-description {
       font-size: var(--text-sm);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      overflow-wrap: anywhere;
     }
 
     .transaction-date,
@@ -74,10 +79,14 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
       color: var(--text-muted);
     }
 
+    // nowrap is what appFitText needs from the cascade: the directive writes
+    // no style at all while the value fits, so the row must already promise
+    // the number stays on one line.
     .transaction-amount {
       font-size: var(--text-sm);
       font-weight: 500;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .transactions-truncated,
