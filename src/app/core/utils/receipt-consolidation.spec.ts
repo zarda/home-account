@@ -1,4 +1,8 @@
-import { consolidateReceiptItems, formatReceiptItemLines } from './receipt-consolidation';
+import {
+  consolidateReceiptItems,
+  formatReceiptItemLines,
+  REVIEW_AMOUNT_CONFIDENCE,
+} from './receipt-consolidation';
 import { MultiImageExtractedTransaction } from '../services/gemini.service';
 
 describe('formatReceiptItemLines', () => {
@@ -72,6 +76,7 @@ describe('consolidateReceiptItems', () => {
     expect(merged.confidence).toBeCloseTo(0.8);
     expect(merged.wasMerged).toBeTrue();
     expect(merged.mergedFromImages).toEqual([0, 1]);
+    expect(merged.amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
   });
 
   it('subtracts refund/credit lines from the merged total', () => {
@@ -82,6 +87,7 @@ describe('consolidateReceiptItems', () => {
     expect(result.length).toBe(1);
     expect(result[0].amount).toBe(5);
     expect(result[0].type).toBe('expense');
+    expect(result[0].amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
   });
 
   it('marks a merged group as income when credits outweigh purchases', () => {
@@ -92,6 +98,7 @@ describe('consolidateReceiptItems', () => {
     expect(result.length).toBe(1);
     expect(result[0].amount).toBe(25);
     expect(result[0].type).toBe('income');
+    expect(result[0].amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
   });
 
   it('prefers the full AI receiptDetails over the generated item list', () => {
@@ -109,6 +116,7 @@ describe('consolidateReceiptItems', () => {
     ]);
     expect(result.length).toBe(1);
     expect(result[0].amount).toBe(3);
+    expect(result[0].amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
   });
 
   describe('currency', () => {
@@ -171,6 +179,61 @@ describe('consolidateReceiptItems', () => {
 
       expect(result[0].details).toBe('Lunch — JPY 10\nSnack — JPY 5');
       expect(result[0].currency).toBe('JPY');
+    });
+  });
+
+  describe('amount derivation', () => {
+    it('uses the reported receipt total over the item sum', () => {
+      const merged = consolidateReceiptItems([
+        item({ amount: 10 }),
+        item({ amount: 5, receiptTotal: 16.2 }),
+      ])[0];
+      expect(merged.amount).toBe(16.2);
+      expect(merged.amountConfidence).toBeUndefined();
+    });
+
+    it('falls back to the item sum and flags the row when no total was reported', () => {
+      const merged = consolidateReceiptItems([item({ amount: 10 }), item({ amount: 5 })])[0];
+      expect(merged.amount).toBe(15);
+      expect(merged.amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
+    });
+
+    it('applies the reported total to a single-item receipt', () => {
+      const only = consolidateReceiptItems([item({ amount: 481, receiptTotal: 517 })])[0];
+      expect(only.amount).toBe(517);
+      expect(only.amountConfidence).toBeUndefined();
+    });
+
+    it('flags a single item whose receipt reported no total', () => {
+      const only = consolidateReceiptItems([item({ amount: 481 })])[0];
+      expect(only.amount).toBe(481);
+      expect(only.amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
+    });
+
+    it('keeps a wildly deviant total but flags it', () => {
+      const merged = consolidateReceiptItems([
+        item({ amount: 10 }),
+        item({ amount: 5, receiptTotal: 100 }),
+      ])[0];
+      expect(merged.amount).toBe(100);          // |100 − 15| = 85 > 50
+      expect(merged.amountConfidence).toBe(REVIEW_AMOUNT_CONFIDENCE);
+    });
+
+    it('does not flag a total within the deviation guard', () => {
+      const merged = consolidateReceiptItems([
+        item({ amount: 30 }),
+        item({ amount: 30, receiptTotal: 100 }),
+      ])[0];
+      expect(merged.amount).toBe(100);          // |100 − 60| = 40 ≤ 50
+      expect(merged.amountConfidence).toBeUndefined();
+    });
+
+    it('reads the total from whichever item carries it', () => {
+      const merged = consolidateReceiptItems([
+        item({ amount: 10, receiptTotal: 16.2 }),
+        item({ amount: 5 }),
+      ])[0];
+      expect(merged.amount).toBe(16.2);
     });
   });
 });
