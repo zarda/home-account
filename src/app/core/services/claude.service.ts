@@ -19,7 +19,11 @@ import {
   buildCategoryPromptCatalog,
   mapCategoryNameToId,
 } from '../utils/categorization.utils';
-import { readCurrencyCode, readFieldConfidence } from '../utils/receipt-extraction.utils';
+import {
+  readCurrencyCode,
+  readFieldConfidence,
+  readReceiptTotal,
+} from '../utils/receipt-extraction.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
 import { SearchIntent, SearchQueryContext } from '../../models';
 import {
@@ -699,6 +703,7 @@ export class ClaudeService implements CloudLLMProviderAdapter {
         confidence: t.confidence ?? 0.7,
         receiptId: t.receiptId ?? 1,
         receiptDetails: t.receiptDetails,
+        receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: t.wasMerged || false,
         mergedFromImages: t.mergedFromImages,
       }));

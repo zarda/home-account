@@ -1,4 +1,9 @@
-import { readConfidence, readCurrencyCode, readFieldConfidence } from './receipt-extraction.utils';
+import {
+  readConfidence,
+  readCurrencyCode,
+  readFieldConfidence,
+  readReceiptTotal,
+} from './receipt-extraction.utils';
 
 describe('readCurrencyCode', () => {
   it('accepts a code the ISO table knows', () => {
@@ -34,6 +39,19 @@ describe('readCurrencyCode', () => {
     expect(readCurrencyCode(undefined)).toBe('');
     expect(readCurrencyCode(null)).toBe('');
     expect(readCurrencyCode(42)).toBe('');
+  });
+});
+
+describe('readReceiptTotal', () => {
+  it('passes a positive number through', () => expect(readReceiptTotal(16.2)).toBe(16.2));
+  it('coerces a numeric string', () => expect(readReceiptTotal('16.2')).toBe(16.2));
+  it('takes the magnitude of a negative report', () => expect(readReceiptTotal(-16.2)).toBe(16.2));
+  it('rejects zero, garbage and absence', () => {
+    expect(readReceiptTotal(0)).toBeUndefined();
+    expect(readReceiptTotal('n/a')).toBeUndefined();
+    expect(readReceiptTotal(undefined)).toBeUndefined();
+    expect(readReceiptTotal(null)).toBeUndefined();
+    expect(readReceiptTotal('')).toBeUndefined();
   });
 });
 

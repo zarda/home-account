@@ -797,7 +797,7 @@ describe('GeminiService', () => {
 
     it('uses single-image position extraction for one image', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', positionInImage: 'middle', confidence: 0.95, category: 'Groceries' },
+        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', positionInImage: 'middle', confidence: 0.95, category: 'Groceries', receiptTotal: 130 },
         { description: 'Coffee', amount: 330 },
       ])));
 
@@ -806,17 +806,19 @@ describe('GeminiService', () => {
       expect(result[0].imageIndex).toBe(0);
       expect(result[0].category).toBe('food_groceries');
       expect(result[0].positionInImage).toBe('middle');
+      expect(result[0].receiptTotal).toBe(130);
       // Defaults filled in for the sparse second item.
       expect(result[1].description).toBe('Coffee');
       expect(result[1].amount).toBe(330);
       expect(result[1].currency).toBe('');
       expect(result[1].confidence).toBe(0.7);
       expect(result[1].wasMerged).toBeFalse();
+      expect(result[1].receiptTotal).toBeUndefined();
     });
 
     it('extracts and normalizes items from multiple images', async () => {
       textModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { date: '2024-01-15', description: 'Item A', amount: -100, type: 'expense', currency: 'JPY', receiptId: 1, imageIndex: 0, positionInImage: 'top', confidence: 0.9, category: 'Groceries', wasMerged: true, mergedFromImages: [0, 1] },
+        { date: '2024-01-15', description: 'Item A', amount: -100, type: 'expense', currency: 'JPY', receiptId: 1, imageIndex: 0, positionInImage: 'top', confidence: 0.9, category: 'Groceries', wasMerged: true, mergedFromImages: [0, 1], receiptTotal: 130 },
         { description: 'Item B', amount: 50 },
       ])));
 
@@ -829,11 +831,13 @@ describe('GeminiService', () => {
       expect(result[0].category).toBe('food_groceries');
       expect(result[0].wasMerged).toBeTrue();
       expect(result[0].mergedFromImages).toEqual([0, 1]);
+      expect(result[0].receiptTotal).toBe(130);
       // Defaults for sparse item.
       expect(result[1].receiptId).toBe(1);
       expect(result[1].imageIndex).toBe(0);
       expect(result[1].currency).toBe('');
       expect(result[1].category).toBeUndefined();
+      expect(result[1].receiptTotal).toBeUndefined();
     });
 
     it('falls back to the vision model on a rate-limit error for multi-image', async () => {

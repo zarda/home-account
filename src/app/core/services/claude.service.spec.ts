@@ -747,6 +747,7 @@ describe('ClaudeService', () => {
               category: 'Restaurants',
               details: '×2',
               receiptDetails: 'Item ×2 — 10.00\nTotal 10.00',
+              receiptTotal: 24.99,
             },
           ])
         )
@@ -768,6 +769,7 @@ describe('ClaudeService', () => {
       expect(result[0].category).toBe('food');
       expect(result[0].details).toBe('×2');
       expect(result[0].receiptDetails).toBe('Item ×2 — 10.00\nTotal 10.00');
+      expect(result[0].receiptTotal).toBe(24.99);
       // Two image blocks then a trailing text block.
       const content = fake.messages.create.calls.mostRecent().args[0].messages[0].content;
       expect(content.length).toBe(3);
@@ -787,6 +789,7 @@ describe('ClaudeService', () => {
       expect(result[0].wasMerged).toBeFalse();
       expect(result[0].receiptId).toBe(1);
       expect(result[0].category).toBeUndefined();
+      expect(result[0].receiptTotal).toBeUndefined();
     });
 
     it('rethrows on failure and records lastError', async () => {
