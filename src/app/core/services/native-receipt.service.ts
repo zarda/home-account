@@ -144,6 +144,7 @@ export class NativeReceiptService {
       // receipt's line-by-line content — record it so item details reach
       // the transaction note
       notes: ocrResult.text?.trim() || undefined,
+      fieldConfidence: { amount: parsed.amountConfidence },
     };
   }
 }

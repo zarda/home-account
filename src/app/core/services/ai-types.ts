@@ -18,8 +18,11 @@ export interface ProcessedTransaction {
    * How sure the model was that it read the amount and the date correctly.
    *
    * Distinct from `confidence`, which is a coarse "did this look like a
-   * receipt at all" score. Absent when the source cannot report it — the
-   * regex parser has no way to know, and neither does a CSV row.
+   * receipt at all" score. The regex parser reports this for the amount — the
+   * evidence tier the winning figure matched, cut further when it was a
+   * tendered-cash figure demoted to the printed total — but not the date,
+   * which stays unreported on that path. Absent entirely when the source has
+   * no reading to grade at all, as a CSV row does not.
    */
   fieldConfidence?: FieldConfidence;
   /**
