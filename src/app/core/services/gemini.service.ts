@@ -105,7 +105,10 @@ export interface MultiImageExtractedTransaction extends ExtractedTransaction {
   confidence: number;             // OCR/extraction confidence (0-1)
   receiptId?: number;             // AI-assigned receipt group (items from same receipt share same ID)
   receiptDetails?: string;        // Full receipt content reproduced line by line
-  receiptTotal?: number;          // Printed grand total for this receiptId group, reported once on the last item (same convention as receiptDetails)
+  // Printed grand total for this receiptId group, reported once on the last
+  // item (same convention as receiptDetails). Consolidation takes the first
+  // value present in the group.
+  receiptTotal?: number;
   wasMerged?: boolean;            // True if deduplicated from multiple images
   mergedFromImages?: number[];    // Indices of images where this appeared
 }

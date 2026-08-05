@@ -53,6 +53,11 @@ describe('readReceiptTotal', () => {
     expect(readReceiptTotal(null)).toBeUndefined();
     expect(readReceiptTotal('')).toBeUndefined();
   });
+
+  it('rejects types that Number() would silently coerce', () => {
+    expect(readReceiptTotal(true)).toBeUndefined();
+    expect(readReceiptTotal([16.2])).toBeUndefined();
+  });
 });
 
 describe('readConfidence', () => {

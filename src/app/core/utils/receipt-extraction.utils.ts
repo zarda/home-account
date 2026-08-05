@@ -76,6 +76,7 @@ export function readCurrencyCode(value: unknown): string {
 /** The printed grand total a model reported, or undefined when it reported nothing usable. */
 export function readReceiptTotal(value: unknown): number | undefined {
   if (value === null || value === undefined || value === '') return undefined;
+  if (typeof value !== 'number' && typeof value !== 'string') return undefined;
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(parsed) || parsed === 0) return undefined;
   return Math.abs(parsed);
