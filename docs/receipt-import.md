@@ -121,6 +121,45 @@ double-import — and the completion toast carries both counts. When every row
 saved but the summary read-back fails, the wizard says so and moves on; the
 full record, including per-row errors, is on the Import History page.
 
+## Offline capture and the queue
+
+An image captured with no engine able to run is neither processed nor lost: it is
+stored in an IndexedDB queue on the device, with the account that captured it
+recorded on the row. The queue is one store per device rather than per account,
+so that stamp is what keeps it honest — an item is only ever drained into the
+ledger of the account that took the photo, and a drain that fires while someone
+else is signed in leaves it alone rather than filing it in their ledger.
+
+The queue drains when the browser reports the connection back, when the service
+worker's background sync fires, and when you press **Sync Now** on the AI
+settings page. Draining is unattended by definition — a reconnect with no dialog
+open and possibly nobody looking — so there is no review step: what the model
+read goes straight into the ledger and a toast says how many rows arrived. They
+are ordinary transactions afterwards, editable like any other.
+
+A launch does not drain the queue by itself; what it does is sweep. Anything
+left marked *processing* — a tab closed mid-receipt, an app swiped away, a
+background sync killed by the OS — is handed back as pending, at the cost of one
+of its retries.
+Without the sweep such a row is invisible to every counter and every retry, and
+the receipt is silently lost while its bytes sit in IndexedDB.
+
+**A drain that runs twice over the same image does not import it twice.** Each
+row is posted at an id derived from the queued image and the row's position in
+what the model read, and a row whose id already holds a transaction is skipped
+rather than rewritten. So a reclaimed receipt aims at exactly the documents its
+first pass wrote: it cannot duplicate them, and it cannot overwrite an edit you
+made to them in between. The count in the toast is what the receipt produced, so
+a receipt that had already fully landed reports its rows again and writes
+nothing. The reasoning, and what is still not guaranteed, is
+[ADR 0014](ADR/0014-reclaimed-receipts-replay-idempotently.md).
+
+An image whose rows only partly landed is failed rather than completed, and goes
+back into the queue's retry budget: three attempts, after which it is no longer
+dispatched. A retry writes only the rows that are missing. An item that has
+exhausted its retries stays in the queue and keeps counting towards the number
+shown on the AI settings page, which is what **Clear Queue** is for.
+
 ## What still bounds coverage
 
 - **The configured model.** This is the intended limit and the only one.
