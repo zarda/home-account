@@ -555,8 +555,9 @@ export class RecurringService {
    * `Number.isFinite` covers NaN and ±Infinity, which a restored or
    * hand-edited document can carry and which make every date comparison
    * downstream false. The floor is `>= 1` rather than an integer test so it
-   * matches the rule in firestore.rules, which has to keep accepting the
-   * 1.0-shaped doubles legacy documents were written with.
+   * matches the rule in firestore.rules, which has to keep accepting older
+   * documents even though nothing guarantees their interval was stored as
+   * an integer.
    */
   private validateFrequency(frequency: RecurringFrequency): void {
     if (!(Number.isFinite(frequency.interval) && frequency.interval >= 1)) {

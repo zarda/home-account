@@ -172,15 +172,16 @@ reading the day off the wrong date, and a default makes that the silent behaviou
 for the next one.
 
 **`f.interval is int` in the rules.** Tighter, and it would strand real rules.
-Intervals written by older builds are stored as 1.0-shaped doubles, and `is int`
-rejects a double outright — so every write that carries such a rule's frequency
-map would come back denied with nothing on screen to explain it: a restore
-replaying an old backup, and any edit that changes the schedule. Renames and
-amount changes are not affected, because `recurringUpdateValid` only evaluates
-`frequencyValid` when the write actually touches `frequency`, but that narrows
-the blast radius rather than removing it. `>= 1` is the property that matters and
-holds for a double just as well; it also rejects NaN, which is the hole a raw
-write could otherwise have gone through.
+Nothing guarantees an older document's interval is stored as an integer, and
+`is int` rejects a double outright — so every write that carries such a rule's
+frequency map would come back denied, with only a skipped count on screen to
+show for it: a restore replaying an old backup, and any edit that changes the
+schedule. Renames and amount changes are not affected, because
+`recurringUpdateValid` only evaluates `frequencyValid` when the write actually
+touches `frequency`, but that narrows the blast radius rather than removing
+it. `>= 1` is the property that matters and holds for a double just as well;
+it also rejects NaN, which is the hole a raw write could otherwise have gone
+through.
 
 ## Things that only became apparent while building
 
@@ -256,3 +257,16 @@ for a rule that never named a day, so saving that form pins the schedule to the
 1st. It is on screen, and it is easy to miss. Making the field genuinely optional
 is a dialog change with its own decisions to make about what an unset day should
 look like, and was deliberately not started here.
+
+**A rule stored without `startDate` would stall permanently and silently.**
+`claimDueOccurrences` reads `rule.startDate.toDate()` inside the transaction,
+before the early return that checks `isActive` and due-ness — a stored
+document missing the field throws a `TypeError` there instead of being
+skipped cleanly. `processRecurringTransactions` catches every claim failure
+with a bare `catch` written for the offline case, on the assumption that the
+network is the only way a claim can reject, so the error is swallowed and the
+rule waits for a catch-up that will throw the same way again. Two things
+bound it: `firestore.rules` has required `startDate` on every recurring
+create since `recurringCreateValid` was written, and the read sits in the
+same exposure class as the pre-existing `rule.nextOccurrence.toDate()`
+beside it — a risk this change inherited rather than introduced.

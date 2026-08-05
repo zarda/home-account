@@ -1267,10 +1267,10 @@ describe('RecurringService', () => {
             id: 'anchored',
             frequency,
             // A rule's first occurrence is its start date, and the monthly and
-            // yearly walks read their target day off that start. Left at the
-            // fixture default (1 January 2024) every rule built here would be
-            // anchored on the 1st and describe a schedule none of these cases
-            // is about.
+            // yearly walks read their target day off that start. This helper
+            // sets startDate to the same value as nextOccurrence explicitly,
+            // so these specs pin that relationship themselves rather than
+            // depending on how the fixture derives its own default.
             startDate: Timestamp.fromDate(first),
             nextOccurrence: Timestamp.fromDate(first)
           })

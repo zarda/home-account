@@ -235,3 +235,16 @@ ids from a queue row id whose format the queue service owns, and the two are
 joined by a comment rather than by a shared constant. Changing how queue rows are
 keyed, or reusing a key, silently changes which document a replay aims at.
 Nothing would fail to compile.
+
+**`updateImageStatus` can no-op while a row still reads `processing`.** It
+opens with `if (!this.db) return`, and the multi-tab `blocking` handler —
+which fires when another tab is waiting to open a newer schema version —
+closes the connection and sets `this.db` to `null` before this tab's own
+work is done. A processor mid-image when that happens still posts its
+transactions and still calls `updateImageStatus(id, 'completed')`, but the
+call now lands on a null handle and returns having done nothing: no throw,
+nothing logged, the row simply keeps whatever status `syncQueue` last wrote.
+The next open's reclaim sweep cannot tell that apart from a killed tab — it
+hands the row back as `pending` and the drain replays it, which the
+skip-on-exists check above now makes benign instead of a second write onto
+rows that already landed.
