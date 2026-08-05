@@ -108,10 +108,15 @@ export interface CloudLLMProviderAdapter {
   interpretSearchQuery(query: string, context: SearchQueryContext): Promise<SearchIntent>;
 
   // Insights
+  /**
+   * `baseCurrency` is required, not defaulted, on every insights method that
+   * takes it: a new call site has to say which currency the amounts are in.
+   * It used to default to `'USD'`, silently labelling a non-dollar ledger.
+   */
   generateSpendingSummary(
     transactions: Transaction[],
     period: string,
-    baseCurrency?: string,
+    baseCurrency: string,
     previousPeriodData?: PreviousPeriodData | null,
     budgets?: Budget[],
     ragContext?: string
@@ -119,7 +124,7 @@ export interface CloudLLMProviderAdapter {
   generatePatternNarrative(context: string, locale: string): Promise<string>;
   getFinancialAdvice(
     summary: MonthlyTotal,
-    baseCurrency?: string,
+    baseCurrency: string,
     period?: string
   ): Promise<string>;
 }

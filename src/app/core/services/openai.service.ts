@@ -350,7 +350,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
   async generateSpendingSummary(
     transactions: Transaction[],
     period: string,
-    baseCurrency = 'USD',
+    baseCurrency: string,
     previousPeriodData?: PreviousPeriodData | null,
     budgets?: Budget[],
     ragContext?: string
@@ -497,7 +497,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
   // Get financial advice based on period totals
   async getFinancialAdvice(
     summary: MonthlyTotal,
-    baseCurrency = 'USD',
+    baseCurrency: string,
     period = 'this month'
   ): Promise<string> {
     if (!this.client) {

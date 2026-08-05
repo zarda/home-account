@@ -633,7 +633,7 @@ describe('CloudLLMProviderService', () => {
 
     it('generateSpendingSummary throws when no provider', async () => {
       gemini.isAvailableSignal.and.returnValue(false);
-      await expectAsync(service.generateSpendingSummary(txns, 'June'))
+      await expectAsync(service.generateSpendingSummary(txns, 'June', 'USD'))
         .toBeRejectedWithError(/No cloud AI provider available for insights/);
     });
 
@@ -641,7 +641,7 @@ describe('CloudLLMProviderService', () => {
       gemini.isAvailableSignal.and.returnValue(false);
       (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
       (openai as unknown as jasmine.SpyObj<GeminiService>).generateSpendingSummary.and.resolveTo('o');
-      await service.generateSpendingSummary(txns, 'June');
+      await service.generateSpendingSummary(txns, 'June', 'USD');
       expect((openai as unknown as jasmine.SpyObj<GeminiService>).generateSpendingSummary).toHaveBeenCalled();
     });
 
@@ -649,7 +649,7 @@ describe('CloudLLMProviderService', () => {
       gemini.isAvailableSignal.and.returnValue(false);
       (claude as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
       (claude as unknown as jasmine.SpyObj<GeminiService>).generateSpendingSummary.and.resolveTo('c');
-      await service.generateSpendingSummary(txns, 'June');
+      await service.generateSpendingSummary(txns, 'June', 'USD');
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).generateSpendingSummary).toHaveBeenCalled();
     });
 
@@ -661,7 +661,7 @@ describe('CloudLLMProviderService', () => {
 
     it('getFinancialAdvice throws when no provider', async () => {
       gemini.isAvailableSignal.and.returnValue(false);
-      await expectAsync(service.getFinancialAdvice(summary))
+      await expectAsync(service.getFinancialAdvice(summary, 'USD'))
         .toBeRejectedWithError(/No cloud AI provider available for insights/);
     });
 
@@ -669,7 +669,7 @@ describe('CloudLLMProviderService', () => {
       gemini.isAvailableSignal.and.returnValue(false);
       (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
       (openai as unknown as jasmine.SpyObj<GeminiService>).getFinancialAdvice.and.resolveTo('o');
-      await service.getFinancialAdvice(summary);
+      await service.getFinancialAdvice(summary, 'USD');
       expect((openai as unknown as jasmine.SpyObj<GeminiService>).getFinancialAdvice).toHaveBeenCalled();
     });
 
@@ -677,7 +677,7 @@ describe('CloudLLMProviderService', () => {
       gemini.isAvailableSignal.and.returnValue(false);
       (claude as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
       (claude as unknown as jasmine.SpyObj<GeminiService>).getFinancialAdvice.and.resolveTo('c');
-      await service.getFinancialAdvice(summary);
+      await service.getFinancialAdvice(summary, 'USD');
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).getFinancialAdvice).toHaveBeenCalled();
     });
   });

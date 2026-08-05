@@ -521,7 +521,7 @@ describe('GeminiService', () => {
 
     it('throws when the text model is not available', async () => {
       (service as unknown as { textModel: unknown }).textModel = null;
-      await expectAsync(service.generateSpendingSummary(txns, 'June'))
+      await expectAsync(service.generateSpendingSummary(txns, 'June', 'USD'))
         .toBeRejectedWithError('Gemini text model not available');
     });
 
@@ -604,7 +604,7 @@ describe('GeminiService', () => {
 
     it('rethrows errors from the model', async () => {
       textModel.generateContent.and.rejectWith(new Error('summary failed'));
-      await expectAsync(service.generateSpendingSummary(txns, 'June'))
+      await expectAsync(service.generateSpendingSummary(txns, 'June', 'USD'))
         .toBeRejectedWithError('summary failed');
     });
   });
@@ -619,7 +619,7 @@ describe('GeminiService', () => {
 
     it('throws when the text model is not available', async () => {
       (service as unknown as { textModel: unknown }).textModel = null;
-      await expectAsync(service.getFinancialAdvice(summary))
+      await expectAsync(service.getFinancialAdvice(summary, 'USD'))
         .toBeRejectedWithError('Gemini text model not available');
     });
 
@@ -653,7 +653,7 @@ describe('GeminiService', () => {
         income: 0, expense: 100, balance: -100, transactionCount: 1, byCategory: [],
       };
       textModel.generateContent.and.resolveTo(makeResult('Find income sources today.'));
-      const result = await service.getFinancialAdvice(noIncome);
+      const result = await service.getFinancialAdvice(noIncome, 'USD');
       expect(result).toBeTruthy();
     });
 
@@ -678,7 +678,7 @@ describe('GeminiService', () => {
 
     it('rethrows errors from the model', async () => {
       textModel.generateContent.and.rejectWith(new Error('advice failed'));
-      await expectAsync(service.getFinancialAdvice(summary))
+      await expectAsync(service.getFinancialAdvice(summary, 'USD'))
         .toBeRejectedWithError('advice failed');
     });
   });

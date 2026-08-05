@@ -357,7 +357,7 @@ export class CloudLLMProviderService {
   async generateSpendingSummary(
     transactions: Transaction[],
     period: string,
-    baseCurrency?: string,
+    baseCurrency: string,
     previousPeriodData?: PreviousPeriodData | null,
     budgets?: Budget[],
     ragContext?: string
@@ -385,7 +385,7 @@ export class CloudLLMProviderService {
   /** Get financial advice. */
   async getFinancialAdvice(
     summary: MonthlyTotal,
-    baseCurrency?: string,
+    baseCurrency: string,
     period?: string
   ): Promise<string> {
     return this.resolve('insights').getFinancialAdvice(summary, baseCurrency, period);

@@ -462,7 +462,7 @@ describe('OpenAIService', () => {
 
     it('throws when the client is unavailable', async () => {
       await expectAsync(
-        service.generateSpendingSummary(expenseTxns, 'June')
+        service.generateSpendingSummary(expenseTxns, 'June', 'USD')
       ).toBeRejectedWithError('OpenAI client not available');
     });
 
@@ -471,7 +471,7 @@ describe('OpenAIService', () => {
       fake.responses.create.and.resolveTo(responseWith('  ## Spending Pattern\nGood  '));
       setClient(fake);
 
-      const result = await service.generateSpendingSummary(expenseTxns, 'June');
+      const result = await service.generateSpendingSummary(expenseTxns, 'June', 'USD');
 
       expect(result).toBe('## Spending Pattern\nGood');
     });
@@ -574,7 +574,7 @@ describe('OpenAIService', () => {
       fake.responses.create.and.resolveTo({});
       setClient(fake);
 
-      const result = await service.generateSpendingSummary([], 'June');
+      const result = await service.generateSpendingSummary([], 'June', 'USD');
       expect(result).toBe('Unable to generate spending summary.');
     });
 
@@ -584,7 +584,7 @@ describe('OpenAIService', () => {
       fake.responses.create.and.rejectWith(new Error('summary fail'));
       setClient(fake);
 
-      await expectAsync(service.generateSpendingSummary([], 'June')).toBeRejectedWithError(
+      await expectAsync(service.generateSpendingSummary([], 'June', 'USD')).toBeRejectedWithError(
         'summary fail'
       );
       expect(errorSpy).toHaveBeenCalled();
@@ -601,7 +601,7 @@ describe('OpenAIService', () => {
     } as MonthlyTotal;
 
     it('throws when the client is unavailable', async () => {
-      await expectAsync(service.getFinancialAdvice(summary)).toBeRejectedWithError(
+      await expectAsync(service.getFinancialAdvice(summary, 'USD')).toBeRejectedWithError(
         'OpenAI client not available'
       );
     });
@@ -633,7 +633,7 @@ describe('OpenAIService', () => {
       setClient(fake);
 
       const zero = { ...summary, income: 0 } as MonthlyTotal;
-      const result = await service.getFinancialAdvice(zero);
+      const result = await service.getFinancialAdvice(zero, 'USD');
       expect(result).toBe('advice');
       // A zero savings rate selects the low-rate guidance. The prompt's own
       // wording is asserted in prompt-registry.spec.ts; what matters here is
@@ -647,7 +647,7 @@ describe('OpenAIService', () => {
       fake.responses.create.and.resolveTo({});
       setClient(fake);
 
-      const result = await service.getFinancialAdvice(summary);
+      const result = await service.getFinancialAdvice(summary, 'USD');
       expect(result).toBe(
         'Keep tracking your expenses to better understand your spending patterns.'
       );
@@ -659,7 +659,7 @@ describe('OpenAIService', () => {
       fake.responses.create.and.rejectWith(new Error('advice fail'));
       setClient(fake);
 
-      await expectAsync(service.getFinancialAdvice(summary)).toBeRejectedWithError('advice fail');
+      await expectAsync(service.getFinancialAdvice(summary, 'USD')).toBeRejectedWithError('advice fail');
       expect(errorSpy).toHaveBeenCalled();
     });
   });
@@ -980,7 +980,7 @@ describe('OpenAIService', () => {
         expense: 0,
         balance: 1,
         transactionCount: 1,
-      } as MonthlyTotal);
+      } as MonthlyTotal, 'USD');
 
       const prompt = fake.responses.create.calls.mostRecent().args[0].input as string;
       expect(prompt).toContain('Respond in English.');
@@ -997,7 +997,7 @@ describe('OpenAIService', () => {
         expense: 0,
         balance: 1,
         transactionCount: 1,
-      } as MonthlyTotal);
+      } as MonthlyTotal, 'USD');
 
       const prompt = fake.responses.create.calls.mostRecent().args[0].input as string;
       expect(prompt).toContain('Japanese');
@@ -1012,7 +1012,7 @@ describe('OpenAIService', () => {
       const txns: Transaction[] = [
         createTransaction({ type: 'expense', amount: 10, currency: 'USD', categoryId: 'ghost' }),
       ];
-      await service.generateSpendingSummary(txns, 'June');
+      await service.generateSpendingSummary(txns, 'June', 'USD');
 
       const prompt = fake.responses.create.calls.mostRecent().args[0].input as string;
       expect(prompt).toContain('Other');

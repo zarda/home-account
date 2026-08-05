@@ -431,7 +431,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
   async generateSpendingSummary(
     transactions: Transaction[],
     period: string,
-    baseCurrency = 'USD',
+    baseCurrency: string,
     previousPeriodData?: PreviousPeriodData | null,
     budgets?: Budget[],
     ragContext?: string
@@ -614,7 +614,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
 
   async getFinancialAdvice(
     summary: MonthlyTotal,
-    baseCurrency = 'USD',
+    baseCurrency: string,
     period = 'this month'
   ): Promise<string> {
     if (!this.textModel) {
