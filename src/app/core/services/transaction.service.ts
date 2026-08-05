@@ -164,6 +164,20 @@ export class TransactionService {
   }
 
   /**
+   * Does a transaction already exist at this id?
+   *
+   * A one-shot read rather than a subscription: callers writing at
+   * deterministic ids (the recurring engine, the queue processor replaying a
+   * reclaimed receipt) need to know whether a write already landed before
+   * they issue another, and have nothing to keep a subscription alive for.
+   */
+  async hasTransaction(id: string): Promise<boolean> {
+    return (await this.firestoreService.getDocument(
+      `${this.userTransactionsPath}/${id}`
+    )) !== null;
+  }
+
+  /**
    * Add a new transaction.
    *
    * `options.id` writes at a caller-chosen id (recurring-engine idempotency,
@@ -231,6 +245,15 @@ export class TransactionService {
 
       let id: string;
       const receiptFiles = data.receiptFiles ?? [];
+      // The receipts branch below has to pre-generate its own id to key the
+      // storage objects with, so it cannot also write at the caller's. It used
+      // to just win, discarding `options.id` without a word — quiet precedence
+      // that turned a caller's idempotency key into no key at all. Refuse the
+      // combination instead; no caller has a use for both at once.
+      if (receiptFiles.length > 0 && options?.id) {
+        throw new Error('A caller-chosen id cannot be combined with receipt files');
+      }
+
       if (receiptFiles.length > 0) {
         if (receiptFiles.length > MAX_RECEIPTS_PER_TRANSACTION) {
           throw new Error(RECEIPT_ATTACH_FAILED);

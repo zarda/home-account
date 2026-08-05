@@ -458,6 +458,31 @@ describe('TransactionService', () => {
       expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
     });
 
+    it('refuses a caller-chosen id alongside receipt files', async () => {
+      const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+      await expectAsync(service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Receipt at a chosen id',
+          date: new Date(),
+          receiptFiles: [receiptFile]
+        },
+        { id: 'img_1-0' }
+      )).toBeRejected();
+
+      // The receipts branch pre-generates its own id to key the storage
+      // objects with, so it cannot honour the caller's. Silently preferring
+      // one over the other is what let a replayed receipt duplicate itself;
+      // refuse the combination outright, before anything is uploaded.
+      expect(mockStorage.uploadReceiptSpy.calls.length).toBe(0);
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
+    });
+
     it('recalculates affected budgets after posting an expense', async () => {
       const budgetService = TestBed.inject(BudgetService);
       const budget = createBudget({ id: 'b1', categoryId: 'food' });
@@ -478,6 +503,18 @@ describe('TransactionService', () => {
       );
       expect(budgetUpdate).toBeDefined();
       expect('spent' in (budgetUpdate?.args[1] as object)).toBeTrue();
+    });
+  });
+
+  describe('hasTransaction', () => {
+    it('reports whether a document exists at the id', async () => {
+      mockFirestore.setMockDocument(
+        'users/test-user-123/transactions/txn-1',
+        createTransaction({ id: 'txn-1' })
+      );
+
+      await expectAsync(service.hasTransaction('txn-1')).toBeResolvedTo(true);
+      await expectAsync(service.hasTransaction('txn-404')).toBeResolvedTo(false);
     });
   });
 
