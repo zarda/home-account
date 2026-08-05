@@ -31,10 +31,11 @@ import { TranslationService } from './translation.service';
  *
  * Only the AI call is stubbed — it reaches external cloud or native providers
  * that have no local emulator. Everything after it is real, which is the part
- * these three cases exist to prove: that the write lands before the item is
+ * these four cases exist to prove: that the write lands before the item is
  * marked done, that another account's item is never drained into the ledger of
- * whoever happens to be signed in (#164), and that a row stranded mid-sync is
- * still a working queue item after the next launch reclaims it (#169).
+ * whoever happens to be signed in (#164), that a row stranded mid-sync is
+ * still a working queue item after the next launch reclaims it (#169), and
+ * that draining such a row a second time does not post its rows twice (#205).
  *
  * Runs only under the emulators:
  *   npm run smoke
@@ -254,4 +255,49 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     );
     expect(stored.find((t) => t.amount === 246.8)).toBeDefined();
   }, 30000);
+
+  // #205, the other half of #169. Reclaiming a stranded row is only safe if
+  // draining it a second time is a no-op for whatever the first drain already
+  // wrote — and the row that gets reclaimed is most often one whose rows *did*
+  // land, since the crash window sits between the ledger write and the status
+  // flip. Before this fix the replay posted the whole receipt again, and the
+  // user found every row of it twice in their ledger with no way to tell which
+  // copy was which.
+  it('posts a reclaimed receipt once even when its rows already landed', async () => {
+    const amount = 531.97;
+    const description = 'Smoke replay once';
+    const matching = async (): Promise<unknown[]> => {
+      const stored = await firestoreService.getCollection<{ amount: number; description: string }>(
+        `users/${uid}/transactions`,
+      );
+      return stored.filter((t) => t.amount === amount && t.description === description);
+    };
+
+    reads(amount, description);
+    const id = await queue.queueImage(receiptFile());
+
+    // First drain: the receipt posts and the row is marked completed.
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+    expect((await matching()).length).toBe(1);
+
+    // Exactly the state a crash between the ledger write and the status flip
+    // leaves behind: the rows are in Firestore, the row still says processing.
+    await queue.updateImageStatus(id, 'processing');
+
+    // Next launch over the same database reclaims it.
+    processor.ngOnDestroy();
+    queue.ngOnDestroy();
+    await configure();
+
+    const [reclaimed] = await queue.getPendingImages();
+    expect(reclaimed?.id).toBe(id);
+
+    // The replay re-reads the image and re-posts what it read — at the same
+    // ids as the first pass, so the ledger is unchanged.
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    expect((await matching()).length).toBe(1);
+  }, 45000);
 });
