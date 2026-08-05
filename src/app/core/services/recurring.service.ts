@@ -417,6 +417,11 @@ export class RecurringService {
 
       const rule = { ...snapshot.data(), id: snapshot.id } as RecurringTransaction;
       let occurrenceDate = rule.nextOccurrence.toDate();
+      // Every step of the catch-up below measures from the rule's start date,
+      // never from the occurrence it has just posted, so draining a backlog
+      // lands on the same days the rule would have posted had the app been
+      // open all along.
+      const anchor = rule.startDate.toDate();
 
       // Re-check on fresh server data: another device may have paused,
       // edited, or already processed this rule.
@@ -442,7 +447,7 @@ export class RecurringService {
         tx.set(transactionRef, this.buildOccurrenceDocument(rule, occurrenceDate, userId));
         postedIds.push(transactionId);
 
-        const next = this.calculateNextOccurrenceFromDate(occurrenceDate, rule.frequency);
+        const next = this.calculateNextOccurrenceFromDate(occurrenceDate, rule.frequency, anchor);
         // Safety: a non-advancing frequency must not spin forever. The test is
         // negated rather than `<=` so an Invalid Date stops the walk too —
         // every comparison against NaN is false, so the plain form let it
@@ -530,7 +535,9 @@ export class RecurringService {
               date: new Date(nextDate)
             });
 
-            const next = this.calculateNextOccurrenceFromDate(nextDate, r.frequency);
+            const next = this.calculateNextOccurrenceFromDate(
+              nextDate, r.frequency, r.startDate.toDate()
+            );
             // Safety: a non-advancing frequency must not spin forever
             if (!(next.getTime() > nextDate.getTime())) break;
             nextDate = next;
@@ -576,9 +583,12 @@ export class RecurringService {
       return nextDate;
     }
 
-    // Calculate next occurrence from start date that is after now
+    // Calculate next occurrence from start date that is after now. The anchor
+    // stays the start date for every step: catching a long-dormant rule up to
+    // today must land on the day it was created for, not on the day some short
+    // month along the way clamped it to.
     while (nextDate <= now) {
-      const next = this.calculateNextOccurrenceFromDate(nextDate, frequency);
+      const next = this.calculateNextOccurrenceFromDate(nextDate, frequency, startDate);
       // Safety: a non-advancing frequency must not spin forever
       if (!(next.getTime() > nextDate.getTime())) break;
       nextDate = next;
@@ -587,10 +597,19 @@ export class RecurringService {
     return nextDate;
   }
 
-  // Calculate next occurrence from a given date
+  /**
+   * Calculate the occurrence that follows `fromDate`.
+   *
+   * `anchor` is the rule's start date and is what the monthly and yearly
+   * branches take their target day (and month) from when the frequency does
+   * not name one. It is required rather than defaulted: a default would let
+   * the next caller silently re-open the drift below, and the compiler
+   * pointing at every call site is worth more than the convenience.
+   */
   private calculateNextOccurrenceFromDate(
     fromDate: Date,
-    frequency: RecurringFrequency
+    frequency: RecurringFrequency,
+    anchor: Date
   ): Date {
     const next = new Date(fromDate);
 
@@ -619,19 +638,25 @@ export class RecurringService {
       // the 31st visited only the 31-day months, five short months a year, and
       // the catch-up loop advanced with the same function so it never
       // recovered them.
+      //
+      // The day comes from the anchor and not from `fromDate` because the
+      // clamp is a property of the month landed in, not a new schedule. Read
+      // off the previous occurrence, February's 28th became the target for
+      // March and every month after it, so one short month moved the rule
+      // permanently and each further short month moved it again.
       case 'monthly':
         return dateAtClampedDay(
           fromDate.getFullYear(),
           fromDate.getMonth() + frequency.interval,
-          frequency.dayOfMonth ?? fromDate.getDate(),
+          frequency.dayOfMonth ?? anchor.getDate(),
           fromDate
         );
 
       case 'yearly':
         return dateAtClampedDay(
           fromDate.getFullYear() + frequency.interval,
-          (frequency.monthOfYear ?? fromDate.getMonth() + 1) - 1,
-          frequency.dayOfMonth ?? fromDate.getDate(),
+          (frequency.monthOfYear ?? anchor.getMonth() + 1) - 1,
+          frequency.dayOfMonth ?? anchor.getDate(),
           fromDate
         );
     }

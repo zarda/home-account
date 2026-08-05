@@ -32,23 +32,34 @@ describe('RecurringService', () => {
 
   const monthly: RecurringFrequency = { type: 'monthly', interval: 1 };
 
-  const createRecurring = (overrides: Partial<RecurringTransaction> = {}): RecurringTransaction => ({
-    id: 'rec1',
-    userId: 'user123',
-    name: 'Monthly Salary',
-    type: 'income',
-    amount: 5000,
-    currency: 'USD',
-    categoryId: 'employment_salary',
-    description: 'Salary',
-    frequency: monthly,
-    startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
-    nextOccurrence: Timestamp.fromDate(new Date(2024, 1, 1)),
-    isActive: true,
-    createdAt: Timestamp.now(),
-    updatedAt: Timestamp.now(),
-    ...overrides
-  });
+  const createRecurring = (overrides: Partial<RecurringTransaction> = {}): RecurringTransaction => {
+    const nextOccurrence = overrides.nextOccurrence ?? Timestamp.fromDate(new Date(2024, 1, 1));
+
+    return {
+      id: 'rec1',
+      userId: 'user123',
+      name: 'Monthly Salary',
+      type: 'income',
+      amount: 5000,
+      currency: 'USD',
+      categoryId: 'employment_salary',
+      description: 'Salary',
+      frequency: monthly,
+      // A rule's first occurrence is its start date, and the monthly and
+      // yearly walks take their target day from that start. A fixture that
+      // moved the pointer while leaving a fixed start behind would describe a
+      // rule anchored on a day none of these specs is about — and one whose
+      // schedule shifts with the calendar date the suite happens to run on.
+      // Specs that need the two to differ, a rule resumed mid-schedule, say so
+      // by passing startDate.
+      startDate: nextOccurrence,
+      nextOccurrence,
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      ...overrides
+    };
+  };
 
   // Firestore-transaction stub: getDocRef returns path-carrying refs and
   // runTransaction hands the callback a tx whose get() serves docs from
@@ -450,11 +461,14 @@ describe('RecurringService', () => {
     });
 
     it('should recalculate when only the frequency day-of-month changes', async () => {
-      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(createRecurring()));
+      const current = createRecurring();
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(current));
 
+      // The start date submitted is the stored one, so the day-of-month is the
+      // only thing that moved and the recalculation can only be its doing.
       await service.updateRecurring('rec1', {
         frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 },
-        startDate: new Date(2024, 0, 1)
+        startDate: current.startDate.toDate()
       });
 
       const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
@@ -947,6 +961,36 @@ describe('RecurringService', () => {
       expect(next.getTime()).toBeGreaterThan(Date.now());
     });
 
+    // Catch-up walks the backlog with the same routine the preview does, so it
+    // needs the same anchor. The rule below resumes from an occurrence that is
+    // not on its start day, which is the only shape that tells a claim passing
+    // the rule's start date apart from one passing the occurrence it stands on.
+    it('claims a monthly rule with no target day back onto the 31st after February', async () => {
+      jasmine.clock().install();
+      try {
+        jasmine.clock().mockDate(new Date(2026, 3, 15));
+        const february = new Date(2026, 1, 28, 9);
+        const march = new Date(2026, 2, 31, 9);
+        const rule = createRecurring({
+          id: 'anchored',
+          frequency: { type: 'monthly', interval: 1 },
+          startDate: Timestamp.fromDate(new Date(2026, 0, 31, 9)),
+          nextOccurrence: Timestamp.fromDate(february)
+        });
+        service.recurringTransactions.set([rule]);
+        seedServerRule(rule);
+
+        await service.processRecurringTransactions();
+
+        expect(txSetPaths()).toEqual([
+          `users/user123/transactions/rec-anchored-${february.getTime()}`,
+          `users/user123/transactions/rec-anchored-${march.getTime()}`
+        ]);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
     it('should post at most one occurrence when the frequency never advances', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       const rule = createRecurring({
@@ -1222,6 +1266,12 @@ describe('RecurringService', () => {
           createRecurring({
             id: 'anchored',
             frequency,
+            // A rule's first occurrence is its start date, and the monthly and
+            // yearly walks read their target day off that start. Left at the
+            // fixture default (1 January 2024) every rule built here would be
+            // anchored on the 1st and describe a schedule none of these cases
+            // is about.
+            startDate: Timestamp.fromDate(first),
             nextOccurrence: Timestamp.fromDate(first)
           })
         ]));
@@ -1258,15 +1308,33 @@ describe('RecurringService', () => {
       )).toEqual(['2028-01-31', '2028-02-29']);
     });
 
-    it('does not let a monthly rule with no target day drift off the 31st', () => {
-      // Without dayOfMonth the old code walked 31 Jan -> 3 Mar -> 3 Apr and
-      // stayed on the 3rd for good.
+    it('returns a monthly rule with no target day to the 31st after a short month', () => {
+      // With no dayOfMonth the target day comes from the rule's start date, not
+      // from whichever occurrence the walk is standing on. February's clamp is
+      // therefore a detour rather than a new home: March is back on the 31st.
       expect(occurrencesFrom(
         new Date(2027, 0, 31, 9),
         { type: 'monthly', interval: 1 },
         new Date(2027, 0, 1),
         100
-      )).toEqual(['2027-01-31', '2027-02-28', '2027-03-28']);
+      )).toEqual(['2027-01-31', '2027-02-28', '2027-03-31']);
+    });
+
+    it('walks twelve months from 31 January without drifting', () => {
+      // A full year of a rule that pays on the last day of the month: four
+      // short months clamp on the way through and every 31-day month after
+      // them recovers the 31st. A single clamped step never becomes the day
+      // the rest of the year is measured from.
+      expect(occurrencesFrom(
+        new Date(2027, 0, 31, 9),
+        { type: 'monthly', interval: 1 },
+        new Date(2027, 0, 1),
+        365
+      )).toEqual([
+        '2027-01-31', '2027-02-28', '2027-03-31', '2027-04-30',
+        '2027-05-31', '2027-06-30', '2027-07-31', '2027-08-31',
+        '2027-09-30', '2027-10-31', '2027-11-30', '2027-12-31'
+      ]);
     });
 
     // The preview walks a rule forward one occurrence at a time until it
@@ -1290,15 +1358,20 @@ describe('RecurringService', () => {
       )).toEqual(['2027-01-10']);
     });
 
-    it('clamps a yearly rule anchored on 29 February', () => {
+    it('returns a yearly rule to 29 February once the leap year comes round', () => {
       // monthOfYear is deliberately unset: with it, the yearly branch happened
       // to re-land in the target month before clamping and looked correct.
+      // The window runs to 2032 because the clamped 28ths in between prove
+      // nothing on their own — only the return to the 29th shows each step is
+      // measured from the rule's start date and not from its predecessor.
       expect(occurrencesFrom(
         new Date(2028, 1, 29, 9),
         { type: 'yearly', interval: 1 },
         new Date(2028, 0, 1),
-        800
-      )).toEqual(['2028-02-29', '2029-02-28', '2030-02-28']);
+        1550
+      )).toEqual([
+        '2028-02-29', '2029-02-28', '2030-02-28', '2031-02-28', '2032-02-29'
+      ]);
     });
   });
 
