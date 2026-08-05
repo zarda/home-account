@@ -64,8 +64,13 @@ describe('OfflineQueueProcessorService', () => {
     userId = signal<string | null>('user-a');
 
     ai = jasmine.createSpyObj<AIStrategyService>('AIStrategyService', ['processReceipt']);
-    transactions = jasmine.createSpyObj<TransactionService>('TransactionService', ['addTransaction']);
+    transactions = jasmine.createSpyObj<TransactionService>('TransactionService', [
+      'addTransaction',
+      'hasTransaction',
+    ]);
     transactions.addTransaction.and.resolveTo('new-id');
+    // Nothing has landed yet unless a spec says otherwise.
+    transactions.hasTransaction.and.resolveTo(false);
     notifications = jasmine.createSpyObj<NotificationService>('NotificationService', [
       'success',
       'error',
@@ -118,8 +123,72 @@ describe('OfflineQueueProcessorService', () => {
           description: 'Konbini',
           note: 'Onigiri — JPY 180',
         }),
+        { id: 'img_1-0' },
       );
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
+    });
+
+    it('writes each row at an id derived from the queue row and its position', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      // The queue row id plus the row's position in what the model read. Both
+      // halves are stable across a reclaim, so a replay of this receipt aims
+      // at the documents the first pass wrote rather than at fresh ones.
+      expect(transactions.addTransaction).toHaveBeenCalledWith(
+        jasmine.objectContaining({ description: 'Konbini' }),
+        { id: 'img_1-0' },
+      );
+      expect(transactions.addTransaction).toHaveBeenCalledWith(
+        jasmine.objectContaining({ description: 'Kiosk' }),
+        { id: 'img_1-1' },
+      );
+    });
+
+    it('skips a row that already landed instead of posting it twice', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
+      );
+      // The first row was written before the crash; the second was not.
+      transactions.hasTransaction.and.callFake((id: string) =>
+        Promise.resolve(id === 'img_1-0'),
+      );
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).toHaveBeenCalledTimes(1);
+      expect(transactions.addTransaction).toHaveBeenCalledWith(
+        jasmine.objectContaining({ description: 'Kiosk' }),
+        { id: 'img_1-1' },
+      );
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
+      // Two rows came off this receipt; one of them simply did not need
+      // writing again. The count is what the receipt produced, not what this
+      // pass happened to write.
+      expect(translation.t).toHaveBeenCalledWith('settings.transactionsImported', { count: 2 });
+    });
+
+    it('completes without a second write when every row already landed', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted(), extracted({ description: 'Kiosk', amount: 320 })]),
+      );
+      // The crash landed between the last ledger write and the status flip.
+      transactions.hasTransaction.and.resolveTo(true);
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(transactions.addTransaction).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
+      expect(translation.t).toHaveBeenCalledWith('settings.transactionsImported', { count: 2 });
     });
 
     it('tells the user how many transactions the queued receipt produced', async () => {
@@ -178,7 +247,7 @@ describe('OfflineQueueProcessorService', () => {
       expect(notifications.success).not.toHaveBeenCalled();
     });
 
-    it('completes on a partial batch so a retry cannot duplicate the rows that landed', async () => {
+    it('fails a partial batch so the queue can retry the rows that did not land', async () => {
       queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(
         processingResult([extracted(), extracted({ description: 'Kiosk' })]),
@@ -191,8 +260,13 @@ describe('OfflineQueueProcessorService', () => {
       dispatchImage('img_6');
       await waitFor(() => queue.updateImageStatus.calls.any());
 
-      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_6', 'completed');
-      expect(translation.t).toHaveBeenCalledWith('settings.transactionsImported', { count: 1 });
+      // Completing here used to be the lesser evil: a retry re-ran the whole
+      // image and duplicated the row that had landed, so half a receipt was
+      // better than a doubled one. Now the retry skips what landed and writes
+      // only the remainder, so failing is simply correct — and the user is
+      // told nothing succeeded until it actually has.
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_6', 'failed', 'Firestore down');
+      expect(notifications.success).not.toHaveBeenCalled();
     });
 
     it('marks the image failed (with the error) when AI processing throws', async () => {
