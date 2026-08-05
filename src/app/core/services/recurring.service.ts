@@ -285,6 +285,11 @@ export class RecurringService {
 
     if (!recurring) return;
 
+    // No frequency check here, unlike create and update: a rule already stored
+    // with an interval that cannot advance has to stay resumable, and this
+    // path has no way to show the user why it refused. The guard inside
+    // calculateNextOccurrence is what keeps that safe.
+
     // Recalculate next occurrence from today
     const nextOccurrence = this.calculateNextOccurrence(new Date(), recurring.frequency);
 
@@ -438,8 +443,11 @@ export class RecurringService {
         postedIds.push(transactionId);
 
         const next = this.calculateNextOccurrenceFromDate(occurrenceDate, rule.frequency);
-        // Safety: a non-advancing frequency must not spin forever
-        if (next.getTime() <= occurrenceDate.getTime()) break;
+        // Safety: a non-advancing frequency must not spin forever. The test is
+        // negated rather than `<=` so an Invalid Date stops the walk too —
+        // every comparison against NaN is false, so the plain form let it
+        // through and it became the stored pointer.
+        if (!(next.getTime() > occurrenceDate.getTime())) break;
         occurrenceDate = next;
       }
 
@@ -522,7 +530,10 @@ export class RecurringService {
               date: new Date(nextDate)
             });
 
-            nextDate = this.calculateNextOccurrenceFromDate(nextDate, r.frequency);
+            const next = this.calculateNextOccurrenceFromDate(nextDate, r.frequency);
+            // Safety: a non-advancing frequency must not spin forever
+            if (!(next.getTime() > nextDate.getTime())) break;
+            nextDate = next;
           }
         }
 
@@ -567,7 +578,10 @@ export class RecurringService {
 
     // Calculate next occurrence from start date that is after now
     while (nextDate <= now) {
-      nextDate = this.calculateNextOccurrenceFromDate(nextDate, frequency);
+      const next = this.calculateNextOccurrenceFromDate(nextDate, frequency);
+      // Safety: a non-advancing frequency must not spin forever
+      if (!(next.getTime() > nextDate.getTime())) break;
+      nextDate = next;
     }
 
     return nextDate;

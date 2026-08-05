@@ -561,6 +561,24 @@ describe('RecurringService', () => {
       expect(record['isActive']).toBeTrue();
       expect(record['nextOccurrence']).toBeDefined();
     });
+
+    // Resume deliberately does not reject a stored frequency the way create
+    // and update do — the button has nowhere to show an error, and a rule
+    // already saved with a bad interval has to stay recoverable. What it must
+    // not do is hang while recalculating the pointer from today.
+    it('resumes a rule whose stored frequency cannot advance without spinning', async () => {
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(
+        createRecurring({ id: 'r1', frequency: { type: 'daily', interval: 0 } })
+      ));
+
+      await service.resumeRecurring('r1');
+
+      const [path, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      expect(path).toBe('users/user123/recurring/r1');
+      const record = data as Record<string, unknown>;
+      expect(record['isActive']).toBeTrue();
+      expect(record['nextOccurrence']).toEqual(jasmine.any(Timestamp));
+    });
   });
 
   describe('processRecurringTransactions', () => {
@@ -945,6 +963,29 @@ describe('RecurringService', () => {
       expect(result).toEqual([]);
     });
 
+    // The interval never reaches the walk as a plain number here: it reaches
+    // it as an Invalid Date, which loses every comparison it is given. The
+    // pointer that comes out of that walk is the one the next run starts from,
+    // so it has to be a date and not a hole.
+    it('commits a real pointer when a stored frequency yields an invalid date', async () => {
+      const due = new Date(Date.now() - 3 * DAY);
+      const rule = createRecurring({
+        id: 'invalid',
+        frequency: { type: 'daily', interval: NaN },
+        nextOccurrence: Timestamp.fromDate(due)
+      });
+      service.recurringTransactions.set([rule]);
+      seedServerRule(rule);
+
+      await service.processRecurringTransactions();
+
+      expect(txSet).toHaveBeenCalledTimes(1);
+      expect(txUpdate).toHaveBeenCalledTimes(1);
+      const [, data] = txUpdate.calls.mostRecent().args;
+      const record = data as { nextOccurrence: Timestamp };
+      expect(record.nextOccurrence.toDate()).toEqual(due);
+    });
+
     it('should no-op when a racing device already advanced the rule on the server', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       // The locally cached rule looks due, but the fresh server read inside
@@ -1226,6 +1267,27 @@ describe('RecurringService', () => {
         new Date(2027, 0, 1),
         100
       )).toEqual(['2027-01-31', '2027-02-28', '2027-03-28']);
+    });
+
+    // The preview walks a rule forward one occurrence at a time until it
+    // leaves the window. A frequency that hands back the date it was given
+    // never leaves it, so the walk has to stop itself.
+    it('stops collecting occurrences when the frequency cannot advance', () => {
+      expect(occurrencesFrom(
+        new Date(2027, 0, 10, 9),
+        { type: 'daily', interval: 0 },
+        new Date(2027, 0, 1),
+        30
+      )).toEqual(['2027-01-10']);
+    });
+
+    it('stops collecting when a negative interval walks backwards', () => {
+      expect(occurrencesFrom(
+        new Date(2027, 0, 10, 9),
+        { type: 'daily', interval: -1 },
+        new Date(2027, 0, 1),
+        30
+      )).toEqual(['2027-01-10']);
     });
 
     it('clamps a yearly rule anchored on 29 February', () => {
