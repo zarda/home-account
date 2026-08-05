@@ -64,10 +64,10 @@ The same rule applies to examples. Demonstrate the *shape* with placeholders (`"
 |---|---|---|---|---|
 | `receiptParse` | receiptScanning | claude, gemini, openai | 1.17.93 | One receipt photo → one transaction, with `receiptCount` so several receipts in one photo are noticed |
 | `receiptSummary` | receiptScanning | gemini | 1.17.93 | One receipt photo → one summary row carrying the full receipt body as notes |
-| `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, with position metadata for overlap detection |
+| `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, plus the receipt's printed total, with position metadata for overlap detection |
 | `statementTransactions` | receiptScanning | claude, gemini, openai | 1.17.93 | A statement or multi-row document image → one row per line item |
 | `pdfStatement` | receiptScanning | gemini | 1.17.93 | A PDF bank statement → one row per transaction |
-| `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges |
+| `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges, one printed total per group |
 | `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row |
 | `categorySuggestion` | categorization | claude, gemini, openai | 1.17.93 | Single-description category lookup outside the import flow |
 | `csvMapping` | categorization | claude, gemini, openai | 1.17.93 | Map a bank export's columns onto the transaction fields |
