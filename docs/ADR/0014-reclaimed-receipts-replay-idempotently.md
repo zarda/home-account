@@ -10,12 +10,13 @@ This record keeps the decision and the reasoning.
 A receipt photographed offline is stored in a device-global IndexedDB queue, one
 row per image, each stamped with the account that captured it. Connectivity is
 the whole condition on the multi-photo capture path, which queues before it asks
-which engine could run; the in-form scan queues only when it is offline *and* no
-engine can run at all. When the connection comes back, `syncQueue` walks the rows
-it owns, marks each one `processing`, and dispatches a DOM event. That is the
-whole handoff: the processor's listener `void`s the work, so the queue cannot
-await it and the row's real outcome is written later, by the processor, from the
-other side of an AI call and a set of ledger writes.
+which engine could run; the import wizard's file path queues only when it is
+offline *and* no engine can run at all. Those are the two producers — the
+in-form scan keeps its image on the form instead. When the connection comes back,
+`syncQueue` walks the rows it owns, marks each one `processing`, and dispatches
+a DOM event. That is the whole handoff: the processor's listener `void`s the
+work, so the queue cannot await it and the row's real outcome is written later,
+by the processor, from the other side of an AI call and a set of ledger writes.
 
 Two lines hold the whole problem, and they still do:
 
