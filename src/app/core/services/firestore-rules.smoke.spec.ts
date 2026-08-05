@@ -635,6 +635,24 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    // An interval below one schedules nothing: it asks for a date no further
+    // on than the one before it, which is what turned a rule's occurrence
+    // walk into a loop with no exit. The client refuses it, but a restore, an
+    // older build or a raw SDK call all reach this document directly.
+    it('rejects a zero interval', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ frequency: { type: 'monthly', interval: 0 } })),
+        'zero interval'
+      );
+    });
+
+    it('rejects a negative interval', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ frequency: { type: 'monthly', interval: -1 } })),
+        'negative interval'
+      );
+    });
+
     // The occurrence claim runs inside a transaction; a rejection there would
     // stall recurring posting rather than fail a single row.
     it('accepts the occurrence claim update', async () => {

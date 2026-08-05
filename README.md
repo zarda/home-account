@@ -216,10 +216,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translatio
 | [docs/prompts.md](docs/prompts.md) | The prompt registry, how prompts are written, and what the consistency check can and cannot see |
 | [docs/insights.md](docs/insights.md) | Spending-pattern detectors, monthly snapshots, card contract, privacy boundary |
 | [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
-| [docs/receipt-import.md](docs/receipt-import.md) | What bounds receipt scanning, which engine runs, and where the amount comes from |
+| [docs/receipt-import.md](docs/receipt-import.md) | What bounds receipt scanning, which engine runs, where the amount comes from, and the offline queue |
 | [docs/remote-config.md](docs/remote-config.md) | Firebase Remote Config parameters and defaults |
 | [docs/storage-cors-setup.md](docs/storage-cors-setup.md) | One-time Cloud Storage CORS setup for in-browser receipt reads |
 | [docs/ui-overflow.md](docs/ui-overflow.md) | What the app does when content does not fit: the five layout invariants, and where each is enforced |
+| [docs/recurring.md](docs/recurring.md) | Recurring rules: frequencies, the clamp and the anchor, the catch-up engine, pause/resume, and the validity floor |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 

@@ -15,9 +15,10 @@ import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
  * dispatches a `process-queued-image` event, but it cannot await the actual
  * work. This service listens and does it: a queued image goes through the AI
  * strategy and the rows it yields are written to the ledger. The item's queue
- * status then comes from the real outcome — only `completed` after something
- * was actually saved, and `failed` (which increments its retry count)
- * otherwise.
+ * status then comes from the real outcome — `completed` only once every row it
+ * produced is in the ledger, and `failed` (which increments its retry count)
+ * otherwise. Draining is replayable: the same image processed twice writes its
+ * rows once, so an item reclaimed after a crash can simply be run again.
  *
  * It is instantiated eagerly at startup (via provideAppInitializer in
  * app.config.ts) so its listener is attached before any sync fires.
@@ -84,10 +85,10 @@ export class OfflineQueueProcessorService implements OnDestroy {
         return;
       }
 
-      const created = await this.createTransactions(result.transactions);
+      const landed = await this.createTransactions(id, result.transactions);
       await this.queue.updateImageStatus(id, 'completed');
       this.notifications.success(
-        this.translation.t('settings.transactionsImported', { count: created }),
+        this.translation.t('settings.transactionsImported', { count: landed }),
       );
     } catch (error) {
       await this.queue.updateImageStatus(id, 'failed', this.errorMessage(error));
@@ -95,19 +96,45 @@ export class OfflineQueueProcessorService implements OnDestroy {
   }
 
   /**
-   * Write the rows read off a queued receipt to the ledger.
+   * Write the rows read off a queued receipt to the ledger, at most once each.
    *
-   * Rejects rather than returning zero when none of them could be written, so
-   * the caller marks the image `failed` and the queue retries it instead of
-   * losing the receipt. A partial batch still counts as done — a retry would
-   * re-run the whole image and duplicate the rows that did land.
+   * Every row is written at `${queue row id}-${its position}` rather than at a
+   * fresh auto-id. Both halves survive a crash — the row id is the key the
+   * image is stored under, the position is where the row sat in what the model
+   * read — so a receipt that is reclaimed and drained again aims at exactly
+   * the documents the first pass wrote. Each id is checked before it is used
+   * and an existing document is left alone: overwriting would be idempotent in
+   * the ledger's shape but not in its content, since the write is a full
+   * replace that would reset `createdAt` and discard any edit the user made to
+   * the row in between.
+   *
+   * A row that could not be written fails the whole image, which sends it back
+   * through the queue's bounded retries. That used to be the wrong call — a
+   * retry re-ran the image from the top and duplicated whatever had already
+   * landed, so a partial batch was reported as done and the missing rows were
+   * quietly dropped. With the skip above, the retry writes only the remainder.
+   *
+   * The count returned includes the rows that were skipped: it is what the
+   * receipt produced, which is what the user is told about, not a tally of
+   * this particular pass's writes.
    */
-  private async createTransactions(transactions: ProcessedTransaction[]): Promise<number> {
-    let created = 0;
+  private async createTransactions(
+    id: string,
+    transactions: ProcessedTransaction[],
+  ): Promise<number> {
+    let landed = 0;
+    let anyFailed = false;
     let firstError: unknown;
 
-    for (const tx of transactions) {
+    for (const [index, tx] of transactions.entries()) {
+      const rowTxId = `${id}-${index}`;
       try {
+        if (await this.transactionService.hasTransaction(rowTxId)) {
+          // An interrupted earlier drain already posted this one.
+          landed++;
+          continue;
+        }
+
         await this.transactionService.addTransaction({
           type: tx.type,
           amount: tx.amount,
@@ -117,18 +144,19 @@ export class OfflineQueueProcessorService implements OnDestroy {
           description: tx.description,
           date: tx.date,
           note: tx.notes,
-        });
-        created++;
+        }, { id: rowTxId });
+        landed++;
       } catch (error) {
+        anyFailed = true;
         firstError ??= error;
       }
     }
 
-    if (created === 0) {
+    if (anyFailed) {
       throw firstError instanceof Error ? firstError : new Error(this.errorMessage(firstError));
     }
 
-    return created;
+    return landed;
   }
 
   private errorMessage(error: unknown): string {

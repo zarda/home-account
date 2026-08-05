@@ -34,6 +34,14 @@ interface ClaimResult {
  */
 export const MAX_OCCURRENCES_PER_CLAIM = 400;
 
+/**
+ * Thrown when a frequency could never advance: a zero, negative or non-finite
+ * interval. Every walk over a rule's occurrences asks the frequency for the
+ * next date; one that answers with the same date — or with an Invalid Date —
+ * turns that walk into a loop with no exit.
+ */
+export const INVALID_FREQUENCY_ERROR = 'INVALID_RECURRING_FREQUENCY';
+
 @Injectable({ providedIn: 'root' })
 export class RecurringService {
   private firestoreService = inject(FirestoreService);
@@ -128,6 +136,11 @@ export class RecurringService {
       const userId = this.authService.userId();
       if (!userId) throw new Error('User not authenticated');
 
+      // Refuse here, before the first date walk: calculateNextOccurrence
+      // advances a past start date towards today, and an interval that never
+      // advances hangs the tab on this very line.
+      this.validateFrequency(data.frequency);
+
       const nextOccurrence = this.calculateNextOccurrence(
         data.startDate,
         data.frequency
@@ -180,6 +193,13 @@ export class RecurringService {
     this.isLoading.set(true);
 
     try {
+      // Before the read and the write both: an edit that saved an
+      // unusable frequency would leave the rule stored broken even if this
+      // call happened not to recompute the pointer.
+      if (data.frequency !== undefined) {
+        this.validateFrequency(data.frequency);
+      }
+
       const updateData: Partial<Omit<RecurringTransaction, 'endDate'>> & {
         endDate?: Timestamp | FieldValue;
       } = {};
@@ -264,6 +284,11 @@ export class RecurringService {
     );
 
     if (!recurring) return;
+
+    // No frequency check here, unlike create and update: a rule already stored
+    // with an interval that cannot advance has to stay resumable, and this
+    // path has no way to show the user why it refused. The guard inside
+    // calculateNextOccurrence is what keeps that safe.
 
     // Recalculate next occurrence from today
     const nextOccurrence = this.calculateNextOccurrence(new Date(), recurring.frequency);
@@ -392,6 +417,11 @@ export class RecurringService {
 
       const rule = { ...snapshot.data(), id: snapshot.id } as RecurringTransaction;
       let occurrenceDate = rule.nextOccurrence.toDate();
+      // Every step of the catch-up below measures from the rule's start date,
+      // never from the occurrence it has just posted, so draining a backlog
+      // lands on the same days the rule would have posted had the app been
+      // open all along.
+      const anchor = rule.startDate.toDate();
 
       // Re-check on fresh server data: another device may have paused,
       // edited, or already processed this rule.
@@ -417,9 +447,12 @@ export class RecurringService {
         tx.set(transactionRef, this.buildOccurrenceDocument(rule, occurrenceDate, userId));
         postedIds.push(transactionId);
 
-        const next = this.calculateNextOccurrenceFromDate(occurrenceDate, rule.frequency);
-        // Safety: a non-advancing frequency must not spin forever
-        if (next.getTime() <= occurrenceDate.getTime()) break;
+        const next = this.calculateNextOccurrenceFromDate(occurrenceDate, rule.frequency, anchor);
+        // Safety: a non-advancing frequency must not spin forever. The test is
+        // negated rather than `<=` so an Invalid Date stops the walk too —
+        // every comparison against NaN is false, so the plain form let it
+        // through and it became the stored pointer.
+        if (!(next.getTime() > occurrenceDate.getTime())) break;
         occurrenceDate = next;
       }
 
@@ -502,13 +535,34 @@ export class RecurringService {
               date: new Date(nextDate)
             });
 
-            nextDate = this.calculateNextOccurrenceFromDate(nextDate, r.frequency);
+            const next = this.calculateNextOccurrenceFromDate(
+              nextDate, r.frequency, r.startDate.toDate()
+            );
+            // Safety: a non-advancing frequency must not spin forever
+            if (!(next.getTime() > nextDate.getTime())) break;
+            nextDate = next;
           }
         }
 
         return occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
       })
     );
+  }
+
+  /**
+   * Reject a frequency no walk over its occurrences could ever finish.
+   *
+   * `Number.isFinite` covers NaN and ±Infinity, which a restored or
+   * hand-edited document can carry and which make every date comparison
+   * downstream false. The floor is `>= 1` rather than an integer test so it
+   * matches the rule in firestore.rules, which has to keep accepting older
+   * documents even though nothing guarantees their interval was stored as
+   * an integer.
+   */
+  private validateFrequency(frequency: RecurringFrequency): void {
+    if (!(Number.isFinite(frequency.interval) && frequency.interval >= 1)) {
+      throw new Error(INVALID_FREQUENCY_ERROR);
+    }
   }
 
   // Whether two frequencies describe the same schedule
@@ -530,18 +584,33 @@ export class RecurringService {
       return nextDate;
     }
 
-    // Calculate next occurrence from start date that is after now
+    // Calculate next occurrence from start date that is after now. The anchor
+    // stays the start date for every step: catching a long-dormant rule up to
+    // today must land on the day it was created for, not on the day some short
+    // month along the way clamped it to.
     while (nextDate <= now) {
-      nextDate = this.calculateNextOccurrenceFromDate(nextDate, frequency);
+      const next = this.calculateNextOccurrenceFromDate(nextDate, frequency, startDate);
+      // Safety: a non-advancing frequency must not spin forever
+      if (!(next.getTime() > nextDate.getTime())) break;
+      nextDate = next;
     }
 
     return nextDate;
   }
 
-  // Calculate next occurrence from a given date
+  /**
+   * Calculate the occurrence that follows `fromDate`.
+   *
+   * `anchor` is the rule's start date and is what the monthly and yearly
+   * branches take their target day (and month) from when the frequency does
+   * not name one. It is required rather than defaulted: a default would let
+   * the next caller silently re-open the drift below, and the compiler
+   * pointing at every call site is worth more than the convenience.
+   */
   private calculateNextOccurrenceFromDate(
     fromDate: Date,
-    frequency: RecurringFrequency
+    frequency: RecurringFrequency,
+    anchor: Date
   ): Date {
     const next = new Date(fromDate);
 
@@ -570,19 +639,25 @@ export class RecurringService {
       // the 31st visited only the 31-day months, five short months a year, and
       // the catch-up loop advanced with the same function so it never
       // recovered them.
+      //
+      // The day comes from the anchor and not from `fromDate` because the
+      // clamp is a property of the month landed in, not a new schedule. Read
+      // off the previous occurrence, February's 28th became the target for
+      // March and every month after it, so one short month moved the rule
+      // permanently and each further short month moved it again.
       case 'monthly':
         return dateAtClampedDay(
           fromDate.getFullYear(),
           fromDate.getMonth() + frequency.interval,
-          frequency.dayOfMonth ?? fromDate.getDate(),
+          frequency.dayOfMonth ?? anchor.getDate(),
           fromDate
         );
 
       case 'yearly':
         return dateAtClampedDay(
           fromDate.getFullYear() + frequency.interval,
-          (frequency.monthOfYear ?? fromDate.getMonth() + 1) - 1,
-          frequency.dayOfMonth ?? fromDate.getDate(),
+          (frequency.monthOfYear ?? anchor.getMonth() + 1) - 1,
+          frequency.dayOfMonth ?? anchor.getDate(),
           fromDate
         );
     }
