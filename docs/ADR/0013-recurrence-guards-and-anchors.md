@@ -126,13 +126,23 @@ independently against the month it lands in, which makes a short month a detour
 rather than a new home: 31 Jan, 28 Feb, 31 Mar.
 
 The parameter is required rather than defaulted. There are three call sites, each
-of which already holds the rule and can hand over its start date, and a default
-would leave the defect one forgetful caller away from returning. The compiler
-pointing at all three is worth more than the convenience.
+of which already holds a date to measure from, and a default would leave the
+defect one forgetful caller away from returning. The compiler pointing at all
+three is worth more than the convenience.
+
+Two of the three hand over the rule's own start date: the claim and the preview
+both read it off the document. The third, `calculateNextOccurrence`, passes on
+whatever start it was given — the rule's, when create and update recompute the
+pointer, and **today**, when `resumeRecurring` calls it. So a resumed rule with no
+`dayOfMonth` takes its next day from the day it was resumed rather than from its
+start date. That is deliberate: resume means "start again from now". It also
+lasts exactly one occurrence, because the claim that posts that occurrence
+re-reads `rule.startDate` and measures from there again.
 
 Nothing had to be migrated. Rules already in Firestore carry the start date they
 were created with, and the claim re-reads the raw document inside its own
-transaction, so the server-side walk gets the same anchor as the client's.
+transaction, so its walk anchors on the same date as the walks running against
+the cached copy.
 
 ## Rejected alternatives
 
@@ -161,12 +171,16 @@ compiles unchanged, which is exactly the problem — the defect *was* a caller
 reading the day off the wrong date, and a default makes that the silent behaviour
 for the next one.
 
-**`f.interval is int` in the rules.** Tighter, and it would strand real users.
+**`f.interval is int` in the rules.** Tighter, and it would strand real rules.
 Intervals written by older builds are stored as 1.0-shaped doubles, and `is int`
-rejects those, so the next innocent edit of such a rule — a rename, an amount
-change — would come back denied with nothing on screen to explain it. `>= 1` is
-the property that matters and holds for a double just as well; it also rejects
-NaN, which is the hole a raw write could otherwise have gone through.
+rejects a double outright — so every write that carries such a rule's frequency
+map would come back denied with nothing on screen to explain it: a restore
+replaying an old backup, and any edit that changes the schedule. Renames and
+amount changes are not affected, because `recurringUpdateValid` only evaluates
+`frequencyValid` when the write actually touches `frequency`, but that narrows
+the blast radius rather than removing it. `>= 1` is the property that matters and
+holds for a double just as well; it also rejects NaN, which is the hole a raw
+write could otherwise have gone through.
 
 ## Things that only became apparent while building
 
@@ -219,6 +233,15 @@ non-advancing step, so the stored `nextOccurrence` is the moment of the resume
 itself — immediately due, and then subject to the churn above. The button says
 the rule was resumed, which it structurally must: that path has no way to say
 anything else.
+
+**Resuming re-anchors a rule that has no day of its own.** `resumeRecurring`
+recomputes from today and passes today as the anchor, so a monthly or yearly rule
+with no `dayOfMonth` posts its first occurrence after a resume on the resume day
+rather than on its usual day; the stored `startDate` is untouched, so the claim
+puts it back the occurrence after. Threading the rule's start date through resume
+as well would fix the one date, and would also mean resume no longer means
+"from now" — a decision worth making on its own rather than as a side effect of
+this one.
 
 **A pointer already corrupted by a pre-fix run is not repaired either.** A rule
 whose `nextOccurrence` holds NaN seconds reads back as an Invalid Date, and every

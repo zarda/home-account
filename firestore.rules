@@ -201,9 +201,12 @@ service cloud.firestore {
     // not a preference, it is a rule that can never advance — the occurrence
     // walks that read it loop until the tab dies. `is number` is kept rather
     // than tightened to `is int`: intervals written by older builds are
-    // 1.0-shaped doubles, and `is int` would strand every one of those rules
-    // the next time it was edited. NaN fails `>= 1` as well, which closes the
-    // same hole for a write that does not come from the app at all.
+    // 1.0-shaped doubles, and `is int` would deny every write that carries one
+    // of those frequency maps — a restore of an old backup, or an edit that
+    // changes the schedule. (A rename or an amount change is untouched either
+    // way: the update path only evaluates this when `frequency` is affected.)
+    // NaN fails `>= 1` as well, which closes the same hole for a write that
+    // does not come from the app at all.
     function frequencyValid(f) {
       return f is map
         && f.keys().hasAll(['type', 'interval'])

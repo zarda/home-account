@@ -36,7 +36,7 @@ name a day, it is where every later occurrence takes its day from — see
 | Field | Meaning | Set by the dialog |
 |---|---|---|
 | `type` | `daily`, `weekly`, `monthly`, `yearly` | always |
-| `interval` | every N days / weeks / months / years | always, minimum 1 |
+| `interval` | every N days / weeks / months / years | always; the form blocks zero and below, and 1 is the real floor ([below](#what-makes-a-rule-valid)) |
 | `dayOfWeek` | 0–6, Sunday is 0 | for weekly rules |
 | `dayOfMonth` | 1–31 | for monthly **and** yearly rules |
 | `monthOfYear` | 1–12 | never — a yearly rule takes its month from `startDate` |
@@ -49,8 +49,9 @@ case the anchor below exists for.
 
 ## The clamp and the anchor
 
-Every step of a schedule is computed from calendar parts, never by shifting a
-date and repairing it afterwards. Two rules cover every case:
+Monthly and yearly steps are computed from calendar parts — year, month, day —
+never by shifting a date and repairing it afterwards. (Daily and weekly steps are
+plain day arithmetic; there is no month to overflow.) Two rules cover every case:
 
 - **A day the target month does not have gives way to the last day it does.** The
   31st becomes the 30th in April and the 28th in February.
@@ -79,8 +80,8 @@ The three 28ths in the middle prove nothing on their own — the return to the 2
 in 2032 is what shows each year is measured from the rule's own start date rather
 than from the year before it.
 
-Weekly rules with a `dayOfWeek` advance by whole weeks and then forward to that
-weekday. Daily rules are plain day arithmetic.
+Neither rule has anything to do above: a weekly rule with a `dayOfWeek` advances
+by whole weeks and then forward to that weekday, and a daily rule just adds days.
 
 All of this reads **local** calendar parts, so a rule's day of month is the day
 in the device's own time zone.
