@@ -294,6 +294,25 @@ describe('CameraCaptureComponent', () => {
       expect(transaction.suggestedCategoryId).toBe('food_coffee_&_drinks');
     });
 
+    it('carries the review flag for an item-sum fallback amount', async () => {
+      strategyService.processMultipleImages.and.resolveTo({
+        transactions: [{
+          description: 'Diner', amount: 15, currency: 'USD', date: new Date(), type: 'expense',
+          confidence: 0.7, fieldConfidence: { amount: 0.5 },
+        }],
+        confidence: 0.7,
+      } as never);
+      const component = build().componentInstance;
+      withImages(component, 1);
+      await component.processImage();
+
+      const navState = (router.navigate.calls.mostRecent().args[1] as {
+        state: { importResult: ImportResult };
+      }).state;
+      const transaction = navState.importResult.transactions[0];
+      expect(transaction.fieldConfidence).toEqual({ amount: 0.5 });
+    });
+
     it('runs duplicate detection on strategy results and keeps receipt groups', async () => {
       strategyService.processMultipleImages.and.resolveTo({
         transactions: [

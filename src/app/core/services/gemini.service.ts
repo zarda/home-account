@@ -10,7 +10,11 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { Budget, Category, Transaction, MonthlyTotal, FieldConfidence } from '../../models';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
-import { readCurrencyCode, readFieldConfidence } from '../utils/receipt-extraction.utils';
+import {
+  readCurrencyCode,
+  readFieldConfidence,
+  readReceiptTotal,
+} from '../utils/receipt-extraction.utils';
 import {
   trimToLastCompleteSentence,
   dropIncompleteTrailingLine,
@@ -101,6 +105,10 @@ export interface MultiImageExtractedTransaction extends ExtractedTransaction {
   confidence: number;             // OCR/extraction confidence (0-1)
   receiptId?: number;             // AI-assigned receipt group (items from same receipt share same ID)
   receiptDetails?: string;        // Full receipt content reproduced line by line
+  // Printed grand total for this receiptId group, reported once on the last
+  // item (same convention as receiptDetails). Consolidation takes the first
+  // value present in the group.
+  receiptTotal?: number;
   wasMerged?: boolean;            // True if deduplicated from multiple images
   mergedFromImages?: number[];    // Indices of images where this appeared
 }
@@ -923,6 +931,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
           confidence: t.confidence ?? 0.7,
           receiptId: t.receiptId ?? 1,
           receiptDetails: t.receiptDetails,
+          receiptTotal: readReceiptTotal(t.receiptTotal),
           wasMerged: t.wasMerged || false,
           mergedFromImages: t.mergedFromImages,
         }));
@@ -998,6 +1007,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
         confidence: t.confidence ?? 0.7,
         receiptId: t.receiptId ?? 1,
         receiptDetails: t.receiptDetails,
+        receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: false,
       }));
     } catch (error) {

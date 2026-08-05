@@ -401,6 +401,8 @@ export class AIStrategyService {
       notes: t.details,
       suggestedCategoryId: t.category,
       receiptId: t.receiptId,
+      fieldConfidence:
+        t.amountConfidence !== undefined ? { amount: t.amountConfidence } : undefined,
     }));
 
     const avgConfidence = transactions.length > 0

@@ -22,6 +22,7 @@ import { CategoryMemoryService } from './category-memory.service';
 import { RagContextService } from './rag-context.service';
 import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
+import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 import {
   CategorizedImportTransaction,
   DuplicateCheck,
@@ -533,6 +534,7 @@ describe('AIImportService', () => {
       expect(result.transactions.length).toBe(1);
       expect(result.multiImageMetadata?.totalImages).toBe(2);
       expect(result.multiImageMetadata?.deduplicationMethod).toBe('ai');
+      expect(result.transactions[0].fieldConfidence?.amount).toBe(REVIEW_AMOUNT_CONFIDENCE);
     });
 
     it('should merge multiple items sharing a receiptId into one transaction', async () => {
@@ -550,6 +552,24 @@ describe('AIImportService', () => {
       // Two items merged into a single receipt transaction (300 total)
       expect(result.transactions.length).toBe(1);
       expect(result.transactions[0].amount).toBe(300);
+      expect(result.transactions[0].fieldConfidence?.amount).toBe(REVIEW_AMOUNT_CONFIDENCE);
+    });
+
+    it('should prefer the reported receipt total for a merged receipt', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+        { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'bottom', confidence: 0.7, receiptId: 1, receiptTotal: 330.9 }
+      ]));
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].amount).toBe(330.9);
+      expect(result.transactions[0].fieldConfidence).toBeUndefined();
     });
 
     it('should count items the AI already flagged as merged', async () => {

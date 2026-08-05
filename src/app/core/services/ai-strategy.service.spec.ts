@@ -12,6 +12,7 @@ import { NativeReceiptService } from './native-receipt.service';
 import { ProcessingResult } from './ai-types';
 import { ParsedReceipt, MultiImageExtractedTransaction } from './gemini.service';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
 
@@ -554,6 +555,29 @@ describe('AIStrategyService', () => {
       expect(result.transactions[0].description).toBe('Diner');
       expect(result.transactions[0].amount).toBe(15);
       expect(result.transactions[0].notes).toBe('Lunch — USD 10.00\nSnack — USD 5.00');
+      expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE });
+    });
+
+    it('should use the reported receipt total as the transaction amount', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          confidence: 0.8, receiptId: 1,
+        },
+        {
+          date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
+          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          receiptId: 1, receiptTotal: 16.2,
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      expect(result.transactions[0].amount).toBe(16.2);
+      expect(result.transactions[0].fieldConfidence).toBeUndefined();
     });
 
     it('should prefer the full receipt details from the AI for merged notes', async () => {

@@ -27,6 +27,41 @@ export function formatReceiptItemLines(
 }
 
 /**
+ * Amount confidence for a consolidated row whose amount is a guess (item sum,
+ * because the model reported no printed total) or a suspect read (the reported
+ * total disagrees wildly with the item sum). Sits under VERIFY_FIELD_THRESHOLD
+ * (0.7) so the preview table's needs-verify chip fires; deliberately not
+ * written to the row's `confidence`, which gates engine fallback at 0.4.
+ */
+export const REVIEW_AMOUNT_CONFIDENCE = 0.5;
+
+/** A reported total more than 50% of the larger figure away from the item sum. */
+function totalDeviatesWildly(total: number, itemSum: number): boolean {
+  const larger = Math.max(total, itemSum);
+  return larger > 0 && Math.abs(total - itemSum) > 0.5 * larger;
+}
+
+function reportedTotalOf(groupItems: MultiImageExtractedTransaction[]): number | undefined {
+  return groupItems
+    .map(i => i.receiptTotal)
+    .find((v): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0);
+}
+
+/** Amount plus optional review flag for one receipt group. */
+function deriveAmount(
+  groupItems: MultiImageExtractedTransaction[],
+  itemSum: number
+): { amount: number; amountConfidence?: number; receiptTotal?: number } {
+  const total = reportedTotalOf(groupItems);
+  if (total === undefined) {
+    return { amount: itemSum, amountConfidence: REVIEW_AMOUNT_CONFIDENCE };
+  }
+  return totalDeviatesWildly(total, itemSum)
+    ? { amount: total, amountConfidence: REVIEW_AMOUNT_CONFIDENCE, receiptTotal: total }
+    : { amount: total, receiptTotal: total };
+}
+
+/**
  * Consolidate line items by receipt group.
  * Items sharing the same receiptId are merged into one transaction whose
  * details carry the itemized list (preferring the AI's full receiptDetails).
@@ -58,7 +93,8 @@ export function consolidateReceiptItems(
       // Single item — keep as standalone transaction, surfacing the full
       // receipt content as its details when the AI provided it
       const only = groupItems[0];
-      result.push(only.receiptDetails ? { ...only, details: only.receiptDetails } : only);
+      const base = only.receiptDetails ? { ...only, details: only.receiptDetails } : only;
+      result.push({ ...base, ...deriveAmount(groupItems, Math.abs(only.amount)) });
     } else {
       // Multiple items from same receipt — merge into one transaction.
       // Amounts are absolute values, so refund/credit lines (type 'income')
@@ -89,7 +125,7 @@ export function consolidateReceiptItems(
       result.push({
         date: first.date,
         description: merchant,
-        amount: Math.abs(netAmount),
+        ...deriveAmount(groupItems, Math.abs(netAmount)),
         type: netAmount < 0 ? 'income' : 'expense',
         currency,
         category,

@@ -787,6 +787,7 @@ describe('OpenAIService', () => {
               category: 'Restaurants',
               details: '×2',
               receiptDetails: 'Item ×2 — 10.00\nTotal 10.00',
+              receiptTotal: 11.87,
             },
           ])
         )
@@ -808,6 +809,7 @@ describe('OpenAIService', () => {
       expect(result[0].category).toBe('food');
       expect(result[0].details).toBe('×2');
       expect(result[0].receiptDetails).toBe('Item ×2 — 10.00\nTotal 10.00');
+      expect(result[0].receiptTotal).toBe(11.87);
       // Two images appended after the prompt text block.
       const content = fake.responses.create.calls.mostRecent().args[0].input[0].content;
       expect(content.length).toBe(3);
@@ -828,6 +830,7 @@ describe('OpenAIService', () => {
       expect(result[0].wasMerged).toBeFalse();
       expect(result[0].receiptId).toBe(1);
       expect(result[0].category).toBeUndefined();
+      expect(result[0].receiptTotal).toBeUndefined();
     });
 
     it('rethrows on failure and records lastError', async () => {

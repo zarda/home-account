@@ -180,5 +180,59 @@ describe('parseReceiptOcrText', () => {
 
       expect(marked.confidence).toBeGreaterThan(bare.confidence);
     });
+
+    it('should report the amount tier as amountConfidence', () => {
+      expect(parseReceiptOcrText('Shop\n$1,200').amountConfidence).toBe(0.8);
+    });
+  });
+
+  describe('cash-tendered demotion', () => {
+    it('should answer the printed total when the largest figure is the cash tendered', () => {
+      const r = parseReceiptOcrText('Shop\nTotal $481\nCash $500\nChange $19');
+      expect(r.amount).toBe(481);
+    });
+
+    it('should reduce confidence when it demotes, so the review flag fires', () => {
+      const r = parseReceiptOcrText('Shop\nTotal $481\nCash $500\nChange $19');
+      expect(r.amountConfidence).toBe(0.6); // 0.8 tier × 0.75
+    });
+
+    it('should keep the largest figure when it is not round like tendered cash', () => {
+      const r = parseReceiptOcrText('Shop\n$100\n$8\n$108');
+      expect(r.amount).toBe(108);
+      expect(r.amountConfidence).toBe(0.8);
+    });
+
+    it('should keep a round total when the smaller candidate pair member is round too', () => {
+      // 100 + 5 = 105 could be subtotal+tax→total; x=100 is itself tender-shaped, so stand down
+      const r = parseReceiptOcrText('Shop\n$100\n$5\n$105');
+      expect(r.amount).toBe(105);
+    });
+
+    it('should demote a decimal pair that sums to a round note', () => {
+      const r = parseReceiptOcrText('Shop\n$43.10\n$6.90\n$50.00');
+      expect(r.amount).toBe(43.1);
+      expect(r.amountConfidence).toBe(0.6);
+    });
+
+    it('should keep largest-wins when no pair explains the largest figure', () => {
+      const r = parseReceiptOcrText('Shop\n$12.00\n$30.00\n$50.00');
+      expect(r.amount).toBe(50);
+    });
+
+    it('should keep the documented ambiguous case largest-wins', () => {
+      // {450, 50, 500}: a taxed total is indistinguishable from a tendered note
+      const r = parseReceiptOcrText('Shop\n$450\n$50\n$500');
+      expect(r.amount).toBe(500);
+    });
+
+    it('should keep a duplicated printed figure as a pair candidate', () => {
+      // The identity filter removes only one instance of the largest figure,
+      // so the duplicated 481s survive as pair candidates and the printed
+      // total still wins over the tendered cash.
+      const r = parseReceiptOcrText('Shop\nSubtotal $481\nTotal $481\nCash $500\nChange $19');
+      expect(r.amount).toBe(481);
+      expect(r.amountConfidence).toBe(0.6);
+    });
   });
 });
