@@ -123,12 +123,16 @@ full record, including per-row errors, is on the Import History page.
 
 ## Offline capture and the queue
 
-An image captured with no engine able to run is neither processed nor lost: it is
-stored in an IndexedDB queue on the device, with the account that captured it
-recorded on the row. The queue is one store per device rather than per account,
-so that stamp is what keeps it honest — an item is only ever drained into the
-ledger of the account that took the photo, and a drain that fires while someone
-else is signed in leaves it alone rather than filing it in their ledger.
+An image captured offline is neither processed nor lost: it is stored in an
+IndexedDB queue on the device, with the account that captured it recorded on the
+row. Camera capture queues on connectivity alone — an offline iPhone whose
+on-device pipeline could have read the photo perfectly well still queues it,
+because being offline is decided before the question of which engine could run
+is asked. The in-form **Scan Receipt** queues only when both are true: offline,
+and no engine able to run. The queue is one store per device rather than per
+account, so that stamp is what keeps it honest — an item is only ever drained
+into the ledger of the account that took the photo, and a drain that fires while
+someone else is signed in leaves it alone rather than filing it in their ledger.
 
 The queue drains when the browser reports the connection back, when the service
 worker's background sync fires, and when you press **Sync Now** on the AI
@@ -140,18 +144,17 @@ are ordinary transactions afterwards, editable like any other.
 A launch does not drain the queue by itself; what it does is sweep. Anything
 left marked *processing* — a tab closed mid-receipt, an app swiped away, a
 background sync killed by the OS — is handed back as pending, at the cost of one
-of its retries.
-Without the sweep such a row is invisible to every counter and every retry, and
-the receipt is silently lost while its bytes sit in IndexedDB.
+of its retries. Without the sweep such a row is invisible to every counter and
+every retry, and the receipt is silently lost while its bytes sit in IndexedDB.
 
 **A drain that runs twice over the same image does not import it twice.** Each
 row is posted at an id derived from the queued image and the row's position in
 what the model read, and a row whose id already holds a transaction is skipped
 rather than rewritten. So a reclaimed receipt aims at exactly the documents its
-first pass wrote: it cannot duplicate them, and it cannot overwrite an edit you
-made to them in between. The count in the toast is what the receipt produced, so
-a receipt that had already fully landed reports its rows again and writes
-nothing. The reasoning, and what is still not guaranteed, is
+first pass wrote: a replay does not duplicate them and does not discard an edit
+you made to them in between. The count in the toast is what the receipt
+produced, so a receipt that had already fully landed reports its rows again and
+writes nothing. The reasoning, and what is still not guaranteed, is
 [ADR 0014](ADR/0014-reclaimed-receipts-replay-idempotently.md).
 
 An image whose rows only partly landed is failed rather than completed, and goes
@@ -165,7 +168,8 @@ shown on the AI settings page, which is what **Clear Queue** is for.
 - **The configured model.** This is the intended limit and the only one.
 - **Vision's supported languages**, on the on-device path only. Queried at
   runtime, not assumed.
-- **Connectivity**, for the cloud path. Images captured offline are queued.
+- **Connectivity**, for the cloud path. Images captured offline are queued
+  instead — see *Offline capture and the queue* above.
 - **The receipt image quota**, which is a tier limit rather than a technical one.
 
 If a receipt fails for any other reason, that is a bug rather than a limitation.

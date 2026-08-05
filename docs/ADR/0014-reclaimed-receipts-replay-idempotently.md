@@ -7,13 +7,15 @@ This record keeps the decision and the reasoning.
 
 ## Context
 
-A receipt photographed with no engine available is stored in a device-global
-IndexedDB queue, one row per image, each stamped with the account that captured
-it. When the connection comes back, `syncQueue` walks the rows it owns, marks
-each one `processing`, and dispatches a DOM event. That is the whole handoff: the
-processor's listener `void`s the work, so the queue cannot await it and the row's
-real outcome is written later, by the processor, from the other side of an AI
-call and a set of ledger writes.
+A receipt photographed offline is stored in a device-global IndexedDB queue, one
+row per image, each stamped with the account that captured it. Connectivity is
+the whole condition on the multi-photo capture path, which queues before it asks
+which engine could run; the in-form scan queues only when it is offline *and* no
+engine can run at all. When the connection comes back, `syncQueue` walks the rows
+it owns, marks each one `processing`, and dispatches a DOM event. That is the
+whole handoff: the processor's listener `void`s the work, so the queue cannot
+await it and the row's real outcome is written later, by the processor, from the
+other side of an AI call and a set of ledger writes.
 
 Two lines hold the whole problem, and they still do:
 
@@ -204,9 +206,11 @@ server.
 
 **The drain now performs a read per row that it never performed before.** A
 failed read fails the whole image exactly as a failed write does, and consumes
-one of the three retries. A receipt that previously could only be failed by a
-write now has a second way to fail, on the one path — a just-restored
-connection — where transient failures are what to expect.
+one of the three retries. Inside the per-row loop a write was previously the
+only thing that could fail an image — the other failure modes, a missing file,
+a throwing AI call, a reading with no rows in it, all sit above the loop — and
+now the read in front of each write can fail it too, on the one path where
+transient failures are exactly what to expect: a just-restored connection.
 
 **A second read is not guaranteed to match the first.** The replay pays another
 AI call, and nothing makes the model read the same photo the same way twice. A
