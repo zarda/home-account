@@ -213,6 +213,26 @@ describe('RecurringFormDialogComponent', () => {
       expect(component.isValid).toBeFalse();
     });
 
+    // The interval floor exists in three places now — this form, the service
+    // and firestore.rules — because an interval below one is a rule that can
+    // never advance and hangs whichever occurrence walk reaches it. This is
+    // the layer the user meets, and it had no spec.
+    it('should be invalid when the interval is zero', () => {
+      component.name = 'Test';
+      component.amount = 100;
+      component.categoryId = 'cat1';
+      component.interval = 0;
+      expect(component.isValid).toBeFalse();
+    });
+
+    it('should be invalid when the interval is negative', () => {
+      component.name = 'Test';
+      component.amount = 100;
+      component.categoryId = 'cat1';
+      component.interval = -1;
+      expect(component.isValid).toBeFalse();
+    });
+
     it('should be valid with required fields', () => {
       component.name = 'Test';
       component.amount = 100;
