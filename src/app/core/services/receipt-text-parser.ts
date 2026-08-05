@@ -307,7 +307,7 @@ function isTenderShaped(value: number): boolean {
  * looks like cash tendered: M is tender-shaped and two other candidates in
  * the same tier satisfy x + y ≈ M with x ≥ y — the printed total plus the
  * change line. Among matching pairs the largest x wins; if that x is itself
- * tender-shaped ({450, 50, 500} — a 10%-tax total is indistinguishable from
+ * tender-shaped ({450, 50, 500} — a taxed total is indistinguishable from
  * a tendered note) the demotion stands down and largest-wins holds.
  * Vocabulary-free on purpose: this reads arithmetic, not words.
  */

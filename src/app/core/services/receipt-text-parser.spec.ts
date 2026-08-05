@@ -221,9 +221,18 @@ describe('parseReceiptOcrText', () => {
     });
 
     it('should keep the documented ambiguous case largest-wins', () => {
-      // {450, 50, 500}: a 10%-tax total is indistinguishable from a tendered note
+      // {450, 50, 500}: a taxed total is indistinguishable from a tendered note
       const r = parseReceiptOcrText('Shop\n$450\n$50\n$500');
       expect(r.amount).toBe(500);
+    });
+
+    it('should keep a duplicated printed figure as a pair candidate', () => {
+      // The identity filter removes only one instance of the largest figure,
+      // so the duplicated 481s survive as pair candidates and the printed
+      // total still wins over the tendered cash.
+      const r = parseReceiptOcrText('Shop\nSubtotal $481\nTotal $481\nCash $500\nChange $19');
+      expect(r.amount).toBe(481);
+      expect(r.amountConfidence).toBe(0.6);
     });
   });
 });

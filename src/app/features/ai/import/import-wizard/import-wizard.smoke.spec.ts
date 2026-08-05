@@ -284,7 +284,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
             provide: CurrencyService,
             useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
           }
-        ]
+        ],
+        teardown: { destroyAfterEach: false }
       });
 
       const importService = TestBed.inject(AIImportService);
@@ -296,21 +297,20 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(result.transactions[0].amount).toBe(16.2);
       expect(result.transactions[0].fieldConfidence).toBeUndefined();
 
-      const history = await importService.confirmImport(
+      const importHistory = await importService.confirmImport(
         result.transactions,
         'r.jpg',
         1234,
         'image',
         'receipt_image'
       );
-      expect(history.successCount).toBe(1);
+      expect(importHistory.successCount).toBe(1);
 
       const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
-      const landed = snapshot.docs
-        .map(d => d.data())
-        .find(d => d['amount'] === 16.2);
-      expect(landed).toBeDefined();
-      expect(landed?.['currency']).toBe('USD');
+      expect(snapshot.docs.length).toBe(1);
+      const landed = snapshot.docs[0].data();
+      expect(landed['amount']).toBe(16.2);
+      expect(landed['currency']).toBe('USD');
     },
     30000
   );

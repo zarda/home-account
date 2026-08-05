@@ -569,6 +569,7 @@ describe('AIImportService', () => {
 
       expect(result.transactions.length).toBe(1);
       expect(result.transactions[0].amount).toBe(330.9);
+      expect(result.transactions[0].fieldConfidence).toBeUndefined();
     });
 
     it('should count items the AI already flagged as merged', async () => {

@@ -190,6 +190,17 @@ describe('consolidateReceiptItems', () => {
       ])[0];
       expect(merged.amount).toBe(16.2);
       expect(merged.amountConfidence).toBeUndefined();
+      expect(merged.receiptTotal).toBe(16.2);
+    });
+
+    it('applies a reported total to a refund group without disturbing its sign', () => {
+      const merged = consolidateReceiptItems([
+        item({ amount: 20, type: 'income' }),
+        item({ amount: 5, type: 'income', receiptTotal: 26 }),
+      ])[0];
+      expect(merged.amount).toBe(26);
+      expect(merged.type).toBe('income');
+      expect(merged.amountConfidence).toBeUndefined();
     });
 
     it('falls back to the item sum and flags the row when no total was reported', () => {

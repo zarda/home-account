@@ -15,7 +15,7 @@ export interface ProcessedTransaction {
   suggestedCategoryId?: string;
   receiptId?: number;
   /**
-   * How sure the model was that it read the amount and the date correctly.
+   * How sure the reader was that it read the amount and the date correctly.
    *
    * Distinct from `confidence`, which is a coarse "did this look like a
    * receipt at all" score. The regex parser reports this for the amount — the
