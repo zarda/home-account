@@ -1,4 +1,4 @@
-# 14. A reclaimed receipt replays onto the ids it already used
+# 15. A reclaimed receipt replays onto the ids it already used
 
 **Status:** Accepted, implemented · **Date:** 2026-08-05 · **Issues:** #205
 

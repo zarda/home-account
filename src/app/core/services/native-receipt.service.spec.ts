@@ -6,7 +6,7 @@ import { VisionOcrService } from './vision-ocr.service';
 import { AppleIntelligenceService } from './apple-intelligence.service';
 import { CategoryService } from './category.service';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
-import { Category } from '../../models';
+import { Category, VERIFY_FIELD_THRESHOLD } from '../../models';
 
 describe('NativeReceiptService', () => {
   let service: NativeReceiptService;
@@ -108,6 +108,23 @@ describe('NativeReceiptService', () => {
       // Vision read this perfectly well; there is just no transaction in it, and
       // the caller needs to see that so it can try an engine that can read more.
       expect(result.confidence).toBe(0);
+    });
+
+    it('should report the parser amount confidence as fieldConfidence', async () => {
+      visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\n$100\n$8\n$108' });
+
+      const result = await service.processImage(imageFile());
+
+      expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.8 });
+    });
+
+    it('should flag a demoted tendered read below the verify threshold', async () => {
+      visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\n$481\n$500\n$19' });
+
+      const result = await service.processImage(imageFile());
+
+      expect(result.transactions[0].fieldConfidence!.amount).toBe(0.6);
+      expect(result.transactions[0].fieldConfidence!.amount).toBeLessThan(VERIFY_FIELD_THRESHOLD);
     });
   });
 

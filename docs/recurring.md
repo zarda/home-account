@@ -11,7 +11,7 @@ the original day. Nothing double-posts, however many devices you use and however
 long the app was shut.
 
 Why the schedule is computed that way, and what was rejected on the way, is in
-[ADR 0013](ADR/0013-recurrence-guards-and-anchors.md). This document is the part
+[ADR 0014](ADR/0014-recurrence-guards-and-anchors.md). This document is the part
 you need when creating a rule, reading what it posted, or changing the engine.
 
 ## The rule
@@ -147,7 +147,7 @@ knowing before using it:
 Resume deliberately accepts a stored frequency the create and edit forms would
 refuse. It is a toggle with nowhere to show an error, and a rule already saved
 with an unusable interval has to stay recoverable — see
-[ADR 0013](ADR/0013-recurrence-guards-and-anchors.md).
+[ADR 0014](ADR/0014-recurrence-guards-and-anchors.md).
 
 ## What makes a rule valid
 

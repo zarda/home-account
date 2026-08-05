@@ -5,6 +5,13 @@
 // handoff payload is built directly, exactly as the capture dialog and the
 // form's multi-receipt chooser hand it over.
 //
+// A second case stubs one seam deeper — CloudLLMProviderService, the only
+// thing with no local emulator — so the real AIImportService runs its actual
+// consolidation, categorization fallback and confirmImport against the
+// emulators. That is the only path that can show a receipt's printed total
+// surviving all the way from extraction into the stored transaction, rather
+// than the item sum a naive merge would have written instead.
+//
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
 //
@@ -22,12 +29,19 @@ import {
   connectFirestoreEmulator,
   collection,
   addDoc,
+  getDocs,
   Firestore
 } from '@angular/fire/firestore';
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
 import { ImportWizardComponent } from './import-wizard.component';
 import { AuthService } from '../../../../core/services/auth.service';
 import { MockAuthService, createMockUser } from '../../../../core/services/testing';
+import { AIImportService } from '../../../../core/services/ai-import.service';
+import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
+import { PwaService } from '../../../../core/services/pwa.service';
+import { AnalyticsService } from '../../../../core/services/analytics.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
+import { MultiImageExtractedTransaction } from '../../../../core/services/gemini.service';
 import { ImportResult } from '../../../../models';
 
 jasmine.getEnv().configure({ random: false });
@@ -178,8 +192,125 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       history.replaceState({}, '');
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));
-      await deleteApp(app);
-      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'imports a receipt at its printed total, not its item sum, into Firestore',
+    async () => {
+      // Two line items from the same receipt; only the printed grand total
+      // (on the last item, matching the AI's own reporting convention) is the
+      // number that must land — not 10 + 5.
+      const extractedRows: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-07-01',
+          description: 'Latte',
+          amount: 10,
+          type: 'expense',
+          currency: 'USD',
+          imageIndex: 0,
+          positionInImage: 'top',
+          confidence: 0.9,
+          receiptId: 1
+        },
+        {
+          date: '2026-07-01',
+          description: 'Muffin',
+          amount: 5,
+          type: 'expense',
+          currency: 'USD',
+          imageIndex: 0,
+          positionInImage: 'bottom',
+          confidence: 0.9,
+          receiptId: 1,
+          receiptDetails: 'Latte — USD 10.00\nMuffin — USD 5.00\nTotal — USD 16.20',
+          receiptTotal: 16.2
+        }
+      ];
+
+      const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
+        'CloudLLMProviderService',
+        [
+          'hasAnyCloudProvider',
+          'extractTransactionsFromMultipleImages',
+          'categorizeTransactions',
+          'initializeProviders',
+          'resetProviders',
+          'setOpenAIModel',
+          'setClaudeModel',
+          'availableProviders',
+          'providerStatus',
+          'resolveProvider'
+        ]
+      );
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(extractedRows);
+      cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
+      );
+      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.resetProviders.and.resolveTo(undefined);
+      cloudLLMProvider.availableProviders.and.returnValue([]);
+      cloudLLMProvider.providerStatus.and.returnValue({
+        gemini: false,
+        openai: false,
+        claude: false
+      });
+      cloudLLMProvider.resolveProvider.and.returnValue(null);
+
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
+        'isOnline',
+        'registerBackgroundSync'
+      ]);
+      pwa.isOnline.and.returnValue(true);
+      pwa.registerBackgroundSync.and.resolveTo(true);
+
+      const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
+        'AnalyticsService',
+        ['trackAiAssistUsed']
+      );
+
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
+          { provide: PwaService, useValue: pwa },
+          { provide: AnalyticsService, useValue: analytics },
+          // Only the exchange-rate fetch is stubbed out — everything else the
+          // import touches (consolidation, categorization fallback, the
+          // Firestore writes) runs for real. USD-to-USD never converts, so
+          // this cannot mask the amount under test.
+          {
+            provide: CurrencyService,
+            useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      const result = await importService.importFromMultipleImages([
+        new File([new Uint8Array([1])], 'r.jpg', { type: 'image/jpeg' })
+      ]);
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].amount).toBe(16.2);
+      expect(result.transactions[0].fieldConfidence).toBeUndefined();
+
+      const importHistory = await importService.confirmImport(
+        result.transactions,
+        'r.jpg',
+        1234,
+        'image',
+        'receipt_image'
+      );
+      expect(importHistory.successCount).toBe(1);
+
+      const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      expect(snapshot.docs.length).toBe(1);
+      const landed = snapshot.docs[0].data();
+      expect(landed['amount']).toBe(16.2);
+      expect(landed['currency']).toBe('USD');
     },
     30000
   );

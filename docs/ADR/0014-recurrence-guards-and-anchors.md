@@ -1,4 +1,4 @@
-# 13. Recurrence validates at the edges, breaks in the loops, and anchors on the start date
+# 14. Recurrence validates at the edges, breaks in the loops, and anchors on the start date
 
 **Status:** Accepted, implemented · **Date:** 2026-08-05 · **Issues:** #206, #209
 

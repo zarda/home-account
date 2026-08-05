@@ -329,6 +329,13 @@ describe('prompt registry', () => {
         expect(prompt).withContext(`missing ${field}`).toContain(`- ${field}`);
       }
     });
+
+    it('asks for the printed grand total once per receipt group', () => {
+      const prompt = render('multiImageReceipts');
+      expect(prompt).toContain('"receiptTotal"');
+      expect(prompt).toContain('do NOT compute it by summing items');
+      expect(prompt).toContain('do NOT use the cash tendered or change lines');
+    });
   });
 
   describe('statementTransactions', () => {
@@ -357,6 +364,13 @@ describe('prompt registry', () => {
 
     it('asks for the position metadata the overlap pass reads', () => {
       expect(render('receiptItems')).toContain('- positionInImage: "top", "middle", "bottom"');
+    });
+
+    it('asks for the printed grand total once per receipt group', () => {
+      const prompt = render('receiptItems');
+      expect(prompt).toContain('"receiptTotal"');
+      expect(prompt).toContain('do NOT compute it by summing items');
+      expect(prompt).toContain('do NOT use the cash tendered or change lines');
     });
   });
 

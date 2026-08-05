@@ -308,6 +308,7 @@ export class AIImportService {
       selected: true,
       processingSource: tx.source,
       notes: tx.notes,
+      fieldConfidence: tx.fieldConfidence,
     }));
   }
 
@@ -461,6 +462,9 @@ export class AIImportService {
         suggestedCategoryId: original.category || t.suggestedCategoryId,
         categoryConfidence: t.confidence,
         notes: this.formatItemNotes(original.details),
+        fieldConfidence: original.amountConfidence !== undefined
+          ? { amount: original.amountConfidence }
+          : undefined,
         isDuplicate: false,
         selected: true,
         imageMetadata: {

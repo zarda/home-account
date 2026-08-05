@@ -2,7 +2,9 @@
 
 Photograph a receipt, get a transaction. This document covers what the feature
 does and what actually bounds it. The decision behind it — and the alternatives
-that were rejected — is [ADR 0008](ADR/0008-universal-receipt-language-support.md).
+that were rejected — is [ADR 0008](ADR/0008-universal-receipt-language-support.md);
+where the resulting transaction's amount comes from is
+[ADR 0013](ADR/0013-the-printed-total-is-the-amount-not-the-item-sum.md).
 
 The short version: **the app does not decide what language or currency a receipt
 may be in.** The engine does. Nothing in `src/` lists the scripts you may
@@ -26,6 +28,68 @@ The in-form path has no review step, so a value the model was unsure of goes
 straight into a field you are about to submit. Where the model reports low
 confidence in the total or the date, that field is flagged in place, using the
 same threshold and wording as the import wizard's preview table.
+
+## Where the amount comes from
+
+Whichever way in you took, one number lands on the transaction, and the rule
+behind it is the same on every path: **the amount is the total the receipt
+printed.** What differs is how much work a path has to do to get there, because
+each of them is handed something different.
+
+**The in-form scan** asks for it outright. `receiptParse` returns `amount` as
+the total paid at the bottom of the receipt, along with `amountConfidence` and
+`dateConfidence`. One photo, one figure, nothing to reconcile.
+
+**The item pipeline** — `multiImageReceipts` and `receiptItems`, behind Camera
+capture — is the awkward one. Its rows are the purchased items and deliberately
+nothing else: no tax line, no service charge, no receipt-level discount, because
+a row that is not an item breaks the deduplication that grouping several photos
+of one long receipt depends on. Adding those rows up therefore misses everything
+the receipt charges below the item list. So the prompts ask for `receiptTotal`
+as its own field, once per `receiptId` group on the group's last item — the
+convention `receiptDetails` already uses — and `consolidateReceiptItems` prefers
+it:
+
+| What the model reported | Amount on the row | Flagged |
+|---|---|---|
+| A total | the total | no |
+| A total more than 50% of the larger figure away from the item sum | the total | yes |
+| No total | the item sum | yes |
+
+*Flagged* means `fieldConfidence.amount` is set to 0.5, under the 0.7 threshold,
+so the review table marks the amount for a second look before the row is
+imported. A wildly deviating total is kept rather than replaced: one of the two
+figures was misread and the printed one is the likelier to be right, but the
+reviewer should see the disagreement either way.
+
+The row's own `confidence` is untouched on purpose. That number averages into
+the score the strategy layer compares against 0.4 when deciding whether the
+other engine should be tried, and it becomes the `categoryConfidence` the
+wizard's category suggestion is coloured by. Neither of those questions is "was
+the amount read correctly".
+
+**The regex parser**, the last resort when no model can be reached, has no field
+to ask for. It takes the largest figure in the strongest evidence tier it found,
+which is the total on all but the odd receipt — with one correction. Where the
+receipt was paid in cash, the largest figure is the note handed over rather than
+the bill, so a winning figure that is a whole number divisible by five, with two
+other figures in the same tier that add up to it, is read as cash tendered and
+the larger of that pair becomes the amount. That read lands at 0.75× the tier's
+confidence, which is under the threshold in every tier, so it is flagged too.
+The rule stands down where the total it would pick is itself round: 450 + 50 =
+500 is a total plus change from a note, and a subtotal plus tax, and nothing in
+the arithmetic says which. Reading arithmetic rather than words is what keeps
+this workable on a receipt in any language.
+
+Two limits are worth knowing about the parser. Anything it read outside the
+strongest tier is flagged whatever it picked, because a figure not printed
+beside a currency mark is a guess. And it grades only the amount — the date it
+reports carries no per-field confidence, so an unreadable date is not marked on
+this path. Where Apple's foundation model is available it structures the OCR
+text instead of the parser, and reports no per-field confidence at all.
+
+The decision and its rejected alternatives are recorded in
+[ADR 0013](ADR/0013-the-printed-total-is-the-amount-not-the-item-sum.md).
 
 ## Which engine runs
 
@@ -157,7 +221,7 @@ first pass wrote: a replay does not duplicate them and does not discard an edit
 you made to them in between. The count in the toast is what the receipt
 produced, so a receipt that had already fully landed reports its rows again and
 writes nothing. The reasoning, and what is still not guaranteed, is
-[ADR 0014](ADR/0014-reclaimed-receipts-replay-idempotently.md).
+[ADR 0015](ADR/0015-reclaimed-receipts-replay-idempotently.md).
 
 An image whose rows only partly landed is failed rather than completed, and goes
 back into the queue's retry budget: three attempts, after which it is no longer
