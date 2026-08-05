@@ -17,6 +17,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0010](0010-nothing-truncates.md) | Nothing truncates: text reflows, values scale | Accepted; amended by 0012 | 2026-08-03 |
 | [0011](0011-the-csv-file-is-a-contract.md) | The CSV file is a contract, and every cell in it is untrusted | Accepted | 2026-08-03 |
 | [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) | A strip of chips scrolls rather than growing the row | Accepted | 2026-08-03 |
+| [0013](0013-recurrence-guards-and-anchors.md) | Recurrence validates at the edges, breaks in the loops, and anchors on the start date | Accepted | 2026-08-05 |
 
 ## What belongs here
 
