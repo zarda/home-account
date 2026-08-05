@@ -34,6 +34,14 @@ interface ClaimResult {
  */
 export const MAX_OCCURRENCES_PER_CLAIM = 400;
 
+/**
+ * Thrown when a frequency could never advance: a zero, negative or non-finite
+ * interval. Every walk over a rule's occurrences asks the frequency for the
+ * next date; one that answers with the same date — or with an Invalid Date —
+ * turns that walk into a loop with no exit.
+ */
+export const INVALID_FREQUENCY_ERROR = 'INVALID_RECURRING_FREQUENCY';
+
 @Injectable({ providedIn: 'root' })
 export class RecurringService {
   private firestoreService = inject(FirestoreService);
@@ -128,6 +136,11 @@ export class RecurringService {
       const userId = this.authService.userId();
       if (!userId) throw new Error('User not authenticated');
 
+      // Refuse here, before the first date walk: calculateNextOccurrence
+      // advances a past start date towards today, and an interval that never
+      // advances hangs the tab on this very line.
+      this.validateFrequency(data.frequency);
+
       const nextOccurrence = this.calculateNextOccurrence(
         data.startDate,
         data.frequency
@@ -180,6 +193,13 @@ export class RecurringService {
     this.isLoading.set(true);
 
     try {
+      // Before the read and the write both: an edit that saved an
+      // unusable frequency would leave the rule stored broken even if this
+      // call happened not to recompute the pointer.
+      if (data.frequency !== undefined) {
+        this.validateFrequency(data.frequency);
+      }
+
       const updateData: Partial<Omit<RecurringTransaction, 'endDate'>> & {
         endDate?: Timestamp | FieldValue;
       } = {};
@@ -509,6 +529,21 @@ export class RecurringService {
         return occurrences.sort((a, b) => a.date.getTime() - b.date.getTime());
       })
     );
+  }
+
+  /**
+   * Reject a frequency no walk over its occurrences could ever finish.
+   *
+   * `Number.isFinite` covers NaN and ±Infinity, which a restored or
+   * hand-edited document can carry and which make every date comparison
+   * downstream false. The floor is `>= 1` rather than an integer test so it
+   * matches the rule in firestore.rules, which has to keep accepting the
+   * 1.0-shaped doubles legacy documents were written with.
+   */
+  private validateFrequency(frequency: RecurringFrequency): void {
+    if (!(Number.isFinite(frequency.interval) && frequency.interval >= 1)) {
+      throw new Error(INVALID_FREQUENCY_ERROR);
+    }
   }
 
   // Whether two frequencies describe the same schedule

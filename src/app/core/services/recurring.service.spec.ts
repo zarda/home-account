@@ -2,7 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Timestamp, FieldValue, deleteField } from '@angular/fire/firestore';
 import { of } from 'rxjs';
-import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service';
+import {
+  RecurringService,
+  MAX_OCCURRENCES_PER_CLAIM,
+  INVALID_FREQUENCY_ERROR
+} from './recurring.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
@@ -460,6 +464,58 @@ describe('RecurringService', () => {
     it('should reset isLoading after completion', async () => {
       await service.updateRecurring('rec1', { name: 'x' });
       expect(service.isLoading()).toBeFalse();
+    });
+  });
+
+  // A frequency that cannot advance is the interval-0 hang in its stored
+  // form: every walk over a rule's occurrences asks for the next date, gets
+  // the same one back, and never terminates. The entry points refuse it so it
+  // cannot reach storage in the first place.
+  describe('frequency validation', () => {
+    // The start date is deliberately in the future: createRecurring then
+    // returns it unchanged instead of walking towards today, so a pre-fix run
+    // fails on the missing rejection rather than hanging on the walk.
+    const futureDto = (frequency: RecurringFrequency): CreateRecurringDTO => ({
+      name: 'Rent',
+      type: 'expense',
+      amount: 1200,
+      currency: 'USD',
+      categoryId: 'housing_rent',
+      description: 'Monthly rent',
+      frequency,
+      startDate: new Date(Date.now() + 30 * DAY)
+    });
+
+    it('rejects a frequency that cannot advance before writing anything', async () => {
+      await expectAsync(
+        service.createRecurring(futureDto({ type: 'daily', interval: 0 }))
+      ).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+      expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+    });
+
+    it('rejects a negative interval', async () => {
+      await expectAsync(
+        service.createRecurring(futureDto({ type: 'daily', interval: -1 }))
+      ).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+      expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-finite interval', async () => {
+      await expectAsync(
+        service.createRecurring(futureDto({ type: 'monthly', interval: NaN }))
+      ).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+      expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid frequency on update before touching the document', async () => {
+      await expectAsync(
+        service.updateRecurring('r1', { frequency: { type: 'daily', interval: 0 } })
+      ).toBeRejectedWithError(INVALID_FREQUENCY_ERROR);
+
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
     });
   });
 

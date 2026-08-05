@@ -10,7 +10,7 @@ import { ExportData } from './export.service';
 import { TransactionService } from './transaction.service';
 import { CategoryService } from './category.service';
 import { BudgetService } from './budget.service';
-import { RecurringService } from './recurring.service';
+import { INVALID_FREQUENCY_ERROR, RecurringService } from './recurring.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
 import { Budget, Category, InsightSnapshot, RecurringTransaction, Transaction } from '../../models';
 
@@ -57,6 +57,24 @@ describe('BackupRestoreService', () => {
       isDefault: false,
       ...overrides,
     } as Category;
+  }
+
+  function recurringRule(overrides: Partial<RecurringTransaction> = {}): RecurringTransaction {
+    return {
+      id: 'r-1',
+      userId: 'user-a',
+      name: 'Rent',
+      type: 'expense',
+      amount: 1200,
+      currency: 'USD',
+      categoryId: 'housing_rent',
+      description: 'Rent',
+      frequency: { type: 'monthly', interval: 1 },
+      startDate: ts('2026-01-01'),
+      nextOccurrence: ts('2026-07-01'),
+      isActive: true,
+      ...overrides,
+    } as RecurringTransaction;
   }
 
   function backup(overrides: Partial<ExportData> = {}): ExportData {
@@ -274,6 +292,29 @@ describe('BackupRestoreService', () => {
       expect(summary.transactions).toBe(2);
       expect(summary.skipped).toEqual([
         { section: 'transactions', id: 'bad-1', reason: 'Invalid amount' },
+      ]);
+    });
+
+    // A backup is restored verbatim, so a rule saved with an interval that
+    // cannot advance comes back exactly as it was stored. The rule now
+    // refuses it, and the refusal has to land in the same per-row report the
+    // rest of the restore uses rather than taking the whole file down with it.
+    it('reports a rule whose frequency cannot advance as skipped', async () => {
+      recurring.createRecurring.and.callFake(async (dto) => {
+        if (dto.frequency.interval < 1) throw new Error(INVALID_FREQUENCY_ERROR);
+        return 'id';
+      });
+
+      const summary = await service.restore(backup({
+        recurring: [
+          recurringRule({ id: 'r-good' }),
+          recurringRule({ id: 'r-stuck', frequency: { type: 'daily', interval: 0 } }),
+        ],
+      }));
+
+      expect(summary.recurring).toBe(1);
+      expect(summary.skipped).toEqual([
+        { section: 'recurring', id: 'r-stuck', reason: INVALID_FREQUENCY_ERROR },
       ]);
     });
   });
