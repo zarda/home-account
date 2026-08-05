@@ -423,6 +423,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       suggestedCategoryId: tx.suggestedCategoryId || 'other_expense',
       categoryConfidence: tx.confidence,
       notes: tx.notes,
+      fieldConfidence: tx.fieldConfidence,
       isDuplicate: false,
       selected: true,
       // The cloud strategy path carries the receipt grouping; native results
