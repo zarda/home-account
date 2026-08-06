@@ -53,6 +53,64 @@
     <app-nl-answer-card [answer]="answer" (viewTransactions)="applyFilters($event)" />
   }
 
+  @if (showHistory()) {
+    <div class="history-section">
+      <div class="history-header">
+        <p class="result-label">{{ 'aiSearch.historyTitle' | translate }}</p>
+        <button mat-button class="history-see-all" (click)="seeAllHistory()">
+          {{ 'aiSearch.historySeeAll' | translate }}
+        </button>
+      </div>
+      <ul class="history-list">
+        @for (record of historyPreview(); track record.id) {
+          <li class="history-row">
+            <button type="button" class="history-open" (click)="openRecord(record)">
+              <span class="history-query">{{ record.query }}</span>
+              <span class="history-meta">
+                {{ recordValueLabel(record) }} · {{ recordDateLabel(record) }}
+              </span>
+            </button>
+            <button
+              mat-icon-button
+              class="history-delete"
+              [attr.aria-label]="'common.delete' | translate"
+              (click)="deleteRecord(record)"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          </li>
+        }
+      </ul>
+    </div>
+  }
+
+  @if (snapshotAnswer(); as snapshot) {
+    <div class="history-snapshot">
+      <button
+        mat-icon-button
+        class="history-back"
+        [attr.aria-label]="'common.back' | translate"
+        (click)="closeSnapshot()"
+      >
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <app-nl-answer-card
+        [answer]="snapshot"
+        [computedAt]="openedComputedAt()"
+        (viewTransactions)="applyFilters($event)"
+      />
+      <button
+        mat-stroked-button
+        class="history-refresh"
+        [disabled]="isRefreshing()"
+        (click)="refreshOpened()"
+      >
+        <mat-icon>refresh</mat-icon>
+        {{ 'common.refresh' | translate }}
+      </button>
+    </div>
+  }
+
   @if (fallbackResult(); as fallback) {
     <div class="result-block fallback">
       <p class="fallback-notice">
