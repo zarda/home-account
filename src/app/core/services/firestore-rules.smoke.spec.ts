@@ -694,6 +694,105 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('searchAnswers', () => {
+    const validAnswer = (overrides: Record<string, unknown> = {}) => ({
+      userId: uid,
+      schemaVersion: 1,
+      query: 'how much on food in august',
+      operation: 'sum',
+      limit: 3,
+      scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+      baseCurrency: 'USD',
+      value: 421.5,
+      currency: 'USD',
+      transactionCount: 17,
+      computedAt: Timestamp.now(),
+      lastUsedAt: Timestamp.now(),
+      ...overrides,
+    });
+
+    it('accepts a well-formed answer', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer()),
+        'valid create'
+      );
+    });
+
+    it('rejects an operation outside the aggregate set', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({ operation: 'median' })),
+        'unknown operation'
+      );
+    });
+
+    it('rejects a scope with no end date', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({ scope: { startDate: '2026-08-01' } })),
+        'unresolved scope'
+      );
+    });
+
+    it('rejects a scope date that is not a day key', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({
+          scope: { startDate: '2026-08-01T00:00:00Z', endDate: '2026-08-31' }
+        })),
+        'timestamp-shaped scope date'
+      );
+    });
+
+    it('rejects a field outside the closed set', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({ extremeTransaction: { id: 'tx-1' } })),
+        'embedded transaction'
+      );
+    });
+
+    it('accepts the { lastUsedAt } touch', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validAnswer());
+      await expectAllowed(updateDoc(doc(firestore, p), { lastUsedAt: Timestamp.now() }), 'touch');
+    });
+
+    // The exact shape SearchAnswerHistoryService issues on refresh: figures
+    // replaced, vanished optionals cleared with deleteField sentinels.
+    it('accepts the refresh update with cleared optionals', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validAnswer({ operation: 'max', extremeTransactionId: 'tx-1' }));
+      await expectAllowed(
+        updateDoc(doc(firestore, p), {
+          value: 0,
+          transactionCount: 0,
+          baseCurrency: 'USD',
+          currency: 'USD',
+          extremeTransactionId: deleteField(),
+          groups: deleteField(),
+          computedAt: Timestamp.now(),
+          lastUsedAt: Timestamp.now()
+        }),
+        'refresh with cleared optionals'
+      );
+    });
+
+    it('rejects rewriting the resolved scope', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validAnswer());
+      await expectDenied(
+        updateDoc(doc(firestore, p), { scope: { startDate: '2026-09-01', endDate: '2026-09-30' } }),
+        'scope rewrite'
+      );
+    });
+
+    it('rejects rewriting the question', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validAnswer());
+      await expectDenied(
+        updateDoc(doc(firestore, p), { query: 'a different question' }),
+        'query rewrite'
+      );
+    });
+  });
+
   describe('categoryMemory', () => {
     // The document id is the merchant key, so these build paths by hand rather
     // than using path(), which mints an arbitrary id.
@@ -1156,7 +1255,7 @@ describe('firestore.rules (emulator smoke test)', () => {
     const validated = [
       'transactions', 'budgets', 'categories',
       'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-      'insightSnapshots', 'categoryMemory'
+      'insightSnapshots', 'categoryMemory', 'searchAnswers'
     ];
 
     for (const collection of validated) {
