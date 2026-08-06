@@ -97,6 +97,26 @@ describe('TranslationService', () => {
 
       expect(document.documentElement.lang).toBe('zh-Hant');
     });
+
+    it('should bump translationsVersion when a catalog loads', async () => {
+      expect(service.translationsVersion()).toBe(0);
+
+      const promise = service.setLocale('en');
+      httpMock.expectOne('/assets/i18n/en.json').flush(mockTranslations);
+      await promise;
+
+      expect(service.translationsVersion()).toBe(1);
+    });
+
+    it('should not bump translationsVersion when the default-locale load fails', async () => {
+      spyOn(console, 'error');
+
+      const promise = service.setLocale('en');
+      httpMock.expectOne('/assets/i18n/en.json').error(new ProgressEvent('error'));
+      await promise;
+
+      expect(service.translationsVersion()).toBe(0);
+    });
   });
 
   describe('t (translate)', () => {
