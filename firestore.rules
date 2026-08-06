@@ -288,6 +288,88 @@ service cloud.firestore {
         && searchOptionalsValid(d);
     }
 
+    // ---- persisted smart-search answers ----
+
+    function isDayKey(value) {
+      return value is string
+        && value.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+    }
+
+    // The stored scope is the resolved range the figures were computed over.
+    // Dates are day keys, not timestamps: the client revives them at local
+    // midnight, and a timestamp here would smuggle a timezone into a record
+    // that is defined by calendar days.
+    function answerScopeValid(s) {
+      return s is map
+        && s.keys().hasOnly(['type', 'categoryId', 'startDate', 'endDate',
+                             'minAmount', 'maxAmount', 'currency', 'searchQuery'])
+        && s.keys().hasAll(['startDate', 'endDate'])
+        && isDayKey(s.startDate)
+        && isDayKey(s.endDate)
+        && (!('type' in s) || s.type in ['income', 'expense'])
+        && (!('categoryId' in s) || s.categoryId is string)
+        && (!('minAmount' in s) || s.minAmount is number)
+        && (!('maxAmount' in s) || s.maxAmount is number)
+        && (!('currency' in s) || s.currency is string)
+        && (!('searchQuery' in s) || s.searchQuery is string);
+    }
+
+    // `!('x' in d)` style rather than touched(): a refresh clears a vanished
+    // currency, extreme-row id or category breakdown via deleteField, and
+    // touched() is true for a deleted key that is absent from the incoming
+    // data — the searchUpdateValid pattern would reject exactly the deletions
+    // the service must issue.
+    function answerOptionalsValid(d) {
+      return (!('currency' in d) || d.currency is string)
+        && (!('extremeTransactionId' in d) || d.extremeTransactionId is string)
+        && (!('groups' in d) || d.groups is list)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function answerCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasOnly(['userId', 'schemaVersion', 'query', 'operation', 'limit',
+                             'scope', 'baseCurrency', 'value', 'currency',
+                             'transactionCount', 'extremeTransactionId', 'groups',
+                             'computedAt', 'lastUsedAt', 'createdAt', 'updatedAt'])
+        && d.keys().hasAll(['userId', 'schemaVersion', 'query', 'operation', 'limit',
+                            'scope', 'baseCurrency', 'value', 'transactionCount',
+                            'computedAt', 'lastUsedAt'])
+        && d.schemaVersion is int && d.schemaVersion > 0
+        && d.query is string && d.query.size() > 0
+        && d.operation in ['sum', 'count', 'average', 'max', 'min', 'topCategories']
+        && d.limit is int && d.limit >= 1 && d.limit <= 10
+        && answerScopeValid(d.scope)
+        && d.baseCurrency is string
+        && d.value is number
+        && d.transactionCount is int && d.transactionCount >= 0
+        && d.computedAt is timestamp
+        && d.lastUsedAt is timestamp
+        && answerOptionalsValid(d);
+    }
+
+    function answerUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        // The question and its resolved scope are the record's identity; a
+        // refresh replaces the figures, never what was asked.
+        && !touched('query') && !touched('operation') && !touched('limit')
+        && !touched('scope') && !touched('schemaVersion')
+        && (!touched('baseCurrency')
+            || ('baseCurrency' in d && d.baseCurrency is string))
+        && (!touched('value') || ('value' in d && d.value is number))
+        && (!touched('transactionCount')
+            || ('transactionCount' in d
+                && d.transactionCount is int && d.transactionCount >= 0))
+        && (!touched('computedAt')
+            || ('computedAt' in d && d.computedAt is timestamp))
+        && (!touched('lastUsedAt')
+            || ('lastUsedAt' in d && d.lastUsedAt is timestamp))
+        && answerOptionalsValid(d);
+    }
+
     // ---- category memory ----
 
     // The document id is the normalized merchant key, and the entry repeats it
@@ -557,6 +639,20 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      // Persisted smart-search answers: point-in-time snapshots of locally
+      // computed aggregates, keyed by recency. The closed field set is safe
+      // to require, as with securityEvents, because the collection cannot
+      // predate its own rule and so has no legacy rows. Updates may replace
+      // the figures (a local refresh) but never the question or its resolved
+      // scope — those are the record's identity. Delete is allowed: the owner
+      // prunes past the cap from the client and may discard records at will.
+      match /searchAnswers/{answerId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && answerCreateValid(userId);
+        allow update: if isOwner(userId) && answerUpdateValid(userId);
+        allow delete: if isOwner(userId);
+      }
+
       // Any other subcollections under user, including ones added later.
       // Rules are additive — an allow here cannot be narrowed by the blocks
       // above — so every validated collection must be carved out, or its
@@ -566,7 +662,7 @@ service cloud.firestore {
         allow write: if isOwner(userId) && !(subcollection in [
           'transactions', 'budgets', 'categories',
           'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-          'insightSnapshots', 'categoryMemory'
+          'insightSnapshots', 'categoryMemory', 'searchAnswers'
         ]);
       }
     }
