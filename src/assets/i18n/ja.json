@@ -722,6 +722,7 @@
     "applyKeyword": "キーワードで検索",
     "matchCount": "該当する取引: {{count}}件",
     "noMatches": "この質問に該当する取引はありません。",
+    "historyComputedAt": "{{date}} 時点の集計",
     "answerSum": "支出合計",
     "answerCount": "該当する取引数",
     "answerAverage": "平均金額",

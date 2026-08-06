@@ -722,6 +722,7 @@
     "applyKeyword": "以關鍵字搜尋",
     "matchCount": "{{count}} 筆符合的交易",
     "noMatches": "沒有符合此問題的交易。",
+    "historyComputedAt": "計算於 {{date}}",
     "answerSum": "支出總額",
     "answerCount": "符合的交易數",
     "answerAverage": "平均金額",

@@ -8,13 +8,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { CategoryService } from '../../../core/services/category.service';
-import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { isImeComposition } from '../../../core/utils/keyboard.utils';
-import { AggregateAnswer, NlSearchResult, TransactionFilters } from '../../../models';
+import { NlSearchResult, TransactionFilters } from '../../../models';
+import { NlAnswerCardComponent } from '../nl-answer-card/nl-answer-card.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /**
@@ -34,6 +34,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    NlAnswerCardComponent,
     TranslatePipe,
   ],
   templateUrl: './ai-search-dialog.component.html',
@@ -44,7 +45,6 @@ export class AiSearchDialogComponent {
   private pendingFilters = inject(PendingFiltersService);
   private router = inject(Router);
   private dialogRef = inject(MatDialogRef<AiSearchDialogComponent>);
-  private currencyService = inject(CurrencyService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private dateFormatService = inject(DateFormatService);
@@ -122,29 +122,6 @@ export class AiSearchDialogComponent {
     const start = filters.startDate ? this.dateFormatService.formatDate(filters.startDate) : '…';
     const end = filters.endDate ? this.dateFormatService.formatDate(filters.endDate) : '…';
     return `${start} – ${end}`;
-  }
-
-  answerLabel(answer: AggregateAnswer): string {
-    const keys: Record<AggregateAnswer['operation'], string> = {
-      sum: 'aiSearch.answerSum',
-      count: 'aiSearch.answerCount',
-      average: 'aiSearch.answerAverage',
-      max: 'aiSearch.answerMax',
-      min: 'aiSearch.answerMin',
-      topCategories: 'aiSearch.answerTopCategories',
-    };
-    return this.translationService.t(keys[answer.operation]);
-  }
-
-  answerValue(answer: AggregateAnswer): string {
-    if (answer.operation === 'count') {
-      return `${answer.value}`;
-    }
-    return this.formatMoney(answer.value, answer.currency);
-  }
-
-  formatMoney(value: number, currency?: string): string {
-    return currency ? this.currencyService.formatCurrency(value, currency) : `${value}`;
   }
 
   categoryName(categoryId: string): string {

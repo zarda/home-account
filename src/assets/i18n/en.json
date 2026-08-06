@@ -722,6 +722,7 @@
     "applyKeyword": "Search by keyword",
     "matchCount": "{{count}} matching transactions",
     "noMatches": "No transactions match this question.",
+    "historyComputedAt": "Computed {{date}}",
     "answerSum": "Total spent",
     "answerCount": "Matching transactions",
     "answerAverage": "Average amount",
