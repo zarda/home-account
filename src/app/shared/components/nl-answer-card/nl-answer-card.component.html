@@ -1,0 +1,34 @@
+<div class="result-block">
+  <p class="result-label">{{ answerLabel(answer()) }}</p>
+  @if (answer().transactionCount === 0) {
+    <p class="answer-empty">{{ 'aiSearch.noMatches' | translate }}</p>
+  } @else {
+    <p class="answer-value">{{ answerValue(answer()) }}</p>
+    @if (answer().extremeTransaction; as extreme) {
+      <p class="answer-detail">{{ extreme.description }}</p>
+    }
+    @if (answer().groups; as groups) {
+      <ul class="answer-groups">
+        @for (group of groups; track group.categoryId) {
+          <li>
+            <span>{{ categoryName(group.categoryId) }}</span>
+            <span class="group-total">{{ formatMoney(group.total, answer().currency) }}</span>
+          </li>
+        }
+      </ul>
+    }
+    <p class="answer-detail">
+      {{ 'aiSearch.matchCount' | translate: { count: answer().transactionCount } }}
+    </p>
+  }
+  <p class="answer-scope">{{ periodLabel(answer().scope) }}</p>
+  @if (computedAt(); as at) {
+    <p class="answer-computed-at">
+      {{ 'aiSearch.historyComputedAt' | translate: { date: formatComputedAt(at) } }}
+    </p>
+  }
+  <button mat-stroked-button (click)="onViewTransactions()">
+    <mat-icon>filter_list</mat-icon>
+    {{ 'aiSearch.viewTransactions' | translate }}
+  </button>
+</div>

@@ -39,6 +39,12 @@ export const routes: Routes = [
             .then(m => m.AiSettingsPageComponent)
       },
       { path: 'about', component: AboutComponent },
+      {
+        path: 'search-history',
+        loadComponent: () =>
+          import('./features/ai/search-history/search-answer-history.component')
+            .then(m => m.SearchAnswerHistoryComponent)
+      },
       // New import routes (accessed from Transaction page FAB)
       {
         path: 'import/file',

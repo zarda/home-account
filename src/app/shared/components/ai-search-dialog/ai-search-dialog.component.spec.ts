@@ -1,15 +1,19 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { WritableSignal, signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
-import { MatDialogRef } from '@angular/material/dialog';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { Timestamp } from '@angular/fire/firestore';
+import { of } from 'rxjs';
 import { AiSearchDialogComponent } from './ai-search-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
+import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { NlSearchResult } from '../../../models';
+import { NlSearchResult, SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
 import { createCategory, createTransaction } from '../../../core/services/testing/test-data';
 
 describe('AiSearchDialogComponent', () => {
@@ -19,6 +23,15 @@ describe('AiSearchDialogComponent', () => {
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<AiSearchDialogComponent>>;
+  let matDialog: jasmine.SpyObj<MatDialog>;
+  let storedAnswers: WritableSignal<SearchAnswerRecord[]>;
+  let answerHistory: {
+    answers: WritableSignal<SearchAnswerRecord[]>;
+    loadAnswers: jasmine.Spy;
+    touch: jasmine.Spy;
+    refreshAnswer: jasmine.Spy;
+    deleteAnswer: jasmine.Spy;
+  };
 
   async function searchWith(result: NlSearchResult): Promise<void> {
     nlSearch.search.and.resolveTo(result);
@@ -28,11 +41,23 @@ describe('AiSearchDialogComponent', () => {
   }
 
   beforeEach(async () => {
-    nlSearch = jasmine.createSpyObj('NlSearchService', ['search']);
+    nlSearch = jasmine.createSpyObj('NlSearchService', ['search', 'replayAggregate']);
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
     router = jasmine.createSpyObj('Router', ['navigate']);
     router.navigate.and.resolveTo(true);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+    matDialog = jasmine.createSpyObj('MatDialog', ['open']);
+    matDialog.open.and.returnValue({
+      afterClosed: () => of(true),
+    } as MatDialogRef<unknown>);
+    storedAnswers = signal<SearchAnswerRecord[]>([]);
+    answerHistory = {
+      answers: storedAnswers,
+      loadAnswers: jasmine.createSpy('loadAnswers').and.returnValue(of([])),
+      touch: jasmine.createSpy('touch').and.resolveTo(),
+      refreshAnswer: jasmine.createSpy('refreshAnswer').and.resolveTo(),
+      deleteAnswer: jasmine.createSpy('deleteAnswer').and.resolveTo(),
+    };
 
     const categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
     categoryService.categories.and.returnValue([
@@ -54,12 +79,18 @@ describe('AiSearchDialogComponent', () => {
         { provide: PendingFiltersService, useValue: pendingFilters },
         { provide: Router, useValue: router },
         { provide: MatDialogRef, useValue: dialogRef },
+        { provide: SearchAnswerHistoryService, useValue: answerHistory },
         { provide: CategoryService, useValue: categoryService },
         { provide: CurrencyService, useValue: currencyService },
         { provide: TranslationService, useValue: translationService },
         { provide: DateFormatService, useValue: dateFormatService },
       ],
-    }).compileComponents();
+    })
+      // The component imports MatDialogModule, whose environment provider for
+      // MatDialog shadows a root-level useValue; overrideProvider patches the
+      // token in every injector the TestBed creates.
+      .overrideProvider(MatDialog, { useValue: matDialog })
+      .compileComponents();
 
     fixture = TestBed.createComponent(AiSearchDialogComponent);
     component = fixture.componentInstance;
@@ -199,6 +230,124 @@ describe('AiSearchDialogComponent', () => {
       expect(component.fallbackNoticeKey('offline')).toBe('aiSearch.offlineFallback');
       expect(component.fallbackNoticeKey('noProvider')).toBe('aiSearch.noProviderFallback');
       expect(component.fallbackNoticeKey('error')).toBe('aiSearch.errorFallback');
+    });
+  });
+
+  describe('answer history', () => {
+    const rec = (
+      id: string,
+      millis: number,
+      overrides: Partial<SearchAnswerRecord> = {},
+    ): SearchAnswerRecord => ({
+      id,
+      userId: 'user123',
+      schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+      query: `question ${id}`,
+      operation: 'sum',
+      limit: 3,
+      scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+      baseCurrency: 'USD',
+      value: 421.5,
+      currency: 'USD',
+      transactionCount: 17,
+      computedAt: Timestamp.fromMillis(millis),
+      lastUsedAt: Timestamp.fromMillis(millis),
+      ...overrides,
+    });
+
+    it('shows the latest five stored answers with a see-all link when idle', () => {
+      storedAnswers.set([1, 2, 3, 4, 5, 6].map(i => rec(`a-${i}`, 1_000_000 - i)));
+      fixture.detectChanges();
+
+      const rows = fixture.nativeElement.querySelectorAll('.history-row');
+      expect(rows.length).toBe(5);
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain('aiSearch.historyTitle');
+      expect(text).toContain('aiSearch.historySeeAll');
+      expect(text).toContain('question a-1');
+    });
+
+    it('renders no history section when nothing is stored', () => {
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.history-section')).toBeNull();
+    });
+
+    it('reopening shows the stored snapshot and touches recency with no model call', () => {
+      storedAnswers.set([rec('a-1', 1_000_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(answerHistory.touch).toHaveBeenCalledWith('a-1');
+      expect(nlSearch.search).not.toHaveBeenCalled();
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain('USD 421.50');
+      expect(text).toContain('aiSearch.historyComputedAt');
+      expect(fixture.nativeElement.querySelector('.history-section')).toBeNull();
+    });
+
+    it('refresh replays the stored intent locally and persists the fresh figures', async () => {
+      storedAnswers.set([rec('a-1', 1_000_000)]);
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      const fresh = {
+        operation: 'sum' as const,
+        value: 500,
+        currency: 'USD',
+        transactionCount: 21,
+        scope: {},
+      };
+      nlSearch.replayAggregate.and.resolveTo(fresh);
+
+      (fixture.nativeElement.querySelector('.history-refresh') as HTMLButtonElement).click();
+      await fixture.whenStable();
+
+      expect(nlSearch.replayAggregate).toHaveBeenCalledWith(
+        'sum',
+        jasmine.objectContaining({
+          startDate: jasmine.any(Date),
+          endDate: jasmine.any(Date),
+        }),
+        3,
+      );
+      expect(answerHistory.refreshAnswer).toHaveBeenCalledWith('a-1', fresh);
+      expect(nlSearch.search).not.toHaveBeenCalled();
+    });
+
+    it('deleting a row asks for confirmation first', async () => {
+      storedAnswers.set([rec('a-1', 1_000_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-delete') as HTMLButtonElement).click();
+      await fixture.whenStable();
+
+      expect(matDialog.open).toHaveBeenCalled();
+      expect(answerHistory.deleteAnswer).toHaveBeenCalledWith('a-1');
+    });
+
+    it('see-all closes the dialog and navigates to the history page', () => {
+      storedAnswers.set([rec('a-1', 1_000_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-see-all') as HTMLButtonElement).click();
+
+      expect(dialogRef.close).toHaveBeenCalled();
+      expect(router.navigate).toHaveBeenCalledWith(['/search-history']);
+    });
+
+    it('submitting a new question leaves the snapshot view', async () => {
+      storedAnswers.set([rec('a-1', 1_000_000)]);
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.answer-computed-at')).toBeTruthy();
+
+      await searchWith({ kind: 'filter', filters: {} });
+
+      expect(fixture.nativeElement.querySelector('.answer-computed-at')).toBeNull();
     });
   });
 });

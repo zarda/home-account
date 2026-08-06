@@ -2,11 +2,13 @@ import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { NlSearchService } from './nl-search.service';
 import { AIStrategyService } from './ai-strategy.service';
+import { AnalyticsService } from './analytics.service';
 import { AuthService } from './auth.service';
 import { CategoryService } from './category.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { CurrencyService } from './currency.service';
 import { PwaService } from './pwa.service';
+import { SearchAnswerHistoryService } from './search-answer-history.service';
 import { SearchHistoryService } from './search-history.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
@@ -20,6 +22,8 @@ describe('NlSearchService', () => {
   let cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService>;
   let transactionService: jasmine.SpyObj<TransactionService>;
   let searchHistory: jasmine.SpyObj<SearchHistoryService>;
+  let answerHistory: jasmine.SpyObj<SearchAnswerHistoryService>;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
 
   function expense(amount: number, categoryId: string, overrides: Partial<Transaction> = {}): Transaction {
     return createTransaction({
@@ -39,6 +43,9 @@ describe('NlSearchService', () => {
     transactionService.getTransactionsInRange.and.returnValue(of([]));
     searchHistory = jasmine.createSpyObj('SearchHistoryService', ['recordRecent']);
     searchHistory.recordRecent.and.resolveTo();
+    answerHistory = jasmine.createSpyObj('SearchAnswerHistoryService', ['recordAnswer']);
+    answerHistory.recordAnswer.and.resolveTo();
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackAiAssistUsed']);
 
     const categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
     categoryService.categories.and.returnValue([
@@ -76,6 +83,8 @@ describe('NlSearchService', () => {
         { provide: TranslationService, useValue: translationService },
         { provide: AuthService, useValue: authService },
         { provide: SearchHistoryService, useValue: searchHistory },
+        { provide: SearchAnswerHistoryService, useValue: answerHistory },
+        { provide: AnalyticsService, useValue: analytics },
       ],
     });
 
@@ -380,6 +389,64 @@ describe('NlSearchService', () => {
 
       const result = await service.search('total spend');
       expect(result.kind).toBe('keywordFallback');
+    });
+  });
+
+  describe('answer history', () => {
+    it('"how much did I spend on food" records the computed answer over its resolved scope', async () => {
+      mockIntent({ kind: 'aggregate', operation: 'sum', filters: { categoryId: 'food' }, limit: 3 });
+      transactionService.getTransactionsInRange.and.returnValue(of([expense(100, 'food')]));
+
+      const result = await service.search('how much did I spend on food');
+
+      expect(result.kind).toBe('answer');
+      expect(analytics.trackAiAssistUsed).toHaveBeenCalledWith({ feature: 'search' });
+      expect(answerHistory.recordAnswer).toHaveBeenCalledTimes(1);
+      const [query, intent, answer] = answerHistory.recordAnswer.calls.mostRecent().args;
+      expect(query).toBe('how much did I spend on food');
+      expect(intent.operation).toBe('sum');
+      // The scope handed to the record is the resolved one: a query with no
+      // dates defaults to the current month, and that filled-in range is what
+      // the snapshot must remember.
+      expect(answer.scope.startDate).toBeDefined();
+      expect(answer.scope.endDate).toBeDefined();
+      expect(answer.value).toBe(100);
+    });
+
+    it('"show coffee purchases" (a filter interpretation) records no answer', async () => {
+      mockIntent({ kind: 'filter', filters: { categoryId: 'food' } });
+      await service.search('show coffee purchases');
+      expect(answerHistory.recordAnswer).not.toHaveBeenCalled();
+    });
+
+    it('a keyword fallback records no answer', async () => {
+      aiStrategy.canUseCloud.and.returnValue(false);
+      await service.search('starbucks');
+      expect(answerHistory.recordAnswer).not.toHaveBeenCalled();
+    });
+
+    it('a failed interpretation records no answer', async () => {
+      cloudLLMProvider.interpretSearchQuery.and.rejectWith(new Error('model unavailable'));
+      await service.search('how much on food');
+      expect(answerHistory.recordAnswer).not.toHaveBeenCalled();
+    });
+
+    it('replayAggregate recomputes locally with no model call and no usage event', async () => {
+      transactionService.getTransactionsInRange.and.returnValue(
+        of([expense(80, 'food'), expense(20, 'food')]));
+
+      const answer = await service.replayAggregate('sum', {
+        startDate: new Date(2026, 7, 1),
+        endDate: new Date(2026, 7, 31, 23, 59, 59, 999),
+      }, 3);
+
+      expect(answer.value).toBe(100);
+      expect(answer.transactionCount).toBe(2);
+      expect(cloudLLMProvider.interpretSearchQuery).not.toHaveBeenCalled();
+      // The usage event exists to weigh cloud cost; a replay costs nothing.
+      expect(analytics.trackAiAssistUsed).not.toHaveBeenCalled();
+      // Recording stays the caller's choice: a refresh updates its own record.
+      expect(answerHistory.recordAnswer).not.toHaveBeenCalled();
     });
   });
 });

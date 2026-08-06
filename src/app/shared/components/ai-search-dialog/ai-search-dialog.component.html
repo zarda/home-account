@@ -50,33 +50,63 @@
   }
 
   @if (answerResult(); as answer) {
-    <div class="result-block">
-      <p class="result-label">{{ answerLabel(answer) }}</p>
-      @if (answer.transactionCount === 0) {
-        <p class="answer-empty">{{ 'aiSearch.noMatches' | translate }}</p>
-      } @else {
-        <p class="answer-value">{{ answerValue(answer) }}</p>
-        @if (answer.extremeTransaction; as extreme) {
-          <p class="answer-detail">{{ extreme.description }}</p>
+    <app-nl-answer-card [answer]="answer" (viewTransactions)="applyFilters($event)" />
+  }
+
+  @if (showHistory()) {
+    <div class="history-section">
+      <div class="history-header">
+        <p class="result-label">{{ 'aiSearch.historyTitle' | translate }}</p>
+        <button mat-button class="history-see-all" (click)="seeAllHistory()">
+          {{ 'aiSearch.historySeeAll' | translate }}
+        </button>
+      </div>
+      <ul class="history-list">
+        @for (record of historyPreview(); track record.id) {
+          <li class="history-row">
+            <button type="button" class="history-open" (click)="openRecord(record)">
+              <span class="history-query">{{ record.query }}</span>
+              <span class="history-meta">
+                {{ recordValueLabel(record) }} · {{ recordDateLabel(record) }}
+              </span>
+            </button>
+            <button
+              mat-icon-button
+              class="history-delete"
+              [attr.aria-label]="'common.delete' | translate"
+              (click)="deleteRecord(record)"
+            >
+              <mat-icon>close</mat-icon>
+            </button>
+          </li>
         }
-        @if (answer.groups; as groups) {
-          <ul class="answer-groups">
-            @for (group of groups; track group.categoryId) {
-              <li>
-                <span>{{ categoryName(group.categoryId) }}</span>
-                <span class="group-total">{{ formatMoney(group.total, answer.currency) }}</span>
-              </li>
-            }
-          </ul>
-        }
-        <p class="answer-detail">
-          {{ 'aiSearch.matchCount' | translate: { count: answer.transactionCount } }}
-        </p>
-      }
-      <p class="answer-scope">{{ periodLabel(answer.scope) }}</p>
-      <button mat-stroked-button (click)="applyFilters(answer.scope)">
-        <mat-icon>filter_list</mat-icon>
-        {{ 'aiSearch.viewTransactions' | translate }}
+      </ul>
+    </div>
+  }
+
+  @if (snapshotAnswer(); as snapshot) {
+    <div class="history-snapshot">
+      <button
+        mat-icon-button
+        class="history-back"
+        [attr.aria-label]="'common.back' | translate"
+        (click)="closeSnapshot()"
+      >
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <app-nl-answer-card
+        [answer]="snapshot"
+        [computedAt]="openedComputedAt()"
+        (viewTransactions)="applyFilters($event)"
+      />
+      <button
+        mat-stroked-button
+        class="history-refresh"
+        [disabled]="isRefreshing()"
+        (click)="refreshOpened()"
+      >
+        <mat-icon>refresh</mat-icon>
+        {{ 'common.refresh' | translate }}
       </button>
     </div>
   }

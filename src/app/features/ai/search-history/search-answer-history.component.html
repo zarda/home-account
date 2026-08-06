@@ -1,0 +1,53 @@
+<div class="page-container">
+  <app-page-header titleKey="aiSearch.historyPageTitle" />
+
+  @if (history.answers().length === 0) {
+    <app-empty-state
+      icon="travel_explore"
+      [title]="emptyTitle()"
+      [description]="emptyHint()"
+    />
+  } @else {
+    <ul class="history-list">
+      @for (record of history.answers(); track record.id) {
+        <li class="history-row" [class.expanded]="isExpanded(record)">
+          <div class="history-row-line">
+            <button type="button" class="history-open" (click)="toggle(record)">
+              <span class="history-query">{{ record.query }}</span>
+              <span class="history-meta">
+                {{ recordValueLabel(record) }} · {{ recordDateLabel(record) }}
+              </span>
+            </button>
+            <button
+              mat-icon-button
+              class="history-delete"
+              [attr.aria-label]="'common.delete' | translate"
+              (click)="deleteRecord(record)"
+            >
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+          </div>
+
+          @if (isExpanded(record) && expandedAnswer(); as answer) {
+            <div class="history-detail">
+              <app-nl-answer-card
+                [answer]="answer"
+                [computedAt]="expandedComputedAt()"
+                (viewTransactions)="viewTransactions($event)"
+              />
+              <button
+                mat-stroked-button
+                class="history-refresh"
+                [disabled]="isRefreshing()"
+                (click)="refreshExpanded()"
+              >
+                <mat-icon>refresh</mat-icon>
+                {{ 'common.refresh' | translate }}
+              </button>
+            </div>
+          }
+        </li>
+      }
+    </ul>
+  }
+</div>

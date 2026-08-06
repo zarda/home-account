@@ -152,6 +152,7 @@ table can enumerate.
 | `settings` | `settings` | nav |
 | `ai` | `ai` | settings |
 | `about` | `about` | sidebar |
+| `search-history` | `search-history` | smart-search dialog |
 | `import/file` | `import/file` | import wizard |
 | `import/history` | `import/history` | import history |
 <!-- analytics-screens:end -->

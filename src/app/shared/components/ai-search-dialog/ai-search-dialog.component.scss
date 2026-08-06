@@ -103,6 +103,71 @@
   }
 }
 
+.history-section {
+  margin-top: 16px;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.history-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  .history-open {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 8px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--surface-muted);
+    }
+  }
+
+  .history-query {
+    font-size: var(--text-sm);
+    font-weight: 500;
+  }
+
+  .history-meta {
+    font-size: var(--text-sm);
+    @apply text-gray-500 dark:text-gray-400;
+  }
+}
+
+.history-snapshot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+
+  app-nl-answer-card {
+    width: 100%;
+  }
+}
+
 .fallback-notice {
   margin: 0;
   display: flex;

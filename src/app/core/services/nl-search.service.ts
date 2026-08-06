@@ -6,12 +6,14 @@ import { CategoryService } from './category.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { CurrencyService } from './currency.service';
 import { PwaService } from './pwa.service';
+import { SearchAnswerHistoryService } from './search-answer-history.service';
 import { SearchHistoryService } from './search-history.service';
 import { AnalyticsService } from './analytics.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
 import {
   AggregateAnswer,
+  AggregateOperation,
   NlSearchFallbackReason,
   NlSearchResult,
   SearchIntent,
@@ -40,6 +42,7 @@ export class NlSearchService {
   private translationService = inject(TranslationService);
   private authService = inject(AuthService);
   private searchHistory = inject(SearchHistoryService);
+  private answerHistory = inject(SearchAnswerHistoryService);
   private analytics = inject(AnalyticsService);
 
   async search(query: string): Promise<NlSearchResult> {
@@ -59,11 +62,29 @@ export class NlSearchService {
       if (intent.kind === 'filter') {
         return { kind: 'filter', filters: intent.filters };
       }
-      return { kind: 'answer', answer: await this.computeAggregate(intent) };
+      const answer = await this.computeAggregate(intent);
+      // Fire-and-forget, like recordRecent: a history write must never delay
+      // or fail the answer the user is waiting on.
+      void this.answerHistory.recordAnswer(trimmed, intent, answer);
+      return { kind: 'answer', answer };
     } catch (error) {
       console.warn('Smart search interpretation failed, using keyword search:', error);
       return this.keywordFallback(trimmed, 'error');
     }
+  }
+
+  /**
+   * Recompute a stored aggregate locally from its stored scope. Never calls
+   * the model and never counts as AI usage — the ai_assist_used event exists
+   * to weigh cloud cost, and a replay costs nothing. Recording is likewise
+   * the caller's business: a refresh updates the record it came from.
+   */
+  async replayAggregate(
+    operation: AggregateOperation,
+    filters: TransactionFilters,
+    limit: number,
+  ): Promise<AggregateAnswer> {
+    return this.computeAggregate({ kind: 'aggregate', operation, filters, limit });
   }
 
   /**
