@@ -226,28 +226,43 @@ describe('Transaction overflow (emulator smoke test)', () => {
         /* Inside the row is not the same as at a predictable place in it, and
            the difference is a shipped bug: the menu used to wrap to a line of
            its own and sit at the row's left edge, which every containment
-           check above is perfectly happy with. It now lives under the tile in
-           a fixed-width column, out of the reflow entirely. */
+           check above is perfectly happy with. It is now absolutely pinned to
+           the row's top-right corner, out of the reflow entirely. */
         const tile = card.querySelector('app-transaction-row app-category-chip') as Element;
-        expect(menu.getBoundingClientRect().top)
-          .withContext('menu under the tile')
-          .toBeGreaterThanOrEqual(tile.getBoundingClientRect().bottom - 1);
+        const rowRect = row.getBoundingClientRect();
+        expect(Math.abs(menu.getBoundingClientRect().right - (rowRect.right - 8)))
+          .withContext('menu at the row content edge')
+          .toBeLessThanOrEqual(1);
+        expect(Math.abs(menu.getBoundingClientRect().top - (rowRect.top + 8)))
+          .withContext('menu at the top of the row')
+          .toBeLessThanOrEqual(2);
 
-        /* The amount is the only thing trailing now, and it is what has to be
-           flush right. 8px is the row's trailing padding. */
+        /* The amount is the head line's only trailing item, flush against the
+           head's content box — the 44px reserve under the pinned menu is head
+           padding, so measuring against the content edge states the rule once. */
+        const head = card.querySelector('app-transaction-row .row-head') as HTMLElement;
+        const headPad = parseFloat(getComputedStyle(head).paddingRight);
+        expect(headPad).withContext('menu projected, corner reserved').toBe(44);
         const amount = card.querySelector('app-transaction-row .row-amount') as Element;
-        expect(Math.abs(row.getBoundingClientRect().right - 8 - amount.getBoundingClientRect().right))
-          .withContext('amount at the right edge, not merely inside the row')
+        expect(Math.abs(head.getBoundingClientRect().right - headPad - amount.getBoundingClientRect().right))
+          .withContext('amount at the content edge, not merely inside the row')
           .toBeLessThanOrEqual(1);
 
         /* The tile is what the row is read by at a glance, and it belongs on
-           the same line as the text it labels. It was landing alone on line 1
-           whenever the description ran long, because line-collection measured
-           the details column at the full width of that description. */
-        const details = card.querySelector('app-transaction-row .row-details') as Element;
-        expect(Math.abs(tile.getBoundingClientRect().top - details.getBoundingClientRect().top))
-          .withContext('category tile shares a line with the details column')
+           the same line as the text it labels. The surface never wraps, so
+           the tile can no longer be orphaned the way line-collection at the
+           description's max-content width once managed. */
+        const body = card.querySelector('app-transaction-row .row-body') as Element;
+        expect(Math.abs(tile.getBoundingClientRect().top - body.getBoundingClientRect().top))
+          .withContext('category tile shares a line with the text stack')
           .toBeLessThanOrEqual(1);
+
+        /* The list opts into the swipe drawer; the real route must render it.
+           Its geometry and gesture live in the row and directive specs — here
+           it only has to exist and stay clipped while closed. */
+        expect(card.querySelector('app-transaction-row .row-swipe-actions'))
+          .withContext('swipe drawer rendered on the transactions page')
+          .not.toBeNull();
 
         /* The category strip carries the long category name, the location and
            the tags, and scrolls rather than stacking them (ADR 0012). */
