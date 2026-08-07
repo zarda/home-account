@@ -153,6 +153,52 @@ service cloud.firestore {
         && budgetOptionalsValid(d);
     }
 
+    // ---- goals ----
+
+    function goalOptionalsValid(d) {
+      // Item elements are validated client-side; rules bound only the shape
+      // and size of the list, since per-element map validation is not
+      // generically expressible here.
+      return (!('items' in d) || (d.items is list && d.items.size() <= 50))
+        && (!('targetDate' in d) || d.targetDate is timestamp)
+        && (!('note' in d) || d.note is string)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function goalCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasAll([
+             'userId', 'kind', 'name', 'targetAmount', 'contributedAmount',
+             'currency', 'isActive'
+           ])
+        && d.kind in ['saving', 'project']
+        && d.name is string
+        && isPositive(d.targetAmount)
+        && d.contributedAmount is number
+        && d.contributedAmount >= 0
+        && d.currency is string
+        && d.isActive is bool
+        && goalOptionalsValid(d);
+    }
+
+    function goalUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        && (!touched('kind') || ('kind' in d && d.kind in ['saving', 'project']))
+        && (!touched('name') || ('name' in d && d.name is string))
+        && (!touched('targetAmount')
+            || ('targetAmount' in d && isPositive(d.targetAmount)))
+        && (!touched('contributedAmount')
+            || ('contributedAmount' in d
+                && d.contributedAmount is number
+                && d.contributedAmount >= 0))
+        && (!touched('currency') || ('currency' in d && d.currency is string))
+        && (!touched('isActive') || ('isActive' in d && d.isActive is bool))
+        && goalOptionalsValid(d);
+    }
+
     // ---- categories ----
 
     // `id` is tolerated because initializeDefaultCategories copies the
@@ -547,6 +593,14 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      // Goals subcollection
+      match /goals/{goalId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && goalCreateValid(userId);
+        allow update: if isOwner(userId) && goalUpdateValid(userId);
+        allow delete: if isOwner(userId);
+      }
+
       // Categories subcollection
       match /categories/{categoryId} {
         allow read: if isOwner(userId);
@@ -670,7 +724,7 @@ service cloud.firestore {
       match /{subcollection}/{docId} {
         allow read: if isOwner(userId);
         allow write: if isOwner(userId) && !(subcollection in [
-          'transactions', 'budgets', 'categories',
+          'transactions', 'budgets', 'categories', 'goals',
           'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
           'insightSnapshots', 'categoryMemory', 'searchAnswers'
         ]);

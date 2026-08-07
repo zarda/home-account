@@ -550,6 +550,81 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('goals', () => {
+    const validGoal = (overrides: Record<string, unknown> = {}) => ({
+      userId: uid,
+      kind: 'saving',
+      name: 'Emergency fund',
+      targetAmount: 3000,
+      contributedAmount: 0,
+      currency: 'USD',
+      isActive: true,
+      ...overrides
+    });
+
+    it('accepts a valid saving goal', async () => {
+      await expectAllowed(setDoc(doc(firestore, path('goals')), validGoal()), 'valid create');
+    });
+
+    it('accepts a project goal with items', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('goals')), validGoal({
+          kind: 'project',
+          name: 'Japan trip',
+          items: [
+            { name: 'Flights', amount: 800, done: false },
+            { name: 'Hotel', amount: 1200, done: false }
+          ],
+          targetDate: Timestamp.now()
+        })),
+        'project with items'
+      );
+    });
+
+    // This is also the carve-out regression: without the goals entry in the
+    // catch-all exclusion list, an invalid kind sails through the catch-all.
+    it('rejects a kind outside the enum', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ kind: 'wishlist' })),
+        'unknown kind'
+      );
+    });
+
+    it('rejects a non-positive target', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ targetAmount: 0 })),
+        'zero target'
+      );
+    });
+
+    it('rejects a negative contributed amount', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ contributedAmount: -5 })),
+        'negative contributions'
+      );
+    });
+
+    it("rejects a goal attributed to another user", async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ userId: otherUid })),
+        'foreign userId'
+      );
+    });
+
+    it('rejects items that are not a list', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ items: 'flights' })),
+        'string items'
+      );
+    });
+
+    it('allows the owner to delete a goal', async () => {
+      const p = path('goals');
+      await setDoc(doc(firestore, p), validGoal());
+      await expectAllowed(deleteDoc(doc(firestore, p)), 'owner delete');
+    });
+  });
+
   describe('categories', () => {
     it('accepts a well-formed custom category', async () => {
       await expectAllowed(setDoc(doc(firestore, path('categories')), validCategory()), 'valid create');
@@ -1279,7 +1354,7 @@ describe('firestore.rules (emulator smoke test)', () => {
     // collection. Without the exclusion list these writes succeed and every
     // field validator above becomes decorative.
     const validated = [
-      'transactions', 'budgets', 'categories',
+      'transactions', 'budgets', 'categories', 'goals',
       'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
       'insightSnapshots', 'categoryMemory', 'searchAnswers'
     ];
