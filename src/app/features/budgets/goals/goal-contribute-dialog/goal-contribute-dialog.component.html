@@ -1,0 +1,33 @@
+<div class="contribute-dialog">
+  <app-dialog-header titleKey="goal.contributeTitle" (closed)="onCancel()" />
+
+  <mat-dialog-content class="!px-6 !py-4">
+    <p class="goal-name">{{ data.goal.name }}</p>
+
+    <mat-button-toggle-group [(ngModel)]="direction" class="direction-toggle w-full mb-4">
+      <mat-button-toggle value="add" class="flex-1">
+        <mat-icon>add</mat-icon>
+        {{ 'goal.directionAdd' | translate }}
+      </mat-button-toggle>
+      <mat-button-toggle value="withdraw" class="flex-1">
+        <mat-icon>remove</mat-icon>
+        {{ 'goal.directionWithdraw' | translate }}
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+
+    <mat-form-field appearance="outline" class="w-full">
+      <mat-label>{{ 'goal.contributionAmount' | translate }}</mat-label>
+      <input matInput type="number" [(ngModel)]="amount" step="0.01" min="0.01" autofocus>
+      <span matTextSuffix>{{ data.goal.currency }}</span>
+    </mat-form-field>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end" class="!px-6 !pb-4 gap-2">
+    <button mat-stroked-button (click)="onCancel()">
+      {{ 'common.cancel' | translate }}
+    </button>
+    <button mat-flat-button color="primary" [disabled]="!isValid" (click)="onConfirm()">
+      {{ 'common.confirm' | translate }}
+    </button>
+  </mat-dialog-actions>
+</div>

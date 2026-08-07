@@ -1,0 +1,14 @@
+.contribute-dialog {
+  .goal-name {
+    margin: 0 0 12px;
+    font-weight: 500;
+  }
+
+  .direction-toggle {
+    display: flex;
+
+    mat-button-toggle {
+      flex: 1;
+    }
+  }
+}

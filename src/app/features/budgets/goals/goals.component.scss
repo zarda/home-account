@@ -1,0 +1,21 @@
+.goals-tab {
+  .goals-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+
+    .goals-hint {
+      margin: 0;
+      font-size: 13px;
+      opacity: 0.75;
+    }
+  }
+
+  .goals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+}
