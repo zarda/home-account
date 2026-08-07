@@ -52,6 +52,12 @@ import { createCategory, createTransaction, createUser } from '../core/services/
         <button class="menu-probe" type="button">⋮</button>
       </app-transaction-row>
     </div>
+
+    <!-- 343px again, with nothing projected into the actions slot — the
+         dashboard card's shape. The reserved corner must not exist here. -->
+    <div class="bare">
+      <app-transaction-row [transaction]="ordinary()" [categories]="categories" />
+    </div>
   `,
   styles: [
     `
@@ -59,20 +65,22 @@ import { createCategory, createTransaction, createUser } from '../core/services/
       // overflows in the app does not merely look wrong, it loses pixels.
       .narrow,
       .typical,
-      .brief {
+      .brief,
+      .bare {
         overflow: hidden;
       }
       .narrow {
         width: 288px;
       }
       .typical,
-      .brief {
+      .brief,
+      .bare {
         width: 343px;
       }
       // Matches .row-menu-btn in transaction-list.component.scss, which is
       // what the app actually projects here. A default-sized button would
-      // under-report the leading column's height, and the height of that
-      // column is the cost this layout is paying.
+      // under-report what the pinned corner has to cover, and the reserve in
+      // the row is sized to this button.
       .menu-probe {
         width: 40px;
         height: 40px;
@@ -186,19 +194,20 @@ describe('overflow guard', () => {
   }
 
   /**
-   * Distance from the amount's right edge to the row's content edge.
+   * Distance from the amount's right edge to the head line's content edge.
    *
    * Containment is not enough and never was: an item that has wrapped to a
    * line of its own and sits at the row's *left* edge is still inside the row,
-   * and that is exactly the bug these rows shipped with — measured on the menu
-   * then, on the amount now that the menu has moved to the leading column and
-   * the amount is the only thing trailing. The trailing padding is 8px, from
-   * `.transaction-row { padding: 12px 8px }`.
+   * and that is exactly the bug these rows shipped with. The flush edge is the
+   * head's content box because the reserved corner is head padding — 44px
+   * where a menu is projected, nothing where none is — so the one rule covers
+   * both the list shape and the dashboard shape.
    */
   function amountGapToRightEdge(scope: string): number {
-    const row = el(scope, '.transaction-row').getBoundingClientRect();
+    const head = el(scope, '.row-head');
+    const headRect = head.getBoundingClientRect();
     const amount = el(scope, '.row-amount').getBoundingClientRect();
-    return row.right - 8 - amount.right;
+    return headRect.right - parseFloat(getComputedStyle(head).paddingRight) - amount.right;
   }
 
   describe('a row whose content is far too long for it', () => {
@@ -217,30 +226,32 @@ describe('overflow guard', () => {
         .toBeLessThanOrEqual(1);
     });
 
-    it('keeps the overflow menu under the tile, in the leading column', () => {
+    it('pins the overflow menu to the top-right corner, out of the reflow', () => {
       // The menu's position no longer depends on anything that can wrap: it is
-      // in a fixed-width column with the tile, which is the whole reason it
-      // moved. Before, it was the last item of a wrapping row and could land
-      // anywhere the reflow put it.
-      const tile = el('.narrow', 'app-category-chip').getBoundingClientRect();
+      // absolutely positioned against the surface, so however long the
+      // description runs — here it wraps several lines — the menu sits at the
+      // same corner of every row. The old leading column bought the same
+      // property by setting every row's height; this pin does not (#219).
       const menu = el('.narrow', '.menu-probe').getBoundingClientRect();
       const row = el('.narrow', '.transaction-row').getBoundingClientRect();
 
-      expect(menu.top).withContext('menu sits below the tile').toBeGreaterThanOrEqual(tile.bottom - 1);
-      expect(menu.left - row.left)
-        .withContext('menu in the leading column, not the trailing edge')
-        .toBeLessThan(row.width / 2);
+      expect(Math.abs(menu.right - (row.right - 8)))
+        .withContext('menu right edge at the row content edge')
+        .toBeLessThanOrEqual(1);
+      expect(Math.abs(menu.top - (row.top + 8)))
+        .withContext('menu at the top of the row')
+        .toBeLessThanOrEqual(1);
     });
 
-    it('keeps the category tile on the same line as the details column', () => {
-      // `.row-details` used to be `flex: 1 1 auto`, so line-collection measured
-      // it at the full max-content width of the description and broke the line
-      // before the tile — leaving the tile alone on line 1, the one thing in
-      // the row that is supposed to be read at a glance.
+    it('keeps the category tile on the same line as the body', () => {
+      // The surface never wraps: the tile and the text stack are its only
+      // in-flow items, so the tile can no longer be orphaned on a line of its
+      // own the way `flex: 1 1 auto` line-collection once managed. This is
+      // the tripwire for anyone who reintroduces wrapping at that level.
       const chip = el('.narrow', 'app-category-chip').getBoundingClientRect();
-      const details = el('.narrow', '.row-details').getBoundingClientRect();
-      expect(Math.abs(chip.top - details.top))
-        .withContext('tile and details share a line')
+      const body = el('.narrow', '.row-body').getBoundingClientRect();
+      expect(Math.abs(chip.top - body.top))
+        .withContext('tile and body share a line')
         .toBeLessThanOrEqual(1);
     });
 
@@ -272,7 +283,7 @@ describe('overflow guard', () => {
 
     it('keeps every part of the row inside the clipping container', () => {
       const clip = host.querySelector('.narrow') as HTMLElement;
-      for (const selector of ['.transaction-row', '.row-details', '.row-amount', '.menu-probe']) {
+      for (const selector of ['.transaction-row', '.row-body', '.row-head', '.row-amount', '.row-meta', '.menu-probe']) {
         expect(contains(clip, el('.narrow', selector)))
           .withContext(`${selector} inside the clipping container`)
           .toBeTrue();
@@ -307,6 +318,21 @@ describe('overflow guard', () => {
       expect(contains(el('.narrow', '.row-category'), overflow))
         .withContext('+N pinned inside the visible strip, not scrolled off it')
         .toBeTrue();
+      expect(overflow.getBoundingClientRect().right)
+        .withContext('+N clear of the pinned menu')
+        .toBeLessThanOrEqual(el('.narrow', '.menu-probe').getBoundingClientRect().left + 1);
+    });
+
+    it('keeps the date leading and the converted amount trailing on the meta line', () => {
+      const meta = el('.narrow', '.row-meta').getBoundingClientRect();
+      const date = el('.narrow', '.row-date').getBoundingClientRect();
+      const converted = el('.narrow', '.amount-converted').getBoundingClientRect();
+      expect(Math.abs(date.left - meta.left))
+        .withContext('date at the leading edge')
+        .toBeLessThanOrEqual(1);
+      expect(Math.abs(converted.right - meta.right))
+        .withContext('converted amount at the trailing edge')
+        .toBeLessThanOrEqual(1);
     });
   });
 
@@ -324,22 +350,20 @@ describe('overflow guard', () => {
     });
 
     it('does not move the overflow menu when the amount wraps', () => {
-      // The point of the move. However the rest of the row reflows, the menu
+      // The point of the pin. However the rest of the row reflows, the menu
       // is where it was on the row above it and the row below it.
-      const tile = el('.brief', 'app-category-chip').getBoundingClientRect();
       const menu = el('.brief', '.menu-probe').getBoundingClientRect();
       const row = el('.brief', '.transaction-row').getBoundingClientRect();
 
-      expect(menu.top).withContext('still under the tile').toBeGreaterThanOrEqual(tile.bottom - 1);
-      // Centres, not left edges: the column centres its two items and they are
-      // deliberately different widths.
-      expect(Math.abs((menu.left + menu.right) / 2 - (tile.left + tile.right) / 2))
-        .withContext('still centred under the tile')
+      expect(Math.abs(menu.right - (row.right - 8)))
+        .withContext('still at the right edge')
+        .toBeLessThanOrEqual(1);
+      expect(Math.abs(menu.top - (row.top + 8)))
+        .withContext('still at the top')
         .toBeLessThanOrEqual(1);
       expect(contains(el('.brief', '.transaction-row'), el('.brief', '.menu-probe')))
         .withContext('still inside the row')
         .toBeTrue();
-      expect(row.width).toBeGreaterThan(0);
     });
   });
 
@@ -360,24 +384,59 @@ describe('overflow guard', () => {
       expect(category.getBoundingClientRect().height)
         .withContext('category, location and tags stay on one line')
         .toBeLessThan(30);
-      /* 100px, and it used to be 80. The overflow menu moved under the tile,
-         so the leading column is now 32 (tile) + 4 (gap) + 40 (menu) = 76 plus
-         24 of row padding, and it — not the text — is what sets the height of
-         every row in the list. The tile went from 40 to 32 to pay for part of
-         that; the rest is the trade.
+      /* 88px bound, ~81 measured: 8 of padding + a one-line head (~24) +
+         2 gap + the strip (~20) + 2 gap + the meta line (~17) + 8 of padding.
+         The menu is pinned outside the flow and adds no height; neither does
+         the swipe drawer. It was 100, set by the leading column stacking the
+         menu under the tile — the trade issue #219 tracked, and this layout
+         is the revisit it asked for.
 
-         Stated as a hard number rather than a loose bound because it is a cost
-         somebody chose and should have to choose again: if this fails, the
-         leading column grew, and that is a decision, not a detail. The
-         alternative layouts are issue #219. */
+         Stated as a hard number rather than a loose bound for the same reason
+         the 100 was: if this fails, a line grew or a gap crept in, and that
+         should be a decision somebody makes again, not a detail that drifts. */
       expect(el('.typical', '.transaction-row').getBoundingClientRect().height)
-        .withContext('row is the leading column plus padding, and no taller')
-        .toBeLessThanOrEqual(100);
+        .withContext('row is the text stack plus padding, and no taller')
+        .toBeLessThanOrEqual(88);
+    });
+
+    it('ends the strip scrollport left of the pinned menu', () => {
+      // On a one-line head the strip's band vertically overlaps the pinned
+      // menu, and the sticky +N pins to the scrollport's right edge — so the
+      // scrollport itself must stop at the reserve, or the indicator ends up
+      // under the button. margin-right rather than padding, because sticky
+      // insets resolve against the scrollport box.
+      const strip = el('.typical', '.row-category').getBoundingClientRect();
+      const menu = el('.typical', '.menu-probe').getBoundingClientRect();
+      expect(strip.right)
+        .withContext('strip clears the menu')
+        .toBeLessThanOrEqual(menu.left + 1);
     });
 
     it('leaves an amount that fits at its stylesheet size', () => {
       // appFitText writes nothing at all unless it has to.
       expect(el('.typical', '.amount').style.fontSize).toBe('');
+    });
+  });
+
+  describe('a row without a projected menu, which is the dashboard shape', () => {
+    it('reclaims the reserved corner', () => {
+      // The reserve exists for the menu, and the dashboard projects none. An
+      // unconditional reserve would shave 44px off every dashboard row for a
+      // button that is not there.
+      expect(getComputedStyle(el('.bare', '.row-head')).paddingRight)
+        .withContext('no head reserve')
+        .toBe('0px');
+      expect(getComputedStyle(el('.bare', '.row-category')).marginRight)
+        .withContext('no strip reserve')
+        .toBe('0px');
+      expect(Math.abs(amountGapToRightEdge('.bare')))
+        .withContext('amount flush with the row content edge')
+        .toBeLessThanOrEqual(1);
+    });
+
+    it('holds the same height bound with no menu to pin', () => {
+      expect(el('.bare', '.transaction-row').getBoundingClientRect().height)
+        .toBeLessThanOrEqual(88);
     });
   });
 });

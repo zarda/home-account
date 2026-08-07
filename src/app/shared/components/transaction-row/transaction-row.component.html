@@ -6,88 +6,96 @@
   (keydown.enter)="onActivate()"
   (keydown.space)="$event.preventDefault(); onActivate()"
 >
-  <!-- Category tile, with the overflow menu stacked beneath it. Both are fixed
-       width and neither ever yields, so this column is the one part of the row
-       whose size does not depend on its content.
+  <!-- Everything visible at rest rides this one surface. -->
+  <div class="row-surface">
+    <!-- Projected overflow menu, pinned to the surface's top-right corner and
+         out of the flow entirely: wherever the text stack reflows, the menu
+         sits at the same corner of every row. First child on purpose — the
+         reserved-corner rules in the stylesheet select forward from it with ~.
 
-       :empty collapses the slot where no menu is projected — the dashboard
-       card projects none — and a display: none item claims no gap, so there
-       the column is just the tile. -->
-  <div class="row-leading">
+         :empty collapses the slot where no menu is projected — the dashboard
+         card projects none — and the reserve collapses with it. -->
+    <div class="row-actions"><ng-content /></div>
+
     <app-category-chip
       appearance="tile"
       size="sm"
       [icon]="categoryIcon()"
       [color]="categoryColor()"
     />
-    <div class="row-actions"><ng-content /></div>
-  </div>
 
-  <!-- Details -->
-  <div class="row-details">
-    <span class="row-description">
-      {{ transaction().description }}
-      @if (transaction().receiptUrl) {
-        <span class="receipt-indicator-group">
-          <mat-icon class="receipt-indicator">receipt_long</mat-icon>
-          @if (receiptCount() > 1) {
-            <span class="receipt-count-badge">{{ receiptCount() }}</span>
+    <div class="row-body">
+      <!-- Line 1: what it was, and what it cost. -->
+      <div class="row-head">
+        <span class="row-description">
+          {{ transaction().description }}
+          @if (transaction().receiptUrl) {
+            <span class="receipt-indicator-group">
+              <mat-icon class="receipt-indicator">receipt_long</mat-icon>
+              @if (receiptCount() > 1) {
+                <span class="receipt-count-badge">{{ receiptCount() }}</span>
+              }
+            </span>
           }
         </span>
-      }
-    </span>
-    <span class="row-category">
-      {{ categoryName() }}
-      @if (transaction().location?.name; as locationName) {
-        @if (mapsUrl(); as url) {
-          <a
-            class="location-chip location-link"
-            [href]="url"
-            target="_blank"
-            rel="noopener"
-            (click)="$event.stopPropagation()"
+        <!-- appFitText rather than a truncation: a shortened amount reads as
+             a different number, so it scales to fit and keeps every digit. -->
+        <div class="row-amount">
+          <span
+            class="amount"
+            appFitText
+            [class.income]="transaction().type === 'income'"
+            [class.expense]="transaction().type === 'expense'"
           >
-            <mat-icon class="location-icon">place</mat-icon>{{ locationName }}
-          </a>
-        } @else {
-          <span class="location-chip">
-            <mat-icon class="location-icon">place</mat-icon>{{ locationName }}
+            {{ transaction().type === 'income' ? '+' : '-' }}{{ formatAmount() }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Line 2: where it belongs — category, place, tags. -->
+      <span class="row-category">
+        {{ categoryName() }}
+        @if (transaction().location?.name; as locationName) {
+          @if (mapsUrl(); as url) {
+            <a
+              class="location-chip location-link"
+              [href]="url"
+              target="_blank"
+              rel="noopener"
+              (click)="$event.stopPropagation()"
+            >
+              <mat-icon class="location-icon">place</mat-icon>{{ locationName }}
+            </a>
+          } @else {
+            <span class="location-chip">
+              <mat-icon class="location-icon">place</mat-icon>{{ locationName }}
+            </span>
+          }
+        }
+        @if (visibleTags().length > 0) {
+          <span class="row-tags">
+            @for (tag of visibleTags(); track tag) {
+              <span class="tag-chip">{{ tag }}</span>
+            }
           </span>
         }
-      }
-      @if (visibleTags().length > 0) {
-        <span class="row-tags">
-          @for (tag of visibleTags(); track tag) {
-            <span class="tag-chip">{{ tag }}</span>
-          }
-        </span>
-      }
-      <!-- Outside .row-tags on purpose. It is sticky, and a sticky element can
-           only travel within its containing block — inside .row-tags that is
-           the tag group's own box, whose right edge it already sits on, so it
-           would have nowhere to stick to. Out here the containing block is the
-           scroller's content box and it can pin to the visible edge. -->
-      @if (overflowTagCount() > 0) {
-        <span class="tag-chip tag-overflow">+{{ overflowTagCount() }}</span>
-      }
-    </span>
-  </div>
+        <!-- Outside .row-tags on purpose. It is sticky, and a sticky element can
+             only travel within its containing block — inside .row-tags that is
+             the tag group's own box, whose right edge it already sits on, so it
+             would have nowhere to stick to. Out here the containing block is the
+             scroller's content box and it can pin to the visible edge. -->
+        @if (overflowTagCount() > 0) {
+          <span class="tag-chip tag-overflow">+{{ overflowTagCount() }}</span>
+        }
+      </span>
 
-  <!-- Amount & Date, and now the only thing on the trailing side. appFitText
-       rather than a truncation: a shortened amount reads as a different
-       number, so it scales to fit and keeps every digit. -->
-  <div class="row-amount">
-    <span
-      class="amount"
-      appFitText
-      [class.income]="transaction().type === 'income'"
-      [class.expense]="transaction().type === 'expense'"
-    >
-      {{ transaction().type === 'income' ? '+' : '-' }}{{ formatAmount() }}
-    </span>
-    @if (convertedAmount(); as converted) {
-      <span class="amount-converted" appFitText>{{ converted }}</span>
-    }
-    <span class="row-date">{{ relativeDate() }}</span>
+      <!-- Line 3: when, and what it counts as in the base currency. -->
+      <div class="row-meta">
+        <span class="row-date">{{ relativeDate() }}</span>
+        @if (convertedAmount(); as converted) {
+          <span class="amount-converted" appFitText>{{ converted }}</span>
+        }
+      </div>
+    </div>
   </div>
 </div>

@@ -164,20 +164,44 @@ describe('TransactionRowComponent', () => {
     expect(row.getAttribute('tabindex')).toBe('0');
   });
 
-  it('keeps the tile and the actions slot in one leading column', () => {
+  it('pins the projected actions slot to the surface corner, out of the flow', () => {
     setTransaction({});
 
-    // Both are fixed width, so this column's position never depends on what
-    // the row contains — which is what takes the overflow menu out of the
-    // reflow altogether. While it was the row's last item it could wrap away
-    // from the amount that carried the auto margin and land at the left edge.
-    const leading = fixture.nativeElement.querySelector('.row-leading') as HTMLElement;
-    expect(leading).withContext('leading column present').not.toBeNull();
-    expect(leading.querySelector('app-category-chip')).withContext('tile inside it').not.toBeNull();
-    expect(leading.querySelector('.row-actions')).withContext('actions inside it').not.toBeNull();
+    // The slot is absolutely positioned against the surface, so wherever the
+    // text stack reflows, the menu sits at the same corner of every row. The
+    // old leading column bought that same property by stacking the menu under
+    // the tile — at the price of setting every row's height (issue #219).
+    expect(fixture.nativeElement.querySelector('.row-leading'))
+      .withContext('leading column dismantled')
+      .toBeNull();
+    const actions = fixture.nativeElement.querySelector('.row-surface > .row-actions') as HTMLElement;
+    expect(actions).withContext('actions slot on the surface').not.toBeNull();
+    expect(getComputedStyle(actions).position).toBe('absolute');
     // Where it ends up on screen is measured in overflow-guard.spec.ts,
     // against the real cascade at a real width. This one is the structure the
     // guarantee rests on.
+  });
+
+  it('stacks description, strip, and meta line inside the body', () => {
+    setTransaction({ currency: 'JPY', amount: 3800, amountInBaseCurrency: 25.42 } as Partial<Transaction>);
+
+    const root: HTMLElement = fixture.nativeElement;
+    const head = root.querySelector('.row-body > .row-head') as HTMLElement;
+    const meta = root.querySelector('.row-body > .row-meta') as HTMLElement;
+    expect(head).withContext('first line present').not.toBeNull();
+    expect(meta).withContext('meta line present').not.toBeNull();
+    expect(head.querySelector('.row-description')).withContext('description on line 1').not.toBeNull();
+    expect(head.querySelector('.row-amount .amount')).withContext('amount on line 1').not.toBeNull();
+    expect(root.querySelector('.row-body > .row-category')).withContext('strip is line 2').not.toBeNull();
+    expect(meta.querySelector('.row-date')).withContext('date on the meta line').not.toBeNull();
+    expect(meta.querySelector('.amount-converted'))
+      .withContext('converted amount rides the meta line, not the amount stack')
+      .not.toBeNull();
+
+    setTransaction({ currency: 'USD', amount: 10 });
+    expect(fixture.nativeElement.querySelector('.row-meta .amount-converted'))
+      .withContext('no converted line for base-currency rows')
+      .toBeNull();
   });
 
   it('opens the transaction on an ordinary click on the category strip', () => {
@@ -228,8 +252,9 @@ describe('TransactionRowComponent', () => {
     // The slot exists so this component can promise the overflow menu is
     // never squeezed out — projected content carries the *host's*
     // encapsulation attribute, so the guarantee cannot live in the caller's
-    // stylesheet. The dashboard card projects nothing, and an empty box must
-    // not still claim one of the row's 12px gaps.
+    // stylesheet. The dashboard card projects nothing, and an empty pinned
+    // box must not sit over the amount as a dead hover target — nor keep the
+    // reserved corner alive, which the :not(:empty) reserve rules key off.
     const actions = fixture.nativeElement.querySelector('.row-actions') as HTMLElement;
     expect(actions).withContext('slot wrapper is present').not.toBeNull();
     expect(getComputedStyle(actions).display).toBe('none');
