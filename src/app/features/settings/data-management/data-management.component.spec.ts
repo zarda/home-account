@@ -21,6 +21,8 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { AccountDeletionService } from '../../../core/services/account-deletion.service';
+import { Firestore } from '@angular/fire/firestore';
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;
@@ -38,6 +40,7 @@ describe('DataManagementComponent', () => {
   let mockBudgetService: jasmine.SpyObj<BudgetService>;
   let mockRecurringService: jasmine.SpyObj<RecurringService>;
   let mockBackupRestore: jasmine.SpyObj<BackupRestoreService>;
+  let mockAccountDeletion: jasmine.SpyObj<AccountDeletionService>;
 
   beforeEach(async () => {
     mockExportService = jasmine.createSpyObj('ExportService', [
@@ -83,6 +86,8 @@ describe('DataManagementComponent', () => {
 
     mockAuthService = jasmine.createSpyObj('AuthService', ['signOut']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
+    mockAccountDeletion = jasmine.createSpyObj('AccountDeletionService', ['deleteAccount']);
+    mockAccountDeletion.deleteAccount.and.resolveTo({ ok: true, failed: [] });
 
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
@@ -112,6 +117,8 @@ describe('DataManagementComponent', () => {
         { provide: BackupRestoreService, useValue: mockBackupRestore },
         { provide: InsightSnapshotService, useValue: mockInsightSnapshots },
         { provide: AuthService, useValue: mockAuthService },
+        { provide: AccountDeletionService, useValue: mockAccountDeletion },
+        { provide: Firestore, useValue: {} },
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: TranslationService, useValue: mockTranslationService },
@@ -314,6 +321,118 @@ describe('DataManagementComponent', () => {
         'settings.allTransactionsDeleted', { count: 488 }
       );
       expect(notifications.success).toHaveBeenCalled();
+    }));
+  });
+
+  describe('exportFullBackup', () => {
+    it('resolves true when the picker saves the file', fakeAsync(() => {
+      let result: boolean | undefined;
+      component.exportFullBackup().then(r => (result = r));
+      tick();
+
+      expect(result).toBeTrue();
+    }));
+
+    it('resolves false when the picker is cancelled', fakeAsync(() => {
+      mockExportService.downloadBlobWithPicker.and.resolveTo(false);
+
+      let result: boolean | undefined;
+      component.exportFullBackup().then(r => (result = r));
+      tick();
+
+      expect(result).toBeFalse();
+      expect(notifications.success).not.toHaveBeenCalled();
+    }));
+  });
+
+  describe('deleteAccount', () => {
+    function redirectSpy(): jasmine.Spy {
+      return spyOn(
+        component as unknown as { redirectToLogin: () => void },
+        'redirectToLogin'
+      );
+    }
+
+    function stubDialogs(...results: (boolean | undefined)[]): void {
+      const refs = results.map(r => ({ afterClosed: () => of(r) }));
+      mockDialog.open.and.returnValues(...(refs as never[]));
+    }
+
+    it('runs the cascade only after the backup offer, warning, and typed confirmation', fakeAsync(() => {
+      const redirect = redirectSpy();
+      stubDialogs(false, true, true); // skip backup, accept warning, typed DELETE
+
+      component.deleteAccount();
+      tick();
+
+      expect(mockDialog.open).toHaveBeenCalledTimes(3);
+      const typedConfig = mockDialog.open.calls.argsFor(2)[1] as { data: { requireText?: string } };
+      expect(typedConfig.data.requireText).toBe('DELETE');
+      expect(mockExportService.downloadBlobWithPicker).not.toHaveBeenCalled();
+      expect(mockAccountDeletion.deleteAccount).toHaveBeenCalledTimes(1);
+      expect(redirect).toHaveBeenCalled();
+    }));
+
+    it('aborts when the backup offer is dismissed', fakeAsync(() => {
+      const redirect = redirectSpy();
+      stubDialogs(undefined);
+
+      component.deleteAccount();
+      tick();
+
+      expect(mockDialog.open).toHaveBeenCalledTimes(1);
+      expect(mockAccountDeletion.deleteAccount).not.toHaveBeenCalled();
+      expect(redirect).not.toHaveBeenCalled();
+    }));
+
+    it('stops when the chosen backup export is cancelled', fakeAsync(() => {
+      const redirect = redirectSpy();
+      mockExportService.downloadBlobWithPicker.and.resolveTo(false);
+      stubDialogs(true);
+
+      component.deleteAccount();
+      tick();
+
+      expect(mockDialog.open).toHaveBeenCalledTimes(1);
+      expect(mockAccountDeletion.deleteAccount).not.toHaveBeenCalled();
+      expect(redirect).not.toHaveBeenCalled();
+    }));
+
+    it('reports the failed steps and stays signed in on a partial failure', fakeAsync(() => {
+      const redirect = redirectSpy();
+      mockAccountDeletion.deleteAccount.and.resolveTo({
+        ok: false,
+        failed: [
+          { step: 'budgets', error: new Error('offline') },
+          { step: 'userDoc', error: new Error('offline') }
+        ]
+      });
+      stubDialogs(false, true, true);
+
+      component.deleteAccount();
+      tick();
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.deleteAccountFailedSteps', { steps: 'budgets, userDoc' }
+      );
+      expect(notifications.error).toHaveBeenCalled();
+      expect(redirect).not.toHaveBeenCalled();
+      expect(component.isDeletingAccount()).toBeFalse();
+    }));
+
+    it('surfaces a reauthentication failure as nothing-deleted', fakeAsync(() => {
+      const redirect = redirectSpy();
+      mockAccountDeletion.deleteAccount.and.resolveTo({
+        ok: false,
+        failed: [{ step: 'reauth', error: new Error('popup closed') }]
+      });
+      stubDialogs(false, true, true);
+
+      component.deleteAccount();
+      tick();
+
+      expect(notifications.error).toHaveBeenCalledWith('settings.deleteAccountReauthFailed');
+      expect(redirect).not.toHaveBeenCalled();
     }));
   });
 });

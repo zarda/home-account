@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { Firestore, clearIndexedDbPersistence, terminate } from '@angular/fire/firestore';
 
 import {
   BACKUP_SCHEMA_VERSION,
@@ -26,6 +27,7 @@ import { TransactionService } from '../../../core/services/transaction.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { AccountDeletionService } from '../../../core/services/account-deletion.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { baseCurrencyOf } from '../../../models';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -59,6 +61,8 @@ export class DataManagementComponent {
   private recurringService = inject(RecurringService);
   private backupRestore = inject(BackupRestoreService);
   private authService = inject(AuthService);
+  private accountDeletion = inject(AccountDeletionService);
+  private firestore = inject(Firestore);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   receiptQuota = inject(ReceiptQuotaService);
@@ -88,6 +92,7 @@ export class DataManagementComponent {
 
   isExporting = signal(false);
   isImporting = signal(false);
+  isDeletingAccount = signal(false);
   importProgress = signal(0);
   importedTransactions = signal<ImportedTransaction[]>([]);
   showImportPreview = signal(false);
@@ -97,7 +102,10 @@ export class DataManagementComponent {
   backupContents = signal<BackupContents | null>(null);
 
   // Export Functions
-  async exportFullBackup(): Promise<void> {
+
+  /** Resolves false when the save was cancelled or failed — the account
+   *  deletion flow stops on that signal rather than deleting unexported data. */
+  async exportFullBackup(): Promise<boolean> {
     this.isExporting.set(true);
     try {
       // Every section is read one-shot from the database, never from a live
@@ -129,9 +137,11 @@ export class DataManagementComponent {
         const message = this.t('settings.backupExported');
         this.notifications.success(message);
       }
+      return success;
     } catch {
       const message = this.t('settings.backupExportFailed');
       this.notifications.error(message);
+      return false;
     } finally {
       this.isExporting.set(false);
     }
@@ -360,13 +370,15 @@ export class DataManagementComponent {
 
     dialogRef.afterClosed().subscribe(async (confirmed) => {
       if (confirmed) {
-        // Second confirmation
+        // Second confirmation. The message has always asked for typed DELETE;
+        // requireText makes the dialog actually hold the user to it.
         const secondConfirm = this.dialog.open(ConfirmDialogComponent, {
           data: {
             title: this.t('settings.finalConfirmation'),
             message: this.t('settings.typeDeleteConfirm'),
             confirmLabel: this.t('settings.confirmDelete'),
-            confirmColor: 'warn'
+            confirmColor: 'warn',
+            requireText: 'DELETE'
           }
         });
 
@@ -384,5 +396,105 @@ export class DataManagementComponent {
         });
       }
     });
+  }
+
+  /**
+   * GDPR erasure, gated three times: an offer to export a backup first, a
+   * consequences warning, and a typed-DELETE confirmation. Only the explicit
+   * "skip" button bypasses the backup — dismissing the dialog aborts, and a
+   * cancelled save picker aborts, so data is never deleted unexported by
+   * accident.
+   */
+  deleteAccount(): void {
+    const backupOffer = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: this.t('settings.deleteAccountBackupTitle'),
+        message: this.t('settings.deleteAccountBackupMessage'),
+        confirmLabel: this.t('settings.deleteAccountBackupExport'),
+        cancelLabel: this.t('settings.deleteAccountBackupSkip'),
+        confirmColor: 'primary',
+        icon: 'download'
+      }
+    });
+
+    backupOffer.afterClosed().subscribe(async (wantsBackup) => {
+      if (wantsBackup === undefined) return;
+      if (wantsBackup === true && !(await this.exportFullBackup())) return;
+      this.confirmAccountDeletion();
+    });
+  }
+
+  private confirmAccountDeletion(): void {
+    const warning = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: this.t('settings.deleteAccountTitle'),
+        message: this.t('settings.deleteAccountWarning'),
+        confirmLabel: this.t('settings.deleteAccountConfirm'),
+        confirmColor: 'warn',
+        icon: 'warning'
+      }
+    });
+
+    warning.afterClosed().subscribe((confirmed) => {
+      if (!confirmed) return;
+
+      const typed = this.dialog.open(ConfirmDialogComponent, {
+        data: {
+          title: this.t('settings.finalConfirmation'),
+          message: this.t('settings.deleteAccountTypeConfirm'),
+          confirmLabel: this.t('settings.deleteAccountFinal'),
+          confirmColor: 'warn',
+          requireText: 'DELETE'
+        }
+      });
+
+      typed.afterClosed().subscribe((finalConfirm) => {
+        if (finalConfirm) void this.runAccountDeletion();
+      });
+    });
+  }
+
+  private async runAccountDeletion(): Promise<void> {
+    this.isDeletingAccount.set(true);
+    try {
+      const report = await this.accountDeletion.deleteAccount();
+
+      if (report.ok) {
+        await this.clearLocalFirestoreCache();
+        this.redirectToLogin();
+        return;
+      }
+
+      const message =
+        report.failed[0]?.step === 'reauth'
+          ? this.t('settings.deleteAccountReauthFailed')
+          : this.t('settings.deleteAccountFailedSteps', {
+              steps: report.failed.map(f => f.step).join(', ')
+            });
+      this.notifications.error(message);
+    } finally {
+      this.isDeletingAccount.set(false);
+    }
+  }
+
+  /**
+   * Best-effort: the persistent cache still holds the deleted user's rows
+   * until cleared, and clearing requires terminating the SDK first. Errors
+   * are swallowed because the hard reload below drops the in-memory state
+   * either way.
+   */
+  private async clearLocalFirestoreCache(): Promise<void> {
+    try {
+      await terminate(this.firestore);
+      await clearIndexedDbPersistence(this.firestore);
+    } catch {
+      // The reload still detaches everything; stale cache rows are
+      // unreachable without the deleted account's credentials.
+    }
+  }
+
+  /** Full page load, not router.navigate: every service signal must reset. */
+  private redirectToLogin(): void {
+    window.location.assign('/login');
   }
 }
