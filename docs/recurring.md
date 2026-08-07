@@ -127,6 +127,41 @@ has passed; the rule deactivates only once its backlog is fully drained, so a
 capped batch never strands the rest. A rule whose next occurrence falls after its
 end date pauses without posting anything.
 
+## From detection to a rule
+
+The Insights tab detects charge patterns nobody declared — same merchant,
+same-ish amount, regular gap (`recurring-pattern.utils.ts`, rendered as the
+"looks recurring" list). Each detected group carries a **Track as recurring**
+action that opens the create dialog prefilled from the group; saving creates
+an ordinary rule through the normal path. It is deliberately not a one-tap
+create: the amount is the group's median in the base currency and the label
+is the most recent raw description — the detector's guesses, corrected in the
+dialog (see
+[ADR 0020](ADR/0020-detected-groups-convert-through-the-prefilled-form.md)).
+
+The mapping from a detected cadence to a rule frequency
+(`recurring-conversion.utils.ts`):
+
+| Detected cadence | Rule frequency |
+|------------------|----------------|
+| weekly | `weekly`, interval 1, anchored weekday |
+| biweekly | `weekly`, interval 2, anchored weekday |
+| monthly | `monthly`, interval 1, anchored day of month |
+| quarterly | `monthly`, interval 3, anchored day of month |
+| yearly | `yearly`, interval 1, anchored day and month |
+
+The anchor is the group's **last observed charge**: the engine advances a past
+anchor to the next real date (see the clamp-and-anchor section above), so the
+converted rule posts next on schedule instead of backfilling.
+
+Conversion never relabels history — the past transactions keep no
+`recurringId` — so the detector would rediscover every converted group
+forever. Instead, the live list **suppresses** detected groups an active rule
+already covers: same cadence in the engine's terms, and a merchant-matched
+name (normalized equality, containment, then bigram similarity at the
+detector's own threshold). Archived snapshots are frozen history and are
+neither suppressed nor convertible.
+
 ## Pausing and resuming
 
 Pause sets the rule inactive. Catch-up only claims active rules, so nothing

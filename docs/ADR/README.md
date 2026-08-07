@@ -24,6 +24,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0017](0017-the-row-stacks-and-actions-ride-behind-a-swipe.md) | The row stacks its lines, and actions ride behind a swipe | Accepted | 2026-08-07 |
 | [0018](0018-account-deletion-is-a-client-side-cascade.md) | Account deletion is a client-side cascade | Accepted | 2026-08-07 |
 | [0019](0019-share-intake-lands-through-a-stash.md) | Share intake lands through a stash | Accepted | 2026-08-07 |
+| [0020](0020-detected-groups-convert-through-the-prefilled-form.md) | Detected groups convert through the prefilled form | Accepted | 2026-08-07 |
 
 ## What belongs here
 
