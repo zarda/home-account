@@ -17,11 +17,19 @@ import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category, baseCurrencyOf} from '../../../../models';
+import { RecurringPrefill } from '../../../../core/utils/recurring-conversion.utils';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
 
-interface DialogData {
+export interface RecurringFormDialogData {
+  /** An existing rule to edit. */
   recurring?: RecurringTransaction;
+  /**
+   * Initial values for a new rule — how a detected group converts. The
+   * dialog stays in create mode: prefill seeds the fields, the user
+   * confirms, and save still returns the DTO for the caller to create.
+   */
+  prefill?: RecurringPrefill;
 }
 
 @Component({
@@ -47,7 +55,7 @@ interface DialogData {
 })
 export class RecurringFormDialogComponent implements OnInit {
   private dialogRef = inject(MatDialogRef<RecurringFormDialogComponent>);
-  private data = inject<DialogData>(MAT_DIALOG_DATA);
+  private data = inject<RecurringFormDialogData>(MAT_DIALOG_DATA);
   private authService = inject(AuthService);
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
@@ -158,7 +166,23 @@ export class RecurringFormDialogComponent implements OnInit {
 
     if (this.data?.recurring) {
       this.populateFromRecurring(this.data.recurring);
+    } else if (this.data?.prefill) {
+      this.populateFromPrefill(this.data.prefill);
     }
+  }
+
+  private populateFromPrefill(prefill: RecurringPrefill): void {
+    this.name = prefill.name;
+    this.type = prefill.type;
+    this.amount = prefill.amount;
+    this.currency = prefill.currency;
+    this.categoryId = prefill.categoryId;
+    this.description = prefill.description;
+    this.frequencyType = prefill.frequency.type;
+    this.interval = prefill.frequency.interval;
+    this.dayOfWeek = prefill.frequency.dayOfWeek ?? null;
+    this.dayOfMonth = prefill.frequency.dayOfMonth ?? 1;
+    this.startDate = prefill.startDate;
   }
 
   private loadCategories(): void {

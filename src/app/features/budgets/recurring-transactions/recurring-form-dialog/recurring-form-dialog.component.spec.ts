@@ -5,7 +5,10 @@ import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
 import { of } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 
-import { RecurringFormDialogComponent } from './recurring-form-dialog.component';
+import {
+  RecurringFormDialogComponent,
+  RecurringFormDialogData
+} from './recurring-form-dialog.component';
 import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
@@ -181,6 +184,65 @@ describe('RecurringFormDialogComponent', () => {
       editFixture.detectChanges();
 
       expect(editComponent.isEdit).toBeTrue();
+    });
+  });
+
+  describe('prefill', () => {
+    async function createWithPrefill(): Promise<RecurringFormDialogComponent> {
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          {
+            provide: MAT_DIALOG_DATA,
+            useValue: {
+              prefill: {
+                name: 'NETFLIX.COM',
+                type: 'expense',
+                amount: 15.99,
+                currency: 'USD',
+                categoryId: 'cat1',
+                description: '',
+                frequency: { type: 'monthly', interval: 1, dayOfMonth: 15 },
+                startDate: new Date(2026, 6, 15)
+              }
+            } satisfies RecurringFormDialogData
+          },
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(RecurringFormDialogComponent, {
+          set: { template: '<div></div>' }
+        })
+        .compileComponents();
+
+      const prefillFixture = TestBed.createComponent(RecurringFormDialogComponent);
+      prefillFixture.detectChanges();
+      return prefillFixture.componentInstance;
+    }
+
+    it('populates the form from a prefill', async () => {
+      const prefilled = await createWithPrefill();
+
+      expect(prefilled.name).toBe('NETFLIX.COM');
+      expect(prefilled.amount).toBe(15.99);
+      expect(prefilled.currency).toBe('USD');
+      expect(prefilled.categoryId).toBe('cat1');
+      expect(prefilled.frequencyType).toBe('monthly');
+      expect(prefilled.interval).toBe(1);
+      expect(prefilled.dayOfMonth).toBe(15);
+      expect(prefilled.startDate).toEqual(new Date(2026, 6, 15));
+    });
+
+    it('stays in create mode with a prefill', async () => {
+      const prefilled = await createWithPrefill();
+
+      expect(prefilled.isEdit).toBeFalse();
     });
   });
 
