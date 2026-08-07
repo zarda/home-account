@@ -22,6 +22,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0015](0015-reclaimed-receipts-replay-idempotently.md) | A reclaimed receipt replays onto the ids it already used | Accepted | 2026-08-05 |
 | [0016](0016-aggregate-answers-persist-as-snapshots-that-refresh-locally.md) | Aggregate answers persist as snapshots that refresh locally | Accepted | 2026-08-06 |
 | [0017](0017-the-row-stacks-and-actions-ride-behind-a-swipe.md) | The row stacks its lines, and actions ride behind a swipe | Accepted | 2026-08-07 |
+| [0018](0018-account-deletion-is-a-client-side-cascade.md) | Account deletion is a client-side cascade | Accepted | 2026-08-07 |
 
 ## What belongs here
 
