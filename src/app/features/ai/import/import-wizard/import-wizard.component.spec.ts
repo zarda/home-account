@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { of } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ImportWizardComponent } from './import-wizard.component';
@@ -13,6 +13,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { Category, CategorizedImportTransaction, ImportResult } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 
 describe('ImportWizardComponent', () => {
   let component: ImportWizardComponent;
@@ -25,6 +26,8 @@ describe('ImportWizardComponent', () => {
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
   let mockRouter: jasmine.SpyObj<Router>;
   let mockDuplicateService: jasmine.SpyObj<DuplicateDetectionService>;
+  let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
+  let routeStub: { snapshot: { queryParamMap: ReturnType<typeof convertToParamMap> } };
 
   const mockCategories: Category[] = [
     {
@@ -126,6 +129,10 @@ describe('ImportWizardComponent', () => {
     ]);
     mockDuplicateService.findWithinBatchDuplicates.and.returnValue([]);
 
+    mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
+    mockShareIntake.consumeAll.and.resolveTo([]);
+    routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
+
     await TestBed.configureTestingModule({
       imports: [ImportWizardComponent, NoopAnimationsModule],
       providers: [
@@ -136,7 +143,9 @@ describe('ImportWizardComponent', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: AnnouncerService, useValue: mockAnnouncer },
         { provide: Router, useValue: mockRouter },
-        { provide: DuplicateDetectionService, useValue: mockDuplicateService }
+        { provide: DuplicateDetectionService, useValue: mockDuplicateService },
+        { provide: ShareIntakeService, useValue: mockShareIntake },
+        { provide: ActivatedRoute, useValue: routeStub }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -172,6 +181,24 @@ describe('ImportWizardComponent', () => {
 
     it('should have accepted file types', () => {
       expect(component.acceptedFileTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp');
+    });
+  });
+
+  describe('share intake', () => {
+    it('consumes shared files when arriving from a share', fakeAsync(() => {
+      const shared = [new File(['x'], 'shared.png', { type: 'image/png' })];
+      mockShareIntake.consumeAll.and.resolveTo(shared);
+      routeStub.snapshot = { queryParamMap: convertToParamMap({ source: 'share' }) };
+
+      component.ngOnInit();
+      tick();
+
+      expect(mockShareIntake.consumeAll).toHaveBeenCalled();
+      expect(component.selectedFiles()).toEqual(shared);
+    }));
+
+    it('leaves the stash alone on a plain visit', () => {
+      expect(mockShareIntake.consumeAll).not.toHaveBeenCalled();
     });
   });
 
