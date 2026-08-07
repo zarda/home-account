@@ -14,7 +14,7 @@ import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import {
-  Budget, CategoryTotal, Transaction, MonthlyTotal,
+  Budget, CategoryTotal, Goal, Transaction, MonthlyTotal,
   RAG_TIER_CONFIGS, effectiveRagLevel,
 } from '../../../models';
 import {
@@ -60,6 +60,7 @@ export class AiSummaryComponent {
   // the baseline for RAG anomaly detection. Null falls back to current period.
   historicalExpenses = input<Transaction[] | null>(null);
   budgets = input<Budget[]>([]);
+  goals = input<Goal[]>([]);
 
   // State
   summary = signal<string>('');
@@ -82,7 +83,13 @@ export class AiSummaryComponent {
     const locale = this.translationService.currentLocale();
     const grounding = this.ragLevel();
     const provider = this.authService.currentUser()?.preferences?.llmProviderPreferences?.insights ?? 'gemini';
-    return `ai-summary-${this.period()}-${locale}-${grounding}-${provider}-${txIds.slice(0, 100)}`;
+    // Goals feed the prompt, so a contribution or target change must
+    // invalidate the cached summary rather than surviving inside it.
+    const goalsFingerprint = this.goals()
+      .map(g => `${g.id}:${g.contributedAmount}/${g.targetAmount}`)
+      .sort()
+      .join(',');
+    return `ai-summary-${this.period()}-${locale}-${grounding}-${provider}-${goalsFingerprint}-${txIds.slice(0, 100)}`;
   });
 
   // Check if any cloud AI provider is available
@@ -188,6 +195,7 @@ export class AiSummaryComponent {
           currency,
           this.previousPeriodData(),
           this.budgets(),
+          this.goals(),
           ragContext
         );
       } catch (error) {

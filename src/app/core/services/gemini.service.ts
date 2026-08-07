@@ -8,7 +8,7 @@ import type {
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Budget, Category, Transaction, MonthlyTotal, FieldConfidence } from '../../models';
+import { Budget, Category, Goal, Transaction, MonthlyTotal, FieldConfidence } from '../../models';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import {
   readCurrencyCode,
@@ -34,6 +34,7 @@ import {
   RenderedPrompt,
   languageInstruction,
   renderBudgetSection,
+  renderGoalSection,
   renderCategoryBreakdown,
   renderLargestExpenses,
   renderPreviousPeriodSection,
@@ -442,6 +443,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
     baseCurrency: string,
     previousPeriodData?: PreviousPeriodData | null,
     budgets?: Budget[],
+    goals?: Goal[],
     ragContext?: string
   ): Promise<string> {
     if (!this.textModel) {
@@ -544,6 +546,24 @@ export class GeminiService implements CloudLLMProviderAdapter {
         );
       }
 
+      let goalSection = '';
+      if (goals && goals.length > 0) {
+        goalSection = renderGoalSection(
+          goals.map(g => {
+            // Goals convert like budgets: compare in the base currency.
+            const targetInBase = this.currencyService.convert(g.targetAmount, g.currency, baseCurrency);
+            const savedInBase = this.currencyService.convert(g.contributedAmount, g.currency, baseCurrency);
+            return {
+              name: g.name,
+              saved: fmt(savedInBase),
+              target: fmt(targetInBase),
+              percentSaved: targetInBase > 0 ? (savedInBase / targetInBase * 100) : 0,
+            };
+          }),
+          baseCurrency
+        );
+      }
+
       const rendered = renderPrompt('spendingSummary', {
         period,
         baseCurrency,
@@ -555,6 +575,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
         largestExpenses,
         historicalSection,
         budgetSection,
+        goalSection,
         grounding: ragContext,
         languageInstruction: this.getLanguageInstruction(),
       });

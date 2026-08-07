@@ -10,6 +10,7 @@ import {
   budgetStatusMarker,
   renderBudgetSection,
   renderCategoryBreakdown,
+  renderGoalSection,
   renderLargestExpenses,
   renderPreviousPeriodSection,
 } from './insights.prompts';
@@ -53,6 +54,7 @@ const SAMPLE_INPUT: { [K in PromptId]: Parameters<(typeof PROMPTS)[K]['render']>
     largestExpenses: '- Rent: 90,000 JPY (Housing)',
     historicalSection: '',
     budgetSection: '',
+    goalSection: '',
     languageInstruction: languageInstruction('ja'),
   },
   patternNarrative: {
@@ -442,6 +444,19 @@ describe('prompt registry', () => {
           'JPY'
         )
       ).toContain('- Food: 55,000/50,000 JPY (110%) ⚠️ EXCEEDED');
+    });
+
+    it('renders a goal line with saved, target and rounded percentage', () => {
+      expect(
+        renderGoalSection(
+          [{ name: 'Japan trip', saved: '30,000', target: '200,000', percentSaved: 15.4 }],
+          'JPY'
+        )
+      ).toContain('- Japan trip: 30,000/200,000 JPY (15% saved)');
+    });
+
+    it('renders no goal section at all when there are no goals', () => {
+      expect(renderGoalSection([], 'JPY')).toBe('');
     });
   });
 

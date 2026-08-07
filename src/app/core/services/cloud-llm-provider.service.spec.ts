@@ -626,9 +626,9 @@ describe('CloudLLMProviderService', () => {
     });
 
     it('generateSpendingSummary delegates to gemini with all args', async () => {
-      const r = await service.generateSpendingSummary(txns, 'June', 'USD', { income: 1, expense: 2 }, budgets, 'ctx');
+      const r = await service.generateSpendingSummary(txns, 'June', 'USD', { income: 1, expense: 2 }, budgets, [], 'ctx');
       expect(r).toBe('summary');
-      expect(gemini.generateSpendingSummary).toHaveBeenCalledWith(txns, 'June', 'USD', { income: 1, expense: 2 }, budgets, 'ctx');
+      expect(gemini.generateSpendingSummary).toHaveBeenCalledWith(txns, 'June', 'USD', { income: 1, expense: 2 }, budgets, [], 'ctx');
     });
 
     it('generateSpendingSummary throws when no provider', async () => {

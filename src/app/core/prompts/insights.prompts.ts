@@ -92,6 +92,32 @@ ${lines}
 `;
 }
 
+export interface GoalStatusRow {
+  name: string;
+  /** Already formatted for the base currency. */
+  saved: string;
+  target: string;
+  percentSaved: number;
+}
+
+/**
+ * Budgets cap spending, goals accumulate toward it — so no exceeded/near-limit
+ * markers here: passing 100% is the point.
+ */
+export function renderGoalSection(rows: GoalStatusRow[], baseCurrency: string): string {
+  if (rows.length === 0) return '';
+  const lines = rows
+    .map(
+      r =>
+        `- ${r.name}: ${r.saved}/${r.target} ${baseCurrency} (${r.percentSaved.toFixed(0)}% saved)`
+    )
+    .join('\n');
+  return `
+Savings goals status:
+${lines}
+`;
+}
+
 export type SpendingSummaryInputs = BaseCurrencyInput &
   GroundingInput &
   LanguageInput & {
@@ -103,9 +129,10 @@ export type SpendingSummaryInputs = BaseCurrencyInput &
     transactionCount: number;
     categoryBreakdown: string;
     largestExpenses: string;
-    /** Pre-built comparison and budget blocks, empty when there is nothing to say. */
+    /** Pre-built comparison, budget and goal blocks, empty when there is nothing to say. */
     historicalSection: string;
     budgetSection: string;
+    goalSection: string;
   };
 
 /**
@@ -141,7 +168,7 @@ ${i.categoryBreakdown}
 
 Largest individual expenses:
 ${i.largestExpenses || 'No expenses recorded'}
-${i.historicalSection}${i.budgetSection}${ragSection}
+${i.historicalSection}${i.budgetSection}${i.goalSection}${ragSection}
 Return AI Insights in this exact format (use markdown):
 
 ## Spending Pattern
@@ -151,7 +178,7 @@ Return AI Insights in this exact format (use markdown):
 [1-2 sentences about significant changes from previous period with impact assessment]
 
 ## Budget Status
-[1-2 sentences about budget limits - warnings if any are near limit, or confirmation if all good]
+[1-2 sentences about budget limits - warnings if any are near limit, or confirmation if all good. When savings goals are listed, note their pace toward the target here too]
 
 ## Actionable Insights
 - [Specific, practical insight #1]
