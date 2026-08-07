@@ -5,9 +5,46 @@
   (click)="onActivate($event)"
   (keydown.enter)="onActivate()"
   (keydown.space)="$event.preventDefault(); onActivate()"
+  (keydown.escape)="closeSwipe()"
 >
+  <!-- Edit and Delete parked behind the surface, revealed by a left swipe.
+       While closed the buttons are clipped off-canvas, so they leave the
+       keyboard and accessibility tree — the pinned menu is that route. -->
+  @if (swipeActions()) {
+    <div class="row-swipe-actions" #swipeDrawer>
+      <button
+        type="button"
+        class="swipe-action swipe-action-edit"
+        [tabindex]="swipeOpen() ? 0 : -1"
+        [attr.aria-hidden]="!swipeOpen()"
+        (click)="onSwipeEdit($event)"
+      >
+        <mat-icon>edit</mat-icon>
+        <span>{{ 'common.edit' | translate }}</span>
+      </button>
+      <button
+        type="button"
+        class="swipe-action swipe-action-delete"
+        [tabindex]="swipeOpen() ? 0 : -1"
+        [attr.aria-hidden]="!swipeOpen()"
+        (click)="onSwipeDelete($event)"
+      >
+        <mat-icon>delete</mat-icon>
+        <span>{{ 'common.delete' | translate }}</span>
+      </button>
+    </div>
+  }
+
   <!-- Everything visible at rest rides this one surface. -->
-  <div class="row-surface">
+  <div
+    class="row-surface"
+    appSwipeReveal
+    [swipeRevealEnabled]="swipeActions()"
+    swipeRevealIgnore=".row-category"
+    [swipeRevealDrawer]="swipeDrawer()?.nativeElement ?? null"
+    (swipeRevealOpened)="swipeOpen.set(true)"
+    (swipeRevealClosed)="swipeOpen.set(false)"
+  >
     <!-- Projected overflow menu, pinned to the surface's top-right corner and
          out of the flow entirely: wherever the text stack reflows, the menu
          sits at the same corner of every row. First child on purpose — the

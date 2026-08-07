@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 
 import { MatIconModule } from '@angular/material/icon';
 import { Timestamp } from '@angular/fire/firestore';
@@ -9,17 +18,20 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { CategoryChipComponent } from '../category-chip/category-chip.component';
 import { FitTextDirective } from '../../directives/fit-text.directive';
+import { SwipeRevealDirective } from '../../directives/swipe-reveal.directive';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /**
- * One transaction-row anatomy (category icon chip, description + category,
- * signed amount with converted secondary line, relative date, trailing
- * actions slot) shared by the dashboard recent-transactions card and the
- * transactions mobile list — previously duplicated and drifting.
+ * One transaction-row anatomy (category tile beside a three-line text stack:
+ * description with the signed amount, the category strip, date with the
+ * converted amount; a pinned trailing actions slot; an optional swipe drawer)
+ * shared by the dashboard recent-transactions card and the transactions
+ * mobile list — previously duplicated and drifting.
  */
 @Component({
   selector: 'app-transaction-row',
   standalone: true,
-  imports: [MatIconModule, CategoryChipComponent, FitTextDirective],
+  imports: [MatIconModule, CategoryChipComponent, FitTextDirective, SwipeRevealDirective, TranslatePipe],
   templateUrl: './transaction-row.component.html',
   styleUrl: './transaction-row.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,8 +40,28 @@ export class TransactionRowComponent {
   transaction = input.required<Transaction>();
   categories = input<Map<string, Category>>(new Map());
 
+  /**
+   * Opt-in for the swipe-to-reveal Edit/Delete drawer. The projected menu
+   * stays the keyboard, screen-reader and discoverability route; the drawer
+   * is the fast path for touch. The dashboard passes nothing and stays inert.
+   */
+  swipeActions = input(false);
+
   /** Emitted on click / Enter / Space anywhere on the row. */
   activate = output<Transaction>();
+
+  /** Emitted by the drawer's Edit action. */
+  edit = output<Transaction>();
+
+  /** Emitted by the drawer's Delete action. The caller owns confirmation. */
+  delete = output<Transaction>();
+
+  protected swipeOpen = signal(false);
+  // The drawer lives inside @if, so a template reference variable cannot
+  // reach the surface's binding from outside that embedded view — the
+  // element crosses over through this query instead.
+  protected swipeDrawer = viewChild<ElementRef<HTMLElement>>('swipeDrawer');
+  private swipeReveal = viewChild(SwipeRevealDirective);
 
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
@@ -124,5 +156,24 @@ export class TransactionRowComponent {
       }
     }
     this.activate.emit(this.transaction());
+  }
+
+  onSwipeEdit(event: Event): void {
+    // stopPropagation, because the drawer sits inside the row's click target
+    // and an action tap must never double as opening the editor.
+    event.stopPropagation();
+    this.closeSwipe();
+    this.edit.emit(this.transaction());
+  }
+
+  onSwipeDelete(event: Event): void {
+    event.stopPropagation();
+    this.closeSwipe();
+    this.delete.emit(this.transaction());
+  }
+
+  /** Escape and the drawer actions route here; a no-op while closed. */
+  closeSwipe(): void {
+    this.swipeReveal()?.close();
   }
 }
