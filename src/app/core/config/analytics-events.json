@@ -38,7 +38,8 @@
         "spending_analysis",
         "category_breakdown",
         "monthly_comparison",
-        "insights"
+        "insights",
+        "forecast"
       ]
     }
   },
