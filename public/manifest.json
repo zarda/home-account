@@ -66,7 +66,7 @@
       "name": "Add Transaction",
       "short_name": "Add",
       "description": "Quickly add a new transaction",
-      "url": "/transactions/add",
+      "url": "/transactions?action=add",
       "icons": [
         {
           "src": "/assets/icons/shortcut-add.png",
@@ -78,7 +78,7 @@
       "name": "Scan Receipt",
       "short_name": "Scan",
       "description": "Scan a receipt with AI",
-      "url": "/import/camera",
+      "url": "/import/file",
       "icons": [
         {
           "src": "/assets/icons/shortcut-camera.png",
