@@ -6,6 +6,9 @@ import {
   signInWithCredential,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  reauthenticateWithPopup,
+  reauthenticateWithCredential,
+  deleteUser,
   User as FirebaseUser
 } from '@angular/fire/auth';
 import {
@@ -261,6 +264,53 @@ export class AuthService {
       console.error('Sign out error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Fresh proof of identity, which Firebase demands immediately before
+   * credential-sensitive operations — deleteUser rejects with
+   * auth/requires-recent-login without it. Callers run this BEFORE anything
+   * destructive, so a failure leaves the account untouched. Reauthenticating
+   * with a different Google account than the session's rejects with
+   * auth/user-mismatch, again before anything is deleted.
+   */
+  async reauthenticate(): Promise<void> {
+    const firebaseUser = this.auth.currentUser;
+    if (!firebaseUser) throw new Error('No authenticated user');
+
+    if (Capacitor.isNativePlatform()) {
+      // The signInWithGoogleNative plugin flow, but the fresh token feeds a
+      // reauthentication credential instead of opening a new session.
+      const nativeResult = await FirebaseAuthentication.signInWithGoogle();
+      const idToken = nativeResult.credential?.idToken;
+      if (!idToken) {
+        throw new Error('No ID token received from Google Sign-In');
+      }
+      await reauthenticateWithCredential(firebaseUser, GoogleAuthProvider.credential(idToken));
+      return;
+    }
+
+    const provider = new GoogleAuthProvider();
+    provider.addScope('email');
+    provider.addScope('profile');
+    await reauthenticateWithPopup(firebaseUser, provider);
+  }
+
+  /**
+   * Delete the Firebase Auth account itself — the last step of account
+   * deletion, once every Firestore document and Storage object is gone.
+   * deleteUser only removes the web SDK's account and session; on native the
+   * plugin session is signed out as well (the same asymmetry signOut has).
+   */
+  async deleteFirebaseUser(): Promise<void> {
+    const firebaseUser = this.auth.currentUser;
+    if (!firebaseUser) throw new Error('No authenticated user');
+
+    await deleteUser(firebaseUser);
+    if (Capacitor.isNativePlatform()) {
+      await FirebaseAuthentication.signOut();
+    }
+    this.currentUser.set(null);
   }
 
   async updateUserPreferences(prefs: Partial<UserPreferences>): Promise<void> {
