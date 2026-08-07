@@ -8,9 +8,10 @@ import { SecurityEvent, SecurityEventType } from '../../models';
 export const MAX_DISPLAYED_SECURITY_EVENTS = 20;
 
 /**
- * Append-only sign-in history, so a user can check for account activity they
- * do not recognise. Entries are immutable by rule: a client holding the
- * credentials must not be able to erase the record of its own sign-in.
+ * Sign-in history, so a user can check for account activity they do not
+ * recognise. Entries are unrewritable by rule: a client holding the
+ * credentials must not be able to change what its own sign-in record says.
+ * The owner may delete entries — account deletion has to empty the log.
  */
 @Injectable({ providedIn: 'root' })
 export class SecurityLogService {
@@ -49,5 +50,17 @@ export class SecurityLogService {
       orderBy: [{ field: 'occurredAt', direction: 'desc' }],
       limit: max
     });
+  }
+
+  /**
+   * Remove every recorded event, for account deletion. Takes the id for the
+   * same reason record() does: the caller acts on AuthService's behalf.
+   */
+  async deleteAll(userId: string): Promise<number> {
+    const rows = await this.firestoreService.getCollection<SecurityEvent>(this.path(userId));
+    for (const row of rows) {
+      await this.firestoreService.deleteDocument(`${this.path(userId)}/${row.id}`);
+    }
+    return rows.length;
   }
 }

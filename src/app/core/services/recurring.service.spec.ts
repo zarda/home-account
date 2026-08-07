@@ -109,6 +109,7 @@ describe('RecurringService', () => {
       'updateDocument',
       'deleteDocument',
       'getDocument',
+      'getCollection',
       'getDocRef',
       'runTransaction',
       'dateToTimestamp',
@@ -1507,6 +1508,36 @@ describe('RecurringService', () => {
 
     it('should fall back to "Custom" for an unknown frequency type', () => {
       expect(service.getFrequencyText({ type: 'unknown' as 'daily', interval: 1 })).toBe('Custom');
+    });
+  });
+
+  describe('deleteAll', () => {
+    const path = 'users/user123/recurring';
+
+    it('deletes every document and resets the signal', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 'r1' }, { id: 'r2' }]);
+      mockFirestoreService.deleteDocument.and.resolveTo(undefined);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestoreService.deleteDocument.calls.allArgs()).toEqual([
+        [`${path}/r1`],
+        [`${path}/r2`]
+      ]);
+      expect(service.recurringTransactions()).toEqual([]);
+    });
+
+    it('enumerates the collection rather than the signal', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 'r1' }, { id: 'r2' }]);
+      mockFirestoreService.deleteDocument.and.resolveTo(undefined);
+      service.recurringTransactions.set([]);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(path);
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(2);
     });
   });
 });

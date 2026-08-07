@@ -67,6 +67,7 @@ describe('SearchAnswerHistoryService', () => {
       'addDocument',
       'updateDocument',
       'deleteDocument',
+      'getCollection',
       'getTimestamp',
     ]);
     userIdSpy = jasmine.createSpy('userId').and.returnValue('user123');
@@ -282,6 +283,31 @@ describe('SearchAnswerHistoryService', () => {
       TestBed.tick();
 
       expect(fresh.answers()).toEqual([]);
+    });
+  });
+
+  describe('deleteAll', () => {
+    it('deletes every document and resets the in-memory state', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 'a-1' }, { id: 'a-2' }]);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestoreService.deleteDocument.calls.allArgs()).toEqual([
+        [`${PATH}/a-1`],
+        [`${PATH}/a-2`]
+      ]);
+      expect(service.answers()).toEqual([]);
+    });
+
+    it('enumerates the collection rather than the signal', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 'a-1' }, { id: 'a-2' }]);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(PATH);
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(2);
     });
   });
 });

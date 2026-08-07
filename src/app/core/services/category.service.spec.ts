@@ -410,4 +410,32 @@ describe('CategoryService', () => {
       })).toBeRejected();
     });
   });
+
+  describe('deleteAll', () => {
+    const path = 'users/test-user-123/categories';
+
+    it('deletes every document and resets the signal', async () => {
+      const rows = [createCategory({ id: 'c1' }), createCategory({ id: 'c2' })];
+      mockFirestore.setMockCollection(path, rows);
+      service.categories.set(rows);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestore.deleteDocumentSpy.calls.map(c => c.args[0]))
+        .toEqual([`${path}/c1`, `${path}/c2`]);
+      expect(service.categories()).toEqual([]);
+    });
+
+    it('enumerates the collection rather than the signal', async () => {
+      const rows = [createCategory({ id: 'c1' }), createCategory({ id: 'c2' })];
+      mockFirestore.setMockCollection(path, rows);
+      service.categories.set([rows[0]]);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(2);
+    });
+  });
 });

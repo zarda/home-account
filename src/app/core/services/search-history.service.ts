@@ -139,6 +139,22 @@ export class SearchHistoryService {
     await this.firestoreService.deleteDocument(`${this.userSearchesPath}/${id}`);
   }
 
+  /**
+   * Remove every saved and recent search, for account deletion. Enumerates
+   * the collection rather than the signal — the signal only holds what a
+   * subscription happened to deliver.
+   */
+  async deleteAll(): Promise<number> {
+    const userId = this.authService.userId();
+    if (!userId) return 0;
+    const rows = await this.firestoreService.getCollection<SavedSearch>(this.userSearchesPath);
+    for (const row of rows) {
+      await this.firestoreService.deleteDocument(`${this.userSearchesPath}/${row.id}`);
+    }
+    this.allSearches.set([]);
+    return rows.length;
+  }
+
   private findByQuery(query: string): SavedSearch | undefined {
     const lowered = query.toLowerCase();
     return this.allSearches().find(s => s.query.toLowerCase() === lowered);

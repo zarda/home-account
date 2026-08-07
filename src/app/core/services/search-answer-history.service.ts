@@ -138,6 +138,22 @@ export class SearchAnswerHistoryService {
   }
 
   /**
+   * Remove every persisted answer, for account deletion. Enumerates the
+   * collection rather than the signal — the signal only holds what a
+   * subscription happened to deliver.
+   */
+  async deleteAll(): Promise<number> {
+    const userId = this.authService.userId();
+    if (!userId) return 0;
+    const rows = await this.firestoreService.getCollection<SearchAnswerRecord>(this.userAnswersPath);
+    for (const row of rows) {
+      await this.firestoreService.deleteDocument(`${this.userAnswersPath}/${row.id}`);
+    }
+    this.allAnswers.set([]);
+    return rows.length;
+  }
+
+  /**
    * The snapshot fields a refresh (or dedupe re-record) overwrites. Vanished
    * optionals are cleared with deleteField() sentinels — leaving a stale
    * extreme-row id or category breakdown on a record whose fresh computation

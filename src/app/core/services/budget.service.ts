@@ -145,6 +145,22 @@ export class BudgetService {
   }
 
   /**
+   * Remove every budget, for account deletion. Enumerates the collection
+   * rather than the signal — the signal only holds what a subscription
+   * happened to deliver.
+   */
+  async deleteAll(): Promise<number> {
+    const userId = this.authService.userId();
+    if (!userId) return 0;
+    const rows = await this.firestoreService.getCollection<Budget>(this.userBudgetsPath);
+    for (const row of rows) {
+      await this.firestoreService.deleteDocument(`${this.userBudgetsPath}/${row.id}`);
+    }
+    this.budgets.set([]);
+    return rows.length;
+  }
+
+  /**
    * Create a new budget.
    *
    * `options.id` writes at a caller-chosen id instead of an auto-generated

@@ -195,6 +195,14 @@ export class ProviderKeyService {
     return merged;
   }
 
+  /** Remove the stored key document, for account deletion. */
+  async deleteAll(): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) return;
+    await this.firestoreService.deleteDocument(this.secretsPath(userId));
+    this.clearCache();
+  }
+
   /** Forget the cached keys (sign-out on a shared device). */
   clearCache(): void {
     this.cache.set(null);
