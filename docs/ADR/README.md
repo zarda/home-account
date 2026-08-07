@@ -26,6 +26,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0019](0019-share-intake-lands-through-a-stash.md) | Share intake lands through a stash | Accepted | 2026-08-07 |
 | [0020](0020-detected-groups-convert-through-the-prefilled-form.md) | Detected groups convert through the prefilled form | Accepted | 2026-08-07 |
 | [0021](0021-one-goal-model-carries-savings-and-projects.md) | One goal model carries savings and projects | Accepted | 2026-08-07 |
+| [0022](0022-the-forecast-baselines-at-zero-today.md) | The forecast baselines at zero today | Accepted | 2026-08-07 |
 
 ## What belongs here
 
