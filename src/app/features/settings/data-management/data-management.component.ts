@@ -21,6 +21,7 @@ import {
   UNSUPPORTED_BACKUP_VERSION,
 } from '../../../core/services/backup-restore.service';
 import { BudgetService } from '../../../core/services/budget.service';
+import { GoalService } from '../../../core/services/goal.service';
 import { RecurringService } from '../../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../../core/services/insight-snapshot.service';
 import { TransactionService } from '../../../core/services/transaction.service';
@@ -58,6 +59,7 @@ export class DataManagementComponent {
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
   private budgetService = inject(BudgetService);
+  private goalService = inject(GoalService);
   private recurringService = inject(RecurringService);
   private backupRestore = inject(BackupRestoreService);
   private authService = inject(AuthService);
@@ -116,6 +118,7 @@ export class DataManagementComponent {
       const insightSnapshots = await this.insightSnapshots.exportAll();
       const budgets = await this.budgetService.exportAll();
       const recurring = await this.recurringService.exportAll();
+      const goals = await this.goalService.exportAll();
 
       const blob = this.exportService.exportToJSON({
         transactions,
@@ -123,6 +126,7 @@ export class DataManagementComponent {
         insightSnapshots,
         budgets,
         recurring,
+        goals,
         exportDate: new Date().toISOString(),
         version: BACKUP_SCHEMA_VERSION
       });

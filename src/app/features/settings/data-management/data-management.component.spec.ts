@@ -22,6 +22,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { AccountDeletionService } from '../../../core/services/account-deletion.service';
+import { GoalService } from '../../../core/services/goal.service';
 import { Firestore } from '@angular/fire/firestore';
 
 describe('DataManagementComponent', () => {
@@ -41,6 +42,7 @@ describe('DataManagementComponent', () => {
   let mockRecurringService: jasmine.SpyObj<RecurringService>;
   let mockBackupRestore: jasmine.SpyObj<BackupRestoreService>;
   let mockAccountDeletion: jasmine.SpyObj<AccountDeletionService>;
+  let mockGoalService: jasmine.SpyObj<GoalService>;
 
   beforeEach(async () => {
     mockExportService = jasmine.createSpyObj('ExportService', [
@@ -76,6 +78,8 @@ describe('DataManagementComponent', () => {
     mockBudgetService.exportAll.and.returnValue(Promise.resolve([]));
     mockRecurringService = jasmine.createSpyObj('RecurringService', ['exportAll', 'createRecurring']);
     mockRecurringService.exportAll.and.returnValue(Promise.resolve([]));
+    mockGoalService = jasmine.createSpyObj('GoalService', ['exportAll', 'createGoal']);
+    mockGoalService.exportAll.and.resolveTo([]);
     mockBackupRestore = jasmine.createSpyObj('BackupRestoreService', ['parse', 'describe', 'restore']);
 
     // Root-provided, so without this the real service is constructed and its
@@ -114,6 +118,7 @@ describe('DataManagementComponent', () => {
         { provide: CategoryService, useValue: mockCategoryService },
         { provide: BudgetService, useValue: mockBudgetService },
         { provide: RecurringService, useValue: mockRecurringService },
+        { provide: GoalService, useValue: mockGoalService },
         { provide: BackupRestoreService, useValue: mockBackupRestore },
         { provide: InsightSnapshotService, useValue: mockInsightSnapshots },
         { provide: AuthService, useValue: mockAuthService },
@@ -246,7 +251,7 @@ describe('DataManagementComponent', () => {
       };
       const contents = {
         version: '1.2', exportDate: '2026-08-01',
-        transactions: 12, categories: 3, budgets: 2, recurring: 1, insightSnapshots: 4,
+        transactions: 12, categories: 3, budgets: 2, recurring: 1, goals: 0, insightSnapshots: 4,
       };
       mockBackupRestore.parse.and.returnValue(parsed);
       mockBackupRestore.describe.and.returnValue(contents);

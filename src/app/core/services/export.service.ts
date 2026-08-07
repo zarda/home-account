@@ -13,6 +13,7 @@ import {
   BudgetPeriod,
   isBudgetPeriod,
   Budget,
+  Goal,
   RecurringTransaction,
   InsightSnapshot,
   MonthlyTotal
@@ -61,14 +62,14 @@ export interface ReportData {
 }
 
 /** Bumped whenever the backup gains or reshapes a section. */
-export const BACKUP_SCHEMA_VERSION = '1.2';
+export const BACKUP_SCHEMA_VERSION = '1.3';
 
 /**
  * Versions this build can restore. Older ones simply carry fewer sections;
  * a version not in this list came from a newer build and is refused rather
  * than half-read.
  */
-export const SUPPORTED_BACKUP_VERSIONS = ['1.0', '1.1', '1.2'] as const;
+export const SUPPORTED_BACKUP_VERSIONS = ['1.0', '1.1', '1.2', '1.3'] as const;
 
 export interface ExportData {
   transactions: Transaction[];
@@ -81,6 +82,8 @@ export interface ExportData {
   /** Budgets and recurring rules. Optional for the same reason (added in 1.2). */
   budgets?: Budget[];
   recurring?: RecurringTransaction[];
+  /** Savings goals and projects. Optional for the same reason (added in 1.3). */
+  goals?: Goal[];
   exportDate: string;
   version: string;
 }

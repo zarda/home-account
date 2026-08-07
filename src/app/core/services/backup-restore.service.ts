@@ -11,10 +11,12 @@ import { CategoryService } from './category.service';
 import { BudgetService } from './budget.service';
 import { RecurringService } from './recurring.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
+import { GoalService } from './goal.service';
 import {
   Budget,
   Category,
   CreateTransactionDTO,
+  Goal,
   RecurringTransaction,
   Transaction,
 } from '../../models';
@@ -31,6 +33,7 @@ export interface RestoreSummary {
   categories: number;
   budgets: number;
   recurring: number;
+  goals: number;
   insightSnapshots: number;
   /** Rows that could not be written, with the reason, for reporting. */
   skipped: { section: string; id: string; reason: string }[];
@@ -44,6 +47,7 @@ export interface BackupContents {
   categories: number;
   budgets: number;
   recurring: number;
+  goals: number;
   insightSnapshots: number;
 }
 
@@ -91,6 +95,7 @@ export class BackupRestoreService {
   private budgetService = inject(BudgetService);
   private recurringService = inject(RecurringService);
   private insightSnapshots = inject(InsightSnapshotService);
+  private goalService = inject(GoalService);
 
   /**
    * Validate a parsed JSON file as a backup.
@@ -121,6 +126,7 @@ export class BackupRestoreService {
       insightSnapshots: Array.isArray(data.insightSnapshots) ? data.insightSnapshots : [],
       budgets: Array.isArray(data.budgets) ? data.budgets as Budget[] : [],
       recurring: Array.isArray(data.recurring) ? data.recurring as RecurringTransaction[] : [],
+      goals: Array.isArray(data.goals) ? data.goals as Goal[] : [],
       exportDate: typeof data.exportDate === 'string' ? data.exportDate : '',
       version,
     };
@@ -135,6 +141,7 @@ export class BackupRestoreService {
       categories: data.categories.length,
       budgets: data.budgets?.length ?? 0,
       recurring: data.recurring?.length ?? 0,
+      goals: data.goals?.length ?? 0,
       insightSnapshots: data.insightSnapshots?.length ?? 0,
     };
   }
@@ -150,7 +157,7 @@ export class BackupRestoreService {
    */
   async restore(data: ExportData): Promise<RestoreSummary> {
     const summary: RestoreSummary = {
-      transactions: 0, categories: 0, budgets: 0, recurring: 0, insightSnapshots: 0,
+      transactions: 0, categories: 0, budgets: 0, recurring: 0, goals: 0, insightSnapshots: 0,
       skipped: [],
     };
 
@@ -252,6 +259,25 @@ export class BackupRestoreService {
         summary.recurring++;
       } catch (error) {
         skip('recurring', rule.id, error);
+      }
+    }
+
+    for (const goal of data.goals ?? []) {
+      try {
+        // The contributed balance rides in options: unlike a budget's spent,
+        // there is no transaction source to recompute it from.
+        await this.goalService.createGoal({
+          kind: goal.kind,
+          name: goal.name,
+          targetAmount: goal.targetAmount,
+          currency: goal.currency,
+          ...(goal.targetDate ? { targetDate: toDate(goal.targetDate) } : {}),
+          ...(goal.items?.length ? { items: goal.items } : {}),
+          ...(goal.note ? { note: goal.note } : {}),
+        }, { id: goal.id, contributedAmount: goal.contributedAmount ?? 0 });
+        summary.goals++;
+      } catch (error) {
+        skip('goals', goal.id, error);
       }
     }
 
