@@ -26,6 +26,7 @@ import { TranslationService } from './core/services/translation.service';
 import { ThemeService } from './core/services/theme.service';
 import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
 import { AppLockService } from './core/services/app-lock.service';
+import { ShareIntakeService } from './core/services/share-intake.service';
 import { AnalyticsService } from './core/services/analytics.service';
 import { GlobalErrorHandler } from './core/services/global-error-handler';
 import {
@@ -196,6 +197,11 @@ export const appConfig: ApplicationConfig = {
       // Attach the offline-queue processing listeners at startup so queued
       // images/transactions are handled as soon as connectivity returns.
       inject(OfflineQueueProcessorService);
+    }),
+    provideAppInitializer(() => {
+      // Register the share-target worker (web) or the App Group watcher
+      // (iOS) so files shared from other apps reach the import wizard.
+      void inject(ShareIntakeService).init();
     }),
     provideAppInitializer(() => {
       // Construct the lock service before the first guarded navigation so a
