@@ -35,9 +35,12 @@
         <app-transaction-row
           [transaction]="transaction"
           [categories]="categories()"
+          [swipeActions]="true"
           [attr.data-tx-id]="transaction.id"
           [class.row-highlight]="transaction.id === highlightedId()"
           (activate)="edit.emit(transaction)"
+          (edit)="edit.emit(transaction)"
+          (delete)="confirmDelete(transaction)"
         >
           <!-- Trailing overflow actions -->
           <button

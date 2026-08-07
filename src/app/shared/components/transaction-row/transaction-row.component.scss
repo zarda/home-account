@@ -9,31 +9,26 @@
    (see appFitText in the template).
 
    The budget, at the 375px viewport this is tightest on: 343px of card, less
-   16px of row padding, leaves 327. The tile (40), the menu (48) and two 12px
-   gaps claim 112 of that and never yield, so 215 is shared between the
-   details column and the amount.
+   16px of row padding, leaves 327. The tile (32) and its 8px gap claim 40 and
+   never yield, so 287 belongs to the text stack. On its first line a
+   projected menu reserves a 44px corner (see .row-actions below), leaving 243
+   shared by the description (flex: 1 1 0 against a 7rem floor) and the
+   amount (appFitText).
 
-   Two rules keep the row on one line for as long as that budget allows, and
-   both are load-bearing:
-
-   - .row-details is `flex: 1 1 0`, not `1 1 auto`. Flex line-collection
-     measures each item at its *hypothetical* main size, and `flex-basis: auto`
-     resolves to max-content — the full width of the description, before any
-     shrinking is considered. The row then broke before the tile, leaving it
-     alone on a line. A zero basis is measured at the 7rem floor below instead,
-     and the column grows into the leftover afterwards.
-   - Amount and menu are one item, .row-trailing. An auto margin right-aligns
-     only the line its own item is on, so as two items the menu could wrap away
-     from the amount and land at the row's left edge. */
+   Height belongs to the text stack too: 8 + head (~24) + 2 + strip (~20) +
+   2 + meta (~17) + 8 ≈ 81px on an ordinary row, bounded at 88 by
+   overflow-guard.spec.ts. The menu is 40×40, absolutely pinned to the
+   top-right corner, outside the flow — it adds no height. It used to stack
+   under the tile in a leading column, which set every row at 100px; that
+   cost was tracked as issue #219 and this layout is the revisit. */
 .transaction-row {
-  display: flex;
-  flex-wrap: wrap;
-  // flex-start, not center: the details column is now multi-line whenever the
-  // description is long, and centring would leave the category tile floating
-  // halfway down a tall row.
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 8px;
+  position: relative;
+  // hidden first as the fallback; clip because this box must never become a
+  // scroll container — programmatic focus-scroll could displace a hidden-
+  // overflow box and half-reveal the swipe drawer.
+  overflow: hidden;
+  overflow: clip;
+  padding: 8px;
   min-height: 56px;
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -44,62 +39,66 @@
   }
 }
 
-/* Tile over menu, both fixed width, so this column's size never depends on
-   what the row contains — it is the only part of the row that is true of, and
-   it is why the menu can no longer be carried somewhere unpredictable by a
-   reflow.
-
-   The tile dropped from 40px to the chip's `sm` 32px to pay for part of the
-   move. It is still what the row is read by at a glance and it is still never
-   the thing that gives way; it is just smaller than it was.
-
-   What this costs: 32 + 4 + 40 = 76px, plus 24 of row padding, makes this
-   column the tallest thing in the row and therefore the thing that sets the
-   height of every row in the list — 100px where it was 80. That is a real
-   trade against how much of a list fits on a screen, it was made knowingly,
-   and issue #219 tracks the layouts that might not need to make it. */
-.row-leading {
+/* Everything visible at rest rides this one surface, so the swipe gesture can
+   move the row as a unit. Transparent on purpose: the row's hover tone and
+   the list's row-highlight flash paint on the host and show through, moved or
+   not. nowrap, so the tile can never be orphaned on a line of its own — the
+   line-collection fight the old layout had lives entirely inside .row-head
+   now. position: relative anchors the pinned actions slot. */
+.row-surface {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 8px;
 }
 
+/* The tile is what the row is read by at a glance, so it is never the thing
+   that gives way. 32px, the chip's `sm`: the floor issue #219 set for it. */
 app-category-chip {
   flex-shrink: 0;
+  // The gesture that reveals the swipe drawer starts on the surface's leaf
+  // regions; vertical panning stays native. Never put this on .row-surface
+  // or .row-body — effective touch-action intersects down the tree, and the
+  // strip's own horizontal panning would be collateral.
+  touch-action: pan-y;
+}
+
+.row-body {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Line 1, and the only line that wraps: when the description and the amount
+   cannot share it, the amount drops to a line of its own — still flush right,
+   because its auto margin aligns whichever line it is on. */
+.row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 2px 8px;
+  touch-action: pan-y;
 }
 
 /* min-width is a floor, not a width: below about seven characters' worth the
    description wraps one word per line and stops being readable, so at that
-   point the row wraps the amount down instead. Kept under the ~155px an
-   ordinary 375px row can spare, so the common case still fits on one line.
-
-   With a zero basis this floor is also the only size line-collection sees for
-   this column, which is what stops a long description breaking the line before
-   the tile. See the note at the top. */
-.row-details {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1 1 0;
-  min-width: 7rem;
-}
-
-/* Was overflow/text-overflow/white-space: nowrap — three declarations that
-   never did anything. text-overflow has no effect on a flex container, and
-   the description is a bare text node inside one, which makes it an anonymous
-   flex item no selector can reach. It clipped; it never ellipsised.
+   point the head wraps the amount down instead. With a zero basis this floor
+   is also the only size line-collection sees for it, which is what keeps the
+   amount sharing the line for as long as the budget allows.
 
    overflow-wrap: anywhere rather than break-word because only `anywhere`
    reduces the element's min-content size. break-word would let a pasted URL
    go on refusing to shrink and push the amount off the row. */
 .row-description {
+  flex: 1 1 0;
+  min-width: 7rem;
   display: flex;
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  min-width: 0;
   overflow-wrap: anywhere;
   font-size: var(--text-base);
   font-weight: 500;
@@ -176,9 +175,9 @@ app-category-chip {
    overflow indicator has to outlive the things it counts.
 
    Sticky is what that means once the strip scrolls. As the last child it would
-   otherwise sit past the right edge, visible only to a reader who scrolled far
-   enough to no longer need it — the count of what is missing is useless at the
-   point you have already found it. Pinned to the scrollport's right edge it
+   otherwise sit past the right edge, visible only to a reader who has scrolled
+   far enough to no longer need it — the count of what is missing is useless at
+   the point you have already found it. Pinned to the scrollport's right edge it
    stays put while the tags slide under it, and releases when its own position
    catches up. It keeps .tag-chip's opaque background, which is what stops the
    tags showing through. */
@@ -219,10 +218,11 @@ app-category-chip {
   flex-shrink: 0;
 }
 
-/* The amount is now the only thing on the trailing side, so the auto margin
-   can sit on it directly and G6 does not apply — there is no second trailing
-   item that could wrap away from it and be left unaligned. Put anything else
-   out here and that stops being true; wrap the pair first.
+/* The amount is the head line's only trailing item, so the auto margin sits
+   on it directly and holds whether it shares the line or wrapped to one of
+   its own — an auto margin right-aligns the line its own item is on. Put a
+   second trailing item on the head and that stops being true; wrap the pair
+   first (G6).
 
    max-width: 100% is what stops a very large number widening the row past the
    card; appFitText scales the value inside that cap rather than letting it
@@ -231,7 +231,6 @@ app-category-chip {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 2px;
   flex-shrink: 0;
   min-width: 0;
   max-width: 100%;
@@ -263,27 +262,107 @@ app-category-chip {
   white-space: nowrap;
 }
 
+/* Line 3: when, at the leading edge; what it counts as, at the trailing one.
+   space-between keeps both true with or without a converted amount. */
+.row-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  touch-action: pan-y;
+}
+
 .row-date {
   font-size: var(--text-xs);
   color: var(--text-disabled);
   max-width: 100%;
 }
 
-/* The overflow menu is the only route to Delete, so it is the one thing in
-   the row that never shrinks and is never clipped. :empty because the
-   dashboard card projects nothing into the slot, and an empty box must not
-   claim .row-leading's gap — a display: none item does not.
+/* The overflow menu is the only route to Delete, so its position depends on
+   nothing that can reflow: pinned to the surface's top-right corner, outside
+   the flow entirely. Its size is set by the caller, in
+   transaction-list.component.scss — projected content carries the *host*
+   component's encapsulation attribute, so nothing here can reach the button
+   itself; 40×40 there, and the touch-target floor.
 
-   Its size is set by the caller, in transaction-list.component.scss: projected
-   content carries the *host* component's encapsulation attribute, so nothing
-   here can reach the button itself. What this wrapper can still promise is
-   that whatever lands in it is never squeezed. */
+   :empty because the dashboard card projects nothing into the slot, and an
+   empty pinned box must not sit over the amount as a dead hover target. */
 .row-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
   align-items: center;
-  flex-shrink: 0;
 }
 
 .row-actions:empty {
   display: none;
+}
+
+/* The corner the menu covers is paid for only when a menu is projected.
+   .row-actions is the surface's first child, so the forward-only sibling
+   combinator can grant the reserve — no :has() required — and the dashboard,
+   which projects nothing, reclaims all 44px.
+
+   The head keeps its first line clear of the button with padding. The strip
+   needs margin instead: its band overlaps the menu's on a one-line head, and
+   its sticky +N pins to the scrollport's right edge — sticky insets resolve
+   against the scrollport box, so padding would leave +N pinned under the
+   menu, while margin ends the scrollport itself left of it. */
+.row-actions:not(:empty) ~ .row-body .row-head {
+  padding-right: 44px;
+}
+
+.row-actions:not(:empty) ~ .row-body .row-category {
+  margin-right: 44px;
+}
+
+/* The swipe drawer: Edit and Delete parked behind the surface, off-canvas
+   until the gesture slides them in — the directive translates drawer and
+   surface in lockstep, so the revealed zone always equals the drawer's
+   visible part. Absolute, and clipped by the row while closed, so it adds
+   no height to the stack.
+
+   The labels are visible text, not aria-labels: they reuse common.edit /
+   common.delete and wrap rather than truncate (G3) inside the fixed 72px
+   buttons. */
+.row-swipe-actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 144px;
+  display: flex;
+  transform: translateX(144px);
+}
+
+.swipe-action {
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+
+  mat-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.swipe-action-edit {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.swipe-action-delete {
+  background: var(--color-error);
+  color: #fff;
 }

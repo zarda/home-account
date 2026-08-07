@@ -24,6 +24,14 @@ export class TranslationService {
   private translations = signal<Record<string, unknown>>({});
   currentLocale = signal<SupportedLocale>(this.DEFAULT_LOCALE);
 
+  /**
+   * Bumped after every successful catalog load. The locale alone can't signal
+   * that the table changed — the catalog arrives async under an unchanged
+   * locale (initial load, or the error fallback re-loading the default) — so
+   * per-instance memos (see TranslatePipe) fold this into their cache key.
+   */
+  translationsVersion = signal(0);
+
   isLoaded = computed(() => Object.keys(this.translations()).length > 0);
 
   currentLanguage = computed(() =>
@@ -42,6 +50,7 @@ export class TranslationService {
         this.http.get<Record<string, unknown>>(`/assets/i18n/${locale}.json`)
       );
       this.translations.set(translations);
+      this.translationsVersion.update(v => v + 1);
       this.currentLocale.set(locale);
       document.documentElement.lang = locale === 'tc' ? 'zh-Hant' : locale;
     } catch (error) {

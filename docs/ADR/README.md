@@ -16,11 +16,12 @@ reverse — why a thing is the way it is, not how to use it.
 | [0009](0009-shared-state-publishing-and-lifecycle.md) | One publisher for shared account state; owners reset it, holders release it | Accepted | 2026-08-02 |
 | [0010](0010-nothing-truncates.md) | Nothing truncates: text reflows, values scale | Accepted; amended by 0012 | 2026-08-03 |
 | [0011](0011-the-csv-file-is-a-contract.md) | The CSV file is a contract, and every cell in it is untrusted | Accepted | 2026-08-03 |
-| [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) | A strip of chips scrolls rather than growing the row | Accepted | 2026-08-03 |
+| [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) | A strip of chips scrolls rather than growing the row | Accepted; row anatomy revised by 0017 | 2026-08-03 |
 | [0013](0013-the-printed-total-is-the-amount-not-the-item-sum.md) | The printed total is the amount, not the sum of the items | Accepted | 2026-08-05 |
 | [0014](0014-recurrence-guards-and-anchors.md) | Recurrence validates at the edges, breaks in the loops, and anchors on the start date | Accepted | 2026-08-05 |
 | [0015](0015-reclaimed-receipts-replay-idempotently.md) | A reclaimed receipt replays onto the ids it already used | Accepted | 2026-08-05 |
 | [0016](0016-aggregate-answers-persist-as-snapshots-that-refresh-locally.md) | Aggregate answers persist as snapshots that refresh locally | Accepted | 2026-08-06 |
+| [0017](0017-the-row-stacks-and-actions-ride-behind-a-swipe.md) | The row stacks its lines, and actions ride behind a swipe | Accepted | 2026-08-07 |
 
 ## What belongs here
 

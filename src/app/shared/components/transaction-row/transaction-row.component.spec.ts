@@ -1,8 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TransactionRowComponent } from './transaction-row.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction, Category, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
 
@@ -41,6 +42,9 @@ describe('TransactionRowComponent', () => {
       providers: [
         { provide: CurrencyService, useValue: currency },
         { provide: AuthService, useValue: { currentUser } },
+        // The drawer's labels go through the translate pipe, which tolerates
+        // a partial mock that stubs only t().
+        { provide: TranslationService, useValue: { t: (key: string) => key } },
       ],
     }).compileComponents();
 
@@ -164,20 +168,44 @@ describe('TransactionRowComponent', () => {
     expect(row.getAttribute('tabindex')).toBe('0');
   });
 
-  it('keeps the tile and the actions slot in one leading column', () => {
+  it('pins the projected actions slot to the surface corner, out of the flow', () => {
     setTransaction({});
 
-    // Both are fixed width, so this column's position never depends on what
-    // the row contains — which is what takes the overflow menu out of the
-    // reflow altogether. While it was the row's last item it could wrap away
-    // from the amount that carried the auto margin and land at the left edge.
-    const leading = fixture.nativeElement.querySelector('.row-leading') as HTMLElement;
-    expect(leading).withContext('leading column present').not.toBeNull();
-    expect(leading.querySelector('app-category-chip')).withContext('tile inside it').not.toBeNull();
-    expect(leading.querySelector('.row-actions')).withContext('actions inside it').not.toBeNull();
+    // The slot is absolutely positioned against the surface, so wherever the
+    // text stack reflows, the menu sits at the same corner of every row. The
+    // old leading column bought that same property by stacking the menu under
+    // the tile — at the price of setting every row's height (issue #219).
+    expect(fixture.nativeElement.querySelector('.row-leading'))
+      .withContext('leading column dismantled')
+      .toBeNull();
+    const actions = fixture.nativeElement.querySelector('.row-surface > .row-actions') as HTMLElement;
+    expect(actions).withContext('actions slot on the surface').not.toBeNull();
+    expect(getComputedStyle(actions).position).toBe('absolute');
     // Where it ends up on screen is measured in overflow-guard.spec.ts,
     // against the real cascade at a real width. This one is the structure the
     // guarantee rests on.
+  });
+
+  it('stacks description, strip, and meta line inside the body', () => {
+    setTransaction({ currency: 'JPY', amount: 3800, amountInBaseCurrency: 25.42 } as Partial<Transaction>);
+
+    const root: HTMLElement = fixture.nativeElement;
+    const head = root.querySelector('.row-body > .row-head') as HTMLElement;
+    const meta = root.querySelector('.row-body > .row-meta') as HTMLElement;
+    expect(head).withContext('first line present').not.toBeNull();
+    expect(meta).withContext('meta line present').not.toBeNull();
+    expect(head.querySelector('.row-description')).withContext('description on line 1').not.toBeNull();
+    expect(head.querySelector('.row-amount .amount')).withContext('amount on line 1').not.toBeNull();
+    expect(root.querySelector('.row-body > .row-category')).withContext('strip is line 2').not.toBeNull();
+    expect(meta.querySelector('.row-date')).withContext('date on the meta line').not.toBeNull();
+    expect(meta.querySelector('.amount-converted'))
+      .withContext('converted amount rides the meta line, not the amount stack')
+      .not.toBeNull();
+
+    setTransaction({ currency: 'USD', amount: 10 });
+    expect(fixture.nativeElement.querySelector('.row-meta .amount-converted'))
+      .withContext('no converted line for base-currency rows')
+      .toBeNull();
   });
 
   it('opens the transaction on an ordinary click on the category strip', () => {
@@ -228,10 +256,160 @@ describe('TransactionRowComponent', () => {
     // The slot exists so this component can promise the overflow menu is
     // never squeezed out — projected content carries the *host's*
     // encapsulation attribute, so the guarantee cannot live in the caller's
-    // stylesheet. The dashboard card projects nothing, and an empty box must
-    // not still claim one of the row's 12px gaps.
+    // stylesheet. The dashboard card projects nothing, and an empty pinned
+    // box must not sit over the amount as a dead hover target — nor keep the
+    // reserved corner alive, which the :not(:empty) reserve rules key off.
     const actions = fixture.nativeElement.querySelector('.row-actions') as HTMLElement;
     expect(actions).withContext('slot wrapper is present').not.toBeNull();
     expect(getComputedStyle(actions).display).toBe('none');
+  });
+
+  it('renders no swipe drawer and no reserved corner by default', () => {
+    setTransaction({});
+
+    expect(fixture.nativeElement.querySelector('.row-swipe-actions'))
+      .withContext('drawer exists only for parents that opt in')
+      .toBeNull();
+    const head = fixture.nativeElement.querySelector('.row-head') as HTMLElement;
+    expect(getComputedStyle(head).paddingRight)
+      .withContext('no menu projected, no corner reserved')
+      .toBe('0px');
+  });
+});
+
+/**
+ * The swipe drawer needs a real host: projection cannot be exercised by
+ * instantiating the row directly, and the gesture needs the row's own
+ * stylesheet for the surface and drawer geometry.
+ */
+@Component({
+  standalone: true,
+  imports: [TransactionRowComponent],
+  template: `
+    <app-transaction-row
+      [transaction]="transaction"
+      [categories]="categories"
+      [swipeActions]="true"
+      (activate)="activated.push($event)"
+      (edit)="edited.push($event)"
+      (delete)="deleted.push($event)"
+    >
+      <button class="menu-probe" type="button">⋮</button>
+    </app-transaction-row>
+  `,
+})
+class SwipeRowProbeComponent {
+  transaction = createTransaction({ categoryId: 'food', description: 'Weekly shop' });
+  categories = new Map<string, Category>([
+    ['food', createCategory({ id: 'food', name: 'Groceries', icon: 'shopping_cart', color: '#ff5722' })],
+  ]);
+  activated: Transaction[] = [];
+  edited: Transaction[] = [];
+  deleted: Transaction[] = [];
+}
+
+describe('TransactionRowComponent with swipe actions', () => {
+  let fixture: ComponentFixture<SwipeRowProbeComponent>;
+  let component: SwipeRowProbeComponent;
+  let host: HTMLElement;
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.formatCurrency.and.callFake(
+      (amount: number, code: string) => `${code} ${amount.toFixed(2)}`
+    );
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+
+    await TestBed.configureTestingModule({
+      imports: [SwipeRowProbeComponent],
+      providers: [
+        { provide: CurrencyService, useValue: currency },
+        {
+          provide: AuthService,
+          useValue: {
+            currentUser: signal(createUser({ preferences: { baseCurrency: 'USD' } as User['preferences'] })),
+          },
+        },
+        { provide: TranslationService, useValue: { t: (key: string) => key } },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(SwipeRowProbeComponent);
+    component = fixture.componentInstance;
+    host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => host.remove());
+
+  function pointer(target: HTMLElement, type: string, x: number, y: number): void {
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        pointerId: 1,
+        pointerType: 'touch',
+        isPrimary: true,
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+  }
+
+  it('renders the drawer with translated edit and delete actions', () => {
+    const drawer = host.querySelector('.row-swipe-actions') as HTMLElement;
+    expect(drawer).withContext('drawer present for an opted-in parent').not.toBeNull();
+
+    const edit = drawer.querySelector('.swipe-action-edit') as HTMLElement;
+    const del = drawer.querySelector('.swipe-action-delete') as HTMLElement;
+    expect(edit?.textContent).withContext('edit reuses the common key').toContain('common.edit');
+    expect(del?.textContent).withContext('delete reuses the common key').toContain('common.delete');
+  });
+
+  it('keeps the closed drawer out of the keyboard and accessibility tree', () => {
+    // Closed, the buttons sit clipped off-canvas. The pinned menu is the
+    // keyboard and screen-reader route; reachable-but-invisible buttons
+    // would be a focus trap into nothing.
+    for (const button of Array.from(host.querySelectorAll('.swipe-action'))) {
+      expect(button.getAttribute('tabindex')).toBe('-1');
+      expect(button.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  it('reserves the head corner for the projected menu', () => {
+    const head = host.querySelector('.row-head') as HTMLElement;
+    expect(getComputedStyle(head).paddingRight).toBe('44px');
+  });
+
+  it('emits edit and delete from the drawer without activating the row', () => {
+    (host.querySelector('.swipe-action-edit') as HTMLElement).click();
+    expect(component.edited).withContext('edit reached the parent').toEqual([component.transaction]);
+
+    (host.querySelector('.swipe-action-delete') as HTMLElement).click();
+    expect(component.deleted).withContext('delete reached the parent').toEqual([component.transaction]);
+
+    expect(component.activated)
+      .withContext('an action tap must never double as opening the editor')
+      .toEqual([]);
+  });
+
+  it('opens on a left swipe and closes on Escape', () => {
+    const surface = host.querySelector('.row-surface') as HTMLElement;
+    const row = host.querySelector('.transaction-row') as HTMLElement;
+    const description = host.querySelector('.row-description') as HTMLElement;
+
+    pointer(description, 'pointerdown', 300, 20);
+    pointer(surface, 'pointermove', 288, 21);
+    pointer(surface, 'pointermove', 140, 22);
+    pointer(surface, 'pointerup', 140, 22);
+
+    expect(row.classList).withContext('swipe opened the drawer').toContain('swipe-open');
+    expect(component.activated).withContext('the drag did not open the editor').toEqual([]);
+
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(row.classList).withContext('Escape put it back').not.toContain('swipe-open');
   });
 });

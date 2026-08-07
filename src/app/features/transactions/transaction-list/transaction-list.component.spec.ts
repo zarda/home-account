@@ -1,11 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { MatDialog } from '@angular/material/dialog';
 import { Sort } from '@angular/material/sort';
 import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
 import { TransactionListComponent } from './transaction-list.component';
+import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { TransactionWindowService } from '../../../core/services/transaction-window.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
@@ -196,5 +199,91 @@ describe('TransactionListComponent', () => {
       component.confirmDelete(txns[0]);
       expect(spy).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * The mobile branch renders only below the table breakpoint, so this suite
+ * pins the BreakpointObserver to "not desktop" and asserts the template
+ * wiring between the list and its rows — the part the logic suite above
+ * cannot see.
+ */
+describe('TransactionListComponent mobile row wiring', () => {
+  let component: TransactionListComponent;
+  let fixture: ComponentFixture<TransactionListComponent>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+
+  const txns: Transaction[] = [
+    createTransaction({ id: 'a', amount: 30, description: 'Banana' }),
+    createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
+  ];
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+    const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+    dateFormat.formatDate.and.returnValue('date');
+    dateFormat.formatRelativeDate.and.returnValue('rel');
+    const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+      'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+    ]);
+    categoryHelper.getCategoryName.and.returnValue('Cat');
+    categoryHelper.getCategoryIcon.and.returnValue('icon');
+    categoryHelper.getCategoryColor.and.returnValue('#000');
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((k: string) => k);
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: createMockWindowSource() },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: false, breakpoints: {} }) } },
+        { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: DateFormatService, useValue: dateFormat },
+        { provide: CategoryHelperService, useValue: categoryHelper },
+        { provide: TranslationService, useValue: translation },
+        { provide: MatDialog, useValue: dialog },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('transactions', txns);
+    fixture.detectChanges();
+  });
+
+  it('opts every row into swipe actions', () => {
+    const rows = fixture.debugElement.queryAll(By.directive(TransactionRowComponent));
+    expect(rows.length).withContext('mobile rows rendered').toBe(2);
+    for (const row of rows) {
+      expect((row.componentInstance as TransactionRowComponent).swipeActions()).toBeTrue();
+    }
+  });
+
+  it('routes a row delete through the confirm dialog, never around it', () => {
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+    const deleteSpy = jasmine.createSpy('delete');
+    component.delete.subscribe(deleteSpy);
+
+    const row = fixture.debugElement.queryAll(By.directive(TransactionRowComponent))[0];
+    row.triggerEventHandler('delete', txns[0]);
+
+    expect(dialog.open).withContext('swipe delete still asks first').toHaveBeenCalled();
+    expect(deleteSpy).toHaveBeenCalledWith(txns[0]);
+  });
+
+  it('re-emits a row edit', () => {
+    const editSpy = jasmine.createSpy('edit');
+    component.edit.subscribe(editSpy);
+
+    const row = fixture.debugElement.queryAll(By.directive(TransactionRowComponent))[0];
+    row.triggerEventHandler('edit', txns[0]);
+
+    expect(editSpy).toHaveBeenCalledWith(txns[0]);
   });
 });

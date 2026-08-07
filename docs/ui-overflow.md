@@ -215,12 +215,18 @@ the only route to Delete — at the left edge of the row whenever the amount was
 wide enough to wrap away from it.
 
 **The stronger version of this is to take the control out of the reflow.** A
-fixed-width column of fixed-width items has a position that does not depend on
-content at all, which is a property no amount of careful wrapping gets you. The
-transaction row now stacks its menu under the category tile for exactly that
-reason, so it has one trailing item and this rule no longer binds there — but
-it binds the moment anything joins the amount, and the cost of the column is
-real: see issue #219.
+position that depends on nothing content-sized is a property no amount of
+careful wrapping gets you. The transaction row pins its overflow menu — the
+only route to Delete — to the surface's top-right corner with `position:
+absolute`, and pays for the covered corner only when a menu is projected: the
+slot is the surface's first child, and `.row-actions:not(:empty) ~` sibling
+rules grant the head its 44px of padding and end the strip's scrollport left
+of the button (margin, not padding — the sticky `+N` pins to the scrollport
+box). Out of the flow, the control also adds no height. The previous form of
+this rule stacked the menu under the tile in a fixed-width column, which
+bought the same position at 100px on every row; issue #219 tracked that cost
+and [ADR 0017](ADR/0017-the-row-stacks-and-actions-ride-behind-a-swipe.md)
+retired it.
 
 **Check:** in any wrapping flex row, no trailing item carries `margin-left:
 auto` while a sibling that must stay beside it does not. And assert the
@@ -269,6 +275,16 @@ Prose does not get this treatment. A description behind a horizontal scrubber
 means scrolling sideways to read what you bought — 689px of it, measured on the
 worst row in the app. Reasoning in [ADR 0012](ADR/0012-a-strip-scrolls-rather-than-growing-the-row.md).
 
+A swipe gesture layered on the row must leave the strip's own panning alone.
+The reveal directive refuses any gesture born inside the strip
+(`swipeRevealIgnore`), and `touch-action: pan-y` sits only on the row's leaf
+lines — effective touch-action intersects down the ancestor chain, so one
+ancestor-level `pan-y` would take the strip's horizontal touch scrolling with
+it. Content clipped only *in transit* while the surface slides is not a G4
+violation: at every rest state nothing is hidden, and every action behind the
+swipe keeps a non-gesture route — the pinned menu.
+[ADR 0017](ADR/0017-the-row-stacks-and-actions-ride-behind-a-swipe.md).
+
 ---
 
 ## Where each rule is enforced
@@ -276,7 +292,8 @@ worst row in the app. Reasoning in [ADR 0012](ADR/0012-a-strip-scrolls-rather-th
 | | |
 |---|---|
 | `shared/directives/fit-text.directive.spec.ts` | the directive: scales, floors at 12px, writes nothing when the value fits, does not oscillate |
-| `shared/overflow-guard.spec.ts` | a hostile row keeps its menu, amount and `+N` inside the clipping card — and an ordinary row still does not reflow at 375px. Also positional, since containment was not enough: the menu sits at the row's right edge, the tile stays on the details column's line, the strip stays one line, and the insight drill-down row does not truncate |
+| `shared/overflow-guard.spec.ts` | a hostile row keeps its menu, amount and `+N` inside the clipping card — and an ordinary row still does not reflow at 375px, bounded hard at 88px. Also positional, since containment was not enough: the menu pins to the row's top-right corner, the tile stays on the body's line, the strip stays one line and ends left of the menu, the dashboard shape reclaims the reserved corner, and the insight drill-down row does not truncate |
+| `shared/directives/swipe-reveal.directive.spec.ts` | the gesture: axis lock, strip exclusion, click suppression, one open row app-wide, snap and fling, pointercancel recovery, and the sticky `+N` staying pinned on a translated surface |
 | `shared/safe-area.spec.ts` | `max()` not sum; one owner per inset |
 | `features/transactions/transaction-overflow.smoke.spec.ts` | the same on a real page, plus the paging root |
 | `shared/truncation-guard.spec.ts` | the two things a deleted truncation is replaced by: text wraps inside its box without shoving its neighbour out, and a label that cannot wrap scales while its control survives |
