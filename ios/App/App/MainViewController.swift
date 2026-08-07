@@ -21,5 +21,6 @@ class MainViewController: CAPBridgeViewController {
         // are in place by the time any JS can reach for them.
         bridge?.registerPluginInstance(VisionOCRPlugin())
         bridge?.registerPluginInstance(AppleIntelligencePlugin())
+        bridge?.registerPluginInstance(ShareIntakePlugin())
     }
 }
