@@ -161,7 +161,7 @@ export class CategoryMemoryService {
     await this.firestoreService.deleteDocument(`${this.memoryPath}/${merchantKey}`);
   }
 
-  /** Forget everything. */
+  /** Forget everything this session has loaded. */
   async clear(): Promise<void> {
     if (!this.authService.userId()) return;
     const keys = this.entries().map(e => e.merchantKey);
@@ -169,5 +169,20 @@ export class CategoryMemoryService {
     for (const key of keys) {
       await this.firestoreService.deleteDocument(`${this.memoryPath}/${key}`);
     }
+  }
+
+  /**
+   * Remove every stored memory row, for account deletion. Enumerates the
+   * collection rather than the loaded entries — clear() only forgets what
+   * this session happened to load, which on a fresh session is nothing.
+   */
+  async deleteAll(): Promise<number> {
+    if (!this.authService.userId()) return 0;
+    const rows = await this.firestoreService.getCollection<{ id: string }>(this.memoryPath);
+    this.entries.set([]);
+    for (const row of rows) {
+      await this.firestoreService.deleteDocument(`${this.memoryPath}/${row.id}`);
+    }
+    return rows.length;
   }
 }

@@ -59,7 +59,7 @@ describe('AccountDeletionService', () => {
     mockRecurring = jasmine.createSpyObj('RecurringService', ['deleteAll']);
     mockSearches = jasmine.createSpyObj('SearchHistoryService', ['deleteAll']);
     mockAnswers = jasmine.createSpyObj('SearchAnswerHistoryService', ['deleteAll']);
-    mockCategoryMemory = jasmine.createSpyObj('CategoryMemoryService', ['clear']);
+    mockCategoryMemory = jasmine.createSpyObj('CategoryMemoryService', ['deleteAll']);
     mockImports = jasmine.createSpyObj('ImportHistoryService', ['clearImportHistory']);
     mockSnapshots = jasmine.createSpyObj('InsightSnapshotService', ['deleteAll']);
     mockProviderKeys = jasmine.createSpyObj('ProviderKeyService', ['deleteAll']);
@@ -76,7 +76,7 @@ describe('AccountDeletionService', () => {
     track(mockRecurring.deleteAll, 'recurring', 1);
     track(mockSearches.deleteAll, 'savedSearches', 1);
     track(mockAnswers.deleteAll, 'searchAnswers', 1);
-    track(mockCategoryMemory.clear, 'categoryMemory');
+    track(mockCategoryMemory.deleteAll, 'categoryMemory', 1);
     track(mockImports.clearImportHistory, 'imports');
     track(mockSnapshots.deleteAll, 'insightSnapshots');
     track(mockProviderKeys.deleteAll, 'secrets');

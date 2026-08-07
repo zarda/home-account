@@ -104,7 +104,7 @@ export class AccountDeletionService {
       ['recurring', () => this.recurringService.deleteAll()],
       ['savedSearches', () => this.searchHistory.deleteAll()],
       ['searchAnswers', () => this.searchAnswers.deleteAll()],
-      ['categoryMemory', () => this.categoryMemory.clear()],
+      ['categoryMemory', () => this.categoryMemory.deleteAll()],
       ['imports', () => this.importHistory.clearImportHistory()],
       ['insightSnapshots', () => this.insightSnapshots.deleteAll()],
       ['secrets', () => this.providerKeys.deleteAll()],
