@@ -15,6 +15,7 @@ import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
+import { GoalService } from '../../core/services/goal.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -62,6 +63,7 @@ describe('DashboardComponent', () => {
     isLoading: ReturnType<typeof signal<boolean>>;
     getBudgets: jasmine.Spy;
   };
+  let goalService: { activeGoals: ReturnType<typeof signal<unknown[]>>; getGoals: jasmine.Spy };
   let categoryService: { categories: ReturnType<typeof signal<unknown[]>>; loadCategories: jasmine.Spy };
   let recurringService: { catchUpRecurringTransactions: jasmine.Spy };
   let insightSnapshotService: { generateClosedMonths: jasmine.Spy };
@@ -93,6 +95,10 @@ describe('DashboardComponent', () => {
       budgetAlerts: signal<BudgetAlert[]>([]),
       isLoading: signal(false),
       getBudgets: jasmine.createSpy('getBudgets').and.returnValue(of([])),
+    };
+    goalService = {
+      activeGoals: signal<unknown[]>([]),
+      getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
     };
     categoryService = {
       categories: signal<unknown[]>([createCategory({ id: 'food' })]),
@@ -130,6 +136,7 @@ describe('DashboardComponent', () => {
       providers: [
         { provide: TransactionService, useValue: transactionService },
         { provide: BudgetService, useValue: budgetService },
+        { provide: GoalService, useValue: goalService },
         { provide: CategoryService, useValue: categoryService },
         { provide: RecurringService, useValue: recurringService },
         { provide: InsightSnapshotService, useValue: insightSnapshotService },
@@ -654,6 +661,8 @@ describe('DashboardComponent', () => {
           provideNoopAnimations(),
           { provide: TransactionService, useValue: transactionService },
           { provide: BudgetService, useValue: budgetService },
+          { provide: GoalService, useValue: goalService },
+        { provide: GoalService, useValue: goalService },
           { provide: CategoryService, useValue: categoryService },
           { provide: RecurringService, useValue: recurringService },
           { provide: InsightSnapshotService, useValue: insightSnapshotService },

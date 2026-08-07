@@ -80,6 +80,7 @@ describe('BudgetService', () => {
       'updateDocument',
       'deleteDocument',
       'getDocument',
+      'getCollection',
       'dateToTimestamp',
       'getTimestamp'
     ]);
@@ -760,6 +761,37 @@ describe('BudgetService', () => {
 
       expect(mockFirestoreService.getDocument).toHaveBeenCalledWith('users/user123/budgets/budget1');
       expect(mockTransactionService.getExpensesInRange).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('deleteAll', () => {
+    const path = 'users/user123/budgets';
+
+    it('deletes every document and resets the signal', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 'b1' }, { id: 'b2' }]);
+      mockFirestoreService.deleteDocument.and.resolveTo(undefined);
+      service.budgets.set(mockBudgets);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestoreService.deleteDocument.calls.allArgs()).toEqual([
+        [`${path}/b1`],
+        [`${path}/b2`]
+      ]);
+      expect(service.budgets()).toEqual([]);
+    });
+
+    it('enumerates the collection rather than the signal', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 'b1' }, { id: 'b2' }]);
+      mockFirestoreService.deleteDocument.and.resolveTo(undefined);
+      service.budgets.set([]);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(path);
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(2);
     });
   });
 });

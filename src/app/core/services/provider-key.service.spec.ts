@@ -31,9 +31,11 @@ describe('ProviderKeyService', () => {
     firestore = jasmine.createSpyObj<FirestoreService>('FirestoreService', [
       'getDocument',
       'setDocument',
+      'deleteDocument',
     ]);
     firestore.getDocument.and.resolveTo(null);
     firestore.setDocument.and.resolveTo(undefined);
+    firestore.deleteDocument.and.resolveTo(undefined);
 
     auth = jasmine.createSpyObj<AuthService>(
       'AuthService',
@@ -336,6 +338,27 @@ describe('ProviderKeyService', () => {
       await service.resolve();
 
       expect(firestore.getDocument).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('deleteAll', () => {
+    it('deletes the key document and forgets the cache', async () => {
+      firestore.getDocument.and.resolveTo({ gemini: 'g-key' });
+      await service.resolve();
+      expect(service.keys()).toEqual({ gemini: 'g-key' });
+
+      await service.deleteAll();
+
+      expect(firestore.deleteDocument).toHaveBeenCalledWith(SECRETS_PATH);
+      expect(service.keys()).toBeNull();
+    });
+
+    it('does nothing while signed out', async () => {
+      userId.set(null);
+
+      await service.deleteAll();
+
+      expect(firestore.deleteDocument).not.toHaveBeenCalled();
     });
   });
 });

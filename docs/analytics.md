@@ -111,7 +111,7 @@ arrived in 1.18.95.
 | `has_filters` | `true`, `false` — any of type, category, currency, amount range, or a date range other than the default month |
 | `outcome` | `ok`, `failed`, `queued_offline` |
 | `severity` | `warning`, `critical`, `exceeded` |
-| `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights` |
+| `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative` |
 | `setting` | `theme`, `language`, `currency` |
 

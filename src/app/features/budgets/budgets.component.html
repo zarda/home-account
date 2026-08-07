@@ -60,5 +60,17 @@
         <app-recurring-transactions />
       </div>
     </mat-tab>
+
+    <!-- Goals Tab -->
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <mat-icon class="tab-icon">flag</mat-icon>
+        <span>{{ 'budget.goals' | translate }}</span>
+      </ng-template>
+
+      <div class="tab-content">
+        <app-goals />
+      </div>
+    </mat-tab>
   </mat-tab-group>
 </div>

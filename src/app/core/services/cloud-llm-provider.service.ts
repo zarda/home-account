@@ -4,7 +4,7 @@ import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
 import { ProviderKeyService } from './provider-key.service';
-import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, MonthlyTotal, SearchIntent, SearchQueryContext } from '../../models';
+import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, Goal, MonthlyTotal, SearchIntent, SearchQueryContext } from '../../models';
 import { AIRequestOptions, CloudLLMProviderAdapter } from './llm-provider.interface';
 
 export type AIFeatureType = 'receiptScanning' | 'categorization' | 'insights' | 'search';
@@ -360,10 +360,11 @@ export class CloudLLMProviderService {
     baseCurrency: string,
     previousPeriodData?: PreviousPeriodData | null,
     budgets?: Budget[],
+    goals?: Goal[],
     ragContext?: string
   ): Promise<string> {
     return this.resolve('insights').generateSpendingSummary(
-      transactions, period, baseCurrency, previousPeriodData, budgets, ragContext
+      transactions, period, baseCurrency, previousPeriodData, budgets, goals, ragContext
     );
   }
 

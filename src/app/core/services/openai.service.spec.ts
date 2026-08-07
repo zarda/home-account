@@ -527,6 +527,7 @@ describe('OpenAIService', () => {
         'USD',
         previous,
         budgets,
+        [],
         '  noteworthy spend  '
       );
 

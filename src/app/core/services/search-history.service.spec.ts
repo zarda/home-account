@@ -44,6 +44,7 @@ describe('SearchHistoryService', () => {
       'addDocument',
       'updateDocument',
       'deleteDocument',
+      'getCollection',
       'getTimestamp'
     ]);
 
@@ -264,6 +265,32 @@ describe('SearchHistoryService', () => {
       await service.deleteSearch('s1');
 
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(`${PATH}/s1`);
+    });
+  });
+
+  describe('deleteAll', () => {
+    it('deletes every document and resets the in-memory state', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 's1' }, { id: 's2' }]);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestoreService.deleteDocument.calls.allArgs()).toEqual([
+        [`${PATH}/s1`],
+        [`${PATH}/s2`]
+      ]);
+      expect(service.recentSearches()).toEqual([]);
+      expect(service.savedSearches()).toEqual([]);
+    });
+
+    it('enumerates the collection rather than the signal', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 's1' }, { id: 's2' }]);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(PATH);
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(2);
     });
   });
 });

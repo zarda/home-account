@@ -15,6 +15,7 @@ import { Budget, Category } from '../../models';
 import { BudgetOverviewComponent } from './budget-overview/budget-overview.component';
 import { BudgetFormComponent, BudgetFormDialogData } from './budget-form/budget-form.component';
 import { RecurringTransactionsComponent } from './recurring-transactions/recurring-transactions.component';
+import { GoalsComponent } from './goals/goals.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
@@ -33,6 +34,7 @@ import { tabAnimationDuration } from '../../core/layout/motion';
     MatTabsModule,
     BudgetOverviewComponent,
     RecurringTransactionsComponent,
+    GoalsComponent,
     LoadingSpinnerComponent,
     EmptyStateComponent,
     TranslatePipe

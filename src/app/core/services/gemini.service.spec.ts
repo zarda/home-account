@@ -546,6 +546,7 @@ describe('GeminiService', () => {
         txns, 'June', 'USD',
         { income: 800, expense: 120 },
         budgets,
+        [],
         'Notable: a big grocery run'
       );
       const prompt = textModel.generateContent.calls.mostRecent().args[0].contents[0].parts[0].text;

@@ -193,7 +193,10 @@ row. Camera capture queues on connectivity alone — an offline iPhone whose
 on-device pipeline could have read the photo perfectly well still queues it,
 because being offline is decided before the question of which engine could run
 is asked. The import wizard's file import is the other producer, and it queues
-only when both are true: offline, and no engine able to run. The in-form **Scan
+only when both are true: offline, and no engine able to run. Files shared from
+other apps (see [share-import.md](share-import.md)) arrive through that same
+wizard intake, so a shared receipt follows the file-import rule rather than
+adding a third producer. The in-form **Scan
 Receipt** queues nothing — as above, it keeps the image on the form and tells
 you the scan needs a connection. The queue is one store per device rather than
 per account, so that stamp is what keeps it honest — an item is only ever drained

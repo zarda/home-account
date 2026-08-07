@@ -89,6 +89,26 @@
           </div>
         </ng-template>
       </mat-tab>
+
+      <mat-tab>
+        <ng-template mat-tab-label>
+          <mat-icon class="tab-icon">query_stats</mat-icon>
+          <span class="tab-label">{{ 'reports.forecast' | translate }}</span>
+          <span class="tab-label-short">{{ 'reports.tabForecast' | translate }}</span>
+        </ng-template>
+        <!-- matTabContent for the same reason as Insights: the forecast holds
+             a live recurring listener, which must only open when the tab is
+             actually visited. -->
+        <ng-template matTabContent>
+          <div class="tab-content">
+            <app-forecast
+              [transactions]="transactions()"
+              [dateRange]="dateRange()"
+              [currency]="baseCurrency()"
+            />
+          </div>
+        </ng-template>
+      </mat-tab>
     </mat-tab-group>
   }
 </div>

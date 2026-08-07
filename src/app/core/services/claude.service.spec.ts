@@ -498,7 +498,7 @@ describe('ClaudeService', () => {
         } as unknown as Budget,
       ];
 
-      await service.generateSpendingSummary(txns, 'June', 'USD', previous, budgets, '  spend  ');
+      await service.generateSpendingSummary(txns, 'June', 'USD', previous, budgets, [], '  spend  ');
 
       const prompt = fake.messages.create.calls.mostRecent().args[0].messages[0].content as string;
       expect(prompt).toContain('Previous period comparison');

@@ -12,7 +12,15 @@ import { CategoryService } from './category.service';
 import { BudgetService } from './budget.service';
 import { INVALID_FREQUENCY_ERROR, RecurringService } from './recurring.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
-import { Budget, Category, InsightSnapshot, RecurringTransaction, Transaction } from '../../models';
+import { GoalService } from './goal.service';
+import {
+  Budget,
+  Category,
+  Goal,
+  InsightSnapshot,
+  RecurringTransaction,
+  Transaction
+} from '../../models';
 
 describe('BackupRestoreService', () => {
   let service: BackupRestoreService;
@@ -21,6 +29,7 @@ describe('BackupRestoreService', () => {
   let budgets: jasmine.SpyObj<BudgetService>;
   let recurring: jasmine.SpyObj<RecurringService>;
   let snapshots: jasmine.SpyObj<InsightSnapshotService>;
+  let goals: jasmine.SpyObj<GoalService>;
 
   const ts = (iso: string) => Timestamp.fromDate(new Date(iso));
 
@@ -77,9 +86,28 @@ describe('BackupRestoreService', () => {
     } as RecurringTransaction;
   }
 
+  function goal(overrides: Partial<Goal> = {}): Goal {
+    return {
+      id: 'g-1',
+      userId: 'user-a',
+      kind: 'project',
+      name: 'Japan trip',
+      targetAmount: 2000,
+      contributedAmount: 750,
+      currency: 'USD',
+      targetDate: ts('2027-04-01'),
+      items: [{ name: 'Flights', amount: 800, done: true }],
+      isActive: true,
+      createdAt: ts('2026-08-01'),
+      updatedAt: ts('2026-08-01'),
+      ...overrides,
+    } as Goal;
+  }
+
   function backup(overrides: Partial<ExportData> = {}): ExportData {
     return {
       transactions: [], categories: [], budgets: [], recurring: [], insightSnapshots: [],
+      goals: [],
       exportDate: '2026-08-01T00:00:00.000Z',
       version: '1.2',
       ...overrides,
@@ -97,6 +125,8 @@ describe('BackupRestoreService', () => {
     recurring.createRecurring.and.resolveTo('id');
     snapshots = jasmine.createSpyObj<InsightSnapshotService>('InsightSnapshotService', ['restore']);
     snapshots.restore.and.resolveTo();
+    goals = jasmine.createSpyObj<GoalService>('GoalService', ['createGoal']);
+    goals.createGoal.and.resolveTo('id');
 
     TestBed.configureTestingModule({
       providers: [
@@ -106,6 +136,7 @@ describe('BackupRestoreService', () => {
         { provide: BudgetService, useValue: budgets },
         { provide: RecurringService, useValue: recurring },
         { provide: InsightSnapshotService, useValue: snapshots },
+        { provide: GoalService, useValue: goals },
       ],
     });
     service = TestBed.inject(BackupRestoreService);
@@ -330,6 +361,42 @@ describe('BackupRestoreService', () => {
         version: '1.2', transactions: 2, categories: 1, budgets: 0, recurring: 0,
         insightSnapshots: 0,
       }));
+    });
+
+    it('counts goals in the preview', () => {
+      const contents = service.describe(backup({ version: '1.3', goals: [goal(), goal()] }));
+
+      expect(contents).toEqual(jasmine.objectContaining({ goals: 2 }));
+    });
+  });
+
+  describe('goals', () => {
+    it('restores goals at their ids with contributed amounts intact', async () => {
+      const summary = await service.restore(backup({ version: '1.3', goals: [goal()] }));
+
+      expect(summary.goals).toBe(1);
+      expect(goals.createGoal).toHaveBeenCalledWith(
+        jasmine.objectContaining({
+          kind: 'project',
+          name: 'Japan trip',
+          targetAmount: 2000,
+          currency: 'USD',
+          items: [{ name: 'Flights', amount: 800, done: true }]
+        }),
+        { id: 'g-1', contributedAmount: 750 }
+      );
+    });
+
+    it('accepts a 1.2 backup with no goals section', () => {
+      const parsed = service.parse({
+        transactions: [],
+        categories: [],
+        version: '1.2',
+        exportDate: '2026-08-01',
+      });
+
+      expect(parsed.goals).toEqual([]);
+      expect(service.describe(parsed).goals).toBe(0);
     });
   });
 });

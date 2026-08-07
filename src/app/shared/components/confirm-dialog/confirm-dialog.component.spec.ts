@@ -79,4 +79,59 @@ describe('ConfirmDialogComponent', () => {
       expect(buttons[1].textContent).not.toContain('Confirm');
     });
   });
+
+  describe('type-to-confirm', () => {
+    async function createWith(
+      overrides: Partial<ConfirmDialogData>
+    ): Promise<ComponentFixture<ConfirmDialogComponent>> {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [ConfirmDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: dialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: { title: 'T', message: 'M', ...overrides } },
+        ],
+      }).compileComponents();
+      const created = TestBed.createComponent(ConfirmDialogComponent);
+      created.detectChanges();
+      return created;
+    }
+
+    function confirmButton(f: ComponentFixture<ConfirmDialogComponent>): HTMLButtonElement {
+      return f.nativeElement.querySelectorAll('mat-dialog-actions button')[1] as HTMLButtonElement;
+    }
+
+    it('renders no input when requireText is absent', async () => {
+      const f = await createWith({});
+      expect(f.nativeElement.querySelector('input')).toBeNull();
+      expect(confirmButton(f).disabled).toBeFalse();
+    });
+
+    it('keeps confirm disabled until the required text is typed', async () => {
+      const f = await createWith({ requireText: 'DELETE' });
+      const input = f.nativeElement.querySelector('input') as HTMLInputElement;
+
+      expect(confirmButton(f).disabled).toBeTrue();
+
+      input.value = 'DELE';
+      input.dispatchEvent(new Event('input'));
+      f.detectChanges();
+
+      expect(confirmButton(f).disabled).toBeTrue();
+    });
+
+    it('enables confirm on an exact match', async () => {
+      const f = await createWith({ requireText: 'DELETE' });
+      const input = f.nativeElement.querySelector('input') as HTMLInputElement;
+
+      input.value = 'DELETE';
+      input.dispatchEvent(new Event('input'));
+      f.detectChanges();
+
+      const confirm = confirmButton(f);
+      expect(confirm.disabled).toBeFalse();
+      confirm.click();
+      expect(dialogRef.close).toHaveBeenCalledWith(true);
+    });
+  });
 });

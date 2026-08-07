@@ -6,6 +6,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { TransactionService } from '../../core/services/transaction.service';
 import { BudgetService } from '../../core/services/budget.service';
+import { GoalService } from '../../core/services/goal.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -52,6 +53,7 @@ import {
 export class DashboardComponent implements OnInit {
   private transactionService = inject(TransactionService);
   private budgetService = inject(BudgetService);
+  private goalService = inject(GoalService);
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
@@ -163,6 +165,7 @@ export class DashboardComponent implements OnInit {
 
   // Budget data
   activeBudgets = this.budgetService.activeBudgets;
+  activeGoals = this.goalService.activeGoals;
 
   constructor() {
     // Loading state is owned by the getByDateRange subscription callbacks in
@@ -198,6 +201,11 @@ export class DashboardComponent implements OnInit {
     // dashboard instances from reacting to later budget writes made
     // elsewhere in the app.
     this.budgetService.getBudgets()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+
+    // Goals feed the AI summary prompt; same live-stream reasoning as budgets.
+    this.goalService.getGoals()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
 

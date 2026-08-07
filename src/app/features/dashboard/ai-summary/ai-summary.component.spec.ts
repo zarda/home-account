@@ -8,7 +8,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
-import { Category, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
+import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
 import { createCategory, createTransaction, createUser } from '../../../core/services/testing';
 
 describe('AiSummaryComponent', () => {
@@ -176,7 +176,7 @@ describe('AiSummaryComponent', () => {
       await generate(build().componentInstance);
       expect(ragContext.buildSummaryGrounding).not.toHaveBeenCalled();
       const args = cloudLLM.generateSpendingSummary.calls.mostRecent().args;
-      expect(args[5]).toBeUndefined();
+      expect(args[6]).toBeUndefined();
     });
 
     it('waits for exchange rates before building the grounding', async () => {
@@ -192,6 +192,23 @@ describe('AiSummaryComponent', () => {
       expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(1);
 
       currentUser.set(createUser({ preferences: { ragInsightsLevel: 'deep' } as User['preferences'] }));
+      await (component as unknown as {
+        loadInsights: (t: Transaction[], p: string) => Promise<void>;
+      }).loadInsights(txns, 'thisMonth');
+      expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(2);
+    });
+
+    it('regenerates instead of serving the cache when a goal changes', async () => {
+      const fixture = build();
+      const component = fixture.componentInstance;
+      await generate(component);
+      expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(1);
+
+      // A contribution moves the goal fingerprint, so the cached summary
+      // must not survive it.
+      fixture.componentRef.setInput('goals', [
+        { id: 'g1', contributedAmount: 500, targetAmount: 2000 } as Goal
+      ]);
       await (component as unknown as {
         loadInsights: (t: Transaction[], p: string) => Promise<void>;
       }).loadInsights(txns, 'thisMonth');

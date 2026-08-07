@@ -1,7 +1,7 @@
 import { Component, DestroyRef, inject, signal, computed, OnDestroy, OnInit, ViewChild, AfterViewInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatStepperModule, MatStepper } from '@angular/material/stepper';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -27,6 +27,7 @@ import { DuplicateWarningComponent, DuplicateInfo } from '../duplicate-warning/d
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
+import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 
 @Component({
   selector: 'app-import-wizard',
@@ -56,6 +57,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
+  private shareIntake = inject(ShareIntakeService);
   private destroyRef = inject(DestroyRef);
 
   @ViewChild('stepper') stepper!: MatStepper;
@@ -211,6 +214,20 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       if (state.importResult.multiImageMetadata) {
         this.multiImageMetadata.set(state.importResult.multiImageMetadata);
       }
+    }
+
+    // Files shared from another app: both share pipelines stage them (see
+    // ShareIntakeService) and arrive here with ?source=share. They enter
+    // exactly the flow a dropzone pick would, review step included.
+    if (this.route.snapshot.queryParamMap.get('source') === 'share') {
+      void this.consumeSharedFiles();
+    }
+  }
+
+  private async consumeSharedFiles(): Promise<void> {
+    const files = await this.shareIntake.consumeAll();
+    if (files.length > 0) {
+      this.onFilesSelected(files);
     }
   }
 

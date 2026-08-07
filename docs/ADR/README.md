@@ -22,6 +22,11 @@ reverse — why a thing is the way it is, not how to use it.
 | [0015](0015-reclaimed-receipts-replay-idempotently.md) | A reclaimed receipt replays onto the ids it already used | Accepted | 2026-08-05 |
 | [0016](0016-aggregate-answers-persist-as-snapshots-that-refresh-locally.md) | Aggregate answers persist as snapshots that refresh locally | Accepted | 2026-08-06 |
 | [0017](0017-the-row-stacks-and-actions-ride-behind-a-swipe.md) | The row stacks its lines, and actions ride behind a swipe | Accepted | 2026-08-07 |
+| [0018](0018-account-deletion-is-a-client-side-cascade.md) | Account deletion is a client-side cascade | Accepted | 2026-08-07 |
+| [0019](0019-share-intake-lands-through-a-stash.md) | Share intake lands through a stash | Accepted | 2026-08-07 |
+| [0020](0020-detected-groups-convert-through-the-prefilled-form.md) | Detected groups convert through the prefilled form | Accepted | 2026-08-07 |
+| [0021](0021-one-goal-model-carries-savings-and-projects.md) | One goal model carries savings and projects | Accepted | 2026-08-07 |
+| [0022](0022-the-forecast-baselines-at-zero-today.md) | The forecast baselines at zero today | Accepted | 2026-08-07 |
 
 ## What belongs here
 

@@ -153,6 +153,52 @@ service cloud.firestore {
         && budgetOptionalsValid(d);
     }
 
+    // ---- goals ----
+
+    function goalOptionalsValid(d) {
+      // Item elements are validated client-side; rules bound only the shape
+      // and size of the list, since per-element map validation is not
+      // generically expressible here.
+      return (!('items' in d) || (d.items is list && d.items.size() <= 50))
+        && (!('targetDate' in d) || d.targetDate is timestamp)
+        && (!('note' in d) || d.note is string)
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
+    function goalCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasAll([
+             'userId', 'kind', 'name', 'targetAmount', 'contributedAmount',
+             'currency', 'isActive'
+           ])
+        && d.kind in ['saving', 'project']
+        && d.name is string
+        && isPositive(d.targetAmount)
+        && d.contributedAmount is number
+        && d.contributedAmount >= 0
+        && d.currency is string
+        && d.isActive is bool
+        && goalOptionalsValid(d);
+    }
+
+    function goalUpdateValid(userId) {
+      let d = request.resource.data;
+      return ownerKept(userId)
+        && (!touched('kind') || ('kind' in d && d.kind in ['saving', 'project']))
+        && (!touched('name') || ('name' in d && d.name is string))
+        && (!touched('targetAmount')
+            || ('targetAmount' in d && isPositive(d.targetAmount)))
+        && (!touched('contributedAmount')
+            || ('contributedAmount' in d
+                && d.contributedAmount is number
+                && d.contributedAmount >= 0))
+        && (!touched('currency') || ('currency' in d && d.currency is string))
+        && (!touched('isActive') || ('isActive' in d && d.isActive is bool))
+        && goalOptionalsValid(d);
+    }
+
     // ---- categories ----
 
     // `id` is tolerated because initializeDefaultCategories copies the
@@ -547,6 +593,14 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      // Goals subcollection
+      match /goals/{goalId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && goalCreateValid(userId);
+        allow update: if isOwner(userId) && goalUpdateValid(userId);
+        allow delete: if isOwner(userId);
+      }
+
       // Categories subcollection
       match /categories/{categoryId} {
         allow read: if isOwner(userId);
@@ -592,18 +646,27 @@ service cloud.firestore {
       // documents to tolerate, and this one holds credentials.
       match /secrets/{docId} {
         allow read: if isOwner(userId);
-        allow write: if isOwner(userId)
+        // create/update carry request.resource and validate the field shape.
+        // delete carries none, so a combined `write` grant would error on the
+        // request.resource checks and silently deny every delete — account
+        // deletion purges this document, so delete gets its own grant.
+        allow create, update: if isOwner(userId)
           && request.resource.data.keys().hasOnly(['gemini', 'openai', 'claude', 'updatedAt'])
           && (!('gemini' in request.resource.data) || request.resource.data.gemini is string)
           && (!('openai' in request.resource.data) || request.resource.data.openai is string)
           && (!('claude' in request.resource.data) || request.resource.data.claude is string);
+        allow delete: if isOwner(userId);
       }
 
-      // Sign-in history. Append-only on purpose: this log is what a user
+      // Sign-in history. Unrewritable on purpose: this log is what a user
       // checks after a suspected compromise, so a client that holds the
-      // credentials must not be able to rewrite or erase it. The closed field
-      // set is safe to require here, unlike elsewhere in this file, because
-      // the collection cannot predate the rule and so has no legacy rows.
+      // credentials must not be able to change what an entry says. Deletion
+      // is the one exception — account deletion has to be able to empty the
+      // log, and a rule cannot tell "delete my account" apart from "delete
+      // one event"; a credential thief gains nothing new, since the whole
+      // account was already theirs to delete. The closed field set is safe
+      // to require here, unlike elsewhere in this file, because the
+      // collection cannot predate the rule and so has no legacy rows.
       match /securityEvents/{eventId} {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId)
@@ -613,7 +676,8 @@ service cloud.firestore {
           && request.resource.data.platform is string
           && request.resource.data.keys().hasOnly(
                ['userId', 'type', 'occurredAt', 'platform', 'createdAt', 'updatedAt']);
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isOwner(userId);
       }
 
       // Monthly spending-insight snapshots, keyed by `yyyy-MM`.
@@ -660,7 +724,7 @@ service cloud.firestore {
       match /{subcollection}/{docId} {
         allow read: if isOwner(userId);
         allow write: if isOwner(userId) && !(subcollection in [
-          'transactions', 'budgets', 'categories',
+          'transactions', 'budgets', 'categories', 'goals',
           'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
           'insightSnapshots', 'categoryMemory', 'searchAnswers'
         ]);

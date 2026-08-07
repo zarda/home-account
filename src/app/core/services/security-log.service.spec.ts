@@ -105,4 +105,23 @@ describe('SecurityLogService', () => {
       await expectAsync(firstValueFrom(service.watchRecent('user-1'))).toBeRejected();
     });
   });
+
+  describe('deleteAll', () => {
+    it('deletes every recorded event', async () => {
+      mockFirestore.setMockCollection('users/user-7/securityEvents', [{ id: 'e1' }, { id: 'e2' }]);
+
+      const count = await service.deleteAll('user-7');
+
+      expect(count).toBe(2);
+      expect(mockFirestore.deleteDocumentSpy.calls.map(c => c.args[0])).toEqual([
+        'users/user-7/securityEvents/e1',
+        'users/user-7/securityEvents/e2'
+      ]);
+    });
+
+    it('resolves to zero on an empty log', async () => {
+      expect(await service.deleteAll('user-7')).toBe(0);
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(0);
+    });
+  });
 });

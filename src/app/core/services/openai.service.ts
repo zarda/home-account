@@ -4,7 +4,7 @@ import { DEFAULT_OPENAI_MODEL } from '../config/ai-models';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Budget, Category, Transaction, MonthlyTotal } from '../../models';
+import { Budget, Category, Goal, Transaction, MonthlyTotal } from '../../models';
 import {
   ParsedReceipt,
   RawTransaction,
@@ -30,6 +30,7 @@ import {
   RenderedPrompt,
   languageInstruction,
   renderBudgetSection,
+  renderGoalSection,
   renderCategoryBreakdown,
   renderLargestExpenses,
   renderPreviousPeriodSection,
@@ -357,6 +358,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
     baseCurrency: string,
     previousPeriodData?: PreviousPeriodData | null,
     budgets?: Budget[],
+    goals?: Goal[],
     ragContext?: string
   ): Promise<string> {
     if (!this.client) {
@@ -466,6 +468,32 @@ export class OpenAIService implements CloudLLMProviderAdapter {
         );
       }
 
+      let goalSection = '';
+      if (goals && goals.length > 0) {
+        goalSection = renderGoalSection(
+          goals.map((g) => {
+            // Goals convert like budgets: compare in the base currency.
+            const targetInBase = this.currencyService.convert(
+              g.targetAmount,
+              g.currency,
+              baseCurrency
+            );
+            const savedInBase = this.currencyService.convert(
+              g.contributedAmount,
+              g.currency,
+              baseCurrency
+            );
+            return {
+              name: g.name,
+              saved: fmt(savedInBase),
+              target: fmt(targetInBase),
+              percentSaved: targetInBase > 0 ? (savedInBase / targetInBase) * 100 : 0,
+            };
+          }),
+          baseCurrency
+        );
+      }
+
       const rendered = renderPrompt('spendingSummary', {
         period,
         baseCurrency,
@@ -477,6 +505,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
         largestExpenses,
         historicalSection,
         budgetSection,
+        goalSection,
         grounding: ragContext,
         languageInstruction: this.getLanguageInstruction(),
       });

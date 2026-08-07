@@ -1,0 +1,39 @@
+<mat-card class="forecast-card elevation-card">
+  <mat-card-content>
+    @if (!hasRules()) {
+      <app-empty-state
+        icon="query_stats"
+        [title]="'reports.forecastNoRulesTitle' | translate"
+        [description]="'reports.forecastNoRulesBody' | translate"
+      />
+    } @else {
+      <div class="forecast-header">
+        <p class="forecast-note">{{ 'reports.forecastZeroNote' | translate }}</p>
+        <mat-button-toggle-group
+          class="horizon-toggle"
+          [value]="horizon()"
+          (change)="setHorizon($event.value)"
+        >
+          @for (days of horizons; track days) {
+            <mat-button-toggle [value]="days">
+              {{ 'reports.forecastDays' + days | translate }}
+            </mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+      </div>
+
+      <div class="chart-container">
+        <canvas
+          baseChart
+          [type]="chartType"
+          [data]="chartData()"
+          [options]="chartOptions()"
+        ></canvas>
+      </div>
+
+      <p class="forecast-summary">
+        {{ 'reports.forecastProjectedNet' | translate: { amount: projectedNetLabel() } }}
+      </p>
+    }
+  </mat-card-content>
+</mat-card>

@@ -27,6 +27,7 @@ import { CategoryBreakdownComponent } from './category-breakdown/category-breakd
 import { RecurringBreakdownComponent } from './recurring-breakdown/recurring-breakdown.component';
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
 import { InsightsTabComponent } from './insights/insights-tab.component';
+import { ForecastComponent } from './forecast/forecast.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
 import { Category, Transaction, baseCurrencyOf} from '../../models';
 import { tabAnimationDuration } from '../../core/layout/motion';
@@ -53,6 +54,7 @@ import { addMonths, clampToEndOfToday } from '../../core/utils/transaction-date.
     RecurringBreakdownComponent,
     MonthlyComparisonComponent,
     InsightsTabComponent,
+    ForecastComponent,
     TranslatePipe,
   ],
   templateUrl: './reports.component.html',
@@ -160,6 +162,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     'category_breakdown',
     'monthly_comparison',
     'insights',
+    'forecast',
   ] as const;
 
   /**

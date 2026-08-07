@@ -550,6 +550,81 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('goals', () => {
+    const validGoal = (overrides: Record<string, unknown> = {}) => ({
+      userId: uid,
+      kind: 'saving',
+      name: 'Emergency fund',
+      targetAmount: 3000,
+      contributedAmount: 0,
+      currency: 'USD',
+      isActive: true,
+      ...overrides
+    });
+
+    it('accepts a valid saving goal', async () => {
+      await expectAllowed(setDoc(doc(firestore, path('goals')), validGoal()), 'valid create');
+    });
+
+    it('accepts a project goal with items', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('goals')), validGoal({
+          kind: 'project',
+          name: 'Japan trip',
+          items: [
+            { name: 'Flights', amount: 800, done: false },
+            { name: 'Hotel', amount: 1200, done: false }
+          ],
+          targetDate: Timestamp.now()
+        })),
+        'project with items'
+      );
+    });
+
+    // This is also the carve-out regression: without the goals entry in the
+    // catch-all exclusion list, an invalid kind sails through the catch-all.
+    it('rejects a kind outside the enum', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ kind: 'wishlist' })),
+        'unknown kind'
+      );
+    });
+
+    it('rejects a non-positive target', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ targetAmount: 0 })),
+        'zero target'
+      );
+    });
+
+    it('rejects a negative contributed amount', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ contributedAmount: -5 })),
+        'negative contributions'
+      );
+    });
+
+    it("rejects a goal attributed to another user", async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ userId: otherUid })),
+        'foreign userId'
+      );
+    });
+
+    it('rejects items that are not a list', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ items: 'flights' })),
+        'string items'
+      );
+    });
+
+    it('allows the owner to delete a goal', async () => {
+      const p = path('goals');
+      await setDoc(doc(firestore, p), validGoal());
+      await expectAllowed(deleteDoc(doc(firestore, p)), 'owner delete');
+    });
+  });
+
   describe('categories', () => {
     it('accepts a well-formed custom category', async () => {
       await expectAllowed(setDoc(doc(firestore, path('categories')), validCategory()), 'valid create');
@@ -976,9 +1051,24 @@ describe('firestore.rules (emulator smoke test)', () => {
         "write to stranger's keys"
       );
     });
+
+    // Deletes carry no request.resource, so they need their own grant —
+    // account deletion purges the key document through this path.
+    it('allows the owner to delete a key document', async () => {
+      const p = `users/${uid}/secrets/providers-delete-probe`;
+      await setDoc(doc(firestore, p), { gemini: 'g-key' });
+      await expectAllowed(deleteDoc(doc(firestore, p)), 'owner delete of keys');
+    });
+
+    it("denies deleting another user's keys", async () => {
+      await expectDenied(
+        deleteDoc(doc(firestore, `users/${otherUid}/secrets/providers`)),
+        "delete of stranger's keys"
+      );
+    });
   });
 
-  describe('securityEvents (append-only)', () => {
+  describe('securityEvents (unrewritable, owner-erasable)', () => {
     const validEvent = (overrides: Record<string, unknown> = {}) => ({
       userId: uid,
       type: 'signIn',
@@ -1024,8 +1114,8 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
-    // The point of the log: whoever holds the credentials must not be able to
-    // erase the record of their own sign-in.
+    // The log stays unrewritable: whoever holds the credentials must not be
+    // able to change what their own sign-in record says.
     it('denies updating an existing entry', async () => {
       const p = path('securityEvents');
       await setDoc(doc(firestore, p), validEvent());
@@ -1038,10 +1128,21 @@ describe('firestore.rules (emulator smoke test)', () => {
       await expectDenied(setDoc(doc(firestore, p), validEvent({ platform: 'ios' })), 'entry overwrite');
     });
 
-    it('denies deleting an entry', async () => {
+    // Deletion is the one exception: account deletion has to be able to empty
+    // the log, and a rule cannot tell "delete my account" apart from "delete
+    // one event". A credential thief gains nothing new here — the whole
+    // account was already theirs to delete.
+    it('allows the owner to delete an entry', async () => {
       const p = path('securityEvents');
       await setDoc(doc(firestore, p), validEvent());
-      await expectDenied(deleteDoc(doc(firestore, p)), 'entry delete');
+      await expectAllowed(deleteDoc(doc(firestore, p)), 'owner delete');
+    });
+
+    it("denies deleting an entry in another user's log", async () => {
+      await expectDenied(
+        deleteDoc(doc(firestore, path('securityEvents', otherUid))),
+        "delete in stranger's log"
+      );
     });
 
     it("denies writing into another user's log", async () => {
@@ -1253,7 +1354,7 @@ describe('firestore.rules (emulator smoke test)', () => {
     // collection. Without the exclusion list these writes succeed and every
     // field validator above becomes decorative.
     const validated = [
-      'transactions', 'budgets', 'categories',
+      'transactions', 'budgets', 'categories', 'goals',
       'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
       'insightSnapshots', 'categoryMemory', 'searchAnswers'
     ];

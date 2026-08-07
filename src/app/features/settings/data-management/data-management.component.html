@@ -161,6 +161,10 @@
               <span class="preview-amount">{{ backup.recurring }}</span>
             </div>
             <div class="preview-item">
+              <span class="preview-desc">{{ 'settings.sectionGoals' | translate }}</span>
+              <span class="preview-amount">{{ backup.goals }}</span>
+            </div>
+            <div class="preview-item">
               <span class="preview-desc">{{ 'settings.sectionInsightSnapshots' | translate }}</span>
               <span class="preview-amount">{{ backup.insightSnapshots }}</span>
             </div>
@@ -233,6 +237,25 @@
           {{ 'settings.deleteAll' | translate }}
         </button>
       </div>
+
+      <div class="danger-item">
+        <div class="danger-info">
+          <span class="danger-title">{{ 'settings.deleteAccount' | translate }}</span>
+          <span class="danger-desc">{{ 'settings.deleteAccountDescription' | translate }}</span>
+        </div>
+        <button
+          mat-stroked-button
+          color="warn"
+          (click)="deleteAccount()"
+          [disabled]="isDeletingAccount()"
+        >
+          {{ 'settings.deleteAccount' | translate }}
+        </button>
+      </div>
+
+      @if (isDeletingAccount()) {
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      }
     </div>
   </div>
 </div>

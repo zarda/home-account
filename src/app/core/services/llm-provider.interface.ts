@@ -2,6 +2,7 @@ import { Signal, WritableSignal } from '@angular/core';
 import {
   Budget,
   Category,
+  Goal,
   MonthlyTotal,
   SearchIntent,
   SearchQueryContext,
@@ -119,6 +120,7 @@ export interface CloudLLMProviderAdapter {
     baseCurrency: string,
     previousPeriodData?: PreviousPeriodData | null,
     budgets?: Budget[],
+    goals?: Goal[],
     ragContext?: string
   ): Promise<string>;
   generatePatternNarrative(context: string, locale: string): Promise<string>;

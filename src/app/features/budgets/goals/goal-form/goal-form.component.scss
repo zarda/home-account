@@ -1,0 +1,36 @@
+.goal-form-dialog {
+  min-width: 0;
+}
+
+.kind-toggle {
+  display: flex;
+
+  mat-button-toggle {
+    flex: 1;
+  }
+}
+
+.items-section {
+  margin-bottom: 16px;
+
+  .items-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+
+    .items-title {
+      font-weight: 500;
+    }
+  }
+
+  .item-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .use-total {
+    width: 100%;
+  }
+}

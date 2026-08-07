@@ -244,4 +244,26 @@ describe('CategoryMemoryService', () => {
       expect(service.remembered().map(e => e.merchantKey)).toEqual(['b', 'c', 'a']);
     });
   });
+
+  describe('deleteAll', () => {
+    it('enumerates the collection rather than the loaded entries', async () => {
+      firestore.getCollection.and.resolveTo([{ id: 'starbucks' }, { id: 'costa' }]);
+
+      const count = await service.deleteAll();
+
+      expect(count).toBe(2);
+      expect(firestore.deleteDocument.calls.allArgs()).toEqual([
+        ['users/user-1/categoryMemory/starbucks'],
+        ['users/user-1/categoryMemory/costa'],
+      ]);
+      expect(service.rememberedCount()).toBe(0);
+    });
+
+    it('resolves to zero while signed out', async () => {
+      userId.set(null);
+
+      expect(await service.deleteAll()).toBe(0);
+      expect(firestore.deleteDocument).not.toHaveBeenCalled();
+    });
+  });
 });

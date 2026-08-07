@@ -11,11 +11,14 @@
       </section>
     }
 
-    @if (detected().length > 0) {
+    @if (visibleDetected().length > 0) {
       <section class="recurring-section">
         <h4 class="section-label">{{ 'insights.recurringDetected' | translate }}</h4>
         <p class="section-note">{{ 'insights.recurringDetectedNote' | translate }}</p>
-        <ng-container [ngTemplateOutlet]="rows" [ngTemplateOutletContext]="{ groups: detected() }" />
+        <ng-container
+          [ngTemplateOutlet]="rows"
+          [ngTemplateOutletContext]="{ groups: visibleDetected(), convertible: true }"
+        />
       </section>
     }
 
@@ -27,7 +30,7 @@
   </mat-card-content>
 </mat-card>
 
-<ng-template #rows let-groups="groups">
+<ng-template #rows let-groups="groups" let-convertible="convertible">
   <div class="recurring-rows">
     @for (group of groups; track group.key) {
       <div class="recurring-row">
@@ -60,6 +63,19 @@
             </span>
             <span class="row-monthly-label">{{ 'insights.perMonth' | translate }}</span>
           </div>
+
+          @if (convertible && canConvert()) {
+            <button
+              mat-icon-button
+              class="row-convert"
+              (click)="convert(group)"
+              [disabled]="isConverting(group)"
+              [attr.aria-label]="'insights.convertToRule' | translate"
+              [title]="'insights.convertToRule' | translate"
+            >
+              <mat-icon>add_task</mat-icon>
+            </button>
+          }
 
           @if (canExpand(group)) {
             <button

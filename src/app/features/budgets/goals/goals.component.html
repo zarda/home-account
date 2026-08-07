@@ -1,0 +1,31 @@
+<div class="goals-tab">
+  <div class="goals-header">
+    <p class="goals-hint">{{ 'goal.tabHint' | translate }}</p>
+    <button mat-flat-button color="primary" (click)="openAddDialog()">
+      <mat-icon>add</mat-icon>
+      {{ 'goal.addGoal' | translate }}
+    </button>
+  </div>
+
+  @if (isLoading()) {
+    <app-loading-spinner />
+  } @else if (goals().length === 0) {
+    <app-empty-state
+      icon="flag"
+      [title]="'goal.emptyTitle' | translate"
+      [description]="'goal.emptyBody' | translate"
+    />
+  } @else {
+    <div class="goals-grid">
+      @for (goal of goals(); track goal.id) {
+        <app-goal-progress-card
+          [goal]="goal"
+          (edit)="openEditDialog(goal)"
+          (delete)="deleteGoal(goal)"
+          (contribute)="openContributeDialog(goal)"
+          (toggleItem)="onToggleItem(goal, $event)"
+        />
+      }
+    </div>
+  }
+</div>

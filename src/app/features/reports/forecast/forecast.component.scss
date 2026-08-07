@@ -1,0 +1,26 @@
+.forecast-card {
+  .forecast-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+
+    .forecast-note {
+      margin: 0;
+      font-size: 13px;
+      opacity: 0.75;
+    }
+  }
+
+  .chart-container {
+    position: relative;
+    height: 320px;
+  }
+
+  .forecast-summary {
+    margin: 12px 0 0;
+    font-weight: 500;
+  }
+}
