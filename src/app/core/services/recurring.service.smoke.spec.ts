@@ -25,6 +25,8 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service';
 import { dayKey } from '../utils/transaction-date.utils';
+import { prefillFromGroup } from '../utils/recurring-conversion.utils';
+import { StorableRecurringGroup } from '../../models';
 
 /**
  * Integration smoke test for the recurring catch-up loop against the Firestore
@@ -232,4 +234,43 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
 
     expect(await postedDayKeys()).toEqual(first);
   }, 60000);
+
+  // A rule born from a detected group must round-trip the full validation
+  // stack — the DTO shape, the service's frequency guards (ADR 0014), and
+  // firestore.rules — none of which the pure mapping spec exercises.
+  it('creates a valid rule from a detected-group prefill', async () => {
+    const detected: StorableRecurringGroup = {
+      key: 'rec:detected:entertainment:netflix',
+      source: 'detected',
+      categoryId: 'entertainment',
+      label: 'NETFLIX.COM',
+      cadence: 'monthly',
+      medianIntervalDays: 30,
+      occurrenceCount: 4,
+      medianAmount: 15.99,
+      monthlyEquivalent: 15.99,
+      firstSeen: '2026-03-15',
+      lastSeen: '2026-07-15',
+      priceIncreased: false,
+      userFlaggedCount: 0
+    };
+
+    const id = await service.createRecurring(prefillFromGroup(detected, 'USD'));
+    try {
+      const stored = await getDoc(doc(firestore, `users/${uid}/recurring/${id}`));
+      expect(stored.exists()).toBeTrue();
+
+      const data = stored.data()!;
+      expect(data['name']).toBe('NETFLIX.COM');
+      expect(data['frequency']).toEqual({ type: 'monthly', interval: 1, dayOfMonth: 15 });
+      expect((data['startDate'] as Timestamp).toDate()).toEqual(new Date(2026, 6, 15));
+      // The engine derived the next occurrence from the anchor rather than
+      // storing the past date as-is.
+      const next = (data['nextOccurrence'] as Timestamp).toDate();
+      expect(next.getTime()).toBeGreaterThan(new Date(2026, 6, 15).getTime());
+      expect(next.getDate()).toBe(15);
+    } finally {
+      await deleteDoc(doc(firestore, `users/${uid}/recurring/${id}`)).catch(() => undefined);
+    }
+  }, 30000);
 });
