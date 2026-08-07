@@ -592,18 +592,27 @@ service cloud.firestore {
       // documents to tolerate, and this one holds credentials.
       match /secrets/{docId} {
         allow read: if isOwner(userId);
-        allow write: if isOwner(userId)
+        // create/update carry request.resource and validate the field shape.
+        // delete carries none, so a combined `write` grant would error on the
+        // request.resource checks and silently deny every delete — account
+        // deletion purges this document, so delete gets its own grant.
+        allow create, update: if isOwner(userId)
           && request.resource.data.keys().hasOnly(['gemini', 'openai', 'claude', 'updatedAt'])
           && (!('gemini' in request.resource.data) || request.resource.data.gemini is string)
           && (!('openai' in request.resource.data) || request.resource.data.openai is string)
           && (!('claude' in request.resource.data) || request.resource.data.claude is string);
+        allow delete: if isOwner(userId);
       }
 
-      // Sign-in history. Append-only on purpose: this log is what a user
+      // Sign-in history. Unrewritable on purpose: this log is what a user
       // checks after a suspected compromise, so a client that holds the
-      // credentials must not be able to rewrite or erase it. The closed field
-      // set is safe to require here, unlike elsewhere in this file, because
-      // the collection cannot predate the rule and so has no legacy rows.
+      // credentials must not be able to change what an entry says. Deletion
+      // is the one exception — account deletion has to be able to empty the
+      // log, and a rule cannot tell "delete my account" apart from "delete
+      // one event"; a credential thief gains nothing new, since the whole
+      // account was already theirs to delete. The closed field set is safe
+      // to require here, unlike elsewhere in this file, because the
+      // collection cannot predate the rule and so has no legacy rows.
       match /securityEvents/{eventId} {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId)
@@ -613,7 +622,8 @@ service cloud.firestore {
           && request.resource.data.platform is string
           && request.resource.data.keys().hasOnly(
                ['userId', 'type', 'occurredAt', 'platform', 'createdAt', 'updatedAt']);
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isOwner(userId);
       }
 
       // Monthly spending-insight snapshots, keyed by `yyyy-MM`.

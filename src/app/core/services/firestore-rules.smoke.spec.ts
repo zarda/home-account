@@ -976,9 +976,24 @@ describe('firestore.rules (emulator smoke test)', () => {
         "write to stranger's keys"
       );
     });
+
+    // Deletes carry no request.resource, so they need their own grant —
+    // account deletion purges the key document through this path.
+    it('allows the owner to delete a key document', async () => {
+      const p = `users/${uid}/secrets/providers-delete-probe`;
+      await setDoc(doc(firestore, p), { gemini: 'g-key' });
+      await expectAllowed(deleteDoc(doc(firestore, p)), 'owner delete of keys');
+    });
+
+    it("denies deleting another user's keys", async () => {
+      await expectDenied(
+        deleteDoc(doc(firestore, `users/${otherUid}/secrets/providers`)),
+        "delete of stranger's keys"
+      );
+    });
   });
 
-  describe('securityEvents (append-only)', () => {
+  describe('securityEvents (unrewritable, owner-erasable)', () => {
     const validEvent = (overrides: Record<string, unknown> = {}) => ({
       userId: uid,
       type: 'signIn',
@@ -1024,8 +1039,8 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
-    // The point of the log: whoever holds the credentials must not be able to
-    // erase the record of their own sign-in.
+    // The log stays unrewritable: whoever holds the credentials must not be
+    // able to change what their own sign-in record says.
     it('denies updating an existing entry', async () => {
       const p = path('securityEvents');
       await setDoc(doc(firestore, p), validEvent());
@@ -1038,10 +1053,21 @@ describe('firestore.rules (emulator smoke test)', () => {
       await expectDenied(setDoc(doc(firestore, p), validEvent({ platform: 'ios' })), 'entry overwrite');
     });
 
-    it('denies deleting an entry', async () => {
+    // Deletion is the one exception: account deletion has to be able to empty
+    // the log, and a rule cannot tell "delete my account" apart from "delete
+    // one event". A credential thief gains nothing new here — the whole
+    // account was already theirs to delete.
+    it('allows the owner to delete an entry', async () => {
       const p = path('securityEvents');
       await setDoc(doc(firestore, p), validEvent());
-      await expectDenied(deleteDoc(doc(firestore, p)), 'entry delete');
+      await expectAllowed(deleteDoc(doc(firestore, p)), 'owner delete');
+    });
+
+    it("denies deleting an entry in another user's log", async () => {
+      await expectDenied(
+        deleteDoc(doc(firestore, path('securityEvents', otherUid))),
+        "delete in stranger's log"
+      );
     });
 
     it("denies writing into another user's log", async () => {
