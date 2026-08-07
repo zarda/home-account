@@ -3,7 +3,10 @@
 **Status:** Accepted, implemented · **Date:** 2026-08-03 · **Issues:** #216 (follow-up)
 
 Amends [0010](0010-nothing-truncates.md), which stands. Reference documentation
-lives in [../ui-overflow.md](../ui-overflow.md).
+lives in [../ui-overflow.md](../ui-overflow.md). The row anatomy around the
+strip — the leading column and the 100px it cost — was revised by
+[0017](0017-the-row-stacks-and-actions-ride-behind-a-swipe.md); the strip
+itself is unchanged.
 
 ## Context
 
