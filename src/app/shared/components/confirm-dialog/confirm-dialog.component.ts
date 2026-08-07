@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -12,6 +12,12 @@ export interface ConfirmDialogData {
   cancelLabel?: string;
   confirmColor?: 'primary' | 'accent' | 'warn';
   icon?: string;
+  /**
+   * Confirm stays disabled until this exact text is typed. The token is a
+   * deliberate speed bump for irreversible actions, so callers keep it
+   * literal across locales and put the instruction in `message`.
+   */
+  requireText?: string;
 }
 
 @Component({
@@ -24,6 +30,15 @@ export interface ConfirmDialogData {
 export class ConfirmDialogComponent {
   private dialogRef = inject(MatDialogRef<ConfirmDialogComponent>);
   data: ConfirmDialogData = inject(MAT_DIALOG_DATA);
+
+  typed = signal('');
+  confirmDisabled = computed(
+    () => !!this.data.requireText && this.typed() !== this.data.requireText
+  );
+
+  onTyped(value: string): void {
+    this.typed.set(value);
+  }
 
   onConfirm(): void {
     this.dialogRef.close(true);
