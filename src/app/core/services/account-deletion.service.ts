@@ -9,6 +9,7 @@ import { RecurringService } from './recurring.service';
 import { SearchHistoryService } from './search-history.service';
 import { SearchAnswerHistoryService } from './search-answer-history.service';
 import { CategoryMemoryService } from './category-memory.service';
+import { GoalService } from './goal.service';
 import { ImportHistoryService } from './import-history.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
 import { ProviderKeyService } from './provider-key.service';
@@ -24,6 +25,7 @@ export type DeletionStep =
   | 'categories'
   | 'budgets'
   | 'recurring'
+  | 'goals'
   | 'savedSearches'
   | 'searchAnswers'
   | 'categoryMemory'
@@ -65,6 +67,7 @@ export class AccountDeletionService {
   private searchHistory = inject(SearchHistoryService);
   private searchAnswers = inject(SearchAnswerHistoryService);
   private categoryMemory = inject(CategoryMemoryService);
+  private goalService = inject(GoalService);
   private importHistory = inject(ImportHistoryService);
   private insightSnapshots = inject(InsightSnapshotService);
   private providerKeys = inject(ProviderKeyService);
@@ -102,6 +105,7 @@ export class AccountDeletionService {
       ['categories', () => this.categoryService.deleteAll()],
       ['budgets', () => this.budgetService.deleteAll()],
       ['recurring', () => this.recurringService.deleteAll()],
+      ['goals', () => this.goalService.deleteAll()],
       ['savedSearches', () => this.searchHistory.deleteAll()],
       ['searchAnswers', () => this.searchAnswers.deleteAll()],
       ['categoryMemory', () => this.categoryMemory.deleteAll()],

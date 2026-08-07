@@ -91,7 +91,7 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     await deleteApp(app).catch(() => undefined);
   });
 
-  /** One valid document per subcollection, shaped to pass firestore.rules. */
+  /** One valid document per subcollection (all twelve), shaped to pass firestore.rules. */
   async function seedEverything(): Promise<void> {
     const now = Timestamp.now();
 
@@ -154,6 +154,16 @@ describe('AccountDeletionService (emulator smoke test)', () => {
       frequency: { type: 'monthly', interval: 1 },
       startDate: now,
       nextOccurrence: now,
+      isActive: true
+    });
+
+    await setDoc(doc(firestore, `users/${uid}/goals/smoke-del-goal`), {
+      userId: uid,
+      kind: 'saving',
+      name: 'Emergency fund',
+      targetAmount: 3000,
+      contributedAmount: 750,
+      currency: 'USD',
       isActive: true
     });
 
@@ -273,6 +283,7 @@ describe('AccountDeletionService (emulator smoke test)', () => {
       'categories',
       'budgets',
       'recurring',
+      'goals',
       'savedSearches',
       'searchAnswers',
       'categoryMemory',

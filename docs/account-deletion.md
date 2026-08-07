@@ -1,9 +1,9 @@
 # Account deletion
 
 Settings → Data Management → Danger Zone → **Delete Account** permanently
-erases the signed-in account: every Firestore subcollection, the receipt
-objects in Storage, the device-local state keyed by the account, the user
-document, and finally the Firebase Auth user. There is no backend — the
+erases the signed-in account: every Firestore subcollection (all twelve),
+the receipt objects in Storage, the device-local state keyed by the
+account, the user document, and finally the Firebase Auth user. There is no backend — the
 whole erasure is a client-side cascade run by `AccountDeletionService`
 (`src/app/core/services/account-deletion.service.ts`), because the security
 rules grant only the owner and the project deploys no Cloud Functions
@@ -38,6 +38,7 @@ rules grant only the owner and the project deploys no Cloud Functions
 | categories | `users/{uid}/categories` | `CategoryService.deleteAll()` |
 | budgets | `users/{uid}/budgets` | `BudgetService.deleteAll()` |
 | recurring | `users/{uid}/recurring` | `RecurringService.deleteAll()` |
+| goals | `users/{uid}/goals` | `GoalService.deleteAll()` |
 | savedSearches | `users/{uid}/savedSearches` | `SearchHistoryService.deleteAll()` |
 | searchAnswers | `users/{uid}/searchAnswers` | `SearchAnswerHistoryService.deleteAll()` |
 | categoryMemory | `users/{uid}/categoryMemory` | `CategoryMemoryService.deleteAll()` |
@@ -92,9 +93,9 @@ smoke`).
 ## Known gaps
 
 - The offered backup covers transactions, categories, budgets, recurring
-  rules, and insight snapshots — not saved searches, search answers,
-  category memory, import history, or the security log. Erasure is
-  complete; the export is not.
+  rules, goals, and insight snapshots — not saved searches, search
+  answers, category memory, import history, or the security log. Erasure
+  is complete; the export is not.
 - The web reauthentication popup can be blocked by aggressive popup
   settings; the failure mode is safe (nothing deleted) and retrying from
   the same click usually passes.

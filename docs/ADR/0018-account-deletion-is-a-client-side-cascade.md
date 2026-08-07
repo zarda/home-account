@@ -7,7 +7,7 @@ Reference documentation lives in [../account-deletion.md](../account-deletion.md
 ## Context
 
 There was no way to delete an account — an App Store Guideline 5.1.1(v)
-requirement and a GDPR right-to-erasure gap. The data spans eleven
+requirement and a GDPR right-to-erasure gap. The data spans a dozen
 `users/{uid}` subcollections, receipt objects in Storage addressable only
 through their transactions, device-local stores keyed by uid, and the
 Firebase Auth user itself. Deleting a Firestore document does not delete its
@@ -66,9 +66,9 @@ everywhere else.
 
 ## Known gaps
 
-- The pre-deletion backup export covers five sections, not all eleven —
-  recorded in the reference doc. Extending the backup schema was kept out
-  of scope here.
+- The pre-deletion backup export covers six sections, not every
+  subcollection — recorded in the reference doc. Extending the backup
+  schema further was kept out of scope here.
 - The reauthentication popup is subject to popup blockers on the web; the
   failure mode is safe (abort before any deletion).
 - No automated coverage for the two interactive reauthentication flows
