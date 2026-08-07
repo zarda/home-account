@@ -244,6 +244,17 @@ describe('App routes (emulator smoke test)', () => {
         'reports chart canvas',
         () => !!harness.routeNativeElement?.ownerDocument.querySelector('canvas')
       );
+
+      // Drive the lazily created Forecast tab: its recurring listener only
+      // opens on selection, and with no seeded rules it must land on the
+      // empty state rather than a broken chart.
+      const tabHeaders =
+        harness.routeNativeElement?.ownerDocument.querySelectorAll<HTMLElement>('.mdc-tab');
+      tabHeaders?.[tabHeaders.length - 1]?.click();
+      await waitForDom(
+        'forecast empty state',
+        () => pageText().includes('reports.forecastNoRulesTitle')
+      );
       await expectPage('/settings', 'settings.title', 'Test User');
       expect(TestBed.inject(Router).url).toBe('/settings');
 
