@@ -11,6 +11,7 @@ import { InsightSnapshotService } from '../../../core/services/insight-snapshot.
 import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { RecurringService } from '../../../core/services/recurring.service';
 import { MatDialog } from '@angular/material/dialog';
 import { InsightSnapshot, Transaction, User } from '../../../models';
 import { createTimestamp, createTransaction, createUser } from '../../../core/services/testing/test-data';
@@ -99,6 +100,14 @@ describe('InsightsTabComponent', () => {
         { provide: InsightSnapshotService, useValue: snapshotService },
         { provide: NotificationService, useValue: notifications },
         { provide: MatDialog, useValue: dialog },
+        {
+          provide: RecurringService,
+          useValue: {
+            recurringTransactions: signal([]),
+            getRecurring: () => of([]),
+            createRecurring: () => Promise.resolve('id'),
+          },
+        },
         {
           provide: CurrencyService,
           useValue: {

@@ -5,6 +5,8 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { FitTextRegistry } from './directives/fit-text.registry';
 import { CategorySuggestionComponent } from '../features/ai/import/category-suggestion/category-suggestion.component';
 import { RecurringListComponent } from '../features/reports/insights/recurring-list/recurring-list.component';
+import { RecurringService } from '../core/services/recurring.service';
+import { NotificationService } from '../core/services/notification.service';
 import { CategoryService } from '../core/services/category.service';
 import { TranslationService } from '../core/services/translation.service';
 import { StorableRecurringSummary } from '../models';
@@ -183,6 +185,9 @@ describe('truncation guard: text that wraps', () => {
           provide: TranslationService,
           useValue: { t: (key: string) => key, currentLocale: signal('en') },
         },
+        // The list's convert action pulls these in; the probe never converts.
+        { provide: RecurringService, useValue: { createRecurring: () => Promise.resolve('id') } },
+        { provide: NotificationService, useValue: { success: () => undefined, error: () => undefined } },
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
