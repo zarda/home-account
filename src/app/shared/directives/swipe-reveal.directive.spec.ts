@@ -25,7 +25,13 @@ import { SwipeRevealDirective } from './swipe-reveal.directive';
   imports: [SwipeRevealDirective],
   template: `
     @for (row of rows; track row) {
-      <div class="probe-row" (click)="clicks[row] = (clicks[row] ?? 0) + 1">
+      <div
+        class="probe-row"
+        role="button"
+        tabindex="0"
+        (click)="clicks[row] = (clicks[row] ?? 0) + 1"
+        (keydown.enter)="clicks[row] = (clicks[row] ?? 0) + 1"
+      >
         <div class="drawer" #drawer>
           <button type="button">Edit</button>
         </div>
