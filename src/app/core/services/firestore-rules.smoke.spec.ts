@@ -968,6 +968,34 @@ describe('firestore.rules (emulator smoke test)', () => {
         'query rewrite'
       );
     });
+
+    it('accepts a create carrying the pin', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({ pinned: false })),
+        'create with pinned'
+      );
+    });
+
+    it('rejects a pin that is not a boolean', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({ pinned: 'yes' })),
+        'non-boolean pinned'
+      );
+    });
+
+    // Pinning is a decision about the record, not part of the identity a
+    // refresh must not disturb, so unlike query/scope it stays writable.
+    it('accepts toggling the pin on an existing record', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validAnswer({ pinned: false }));
+      await expectAllowed(updateDoc(doc(firestore, p), { pinned: true }), 'pin toggle');
+    });
+
+    it('rejects toggling the pin to a non-boolean', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validAnswer({ pinned: false }));
+      await expectDenied(updateDoc(doc(firestore, p), { pinned: 1 }), 'non-boolean pin toggle');
+    });
   });
 
   describe('categoryMemory', () => {

@@ -20,6 +20,18 @@
             </button>
             <button
               mat-icon-button
+              class="history-pin"
+              [class.is-pinned]="!!record.pinned"
+              [attr.aria-pressed]="!!record.pinned"
+              [attr.aria-label]="
+                (record.pinned ? 'aiSearch.historyUnpin' : 'aiSearch.historyPin') | translate
+              "
+              (click)="togglePin(record)"
+            >
+              <mat-icon>push_pin</mat-icon>
+            </button>
+            <button
+              mat-icon-button
               class="history-delete"
               [attr.aria-label]="'common.delete' | translate"
               (click)="deleteRecord(record)"

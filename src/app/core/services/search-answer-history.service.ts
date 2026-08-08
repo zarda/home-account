@@ -29,7 +29,16 @@ export class SearchAnswerHistoryService {
   // All records, lastUsedAt desc (the query order).
   private allAnswers = signal<SearchAnswerRecord[]>([]);
 
-  readonly answers = computed(() => this.allAnswers());
+  /**
+   * Pinned records first, then the rest by recency.
+   *
+   * Sorted here rather than as a compound orderBy: at fifty records the client
+   * sort costs nothing, and a `pinned desc, lastUsedAt desc` query would need
+   * a composite index deployed before the feature worked at all.
+   */
+  readonly answers = computed(() =>
+    [...this.allAnswers()].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned))
+  );
 
   constructor() {
     // Signed-out edge only; see TransactionService's reset effect for why the
@@ -105,7 +114,13 @@ export class SearchAnswerHistoryService {
     // Exclude the new doc explicitly: with a live subscription, the local
     // write's snapshot lands in the signal before addDocument resolves, and
     // counting it again here would prune one record too many.
-    const others = this.allAnswers().filter(record => record.id !== newId);
+    //
+    // Pinned records are excluded outright, so the cap counts only the
+    // unpinned — the same split MAX_RECENT_SEARCHES already applies to
+    // savedSearches. Pinning is the answer to "fifty idle questions pruned
+    // the one I cared about", which a pinned record still subject to the cap
+    // would not be.
+    const others = this.allAnswers().filter(record => !record.pinned && record.id !== newId);
     const overflow = others.length + 1 - MAX_SEARCH_ANSWERS;
     if (overflow > 0) {
       await Promise.all(
@@ -123,6 +138,19 @@ export class SearchAnswerHistoryService {
    */
   async refreshAnswer(id: string, answer: AggregateAnswer): Promise<void> {
     await this.writeSnapshot(id, answer);
+  }
+
+  /**
+   * Keep a record out of the prune, or release it back into it.
+   *
+   * Deliberately not part of writeSnapshot, which only ever writes figures:
+   * pinning is a decision about the record, and a refresh must not disturb it.
+   */
+  async togglePin(id: string, pinned: boolean): Promise<void> {
+    await this.firestoreService.updateDocument<SearchAnswerRecord>(
+      `${this.userAnswersPath}/${id}`,
+      { pinned }
+    );
   }
 
   // Re-opening a record refreshes its recency.

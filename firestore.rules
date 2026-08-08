@@ -381,6 +381,11 @@ service cloud.firestore {
       return (!('currency' in d) || d.currency is string)
         && (!('extremeTransactionId' in d) || d.extremeTransactionId is string)
         && (!('groups' in d) || d.groups is list)
+        // Optional because records written before pinning existed do not
+        // carry it. Typed here rather than frozen in answerUpdateValid, which
+        // is what lets the pin be toggled: it is a decision about the record,
+        // not part of the identity a refresh must not disturb.
+        && (!('pinned' in d) || d.pinned is bool)
         && (!('createdAt' in d) || d.createdAt is timestamp)
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }
@@ -391,7 +396,8 @@ service cloud.firestore {
         && d.keys().hasOnly(['userId', 'schemaVersion', 'query', 'operation', 'limit',
                              'scope', 'baseCurrency', 'value', 'currency',
                              'transactionCount', 'extremeTransactionId', 'groups',
-                             'computedAt', 'lastUsedAt', 'createdAt', 'updatedAt'])
+                             'pinned', 'computedAt', 'lastUsedAt',
+                             'createdAt', 'updatedAt'])
         && d.keys().hasAll(['userId', 'schemaVersion', 'query', 'operation', 'limit',
                             'scope', 'baseCurrency', 'value', 'transactionCount',
                             'computedAt', 'lastUsedAt'])

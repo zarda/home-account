@@ -136,7 +136,17 @@ describe('search-answer.utils', () => {
         value: 421.5,
         currency: 'USD',
         transactionCount: 17,
+        pinned: false,
       });
+    });
+
+    // Written explicitly rather than left absent, the way SavedSearch does it:
+    // the prune reads the field, and a create that omitted it would rely on
+    // undefined being falsy everywhere it is consulted.
+    it('writes a new snapshot unpinned', () => {
+      const fields = buildAnswerFields('anything', { operation: 'sum', limit: 3 }, sumAnswer(), 'USD');
+
+      expect(fields.pinned).toBeFalse();
     });
 
     it('writes a count answer without a currency key', () => {

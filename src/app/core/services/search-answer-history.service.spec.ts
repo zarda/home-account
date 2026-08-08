@@ -205,6 +205,99 @@ describe('SearchAnswerHistoryService', () => {
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(1);
       expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(`${PATH}/a-${MAX_SEARCH_ANSWERS - 1}`);
     });
+
+    it('writes a new record unpinned', async () => {
+      await service.recordAnswer('a brand new question', { operation: 'sum', limit: 3 }, sumAnswer());
+
+      expect(mockFirestoreService.addDocument).toHaveBeenCalledWith(
+        PATH,
+        jasmine.objectContaining({ pinned: false }),
+      );
+    });
+
+    // The whole point of pinning: idle questions must not evict the one that
+    // was worth keeping, even when it is the least recently used of the lot.
+    it('prunes past a pinned record rather than through it', async () => {
+      // One over the cap once the pinned record stops occupying a slot, so
+      // there is exactly one eviction to place.
+      const full = Array.from({ length: MAX_SEARCH_ANSWERS + 1 }, (_, i) =>
+        stored(`a-${i}`, 1_000_000 - i, { pinned: i === MAX_SEARCH_ANSWERS }));
+      await seed(full);
+
+      await service.recordAnswer('a brand new question', { operation: 'sum', limit: 3 }, sumAnswer());
+
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledTimes(1);
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(
+        `${PATH}/a-${MAX_SEARCH_ANSWERS - 1}`,
+      );
+    });
+
+    it('leaves the history alone when pinning has freed a slot', async () => {
+      const full = Array.from({ length: MAX_SEARCH_ANSWERS }, (_, i) =>
+        stored(`a-${i}`, 1_000_000 - i, { pinned: i === MAX_SEARCH_ANSWERS - 1 }));
+      await seed(full);
+
+      await service.recordAnswer('a brand new question', { operation: 'sum', limit: 3 }, sumAnswer());
+
+      expect(mockFirestoreService.deleteDocument).not.toHaveBeenCalled();
+    });
+
+    // Pinned records do not occupy slots, so a history that is at the cap on
+    // paper but pinned throughout has nothing to prune.
+    it('counts only unpinned records against the cap', async () => {
+      const full = Array.from({ length: MAX_SEARCH_ANSWERS }, (_, i) =>
+        stored(`a-${i}`, 1_000_000 - i, { pinned: true }));
+      await seed(full);
+
+      await service.recordAnswer('a brand new question', { operation: 'sum', limit: 3 }, sumAnswer());
+
+      expect(mockFirestoreService.deleteDocument).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('togglePin', () => {
+    it('writes only the pin', async () => {
+      await service.togglePin('a-1', true);
+
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(`${PATH}/a-1`, {
+        pinned: true,
+      });
+    });
+
+    it('releases a record back into the prune', async () => {
+      await service.togglePin('a-1', false);
+
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(`${PATH}/a-1`, {
+        pinned: false,
+      });
+    });
+
+    it('sorts pinned records above the rest, each still by recency', async () => {
+      await seed([
+        stored('recent', 3_000_000),
+        stored('pinned-old', 1_000_000, { pinned: true }),
+        stored('older', 2_000_000),
+        stored('pinned-newer', 2_500_000, { pinned: true }),
+      ]);
+
+      expect(service.answers().map(r => r.id)).toEqual([
+        'pinned-old',
+        'pinned-newer',
+        'recent',
+        'older',
+      ]);
+    });
+
+    // A refresh replaces figures; it is not a decision about the record.
+    it('is not disturbed by a refresh', async () => {
+      await service.refreshAnswer('a-1', sumAnswer());
+
+      const written = mockFirestoreService.updateDocument.calls.mostRecent().args[1] as Record<
+        string,
+        unknown
+      >;
+      expect('pinned' in written).toBe(false);
+    });
   });
 
   describe('refreshAnswer', () => {

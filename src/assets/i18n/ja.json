@@ -853,6 +853,8 @@
     "historyComputedAt": "{{date}} 時点の集計",
     "historyTitle": "過去の回答",
     "historySeeAll": "すべて表示",
+    "historyPin": "この回答をピン留め",
+    "historyUnpin": "ピン留めを解除",
     "historyDeleteTitle": "この回答を削除しますか？",
     "historyDeleteMessage": "保存された回答のみ削除されます。取引には影響しません。",
     "historyPageTitle": "スマート検索の履歴",

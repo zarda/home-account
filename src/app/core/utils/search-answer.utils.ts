@@ -73,6 +73,7 @@ export function buildAnswerFields(
     baseCurrency,
     value: answer.value,
     transactionCount: answer.transactionCount,
+    pinned: false,
   };
   if (answer.currency !== undefined) fields.currency = answer.currency;
   if (answer.extremeTransaction) fields.extremeTransactionId = answer.extremeTransaction.id;

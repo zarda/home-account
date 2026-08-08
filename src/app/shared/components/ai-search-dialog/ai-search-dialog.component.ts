@@ -141,6 +141,10 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     }
   }
 
+  togglePin(record: SearchAnswerRecord): void {
+    void this.answerHistory.togglePin(record.id, !record.pinned);
+  }
+
   deleteRecord(record: SearchAnswerRecord): void {
     const confirmRef = this.matDialog.open(ConfirmDialogComponent, {
       data: {

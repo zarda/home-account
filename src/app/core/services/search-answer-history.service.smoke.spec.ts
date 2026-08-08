@@ -269,4 +269,56 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     expect(raw.docs.some(d => d.id === 'seed-0')).toBeFalse();
     expect(raw.docs.some(d => d.data()['query'] === 'a brand new question')).toBeTrue();
   });
+
+  // The unit spec proves the prune skips pinned records against a seeded
+  // signal; this proves the pin survives a real write and that the eviction
+  // lands on the next unpinned record in the server's own ordering.
+  it('prunes past a pinned record against server ordering', async () => {
+    await freshUser();
+
+    // One over the cap, with the least recently used record pinned: the
+    // pinned one stops occupying a slot, so exactly one eviction is due and
+    // it must fall on seed-1 rather than on the pinned seed-0.
+    const base = Date.now() - 1_000_000;
+    await Promise.all(
+      Array.from({ length: MAX_SEARCH_ANSWERS + 1 }, (_, i) =>
+        setDoc(doc(firestore, `users/${uid}/searchAnswers/seed-${i}`), {
+          userId: uid,
+          schemaVersion: 1,
+          query: `seed question ${i}`,
+          operation: 'sum',
+          limit: 3,
+          scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+          baseCurrency: 'USD',
+          value: i,
+          currency: 'USD',
+          transactionCount: 1,
+          pinned: i === 0,
+          computedAt: Timestamp.fromMillis(base + i * 1000),
+          lastUsedAt: Timestamp.fromMillis(base + i * 1000),
+        })
+      )
+    );
+    await reload();
+
+    await service.recordAnswer('a brand new question', { operation: 'sum', limit: 3 }, sumAnswer());
+
+    const raw = await getDocs(collection(firestore, `users/${uid}/searchAnswers`));
+    expect(raw.docs.some(d => d.id === 'seed-0')).withContext('pinned survives').toBeTrue();
+    expect(raw.docs.some(d => d.id === 'seed-1')).withContext('next oldest evicted').toBeFalse();
+  });
+
+  it('toggles the pin through the live rules', async () => {
+    await freshUser();
+    await service.recordAnswer('pin me', { operation: 'sum', limit: 3 }, sumAnswer());
+    await reload();
+
+    const record = service.answers()[0];
+    expect(record.pinned).withContext('created unpinned').toBeFalse();
+
+    await service.togglePin(record.id, true);
+    await reload();
+
+    expect(service.answers()[0].pinned).toBeTrue();
+  });
 });

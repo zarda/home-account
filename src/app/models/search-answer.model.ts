@@ -49,6 +49,14 @@ export interface SearchAnswerRecord {
   transactionCount: number;
   extremeTransactionId?: string; // max/min only
   groups?: { categoryId: string; total: number }[]; // topCategories, largest first
+  /**
+   * Kept out of the prune, and sorted above the rest.
+   *
+   * Optional rather than required because records written before pinning
+   * existed do not carry it, and absent has to read as unpinned. Every new
+   * record writes it explicitly, the way SavedSearch does.
+   */
+  pinned?: boolean;
   computedAt: Timestamp; // when the figures were computed; Refresh rewrites it
   lastUsedAt: Timestamp; // recency for ordering, dedupe touch and prune order
   createdAt?: Timestamp;

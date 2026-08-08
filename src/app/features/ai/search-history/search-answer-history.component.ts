@@ -99,6 +99,10 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
     }
   }
 
+  togglePin(record: SearchAnswerRecord): void {
+    void this.history.togglePin(record.id, !record.pinned);
+  }
+
   deleteRecord(record: SearchAnswerRecord): void {
     const confirmRef = this.matDialog.open(ConfirmDialogComponent, {
       data: {
