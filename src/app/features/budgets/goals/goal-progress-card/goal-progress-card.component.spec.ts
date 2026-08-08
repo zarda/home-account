@@ -64,6 +64,34 @@ describe('GoalProgressCardComponent', () => {
     expect(component.reached()).toBeTrue();
   });
 
+  it('reads progress as manual plus linked, on every figure at once', () => {
+    // 750 manual + 750 linked = 1500 of 3000: the percentage, the remaining
+    // amount and the reached flag must all see the same total.
+    fixture.componentRef.setInput('goal', goal({ linkedAmount: 750 }));
+    fixture.detectChanges();
+
+    expect(component.progressAmount()).toBe(1500);
+    expect(component.percentage()).toBe(50);
+    expect(component.remaining()).toBe(1500);
+    expect(component.reached()).toBeFalse();
+  });
+
+  it('reaches the target on linked money alone', () => {
+    fixture.componentRef.setInput('goal', goal({ contributedAmount: 0, linkedAmount: 3000 }));
+    fixture.detectChanges();
+
+    expect(component.reached()).toBeTrue();
+    expect(component.remaining()).toBe(0);
+  });
+
+  it('exposes the linked share only when there is one', () => {
+    expect(component.linkedAmount()).toBe(0); // pre-link document
+
+    fixture.componentRef.setInput('goal', goal({ linkedAmount: 120 }));
+    fixture.detectChanges();
+    expect(component.linkedAmount()).toBe(120);
+  });
+
   it('counts checked items for a project', () => {
     fixture.componentRef.setInput(
       'goal',

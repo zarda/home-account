@@ -1,5 +1,10 @@
 import { Injectable, effect, inject, signal, computed, Injector } from '@angular/core';
-import { Timestamp, deleteField } from '@angular/fire/firestore';
+import {
+  DocumentReference,
+  Timestamp,
+  deleteField,
+  Transaction as FirestoreTransaction
+} from '@angular/fire/firestore';
 import { Observable, map, of, tap } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
@@ -27,15 +32,25 @@ export const RECEIPT_ATTACH_FAILED = 'RECEIPT_ATTACH_FAILED';
  * be rejected by firestore.rules anyway.
  */
 export const INVALID_AMOUNT_ERROR = 'INVALID_TRANSACTION_AMOUNT';
+
+/**
+ * Thrown when a new link names a goal that does not exist or is no longer
+ * active. Only the act of linking demands an active target — a link a row
+ * already carries keeps counting through later edits whatever the goal's
+ * state, and a vanished goal never blocks an unlink or a delete.
+ */
+export const GOAL_LINK_INVALID = 'GOAL_LINK_INVALID';
 import {
   Transaction,
   TransactionFilters,
   CreateTransactionDTO,
   MonthlyTotal,
   CategoryTotal,
+  Goal,
   receiptImageCount,
   baseCurrencyOf
 } from '../../models';
+import { roundMoney } from '../utils/transaction-aggregation.utils';
 import {
   applyClientTransactionFilters,
   buildTransactionWhere
@@ -125,6 +140,17 @@ export class TransactionService {
     return `users/${userId}/transactions`;
   }
 
+  // The goals collection, addressed directly rather than through
+  // GoalService: the linked counter must commit in the same Firestore
+  // transaction as the row write, GoalService reaches into transactions
+  // for its delete sweep, and injecting each service into the other would
+  // close a cycle for the sake of a template literal.
+  private get userGoalsPath(): string {
+    const userId = this.authService.userId();
+    if (!userId) throw new Error('User not authenticated');
+    return `users/${userId}/goals`;
+  }
+
   // Get transactions with optional filters. A pure query: it never writes the
   // shared `transactions` signal, so importers and detectors can run narrow
   // windows without moving what the dashboard displays. Publishing is owned by
@@ -186,12 +212,18 @@ export class TransactionService {
    * verbatim instead of recomputing it: a restore must not rewrite a row's
    * historical rate at today's, which would both change stored figures and
    * make restoring the same backup twice produce different documents.
+   * `options.goalSnapshot` is the same contract for a goal link: the pair is
+   * written verbatim and no goal counter is touched — mid-restore the goal
+   * may not even exist yet, and the restore flow recomputes every counter
+   * from the ledger afterwards. `data.goalId` is the live path instead: the
+   * link and the goal's counter commit in one Firestore transaction.
    */
   async addTransaction(
     data: CreateTransactionDTO,
     options?: {
       id?: string;
       snapshot?: { exchangeRate: number; baseCurrency: string; amountInBaseCurrency: number };
+      goalSnapshot?: { goalId: string; goalAmount: number };
     }
   ): Promise<string> {
     this.isLoading.set(true);
@@ -244,6 +276,15 @@ export class TransactionService {
         ...(data.location ? { location: data.location } : {})
       };
 
+      if (options?.goalSnapshot) {
+        // Refused rather than resolved by precedence, like receipts+id below.
+        if (data.goalId) {
+          throw new Error('A goal snapshot cannot be combined with a goal link');
+        }
+        transaction.goalId = options.goalSnapshot.goalId;
+        transaction.goalAmount = options.goalSnapshot.goalAmount;
+      }
+
       let id: string;
       const receiptFiles = data.receiptFiles ?? [];
       // The receipts branch below has to pre-generate its own id to key the
@@ -270,20 +311,34 @@ export class TransactionService {
         transaction.receiptUrl = urls[0];
         transaction.receiptUrls = urls;
         transaction.receiptCount = urls.length;
-        await this.firestoreService.setDocument(
-          `${this.userTransactionsPath}/${id}`,
-          transaction
-        );
+        if (data.goalId) {
+          await this.createWithGoalLink(id, transaction, data.goalId);
+        } else {
+          await this.firestoreService.setDocument(
+            `${this.userTransactionsPath}/${id}`,
+            transaction
+          );
+        }
         this.receiptQuota.noteImagesAdded(urls.length);
       } else if (options?.id) {
         // Caller-supplied deterministic id (recurring engine idempotency):
         // posting the same occurrence twice overwrites one document instead
         // of duplicating it.
         id = options.id;
-        await this.firestoreService.setDocument(
-          `${this.userTransactionsPath}/${id}`,
-          transaction
-        );
+        if (data.goalId) {
+          await this.createWithGoalLink(id, transaction, data.goalId);
+        } else {
+          await this.firestoreService.setDocument(
+            `${this.userTransactionsPath}/${id}`,
+            transaction
+          );
+        }
+      } else if (data.goalId) {
+        // A linked create commits row and counter together, which needs a
+        // ref before the write — so the id is pre-generated like the
+        // receipts branch's rather than taken from addDocument.
+        id = this.firestoreService.generateId(this.userTransactionsPath);
+        await this.createWithGoalLink(id, transaction, data.goalId);
       } else {
         id = await this.firestoreService.addDocument(
           this.userTransactionsPath,
@@ -301,6 +356,179 @@ export class TransactionService {
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  /**
+   * Write a new linked row and its goal's counter in one Firestore
+   * transaction (the contribute() precedent): the link cannot land without
+   * the counter moving, and two devices linking rows to the same goal both
+   * land because the loser retries against the winner's counter. The
+   * converted figure snapshots here, at write time, against loaded rates.
+   */
+  private async createWithGoalLink(
+    id: string,
+    transaction: Omit<Transaction, 'id'>,
+    goalId: string
+  ): Promise<void> {
+    // Same guard as the base-currency snapshot: never against the unloaded
+    // 1:1 fallback table.
+    await this.currencyService.ensureRatesLoaded();
+    const rowRef = this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`);
+    const goalRef = this.firestoreService.getDocRef(`${this.userGoalsPath}/${goalId}`);
+
+    await this.firestoreService.runTransaction(async tx => {
+      const goalSnapshot = await tx.get(goalRef);
+      if (!goalSnapshot.exists()) throw new Error(GOAL_LINK_INVALID);
+      const goal = goalSnapshot.data() as Goal;
+      if (!goal.isActive) throw new Error(GOAL_LINK_INVALID);
+
+      const goalAmount = roundMoney(
+        this.currencyService.convert(transaction.amount, transaction.currency, goal.currency)
+      );
+      tx.set(rowRef, { ...transaction, goalId, goalAmount });
+      tx.update(goalRef, {
+        linkedAmount: roundMoney((goal.linkedAmount ?? 0) + goalAmount),
+        updatedAt: this.firestoreService.getTimestamp()
+      });
+    });
+  }
+
+  /**
+   * Stage the goal-counter consequences of an update, against the row as
+   * this transaction actually read it. Only reads: it returns the row's
+   * link fields and the goal writes for the caller to apply after its own
+   * reads, because Firestore orders every read in a transaction before the
+   * first write.
+   *
+   * The stored figure is re-snapshotted only when the update touches amount
+   * or currency — an unrelated edit converting at today's rates would move
+   * a counter the user never touched. Decrements clamp at zero so counter
+   * drift can never block an edit; a vanished goal is finished off rather
+   * than resurrected; only a NEW link demands an existing, active goal.
+   *
+   * Precondition: rates are loaded whenever a conversion may be needed
+   * (updateTransaction awaits ensureRatesLoaded before any link-involved
+   * branch).
+   */
+  private async stageGoalTransition(
+    tx: FirestoreTransaction,
+    row: Transaction,
+    data: Partial<CreateTransactionDTO>,
+    updateData: Partial<Transaction>
+  ): Promise<{
+    linkFields: Record<string, unknown>;
+    goalWrites: { ref: DocumentReference; data: Record<string, unknown> }[];
+  }> {
+    const none = { linkFields: {}, goalWrites: [] };
+    const oldGoalId = row.goalId;
+    const newGoalId = 'goalId' in data ? data.goalId : oldGoalId;
+    if (!oldGoalId && !newGoalId) return none;
+
+    const oldGoalAmount = row.goalAmount ?? 0;
+    // What the row will hold after this update, whichever side supplies it.
+    const amount = updateData.amount ?? row.amount;
+    const currency = updateData.currency ?? row.currency;
+    const amountTouched =
+      updateData.amount !== undefined || updateData.currency !== undefined;
+    const clearedLink = { goalId: deleteField(), goalAmount: deleteField() };
+    const goalRefOf = (goalId: string): DocumentReference =>
+      this.firestoreService.getDocRef(`${this.userGoalsPath}/${goalId}`);
+    const counterWrite = (ref: DocumentReference, linkedAmount: number) => ({
+      ref,
+      data: {
+        linkedAmount: Math.max(0, roundMoney(linkedAmount)),
+        updatedAt: this.firestoreService.getTimestamp()
+      }
+    });
+
+    // Unlink: back the stored figure out and clear the pair.
+    if (oldGoalId && !newGoalId) {
+      const goalRef = goalRefOf(oldGoalId);
+      const snapshot = await tx.get(goalRef);
+      if (!snapshot.exists()) return { linkFields: clearedLink, goalWrites: [] };
+      const goal = snapshot.data() as Goal;
+      return {
+        linkFields: clearedLink,
+        goalWrites: [counterWrite(goalRef, (goal.linkedAmount ?? 0) - oldGoalAmount)]
+      };
+    }
+
+    // Link kept (active or not — leaving needs no gate, only arriving does).
+    if (oldGoalId && oldGoalId === newGoalId) {
+      const goalRef = goalRefOf(oldGoalId);
+      const snapshot = await tx.get(goalRef);
+      if (!snapshot.exists()) {
+        // A deleteGoal sweep raced this edit: finish the sweep's work
+        // rather than resurrect a link to nothing.
+        return { linkFields: clearedLink, goalWrites: [] };
+      }
+      if (!amountTouched) return none;
+      const goal = snapshot.data() as Goal;
+      const goalAmount = roundMoney(
+        this.currencyService.convert(amount, currency, goal.currency)
+      );
+      if (goalAmount === oldGoalAmount) return none;
+      return {
+        linkFields: { goalAmount },
+        goalWrites: [
+          counterWrite(goalRef, (goal.linkedAmount ?? 0) - oldGoalAmount + goalAmount)
+        ]
+      };
+    }
+
+    // New link, possibly a switch: the target must exist and be active.
+    const newRef = goalRefOf(newGoalId as string);
+    const newSnapshot = await tx.get(newRef);
+    if (!newSnapshot.exists()) throw new Error(GOAL_LINK_INVALID);
+    const newGoal = newSnapshot.data() as Goal;
+    if (!newGoal.isActive) throw new Error(GOAL_LINK_INVALID);
+    const goalAmount = roundMoney(
+      this.currencyService.convert(amount, currency, newGoal.currency)
+    );
+
+    const goalWrites = [counterWrite(newRef, (newGoal.linkedAmount ?? 0) + goalAmount)];
+    if (oldGoalId) {
+      const oldRef = goalRefOf(oldGoalId);
+      const oldSnapshot = await tx.get(oldRef);
+      if (oldSnapshot.exists()) {
+        const oldGoal = oldSnapshot.data() as Goal;
+        goalWrites.push(counterWrite(oldRef, (oldGoal.linkedAmount ?? 0) - oldGoalAmount));
+      }
+    }
+    return { linkFields: { goalId: newGoalId, goalAmount }, goalWrites };
+  }
+
+  /**
+   * Commit a link-involved update: one transaction re-reads the row, stages
+   * the link against that fresh read and adjusts the affected counters, so
+   * the link fields and the goal counters cannot disagree.
+   */
+  private async updateWithGoalSync(
+    id: string,
+    data: Partial<CreateTransactionDTO>,
+    updateData: Partial<Transaction>
+  ): Promise<void> {
+    const rowRef = this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`);
+
+    await this.firestoreService.runTransaction(async tx => {
+      const snapshot = await tx.get(rowRef);
+      if (!snapshot.exists()) throw new Error('Transaction not found');
+
+      const staged = await this.stageGoalTransition(
+        tx,
+        snapshot.data() as Transaction,
+        data,
+        updateData
+      );
+      tx.update(rowRef, {
+        ...updateData,
+        ...staged.linkFields,
+        updatedAt: this.firestoreService.getTimestamp()
+      });
+      for (const write of staged.goalWrites) {
+        tx.update(write.ref, write.data);
+      }
+    });
   }
 
   // Update an existing transaction
@@ -355,6 +583,15 @@ export class TransactionService {
         }
       }
 
+      // Whether this update can move a goal counter: it names a link (set,
+      // switch or clear), or the row already carries one whose stored
+      // figure an amount/currency change would re-snapshot. Conversions
+      // must never run against the unloaded 1:1 fallback table.
+      const linkInvolved = 'goalId' in data || !!currentTransaction?.goalId;
+      if (linkInvolved) {
+        await this.currencyService.ensureRatesLoaded();
+      }
+
       // Append newly provided receipt images after the existing ones.
       // Replacing an image is remove-then-attach; an update never overwrites
       // a stored object another writer still references.
@@ -374,11 +611,14 @@ export class TransactionService {
           appendUserId,
           data.receiptFiles,
           this.receiptSlotsOf(currentTransaction).length,
-          updateData
+          updateData,
+          data
         );
         // After the commit, not before: a placement retry or abort must not
         // bump the local quota count for images that never landed.
         this.receiptQuota.noteImagesAdded(appended);
+      } else if (linkInvolved) {
+        await this.updateWithGoalSync(id, data, updateData);
       } else {
         await this.firestoreService.updateDocument(
           `${this.userTransactionsPath}/${id}`,
@@ -498,14 +738,16 @@ export class TransactionService {
    *   uploaded that no committed entry references, and fail the attach whole.
    *
    * Returns the number of images appended. The scalar fields of updateData
-   * commit in the same transaction so an update is atomic as a whole.
+   * commit in the same transaction so an update is atomic as a whole —
+   * including, via `data`, any goal-link transition the update carries.
    */
   private async appendReceiptsTransactionally(
     id: string,
     userId: string,
     files: File[],
     optimisticFirstSlot: number,
-    updateData: Partial<Transaction>
+    updateData: Partial<Transaction>,
+    data: Partial<CreateTransactionDTO>
   ): Promise<number> {
     const path = `${this.userTransactionsPath}/${id}`;
     const docRef = this.firestoreService.getDocRef(path);
@@ -518,32 +760,51 @@ export class TransactionService {
       const urls = await this.uploadReceiptBatch(userId, id, files, firstSlot);
       uploadedSlots = urls.map((_, i) => firstSlot + i);
 
-      const outcome = await this.firestoreService.runTransaction(async tx => {
-        const snapshot = await tx.get(docRef);
-        if (!snapshot.exists()) return 'vanished';
+      let outcome: 'vanished' | 'collision' | 'over_cap' | 'committed';
+      try {
+        outcome = await this.firestoreService.runTransaction(async tx => {
+          const snapshot = await tx.get(docRef);
+          if (!snapshot.exists()) return 'vanished';
 
-        const slots = this.receiptSlotsOf(snapshot.data() as Transaction);
-        // A live entry at one of our indices means a rival append won them.
-        if (uploadedSlots.some(slot => !!slots[slot])) return 'collision';
+          const row = snapshot.data() as Transaction;
+          const slots = this.receiptSlotsOf(row);
+          // A live entry at one of our indices means a rival append won them.
+          if (uploadedSlots.some(slot => !!slots[slot])) return 'collision';
 
-        const liveCount = slots.filter(url => !!url).length;
-        if (liveCount + urls.length > MAX_RECEIPTS_PER_TRANSACTION) return 'over_cap';
+          const liveCount = slots.filter(url => !!url).length;
+          if (liveCount + urls.length > MAX_RECEIPTS_PER_TRANSACTION) return 'over_cap';
 
-        // Pad up to our first index with tombstones — a racing removal may
-        // have truncated the array underneath the upload — so that
-        // index == storage slot keeps holding.
-        while (slots.length < firstSlot) slots.push('');
-        urls.forEach((url, i) => {
-          slots[firstSlot + i] = url;
+          // Goal reads must land here, after the row read and before the
+          // first write (Firestore orders all of a transaction's reads
+          // ahead of its writes).
+          const staged = await this.stageGoalTransition(tx, row, data, updateData);
+
+          // Pad up to our first index with tombstones — a racing removal may
+          // have truncated the array underneath the upload — so that
+          // index == storage slot keeps holding.
+          while (slots.length < firstSlot) slots.push('');
+          urls.forEach((url, i) => {
+            slots[firstSlot + i] = url;
+          });
+
+          tx.update(docRef, {
+            ...updateData,
+            ...staged.linkFields,
+            ...this.receiptFieldPayload(slots),
+            updatedAt: this.firestoreService.getTimestamp()
+          });
+          for (const write of staged.goalWrites) {
+            tx.update(write.ref, write.data);
+          }
+          return 'committed';
         });
-
-        tx.update(docRef, {
-          ...updateData,
-          ...this.receiptFieldPayload(slots),
-          updatedAt: this.firestoreService.getTimestamp()
-        });
-        return 'committed';
-      });
+      } catch (error) {
+        // A link error (dead or inactive goal) aborts the attach whole.
+        // Nothing committed references the uploads, so sweep them like any
+        // other failed attempt before letting the error surface.
+        await this.sweepUncommittedSlots(path, userId, id, uploadedSlots);
+        throw error;
+      }
 
       if (outcome === 'committed') return urls.length;
 
@@ -557,13 +818,25 @@ export class TransactionService {
       break;
     }
 
-    // Sweep only what no committed entry references: a contested slot is the
-    // rival's now, and deleting it would break their committed image.
+    await this.sweepUncommittedSlots(path, userId, id, uploadedSlots);
+    throw new Error(RECEIPT_ATTACH_FAILED);
+  }
+
+  /**
+   * Delete the uploaded objects a failed attach left behind — but only at
+   * slots no committed entry references: a contested slot is the rival's
+   * now, and deleting it would break their committed image.
+   */
+  private async sweepUncommittedSlots(
+    path: string,
+    userId: string,
+    id: string,
+    uploadedSlots: number[]
+  ): Promise<void> {
     const fresh = await this.firestoreService.getDocument<Transaction>(path);
     const freshSlots = this.receiptSlotsOf(fresh);
     const orphaned = uploadedSlots.filter(slot => !freshSlots[slot]);
     await this.storageService.deleteReceiptSlots(userId, id, orphaned);
-    throw new Error(RECEIPT_ATTACH_FAILED);
   }
 
   /**
@@ -677,9 +950,46 @@ export class TransactionService {
         `${this.userTransactionsPath}/${id}`
       );
 
-      await this.firestoreService.deleteDocument(
-        `${this.userTransactionsPath}/${id}`
-      );
+      if (transaction?.goalId) {
+        // A linked row's delete and its counter back-out commit together.
+        // The tx's own read decides what to back out, so the figure is the
+        // one actually stored; a goal already gone never blocks the delete.
+        // Unlinked deletes keep the plain (offline-capable) path below —
+        // a transaction requires the network, as every link write does.
+        const rowRef = this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`);
+        await this.firestoreService.runTransaction(async tx => {
+          const snapshot = await tx.get(rowRef);
+          if (!snapshot.exists()) return;
+
+          const row = snapshot.data() as Transaction;
+          let goalWrite: { ref: DocumentReference; data: Record<string, unknown> } | null = null;
+          if (row.goalId) {
+            const goalRef = this.firestoreService.getDocRef(
+              `${this.userGoalsPath}/${row.goalId}`
+            );
+            const goalSnapshot = await tx.get(goalRef);
+            if (goalSnapshot.exists()) {
+              const goal = goalSnapshot.data() as Goal;
+              goalWrite = {
+                ref: goalRef,
+                data: {
+                  linkedAmount: Math.max(
+                    0,
+                    roundMoney((goal.linkedAmount ?? 0) - (row.goalAmount ?? 0))
+                  ),
+                  updatedAt: this.firestoreService.getTimestamp()
+                }
+              };
+            }
+          }
+          tx.delete(rowRef);
+          if (goalWrite) tx.update(goalWrite.ref, goalWrite.data);
+        });
+      } else {
+        await this.firestoreService.deleteDocument(
+          `${this.userTransactionsPath}/${id}`
+        );
+      }
 
       // Remove the stored receipt objects to avoid orphaned files. The slot
       // sweep tolerates gaps (tombstoned removals) and never rejects, so the
@@ -788,6 +1098,19 @@ export class TransactionService {
             userId,
             transaction.id,
             Array.from({ length: slotSpan }, (_, slot) => slot)
+          );
+        }
+      }
+
+      // Every link died with the wipe, so every counter must read zero —
+      // else the goals would keep reporting progress from rows that no
+      // longer exist.
+      const goals = await this.firestoreService.getCollection<Goal>(this.userGoalsPath);
+      for (const goal of goals) {
+        if ((goal.linkedAmount ?? 0) !== 0) {
+          await this.firestoreService.updateDocument(
+            `${this.userGoalsPath}/${goal.id}`,
+            { linkedAmount: 0 }
           );
         }
       }

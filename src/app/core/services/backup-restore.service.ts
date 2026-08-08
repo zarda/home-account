@@ -218,6 +218,19 @@ export class BackupRestoreService {
               },
             }
             : {}),
+          // A goal link restores verbatim, counters untouched: its goal may
+          // not exist yet (goals restore after transactions), and the
+          // recompute pass below settles every counter from the ledger.
+          ...(transaction.goalId
+            ? {
+              goalSnapshot: {
+                goalId: transaction.goalId,
+                goalAmount: typeof transaction.goalAmount === 'number'
+                  ? transaction.goalAmount
+                  : 0,
+              },
+            }
+            : {}),
         });
         summary.transactions++;
       } catch (error) {
@@ -278,6 +291,29 @@ export class BackupRestoreService {
         summary.goals++;
       } catch (error) {
         skip('goals', goal.id, error);
+      }
+    }
+
+    // Settle every linked counter from the ledger (the budget-`spent`
+    // precedent). Restored rows carried their links without counter writes,
+    // and createGoal reset each restored goal's counter to zero; summing
+    // what the account now actually holds covers restored links, links the
+    // account already had that the backup did not, and a double restore —
+    // none of which a verbatim counter could survive without double-counting.
+    // Restored goals are included even when no restored row links to them,
+    // precisely for the pre-existing-links case.
+    const linkedGoalIds = new Set<string>();
+    for (const transaction of data.transactions) {
+      if (transaction.goalId) linkedGoalIds.add(transaction.goalId);
+    }
+    for (const goal of data.goals ?? []) {
+      linkedGoalIds.add(goal.id);
+    }
+    for (const goalId of linkedGoalIds) {
+      try {
+        await this.goalService.recomputeLinkedAmount(goalId);
+      } catch (error) {
+        skip('goals', goalId, error);
       }
     }
 

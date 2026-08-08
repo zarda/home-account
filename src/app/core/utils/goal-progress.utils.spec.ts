@@ -1,10 +1,26 @@
-import { goalPercentage, itemsTotal } from './goal-progress.utils';
+import { goalPercentage, goalProgressAmount, itemsTotal } from './goal-progress.utils';
 import { GoalItem, isGoalKind } from '../../models';
 
 describe('goal-progress.utils', () => {
+  describe('goalProgressAmount', () => {
+    it('adds the two counters', () => {
+      expect(goalProgressAmount({ contributedAmount: 50, linkedAmount: 25 })).toBe(75);
+    });
+
+    it('reads an absent linkedAmount as zero (pre-link documents)', () => {
+      expect(goalProgressAmount({ contributedAmount: 50 })).toBe(50);
+    });
+  });
+
   describe('goalPercentage', () => {
     it('is the contributed share of the target', () => {
       expect(goalPercentage({ contributedAmount: 50, targetAmount: 200 })).toBe(25);
+    });
+
+    it('counts linked transactions toward the share', () => {
+      expect(
+        goalPercentage({ contributedAmount: 50, linkedAmount: 50, targetAmount: 200 })
+      ).toBe(50);
     });
 
     it('guards a zero target', () => {

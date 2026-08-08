@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ApplicationRef, signal } from '@angular/core';
-import { Timestamp } from '@angular/fire/firestore';
+import { Timestamp, deleteField } from '@angular/fire/firestore';
 import { firstValueFrom, of } from 'rxjs';
 
 import { GoalService, GOAL_CONTRIBUTION_BELOW_ZERO } from './goal.service';
@@ -15,6 +15,7 @@ describe('GoalService', () => {
   let userId: ReturnType<typeof signal<string | null>>;
 
   const PATH = 'users/user123/goals';
+  const TX_PATH = 'users/user123/transactions';
 
   const mockGoals = [
     {
@@ -39,6 +40,7 @@ describe('GoalService', () => {
       'updateDocument',
       'deleteDocument',
       'getCollection',
+      'getDocument',
       'getDocRef',
       'runTransaction',
       'dateToTimestamp',
@@ -91,6 +93,7 @@ describe('GoalService', () => {
       ];
       expect(path).toBe(PATH);
       expect(payload['contributedAmount']).toBe(0);
+      expect(payload['linkedAmount']).toBe(0);
       expect(payload['isActive']).toBeTrue();
       expect('targetDate' in payload).toBeFalse();
       expect('items' in payload).toBeFalse();
@@ -110,6 +113,65 @@ describe('GoalService', () => {
       ];
       expect(path).toBe(`${PATH}/g9`);
       expect(payload['contributedAmount']).toBe(500);
+      // Never the backup's: the restore flow recomputes it from the ledger.
+      expect(payload['linkedAmount']).toBe(0);
+    });
+  });
+
+  describe('deleteGoal', () => {
+    it('clears the link off every carrying transaction before deleting', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 't1' }, { id: 't2' }]);
+
+      await service.deleteGoal('g1');
+
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(TX_PATH, {
+        where: [{ field: 'goalId', op: '==', value: 'g1' }]
+      });
+      const updates = mockFirestoreService.updateDocument.calls.allArgs();
+      expect(updates.map(([path]) => path)).toEqual([`${TX_PATH}/t1`, `${TX_PATH}/t2`]);
+      for (const [, payload] of updates) {
+        expect((payload as Record<string, unknown>)['goalId']).toEqual(deleteField());
+        expect((payload as Record<string, unknown>)['goalAmount']).toEqual(deleteField());
+      }
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(`${PATH}/g1`);
+    });
+
+    it('leaves the goal in place if the sweep fails', async () => {
+      mockFirestoreService.getCollection.and.resolveTo([{ id: 't1' }]);
+      mockFirestoreService.updateDocument.and.rejectWith(new Error('offline'));
+
+      await expectAsync(service.deleteGoal('g1')).toBeRejected();
+      expect(mockFirestoreService.deleteDocument).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recomputeLinkedAmount', () => {
+    it('sums the stored converted figures and rounds the counter', async () => {
+      mockFirestoreService.getDocument.and.resolveTo(mockGoals[0]);
+      mockFirestoreService.getCollection.and.resolveTo([
+        { id: 't1', goalAmount: 10.1 },
+        { id: 't2', goalAmount: 5.15 },
+        { id: 't3' } // pre-link row caught by a hand-edited backup: reads as 0
+      ]);
+
+      await service.recomputeLinkedAmount('g1');
+
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(TX_PATH, {
+        where: [{ field: 'goalId', op: '==', value: 'g1' }]
+      });
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+        `${PATH}/g1`,
+        jasmine.objectContaining({ linkedAmount: 15.25 })
+      );
+    });
+
+    it('skips a goal the account has no document for', async () => {
+      mockFirestoreService.getDocument.and.resolveTo(null);
+
+      await service.recomputeLinkedAmount('gone');
+
+      expect(mockFirestoreService.getCollection).not.toHaveBeenCalled();
+      expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
     });
   });
 

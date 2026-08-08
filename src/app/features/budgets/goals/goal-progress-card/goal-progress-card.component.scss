@@ -67,6 +67,13 @@
       }
     }
 
+    // Where the total comes from, shown only when transactions feed it.
+    .linked-breakdown {
+      margin: 0 0 6px;
+      font-size: 12px;
+      opacity: 0.7;
+    }
+
     .status {
       margin: 6px 0 0;
       font-size: 13px;

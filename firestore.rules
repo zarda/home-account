@@ -60,6 +60,11 @@ service cloud.firestore {
         && (!('receiptUrls' in d) || (d.receiptUrls is list && d.receiptUrls.size() <= 5))
         && (!('receiptCount' in d) || (d.receiptCount is int && d.receiptCount >= 0))
         && (!('recurringId' in d) || d.recurringId is string)
+        && (!('goalId' in d) || d.goalId is string)
+        // The converted-figure snapshot travels with its link: an orphan
+        // goalAmount has nothing to be backed out of, so it is unwritable.
+        && (!('goalAmount' in d)
+            || (d.goalAmount is number && d.goalAmount >= 0 && 'goalId' in d))
         // Same enum budgetCreateValid pins. Transactions were the one place it
         // was accepted unvalidated, because the field never reached a write.
         && (!('period' in d) || d.period in ['weekly', 'monthly', 'yearly'])
@@ -160,6 +165,8 @@ service cloud.firestore {
       // and size of the list, since per-element map validation is not
       // generically expressible here.
       return (!('items' in d) || (d.items is list && d.items.size() <= 50))
+        && (!('linkedAmount' in d)
+            || (d.linkedAmount is number && d.linkedAmount >= 0))
         && (!('targetDate' in d) || d.targetDate is timestamp)
         && (!('note' in d) || d.note is string)
         && (!('createdAt' in d) || d.createdAt is timestamp)

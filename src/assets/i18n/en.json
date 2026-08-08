@@ -138,6 +138,9 @@
     "dateRequired": "Date is required",
     "budgetPeriod": "Budget Period (Optional)",
     "none": "None",
+    "goal": "Goal (Optional)",
+    "goalHint": "The amount counts toward the goal's progress",
+    "goalLinkInvalid": "That goal is no longer available — pick another or clear it",
     "weekly": "Weekly",
     "monthly": "Monthly",
     "yearly": "Yearly",
@@ -252,7 +255,8 @@
     "deleteTitle": "Delete Goal",
     "deleteMessage": "Delete \"{{name}}\"? Its contribution history goes with it.",
     "contributionRecorded": "Contribution recorded",
-    "contributionFailed": "Could not record the contribution"
+    "contributionFailed": "Could not record the contribution",
+    "linkedBreakdown": "{{manual}} manual · {{linked}} from transactions"
   },
   "reports": {
     "title": "Reports",

@@ -138,6 +138,9 @@
     "dateRequired": "請選擇日期",
     "budgetPeriod": "預算週期（選填）",
     "none": "無",
+    "goal": "目標（選填）",
+    "goalHint": "金額將計入目標進度",
+    "goalLinkInvalid": "此目標已無法使用，請改選其他目標或取消連結",
     "weekly": "每週",
     "monthly": "每月",
     "yearly": "每年",
@@ -252,7 +255,8 @@
     "deleteTitle": "刪除目標",
     "deleteMessage": "要刪除「{{name}}」嗎？存入紀錄將一併刪除。",
     "contributionRecorded": "已記錄存入",
-    "contributionFailed": "無法記錄存入"
+    "contributionFailed": "無法記錄存入",
+    "linkedBreakdown": "手動 {{manual}} · 來自交易 {{linked}}"
   },
   "reports": {
     "title": "報表",

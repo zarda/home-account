@@ -23,7 +23,8 @@ export interface GoalItem {
  * mechanics: a *saving* goal accumulates toward an amount (emergency fund),
  * a *project* is a planned spend (a trip, a purchase list) that may carry an
  * itemized checklist. Either way `targetAmount` is authoritative and
- * progress is `contributedAmount / targetAmount` — `items` is a checklist
+ * progress is `(contributedAmount + linkedAmount) / targetAmount` —
+ * `items` is a checklist
  * whose sum the form can copy into the target on demand, never a second
  * source of truth.
  */
@@ -33,8 +34,17 @@ export interface Goal {
   kind: GoalKind;
   name: string;
   targetAmount: number;
-  /** Manual contributions to date; transactions are never a source. */
+  /** Manual contributions to date, via the Contribute dialog only. */
   contributedAmount: number;
+  /**
+   * Sum of linked transactions' `goalAmount`s (each already converted into
+   * this goal's currency at link time). Kept in step by the same Firestore
+   * transaction that writes or clears a link, and recomputed from the
+   * ledger on backup restore. Absent on documents written before links
+   * existed; read it as 0. Progress is the two counters added together —
+   * see goalProgressAmount().
+   */
+  linkedAmount?: number;
   currency: string;
   targetDate?: Timestamp;
   items?: GoalItem[];

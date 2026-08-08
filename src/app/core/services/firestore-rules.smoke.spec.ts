@@ -252,6 +252,56 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a goal link: the id with its converted-figure snapshot', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')),
+          validTransaction({ goalId: 'g1', goalAmount: 12.5 })),
+        'linked create'
+      );
+    });
+
+    it('rejects a goalId that is not a string', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')),
+          validTransaction({ goalId: 7, goalAmount: 12.5 })),
+        'numeric goalId'
+      );
+    });
+
+    it('rejects a goalAmount without its goalId', async () => {
+      // An orphan figure has nothing to be backed out of.
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({ goalAmount: 12.5 })),
+        'orphan goalAmount'
+      );
+    });
+
+    it('rejects a negative or non-numeric goalAmount', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')),
+          validTransaction({ goalId: 'g1', goalAmount: -1 })),
+        'negative goalAmount'
+      );
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')),
+          validTransaction({ goalId: 'g1', goalAmount: '12.5' })),
+        'string goalAmount'
+      );
+    });
+
+    it('accepts clearing a stored link, which is how unlinking commits', async () => {
+      const p = path('transactions');
+      await setDoc(doc(firestore, p), validTransaction({ goalId: 'g1', goalAmount: 12.5 }));
+      await expectAllowed(
+        updateDoc(doc(firestore, p), {
+          goalId: deleteField(),
+          goalAmount: deleteField(),
+          updatedAt: Timestamp.now()
+        }),
+        'link clearing'
+      );
+    });
+
     it('rejects a budget period outside that enum', async () => {
       // The field reached no write until now, so the rule accepted anything a
       // client cared to put there while budgets pinned the same enum.
@@ -601,6 +651,29 @@ describe('firestore.rules (emulator smoke test)', () => {
       await expectDenied(
         setDoc(doc(firestore, path('goals')), validGoal({ contributedAmount: -5 })),
         'negative contributions'
+      );
+    });
+
+    it('accepts a linked-transactions counter and the update that moves it', async () => {
+      const p = path('goals');
+      await expectAllowed(
+        setDoc(doc(firestore, p), validGoal({ linkedAmount: 0 })),
+        'create with linkedAmount'
+      );
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { linkedAmount: 92, updatedAt: Timestamp.now() }),
+        'counter update'
+      );
+    });
+
+    it('rejects a negative or non-numeric linkedAmount', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ linkedAmount: -5 })),
+        'negative linkedAmount'
+      );
+      await expectDenied(
+        setDoc(doc(firestore, path('goals')), validGoal({ linkedAmount: '92' })),
+        'string linkedAmount'
       );
     });
 

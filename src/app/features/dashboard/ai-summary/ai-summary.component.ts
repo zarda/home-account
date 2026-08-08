@@ -9,6 +9,7 @@ import {
   isRateLimitMessage,
 } from '../../../core/services/llm-provider.interface';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
+import { goalProgressAmount } from '../../../core/utils/goal-progress.utils';
 import { stripAdviceArtifacts } from '../../../core/utils/llm-text.utils';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -87,10 +88,11 @@ export class AiSummaryComponent {
     const locale = this.translationService.currentLocale();
     const grounding = this.ragLevel();
     const provider = this.authService.currentUser()?.preferences?.llmProviderPreferences?.insights ?? 'gemini';
-    // Goals feed the prompt, so a contribution or target change must
-    // invalidate the cached summary rather than surviving inside it.
+    // Goals feed the prompt, so a contribution, a linked transaction or a
+    // target change must invalidate the cached summary rather than
+    // surviving inside it.
     const goalsFingerprint = this.goals()
-      .map(g => `${g.id}:${g.contributedAmount}/${g.targetAmount}`)
+      .map(g => `${g.id}:${goalProgressAmount(g)}/${g.targetAmount}`)
       .sort()
       .join(',');
     return `ai-summary-${this.period()}-${locale}-${grounding}-${provider}-${goalsFingerprint}-${txIds.slice(0, 100)}`;
