@@ -359,8 +359,6 @@
     "categoriesDescription": "管理您的收入和支出類別",
     "recurring": "定期交易",
     "recurringDescription": "管理排程交易",
-    "dataManagement": "資料管理",
-    "dataManagementDescription": "匯出、匯入和備份您的資料",
     "language": "語言",
     "currency": "貨幣",
     "displayName": "顯示名稱",
@@ -550,6 +548,10 @@
     "platformIos": "iPhone 或 iPad",
     "platformAndroid": "Android",
     "platformUnknown": "未知裝置"
+  },
+  "data": {
+    "title": "您的資料",
+    "subtitle": "應用程式為您儲存的所有資料，以及管理位置"
   },
   "days": {
     "sunday": "週日",

@@ -359,8 +359,6 @@
     "categoriesDescription": "Manage your income and expense categories",
     "recurring": "Recurring Transactions",
     "recurringDescription": "Manage scheduled transactions",
-    "dataManagement": "Data Management",
-    "dataManagementDescription": "Export, import, and backup your data",
     "language": "Language",
     "currency": "Currency",
     "displayName": "Display Name",
@@ -550,6 +548,10 @@
     "platformIos": "iPhone or iPad",
     "platformAndroid": "Android",
     "platformUnknown": "Unknown device"
+  },
+  "data": {
+    "title": "Your Data",
+    "subtitle": "Everything the app has stored for you, and where to manage it"
   },
   "days": {
     "sunday": "Sunday",

@@ -359,8 +359,6 @@
     "categoriesDescription": "収入と支出のカテゴリを管理",
     "recurring": "定期取引",
     "recurringDescription": "スケジュールされた取引を管理",
-    "dataManagement": "データ管理",
-    "dataManagementDescription": "データのエクスポート、インポート、バックアップ",
     "language": "言語",
     "currency": "通貨",
     "displayName": "表示名",
@@ -550,6 +548,10 @@
     "platformIos": "iPhone / iPad",
     "platformAndroid": "Android",
     "platformUnknown": "不明なデバイス"
+  },
+  "data": {
+    "title": "データ",
+    "subtitle": "アプリが保存しているすべてのデータと、その管理場所"
   },
   "days": {
     "sunday": "日曜日",

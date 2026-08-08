@@ -14,7 +14,6 @@ import { PageHeaderComponent } from '../../shared/components/page-header/page-he
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ProfileSettingsComponent } from './profile-settings/profile-settings.component';
 import { CategoryManagerComponent } from './category-manager/category-manager.component';
-import { DataManagementComponent } from './data-management/data-management.component';
 
 @Component({
   selector: 'app-settings',
@@ -28,7 +27,6 @@ import { DataManagementComponent } from './data-management/data-management.compo
     MatExpansionModule,
     ProfileSettingsComponent,
     CategoryManagerComponent,
-    DataManagementComponent,
     TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
