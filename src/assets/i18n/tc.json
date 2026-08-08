@@ -561,7 +561,7 @@
       },
       "categories": {
         "label": "分類",
-        "description": "收入與支出分類，包含內建與自訂"
+        "description": "您新增或修改過的分類 — 內建分類存在於應用程式中，不在您的資料裡"
       },
       "budgets": {
         "label": "預算",

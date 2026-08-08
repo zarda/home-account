@@ -561,7 +561,7 @@
       },
       "categories": {
         "label": "Categories",
-        "description": "Your income and expense categories, built-in and custom"
+        "description": "Categories you added or changed — the built-in ones live in the app, not in your data"
       },
       "budgets": {
         "label": "Budgets",
