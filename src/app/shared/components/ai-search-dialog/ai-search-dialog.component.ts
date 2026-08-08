@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Subscription } from 'rxjs';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
@@ -61,6 +62,7 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private dialogRef = inject(MatDialogRef<AiSearchDialogComponent>);
   private matDialog = inject(MatDialog);
+  private analytics = inject(AnalyticsService);
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
@@ -133,11 +135,13 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
   openRecord(record: SearchRecord): void {
     void this.answerHistory.touch(record.id);
     if (!isAnswerRecord(record)) {
+      this.analytics.trackSearchHistoryUsed({ action: 'apply' });
       this.applyFilters(recordToFilters(record));
       return;
     }
     this.result.set(null);
     this.openedRecordId.set(record.id);
+    this.analytics.trackSearchHistoryUsed({ action: 'reopen' });
   }
 
   isAnswer(record: SearchRecord): boolean {
@@ -158,6 +162,8 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
       const intent = recordToIntent(record);
       const fresh = await this.nlSearch.replayAggregate(intent.operation, intent.filters, intent.limit);
       await this.answerHistory.refreshAnswer(record.id, fresh);
+      // Past the recomputation, so the event counts what happened.
+      this.analytics.trackSearchHistoryUsed({ action: 'refresh' });
     } finally {
       this.isRefreshing.set(false);
     }

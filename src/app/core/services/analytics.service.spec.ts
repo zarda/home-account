@@ -221,6 +221,40 @@ describe('AnalyticsService', () => {
     }));
   });
 
+  describe('search_history_used', () => {
+    it('sends each action through the typed wrapper', fakeAsync(() => {
+      currentUser.set(premiumUser(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+
+      service.trackSearchHistoryUsed({ action: 'reopen' });
+      service.trackSearchHistoryUsed({ action: 'refresh' });
+      service.trackSearchHistoryUsed({ action: 'apply' });
+      tick();
+
+      expect(transport.events).toEqual([
+        { name: 'search_history_used', params: { action: 'reopen' } },
+        { name: 'search_history_used', params: { action: 'refresh' } },
+        { name: 'search_history_used', params: { action: 'apply' } },
+      ]);
+    }));
+
+    // The whole reason the event exists: it measures replays, which
+    // ai_assist_used deliberately does not fire for because they cost nothing.
+    it('carries no trace of the question itself', fakeAsync(() => {
+      currentUser.set(premiumUser(true));
+      const service = build();
+      TestBed.tick();
+      tick();
+
+      service.trackSearchHistoryUsed({ action: 'reopen' });
+      tick();
+
+      expect(Object.keys(transport.events[0].params ?? {})).toEqual(['action']);
+    }));
+  });
+
   describe('event dispatch', () => {
     it('should drop events while consent is off', fakeAsync(() => {
       const service = build();

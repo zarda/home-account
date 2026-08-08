@@ -4,6 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { Subscription } from 'rxjs';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
@@ -52,6 +53,7 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
   private pendingFilters = inject(PendingFiltersService);
   private router = inject(Router);
   private matDialog = inject(MatDialog);
+  private analytics = inject(AnalyticsService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private dateFormatService = inject(DateFormatService);
@@ -87,15 +89,18 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
   toggle(record: SearchRecord): void {
     if (!isAnswerRecord(record)) {
       void this.history.touch(record.id);
+      this.analytics.trackSearchHistoryUsed({ action: 'apply' });
       this.viewTransactions(recordToFilters(record));
       return;
     }
+    // Collapsing is not a use of the record, so it reports nothing.
     if (this.expandedId() === record.id) {
       this.expandedId.set(null);
       return;
     }
     this.expandedId.set(record.id);
     void this.history.touch(record.id);
+    this.analytics.trackSearchHistoryUsed({ action: 'reopen' });
   }
 
   isExpanded(record: SearchRecord): boolean {
@@ -118,6 +123,8 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
       const intent = recordToIntent(record);
       const fresh = await this.nlSearch.replayAggregate(intent.operation, intent.filters, intent.limit);
       await this.history.refreshAnswer(record.id, fresh);
+      // Past the recomputation, so the event counts what happened.
+      this.analytics.trackSearchHistoryUsed({ action: 'refresh' });
     } finally {
       this.isRefreshing.set(false);
     }
