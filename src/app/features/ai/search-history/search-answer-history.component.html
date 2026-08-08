@@ -15,8 +15,24 @@
             <button type="button" class="history-open" (click)="toggle(record)">
               <span class="history-query">{{ record.query }}</span>
               <span class="history-meta">
-                {{ recordValueLabel(record) }} · {{ recordDateLabel(record) }}
+                @if (isAnswer(record)) {
+                  {{ recordValueLabel(record) }} · {{ recordDateLabel(record) }}
+                } @else {
+                  {{ 'aiSearch.historyFilterRecord' | translate }} · {{ recordDateLabel(record) }}
+                }
               </span>
+            </button>
+            <button
+              mat-icon-button
+              class="history-pin"
+              [class.is-pinned]="!!record.pinned"
+              [attr.aria-pressed]="!!record.pinned"
+              [attr.aria-label]="
+                (record.pinned ? 'aiSearch.historyUnpin' : 'aiSearch.historyPin') | translate
+              "
+              (click)="togglePin(record)"
+            >
+              <mat-icon>push_pin</mat-icon>
             </button>
             <button
               mat-icon-button

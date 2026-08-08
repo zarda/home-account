@@ -33,6 +33,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0026](0026-every-period-window-comes-from-one-helper.md) | Every period window comes from one helper | Accepted | 2026-08-08 |
 | [0027](0027-a-linked-transaction-carries-its-converted-amount.md) | A linked transaction carries its converted amount, and the goal keeps the sum | Accepted | 2026-08-08 |
 | [0028](0028-a-search-scope-only-names-what-a-transaction-carries.md) | A search scope only names what a transaction carries | Accepted | 2026-08-08 |
+| [0029](0029-every-stored-kind-has-one-door.md) | Every stored kind has one door, checked against the deletion cascade | Accepted | 2026-08-08 |
+| [0030](0030-a-stored-search-holds-either-figures-or-a-scope.md) | A stored search holds either figures or a scope; a pinned one does not expire | Accepted; amends 0016 | 2026-08-08 |
 
 ## What belongs here
 

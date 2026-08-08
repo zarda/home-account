@@ -1,11 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA, WritableSignal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 
-import { ReportsComponent } from './reports.component';
+import { REPORT_TABS, ReportsComponent } from './reports.component';
 import { TransactionService } from '../../core/services/transaction.service';
 import { CategoryService } from '../../core/services/category.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -51,7 +51,17 @@ describe('ReportsComponent', () => {
   let mockPendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let mockRouter: jasmine.SpyObj<Router>;
 
+  // Read lazily, so a test can set the params after TestBed is configured but
+  // before the component reads them at construction.
+  let queryParams: Record<string, string> = {};
+  const activatedRouteStub = {
+    get snapshot() {
+      return { queryParamMap: convertToParamMap(queryParams) };
+    }
+  };
+
   beforeEach(async () => {
+    queryParams = {};
     mockTransactionService = jasmine.createSpyObj(
       'TransactionService',
       ['getByDateRange', 'getTransactionsInRange'],
@@ -88,7 +98,8 @@ describe('ReportsComponent', () => {
         { provide: AuthService, useValue: mockAuthService },
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: PendingFiltersService, useValue: mockPendingFilters },
-        { provide: Router, useValue: mockRouter }
+        { provide: Router, useValue: mockRouter },
+        { provide: ActivatedRoute, useValue: activatedRouteStub }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -334,6 +345,28 @@ describe('ReportsComponent', () => {
 
     it('should compute balance as 0 with no transactions', () => {
       expect(component.balance()).toBe(0);
+    });
+  });
+
+  describe('?tab=', () => {
+    it('opens the analysis tab by default', () => {
+      expect(component.selectedTabIndex).toBe(0);
+    });
+
+    it('opens the tab the data hub links at', () => {
+      queryParams = { tab: 'insights' };
+
+      const fresh = TestBed.createComponent(ReportsComponent);
+
+      expect(fresh.componentInstance.selectedTabIndex).toBe(REPORT_TABS.indexOf('insights'));
+    });
+
+    it('opens the first tab for a name it does not have', () => {
+      queryParams = { tab: 'nonsense' };
+
+      const fresh = TestBed.createComponent(ReportsComponent);
+
+      expect(fresh.componentInstance.selectedTabIndex).toBe(0);
     });
   });
 

@@ -1,8 +1,9 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of, throwError } from 'rxjs';
-import { BudgetsComponent } from './budgets.component';
+import { BUDGET_TABS, BudgetsComponent } from './budgets.component';
 import { BudgetService } from '../../core/services/budget.service';
 import { CategoryService } from '../../core/services/category.service';
 import { TranslationService } from '../../core/services/translation.service';
@@ -23,11 +24,21 @@ describe('BudgetsComponent', () => {
   };
   let dialog: jasmine.SpyObj<MatDialog>;
 
+  // Read lazily, so a test can set the params after TestBed is configured but
+  // before the component reads them at construction.
+  let queryParams: Record<string, string>;
+  const activatedRouteStub = {
+    get snapshot() {
+      return { queryParamMap: convertToParamMap(queryParams) };
+    }
+  };
+
   function build() {
     return TestBed.createComponent(BudgetsComponent);
   }
 
   beforeEach(async () => {
+    queryParams = {};
     budgetService = {
       budgets: signal<Budget[]>([createBudget()]),
       getBudgets: jasmine.createSpy('getBudgets').and.returnValue(of([])),
@@ -45,6 +56,7 @@ describe('BudgetsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [BudgetsComponent],
       providers: [
+        { provide: ActivatedRoute, useValue: activatedRouteStub },
         { provide: BudgetService, useValue: budgetService },
         { provide: CategoryService, useValue: categoryService },
         { provide: TranslationService, useValue: translation },
@@ -137,5 +149,27 @@ describe('BudgetsComponent', () => {
     const fixture = build();
     fixture.detectChanges();
     expect(() => fixture.destroy()).not.toThrow();
+  });
+
+  describe('?tab=', () => {
+    it('opens the budgets tab by default', () => {
+      expect(build().componentInstance.selectedTabIndex).toBe(0);
+    });
+
+    it('opens the tab the data hub links at', () => {
+      queryParams = { tab: 'recurring' };
+
+      expect(build().componentInstance.selectedTabIndex).toBe(BUDGET_TABS.indexOf('recurring'));
+    });
+
+    it('opens the first tab for a name it does not have', () => {
+      queryParams = { tab: 'nonsense' };
+
+      expect(build().componentInstance.selectedTabIndex).toBe(0);
+    });
+
+    // That BUDGET_TABS still describes the strip it names is asserted in
+    // app.smoke.spec.ts, which is the only place the real template renders —
+    // this spec stubs it out.
   });
 });

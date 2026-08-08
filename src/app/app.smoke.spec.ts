@@ -46,6 +46,8 @@ import { currentScreenView } from './core/services/analytics-screen-view';
 import { AuthService } from './core/services/auth.service';
 import { CurrencyService } from './core/services/currency.service';
 import { MockAuthService, createMockUser } from './core/services/testing';
+import { BUDGET_TABS } from './features/budgets/budgets.component';
+import { REPORT_TABS } from './features/reports/reports.component';
 
 // Declaration order matters here: the final spec shuts the shared Firebase
 // app down, so no spec may run after it. Random ordering would break that.
@@ -285,11 +287,25 @@ describe('App routes (emulator smoke test)', () => {
       );
       await expectPage('/transactions', 'transactions.title', 'Blue Bottle Coffee');
       await expectPage('/budgets', 'budget.title', 'Groceries Budget');
+      // BUDGET_TABS and REPORT_TABS are what the data hub's ?tab= links are
+      // checked against, and this is the only place the real strips render.
+      // A tab added to a template without a name added to the list would
+      // otherwise leave the hub silently linking at the wrong section.
+      expect(
+        harness.routeNativeElement?.ownerDocument.querySelectorAll('.mdc-tab').length
+      ).withContext('budget tabs').toBe(BUDGET_TABS.length);
+
       await expectPage('/reports', 'reports.title');
       await waitForDom(
         'reports chart canvas',
         () => !!harness.routeNativeElement?.ownerDocument.querySelector('canvas')
       );
+      // After the canvas, not before: the reports tab strip sits behind the
+      // page's loading gate, so it does not exist at the moment the landmark
+      // resolves.
+      expect(
+        harness.routeNativeElement?.ownerDocument.querySelectorAll('.mdc-tab').length
+      ).withContext('report tabs').toBe(REPORT_TABS.length);
 
       // Drive the lazily created Forecast tab: its recurring listener only
       // opens on selection, and with no seeded rules it must land on the
@@ -302,6 +318,19 @@ describe('App routes (emulator smoke test)', () => {
         () => pageText().includes('reports.forecastNoRulesTitle')
       );
       await expectPage('/settings', 'settings.title', 'Test User');
+      // The hub counts each stored kind through a server-side aggregate. The
+      // seeded categories prove the counts land as numbers rather than as the
+      // dash a failed aggregate would leave behind.
+      await expectPage('/data', 'data.title', undefined, 'app-data-hub');
+      await waitForDom(
+        'a stored-kind count',
+        () =>
+          Array.from(
+            harness.routeNativeElement?.ownerDocument.querySelectorAll<HTMLElement>(
+              '.kind-count'
+            ) ?? []
+          ).some(cell => /^\d+$/.test(cell.textContent?.trim() ?? ''))
+      );
       // The sixth child route. It has no seeded data of its own, so the
       // landmark is the whole assertion: what it proves is that the route
       // resolves its component at all, which is the part that changed when

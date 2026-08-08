@@ -843,9 +843,23 @@ describe('firestore.rules (emulator smoke test)', () => {
   });
 
   describe('searchAnswers', () => {
+    // A filter record: the question and its scope, and none of the figures.
+    const validFilter = (overrides: Record<string, unknown> = {}) => ({
+      userId: uid,
+      schemaVersion: 2,
+      kind: 'filter',
+      query: 'coffee last month',
+      scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+      pinned: false,
+      computedAt: Timestamp.now(),
+      lastUsedAt: Timestamp.now(),
+      ...overrides,
+    });
+
     const validAnswer = (overrides: Record<string, unknown> = {}) => ({
       userId: uid,
       schemaVersion: 1,
+      kind: 'aggregate',
       query: 'how much on food in august',
       operation: 'sum',
       limit: 3,
@@ -966,6 +980,96 @@ describe('firestore.rules (emulator smoke test)', () => {
       await expectDenied(
         updateDoc(doc(firestore, p), { query: 'a different question' }),
         'query rewrite'
+      );
+    });
+
+    it('accepts a create carrying the pin', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({ pinned: false })),
+        'create with pinned'
+      );
+    });
+
+    it('rejects a pin that is not a boolean', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({ pinned: 'yes' })),
+        'non-boolean pinned'
+      );
+    });
+
+    // Pinning is a decision about the record, not part of the identity a
+    // refresh must not disturb, so unlike query/scope it stays writable.
+    it('accepts toggling the pin on an existing record', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validAnswer({ pinned: false }));
+      await expectAllowed(updateDoc(doc(firestore, p), { pinned: true }), 'pin toggle');
+    });
+
+    it('rejects toggling the pin to a non-boolean', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validAnswer({ pinned: false }));
+      await expectDenied(updateDoc(doc(firestore, p), { pinned: 1 }), 'non-boolean pin toggle');
+    });
+
+    // The required set is the kind's, which is the part only the emulator can
+    // check: a mistake here rejects every filter write silently in production.
+    it('accepts a filter record with no figures', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('searchAnswers')), validFilter()),
+        'filter create'
+      );
+    });
+
+    it('rejects a filter record carrying a value', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validFilter({ value: 42 })),
+        'filter with a figure'
+      );
+    });
+
+    it('rejects a filter record carrying an operation', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validFilter({ operation: 'sum', limit: 3 })),
+        'filter with an operation'
+      );
+    });
+
+    it('rejects an aggregate record missing its figures', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validFilter({ kind: 'aggregate' })),
+        'aggregate with no figures'
+      );
+    });
+
+    it('rejects a kind outside the two', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validFilter({ kind: 'something' })),
+        'unknown kind'
+      );
+    });
+
+    it('rejects a create with no kind at all', async () => {
+      const noKind: Record<string, unknown> = validFilter();
+      delete noKind['kind'];
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), noKind),
+        'missing kind'
+      );
+    });
+
+    it('rejects rewriting what kind of record it is', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validFilter());
+      await expectDenied(updateDoc(doc(firestore, p), { kind: 'aggregate' }), 'kind rewrite');
+    });
+
+    it('accepts pinning and touching a filter record', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validFilter());
+      await expectAllowed(updateDoc(doc(firestore, p), { pinned: true }), 'pin a filter');
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { lastUsedAt: Timestamp.now() }),
+        'touch a filter'
       );
     });
   });

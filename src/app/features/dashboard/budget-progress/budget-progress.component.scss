@@ -22,7 +22,13 @@
       @apply flex items-center gap-1.5 min-w-0 overflow-hidden;
 
       mat-icon {
-        @apply text-lg w-5 h-5 flex-shrink-0;
+        // Same reason as the budgets tab strip: a Tailwind text-* utility
+        // ships a line-height with its font-size, which leaves the glyph
+        // sitting low inside a box that does not match it.
+        @apply flex-shrink-0;
+        font-size: var(--text-xl);
+        width: 1em;
+        height: 1em;
       }
 
       .budget-name {

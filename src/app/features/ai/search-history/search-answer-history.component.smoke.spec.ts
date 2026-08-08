@@ -101,7 +101,8 @@ describe('SearchAnswerHistoryComponent (emulator smoke test)', () => {
       setDoc(doc(firestore, `users/${uid}/transactions/tx-2`), { ...txn('tx-2', 20), userId: uid }),
       setDoc(doc(firestore, `users/${uid}/searchAnswers/ans-1`), {
         userId: uid,
-        schemaVersion: 1,
+        schemaVersion: 2,
+        kind: 'aggregate',
         query: 'how much on food in august',
         operation: 'sum',
         limit: 3,
@@ -144,7 +145,13 @@ describe('SearchAnswerHistoryComponent (emulator smoke test)', () => {
         { provide: CloudLLMProviderService, useValue: {} },
         { provide: PwaService, useValue: { isOnline: () => true } },
         { provide: SearchHistoryService, useValue: { recordRecent: () => Promise.resolve() } },
-        { provide: AnalyticsService, useValue: { trackAiAssistUsed: () => undefined } },
+        {
+          provide: AnalyticsService,
+          useValue: {
+            trackAiAssistUsed: () => undefined,
+            trackSearchHistoryUsed: () => undefined,
+          },
+        },
         // TransactionService injects it for receipt files; the range fetch
         // the replay path uses never touches storage.
         { provide: StorageService, useValue: {} },

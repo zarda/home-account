@@ -61,6 +61,7 @@
     "budgets": "予算",
     "reports": "レポート",
     "ai": "AI",
+    "data": "データ",
     "settings": "設定",
     "about": "について",
     "add": "追加",
@@ -359,8 +360,6 @@
     "categoriesDescription": "収入と支出のカテゴリを管理",
     "recurring": "定期取引",
     "recurringDescription": "スケジュールされた取引を管理",
-    "dataManagement": "データ管理",
-    "dataManagementDescription": "データのエクスポート、インポート、バックアップ",
     "language": "言語",
     "currency": "通貨",
     "displayName": "表示名",
@@ -550,6 +549,61 @@
     "platformIos": "iPhone / iPad",
     "platformAndroid": "Android",
     "platformUnknown": "不明なデバイス"
+  },
+  "data": {
+    "title": "データ",
+    "subtitle": "アプリが保存しているすべてのデータと、その管理場所",
+    "countUnavailable": "件数を取得できません — 接続が必要です",
+    "kinds": {
+      "transactions": {
+        "label": "取引",
+        "description": "記録したすべての収入と支出"
+      },
+      "categories": {
+        "label": "カテゴリ",
+        "description": "追加または変更したカテゴリ。標準カテゴリはアプリ側にあり、保存データには含まれません"
+      },
+      "budgets": {
+        "label": "予算",
+        "description": "カテゴリごとの上限と、その対象期間"
+      },
+      "recurring": {
+        "label": "定期ルール",
+        "description": "取引を自動作成するスケジュール設定"
+      },
+      "goals": {
+        "label": "目標",
+        "description": "貯蓄目標とプロジェクト、およびその積立"
+      },
+      "savedSearches": {
+        "label": "保存した検索",
+        "description": "保存した絞り込み条件と、最近使った条件"
+      },
+      "searchAnswers": {
+        "label": "検索の回答",
+        "description": "過去の質問への回答。再表示にコストがかかりません"
+      },
+      "categoryMemory": {
+        "label": "カテゴリの記憶",
+        "description": "店舗ごとの修正内容。インポート時に再確認しません"
+      },
+      "imports": {
+        "label": "インポート履歴",
+        "description": "レシートと明細のインポート記録"
+      },
+      "insightSnapshots": {
+        "label": "月次スナップショット",
+        "description": "締めた月ごとに固定された集計"
+      },
+      "secrets": {
+        "label": "APIキー",
+        "description": "設定済みAIプロバイダーの暗号化された鍵"
+      },
+      "securityEvents": {
+        "label": "セキュリティ履歴",
+        "description": "サインインとアカウントのセキュリティ変更"
+      }
+    }
   },
   "days": {
     "sunday": "日曜日",
@@ -799,6 +853,9 @@
     "historyComputedAt": "{{date}} 時点の集計",
     "historyTitle": "過去の回答",
     "historySeeAll": "すべて表示",
+    "historyPin": "この回答をピン留め",
+    "historyUnpin": "ピン留めを解除",
+    "historyFilterRecord": "絞り込み",
     "historyDeleteTitle": "この回答を削除しますか？",
     "historyDeleteMessage": "保存された回答のみ削除されます。取引には影響しません。",
     "historyPageTitle": "スマート検索の履歴",

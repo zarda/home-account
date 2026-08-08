@@ -97,6 +97,7 @@ arrived in 1.18.95.
 | `report_view` | A report tab was shown, including the one the page opens on. | `report_type` | `src/app/features/reports/reports.component.ts` | 1.16.91 |
 | `ai_assist_used` | An AI feature issued a real provider request (cache hits and local fallbacks excluded). | `feature` | `src/app/core/services/ai-import.service.ts`, `src/app/core/services/nl-search.service.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/dashboard/ai-summary/ai-summary.component.ts`, `src/app/features/reports/insights/insight-narrative/insight-narrative.component.ts` | 1.16.91 |
 | `settings_change` | A tracked preference was saved from profile settings. | `setting` | `src/app/features/settings/profile-settings/profile-settings.component.ts` | 1.16.91 |
+| `search_history_used` | A stored search record was reopened, refreshed or applied. Never fires for collapsing one. | `action` | `src/app/features/ai/search-history/search-answer-history.component.ts`, `src/app/shared/components/ai-search-dialog/ai-search-dialog.component.ts` | 1.23.116 |
 <!-- analytics-registry:end -->
 
 ### Parameter values
@@ -114,6 +115,7 @@ arrived in 1.18.95.
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative` |
 | `setting` | `theme`, `language`, `currency` |
+| `action` | `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent |
 
 ### What is deliberately not tagged
 
@@ -151,6 +153,7 @@ table can enumerate.
 | `reports` | `reports` | nav |
 | `settings` | `settings` | nav |
 | `ai` | `ai` | settings |
+| `data` | `data` | sidebar |
 | `about` | `about` | sidebar |
 | `search-history` | `search-history` | smart-search dialog |
 | `import/file` | `import/file` | import wizard |

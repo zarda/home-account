@@ -68,6 +68,10 @@ export class NlSearchService {
         await this.buildContext()
       );
       if (intent.kind === 'filter') {
+        // Recorded for the same reason an aggregate is: the model call has
+        // already been paid for, and reopening the record replays the scope
+        // without paying it again. Fire-and-forget, as below.
+        void this.answerHistory.recordFilter(trimmed, intent.filters);
         return { kind: 'filter', filters: intent.filters };
       }
       const answer = await this.computeAggregate(intent);

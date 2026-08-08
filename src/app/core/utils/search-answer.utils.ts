@@ -3,6 +3,8 @@ import {
   AggregateOperation,
   SEARCH_ANSWER_SCHEMA_VERSION,
   SearchAnswerRecord,
+  SearchFilterRecord,
+  SearchRecord,
   SerializableSearchScope,
   TransactionFilters,
 } from '../../models';
@@ -11,6 +13,12 @@ import { dayKey, parseDayKey } from './transaction-date.utils';
 /** The stored snapshot fields a create writes; identity and stamps land elsewhere. */
 export type SearchAnswerSnapshot = Omit<
   SearchAnswerRecord,
+  'id' | 'userId' | 'computedAt' | 'lastUsedAt' | 'createdAt' | 'updatedAt'
+>;
+
+/** The same, for a filter-shaped interpretation: a query and its scope. */
+export type SearchFilterSnapshot = Omit<
+  SearchFilterRecord,
   'id' | 'userId' | 'computedAt' | 'lastUsedAt' | 'createdAt' | 'updatedAt'
 >;
 
@@ -66,6 +74,7 @@ export function buildAnswerFields(
 ): SearchAnswerSnapshot {
   const fields: SearchAnswerSnapshot = {
     schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+    kind: 'aggregate',
     query,
     operation: intent.operation,
     limit: intent.limit,
@@ -73,6 +82,7 @@ export function buildAnswerFields(
     baseCurrency,
     value: answer.value,
     transactionCount: answer.transactionCount,
+    pinned: false,
   };
   if (answer.currency !== undefined) fields.currency = answer.currency;
   if (answer.extremeTransaction) fields.extremeTransactionId = answer.extremeTransaction.id;
@@ -108,19 +118,47 @@ export function recordToIntent(
   };
 }
 
+/** A filter-shaped interpretation's stored fields: the question and its scope. */
+export function buildFilterFields(
+  query: string,
+  filters: TransactionFilters,
+): SearchFilterSnapshot {
+  return {
+    schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+    kind: 'filter',
+    query,
+    scope: serializeScope(filters),
+    pinned: false,
+  };
+}
+
+/** The scope a stored filter record re-applies when it is reopened. */
+export function recordToFilters(record: SearchRecord): TransactionFilters {
+  return deserializeScope(record.scope);
+}
+
 /**
- * Identity of a stored answer: the normalized question plus what was computed
+ * Identity of a stored record: the normalized question plus what was computed
  * and over what. Scope keys are sorted so two writes of the same scope agree
  * regardless of construction order.
+ *
+ * The kind participates because the same sentence can legitimately produce
+ * both shapes across builds or prompt revisions, and an aggregate answer must
+ * never be overwritten by a filter interpretation of the same words. Operation
+ * and limit are the aggregate's alone — a filter record has neither, and
+ * folding in `undefined` would make its key depend on a field it never has.
  */
-export function answerDedupeKey(
-  query: string,
-  operation: AggregateOperation,
-  limit: number,
-  scope: SerializableSearchScope,
-): string {
-  const entries = Object.entries(scope)
+export function searchRecordDedupeKey(record: {
+  kind: SearchRecord['kind'];
+  query: string;
+  operation?: AggregateOperation;
+  limit?: number;
+  scope: SerializableSearchScope;
+}): string {
+  const entries = Object.entries(record.scope)
     .filter(([, value]) => value !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : 1));
-  return `${query.trim().toLowerCase()}|${operation}|${limit}|${JSON.stringify(Object.fromEntries(entries))}`;
+  const identity =
+    record.kind === 'aggregate' ? `${record.operation}|${record.limit}` : 'filter';
+  return `${record.query.trim().toLowerCase()}|${identity}|${JSON.stringify(Object.fromEntries(entries))}`;
 }

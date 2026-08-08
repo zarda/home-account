@@ -164,6 +164,17 @@ export class AnalyticsService {
   }
 
   /**
+   * A stored search record was put back to work.
+   *
+   * Separate from ai_assist_used, which deliberately does not fire on a
+   * replay: that event exists to weigh cloud cost and a replay has none.
+   * Without this one the tokens the history saves are invisible in GA4.
+   */
+  trackSearchHistoryUsed(params: AnalyticsEventParams<'search_history_used'>): void {
+    this.send('search_history_used', params);
+  }
+
+  /**
    * The one path to the transport.
    *
    * Typed wrappers rather than a public generic log() so the compiler rejects

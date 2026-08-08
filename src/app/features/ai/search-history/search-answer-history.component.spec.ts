@@ -8,6 +8,7 @@ import { SearchAnswerHistoryComponent } from './search-answer-history.component'
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
@@ -26,6 +27,7 @@ describe('SearchAnswerHistoryComponent', () => {
     refreshAnswer: jasmine.Spy;
     deleteAnswer: jasmine.Spy;
   };
+  let analytics: jasmine.SpyObj<AnalyticsService>;
   let nlSearch: jasmine.SpyObj<NlSearchService>;
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
@@ -34,11 +36,12 @@ describe('SearchAnswerHistoryComponent', () => {
   const rec = (
     id: string,
     millis: number,
-    overrides: Partial<SearchAnswerRecord> = {},
+    overrides: Partial<Omit<SearchAnswerRecord, 'kind'>> = {},
   ): SearchAnswerRecord => ({
     id,
     userId: 'user123',
     schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+    kind: 'aggregate',
     query: `question ${id}`,
     operation: 'sum',
     limit: 3,
@@ -61,6 +64,7 @@ describe('SearchAnswerHistoryComponent', () => {
       refreshAnswer: jasmine.createSpy('refreshAnswer').and.resolveTo(),
       deleteAnswer: jasmine.createSpy('deleteAnswer').and.resolveTo(),
     };
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackSearchHistoryUsed']);
     nlSearch = jasmine.createSpyObj('NlSearchService', ['replayAggregate']);
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
     router = jasmine.createSpyObj('Router', ['navigate']);
@@ -85,6 +89,7 @@ describe('SearchAnswerHistoryComponent', () => {
     await TestBed.configureTestingModule({
       imports: [SearchAnswerHistoryComponent],
       providers: [
+        { provide: AnalyticsService, useValue: analytics },
         { provide: SearchAnswerHistoryService, useValue: answerHistory },
         { provide: NlSearchService, useValue: nlSearch },
         { provide: PendingFiltersService, useValue: pendingFilters },
@@ -184,5 +189,88 @@ describe('SearchAnswerHistoryComponent', () => {
       endDate: jasmine.any(Date),
     }));
     expect(router.navigate).toHaveBeenCalledWith(['/transactions']);
+  });
+
+  describe('filter records', () => {
+    const filterRec = (id: string, millis: number) =>
+      ({ ...rec(id, millis), kind: 'filter', query: 'coffee last month' }) as never;
+
+    // No figures were stored, so there is nothing to expand into: applying the
+    // scope is what the interpretation meant in the first place.
+    it('opening one applies its scope and leaves for the transactions list', () => {
+      storedAnswers.set([filterRec('f-1', 1_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+
+      expect(pendingFilters.apply).toHaveBeenCalled();
+      expect(router.navigate).toHaveBeenCalledWith(['/transactions']);
+    });
+
+    it('reports the replay so the tokens it saved are measurable', () => {
+      storedAnswers.set([filterRec('f-1', 1_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+
+      expect(analytics.trackSearchHistoryUsed).toHaveBeenCalledWith({ action: 'apply' });
+    });
+
+    it('shows a filter label where an answer would show its figure', () => {
+      storedAnswers.set([filterRec('f-1', 1_000)]);
+      fixture.detectChanges();
+
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain('aiSearch.historyFilterRecord');
+      expect(text).not.toContain('USD 421.50');
+    });
+
+    it('offers no refresh, because nothing was snapshotted', () => {
+      storedAnswers.set([filterRec('f-1', 1_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.history-refresh')).toBeNull();
+    });
+  });
+
+  describe('search_history_used', () => {
+    it('reports a reopen when a stored answer is expanded', () => {
+      storedAnswers.set([rec('a-1', 2_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+
+      expect(analytics.trackSearchHistoryUsed).toHaveBeenCalledWith({ action: 'reopen' });
+    });
+
+    // Putting a record away is not a use of it.
+    it('reports nothing when the row is collapsed again', () => {
+      storedAnswers.set([rec('a-1', 2_000)]);
+      fixture.detectChanges();
+      const open = fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement;
+
+      open.click();
+      fixture.detectChanges();
+      analytics.trackSearchHistoryUsed.calls.reset();
+      open.click();
+
+      expect(analytics.trackSearchHistoryUsed).not.toHaveBeenCalled();
+    });
+
+    it('reports a refresh only once the figures have actually been rewritten', async () => {
+      storedAnswers.set([rec('a-1', 2_000)]);
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      analytics.trackSearchHistoryUsed.calls.reset();
+
+      await fixture.componentInstance.refreshExpanded();
+
+      expect(answerHistory.refreshAnswer).toHaveBeenCalled();
+      expect(analytics.trackSearchHistoryUsed).toHaveBeenCalledWith({ action: 'refresh' });
+    });
   });
 });

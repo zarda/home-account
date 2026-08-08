@@ -48,6 +48,16 @@
   }
 }
 
+// The icon is the same either way, so colour carries the state: this app
+// ships the filled Material Icons font, which has no outlined pin to switch to.
+.history-pin {
+  color: var(--text-secondary);
+
+  &.is-pinned {
+    color: var(--color-primary);
+  }
+}
+
 .history-query {
   font-size: var(--text-base);
   font-weight: 500;

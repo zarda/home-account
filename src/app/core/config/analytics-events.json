@@ -61,5 +61,11 @@
     "params": {
       "setting": ["theme", "language", "currency"]
     }
+  },
+  "search_history_used": {
+    "since": "1.23.116",
+    "params": {
+      "action": ["reopen", "refresh", "apply"]
+    }
   }
 }

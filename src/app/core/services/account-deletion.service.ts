@@ -16,25 +16,34 @@ import { ProviderKeyService } from './provider-key.service';
 import { SecurityLogService } from './security-log.service';
 import { FirestoreService } from './firestore.service';
 
-/** Every step the cascade can report a failure for, in execution order. */
-export type DeletionStep =
-  | 'reauth'
-  | 'appLock'
-  | 'offlineQueue'
-  | 'transactions'
-  | 'categories'
-  | 'budgets'
-  | 'recurring'
-  | 'goals'
-  | 'savedSearches'
-  | 'searchAnswers'
-  | 'categoryMemory'
-  | 'imports'
-  | 'insightSnapshots'
-  | 'secrets'
-  | 'securityEvents'
-  | 'userDoc'
-  | 'authUser';
+/**
+ * Every step the cascade can report a failure for, in execution order.
+ *
+ * A list rather than a bare union because the data hub's catalogue is checked
+ * against it: a new stored kind has to be given a door, or an explicit reason
+ * for not having one, and only a runtime list can enforce that.
+ */
+export const DELETION_STEPS = [
+  'reauth',
+  'appLock',
+  'offlineQueue',
+  'transactions',
+  'categories',
+  'budgets',
+  'recurring',
+  'goals',
+  'savedSearches',
+  'searchAnswers',
+  'categoryMemory',
+  'imports',
+  'insightSnapshots',
+  'secrets',
+  'securityEvents',
+  'userDoc',
+  'authUser'
+] as const;
+
+export type DeletionStep = (typeof DELETION_STEPS)[number];
 
 export interface DeletionReport {
   ok: boolean;

@@ -3,7 +3,12 @@
 
   <!-- Tabs: natural width, left-aligned (two tabs no longer stretch across
        the full page). -->
-  <mat-tab-group class="budget-tabs" [animationDuration]="tabAnimationDuration" [mat-stretch-tabs]="false">
+  <mat-tab-group
+    class="budget-tabs"
+    [animationDuration]="tabAnimationDuration"
+    [mat-stretch-tabs]="false"
+    [selectedIndex]="selectedTabIndex"
+  >
     <!-- Budgets Tab -->
     <mat-tab>
       <ng-template mat-tab-label>

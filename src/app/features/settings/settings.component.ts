@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,7 +14,6 @@ import { PageHeaderComponent } from '../../shared/components/page-header/page-he
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ProfileSettingsComponent } from './profile-settings/profile-settings.component';
 import { CategoryManagerComponent } from './category-manager/category-manager.component';
-import { DataManagementComponent } from './data-management/data-management.component';
 
 @Component({
   selector: 'app-settings',
@@ -28,7 +27,6 @@ import { DataManagementComponent } from './data-management/data-management.compo
     MatExpansionModule,
     ProfileSettingsComponent,
     CategoryManagerComponent,
-    DataManagementComponent,
     TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -43,6 +41,20 @@ export class SettingsComponent {
   userName = computed(() => this.authService.currentUser()?.displayName || 'User');
   userEmail = computed(() => this.authService.currentUser()?.email || '');
   userPhoto = computed(() => this.authService.currentUser()?.photoURL || '');
+
+  /**
+   * Which panel a ?panel= link opens on, read once at arrival. The accordion
+   * is `multi`, so this closes Preferences rather than opening both: the
+   * requested panel has to land near the top of the page to be the answer to
+   * the link, and Preferences is long enough to push it off screen.
+   *
+   * Any other value leaves the page in its default shape rather than opening
+   * nothing, so a stale link still shows something useful.
+   */
+  private panel = inject(ActivatedRoute).snapshot.queryParamMap.get('panel');
+
+  readonly categoriesExpanded = this.panel === 'categories';
+  readonly preferencesExpanded = !this.categoriesExpanded;
 
   // Sign Out lives on the profile card (and the header user menu), no longer
   // buried in the destructive Danger Zone alongside delete-all-data.

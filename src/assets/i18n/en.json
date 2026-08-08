@@ -61,6 +61,7 @@
     "budgets": "Budgets",
     "reports": "Reports",
     "ai": "AI",
+    "data": "Your Data",
     "settings": "Settings",
     "about": "About",
     "add": "Add",
@@ -359,8 +360,6 @@
     "categoriesDescription": "Manage your income and expense categories",
     "recurring": "Recurring Transactions",
     "recurringDescription": "Manage scheduled transactions",
-    "dataManagement": "Data Management",
-    "dataManagementDescription": "Export, import, and backup your data",
     "language": "Language",
     "currency": "Currency",
     "displayName": "Display Name",
@@ -550,6 +549,61 @@
     "platformIos": "iPhone or iPad",
     "platformAndroid": "Android",
     "platformUnknown": "Unknown device"
+  },
+  "data": {
+    "title": "Your Data",
+    "subtitle": "Everything the app has stored for you, and where to manage it",
+    "countUnavailable": "Count unavailable — this needs a connection",
+    "kinds": {
+      "transactions": {
+        "label": "Transactions",
+        "description": "Every income and expense you have recorded"
+      },
+      "categories": {
+        "label": "Categories",
+        "description": "Categories you added or changed — the built-in ones live in the app, not in your data"
+      },
+      "budgets": {
+        "label": "Budgets",
+        "description": "Per-category spending limits and the periods they run over"
+      },
+      "recurring": {
+        "label": "Recurring rules",
+        "description": "Scheduled rules that create transactions for you"
+      },
+      "goals": {
+        "label": "Goals",
+        "description": "Savings goals and projects, with their contributions"
+      },
+      "savedSearches": {
+        "label": "Saved searches",
+        "description": "Filter sets you saved, and the ones you used recently"
+      },
+      "searchAnswers": {
+        "label": "Search answers",
+        "description": "Answers to past questions, kept so reopening one costs nothing"
+      },
+      "categoryMemory": {
+        "label": "Category memory",
+        "description": "What you corrected about a merchant, so imports stop re-asking"
+      },
+      "imports": {
+        "label": "Import history",
+        "description": "A record of each receipt and statement import"
+      },
+      "insightSnapshots": {
+        "label": "Monthly snapshots",
+        "description": "One frozen summary per closed month"
+      },
+      "secrets": {
+        "label": "API keys",
+        "description": "Encrypted keys for the AI providers you have configured"
+      },
+      "securityEvents": {
+        "label": "Security activity",
+        "description": "Sign-ins and security-relevant changes to your account"
+      }
+    }
   },
   "days": {
     "sunday": "Sunday",
@@ -799,6 +853,9 @@
     "historyComputedAt": "Computed {{date}}",
     "historyTitle": "Past answers",
     "historySeeAll": "See all",
+    "historyPin": "Pin this answer",
+    "historyUnpin": "Unpin this answer",
+    "historyFilterRecord": "Filters",
     "historyDeleteTitle": "Delete this answer?",
     "historyDeleteMessage": "This removes the stored answer only — no transactions are affected.",
     "historyPageTitle": "Smart Search history",

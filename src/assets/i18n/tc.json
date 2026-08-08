@@ -61,6 +61,7 @@
     "budgets": "預算",
     "reports": "報表",
     "ai": "AI",
+    "data": "您的資料",
     "settings": "設定",
     "about": "關於",
     "add": "新增",
@@ -359,8 +360,6 @@
     "categoriesDescription": "管理您的收入和支出類別",
     "recurring": "定期交易",
     "recurringDescription": "管理排程交易",
-    "dataManagement": "資料管理",
-    "dataManagementDescription": "匯出、匯入和備份您的資料",
     "language": "語言",
     "currency": "貨幣",
     "displayName": "顯示名稱",
@@ -550,6 +549,61 @@
     "platformIos": "iPhone 或 iPad",
     "platformAndroid": "Android",
     "platformUnknown": "未知裝置"
+  },
+  "data": {
+    "title": "您的資料",
+    "subtitle": "應用程式為您儲存的所有資料，以及管理位置",
+    "countUnavailable": "無法取得數量 — 需要連線",
+    "kinds": {
+      "transactions": {
+        "label": "交易",
+        "description": "您記錄的所有收入與支出"
+      },
+      "categories": {
+        "label": "分類",
+        "description": "您新增或修改過的分類 — 內建分類存在於應用程式中，不在您的資料裡"
+      },
+      "budgets": {
+        "label": "預算",
+        "description": "各分類的支出上限及其週期"
+      },
+      "recurring": {
+        "label": "定期規則",
+        "description": "自動建立交易的排程設定"
+      },
+      "goals": {
+        "label": "目標",
+        "description": "儲蓄目標與專案，以及其提撥紀錄"
+      },
+      "savedSearches": {
+        "label": "已儲存的搜尋",
+        "description": "您儲存的篩選條件，以及最近使用過的條件"
+      },
+      "searchAnswers": {
+        "label": "搜尋結果",
+        "description": "過往問題的答案，重新開啟不需再次計算"
+      },
+      "categoryMemory": {
+        "label": "分類記憶",
+        "description": "您對商家所做的更正，匯入時不再重複詢問"
+      },
+      "imports": {
+        "label": "匯入紀錄",
+        "description": "每次收據與對帳單匯入的紀錄"
+      },
+      "insightSnapshots": {
+        "label": "每月快照",
+        "description": "每個已結算月份的固定摘要"
+      },
+      "secrets": {
+        "label": "API 金鑰",
+        "description": "已設定 AI 服務供應商的加密金鑰"
+      },
+      "securityEvents": {
+        "label": "安全活動",
+        "description": "登入紀錄與帳戶安全相關變更"
+      }
+    }
   },
   "days": {
     "sunday": "週日",
@@ -799,6 +853,9 @@
     "historyComputedAt": "計算於 {{date}}",
     "historyTitle": "過往答案",
     "historySeeAll": "查看全部",
+    "historyPin": "釘選此結果",
+    "historyUnpin": "取消釘選",
+    "historyFilterRecord": "篩選條件",
     "historyDeleteTitle": "刪除此答案？",
     "historyDeleteMessage": "只會移除儲存的答案，不影響任何交易。",
     "historyPageTitle": "智慧搜尋紀錄",

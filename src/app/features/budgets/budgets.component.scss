@@ -21,9 +21,16 @@
   }
 
   .tab-icon {
-    @apply text-lg;
-    width: 20px;
-    height: 20px;
+    // Sized the way every other icon in the app is: the box tracks the glyph
+    // through 1em, and line-height is left at the Material default of 1 so
+    // all three agree. `@apply text-lg` set font-size to 18px *and*
+    // line-height to 28px — a Tailwind text-* utility always ships both — so
+    // an 18px glyph sat in a 28px line box inside a 20px element and rendered
+    // low against its label. The reports strip never had this because it sets
+    // font-size alone.
+    font-size: var(--text-xl);
+    width: 1em;
+    height: 1em;
   }
 
   .tab-badge {

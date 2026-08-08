@@ -1,0 +1,43 @@
+<div class="page-container">
+  <app-page-header titleKey="data.title" subtitleKey="data.subtitle" />
+
+  <ul class="kind-list">
+    @for (kind of kinds; track kind.id) {
+      <li class="kind-row">
+        <a
+          class="kind-link"
+          [routerLink]="kind.route"
+          [queryParams]="kind.queryParams ?? null"
+        >
+          <div class="kind-icon">
+            <mat-icon>{{ kind.icon }}</mat-icon>
+          </div>
+
+          <div class="kind-content">
+            <span class="kind-label">{{ kind.labelKey | translate }}</span>
+            <span class="kind-description">{{ kind.descriptionKey | translate }}</span>
+          </div>
+
+          @switch (stateFor(kind).status) {
+            @case ('loading') {
+              <span class="kind-count is-loading" aria-hidden="true"></span>
+            }
+            @case ('ready') {
+              <span class="kind-count">{{ stateFor(kind).count }}</span>
+            }
+            @case ('unavailable') {
+              <span
+                class="kind-count is-unavailable"
+                [attr.title]="'data.countUnavailable' | translate"
+              >—</span>
+            }
+          }
+
+          <mat-icon class="kind-arrow">chevron_right</mat-icon>
+        </a>
+      </li>
+    }
+  </ul>
+
+  <app-data-management />
+</div>

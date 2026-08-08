@@ -20,7 +20,7 @@ import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { MAX_SEARCH_ANSWERS, SearchAnswerHistoryService } from './search-answer-history.service';
 import { createTransaction } from './testing/test-data';
-import { AggregateAnswer } from '../../models';
+import { AggregateAnswer, SearchAnswerRecord, SearchRecord } from '../../models';
 
 /**
  * Integration smoke test for SearchAnswerHistoryService against the Firestore
@@ -111,6 +111,15 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     ...overrides,
   });
 
+  // The collection holds both kinds now, so the aggregate-only assertions
+  // below have to say which one they mean.
+  const asAnswer = (record: SearchRecord | undefined): SearchAnswerRecord => {
+    if (!record || record.kind !== 'aggregate') {
+      throw new Error(`expected an aggregate record, got ${record?.kind ?? 'nothing'}`);
+    }
+    return record;
+  };
+
   it('runs the record / dedupe / refresh / touch / delete lifecycle', async () => {
     await freshUser();
 
@@ -123,9 +132,9 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     const first = service.answers()[0];
     expect(first.query).toBe('how much on food in august');
     expect(first.scope).toEqual({ startDate: '2026-08-01', endDate: '2026-08-31' });
-    expect(first.value).toBe(421.5);
-    expect(first.currency).toBe('USD');
-    expect(first.baseCurrency).toBe('USD');
+    expect(asAnswer(first).value).toBe(421.5);
+    expect(asAnswer(first).currency).toBe('USD');
+    expect(asAnswer(first).baseCurrency).toBe('USD');
     expect(first.createdAt).toBeDefined();
     expect(first.updatedAt).toBeDefined();
     const firstComputedAt = first.computedAt.toMillis();
@@ -137,7 +146,7 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
 
     expect(service.answers().length).toBe(1);
     expect(service.answers()[0].id).toBe(first.id);
-    expect(service.answers()[0].value).toBe(500);
+    expect(asAnswer(service.answers()[0]).value).toBe(500);
     expect(service.answers()[0].computedAt.toMillis()).toBeGreaterThan(firstComputedAt);
 
     // A count stores no currency field at all.
@@ -165,7 +174,7 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     }));
     await reload();
     const maxRecord = service.answers().find(r => r.query === 'biggest expense');
-    expect(maxRecord?.extremeTransactionId).toBe('tx-1');
+    expect(asAnswer(maxRecord).extremeTransactionId).toBe('tx-1');
 
     await settle();
     await service.refreshAnswer(maxRecord!.id, sumAnswer({
@@ -245,7 +254,8 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
       Array.from({ length: MAX_SEARCH_ANSWERS }, (_, i) =>
         setDoc(doc(firestore, `users/${uid}/searchAnswers/seed-${i}`), {
           userId: uid,
-          schemaVersion: 1,
+          schemaVersion: 2,
+          kind: 'aggregate',
           query: `seed question ${i}`,
           operation: 'sum',
           limit: 3,
@@ -268,5 +278,58 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     expect(raw.size).toBe(MAX_SEARCH_ANSWERS);
     expect(raw.docs.some(d => d.id === 'seed-0')).toBeFalse();
     expect(raw.docs.some(d => d.data()['query'] === 'a brand new question')).toBeTrue();
+  });
+
+  // The unit spec proves the prune skips pinned records against a seeded
+  // signal; this proves the pin survives a real write and that the eviction
+  // lands on the next unpinned record in the server's own ordering.
+  it('prunes past a pinned record against server ordering', async () => {
+    await freshUser();
+
+    // One over the cap, with the least recently used record pinned: the
+    // pinned one stops occupying a slot, so exactly one eviction is due and
+    // it must fall on seed-1 rather than on the pinned seed-0.
+    const base = Date.now() - 1_000_000;
+    await Promise.all(
+      Array.from({ length: MAX_SEARCH_ANSWERS + 1 }, (_, i) =>
+        setDoc(doc(firestore, `users/${uid}/searchAnswers/seed-${i}`), {
+          userId: uid,
+          schemaVersion: 2,
+          kind: 'aggregate',
+          query: `seed question ${i}`,
+          operation: 'sum',
+          limit: 3,
+          scope: { startDate: '2026-08-01', endDate: '2026-08-31' },
+          baseCurrency: 'USD',
+          value: i,
+          currency: 'USD',
+          transactionCount: 1,
+          pinned: i === 0,
+          computedAt: Timestamp.fromMillis(base + i * 1000),
+          lastUsedAt: Timestamp.fromMillis(base + i * 1000),
+        })
+      )
+    );
+    await reload();
+
+    await service.recordAnswer('a brand new question', { operation: 'sum', limit: 3 }, sumAnswer());
+
+    const raw = await getDocs(collection(firestore, `users/${uid}/searchAnswers`));
+    expect(raw.docs.some(d => d.id === 'seed-0')).withContext('pinned survives').toBeTrue();
+    expect(raw.docs.some(d => d.id === 'seed-1')).withContext('next oldest evicted').toBeFalse();
+  });
+
+  it('toggles the pin through the live rules', async () => {
+    await freshUser();
+    await service.recordAnswer('pin me', { operation: 'sum', limit: 3 }, sumAnswer());
+    await reload();
+
+    const record = service.answers()[0];
+    expect(record.pinned).withContext('created unpinned').toBeFalse();
+
+    await service.togglePin(record.id, true);
+    await reload();
+
+    expect(service.answers()[0].pinned).toBeTrue();
   });
 });

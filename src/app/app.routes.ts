@@ -59,6 +59,11 @@ export const routes: Routes = [
           import('./features/about/about.component').then(m => m.AboutComponent)
       },
       {
+        path: 'data',
+        loadComponent: () =>
+          import('./features/data/data-hub.component').then(m => m.DataHubComponent)
+      },
+      {
         path: 'search-history',
         loadComponent: () =>
           import('./features/ai/search-history/search-answer-history.component')

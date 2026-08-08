@@ -1,0 +1,135 @@
+.page-container {
+  padding: 16px;
+  max-width: 1024px;
+  margin: 0 auto;
+}
+
+.kind-list {
+  list-style: none;
+  margin: 0 0 32px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kind-link {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    background: var(--surface-hover);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+.kind-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+
+  mat-icon {
+    // Box tracks the glyph, so the icon stays centred whatever the scale.
+    font-size: var(--text-2xl);
+    width: 1em;
+    height: 1em;
+    color: var(--color-primary);
+  }
+}
+
+.kind-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kind-label {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.kind-description {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.kind-count {
+  font-size: var(--text-base);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  flex-shrink: 0;
+
+  // The count is the last thing to land, so reserve its place from the start
+  // and the rows do not jostle as each one resolves.
+  min-width: 3ch;
+  text-align: right;
+
+  &.is-loading {
+    height: 1em;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+    animation: kind-count-pulse 1.4s ease-in-out infinite;
+  }
+
+  &.is-unavailable {
+    color: var(--text-secondary);
+    cursor: help;
+  }
+}
+
+.kind-arrow {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+@keyframes kind-count-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kind-link {
+    transition: none;
+
+    &:hover {
+      transform: none;
+    }
+  }
+
+  .kind-count.is-loading {
+    animation: none;
+  }
+}

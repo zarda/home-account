@@ -7,7 +7,9 @@ year" — and the answer is either a filtered transaction list or a computed
 figure with its scope spelled out.
 
 The reasoning behind the answer history's shape is in
-[ADR/0016](ADR/0016-aggregate-answers-persist-as-snapshots-that-refresh-locally.md).
+[ADR/0016](ADR/0016-aggregate-answers-persist-as-snapshots-that-refresh-locally.md),
+amended by [ADR/0030](ADR/0030-a-stored-search-holds-either-figures-or-a-scope.md)
+for filter records and pinning.
 
 ## One model call, and every number computed locally
 
@@ -66,36 +68,50 @@ same box degrades to a plain keyword search with a notice saying which of the
 three happened. Only this fallback path records into the recent-searches list
 (`savedSearches`), on purpose: a recent search replays as a substring match,
 which is useful for "starbucks" and useless for an interpreted sentence.
-Aggregate answers get their own memory instead — below.
+Interpreted searches get their own memory instead — below.
 
-## The answer history
+## The search history
 
-Every computed answer is stored automatically as a per-user record at
+Every interpreted search is stored automatically as a per-user record at
 `users/{uid}/searchAnswers` (`SearchAnswerHistoryService`,
-`src/app/core/services/search-answer-history.service.ts`), so a statistic you
-already paid to interpret can be reopened without paying again.
+`src/app/core/services/search-answer-history.service.ts`), so a question you
+already paid to interpret can be put back to work without paying again.
 
-**A record is a snapshot.** It keeps the question as you asked it, the
-resolved scope as day keys, the figures as computed, the currency they were
-computed in, and `computedAt`. Reopening shows exactly those figures, labeled
-"Computed {date}" — an old answer never passes for a fresh one.
+**Two kinds of record share the collection.** Both cost the same model call,
+which is why both are kept:
 
-**Refresh is local and free.** The stored scope replays through the same
-local aggregate path (`NlSearchService.replayAggregate`) — never the model —
-and the corrected figures overwrite the record in place with a new
-computed-at. "This month" recorded in August stays the August range forever;
-refreshing it recomputes August over today's data.
+- an **aggregate** record is a snapshot — the question as you asked it, the
+  resolved scope as day keys, the figures as computed, the currency they were
+  computed in, and `computedAt`. Reopening shows exactly those figures,
+  labeled "Computed {date}"; an old answer never passes for a fresh one.
+- a **filter** record is the scope alone. There are no figures to snapshot, so
+  it shows a *Filters* label instead of a value, and opening it re-applies the
+  scope to the transactions list rather than expanding in place. Nothing
+  refreshes, because nothing was frozen.
 
-**The same question is one record.** Re-asking a question whose resolved
-scope matches an existing record refreshes that record instead of duplicating
-it. The newest fifty records survive; past the cap, the oldest by recency is
-pruned on write.
+**Refresh is local and free.** An aggregate's stored scope replays through the
+same local path (`NlSearchService.replayAggregate`) — never the model — and
+the corrected figures overwrite the record in place with a new computed-at.
+"This month" recorded in August stays the August range forever; refreshing it
+recomputes August over today's data.
 
-**Where it lives.** The search dialog's idle state lists your five most
-recent answers — tap one to reopen it, or **See all** for the full list at
-`/search-history` (`src/app/features/ai/search-history/`). Both surfaces
-offer the same actions: reopen, refresh, view the matching transactions, and
-delete (with confirmation; deleting a record never touches transactions).
+**The same question is one record.** Re-asking a question whose kind and
+resolved scope match an existing record reuses it — refreshing its figures for
+an aggregate, its recency for a filter — instead of duplicating it. The kind is
+part of that identity, so an aggregate answer is never overwritten by a filter
+reading of the same words.
+
+**Pinned records do not expire.** The fifty-record cap counts only unpinned
+records, so pinning one takes it out of the prune entirely and sorts it to the
+top — the same split saved searches already use for their recents. Past the
+cap, the least recently used *unpinned* record is dropped on write.
+
+**Where it lives.** The search dialog's idle state lists your five most recent
+records — tap one to reopen it, or **See all** for the full list at
+`/search-history` (`src/app/features/ai/search-history/`). Both surfaces offer
+the same actions: open, pin, and delete (with confirmation; deleting a record
+never touches transactions), plus refresh and view-transactions on an
+aggregate.
 
 One visible seam: a reopened `max`/`min` snapshot shows the extreme figure
 but not the row's description, because the record keeps the row's id rather
@@ -107,22 +123,24 @@ than a copy. The description line returns after a refresh.
   (names) and budgets (names, with their category and period) — go to your
   configured cloud provider once, for interpretation. Transaction rows never
   do, and no amount from any goal or budget goes with the names.
-- A stored answer holds the question text and aggregate figures only — ids
-  and day keys, no transaction copies. It lives in your own user document
-  tree, is validated by a closed-field security rule
+- A stored record holds the question text and either aggregate figures or a
+  scope — ids and day keys, no transaction copies. It lives in your own user
+  document tree, is validated by a closed-field security rule
   (`firestore.rules`, `searchAnswers`), and is yours to delete at any time.
-- Replaying or refreshing a stored answer is entirely local: no model call,
-  and no `ai_assist_used` analytics event — that event measures cloud usage,
-  and a replay has none.
+- Replaying, refreshing or re-applying a stored record is entirely local: no
+  model call, and no `ai_assist_used` analytics event — that event measures
+  cloud usage, and a replay has none. A separate `search_history_used` event
+  counts the three ways a record is reused, with no trace of the question
+  itself, so the savings are measurable (`docs/analytics.md`).
 
 ## Known gaps
 
-- Reopen and refresh usage is not measured in analytics, so the tokens the
-  history saves are invisible in GA4 for now.
-- Filter-type interpretations cost the same model call but are not recorded;
-  only aggregate answers persist.
-- Records cannot be pinned: fifty idle questions can prune an answer you
-  cared about.
+- Pinning fifty records leaves the collection unbounded: nothing prunes a
+  pinned record, and saved searches have always behaved the same way.
 - The answer card's scope line shows only the resolved date range. A goal or
   category in the scope narrows the figures but is not named there; opening
-  the matching transactions is where you see it.
+  the matching transactions is where you see it. For a filter record this
+  matters more — the chips it was made of are not named on the row either.
+- A search that falls back to keyword matching is not recorded here at all; it
+  goes to the recent-searches list instead, because there was no
+  interpretation to store.

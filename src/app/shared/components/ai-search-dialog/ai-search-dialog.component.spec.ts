@@ -9,6 +9,7 @@ import { AiSearchDialogComponent } from './ai-search-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
@@ -19,6 +20,7 @@ import { createCategory, createTransaction } from '../../../core/services/testin
 describe('AiSearchDialogComponent', () => {
   let fixture: ComponentFixture<AiSearchDialogComponent>;
   let component: AiSearchDialogComponent;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
   let nlSearch: jasmine.SpyObj<NlSearchService>;
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
@@ -41,6 +43,7 @@ describe('AiSearchDialogComponent', () => {
   }
 
   beforeEach(async () => {
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackSearchHistoryUsed']);
     nlSearch = jasmine.createSpyObj('NlSearchService', ['search', 'replayAggregate']);
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
     router = jasmine.createSpyObj('Router', ['navigate']);
@@ -75,6 +78,7 @@ describe('AiSearchDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [AiSearchDialogComponent, NoopAnimationsModule],
       providers: [
+        { provide: AnalyticsService, useValue: analytics },
         { provide: NlSearchService, useValue: nlSearch },
         { provide: PendingFiltersService, useValue: pendingFilters },
         { provide: Router, useValue: router },
@@ -237,11 +241,12 @@ describe('AiSearchDialogComponent', () => {
     const rec = (
       id: string,
       millis: number,
-      overrides: Partial<SearchAnswerRecord> = {},
+      overrides: Partial<Omit<SearchAnswerRecord, 'kind'>> = {},
     ): SearchAnswerRecord => ({
       id,
       userId: 'user123',
       schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+      kind: 'aggregate',
       query: `question ${id}`,
       operation: 'sum',
       limit: 3,
@@ -349,5 +354,36 @@ describe('AiSearchDialogComponent', () => {
 
       expect(fixture.nativeElement.querySelector('.answer-computed-at')).toBeNull();
     });
+
+  describe('filter records and search_history_used', () => {
+    const filterRec = (id: string, millis: number) =>
+      ({ ...rec(id, millis), kind: 'filter', query: 'coffee last month' }) as never;
+
+    it('opening a filter record applies its scope and closes the dialog', () => {
+      storedAnswers.set([filterRec('f-1', 1_000_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+
+      expect(pendingFilters.apply).toHaveBeenCalled();
+      expect(analytics.trackSearchHistoryUsed).toHaveBeenCalledWith({ action: 'apply' });
+    });
+
+    it('shows a filter label where an answer would show its figure', () => {
+      storedAnswers.set([filterRec('f-1', 1_000_000)]);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('aiSearch.historyFilterRecord');
+    });
+
+    it('reports a reopen when a stored answer is opened', () => {
+      storedAnswers.set([rec('a-1', 1_000_000)]);
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+
+      expect(analytics.trackSearchHistoryUsed).toHaveBeenCalledWith({ action: 'reopen' });
+    });
+  });
   });
 });

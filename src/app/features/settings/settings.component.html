@@ -23,7 +23,7 @@
   <!-- Settings Sections -->
   <mat-accordion class="settings-accordion" multi>
     <!-- Profile & Preferences -->
-    <mat-expansion-panel [expanded]="true">
+    <mat-expansion-panel [expanded]="preferencesExpanded">
       <mat-expansion-panel-header>
         <mat-panel-title>
           <mat-icon class="section-icon">tune</mat-icon>
@@ -49,7 +49,7 @@
     </div>
 
     <!-- Category Manager -->
-    <mat-expansion-panel>
+    <mat-expansion-panel [expanded]="categoriesExpanded">
       <mat-expansion-panel-header>
         <mat-panel-title>
           <mat-icon class="section-icon">category</mat-icon>
@@ -62,18 +62,16 @@
       <app-category-manager />
     </mat-expansion-panel>
 
-    <!-- Data Management -->
-    <mat-expansion-panel>
-      <mat-expansion-panel-header>
-        <mat-panel-title>
-          <mat-icon class="section-icon">cloud_sync</mat-icon>
-          {{ 'settings.dataManagement' | translate }}
-        </mat-panel-title>
-        <mat-panel-description>
-          {{ 'settings.dataManagementDescription' | translate }}
-        </mat-panel-description>
-      </mat-expansion-panel-header>
-      <app-data-management />
-    </mat-expansion-panel>
+    <!-- Your Data Link Card -->
+    <div class="settings-link-card" routerLink="/data">
+      <div class="link-card-icon data-icon">
+        <mat-icon>storage</mat-icon>
+      </div>
+      <div class="link-card-content">
+        <span class="link-card-title">{{ 'data.title' | translate }}</span>
+        <span class="link-card-description">{{ 'data.subtitle' | translate }}</span>
+      </div>
+      <mat-icon class="link-card-arrow">chevron_right</mat-icon>
+    </div>
   </mat-accordion>
 </div>
