@@ -701,7 +701,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
   }
 
   /** Resolve whatever the model called a category onto a catalog id. */
-  protected mapCategoryNameToId(categoryName: string): string {
+  protected mapCategoryNameToId(categoryName: unknown): string {
     return mapCategoryNameToId(
       categoryName,
       this.categoryService.categories(),

@@ -7,6 +7,7 @@ import { TranslationService } from './translation.service';
 import { ProviderCapabilities } from './llm-provider.interface';
 import { PromptId, RenderedPrompt } from '../prompts';
 import { Category } from '../../models';
+import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
 import { createCategory } from './testing';
 
 /**
@@ -221,6 +222,42 @@ describe('CloudLLMProviderBase', () => {
       for (const promptId of ['spendingSummary', 'financialAdvice', 'patternNarrative'] as const) {
         expect(provider.callPostProcessProse(promptId, response)).toBe('## Spending\nBody.');
       }
+    });
+  });
+
+  describe('parseReceipt', () => {
+    // The receiptParse prompt asks for suggestedCategory but its "use
+    // defaults" line names only merchant, currency, date, items and amount —
+    // so a receipt whose category the model cannot judge legitimately comes
+    // back without the field. It lands on the catalog fallback, which is a
+    // real category the form will pre-select rather than a "no suggestion"
+    // sentinel; the point of these is that the rest of the receipt survives
+    // instead of the whole scan failing over its least consequential field.
+    it('falls back to the catalog default when the model names no category', async () => {
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4}',
+        truncated: false,
+      };
+
+      const receipt = await provider.parseReceipt('img');
+
+      expect(receipt.suggestedCategory).toBe(FALLBACK_CATEGORY_ID);
+      expect(receipt.merchant).toBe('Cafe');
+      expect(provider.lastError()).toBeNull();
+    });
+
+    it('falls back when the model answers the category with a list', async () => {
+      // Not the same case as an absent field: this one is truthy, so a guard
+      // that only tested for a missing value would pass it straight through
+      // to suggestedCategory, where the import flow reads it as a category id.
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4,"suggestedCategory":["Groceries","Food"]}',
+        truncated: false,
+      };
+
+      const receipt = await provider.parseReceipt('img');
+
+      expect(receipt.suggestedCategory).toBe(FALLBACK_CATEGORY_ID);
     });
   });
 
