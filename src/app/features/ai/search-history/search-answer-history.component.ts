@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -35,6 +35,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     PageHeaderComponent,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './search-answer-history.component.html',
   styleUrl: './search-answer-history.component.scss',
 })

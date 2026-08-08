@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
@@ -21,6 +21,7 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
     MatButtonModule,
     FitTextDirective
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './category-suggestion.component.html',
   styleUrl: './category-suggestion.component.scss'
 })

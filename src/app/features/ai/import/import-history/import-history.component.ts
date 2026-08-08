@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -36,6 +36,7 @@ import { NotificationService } from '../../../../core/services/notification.serv
     MatDialogModule,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './import-history.component.html',
   styleUrl: './import-history.component.scss'
 })

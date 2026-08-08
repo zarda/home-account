@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnDestroy, signal, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, OnDestroy, Output, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,6 +17,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
     DragDropModule,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './file-dropzone.component.html',
   styleUrl: './file-dropzone.component.scss'
 })
