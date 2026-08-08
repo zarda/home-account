@@ -50,6 +50,33 @@ Specs and smoke tests provide `provideAppCharts()` rather than their own
 registry. A spec that registered the full set would pass against pieces
 production does not ship.
 
+## Change detection
+
+Every component declares `ChangeDetectionStrategy.OnPush`, enforced by
+`@angular-eslint/prefer-on-push-component-change-detection`
+(see [ADR 0024](ADR/0024-every-component-checks-with-onpush.md)).
+
+Two rules follow from it:
+
+- **View state written after an `await` must be a signal.** A plain field
+  assigned in a promise callback will not repaint the view. Fields written
+  only from event handlers or `ngOnChanges` are fine — both already mark the
+  view dirty.
+- **`markForCheck()` is for third-party imperative APIs only**, and gets a
+  comment naming the API. The two current uses are Material's datepicker,
+  which caches `dateClass` results outside anything Angular tracks.
+
+Note what this did *not* buy. Profiling one dashboard period toggle before
+and after showed 117 versus 122 template updates — noise. The app was
+already signal-driven with no `async` pipes and event coalescing on, so
+Angular's signal-based view marking was doing the work already. OnPush is
+here as an invariant that survives growth and non-signal state, not as a
+measured speedup. ADR 0024 has the full table.
+
+Unit specs cannot see a stale view: `fixture.detectChanges()` checks a view
+whether or not anything marked it dirty. The route smoke drives the period
+toggle on real routed UI instead.
+
 ## The budget
 
 `angular.json` carries an `initial` budget in both the `production` and
