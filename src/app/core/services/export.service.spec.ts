@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { BACKUP_SCHEMA_VERSION, ExportService } from './export.service';
 import { CategoryService } from './category.service';
@@ -12,6 +13,12 @@ import { parseCsvRows } from '../utils/csv.utils';
 import { Timestamp } from '@angular/fire/firestore';
 
 class MockTranslationService {
+  currentLocale = signal('en');
+
+  getIntlLocale(): string {
+    return 'en-US';
+  }
+
   t(key: string): string {
     // Simulate translation by returning mapped values for known keys
     const translations: Record<string, string> = {
@@ -351,6 +358,38 @@ describe('ExportService', () => {
       expect(rows[1][recurringCol]).toBe('true');
       expect(rows[2][periodCol]).toBe('');
       expect(rows[2][recurringCol]).toBe('');
+    });
+  });
+
+  describe('exportToPDF', () => {
+    // The renderer is loaded at the call site rather than imported at module
+    // scope, so this is the spec that proves the load actually happens. The
+    // suite-wide fetch rejection also stands in for an offline user: the CJK
+    // font never arrives and the report must still render on helvetica.
+    function createReport() {
+      const categories = createCategoryHierarchy();
+      return {
+        title: 'Report',
+        period: 'July 2026',
+        transactions: [createTransaction({ description: 'Lunch, with a comma' })],
+        summary: {
+          income: 1000,
+          expense: 250,
+          balance: 750,
+          transactionCount: 1,
+          byCategory: [{ categoryId: categories[0].id!, total: 250 }],
+        },
+        categories,
+        currency: 'USD',
+      };
+    }
+
+    it('produces a pdf blob even when the cjk font fetch fails', async () => {
+      const blob = await service.exportToPDF(createReport());
+
+      expect(blob.size).toBeGreaterThan(0);
+      const head = new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 5));
+      expect(head).toBe('%PDF-');
     });
   });
 

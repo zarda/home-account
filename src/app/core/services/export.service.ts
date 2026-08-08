@@ -1,6 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
@@ -240,8 +238,22 @@ export class ExportService {
     return this.translationService.t(`reports.pdf.${key}`);
   }
 
+  /**
+   * Loaded on demand: the PDF renderer serves one button, and every visitor
+   * paid for it on first paint because this service is rooted. Same reason
+   * pdfjs and the provider SDKs load at their call sites.
+   */
+  private async loadJsPdf() {
+    const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
+    return { jsPDF, autoTable };
+  }
+
   // Export report to PDF
   async exportToPDF(report: ReportData): Promise<Blob> {
+    const { jsPDF, autoTable } = await this.loadJsPdf();
     const doc = new jsPDF();
 
     // Try to load and embed CJK font for Chinese/Japanese character support
