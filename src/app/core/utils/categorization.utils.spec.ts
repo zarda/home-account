@@ -201,6 +201,10 @@ describe('categorization.utils', () => {
       ], identity)).toBe(FALLBACK_CATEGORY_ID);
     });
 
+    it('falls back for an absent name', () => {
+      expect(mapCategoryNameToId(undefined, categories, identity)).toBe(FALLBACK_CATEGORY_ID);
+    });
+
     it('matches a name in a locale that is not the active one', () => {
       expect(mapCategoryNameToId('食料品', defaultCategories, untranslated)).toBe('food_groceries');
       expect(mapCategoryNameToId('雜貨', defaultCategories, untranslated)).toBe('food_groceries');
@@ -238,6 +242,19 @@ describe('categorization.utils', () => {
 
     it('reports an empty answer as unmatched', () => {
       expect(matchCategoryName('   ', categories, identity))
+        .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+    });
+
+    it('reports an absent or non-string answer as unmatched', () => {
+      // Every caller reads this off a JSON.parse of a model answer, so an
+      // omitted field arrives as undefined and a model answering a
+      // single-value question with a list arrives as an array. Both are
+      // names nothing matched, not grounds for a TypeError.
+      expect(matchCategoryName(undefined, categories, identity))
+        .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+      expect(matchCategoryName(null, categories, identity))
+        .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+      expect(matchCategoryName(['Groceries'], categories, identity))
         .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
     });
 

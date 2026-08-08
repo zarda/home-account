@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -43,6 +43,7 @@ const CATEGORY_COLORS = [
     MatButtonModule,
     MatIconModule,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './category-form-dialog.component.html',
   styleUrl: './category-form-dialog.component.scss',
 })

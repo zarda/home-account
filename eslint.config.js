@@ -31,6 +31,13 @@ module.exports = defineConfig([
           style: "kebab-case",
         },
       ],
+      // Every component checks with OnPush (ADR 0024). Default change
+      // detection re-checks the whole tree on every event, timer and network
+      // response; the app is signal-driven throughout, so the strategy is
+      // free. This rule is here because the cost of the exception is invisible
+      // — a component left on default is not a bug anyone would notice, it is
+      // just work the browser repeats forever.
+      "@angular-eslint/prefer-on-push-component-change-detection": "error",
     },
   },
   {

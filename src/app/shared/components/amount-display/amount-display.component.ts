@@ -1,4 +1,4 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { CurrencyService } from '../../../core/services/currency.service';
 
@@ -6,6 +6,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
   selector: 'app-amount-display',
   standalone: true,
   imports: [],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <span
       [class]="colorClass()"

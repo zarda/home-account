@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -40,6 +40,7 @@ interface ExportDialogData {
     MatProgressSpinnerModule,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './export-dialog.component.html',
   styleUrl: './export-dialog.component.scss',
 })
@@ -52,7 +53,7 @@ export class ExportDialogComponent {
 
   selectedFormat: ExportFormat = 'csv';
   includeDetails = true;
-  isExporting = false;
+  isExporting = signal(false);
 
   get formatOptions() {
     return [
@@ -89,7 +90,7 @@ export class ExportDialogComponent {
   }
 
   async export(): Promise<void> {
-    this.isExporting = true;
+    this.isExporting.set(true);
 
     try {
       const now = new Date();
@@ -116,7 +117,7 @@ export class ExportDialogComponent {
       // Export failed - log error for debugging
       console.error('Export failed:', error);
     } finally {
-      this.isExporting = false;
+      this.isExporting.set(false);
     }
   }
 

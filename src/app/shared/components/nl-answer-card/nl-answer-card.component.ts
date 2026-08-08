@@ -1,4 +1,4 @@
-import { Component, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { CategoryService } from '../../../core/services/category.service';
@@ -20,6 +20,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
   selector: 'app-nl-answer-card',
   standalone: true,
   imports: [MatButtonModule, MatIconModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './nl-answer-card.component.html',
   styleUrl: './nl-answer-card.component.scss',
 })

@@ -116,7 +116,7 @@ describe('ExportDialogComponent', () => {
     });
 
     it('should not be exporting initially', () => {
-      expect(component.isExporting).toBeFalse();
+      expect(component.isExporting()).toBeFalse();
     });
   });
 
@@ -186,7 +186,7 @@ describe('ExportDialogComponent', () => {
 
     it('should set isExporting to false after completion', async () => {
       await component.export();
-      expect(component.isExporting).toBeFalse();
+      expect(component.isExporting()).toBeFalse();
     });
   });
 

@@ -11,6 +11,7 @@ import { SearchHistoryService } from './search-history.service';
 import { AnalyticsService } from './analytics.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
+import { endOfDay, monthWindow } from '../utils/transaction-date.utils';
 import {
   AggregateAnswer,
   AggregateOperation,
@@ -196,10 +197,11 @@ export class NlSearchService {
     const now = new Date();
 
     if (!scope.startDate && !scope.endDate) {
-      scope.startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      scope.endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      const thisMonth = monthWindow(now);
+      scope.startDate = thisMonth.start;
+      scope.endDate = thisMonth.end;
     } else if (!scope.endDate) {
-      scope.endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      scope.endDate = endOfDay(now);
     } else if (!scope.startDate) {
       scope.startDate = new Date(1970, 0, 1);
     }

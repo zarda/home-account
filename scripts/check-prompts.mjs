@@ -4,9 +4,17 @@
  *
  * Four things have to agree:
  *   1. the ids in src/app/core/prompts/prompt-registry.ts,
- *   2. the renderPrompt() call sites in the three provider services,
+ *   2. the renderPrompt() call sites in the shared provider base and the three
+ *      provider services,
  *   3. the table in docs/prompts.md,
  *   4. the rendering assertions in prompt-registry.spec.ts.
+ *
+ * Most operations are now rendered once, in cloud-llm-provider.base.ts, and
+ * only the transport differs per provider. A call site there reaches all three
+ * providers, so it counts as all three — and the two ways that can go wrong are
+ * checked for: a prompt rendered both in the base and in a provider file (one
+ * of the two is drift), and a single-provider exemption claimed by a file that
+ * every provider shares.
  *
  * It also refuses a hand-written currency or recognition-language list in the
  * prompts and the OCR surfaces. That is a different kind of check — nothing is
@@ -47,6 +55,15 @@ const PROVIDERS = {
   openai: 'src/app/core/services/openai.service.ts',
   claude: 'src/app/core/services/claude.service.ts',
 };
+
+/** The base every provider extends. What it renders, all three send. */
+const SHARED_KEY = 'shared';
+const SHARED = 'src/app/core/services/cloud-llm-provider.base.ts';
+
+/** Every file a prompt may legitimately be rendered from, by key. */
+const SOURCE_FILES = { ...PROVIDERS, [SHARED_KEY]: SHARED };
+
+const ALL_PROVIDERS = Object.keys(PROVIDERS).sort();
 
 /**
  * Prompts that legitimately reach only some providers, and why.
@@ -182,22 +199,47 @@ export function parseRegistry(source) {
   return prompts;
 }
 
-/** `renderPrompt('id'` sites, as id -> [`file:line`]. */
+/** `renderPrompt('id'` sites, as id -> source key -> [line]. */
 export function findCallSites(files) {
   const sites = new Map();
-  for (const [provider, source] of Object.entries(files)) {
+  for (const [key, source] of Object.entries(files)) {
     const text = blankComments(source);
     const call = /renderPrompt\(\s*'([a-zA-Z][A-Za-z0-9]*)'/g;
     let match;
     while ((match = call.exec(text)) !== null) {
       const found = sites.get(match[1]) ?? new Map();
-      const lines = found.get(provider) ?? [];
+      const lines = found.get(key) ?? [];
       lines.push(lineOf(text, match.index));
-      found.set(provider, lines);
+      found.set(key, lines);
       sites.set(match[1], found);
     }
   }
   return sites;
+}
+
+/**
+ * Which providers a prompt reaches, given the files it is rendered from, and
+ * what is wrong with where those files are.
+ *
+ * A call site in the shared base reaches every provider by construction — that
+ * is the whole point of the base — so it stands in for all three rather than
+ * being a fourth sender. Two things make that unsound, and both are reported
+ * rather than resolved:
+ *
+ *   - the same prompt rendered in the base *and* in a provider file. One of
+ *     the two is dead or divergent, and the checker cannot tell which.
+ *   - a SINGLE_PROVIDER exemption on a prompt rendered from the base. An
+ *     exemption says "only Gemini can do this"; a file all three inherit from
+ *     is the one place that cannot be true of.
+ */
+export function classifySites(files, { exempted = false } = {}) {
+  const inShared = files.includes(SHARED_KEY);
+  const concrete = files.filter(key => key !== SHARED_KEY).sort();
+  return {
+    senders: inShared ? [...ALL_PROVIDERS] : concrete,
+    renderedTwice: inShared ? concrete : [],
+    exemptedInShared: inShared && exempted,
+  };
 }
 
 /**
@@ -277,7 +319,7 @@ export function parseDocRows(doc) {
 }
 
 function run() {
-  for (const path of [REGISTRY, REGISTRY_SPEC, DOC, ...Object.values(PROVIDERS)]) {
+  for (const path of [REGISTRY, REGISTRY_SPEC, DOC, ...Object.values(SOURCE_FILES)]) {
     if (!existsSync(path)) {
       console.error(`${path} does not exist. Fix the path list in this script.`);
       process.exit(1);
@@ -291,7 +333,7 @@ function run() {
   }
 
   const sources = Object.fromEntries(
-    Object.entries(PROVIDERS).map(([name, path]) => [name, readFileSync(path, 'utf8')])
+    Object.entries(SOURCE_FILES).map(([key, path]) => [key, readFileSync(path, 'utf8')])
   );
   const sites = findCallSites(sources);
   const spec = readFileSync(REGISTRY_SPEC, 'utf8');
@@ -313,7 +355,7 @@ function run() {
         .map(name => `${PROMPT_DIR}/${name}`)
       : []),
     ...OCR_SURFACES,
-    ...Object.values(PROVIDERS),
+    ...Object.values(SOURCE_FILES),
   ].filter(existsSync);
 
   for (const path of vocabularySurfaces) {
@@ -326,20 +368,39 @@ function run() {
     }
   }
 
-  const allProviders = Object.keys(PROVIDERS).sort();
-
   for (const [id, meta] of prompts) {
     const found = sites.get(id);
-    const senders = found ? [...found.keys()].sort() : [];
+    const exemption = SINGLE_PROVIDER[id];
+    const { senders, renderedTwice, exemptedInShared } = classifySites(
+      found ? [...found.keys()] : [],
+      { exempted: !!exemption }
+    );
 
     if (senders.length === 0) {
       fail(`${id} — registered but never rendered from any provider`, [REGISTRY]);
       continue;
     }
 
+    if (renderedTwice.length > 0) {
+      fail(
+        `${id} — rendered in the shared base and in ${renderedTwice.join(', ')}; ` +
+          `one of them is drift.\n` +
+          `      A prompt the base renders already reaches all three providers.`,
+        [SHARED, ...renderedTwice.map(p => PROVIDERS[p])]
+      );
+    }
+    if (exemptedInShared) {
+      fail(
+        `${id} — exempted as single-provider but rendered from the shared base, ` +
+          `which every provider inherits.\n` +
+          `      Exemptions name concrete provider files; move the call site or ` +
+          `drop the exemption.`,
+        [SHARED]
+      );
+    }
+
     // Parity: every prompt reaches every provider unless exempted.
-    const exemption = SINGLE_PROVIDER[id];
-    const expected = exemption ? [...exemption.providers].sort() : allProviders;
+    const expected = exemption ? [...exemption.providers].sort() : ALL_PROVIDERS;
     const missing = expected.filter(p => !senders.includes(p));
     const unexpected = senders.filter(p => !expected.includes(p));
 
@@ -400,12 +461,12 @@ function run() {
 
   // The tripwire: a prompt written inline instead of registered.
   let literalCount = 0;
-  for (const [provider, source] of Object.entries(sources)) {
+  for (const [key, source] of Object.entries(sources)) {
     for (const literal of findInlineLiterals(source)) {
       literalCount++;
       fail(
-        `${provider} — inline prompt literal (${literal.length} chars), not registered in PROMPTS`,
-        [`${PROVIDERS[provider]}:${literal.line}`]
+        `${key} — inline prompt literal (${literal.length} chars), not registered in PROMPTS`,
+        [`${SOURCE_FILES[key]}:${literal.line}`]
       );
     }
   }
@@ -413,7 +474,8 @@ function run() {
   const exempted = Object.keys(SINGLE_PROVIDER).length;
   console.log(
     `Checked ${prompts.size} prompts (${exempted} single-provider by exemption) ` +
-      `against ${rows.size} registry rows and ${Object.keys(PROVIDERS).length} provider services` +
+      `against ${rows.size} registry rows, the shared provider base and ` +
+      `${Object.keys(PROVIDERS).length} provider services` +
       (literalCount === 0 ? ', with no inline prompt literals' : '')
   );
 
@@ -469,12 +531,35 @@ export const PROMPTS = {
   const sites = findCallSites({
     gemini: `const r = renderPrompt('alpha', {});\n// renderPrompt('ghost')`,
     openai: `renderPrompt(\n  'alpha'\n)`,
+    [SHARED_KEY]: `renderPrompt('beta')`,
   });
   check('finds call sites across providers', [...sites.get('alpha').keys()].sort(), [
     'gemini',
     'openai',
   ]);
   check('ignores a call site inside a comment', sites.has('ghost'), false);
+  check('finds a call site in the shared base', [...sites.get('beta').keys()], [SHARED_KEY]);
+
+  check(
+    'counts one shared call site as every provider',
+    classifySites([SHARED_KEY]).senders,
+    ['claude', 'gemini', 'openai']
+  );
+  check(
+    'flags a prompt rendered in the base and in a provider as drift',
+    classifySites([SHARED_KEY, 'gemini']).renderedTwice,
+    ['gemini']
+  );
+  check(
+    'flags a single-provider exemption rendered from the base',
+    classifySites([SHARED_KEY], { exempted: true }).exemptedInShared,
+    true
+  );
+  check(
+    'leaves a concrete-file exemption alone',
+    classifySites(['gemini'], { exempted: true }),
+    { senders: ['gemini'], renderedTwice: [], exemptedInShared: false }
+  );
 
   check(
     'flags a multi-line literal',

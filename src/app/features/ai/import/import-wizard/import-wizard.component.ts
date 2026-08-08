@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, signal, computed, OnDestroy, OnInit, ViewChild, AfterViewInit } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -46,6 +46,7 @@ import { ShareIntakeService } from '../../../../core/services/share-intake.servi
     DuplicateWarningComponent,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './import-wizard.component.html',
   styleUrl: './import-wizard.component.scss'
 })

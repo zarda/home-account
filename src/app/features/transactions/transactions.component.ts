@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, OnDestroy, OnInit, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -38,6 +38,7 @@ import { AnnouncerService } from '../../core/services/announcer.service';
     LoadingSpinnerComponent,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './transactions.component.html',
   styleUrl: './transactions.component.scss',
   // Page-scoped: window state (cursors, loaded range) resets on every visit

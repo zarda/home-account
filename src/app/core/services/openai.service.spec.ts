@@ -697,7 +697,11 @@ describe('OpenAIService', () => {
       expect(result.length).toBe(1);
       expect(result[0].amount).toBe(45.99);
       expect(result[0].description).toBe('AMAZON');
-      expect(result[0].category).toBe('shop');
+      // The category a row names is resolved against the catalog, and 'shop'
+      // matches nothing in it. It used to be passed through as written, and
+      // the import flow reads this field as a category id — so a name the
+      // catalog has never heard of arrived as a category that does not exist.
+      expect(result[0].category).toBe('other_expense');
     });
 
     it('applies defaults for sparse rows', async () => {

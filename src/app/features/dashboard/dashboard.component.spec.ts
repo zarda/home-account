@@ -273,10 +273,11 @@ describe('DashboardComponent', () => {
       const component = build().componentInstance;
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
       component.onPeriodSelection(selection('thisMonth', monthStart, monthEnd));
 
-      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      const endOfToday =
+        new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
       expect(lastRange().start).toEqual(monthStart);
       expect(lastRange().end.getTime()).toBeLessThanOrEqual(endOfToday.getTime());
       expect(lastRange().end.getDate()).toBe(now.getDate());
@@ -338,16 +339,16 @@ describe('DashboardComponent', () => {
       it('compares this month so far with the same days of last month', () => {
         const component = build().componentInstance;
         component.onPeriodSelection(selection(
-          'thisMonth', new Date(2026, 7, 1), new Date(2026, 7, 31, 23, 59, 59)));
+          'thisMonth', new Date(2026, 7, 1), new Date(2026, 7, 31, 23, 59, 59, 999)));
 
         expect(previousRange().start).toEqual(new Date(2026, 6, 1));
-        expect(previousRange().end).toEqual(new Date(2026, 6, 10, 23, 59, 59));
+        expect(previousRange().end).toEqual(new Date(2026, 6, 10, 23, 59, 59, 999));
       });
 
       it('gives both windows the same number of elapsed days', () => {
         const component = build().componentInstance;
         component.onPeriodSelection(selection(
-          'thisMonth', new Date(2026, 7, 1), new Date(2026, 7, 31, 23, 59, 59)));
+          'thisMonth', new Date(2026, 7, 1), new Date(2026, 7, 31, 23, 59, 59, 999)));
 
         const current = lastRange();
         const previous = previousRange();
@@ -358,27 +359,27 @@ describe('DashboardComponent', () => {
       it('compares this year so far with the same span of last year', () => {
         const component = build().componentInstance;
         component.onPeriodSelection(selection(
-          'thisYear', new Date(2026, 0, 1), new Date(2026, 11, 31, 23, 59, 59)));
+          'thisYear', new Date(2026, 0, 1), new Date(2026, 11, 31, 23, 59, 59, 999)));
 
         expect(previousRange().start).toEqual(new Date(2025, 0, 1));
-        expect(previousRange().end).toEqual(new Date(2025, 7, 10, 23, 59, 59));
+        expect(previousRange().end).toEqual(new Date(2025, 7, 10, 23, 59, 59, 999));
       });
 
       it('truncates the three-month comparison the same way', () => {
         const component = build().componentInstance;
         component.onPeriodSelection(selection(
-          'last3Months', new Date(2026, 5, 1), new Date(2026, 7, 31, 23, 59, 59)));
+          'last3Months', new Date(2026, 5, 1), new Date(2026, 7, 31, 23, 59, 59, 999)));
 
-        expect(previousRange().end).toEqual(new Date(2026, 4, 10, 23, 59, 59));
+        expect(previousRange().end).toEqual(new Date(2026, 4, 10, 23, 59, 59, 999));
       });
 
       it('keeps whole-month semantics for a complete past window', () => {
         const component = build().componentInstance;
         component.onPeriodSelection(selection(
-          'custom', new Date(2025, 0, 1), new Date(2025, 0, 31, 23, 59, 59)));
+          'custom', new Date(2025, 0, 1), new Date(2025, 0, 31, 23, 59, 59, 999)));
 
         expect(previousRange().start).toEqual(new Date(2024, 11, 1));
-        expect(previousRange().end).toEqual(new Date(2024, 11, 31, 23, 59, 59));
+        expect(previousRange().end).toEqual(new Date(2024, 11, 31, 23, 59, 59, 999));
       });
     });
   });

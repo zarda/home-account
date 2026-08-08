@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 import { MatCardModule } from '@angular/material/card';
@@ -30,6 +30,7 @@ import { CategoryChipComponent } from '../../../shared/components/category-chip/
     MatButtonModule,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './budget-progress-card.component.html',
   styleUrls: ['./budget-progress-card.component.scss']
 })

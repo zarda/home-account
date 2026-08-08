@@ -1,5 +1,11 @@
 import { Timestamp } from '@angular/fire/firestore';
-import { Transaction } from '../../models';
+import {
+  BudgetPeriod,
+  CustomPeriod,
+  PeriodOption,
+  PeriodSelection,
+  Transaction,
+} from '../../models';
 
 /**
  * How this app reads and writes a local date.
@@ -28,6 +34,13 @@ import { Transaction } from '../../models';
  * Everything reads *local* date parts, so day-of-week and day-of-month results
  * are a function of the runtime's IANA zone. Callers that persist those results
  * must record the zone alongside them.
+ *
+ * The second half of the file builds windows out of those primitives — the
+ * selector's named periods, the dashboard's comparison window, the budget
+ * anchoring. Every one of those was hand-rolled in its own caller, and each of
+ * #167, #171, #173 and #174 was a defect in one of those private copies rather
+ * than in anything here. They live together now so there is one implementation
+ * to regress rather than four to keep in step.
  */
 
 /** Milliseconds in a day. Safe as a constant only for UTC-normalised diffs. */
@@ -135,6 +148,43 @@ export function parseDateInput(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+/** Local midnight on this date. */
+export function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/**
+ * Last millisecond of this local day. Every window in the app closes here, so
+ * a transaction posted at 23:59:59.700 is inside the day it was posted on.
+ */
+export function endOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+/**
+ * Shift by whole calendar days, keeping the clock time.
+ *
+ * Adding 86_400_000 ms instead lands an hour out on either side of a DST
+ * transition, which is enough to move a date to the neighbouring day and put a
+ * row in the wrong window. Rebuilding from local parts cannot.
+ */
+export function addDays(date: Date, days: number): Date {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() + days,
+    date.getHours(),
+    date.getMinutes(),
+    date.getSeconds(),
+    date.getMilliseconds(),
+  );
+}
+
+/** Length of this date's own month, 28-31. */
+export function daysInMonth(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
 /** Local midnight on the first of the month. */
 export function startOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -180,8 +230,7 @@ export function addMonths(date: Date, months: number): Date {
  * the end of the current month would otherwise report a partial month as whole.
  */
 export function clampToEndOfToday(end: Date, now: Date): Date {
-  const endOfToday = new Date(
-    now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  const endOfToday = endOfDay(now);
   return end < endOfToday ? end : endOfToday;
 }
 
@@ -234,7 +283,9 @@ export function countDaysByKind(
   }
 
   let weekend = 0;
-  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  // Advanced in place rather than through addDays: this runs once per day of
+  // the window, and setDate is a local-parts step like addDays is.
+  const cursor = startOfDay(start);
   for (let i = 0; i < totalDays; i += 1) {
     if (isWeekend(cursor, weekendDays)) {
       weekend += 1;
@@ -249,6 +300,259 @@ export function isLastDaysOfMonth(date: Date, tailDays: number): boolean {
   if (tailDays <= 0) {
     return false;
   }
-  const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  return date.getDate() > daysInMonth - tailDays;
+  return date.getDate() > daysInMonth(date) - tailDays;
+}
+
+/**
+ * An inclusive date range. Every window this module returns closes on the last
+ * millisecond of its final day, so a `<=` Firestore comparison against a real
+ * Timestamp keeps a row posted at 23:59:59.700 inside its own period.
+ */
+export interface DateWindow {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * The whole calendar month around a date, or at parsed `yyyy-MM` parts.
+ *
+ * Taking parts is what keeps month keys off `new Date('2026-08-01')`, which is
+ * UTC midnight by language spec and therefore 31 July in any negative-offset
+ * zone. `month` is 0-11 and normalises outside that range the way the Date
+ * constructor does, so month -1 is last December.
+ */
+export function monthWindow(anchor: Date | { year: number; month: number }): DateWindow {
+  const start = anchor instanceof Date
+    ? startOfMonth(anchor)
+    : new Date(anchor.year, anchor.month, 1);
+  return { start, end: endOfMonth(start) };
+}
+
+/** The whole calendar year. */
+export function yearWindow(year: number): DateWindow {
+  return { start: new Date(year, 0, 1), end: new Date(year, 11, 31, 23, 59, 59, 999) };
+}
+
+/**
+ * The ISO week containing this date: Monday through Sunday.
+ *
+ * `getDay()` puts Sunday at 0, so the offset back to Monday is 6 there and
+ * `day - 1` everywhere else — the arithmetic every quick filter got wrong at
+ * least once.
+ */
+export function weekWindow(date: Date): DateWindow {
+  const daysSinceMonday = date.getDay() === 0 ? 6 : date.getDay() - 1;
+  const start = addDays(startOfDay(date), -daysSinceMonday);
+  return { start, end: endOfDay(addDays(start, 6)) };
+}
+
+/**
+ * The full calendar window a named period covers, with no regard for whether
+ * it has finished — `thisMonth` in the first week of August still runs to
+ * 31 August. Consumers with to-date semantics narrow it with
+ * `clampWindowToNow`; this is the single origin of every period in the app.
+ */
+export function periodWindow(
+  option: PeriodOption,
+  now: Date,
+  custom?: CustomPeriod | null,
+): DateWindow {
+  if (option === 'custom' && custom) {
+    return custom.type === 'month'
+      ? monthWindow({ year: custom.year, month: custom.month! })
+      : yearWindow(custom.year);
+  }
+
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  switch (option) {
+    case 'lastMonth':
+      return monthWindow({ year, month: month - 1 });
+    case 'last3Months':
+      return {
+        start: monthWindow({ year, month: month - 2 }).start,
+        end: monthWindow({ year, month }).end,
+      };
+    case 'thisYear':
+      return yearWindow(year);
+    default:
+      // 'thisMonth', and 'custom' before anything has been picked.
+      return monthWindow({ year, month });
+  }
+}
+
+/** Narrow a window so it never claims to cover the future. */
+export function clampWindowToNow(window: DateWindow, now: Date): DateWindow {
+  return { start: window.start, end: clampToEndOfToday(window.end, now) };
+}
+
+/**
+ * The window a selection is compared against on the dashboard.
+ *
+ * A period still running is clamped to end-of-today, so its comparison has to
+ * be cut to the same elapsed span: part of a month against all of the previous
+ * month reads as a large false decline for most of every month, and the
+ * generated summary asserts it. Periods that have already closed keep their
+ * whole calendar bounds.
+ *
+ * The shift back is `addMonths`, which clamps the day to the target month, so
+ * a window clamped to 31 March compares against 28 February rather than
+ * overflowing into March.
+ */
+export function previousPeriodWindow(
+  selection: PeriodSelection,
+  now: Date,
+): DateWindow | null {
+  const stillRunning = selection.end > now;
+  const clampedEnd = clampToEndOfToday(selection.end, now);
+  const truncated = (wholeEnd: Date, monthSpan: number): Date =>
+    stillRunning ? addMonths(clampedEnd, -monthSpan) : wholeEnd;
+
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
+  switch (selection.option) {
+    case 'thisMonth': {
+      const previous = monthWindow({ year, month: month - 1 });
+      return { start: previous.start, end: truncated(previous.end, 1) };
+    }
+
+    case 'lastMonth':
+      // Already a closed period, so its predecessor is a whole month too.
+      return monthWindow({ year, month: month - 2 });
+
+    case 'last3Months':
+      return {
+        start: monthWindow({ year, month: month - 5 }).start,
+        end: truncated(monthWindow({ year, month: month - 3 }).end, 3),
+      };
+
+    case 'thisYear': {
+      const previous = yearWindow(year - 1);
+      return { start: previous.start, end: truncated(previous.end, 12) };
+    }
+
+    case 'custom': {
+      const { start, end } = selection;
+      const isFullYear = start.getMonth() === 0 && start.getDate() === 1
+        && end.getMonth() === 11 && end.getDate() === 31;
+      if (isFullYear) {
+        const previous = yearWindow(start.getFullYear() - 1);
+        return { start: previous.start, end: truncated(previous.end, 12) };
+      }
+      const previous = monthWindow(
+        { year: start.getFullYear(), month: start.getMonth() - 1 });
+      return { start: previous.start, end: truncated(previous.end, 1) };
+    }
+
+    default:
+      return null;
+  }
+}
+
+/**
+ * The budget period containing `now`, anchored on the budget's start date.
+ *
+ * Budgets do not run on calendar boundaries: a budget started on the 15th runs
+ * the 15th to the 14th. The anchor day is clamped to the length of the month
+ * being tested *before* it is compared against today, which is the whole of
+ * #171 — comparing against a raw day 31 in February rolled the period back and
+ * left the 28th belonging to no period at all, so spending that day counted
+ * against nothing.
+ *
+ * The end is one millisecond before the next period opens rather than a
+ * separately computed date, so consecutive periods cannot overlap or gap.
+ */
+export function budgetPeriodWindow(
+  period: BudgetPeriod,
+  anchor: Date,
+  now: Date,
+): DateWindow {
+  switch (period) {
+    case 'weekly': {
+      const daysSinceAnchor = (now.getDay() - anchor.getDay() + 7) % 7;
+      const start = addDays(startOfDay(now), -daysSinceAnchor);
+      return { start, end: endOfDay(addDays(start, 6)) };
+    }
+
+    case 'monthly': {
+      const anchorDay = anchor.getDate();
+      // `now` here only donates a clock time that startOfDay discards; the
+      // day itself comes from dateAtClampedDay, which is what keeps a day-31
+      // anchor inside February.
+      const beforeAnchor = now.getDate() < Math.min(anchorDay, daysInMonth(now));
+      const month = beforeAnchor ? now.getMonth() - 1 : now.getMonth();
+      const start = startOfDay(
+        dateAtClampedDay(now.getFullYear(), month, anchorDay, now));
+      const nextStart = startOfDay(
+        dateAtClampedDay(now.getFullYear(), month + 1, anchorDay, now));
+      return { start, end: new Date(nextStart.getTime() - 1) };
+    }
+
+    case 'yearly': {
+      const anchorMonth = anchor.getMonth();
+      const anchorDay = anchor.getDate();
+      const year = now < new Date(now.getFullYear(), anchorMonth, anchorDay)
+        ? now.getFullYear() - 1
+        : now.getFullYear();
+      const start = new Date(year, anchorMonth, anchorDay);
+      return {
+        start,
+        end: new Date(new Date(year + 1, anchorMonth, anchorDay).getTime() - 1),
+      };
+    }
+  }
+}
+
+/**
+ * Where a budget's first period opens when the user did not pick a date.
+ *
+ * `now` is read, never written: the weekly arm used to advance the caller's own
+ * Date with `setDate`, which is only harmless because nothing downstream read
+ * it again.
+ */
+export function defaultBudgetStart(period: BudgetPeriod, now: Date): Date {
+  switch (period) {
+    case 'weekly':
+      // Sunday-based, unlike weekWindow — this is the anchor the user can
+      // still overwrite, not a reporting boundary.
+      return addDays(startOfDay(now), -now.getDay());
+    case 'monthly':
+      return startOfMonth(now);
+    case 'yearly':
+      return yearWindow(now.getFullYear()).start;
+  }
+}
+
+/**
+ * ISO 8601 week number: weeks run Monday to Sunday, and week 1 is the one
+ * holding the year's first Thursday. Computed in UTC so the shifting the
+ * algorithm does cannot cross a DST boundary.
+ */
+export function isoWeekNumber(date: Date): number {
+  const thursday = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = thursday.getUTCDay() || 7;
+  thursday.setUTCDate(thursday.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+  return Math.ceil((((thursday.getTime() - yearStart.getTime()) / MS_PER_DAY) + 1) / 7);
+}
+
+/**
+ * The label a budget summary carries for the period starting on this date.
+ *
+ * The weekly label is an ISO week number while the weekly *window* is anchored
+ * on the budget's own weekday, so the two only line up for a budget that
+ * started on a Monday. Kept as it was rather than corrected here; see the
+ * Known gaps in docs/dates.md.
+ */
+export function budgetPeriodKey(date: Date, period: BudgetPeriod): string {
+  switch (period) {
+    case 'weekly':
+      return `${date.getFullYear()}-W${isoWeekNumber(date)}`;
+    case 'monthly':
+      return monthKey(date);
+    case 'yearly':
+      return String(date.getFullYear());
+  }
 }

@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -38,6 +38,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
     SecuritySettingsComponent,
     AnalyticsSettingsComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile-settings.component.html',
   styleUrl: './profile-settings.component.scss',
 })
@@ -52,7 +53,7 @@ export class ProfileSettingsComponent {
   currencies = SUPPORTED_CURRENCIES;
 
   // Current profile
-  displayName = this.authService.currentUser()?.displayName || '';
+  displayName = signal(this.authService.currentUser()?.displayName || '');
 
   // Current preferences
   baseCurrency = baseCurrencyOf(this.authService.currentUser());
@@ -75,18 +76,18 @@ export class ProfileSettingsComponent {
   languages = this.translationService.languages;
 
   async onDisplayNameChange(): Promise<void> {
-    const trimmed = this.displayName.trim();
+    const trimmed = this.displayName().trim();
     const current = this.authService.currentUser()?.displayName ?? '';
     if (!trimmed || trimmed === current) {
-      this.displayName = current;
+      this.displayName.set(current);
       return;
     }
 
-    this.displayName = trimmed;
+    this.displayName.set(trimmed);
     try {
       await this.authService.updateUserProfile({ displayName: trimmed });
     } catch {
-      this.displayName = current;
+      this.displayName.set(current);
       const message = this.translationService.t('common.error');
       this.notifications.error(message);
     }

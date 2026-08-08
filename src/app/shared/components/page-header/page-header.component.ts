@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import { TranslatePipe } from '../../pipes/translate.pipe';
 
@@ -18,6 +18,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
   selector: 'app-page-header',
   standalone: true,
   imports: [TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './page-header.component.html',
   styleUrl: './page-header.component.scss',
 })

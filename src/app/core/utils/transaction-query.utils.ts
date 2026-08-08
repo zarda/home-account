@@ -2,6 +2,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { Transaction, TransactionFilters } from '../../models';
 import { QueryOptions } from '../services/firestore.service';
 import { fuzzyQueryMatches } from './fuzzy-match.utils';
+import { endOfDay } from './transaction-date.utils';
 
 // Below this length the fuzzy pass adds nothing over the exact substring
 // test (short tokens get no edit budget), so skip it entirely.
@@ -34,13 +35,12 @@ export function buildTransactionWhere(
   }
 
   if (filters.endDate) {
-    // Set end date to end of day (23:59:59.999) to make it inclusive
-    const endOfDay = new Date(filters.endDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Widened to the last millisecond of the day so the bound is inclusive of
+    // a row posted that evening, whatever time of day the filter carries.
     whereConditions.push({
       field: 'date',
       op: '<=',
-      value: Timestamp.fromDate(endOfDay)
+      value: Timestamp.fromDate(endOfDay(filters.endDate))
     });
   }
 

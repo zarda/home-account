@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 
@@ -29,6 +29,7 @@ const PLATFORM_LABEL_KEYS: Record<string, string> = {
     EmptyStateComponent,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './security-activity.component.html',
   styleUrl: './security-activity.component.scss',
 })

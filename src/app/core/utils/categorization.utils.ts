@@ -146,13 +146,19 @@ export interface CategoryNameMatch {
  * we can trust: the ID itself (the one token in the prompt that carries no
  * language), then display names in every locale we ship, then English
  * keywords as a last resort for free-text answers like "gas station".
+ *
+ * The name is `unknown` rather than `string` for the same reason
+ * {@link resolveCategoryId} takes one: every caller is handing over a field
+ * off a `JSON.parse` of a model answer, where the declared type is an
+ * assertion nobody checked. A model that simply omits the field, or answers
+ * a single-value question with a list, is an unmatched name — not a crash.
  */
 export function matchCategoryName(
-  categoryName: string,
+  categoryName: unknown,
   categories: Category[],
   translate: (name: string) => string
 ): CategoryNameMatch {
-  const trimmed = categoryName.trim();
+  const trimmed = typeof categoryName === 'string' ? categoryName.trim() : '';
   if (!trimmed) {
     return { id: FALLBACK_CATEGORY_ID, matched: false };
   }
@@ -209,7 +215,7 @@ export function matchCategoryName(
  * handled differently from a genuine "Other".
  */
 export function mapCategoryNameToId(
-  categoryName: string,
+  categoryName: unknown,
   categories: Category[],
   translate: (name: string) => string
 ): string {

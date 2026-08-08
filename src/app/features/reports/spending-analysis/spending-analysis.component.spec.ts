@@ -2,8 +2,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
+import { Chart } from 'chart.js';
 
 import { SpendingAnalysisComponent } from './spending-analysis.component';
+import { provideAppCharts } from '../../../core/config/chart.config';
 import { Transaction, Category } from '../../../models';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -511,6 +513,80 @@ describe('SpendingAnalysisComponent', () => {
       fixture.detectChanges();
 
       expect(component.savingsTrend()).toBeNull();
+    });
+  });
+
+  /**
+   * Every suite above replaces the template, so this component — the only
+   * one that fills its areas and declares a second axis — has never had its
+   * chart drawn by a test. With the registerables listed by hand rather than
+   * taken wholesale from Chart.js, a missing piece would surface here and
+   * nowhere else: an unregistered controller or scale throws on render, and
+   * a missing Filler silently stops the shading.
+   *
+   * Only the canvas is rendered. The surrounding card is other suites' work.
+   */
+  describe('rendering a real chart', () => {
+    let renderFixture: ComponentFixture<SpendingAnalysisComponent>;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [SpendingAnalysisComponent, NoopAnimationsModule],
+        providers: [
+          provideAppCharts(),
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ]
+      })
+        .overrideComponent(SpendingAnalysisComponent, {
+          set: {
+            template:
+              '<canvas baseChart [type]="chartType" [data]="chartData()" [options]="chartOptions()"></canvas>',
+            providers: [{ provide: CurrencyService, useValue: mockCurrencyService }]
+          }
+        })
+        .compileComponents();
+
+      renderFixture = TestBed.createComponent(SpendingAnalysisComponent);
+      const instance = renderFixture.componentInstance;
+      // A span over three months puts the chart on monthly granularity, and
+      // income in each month is what turns the savings-rate series on.
+      instance.transactions = [
+        makeTransaction('income', 4000, new Date(2024, 0, 5)),
+        makeTransaction('expense', 1000, new Date(2024, 0, 10)),
+        makeTransaction('income', 4000, new Date(2024, 1, 5)),
+        makeTransaction('expense', 2000, new Date(2024, 1, 10)),
+        makeTransaction('income', 4000, new Date(2024, 2, 5)),
+        makeTransaction('expense', 1500, new Date(2024, 2, 10))
+      ];
+      instance.categories = mockCategories;
+      instance.dateRange = { start: new Date(2024, 0, 1), end: new Date(2024, 2, 31) };
+      renderFixture.detectChanges();
+    });
+
+    it('draws the line chart with both axes', () => {
+      const canvas = renderFixture.nativeElement.querySelector('canvas') as HTMLCanvasElement;
+      const chart = Chart.getChart(canvas);
+
+      expect(chart).toBeDefined();
+      expect(chart!.options.scales?.['y']).toBeDefined();
+      expect(chart!.options.scales?.['y1']).toBeDefined();
+    });
+
+    it('fills the income and expense areas', () => {
+      const canvas = renderFixture.nativeElement.querySelector('canvas') as HTMLCanvasElement;
+      const chart = Chart.getChart(canvas) as Chart<'line'>;
+
+      expect(chart.data.datasets[0].fill).toBeTrue();
+      expect(chart.data.datasets[1].fill).toBeTrue();
+      // Reading the dataset back only proves the component asked for a fill.
+      // The plugin attaches this to the drawn meta, so it is what proves the
+      // ask was honoured rather than dropped by an unregistered Filler.
+      for (const index of [0, 1]) {
+        const meta = chart.getDatasetMeta(index) as unknown as { $filler?: unknown };
+        expect(meta.$filler).withContext(`dataset ${index}`).toBeDefined();
+      }
     });
   });
 });

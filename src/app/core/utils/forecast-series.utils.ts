@@ -1,5 +1,5 @@
 import { TransactionType } from '../../models';
-import { dayKey } from './transaction-date.utils';
+import { addDays, dayKey, startOfDay } from './transaction-date.utils';
 
 /**
  * The cash-flow forecast's chart data (ADR 0022).
@@ -66,7 +66,7 @@ export function buildForecastSeries(args: {
   const actualCumulative: (number | null)[] = [];
   const projectedCumulative: (number | null)[] = [];
 
-  let cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  let cursor = startOfDay(start);
   let actualRunning = 0;
   let projectedRunning = 0;
   let todayIndex = 0;
@@ -96,7 +96,7 @@ export function buildForecastSeries(args: {
       break;
     }
 
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+    cursor = addDays(cursor, 1);
   }
 
   return { days, actualCumulative, projectedCumulative, todayIndex };

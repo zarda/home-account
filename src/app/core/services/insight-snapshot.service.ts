@@ -23,9 +23,9 @@ import {
 } from '../utils/insight-snapshot.utils';
 import {
   addMonths,
-  endOfMonth,
   monthKey,
   monthKeysBetween,
+  monthWindow,
   parseMonthKey,
   startOfMonth,
 } from '../utils/transaction-date.utils';
@@ -225,8 +225,7 @@ export class InsightSnapshotService {
       return null;
     }
 
-    const monthStart = new Date(parsed.year, parsed.month, 1);
-    const monthEnd = endOfMonth(monthStart);
+    const { start: monthStart, end: monthEnd } = monthWindow(parsed);
     const monthTransactions = await firstValueFrom(
       this.transactionService.getTransactionsInRange(monthStart, monthEnd));
 
@@ -309,9 +308,9 @@ export class InsightSnapshotService {
       return null;
     }
     try {
-      const monthStart = new Date(parsed.year, parsed.month, 1);
+      const { start, end } = monthWindow(parsed);
       const transactions = await firstValueFrom(
-        this.transactionService.getTransactionsInRange(monthStart, endOfMonth(monthStart)));
+        this.transactionService.getTransactionsInRange(start, end));
       return {
         tx: transactionFingerprint(transactions),
         count: transactions.length,

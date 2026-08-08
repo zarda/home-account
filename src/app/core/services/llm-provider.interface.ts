@@ -2,21 +2,109 @@ import { Signal, WritableSignal } from '@angular/core';
 import {
   Budget,
   Category,
+  FieldConfidence,
   Goal,
   MonthlyTotal,
   SearchIntent,
   SearchQueryContext,
   Transaction,
 } from '../../models';
-import {
-  CSVColumnMapping,
-  CategorizedTransaction,
-  ExtractedTransaction,
-  MultiImageExtractedTransaction,
-  ParsedReceipt,
-  PreviousPeriodData,
-  RawTransaction,
-} from './gemini.service';
+
+/**
+ * What the providers hand back, declared where the contract that uses them
+ * lives.
+ *
+ * These used to be declared in gemini.service.ts and imported from there by
+ * this file, by the other two providers, and by a dozen callers — so the
+ * interface every provider implements depended on one of its implementers,
+ * and OpenAI could not be read without opening Gemini. They describe an
+ * extraction result, not a Gemini result; nothing here is provider-specific.
+ */
+export interface ParsedReceipt {
+  merchant: string;
+  amount: number;
+  currency: string;
+  date: Date;
+  items?: ReceiptItem[];
+  receiptDetails?: string;          // Full receipt content reproduced line by line
+  suggestedCategory: string;
+  confidence: number;
+  receiptCount?: number;            // Distinct receipts visible in the photo (defaults to 1)
+  /**
+   * How clearly the model read the total and the date. The receipt prompt has
+   * always asked for these; nothing used to carry them out of the response,
+   * so a blurred total looked exactly like a crisp one.
+   */
+  fieldConfidence?: FieldConfidence;
+}
+
+export interface ReceiptItem {
+  name: string;
+  amount: number;
+}
+
+export interface RawTransaction {
+  description: string;
+  amount: number;
+  date: Date;
+}
+
+export interface CategorizedTransaction extends RawTransaction {
+  suggestedCategoryId: string;
+  confidence: number;
+}
+
+export interface PreviousPeriodData {
+  income: number;
+  expense: number;
+}
+
+export interface ExtractedTransaction {
+  date: string;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  currency: string;
+  category?: string;               // Transaction category (e.g., Groceries, Gas, etc.)
+  merchant?: string;               // Specific merchant/business name
+  details?: string;                // Additional details (card last 4 digits, reference number, etc.)
+  amountConfidence?: number;       // How legible the amount was (0-1); absent when unreported
+  dateConfidence?: number;         // How legible the date was (0-1); absent when unreported
+}
+
+export interface MultiImageExtractedTransaction extends ExtractedTransaction {
+  imageIndex: number;             // Which image this item came from (0-based)
+  positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position
+  confidence: number;             // OCR/extraction confidence (0-1)
+  receiptId?: number;             // AI-assigned receipt group (items from same receipt share same ID)
+  receiptDetails?: string;        // Full receipt content reproduced line by line
+  // Printed grand total for this receiptId group, reported once on the last
+  // item (same convention as receiptDetails). Consolidation takes the first
+  // value present in the group.
+  receiptTotal?: number;
+  wasMerged?: boolean;            // True if deduplicated from multiple images
+  mergedFromImages?: number[];    // Indices of images where this appeared
+}
+
+export interface CSVColumnMapping {
+  dateColumn: string;
+  descriptionColumn: string;
+  amountColumn: string;
+  debitColumn?: string;
+  creditColumn?: string;
+  typeColumn?: string;
+  categoryColumn?: string;
+  dateFormat: string;
+  hasHeader: boolean;
+}
+
+/** True when an error message indicates a rate limit / quota exhaustion. */
+export function isRateLimitMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('429') || lower.includes('resource_exhausted') ||
+    lower.includes('rate limit') || lower.includes('quota exceeded') ||
+    lower.includes('too many requests');
+}
 
 /**
  * What a provider can actually do, as opposed to what it is asked to do.

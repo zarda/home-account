@@ -1,4 +1,4 @@
-import { Component, Input, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, inject } from '@angular/core';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipsModule } from '@angular/material/chips';
@@ -19,6 +19,7 @@ import { ThemeService } from '../../../core/services/theme.service';
   selector: 'app-category-chip',
   standalone: true,
   imports: [MatIconModule, MatChipsModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (resolvedColor(); as color) {
       @if (appearance === 'tile') {

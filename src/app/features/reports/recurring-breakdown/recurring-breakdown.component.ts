@@ -1,4 +1,4 @@
-import { Component, computed, inject, Input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 
 import { MatCardModule } from '@angular/material/card';
@@ -20,6 +20,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     CurrencyPipe,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './recurring-breakdown.component.html',
   styleUrl: './recurring-breakdown.component.scss',
 })

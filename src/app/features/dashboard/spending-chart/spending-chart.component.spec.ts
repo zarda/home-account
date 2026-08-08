@@ -2,7 +2,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { By } from '@angular/platform-browser';
 import { signal, NO_ERRORS_SCHEMA } from '@angular/core';
-import { BaseChartDirective, provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { BaseChartDirective } from 'ng2-charts';
+import { provideAppCharts } from '../../../core/config/chart.config';
 import { SpendingChartComponent } from './spending-chart.component';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -78,7 +79,7 @@ describe('SpendingChartComponent', () => {
     await TestBed.configureTestingModule({
       imports: [SpendingChartComponent, NoopAnimationsModule],
       providers: [
-        provideCharts(withDefaultRegisterables()),
+        provideAppCharts(),
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: CurrencyService, useValue: mockCurrencyService },
         { provide: AuthService, useValue: mockAuthService }
@@ -365,7 +366,7 @@ describe('SpendingChartComponent', () => {
       await TestBed.configureTestingModule({
         imports: [SpendingChartComponent, NoopAnimationsModule],
         providers: [
-          provideCharts(withDefaultRegisterables()),
+          provideAppCharts(),
           { provide: TranslationService, useValue: mockTranslationService },
           { provide: CurrencyService, useValue: mockCurrencyService },
           { provide: AuthService, useValue: mockAuthService }

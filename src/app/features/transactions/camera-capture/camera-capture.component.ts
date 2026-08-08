@@ -1,5 +1,5 @@
 import { nextImportRowId } from '../../../core/utils/import-row-id.utils';
-import { Component, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatDialogRef, MatDialogModule } from '@angular/material/dialog';
@@ -49,6 +49,7 @@ interface CapturedImage {
     DragDropModule,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './camera-capture.component.html',
   styleUrl: './camera-capture.component.scss',
 })

@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { CurrencyPipe, NgTemplateOutlet } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -53,6 +53,7 @@ import { InsightTransactionListComponent } from '../insight-card/insight-transac
     TranslatePipe,
     InsightTransactionListComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './recurring-list.component.html',
   styleUrl: './recurring-list.component.scss',
 })

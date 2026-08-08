@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -7,7 +7,7 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { isRateLimitMessage } from '../../../../core/services/gemini.service';
+import { isRateLimitMessage } from '../../../../core/services/llm-provider.interface';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import {
   InsightFacts,
@@ -50,6 +50,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
     LoadingSpinnerComponent,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './insight-narrative.component.html',
   styleUrl: './insight-narrative.component.scss',
 })

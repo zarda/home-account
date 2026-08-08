@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 
 import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
@@ -20,6 +20,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   selector: 'app-budget-alert-banner',
   standalone: true,
   imports: [RouterLink, MatIconModule, MatButtonModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './budget-alert-banner.component.html',
   styleUrl: './budget-alert-banner.component.scss',
 })

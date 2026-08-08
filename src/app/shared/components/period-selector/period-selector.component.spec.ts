@@ -42,7 +42,10 @@ describe('PeriodSelectorComponent', () => {
     expect(sel.start.getDate()).toBe(1);
     expect(sel.start.getMonth()).toBe(now.getMonth());
     expect(sel.end.getMonth()).toBe(now.getMonth());
-    expect(sel.end.getHours()).toBe(23);
+    // The last millisecond, not 23:59:59 — the bound has to be inclusive of a
+    // transaction posted in the final second of the month.
+    expect(sel.end.getTime()).toBe(
+      new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime());
   });
 
   it('does not emit on init — parents seed from defaultPeriodSelection()', () => {
@@ -59,6 +62,7 @@ describe('PeriodSelectorComponent', () => {
     expect(sel.option).toBe('lastMonth');
     expect(sel.start.getTime()).toBe(expectedStart.getTime());
     expect(sel.end.getMonth()).toBe(expectedStart.getMonth());
+    expect(sel.end.getMilliseconds()).toBe(999);
     expect(sel.label).toBe('');
   });
 

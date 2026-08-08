@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -26,6 +26,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatInputModule,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './app-lock.component.html',
   styleUrl: './app-lock.component.scss',
 })
@@ -37,7 +38,7 @@ export class AppLockComponent implements OnInit, OnDestroy {
 
   readonly pinLength = PIN_LENGTH;
 
-  pin = '';
+  pin = signal('');
   isChecking = signal(false);
   errorKey = signal<string | null>(null);
   blockedSeconds = signal(0);
@@ -59,7 +60,7 @@ export class AppLockComponent implements OnInit, OnDestroy {
   }
 
   get canSubmit(): boolean {
-    return isValidPin(this.pin) && !this.isChecking() && !this.isBlocked();
+    return isValidPin(this.pin()) && !this.isChecking() && !this.isBlocked();
   }
 
   async submit(): Promise<void> {
@@ -68,12 +69,12 @@ export class AppLockComponent implements OnInit, OnDestroy {
     this.isChecking.set(true);
     this.errorKey.set(null);
     try {
-      const unlocked = await this.appLock.unlockWithPin(this.pin);
+      const unlocked = await this.appLock.unlockWithPin(this.pin());
       if (unlocked) {
         await this.router.navigateByUrl(this.appLock.consumeRedirect());
         return;
       }
-      this.pin = '';
+      this.pin.set('');
       this.errorKey.set(
         this.appLock.attemptsExhausted() ? 'appLock.tooManyAttempts' : 'appLock.wrongPin'
       );

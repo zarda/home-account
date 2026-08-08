@@ -7,11 +7,18 @@ import { TransactionService } from './transaction.service';
 import { CurrencyService } from './currency.service';
 import { getBudgetAlertSeverity } from '../utils/budget-alert.utils';
 import { roundMoney } from '../utils/transaction-aggregation.utils';
-import { dayKey } from '../utils/transaction-date.utils';
+import {
+  DateWindow,
+  budgetPeriodKey,
+  budgetPeriodWindow,
+  dayKey,
+  defaultBudgetStart,
+} from '../utils/transaction-date.utils';
 import {
   Budget,
   BudgetSummary,
   BudgetAlert,
+  BudgetPeriod,
   CreateBudgetDTO,
   baseCurrencyOf
 } from '../../models';
@@ -288,7 +295,7 @@ export class BudgetService {
         if (!budget) return null;
 
         const { start } = this.getBudgetPeriodDates(budget);
-        const periodString = this.formatPeriodString(start, budget.period);
+        const periodString = budgetPeriodKey(start, budget.period);
 
         return {
           budgetId: budget.id,
@@ -384,147 +391,21 @@ export class BudgetService {
   }
 
   // Helper: Get default start date based on period
-  private getDefaultStartDate(period: 'weekly' | 'monthly' | 'yearly'): Timestamp {
-    const now = new Date();
-
-    switch (period) {
-      case 'weekly': {
-        // Start of current week (Sunday)
-        const day = now.getDay();
-        const diff = now.getDate() - day;
-        return Timestamp.fromDate(new Date(now.setDate(diff)));
-      }
-
-      case 'monthly':
-        // Start of current month
-        return Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth(), 1));
-
-      case 'yearly':
-        // Start of current year
-        return Timestamp.fromDate(new Date(now.getFullYear(), 0, 1));
-    }
+  private getDefaultStartDate(period: BudgetPeriod): Timestamp {
+    return Timestamp.fromDate(defaultBudgetStart(period, new Date()));
   }
 
-  // Helper: Get budget period start and end dates for the CURRENT period
-  private getBudgetPeriodDates(budget: Budget): { start: Date; end: Date } {
-    const now = new Date();
-    const budgetStartDate = budget.startDate.toDate();
-    let periodStart: Date;
-    let periodEnd: Date;
+  /**
+   * The budget period containing today. The anchoring, and the clamp that
+   * keeps a day-31 anchor inside a short month, are budgetPeriodWindow's; the
+   * only budget-specific rule left here is that a user-set end date can close
+   * the period early.
+   */
+  private getBudgetPeriodDates(budget: Budget): DateWindow {
+    const { start, end } = budgetPeriodWindow(
+      budget.period, budget.startDate.toDate(), new Date());
 
-    switch (budget.period) {
-      case 'weekly': {
-        // Get the day of week from budget start (0=Sunday, 1=Monday, etc.)
-        const startDayOfWeek = budgetStartDate.getDay();
-        // Calculate current week's start based on the same day of week
-        const currentDayOfWeek = now.getDay();
-        const daysToSubtract = (currentDayOfWeek - startDayOfWeek + 7) % 7;
-        periodStart = new Date(now);
-        periodStart.setDate(now.getDate() - daysToSubtract);
-        periodStart.setHours(0, 0, 0, 0);
-
-        periodEnd = new Date(periodStart);
-        periodEnd.setDate(periodStart.getDate() + 6);
-        periodEnd.setHours(23, 59, 59, 999);
-        break;
-      }
-
-      case 'monthly': {
-        // Get the day of month from budget start
-        const startDayOfMonth = budgetStartDate.getDate();
-        // Calculate current period based on the same day of month
-        let year = now.getFullYear();
-        let month = now.getMonth();
-
-        // If we haven't reached the start day this month, use previous month.
-        // Compare against the anchor as THIS month sees it: a day-31 anchor
-        // falls on Feb 28 in February, otherwise the last day of a short
-        // month would belong to no period at all.
-        const daysInThisMonth = new Date(year, month + 1, 0).getDate();
-        const anchorThisMonth = Math.min(startDayOfMonth, daysInThisMonth);
-        if (now.getDate() < anchorThisMonth) {
-          month--;
-          if (month < 0) {
-            month = 11;
-            year--;
-          }
-        }
-
-        // Handle case where start day doesn't exist in current month (e.g., 31st in Feb)
-        const daysInMonth = new Date(year, month + 1, 0).getDate();
-        const actualStartDay = Math.min(startDayOfMonth, daysInMonth);
-
-        periodStart = new Date(year, month, actualStartDay, 0, 0, 0, 0);
-
-        // End is one day before next period start
-        let endYear = year;
-        let endMonth = month + 1;
-        if (endMonth > 11) {
-          endMonth = 0;
-          endYear++;
-        }
-        const daysInEndMonth = new Date(endYear, endMonth + 1, 0).getDate();
-        const actualEndDay = Math.min(startDayOfMonth, daysInEndMonth);
-        periodEnd = new Date(endYear, endMonth, actualEndDay, 0, 0, 0, 0);
-        periodEnd.setMilliseconds(periodEnd.getMilliseconds() - 1);
-        break;
-      }
-
-      case 'yearly': {
-        // Get month and day from budget start
-        const startMonth = budgetStartDate.getMonth();
-        const startDay = budgetStartDate.getDate();
-        let year = now.getFullYear();
-
-        // Check if we've passed the start date this year
-        const thisYearStart = new Date(year, startMonth, startDay);
-        if (now < thisYearStart) {
-          year--;
-        }
-
-        periodStart = new Date(year, startMonth, startDay, 0, 0, 0, 0);
-        periodEnd = new Date(year + 1, startMonth, startDay, 0, 0, 0, 0);
-        periodEnd.setMilliseconds(periodEnd.getMilliseconds() - 1);
-        break;
-      }
-    }
-
-    // Respect budget's custom end date if set
-    if (budget.endDate) {
-      const budgetEndDate = budget.endDate.toDate();
-      if (budgetEndDate < periodEnd) {
-        periodEnd = budgetEndDate;
-      }
-    }
-
-    return { start: periodStart, end: periodEnd };
-  }
-
-  // Helper: Format period string
-  private formatPeriodString(date: Date, period: 'weekly' | 'monthly' | 'yearly'): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-
-    switch (period) {
-      case 'weekly': {
-        const weekNum = this.getWeekNumber(date);
-        return `${year}-W${weekNum}`;
-      }
-
-      case 'monthly':
-        return `${year}-${month}`;
-
-      case 'yearly':
-        return String(year);
-    }
-  }
-
-  // Helper: Get ISO week number
-  private getWeekNumber(date: Date): number {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+    const customEnd = budget.endDate?.toDate();
+    return { start, end: customEnd && customEnd < end ? customEnd : end };
   }
 }
