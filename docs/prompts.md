@@ -30,7 +30,9 @@ const rendered = renderPrompt('categorizeTransactions', {
 });
 ```
 
-Each provider service then has exactly one adapter — the only place provider variation is allowed to live. Gemini prepends the JSON-only preamble when `expects === 'json'` and doubles the token budget for Gemma's verbose drafting; OpenAI flattens `system` into the input; Claude hoists `system` to its top-level parameter. Nobody writes "return ONLY valid JSON" for Gemini's benefit again — they set `expects: 'json'`.
+Most prompts are rendered once, in `CloudLLMProviderBase` (`core/services/cloud-llm-provider.base.ts`), which every provider service extends. What each provider still owns is its transport: `sendText` and `sendVision`, and the `renderedText` strategy behind them. Gemini prepends the JSON-only preamble when `expects === 'json'` and doubles the token budget for Gemma's verbose drafting; OpenAI flattens `system` into the input; Claude hoists `system` to its top-level parameter. Nobody writes "return ONLY valid JSON" for Gemini's benefit again — they set `expects: 'json'`. ADR 0025 records why the variation lives there and nowhere else.
+
+A call site in the base reaches all three providers by construction, so `npm run prompts:check` counts it as all three. It also fails on the two ways that can go wrong: a prompt rendered in the base *and* in a provider file, where one of the two must be drift, and a single-provider exemption claimed by a prompt the base renders.
 
 ### Do not enumerate what the model already knows
 

@@ -1,13 +1,11 @@
 import { Injectable } from '@angular/core';
 import type Anthropic from '@anthropic-ai/sdk';
 import { DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
-import { CloudLLMProviderBase } from './cloud-llm-provider.base';
-import { Budget, Category, Goal, Transaction, MonthlyTotal } from '../../models';
+import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import {
   ParsedReceipt,
   RawTransaction,
   CategorizedTransaction,
-  PreviousPeriodData,
   ExtractedTransaction,
   MultiImageExtractedTransaction,
   CSVColumnMapping,
@@ -21,23 +19,12 @@ import {
   readFieldConfidence,
   readReceiptTotal,
 } from '../utils/receipt-extraction.utils';
-import { parseSearchIntent } from '../utils/nl-search.utils';
-import { SearchIntent, SearchQueryContext } from '../../models';
-import {
-  RenderedPrompt,
-  renderBudgetSection,
-  renderGoalSection,
-  renderCategoryBreakdown,
-  renderLargestExpenses,
-  renderPreviousPeriodSection,
-  renderPrompt,
-} from '../prompts';
+import { PromptId, RenderedPrompt, renderPrompt } from '../prompts';
 import {
   AIRequestOptions,
   CloudLLMProviderAdapter,
   ProviderCapabilities,
 } from './llm-provider.interface';
-import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 import { dayKey } from '../utils/transaction-date.utils';
 
 @Injectable({ providedIn: 'root' })
@@ -197,78 +184,6 @@ export class ClaudeService extends CloudLLMProviderBase implements CloudLLMProvi
     }
   }
 
-  // Suggest category for a transaction description
-  async suggestCategory(description: string, categories: Category[]): Promise<string> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const categoryList = categories
-        .filter((c) => !c.parentId && c.isActive)
-        .map((c) => `${c.id}: ${this.translateCategoryName(c.name)}`)
-        .join('\n');
-
-      const rendered = renderPrompt('categorySuggestion', {
-        description,
-        categoryCatalog: categoryList,
-      });
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [{ role: 'user', content: this.renderedText(rendered) }],
-      });
-
-      const suggestedId = this.extractTextFromResponse(response).trim();
-
-      // Validate the suggested ID exists
-      const validCategory = categories.find((c) => c.id === suggestedId);
-      return validCategory?.id ?? 'other_expense';
-    } catch (error) {
-      console.error('Claude category suggestion error:', error);
-      return 'other_expense';
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  /**
-   * Describe an already-computed spending pattern in prose.
-   *
-   * Takes a pre-built aggregate context rather than transactions: the insights
-   * feature sends numbers and category names only, never a description, note or
-   * merchant string. Facts in, prose out.
-   */
-  async generatePatternNarrative(context: string, locale: string): Promise<string> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-    try {
-      const rendered = renderPrompt('patternNarrative', {
-        context,
-        locale,
-        languageInstruction: this.getLanguageInstruction(),
-      });
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [{ role: 'user', content: this.renderedText(rendered) }],
-      });
-
-      return trimToLastCompleteSentence(this.extractTextFromResponse(response).trim());
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
   // Categorize multiple transactions
   async categorizeTransactions(
     transactions: RawTransaction[],
@@ -316,257 +231,6 @@ export class ClaudeService extends CloudLLMProviderBase implements CloudLLMProvi
         suggestedCategoryId: 'other_expense',
         confidence: 0.1,
       }));
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Interpret a natural-language transaction search query. Throws on any
-  // failure so the caller can fall back to plain keyword search.
-  async interpretSearchQuery(query: string, context: SearchQueryContext): Promise<SearchIntent> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const rendered = renderPrompt('searchQuery', { query, context });
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [{ role: 'user', content: this.renderedText(rendered) }],
-      });
-
-      const cleanedJson = this.extractJson(this.extractTextFromResponse(response));
-      return parseSearchIntent(JSON.parse(cleanedJson), context);
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Generate spending summary
-  async generateSpendingSummary(
-    transactions: Transaction[],
-    period: string,
-    baseCurrency: string,
-    previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[],
-    goals?: Goal[],
-    ragContext?: string
-  ): Promise<string> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const categories = this.categoryService.categories();
-
-      const toBaseCurrency = (amount: number, currency: string) =>
-        this.currencyService.convert(amount, currency, baseCurrency);
-      // Prompt amounts: plain digits, no sub-digits for zero-decimal currencies
-      const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
-
-      const byCategory = new Map<string, { name: string; total: number; count: number }>();
-      for (const t of transactions) {
-        if (t.type !== 'expense') continue;
-
-        const category = categories.find((c) => c.id === t.categoryId);
-        const categoryName = this.translateCategoryName(category?.name);
-
-        const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
-        existing.total += toBaseCurrency(t.amount, t.currency);
-        existing.count += 1;
-        byCategory.set(t.categoryId, existing);
-      }
-
-      const totalIncome = transactions
-        .filter((t) => t.type === 'income')
-        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
-
-      const totalExpense = transactions
-        .filter((t) => t.type === 'expense')
-        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
-
-      const categoryBreakdown = renderCategoryBreakdown(
-        Array.from(byCategory.values())
-          .sort((a, b) => b.total - a.total)
-          .slice(0, 5)
-          .map((c) => ({ name: c.name, total: fmt(c.total), count: c.count })),
-        baseCurrency
-      );
-
-      const expenseTransactions = transactions.filter((t) => t.type === 'expense');
-      const largestExpenses = renderLargestExpenses(
-        [...expenseTransactions]
-          .sort(
-            (a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency)
-          )
-          .slice(0, 5)
-          .map((t) => ({
-            description: t.description,
-            amount: fmt(toBaseCurrency(t.amount, t.currency)),
-            categoryName: this.translateCategoryName(
-              categories.find((c) => c.id === t.categoryId)?.name
-            ),
-          })),
-        baseCurrency
-      );
-
-      let historicalSection = '';
-      if (previousPeriodData && (previousPeriodData.income > 0 || previousPeriodData.expense > 0)) {
-        historicalSection = renderPreviousPeriodSection({
-          baseCurrency,
-          previousIncome: fmt(previousPeriodData.income),
-          previousExpense: fmt(previousPeriodData.expense),
-          incomeChangePercent:
-            previousPeriodData.income > 0
-              ? (
-                  ((totalIncome - previousPeriodData.income) / previousPeriodData.income) *
-                  100
-                ).toFixed(1)
-              : 'N/A',
-          expenseChangePercent:
-            previousPeriodData.expense > 0
-              ? (
-                  ((totalExpense - previousPeriodData.expense) / previousPeriodData.expense) *
-                  100
-                ).toFixed(1)
-              : 'N/A',
-        });
-      }
-
-      let budgetSection = '';
-      if (budgets && budgets.length > 0) {
-        budgetSection = renderBudgetSection(
-          budgets.map((b) => {
-            const categorySpent = byCategory.get(b.categoryId)?.total ?? 0;
-            const budgetAmountInBaseCurrency = this.currencyService.convert(
-              b.amount,
-              b.currency,
-              baseCurrency
-            );
-            return {
-              name: b.name,
-              spent: fmt(categorySpent),
-              limit: fmt(budgetAmountInBaseCurrency),
-              percentUsed:
-                budgetAmountInBaseCurrency > 0
-                  ? (categorySpent / budgetAmountInBaseCurrency) * 100
-                  : 0,
-            };
-          }),
-          baseCurrency
-        );
-      }
-
-      let goalSection = '';
-      if (goals && goals.length > 0) {
-        goalSection = renderGoalSection(
-          goals.map((g) => {
-            // Goals convert like budgets: compare in the base currency.
-            const targetInBase = this.currencyService.convert(
-              g.targetAmount,
-              g.currency,
-              baseCurrency
-            );
-            const savedInBase = this.currencyService.convert(
-              g.contributedAmount,
-              g.currency,
-              baseCurrency
-            );
-            return {
-              name: g.name,
-              saved: fmt(savedInBase),
-              target: fmt(targetInBase),
-              percentSaved: targetInBase > 0 ? (savedInBase / targetInBase) * 100 : 0,
-            };
-          }),
-          baseCurrency
-        );
-      }
-
-      const rendered = renderPrompt('spendingSummary', {
-        period,
-        baseCurrency,
-        totalIncome: fmt(totalIncome),
-        totalExpense: fmt(totalExpense),
-        net: fmt(totalIncome - totalExpense),
-        transactionCount: transactions.length,
-        categoryBreakdown,
-        largestExpenses,
-        historicalSection,
-        budgetSection,
-        goalSection,
-        grounding: ragContext,
-        languageInstruction: this.getLanguageInstruction(),
-      });
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [{ role: 'user', content: this.renderedText(rendered) }],
-      });
-
-      return this.extractTextFromResponse(response) || 'Unable to generate spending summary.';
-    } catch (error) {
-      console.error('Claude summary generation error:', error);
-      // Let the caller decide how to present the failure (and in which language)
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Get financial advice based on period totals
-  async getFinancialAdvice(
-    summary: MonthlyTotal,
-    baseCurrency: string,
-    period = 'this month'
-  ): Promise<string> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const savingsRate =
-        summary.income > 0
-          ? ((summary.income - summary.expense) / summary.income) * 100
-          : 0;
-      const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
-
-      const rendered = renderPrompt('financialAdvice', {
-        period,
-        baseCurrency,
-        income: fmt(summary.income),
-        expense: fmt(summary.expense),
-        balance: fmt(summary.balance),
-        savingsRate,
-        balanceIsNegative: summary.balance < 0,
-        languageInstruction: this.getLanguageInstruction(),
-      });
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [{ role: 'user', content: this.renderedText(rendered) }],
-      });
-
-      return (
-        this.extractTextFromResponse(response) ||
-        'Keep tracking your expenses to better understand your spending patterns.'
-      );
-    } catch (error) {
-      console.error('Claude financial advice error:', error);
-      // Let the caller decide how to present the failure (and in which language)
-      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -767,6 +431,36 @@ export class ClaudeService extends CloudLLMProviderBase implements CloudLLMProvi
     } finally {
       this.isProcessing.set(false);
     }
+  }
+
+  /**
+   * One client, so one sentence: there is no second handle to fall back to
+   * the way Gemini has.
+   */
+  protected assertTextTransport(): void {
+    if (!this.client) {
+      throw new Error('Claude client not available');
+    }
+  }
+
+  /** Text transport: one Messages call, and the text block it carries back. */
+  protected async sendText(
+    promptId: PromptId,
+    rendered: RenderedPrompt
+  ): Promise<ProviderResponse> {
+    this.assertTextTransport();
+
+    const response = await this.client!.messages.create({
+      model: this.model,
+      max_tokens: rendered.maxOutputTokens,
+      ...this.systemParam(rendered),
+      messages: [{ role: 'user', content: this.renderedText(rendered) }],
+    });
+
+    return {
+      text: this.extractTextFromResponse(response),
+      truncated: response.stop_reason === 'max_tokens',
+    };
   }
 
   // Helper: Extract text from Claude response

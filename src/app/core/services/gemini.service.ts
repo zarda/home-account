@@ -5,8 +5,7 @@ import type {
   GenerateContentResult,
   SingleRequestOptions,
 } from '@google/generative-ai';
-import { CloudLLMProviderBase } from './cloud-llm-provider.base';
-import { Budget, Category, Goal, Transaction, MonthlyTotal } from '../../models';
+import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import {
   readCurrencyCode,
@@ -24,16 +23,11 @@ import {
   applyCategorizations,
   buildCategoryPromptCatalog,
 } from '../utils/categorization.utils';
-import { parseSearchIntent } from '../utils/nl-search.utils';
-import { SearchIntent, SearchQueryContext } from '../../models';
 import {
   JSON_ONLY_PREAMBLE,
+  PROMPTS,
+  PromptId,
   RenderedPrompt,
-  renderBudgetSection,
-  renderGoalSection,
-  renderCategoryBreakdown,
-  renderLargestExpenses,
-  renderPreviousPeriodSection,
   renderPrompt,
 } from '../prompts';
 import {
@@ -44,7 +38,6 @@ import {
   ExtractedTransaction,
   MultiImageExtractedTransaction,
   ParsedReceipt,
-  PreviousPeriodData,
   ProviderCapabilities,
   RawTransaction,
   isRateLimitMessage,
@@ -249,46 +242,6 @@ export class GeminiService extends CloudLLMProviderBase implements CloudLLMProvi
     throw lastError;
   }
 
-  // Suggest category for a transaction description
-  async suggestCategory(
-    description: string,
-    categories: Category[]
-  ): Promise<string> {
-    if (!this.textModel) {
-      throw new Error('Gemini text model not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const categoryList = categories
-        .filter(c => !c.parentId && c.isActive)
-        .map(c => `${c.id}: ${this.translateCategoryName(c.name)}`)
-        .join('\n');
-
-      const rendered = renderPrompt('categorySuggestion', {
-        description,
-        categoryCatalog: categoryList,
-      });
-
-      const result = await this.textModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
-        generationConfig: this.generationConfig(rendered)
-      });
-      const responseText = result.response.text().trim();
-      const suggestedId = this.filterReasoningContext(responseText);
-
-      // Validate the suggested ID exists
-      const validCategory = categories.find(c => c.id === suggestedId);
-      return validCategory?.id ?? 'other_expense';
-    } catch (error) {
-      console.error('Category suggestion error:', error);
-      return 'other_expense';
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
   // Categorize multiple transactions
   async categorizeTransactions(
     transactions: RawTransaction[],
@@ -334,290 +287,6 @@ export class GeminiService extends CloudLLMProviderBase implements CloudLLMProvi
         suggestedCategoryId: 'other_expense',
         confidence: 0.1
       }));
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Interpret a natural-language transaction search query. Throws on any
-  // failure so the caller can fall back to plain keyword search.
-  async interpretSearchQuery(query: string, context: SearchQueryContext): Promise<SearchIntent> {
-    if (!this.textModel) {
-      throw new Error('Gemini text model not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const rendered = renderPrompt('searchQuery', { query, context });
-      const result = await this.textModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
-        generationConfig: this.generationConfig(rendered)
-      });
-      const cleanedJson = this.extractJson(result.response.text());
-      return parseSearchIntent(JSON.parse(cleanedJson), context);
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Generate spending summary
-  async generateSpendingSummary(
-    transactions: Transaction[],
-    period: string,
-    baseCurrency: string,
-    previousPeriodData?: PreviousPeriodData | null,
-    budgets?: Budget[],
-    goals?: Goal[],
-    ragContext?: string
-  ): Promise<string> {
-    if (!this.textModel) {
-      console.error('[GeminiService] ✗ Text model not available for spending summary');
-      throw new Error('Gemini text model not available');
-    }
-
-    console.log(`[GeminiService] Generating spending summary for ${transactions.length} transactions in period: ${period}`);
-    this.isProcessing.set(true);
-
-    try {
-      const categories = this.categoryService.categories();
-
-      // Helper to convert amount to base currency (real-time conversion)
-      const toBaseCurrency = (amount: number, currency: string) =>
-        this.currencyService.convert(amount, currency, baseCurrency);
-      // Prompt amounts: plain digits, no sub-digits for zero-decimal currencies
-      const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
-
-      // Group transactions by category
-      const byCategory = new Map<string, { name: string; total: number; count: number }>();
-      for (const t of transactions) {
-        if (t.type !== 'expense') continue;
-
-        const category = categories.find(c => c.id === t.categoryId);
-        const categoryName = this.translateCategoryName(category?.name);
-
-        const existing = byCategory.get(t.categoryId) ?? { name: categoryName, total: 0, count: 0 };
-        existing.total += toBaseCurrency(t.amount, t.currency);
-        existing.count += 1;
-        byCategory.set(t.categoryId, existing);
-      }
-
-      const totalIncome = transactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
-
-      const totalExpense = transactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + toBaseCurrency(t.amount, t.currency), 0);
-
-      const categoryBreakdown = renderCategoryBreakdown(
-        Array.from(byCategory.values())
-          .sort((a, b) => b.total - a.total)
-          .slice(0, 5)
-          .map(c => ({ name: c.name, total: fmt(c.total), count: c.count })),
-        baseCurrency
-      );
-
-      // Build individual transactions list (recent + largest)
-      const expenseTransactions = transactions.filter(t => t.type === 'expense');
-      const largestExpenses = renderLargestExpenses(
-        [...expenseTransactions]
-          .sort((a, b) => toBaseCurrency(b.amount, b.currency) - toBaseCurrency(a.amount, a.currency))
-          .slice(0, 5)
-          .map(t => ({
-            description: t.description,
-            amount: fmt(toBaseCurrency(t.amount, t.currency)),
-            categoryName: this.translateCategoryName(
-              categories.find(c => c.id === t.categoryId)?.name
-            ),
-          })),
-        baseCurrency
-      );
-
-      // Build historical comparison section
-      let historicalSection = '';
-      if (previousPeriodData && (previousPeriodData.income > 0 || previousPeriodData.expense > 0)) {
-        historicalSection = renderPreviousPeriodSection({
-          baseCurrency,
-          previousIncome: fmt(previousPeriodData.income),
-          previousExpense: fmt(previousPeriodData.expense),
-          incomeChangePercent: previousPeriodData.income > 0
-            ? ((totalIncome - previousPeriodData.income) / previousPeriodData.income * 100).toFixed(1)
-            : 'N/A',
-          expenseChangePercent: previousPeriodData.expense > 0
-            ? ((totalExpense - previousPeriodData.expense) / previousPeriodData.expense * 100).toFixed(1)
-            : 'N/A',
-        });
-      }
-
-      // Build budget section
-      let budgetSection = '';
-      if (budgets && budgets.length > 0) {
-        budgetSection = renderBudgetSection(
-          budgets.map(b => {
-            const categorySpent = byCategory.get(b.categoryId)?.total ?? 0;
-            // Convert budget amount to base currency for comparison
-            const budgetAmountInBaseCurrency = this.currencyService.convert(b.amount, b.currency, baseCurrency);
-            return {
-              name: b.name,
-              spent: fmt(categorySpent),
-              limit: fmt(budgetAmountInBaseCurrency),
-              percentUsed: budgetAmountInBaseCurrency > 0
-                ? (categorySpent / budgetAmountInBaseCurrency * 100)
-                : 0,
-            };
-          }),
-          baseCurrency
-        );
-      }
-
-      let goalSection = '';
-      if (goals && goals.length > 0) {
-        goalSection = renderGoalSection(
-          goals.map(g => {
-            // Goals convert like budgets: compare in the base currency.
-            const targetInBase = this.currencyService.convert(g.targetAmount, g.currency, baseCurrency);
-            const savedInBase = this.currencyService.convert(g.contributedAmount, g.currency, baseCurrency);
-            return {
-              name: g.name,
-              saved: fmt(savedInBase),
-              target: fmt(targetInBase),
-              percentSaved: targetInBase > 0 ? (savedInBase / targetInBase * 100) : 0,
-            };
-          }),
-          baseCurrency
-        );
-      }
-
-      const rendered = renderPrompt('spendingSummary', {
-        period,
-        baseCurrency,
-        totalIncome: fmt(totalIncome),
-        totalExpense: fmt(totalExpense),
-        net: fmt(totalIncome - totalExpense),
-        transactionCount: transactions.length,
-        categoryBreakdown,
-        largestExpenses,
-        historicalSection,
-        budgetSection,
-        goalSection,
-        grounding: ragContext,
-        languageInstruction: this.getLanguageInstruction(),
-      });
-
-      const result = await this.generateTextWithRetry({
-        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
-        generationConfig: this.generationConfig(rendered)
-      });
-      const rawText = result.response.text().trim();
-      const filteredText = this.currentTextModelId.includes('gemma-4')
-        ? this.filterReasoningContext(rawText)
-        : rawText;
-      // Never end on a line that was cut off mid-sentence; when the token
-      // limit was hit, even a trailing list item is known to be truncated
-      const responseText = dropIncompleteTrailingLine(filteredText, {
-        dropListItems: this.hitTokenLimit(result),
-      });
-      console.log(`[GeminiService] ✓ Spending summary generated by ${this.currentTextModelId} (length: ${rawText.length} → ${responseText.length})`);
-      return responseText;
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[GeminiService] ✗ Summary generation error:', errorMsg);
-      // Let the caller decide how to present the failure (and in which language)
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Get financial advice based on period totals
-  /**
-   * Describe an already-computed spending pattern in prose.
-   *
-   * Takes a pre-built aggregate context rather than transactions: the insights
-   * feature sends numbers and category names only, never a description, note or
-   * merchant string. Facts in, prose out.
-   */
-  async generatePatternNarrative(context: string, locale: string): Promise<string> {
-    if (!this.textModel) {
-      throw new Error('Gemini text model not available');
-    }
-
-    this.isProcessing.set(true);
-    try {
-      const rendered = renderPrompt('patternNarrative', {
-        context,
-        locale,
-        languageInstruction: this.getLanguageInstruction(),
-      });
-
-      const result = await this.generateTextWithRetry({
-        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
-        generationConfig: this.generationConfig(rendered)
-      });
-
-      let text = result.response.text().trim();
-      if (locale === 'tc' || locale === 'ja') {
-        text = dropNonCjkSentences(text);
-      }
-      return trimToLastCompleteSentence(text);
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  async getFinancialAdvice(
-    summary: MonthlyTotal,
-    baseCurrency: string,
-    period = 'this month'
-  ): Promise<string> {
-    if (!this.textModel) {
-      console.error('[GeminiService] ✗ Text model not available for financial advice');
-      throw new Error('Gemini text model not available');
-    }
-
-    console.log(`[GeminiService] Generating financial advice for period: ${period}`);
-    this.isProcessing.set(true);
-
-    try {
-      const savingsRate = summary.income > 0
-        ? ((summary.income - summary.expense) / summary.income * 100)
-        : 0;
-      const fmt = (value: number) => this.currencyService.formatAmount(value, baseCurrency);
-
-      const rendered = renderPrompt('financialAdvice', {
-        period,
-        baseCurrency,
-        income: fmt(summary.income),
-        expense: fmt(summary.expense),
-        balance: fmt(summary.balance),
-        savingsRate,
-        balanceIsNegative: summary.balance < 0,
-        languageInstruction: this.getLanguageInstruction(),
-      });
-
-      const result = await this.generateTextWithRetry({
-        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
-        generationConfig: this.generationConfig(rendered)
-      });
-      const rawText = result.response.text().trim();
-      let filteredText = this.currentTextModelId.includes('gemma-4')
-        ? this.filterReasoningContextForAdvice(rawText)
-        : rawText;
-      // In CJK locales, English-only sentences are leftover draft commentary
-      const locale = this.translationService.currentLocale();
-      if (locale === 'tc' || locale === 'ja') {
-        filteredText = dropNonCjkSentences(filteredText);
-      }
-      // Never show advice that was cut off mid-sentence
-      const responseText = trimToLastCompleteSentence(filteredText);
-      console.log(`[GeminiService] ✓ Financial advice generated by ${this.currentTextModelId} (length: ${rawText.length} → ${responseText.length})`);
-      return responseText;
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[GeminiService] ✗ Financial advice error:', errorMsg);
-      // Let the caller decide how to present the failure (and in which language)
-      throw error;
     } finally {
       this.isProcessing.set(false);
     }
@@ -997,6 +666,83 @@ export class GeminiService extends CloudLLMProviderBase implements CloudLLMProvi
     } finally {
       this.isProcessing.set(false);
     }
+  }
+
+  protected assertTextTransport(): void {
+    if (!this.textModel) {
+      throw new Error('Gemini text model not available');
+    }
+  }
+
+  /**
+   * Text transport: one call on the text handle.
+   *
+   * The insights prompts get the retrying variant and no others. The dashboard
+   * asks for the summary and the advice within a second of each other, which
+   * is enough to trip a free-tier per-minute limit, and those two have no
+   * answer of their own to fall back on — categorization and search do, so for
+   * them a retry would only delay the default they were always going to use.
+   */
+  protected async sendText(
+    promptId: PromptId,
+    rendered: RenderedPrompt
+  ): Promise<ProviderResponse> {
+    this.assertTextTransport();
+
+    const request = {
+      contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
+      generationConfig: this.generationConfig(rendered),
+    };
+    const result = PROMPTS[promptId].feature === 'insights'
+      ? await this.generateTextWithRetry(request)
+      : await this.textModel!.generateContent(request);
+
+    return { text: result.response.text(), truncated: this.hitTokenLimit(result) };
+  }
+
+  /**
+   * What has to come off a Gemini answer before the user sees it, per task.
+   *
+   * Every case here is a property of the model rather than of the prompt, which
+   * is why it lives beside the transport and not in the registry (ADR 0005):
+   * Gemma drafts several attempts before its final one, and in CJK locales the
+   * English sentences left in an answer are draft commentary rather than
+   * anything the user asked for.
+   */
+  protected override postProcessProse(
+    promptId: PromptId,
+    response: ProviderResponse
+  ): string {
+    const text = response.text.trim();
+    switch (promptId) {
+      case 'categorySuggestion':
+        return this.filterReasoningContext(text);
+      case 'patternNarrative':
+        return this.dropDraftLanguage(text);
+      case 'spendingSummary': {
+        const filtered = this.currentTextModelId.includes('gemma-4')
+          ? this.filterReasoningContext(text)
+          : text;
+        // Never end on a line that was cut off mid-sentence; when the token
+        // limit was hit, even a trailing list item is known to be truncated
+        return dropIncompleteTrailingLine(filtered, { dropListItems: response.truncated });
+      }
+      case 'financialAdvice': {
+        const filtered = this.currentTextModelId.includes('gemma-4')
+          ? this.filterReasoningContextForAdvice(text)
+          : text;
+        // Never show advice that was cut off mid-sentence
+        return trimToLastCompleteSentence(this.dropDraftLanguage(filtered));
+      }
+      default:
+        return text;
+    }
+  }
+
+  /** In CJK locales, an English-only sentence is leftover draft commentary. */
+  private dropDraftLanguage(text: string): string {
+    const locale = this.translationService.currentLocale();
+    return locale === 'tc' || locale === 'ja' ? dropNonCjkSentences(text) : text;
   }
 
   /**
