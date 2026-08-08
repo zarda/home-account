@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -22,6 +22,7 @@ interface CategoryTotal {
   selector: 'app-spending-chart',
   standalone: true,
   imports: [MatCardModule, MatIconModule, BaseChartDirective, EmptyStateComponent, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './spending-chart.component.html',
   styleUrl: './spending-chart.component.scss',
 })

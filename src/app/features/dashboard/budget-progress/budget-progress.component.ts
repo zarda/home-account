@@ -1,4 +1,4 @@
-import { Component, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 
 import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -22,6 +22,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatProgressBarModule,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './budget-progress.component.html',
   styleUrl: './budget-progress.component.scss',
 })

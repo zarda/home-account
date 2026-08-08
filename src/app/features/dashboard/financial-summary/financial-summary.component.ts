@@ -1,4 +1,4 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { CurrencyService } from '../../../core/services/currency.service';
 import { StatCardComponent } from '../../../shared/components/stat-card/stat-card.component';
@@ -8,6 +8,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   selector: 'app-financial-summary',
   standalone: true,
   imports: [StatCardComponent, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './financial-summary.component.html',
   styleUrl: './financial-summary.component.scss',
 })

@@ -1,4 +1,4 @@
-import { Component, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 
 import { Router, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -22,6 +22,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     TransactionRowComponent,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './recent-transactions.component.html',
   styleUrl: './recent-transactions.component.scss',
 })
