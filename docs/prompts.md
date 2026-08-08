@@ -84,6 +84,8 @@ The same rule applies to examples. Demonstrate the *shape* with placeholders (`"
 
 Three prompts reach only some providers. Each is a capability gap rather than a design choice, and `SINGLE_PROVIDER` in `scripts/check-prompts.mjs` names the issue that closes it — the check fails if a prompt reaches a provider the exemption does not list, so closing a gap means deleting an entry rather than widening one. An empty table is the goal.
 
+An exemption names concrete provider files, so an exempted prompt has to be rendered from one. Rendering it from the shared base fails the check: the base is the one file all three providers inherit, which is the opposite of single-provider. That is why Gemini's own `extractTransactionsFromImage` — the only operation where it answers a different prompt from the other two — stays in `gemini.service.ts`.
+
 | Prompt | Sent by | Gap |
 |---|---|---|
 | `pdfStatement` | gemini | Gemini is the only provider that accepts a PDF natively. Everyone else reads rasterized pages through `statementTransactions`, so PDF import itself is no longer provider-gated |
@@ -97,7 +99,8 @@ Stated plainly, because a check that looks stronger than it is does more harm th
 - **Whether the wording is any good**, or whether a placeholder got the right value. The compiler proves the declared inputs were passed; only a human knows the English says what it should.
 - **Whether an adapter drops `system` or ignores `expects`.** That is behavioural — `provider-prompt-parity.spec.ts` asserts the text each SDK actually receives, including that the JSON preamble reaches Gemini and only Gemini.
 - **A prompt assembled from concatenated short fragments** to slip under the long-literal heuristic. The inline-literal rule is a tripwire, not a proof.
-- **Prompt text reaching a model from outside the three provider files.** The `no-restricted-imports` rule in `eslint.config.js` covers that by keeping each SDK importable only from the service that owns it.
+- **Prompt text reaching a model from outside the provider files.** The `no-restricted-imports` rule in `eslint.config.js` covers that by keeping each SDK importable only from the service that owns it. The shared base is covered by the same rule from the other side: it imports no SDK and cannot, so nothing in it reaches a model except through a seam a provider implements.
+- **Whether a shared call site and a provider call site render the same prompt for the same reason.** The check fails when both exist, because one of them must be drift — but it cannot tell you which one.
 
 ## Commands
 
@@ -105,4 +108,4 @@ Stated plainly, because a check that looks stronger than it is does more harm th
 npm run prompts:check
 ```
 
-Runs the self-test first — fixtures that prove the checker still detects an unregistered literal, a missing provider and a stale `Since` — then the real check.
+Runs the self-test first — fixtures that prove the checker still detects an unregistered literal, a missing provider, a stale `Since`, a prompt rendered both in the base and in a provider, and a single-provider exemption claimed from the base — then the real check.
