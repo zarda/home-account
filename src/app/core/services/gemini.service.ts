@@ -8,7 +8,7 @@ import type {
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { Budget, Category, Goal, Transaction, MonthlyTotal, FieldConfidence } from '../../models';
+import { Budget, Category, Goal, Transaction, MonthlyTotal } from '../../models';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import {
   readCurrencyCode,
@@ -42,97 +42,35 @@ import {
 } from '../prompts';
 import {
   AIRequestOptions,
+  CSVColumnMapping,
+  CategorizedTransaction,
   CloudLLMProviderAdapter,
+  ExtractedTransaction,
+  MultiImageExtractedTransaction,
+  ParsedReceipt,
+  PreviousPeriodData,
   ProviderCapabilities,
+  RawTransaction,
+  isRateLimitMessage,
 } from './llm-provider.interface';
 import { environment } from '../../../environments/environment';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 
-export interface ParsedReceipt {
-  merchant: string;
-  amount: number;
-  currency: string;
-  date: Date;
-  items?: ReceiptItem[];
-  receiptDetails?: string;          // Full receipt content reproduced line by line
-  suggestedCategory: string;
-  confidence: number;
-  receiptCount?: number;            // Distinct receipts visible in the photo (defaults to 1)
-  /**
-   * How clearly the model read the total and the date. The receipt prompt has
-   * always asked for these; nothing used to carry them out of the response,
-   * so a blurred total looked exactly like a crisp one.
-   */
-  fieldConfidence?: FieldConfidence;
-}
-
-export interface ReceiptItem {
-  name: string;
-  amount: number;
-}
-
-export interface RawTransaction {
-  description: string;
-  amount: number;
-  date: Date;
-}
-
-export interface CategorizedTransaction extends RawTransaction {
-  suggestedCategoryId: string;
-  confidence: number;
-}
-
-export interface PreviousPeriodData {
-  income: number;
-  expense: number;
-}
-
-export interface ExtractedTransaction {
-  date: string;
-  description: string;
-  amount: number;
-  type: 'income' | 'expense';
-  currency: string;
-  category?: string;               // Transaction category (e.g., Groceries, Gas, etc.)
-  merchant?: string;               // Specific merchant/business name
-  details?: string;                // Additional details (card last 4 digits, reference number, etc.)
-  amountConfidence?: number;       // How legible the amount was (0-1); absent when unreported
-  dateConfidence?: number;         // How legible the date was (0-1); absent when unreported
-}
-
-export interface MultiImageExtractedTransaction extends ExtractedTransaction {
-  imageIndex: number;             // Which image this item came from (0-based)
-  positionInImage: 'top' | 'middle' | 'bottom';  // Vertical position
-  confidence: number;             // OCR/extraction confidence (0-1)
-  receiptId?: number;             // AI-assigned receipt group (items from same receipt share same ID)
-  receiptDetails?: string;        // Full receipt content reproduced line by line
-  // Printed grand total for this receiptId group, reported once on the last
-  // item (same convention as receiptDetails). Consolidation takes the first
-  // value present in the group.
-  receiptTotal?: number;
-  wasMerged?: boolean;            // True if deduplicated from multiple images
-  mergedFromImages?: number[];    // Indices of images where this appeared
-}
-
-export interface CSVColumnMapping {
-  dateColumn: string;
-  descriptionColumn: string;
-  amountColumn: string;
-  debitColumn?: string;
-  creditColumn?: string;
-  typeColumn?: string;
-  categoryColumn?: string;
-  dateFormat: string;
-  hasHeader: boolean;
-}
-
-/** True when an error message indicates a rate limit / quota exhaustion. */
-export function isRateLimitMessage(message: string): boolean {
-  const lower = message.toLowerCase();
-  return lower.includes('429') || lower.includes('resource_exhausted') ||
-    lower.includes('rate limit') || lower.includes('quota exceeded') ||
-    lower.includes('too many requests');
-}
+/**
+ * The extraction result types now live with the provider contract. They are
+ * re-exported here because a dozen callers import them from this path, and
+ * churning those imports would bury the move in unrelated diff.
+ */
+export type {
+  CSVColumnMapping,
+  CategorizedTransaction,
+  ExtractedTransaction,
+  MultiImageExtractedTransaction,
+  ParsedReceipt,
+  PreviousPeriodData,
+  RawTransaction,
+  ReceiptItem,
+} from './llm-provider.interface';
 
 @Injectable({ providedIn: 'root' })
 export class GeminiService implements CloudLLMProviderAdapter {

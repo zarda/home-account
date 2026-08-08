@@ -4,7 +4,10 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { PreviousPeriodData, isRateLimitMessage } from '../../../core/services/gemini.service';
+import {
+  PreviousPeriodData,
+  isRateLimitMessage,
+} from '../../../core/services/llm-provider.interface';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { stripAdviceArtifacts } from '../../../core/utils/llm-text.utils';
 import { CurrencyService } from '../../../core/services/currency.service';

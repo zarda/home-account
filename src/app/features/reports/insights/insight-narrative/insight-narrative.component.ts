@@ -7,7 +7,7 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-provider.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { isRateLimitMessage } from '../../../../core/services/gemini.service';
+import { isRateLimitMessage } from '../../../../core/services/llm-provider.interface';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import {
   InsightFacts,

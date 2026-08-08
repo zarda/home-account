@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { GeminiService, isRateLimitMessage } from './gemini.service';
+import { GeminiService } from './gemini.service';
+import { isRateLimitMessage } from './llm-provider.interface';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService, SupportedLocale } from './translation.service';
