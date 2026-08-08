@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { Subject } from 'rxjs';
-import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { provideAppCharts } from '../../../core/config/chart.config';
 
 import { ForecastComponent } from './forecast.component';
 import { RecurringService } from '../../../core/services/recurring.service';
@@ -69,7 +69,7 @@ describe('ForecastComponent', () => {
     await TestBed.configureTestingModule({
       imports: [ForecastComponent, NoopAnimationsModule],
       providers: [
-        provideCharts(withDefaultRegisterables()),
+        provideAppCharts(),
         { provide: RecurringService, useValue: mockRecurring },
         { provide: CurrencyService, useValue: mockCurrency },
         { provide: TranslationService, useValue: mockTranslation }

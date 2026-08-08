@@ -29,7 +29,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
-import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { provideAppCharts } from './core/config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import {
@@ -206,7 +206,7 @@ describe('App routes (emulator smoke test)', () => {
         provideNoopAnimations(),
         provideHttpClient(),
         provideNativeDateAdapter(),
-        provideCharts(withDefaultRegisterables()),
+        provideAppCharts(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },
         { provide: Storage, useValue: storage },

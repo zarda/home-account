@@ -16,7 +16,7 @@ import { provideStorage, getStorage } from '@angular/fire/storage';
 import { provideRemoteConfig, getRemoteConfig } from '@angular/fire/remote-config';
 import { provideAnalytics, initializeAnalytics, setConsent } from '@angular/fire/analytics';
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog';
-import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { provideAppCharts } from './core/config/chart.config';
 import { provideHttpClient } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
 
@@ -175,7 +175,7 @@ export const appConfig: ApplicationConfig = {
     // account's stored preference and finds it switched on. See
     // docs/analytics.md.
     provideAppAnalytics(),
-    provideCharts(withDefaultRegisterables()),
+    provideAppCharts(),
     {
       // One dialog sizing default: a comfortable width that always leaves
       // a 16px gutter, so a fixed width like 400/500px can never overflow a

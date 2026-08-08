@@ -23,7 +23,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { MatDialog } from '@angular/material/dialog';
-import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { provideAppCharts } from '../../core/config/chart.config';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import {
@@ -135,7 +135,7 @@ describe('Add entry points (emulator smoke test)', () => {
         provideNoopAnimations(),
         provideHttpClient(),
         provideNativeDateAdapter(),
-        provideCharts(withDefaultRegisterables()),
+        provideAppCharts(),
         { provide: Firestore, useValue: firestore },
         { provide: Auth, useValue: auth },
         { provide: Storage, useValue: storage },
