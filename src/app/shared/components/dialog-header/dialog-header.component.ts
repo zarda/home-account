@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -20,6 +20,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
   selector: 'app-dialog-header',
   standalone: true,
   imports: [MatDialogModule, MatIconModule, MatButtonModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h2 mat-dialog-title class="dialog-header">
       <span class="dialog-header-text">

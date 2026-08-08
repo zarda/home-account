@@ -1,4 +1,4 @@
-import { Component, ViewChild, computed, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ViewChild, computed, inject, output, signal } from '@angular/core';
 
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDatepicker, MatDatepickerModule } from '@angular/material/datepicker';
@@ -64,6 +64,7 @@ export function defaultPeriodSelection(): PeriodSelection {
     MatButtonModule,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './period-selector.component.html',
   styleUrl: './period-selector.component.scss',
 })

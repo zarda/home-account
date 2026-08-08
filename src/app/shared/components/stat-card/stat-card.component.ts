@@ -1,4 +1,4 @@
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import { MatIconModule } from '@angular/material/icon';
 import { DecimalPipe } from '@angular/common';
@@ -15,6 +15,7 @@ export type StatTone = 'neutral' | 'income' | 'expense' | 'positive' | 'negative
   selector: 'app-stat-card',
   standalone: true,
   imports: [MatIconModule, DecimalPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './stat-card.component.html',
   styleUrl: './stat-card.component.scss',
 })

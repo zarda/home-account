@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 
 import { RouterOutlet } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
@@ -17,6 +17,7 @@ const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
   selector: 'app-main-layout',
   standalone: true,
   imports: [RouterOutlet, A11yModule, HeaderComponent, SidebarComponent, BottomNavComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './main-layout.component.html',
   styleUrl: './main-layout.component.scss',
   host: {

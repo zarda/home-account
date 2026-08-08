@@ -1,17 +1,4 @@
-import {
-  Component,
-  computed,
-  EventEmitter,
-  HostBinding,
-  inject,
-  Input,
-  Output,
-  signal,
-  OnInit,
-  OnDestroy,
-  AfterViewInit,
-  NgZone
-} from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, HostBinding, Input, NgZone, OnDestroy, OnInit, Output, computed, inject, signal } from '@angular/core';
 
 import { Router, RouterLink, NavigationEnd } from '@angular/router';
 import { BreakpointObserver } from '@angular/cdk/layout';
@@ -42,6 +29,7 @@ import { filter, map, Subscription } from 'rxjs';
     FitTextDirective,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
 })
