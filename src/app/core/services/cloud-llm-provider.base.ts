@@ -22,10 +22,31 @@ import {
   renderPreviousPeriodSection,
   renderPrompt,
 } from '../prompts';
-import { mapCategoryNameToId } from '../utils/categorization.utils';
+import {
+  applyCategorizations,
+  buildCategoryPromptCatalog,
+  mapCategoryNameToId,
+} from '../utils/categorization.utils';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
-import { PreviousPeriodData } from './llm-provider.interface';
+import {
+  readCurrencyCode,
+  readFieldConfidence,
+  readReceiptTotal,
+} from '../utils/receipt-extraction.utils';
+import { dayKey } from '../utils/transaction-date.utils';
+import {
+  AIRequestOptions,
+  CSVColumnMapping,
+  CategorizedTransaction,
+  CloudLLMProviderAdapter,
+  ExtractedTransaction,
+  MultiImageExtractedTransaction,
+  ParsedReceipt,
+  PreviousPeriodData,
+  ProviderCapabilities,
+  RawTransaction,
+} from './llm-provider.interface';
 
 /** One model answer, as much of it as the shared operations need. */
 export interface ProviderResponse {
@@ -57,7 +78,7 @@ export interface ProviderResponse {
  * injection context. cloud-llm-provider.smoke.spec.ts proves that against the
  * real root injector rather than a TestBed.
  */
-export abstract class CloudLLMProviderBase {
+export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
   protected categoryService = inject(CategoryService);
   protected currencyService = inject(CurrencyService);
   protected translationService = inject(TranslationService);
@@ -77,12 +98,31 @@ export abstract class CloudLLMProviderBase {
   /** Console prefix and the noun in this provider's error sentences. */
   protected abstract readonly providerLabel: string;
 
+  /** What this provider can do right now, as opposed to what it is asked to do. */
+  abstract get capabilities(): ProviderCapabilities;
+
+  abstract isAvailable(): boolean;
+
+  /** Model ids are Gemini's alone: it is the only one with two model handles. */
+  abstract reinitialize(
+    apiKey?: string,
+    textModelId?: string,
+    visionModelId?: string
+  ): Promise<void>;
+
   /**
    * Throw this provider's own 'not available' error when no text request can
    * be issued. The sentence is the provider's because it is what the user is
    * shown, and it names the thing they have to go and configure.
    */
   protected abstract assertTextTransport(): void;
+
+  /**
+   * The same, for a request carrying images. Separate because Gemini can be
+   * configured for text and not for vision, and answers differently depending
+   * on which prompt is asking.
+   */
+  protected abstract assertVisionTransport(promptId: PromptId): void;
 
   /**
    * Send a rendered prompt and hand back what came out.
@@ -99,6 +139,22 @@ export abstract class CloudLLMProviderBase {
   protected abstract sendText(
     promptId: PromptId,
     rendered: RenderedPrompt
+  ): Promise<ProviderResponse>;
+
+  /**
+   * Send a rendered prompt with images attached.
+   *
+   * The images arrive as this app carries them — a data URL or a bare base64
+   * string — because every SDK wants them differently: OpenAI takes a data
+   * URL, Claude takes the payload and the media type apart, Gemini takes the
+   * payload with a MIME type beside it. Stripping and re-adding a prefix in
+   * the shared code would just be a fourth format nobody wants.
+   */
+  protected abstract sendVision(
+    promptId: PromptId,
+    rendered: RenderedPrompt,
+    imagesBase64: string[],
+    options?: AIRequestOptions
   ): Promise<ProviderResponse>;
 
   /**
@@ -163,6 +219,135 @@ export abstract class CloudLLMProviderBase {
     }
   }
 
+  // ---------------------------------------------- receipt scanning
+
+  async parseReceipt(imageBase64: string, options?: AIRequestOptions): Promise<ParsedReceipt> {
+    this.assertVisionTransport('receiptParse');
+
+    return this.run('receipt parsing', async () => {
+      const rendered = renderPrompt('receiptParse');
+      const response = await this.sendVision('receiptParse', rendered, [imageBase64], options);
+      const parsed = JSON.parse(this.extractJson(response.text));
+
+      return {
+        merchant: parsed.merchant || 'Unknown',
+        amount: Number(parsed.amount) || 0,
+        currency: readCurrencyCode(parsed.currency),
+        date: parsed.date ? new Date(parsed.date) : new Date(),
+        items: parsed.items || [],
+        receiptDetails: parsed.receiptDetails,
+        suggestedCategory: this.mapCategoryNameToId(parsed.suggestedCategory),
+        confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
+        receiptCount: Number(parsed.receiptCount) || 1,
+        fieldConfidence: readFieldConfidence(parsed),
+      };
+    });
+  }
+
+  /**
+   * Read a statement or other multi-row document image into one row per line
+   * item.
+   *
+   * The category a row names is resolved against the catalog here. It used to
+   * be passed through raw on OpenAI and Claude, and the import flow reads that
+   * field as a category id — so a statement row the model labelled "Groceries"
+   * arrived as a category that does not exist.
+   */
+  async extractStatementTransactions(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]> {
+    this.assertVisionTransport('statementTransactions');
+
+    return this.run('statement extraction', async () => {
+      const rendered = renderPrompt('statementTransactions');
+      const response = await this.sendVision(
+        'statementTransactions',
+        rendered,
+        [imageBase64],
+        options
+      );
+      const extracted: ExtractedTransaction[] = JSON.parse(this.extractJson(response.text));
+
+      return extracted.map(t => ({
+        date: t.date || dayKey(new Date()),
+        description: t.description || 'Unknown',
+        amount: Math.abs(t.amount || 0),
+        type: t.type || 'expense',
+        currency: readCurrencyCode(t.currency),
+        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+        merchant: t.merchant,
+        details: t.details,
+        amountConfidence: t.amountConfidence,
+        dateConfidence: t.dateConfidence,
+      }));
+    });
+  }
+
+  /**
+   * Read one image into transaction rows.
+   *
+   * The statement reader by default: a photo of one receipt is a statement
+   * with one row, which is how OpenAI and Claude have always answered this.
+   * Gemini overrides it with a prompt that folds the whole receipt body into a
+   * single row's notes instead.
+   */
+  extractTransactionsFromImage(
+    imageBase64: string,
+    options?: AIRequestOptions
+  ): Promise<ExtractedTransaction[]> {
+    return this.extractStatementTransactions(imageBase64, options);
+  }
+
+  /**
+   * Read several photos of the same receipt at once, grouped by receiptId and
+   * deduplicated across the overlapping edges.
+   */
+  async extractTransactionsFromMultipleImages(
+    imageBase64Array: string[],
+    options?: AIRequestOptions
+  ): Promise<MultiImageExtractedTransaction[]> {
+    this.assertVisionTransport('multiImageReceipts');
+
+    if (imageBase64Array.length === 0) {
+      return [];
+    }
+
+    return this.run('multi-image extraction', async () => {
+      const rendered = renderPrompt('multiImageReceipts', {
+        imageCount: imageBase64Array.length,
+      });
+      const response = await this.sendVision(
+        'multiImageReceipts',
+        rendered,
+        imageBase64Array,
+        options
+      );
+      const extracted: MultiImageExtractedTransaction[] = JSON.parse(
+        this.extractJson(response.text)
+      );
+
+      return extracted.map(t => ({
+        date: t.date || dayKey(new Date()),
+        description: t.description || 'Unknown',
+        amount: Math.abs(t.amount || 0),
+        type: t.type || 'expense',
+        currency: readCurrencyCode(t.currency),
+        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+        merchant: t.merchant,
+        details: t.details,
+        imageIndex: t.imageIndex ?? 0,
+        positionInImage: t.positionInImage || 'middle',
+        confidence: t.confidence ?? 0.7,
+        receiptId: t.receiptId ?? 1,
+        receiptDetails: t.receiptDetails,
+        receiptTotal: readReceiptTotal(t.receiptTotal),
+        wasMerged: t.wasMerged || false,
+        mergedFromImages: t.mergedFromImages,
+      }));
+    });
+  }
+
   // ---------------------------------------------- categorization
 
   async suggestCategory(description: string, categories: Category[]): Promise<string> {
@@ -187,6 +372,67 @@ export abstract class CloudLLMProviderBase {
         return validCategory?.id ?? 'other_expense';
       },
       () => 'other_expense'
+    );
+  }
+
+  /** `grounding` is the user's own categorization history; omitted when RAG is off. */
+  async categorizeTransactions(
+    transactions: RawTransaction[],
+    grounding?: string
+  ): Promise<CategorizedTransaction[]> {
+    this.assertTextTransport();
+
+    return this.runOrDefault(
+      'batch categorization',
+      async () => {
+        const categories = this.categoryService.categories();
+        const rendered = renderPrompt('categorizeTransactions', {
+          categoryCatalog: buildCategoryPromptCatalog(categories, name =>
+            this.translateCategoryName(name)
+          ),
+          grounding,
+          rows: transactions.map((t, i) => ({
+            index: i,
+            description: t.description,
+            amount: t.amount,
+          })),
+        });
+
+        const response = await this.sendText('categorizeTransactions', rendered);
+        const categorizations = JSON.parse(this.extractJson(response.text));
+
+        return applyCategorizations(transactions, categorizations, categories);
+      },
+      // Every row lands on the fallback category at a confidence low enough
+      // that the review step flags all of them.
+      () =>
+        transactions.map(t => ({
+          ...t,
+          suggestedCategoryId: 'other_expense',
+          confidence: 0.1,
+        }))
+    );
+  }
+
+  async detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping> {
+    this.assertTextTransport();
+
+    return this.runOrDefault(
+      'CSV mapping detection',
+      async () => {
+        const rendered = renderPrompt('csvMapping', { headers, sampleRows });
+        const response = await this.sendText('csvMapping', rendered);
+        return JSON.parse(this.extractJson(response.text)) as CSVColumnMapping;
+      },
+      // The conventional column order, which the user can correct in the
+      // mapping step either way.
+      () => ({
+        dateColumn: headers[0] || 'date',
+        descriptionColumn: headers[1] || 'description',
+        amountColumn: headers[2] || 'amount',
+        dateFormat: 'MM/DD/YYYY',
+        hasHeader: true,
+      })
     );
   }
 

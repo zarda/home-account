@@ -7,11 +7,7 @@ import type {
 } from '@google/generative-ai';
 import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
-import {
-  readCurrencyCode,
-  readFieldConfidence,
-  readReceiptTotal,
-} from '../utils/receipt-extraction.utils';
+import { readCurrencyCode, readReceiptTotal } from '../utils/receipt-extraction.utils';
 import {
   trimToLastCompleteSentence,
   dropIncompleteTrailingLine,
@@ -19,10 +15,6 @@ import {
   protectDecimalPoints,
   restoreDecimalPoints,
 } from '../utils/llm-text.utils';
-import {
-  applyCategorizations,
-  buildCategoryPromptCatalog,
-} from '../utils/categorization.utils';
 import {
   JSON_ONLY_PREAMBLE,
   PROMPTS,
@@ -32,12 +24,8 @@ import {
 } from '../prompts';
 import {
   AIRequestOptions,
-  CSVColumnMapping,
-  CategorizedTransaction,
-  CloudLLMProviderAdapter,
   ExtractedTransaction,
   MultiImageExtractedTransaction,
-  ParsedReceipt,
   ProviderCapabilities,
   RawTransaction,
   isRateLimitMessage,
@@ -62,7 +50,7 @@ export type {
 } from './llm-provider.interface';
 
 @Injectable({ providedIn: 'root' })
-export class GeminiService extends CloudLLMProviderBase implements CloudLLMProviderAdapter {
+export class GeminiService extends CloudLLMProviderBase {
   protected readonly providerLabel = 'Gemini';
 
   private genAI: GoogleGenerativeAI | null = null;
@@ -166,448 +154,215 @@ export class GeminiService extends CloudLLMProviderBase implements CloudLLMProvi
    *
    * It is also the only provider that accepts a PDF directly.
    */
-  get capabilities(): ProviderCapabilities {
+  override get capabilities(): ProviderCapabilities {
     return { vision: this.visionModel !== null, nativePdf: this.visionModel !== null };
   }
 
-  // Parse receipt image
-  async parseReceipt(imageBase64: string, options?: AIRequestOptions): Promise<ParsedReceipt> {
-    // Try textModel first (more capable), fall back to visionModel on rate limit
-    const models = [this.textModel, this.visionModel].filter(Boolean);
-    if (models.length === 0) {
+  /**
+   * Vision transport: one call carrying the prompt and the images, on
+   * whichever handle serves this prompt.
+   *
+   * Gemini is the only provider with two model handles, so it is the only one
+   * where "which model reads the image" is a question with an answer. The
+   * receipt paths have always tried the text model first — the more capable of
+   * the two — with the vision model as the rate-limit fallback. The statement
+   * path has only ever used the vision model, which is the one the user chose
+   * for reading images; routing it anywhere else would quietly change which
+   * model reads their bank statement.
+   */
+  protected sendVision(
+    promptId: PromptId,
+    rendered: RenderedPrompt,
+    imagesBase64: string[],
+    options?: AIRequestOptions
+  ): Promise<ProviderResponse> {
+    return this.generateWithMedia(
+      this.visionModelsFor(promptId),
+      rendered,
+      imagesBase64.map(image => ({
+        mimeType: 'image/jpeg',
+        data: image.replace(/^data:image\/\w+;base64,/, ''),
+      })),
+      options
+    );
+  }
+
+  protected assertVisionTransport(promptId: PromptId): void {
+    if (promptId === 'statementTransactions') {
+      this.assertVisionModel();
+      return;
+    }
+    if (!this.textModel && !this.visionModel) {
       throw new Error('Gemini model not available');
     }
+  }
 
-    this.isProcessing.set(true);
-    this.lastError.set(null);
+  private visionModelsFor(promptId: PromptId): (GenerativeModel | null)[] {
+    return promptId === 'statementTransactions'
+      ? [this.visionModel]
+      : [this.textModel, this.visionModel];
+  }
 
-    const rendered = renderPrompt('receiptParse');
-    const prompt = this.renderedText(rendered);
+  private assertVisionModel(): void {
+    if (!this.visionModel) {
+      throw new Error('Gemini Vision model not available');
+    }
+  }
 
+  /**
+   * One generateContent call carrying inline media, tried against each handle
+   * in turn and moving on only when the last one was rate-limited. Any other
+   * failure is the answer: retrying a malformed request on a second model
+   * spends a second quota to get the same error.
+   */
+  private async generateWithMedia(
+    models: (GenerativeModel | null)[],
+    rendered: RenderedPrompt,
+    media: { mimeType: string; data: string }[],
+    options?: AIRequestOptions
+  ): Promise<ProviderResponse> {
+    const handles = models.filter((model): model is GenerativeModel => model !== null);
     let lastError: unknown;
 
-    for (const model of models) {
+    for (const model of handles) {
       try {
-        const result = await model!.generateContent({
+        const result = await model.generateContent({
           contents: [{
             role: 'user',
             parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType: 'image/jpeg',
-                  data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
-                }
-              }
-            ]
+              { text: this.renderedText(rendered) },
+              ...media.map(inlineData => ({ inlineData })),
+            ],
           }],
-          generationConfig: this.generationConfig(rendered)
+          generationConfig: this.generationConfig(rendered),
         }, this.requestOptions(options));
 
-        const responseText = result.response.text();
-        const cleanedJson = this.extractJson(responseText);
-        const parsed = JSON.parse(cleanedJson);
-
-        const categoryId = this.mapCategoryNameToId(parsed.suggestedCategory);
-
-        this.isProcessing.set(false);
-        return {
-          merchant: parsed.merchant || 'Unknown',
-          amount: Number(parsed.amount) || 0,
-          currency: readCurrencyCode(parsed.currency),
-          date: parsed.date ? new Date(parsed.date) : new Date(),
-          items: parsed.items || [],
-          receiptDetails: parsed.receiptDetails,
-          suggestedCategory: categoryId,
-          confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
-          receiptCount: Number(parsed.receiptCount) || 1,
-          fieldConfidence: readFieldConfidence(parsed)
-        };
+        return { text: result.response.text(), truncated: this.hitTokenLimit(result) };
       } catch (error) {
         lastError = error;
-        const msg = error instanceof Error ? error.message : String(error);
-        // Only fall back to next model on rate limit / quota errors
-        if (this.isRateLimitError(msg) && models.indexOf(model!) < models.length - 1) {
-          console.warn(`[GeminiService] Model rate-limited, trying fallback model`);
+        const message = error instanceof Error ? error.message : String(error);
+        if (this.isRateLimitError(message) && model !== handles[handles.length - 1]) {
+          console.warn('[GeminiService] Model rate-limited, trying the fallback model');
           continue;
         }
         break;
       }
     }
 
-    const errorMessage = lastError instanceof Error ? lastError.message : 'Unknown error';
-    this.lastError.set(errorMessage);
-    console.error('Receipt parsing error:', lastError);
-    this.isProcessing.set(false);
     throw lastError;
   }
 
-  // Categorize multiple transactions
-  async categorizeTransactions(
-    transactions: RawTransaction[],
-    grounding?: string
-  ): Promise<CategorizedTransaction[]> {
-    if (!this.textModel) {
-      throw new Error('Gemini text model not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const categories = this.categoryService.categories();
-      const categoryList = buildCategoryPromptCatalog(
-        categories,
-        name => this.translateCategoryName(name)
-      );
-
-      const rendered = renderPrompt('categorizeTransactions', {
-        categoryCatalog: categoryList,
-        grounding,
-        rows: transactions.map((t, i) => ({
-          index: i,
-          description: t.description,
-          amount: t.amount,
-        })),
-      });
-
-      const result = await this.textModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
-        generationConfig: this.generationConfig(rendered)
-      });
-      const responseText = result.response.text();
-      const cleanedJson = this.extractJson(responseText);
-      const categorizations = JSON.parse(cleanedJson);
-
-      return applyCategorizations(transactions, categorizations, categories);
-    } catch (error) {
-      console.error('Batch categorization error:', error);
-      // Return with default category if AI fails
-      return transactions.map(t => ({
-        ...t,
-        suggestedCategoryId: 'other_expense',
-        confidence: 0.1
-      }));
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
   /**
-   * Read a statement screenshot into one row per line item.
+   * One photo read as a single summary row, carrying the whole receipt body
+   * as notes.
    *
-   * Separate from extractTransactionsFromImage, which asks for a single
-   * receipt summary — running that over a statement returned one lumped
-   * transaction for the whole page, which is what made statement import
-   * unusable on Gemini.
+   * The one operation where Gemini answers a different prompt from the other
+   * two, which is why the receiptSummary call site is here rather than in the
+   * base: OpenAI and Claude go straight to statement extraction and get a row
+   * per line item.
    */
-  async extractStatementTransactions(
+  override async extractTransactionsFromImage(
     imageBase64: string,
     options?: AIRequestOptions
   ): Promise<ExtractedTransaction[]> {
-    if (!this.visionModel) {
-      throw new Error('Gemini Vision model not available');
-    }
+    this.assertVisionModel();
 
-    this.isProcessing.set(true);
-    this.lastError.set(null);
-
-    try {
-      const rendered = renderPrompt('statementTransactions');
-
-      const result = await this.visionModel.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: this.renderedText(rendered) },
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
-              }
-            }
-          ]
-        }],
-        generationConfig: this.generationConfig(rendered)
-      }, this.requestOptions(options));
-
-      const extracted: ExtractedTransaction[] = JSON.parse(
-        this.extractJson(result.response.text())
+    return this.run('image extraction', async () => {
+      const rendered = renderPrompt('receiptSummary');
+      const response = await this.generateWithMedia(
+        [this.visionModel],
+        rendered,
+        [{ mimeType: 'image/jpeg', data: imageBase64.replace(/^data:image\/\w+;base64,/, '') }],
+        options
       );
 
-      return extracted.map(t => ({
-        date: t.date || dayKey(new Date()),
-        description: t.description || 'Unknown',
-        amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
-        currency: readCurrencyCode(t.currency),
-        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
-        merchant: t.merchant,
-        details: t.details,
-        amountConfidence: t.amountConfidence,
-        dateConfidence: t.dateConfidence,
-      }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('[GeminiService] ✗ Statement extraction error:', error);
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
+      // The strict reader, not the shared one: this response is a single
+      // object rather than a list, so text with no JSON in it at all has to
+      // fail here instead of reaching JSON.parse as a bare sentence.
+      const receiptData = JSON.parse(this.extractJsonStrict(response.text));
 
-  // Extract transactions from an image (receipt, bank statement screenshot)
-  async extractTransactionsFromImage(
-    imageBase64: string,
-    options?: AIRequestOptions
-  ): Promise<ExtractedTransaction[]> {
-    if (!this.visionModel) {
-      throw new Error('Gemini Vision model not available');
-    }
-
-    this.isProcessing.set(true);
-    this.lastError.set(null);
-
-    try {
-      const rendered = renderPrompt('receiptSummary');
-
-      console.log('[GeminiService] Extracting receipt summary');
-      const extractResult = await this.visionModel.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: this.renderedText(rendered) },
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
-              }
-            }
-          ]
-        }],
-        generationConfig: this.generationConfig(rendered)
-      }, this.requestOptions(options));
-
-      const responseText = extractResult.response.text();
-      const cleanedJson = this.extractJsonStrict(responseText);
-      const receiptData = JSON.parse(cleanedJson);
-
-      // Map category name to ID
-      const categoryId = receiptData.suggestedCategory
-        ? this.mapCategoryNameToId(receiptData.suggestedCategory)
-        : undefined;
-
-      const extracted: ExtractedTransaction[] = [{
+      return [{
         date: receiptData.date || dayKey(new Date()),
         description: receiptData.merchant || 'Receipt',
         amount: Math.abs(receiptData.totalAmount || 0),
-        type: 'expense',
+        type: 'expense' as const,
         currency: readCurrencyCode(receiptData.currency),
         merchant: receiptData.merchant,
-        category: categoryId,
-        details: receiptData.receiptDetails || receiptData.itemsSummary || receiptData.items || receiptData.description || ''
+        category: receiptData.suggestedCategory
+          ? this.mapCategoryNameToId(receiptData.suggestedCategory)
+          : undefined,
+        details: receiptData.receiptDetails || receiptData.itemsSummary ||
+          receiptData.items || receiptData.description || '',
       }];
-
-      // Return full ExtractedTransaction objects with all details
-      return extracted.map(t => ({
-        date: t.date || dayKey(new Date()),
-        description: t.description || 'Unknown',
-        amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
-        currency: readCurrencyCode(t.currency),
-        category: t.category,
-        merchant: t.merchant,
-        details: t.details,
-      }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('[GeminiService] ✗ Image extraction error:', error);
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
+    });
   }
 
-  // Extract transactions from a PDF document (bank statement)
+  /**
+   * Read a PDF bank statement directly, without rasterizing the pages.
+   *
+   * Gemini alone accepts a PDF, so this operation exists on this provider
+   * only; the façade picks by capability rather than by preference for it.
+   */
   async extractTransactionsFromPDF(pdfBase64: string): Promise<RawTransaction[]> {
-    if (!this.visionModel) {
-      throw new Error('Gemini Vision model not available');
-    }
+    this.assertVisionModel();
 
-    this.isProcessing.set(true);
-    this.lastError.set(null);
-
-    try {
+    return this.run('PDF extraction', async () => {
       const rendered = renderPrompt('pdfStatement');
+      const response = await this.generateWithMedia(
+        [this.visionModel],
+        rendered,
+        [{
+          mimeType: 'application/pdf',
+          data: pdfBase64.replace(/^data:application\/pdf;base64,/, ''),
+        }]
+      );
+      const extracted: ExtractedTransaction[] = JSON.parse(this.extractJson(response.text));
 
-      const result = await this.visionModel.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: this.renderedText(rendered) },
-            {
-              inlineData: {
-                mimeType: 'application/pdf',
-                data: pdfBase64.replace(/^data:application\/pdf;base64,/, '')
-              }
-            }
-          ]
-        }],
-        generationConfig: this.generationConfig(rendered)
-      });
-
-      const responseText = result.response.text();
-      const cleanedJson = this.extractJson(responseText);
-      const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
-
-      // Convert to RawTransaction format
+      // Signed amounts: this is the one extraction whose rows go straight to
+      // the transaction list rather than through the import review.
       return extracted.map(t => ({
         description: t.description || 'Unknown',
         amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-        date: parseDateInput(t.date) ?? new Date()
+        date: parseDateInput(t.date) ?? new Date(),
       }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('PDF extraction error:', error);
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
+    });
   }
 
   /**
-   * Extract transactions from multiple images of a single receipt with position-aware deduplication.
-   * Images should be ordered top-to-bottom as they appear on the receipt.
+   * One photo goes through the itemizing prompt, which reports where on the
+   * receipt each line was found so overlapping photos can be reconciled.
+   * Several go to the shared multi-image path.
    */
-  async extractTransactionsFromMultipleImages(
+  override async extractTransactionsFromMultipleImages(
     imageBase64Array: string[],
     options?: AIRequestOptions
   ): Promise<MultiImageExtractedTransaction[]> {
-    const models = [this.textModel, this.visionModel].filter(Boolean);
-    if (models.length === 0) {
-      throw new Error('Gemini model not available');
-    }
+    this.assertVisionTransport('multiImageReceipts');
 
-    if (imageBase64Array.length === 0) {
-      return [];
-    }
-
-    // For single image, use simpler extraction with position metadata
     if (imageBase64Array.length === 1) {
       return this.extractWithPositionMetadata(imageBase64Array[0], 0, options);
     }
-
-    this.isProcessing.set(true);
-    this.lastError.set(null);
-
-    const rendered = renderPrompt('multiImageReceipts', {
-      imageCount: imageBase64Array.length,
-    });
-
-    // Build the content parts with all images
-    const imageParts = imageBase64Array.map(imageBase64 => ({
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
-      }
-    }));
-
-    let lastError: unknown;
-
-    for (const model of models) {
-      try {
-        const result = await model!.generateContent({
-          contents: [{
-            role: 'user',
-            parts: [{ text: this.renderedText(rendered) }, ...imageParts]
-          }],
-          generationConfig: this.generationConfig(rendered)
-        }, this.requestOptions(options));
-        const responseText = result.response.text();
-        const cleanedJson = this.extractJson(responseText);
-        const extracted: MultiImageExtractedTransaction[] = JSON.parse(cleanedJson);
-
-        console.log(`[GeminiService] ✓ Extracted ${extracted.length} unique items from ${imageBase64Array.length} receipt images`);
-
-        // Validate and normalize the extracted data
-        return extracted.map(t => ({
-          date: t.date || dayKey(new Date()),
-          description: t.description || 'Unknown',
-          amount: Math.abs(t.amount || 0),
-          type: t.type || 'expense',
-          currency: readCurrencyCode(t.currency),
-          category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
-          merchant: t.merchant,
-          details: t.details,
-          imageIndex: t.imageIndex ?? 0,
-          positionInImage: t.positionInImage || 'middle',
-          confidence: t.confidence ?? 0.7,
-          receiptId: t.receiptId ?? 1,
-          receiptDetails: t.receiptDetails,
-          receiptTotal: readReceiptTotal(t.receiptTotal),
-          wasMerged: t.wasMerged || false,
-          mergedFromImages: t.mergedFromImages,
-        }));
-      } catch (error) {
-        lastError = error;
-        const msg = error instanceof Error ? error.message : String(error);
-        if (this.isRateLimitError(msg) && models.indexOf(model!) < models.length - 1) {
-          console.warn(`[GeminiService] Model rate-limited for multi-image, trying fallback`);
-          continue;
-        }
-        break;
-      }
-    }
-
-    const errorMessage = lastError instanceof Error ? lastError.message : 'Unknown error';
-    this.lastError.set(errorMessage);
-    console.error('Multi-image extraction error:', lastError);
-    this.isProcessing.set(false);
-    throw lastError;
+    return super.extractTransactionsFromMultipleImages(imageBase64Array, options);
   }
 
-  /**
-   * Extract transactions from a single image with position metadata.
-   * Used internally for single-image multi-image flow.
-   */
+  /** One image, itemized, with each row's position on the receipt. */
   private async extractWithPositionMetadata(
     imageBase64: string,
     imageIndex: number,
     options?: AIRequestOptions
   ): Promise<MultiImageExtractedTransaction[]> {
-    if (!this.visionModel) {
-      throw new Error('Gemini Vision model not available');
-    }
+    this.assertVisionModel();
 
-    this.isProcessing.set(true);
-    this.lastError.set(null);
-
-    try {
+    return this.run('image itemization', async () => {
       const rendered = renderPrompt('receiptItems');
+      const response = await this.generateWithMedia(
+        [this.visionModel],
+        rendered,
+        [{ mimeType: 'image/jpeg', data: imageBase64.replace(/^data:image\/\w+;base64,/, '') }],
+        options
+      );
+      const extracted = JSON.parse(this.extractJson(response.text));
 
-      const result = await this.visionModel.generateContent({
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: this.renderedText(rendered) },
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
-              }
-            }
-          ]
-        }],
-        generationConfig: this.generationConfig(rendered)
-      }, this.requestOptions(options));
-
-      const responseText = result.response.text();
-      const cleanedJson = this.extractJson(responseText);
-      const extracted = JSON.parse(cleanedJson);
-
-      // Add imageIndex and normalize data
       return extracted.map((t: Partial<MultiImageExtractedTransaction>) => ({
         date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
@@ -625,48 +380,9 @@ export class GeminiService extends CloudLLMProviderBase implements CloudLLMProvi
         receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: false,
       }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('Single image position extraction error:', error);
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
+    });
   }
 
-  // Detect CSV column mapping using AI
-  async detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping> {
-    if (!this.textModel) {
-      throw new Error('Gemini text model not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const rendered = renderPrompt('csvMapping', { headers, sampleRows });
-
-      const result = await this.textModel.generateContent({
-        contents: [{ role: 'user', parts: [{ text: this.renderedText(rendered) }] }],
-        generationConfig: this.generationConfig(rendered)
-      });
-      const responseText = result.response.text();
-      const cleanedJson = this.extractJson(responseText);
-      return JSON.parse(cleanedJson);
-    } catch (error) {
-      console.error('CSV mapping detection error:', error);
-      // Return default mapping
-      return {
-        dateColumn: headers[0] || 'date',
-        descriptionColumn: headers[1] || 'description',
-        amountColumn: headers[2] || 'amount',
-        dateFormat: 'MM/DD/YYYY',
-        hasHeader: true
-      };
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
 
   protected assertTextTransport(): void {
     if (!this.textModel) {

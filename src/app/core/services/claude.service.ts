@@ -2,33 +2,11 @@ import { Injectable } from '@angular/core';
 import type Anthropic from '@anthropic-ai/sdk';
 import { DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
-import {
-  ParsedReceipt,
-  RawTransaction,
-  CategorizedTransaction,
-  ExtractedTransaction,
-  MultiImageExtractedTransaction,
-  CSVColumnMapping,
-} from './gemini.service';
-import {
-  applyCategorizations,
-  buildCategoryPromptCatalog,
-} from '../utils/categorization.utils';
-import {
-  readCurrencyCode,
-  readFieldConfidence,
-  readReceiptTotal,
-} from '../utils/receipt-extraction.utils';
-import { PromptId, RenderedPrompt, renderPrompt } from '../prompts';
-import {
-  AIRequestOptions,
-  CloudLLMProviderAdapter,
-  ProviderCapabilities,
-} from './llm-provider.interface';
-import { dayKey } from '../utils/transaction-date.utils';
+import { PromptId, RenderedPrompt } from '../prompts';
+import { AIRequestOptions, ProviderCapabilities } from './llm-provider.interface';
 
 @Injectable({ providedIn: 'root' })
-export class ClaudeService extends CloudLLMProviderBase implements CloudLLMProviderAdapter {
+export class ClaudeService extends CloudLLMProviderBase {
   protected readonly providerLabel = 'Claude';
 
   private client: Anthropic | null = null;
@@ -113,324 +91,49 @@ export class ClaudeService extends CloudLLMProviderBase implements CloudLLMProvi
    * Every entry in the Claude catalog is vision-capable. PDFs are not accepted
    * directly — the pages have to be rasterized first.
    */
-  get capabilities(): ProviderCapabilities {
+  override get capabilities(): ProviderCapabilities {
     return { vision: true, nativePdf: false };
   }
 
-  // Parse receipt image
-  async parseReceipt(imageBase64: string, options?: AIRequestOptions): Promise<ParsedReceipt> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-    this.lastError.set(null);
-
-    try {
-      const rendered = renderPrompt('receiptParse');
-
-      // Extract base64 data without the data URL prefix
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      const mediaType = this.getMediaType(imageBase64);
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType,
-                  data: base64Data,
-                },
-              },
-              { type: 'text', text: this.renderedText(rendered) },
-            ],
-          },
-        ],
-      }, this.requestOptions(options));
-
-      const responseText = this.extractTextFromResponse(response);
-      const cleanedJson = this.extractJson(responseText);
-      const parsed = JSON.parse(cleanedJson);
-
-      // Map suggested category to category ID
-      const categoryId = this.mapCategoryNameToId(parsed.suggestedCategory);
-
-      return {
-        merchant: parsed.merchant || 'Unknown',
-        amount: Number(parsed.amount) || 0,
-        currency: readCurrencyCode(parsed.currency),
-        date: parsed.date ? new Date(parsed.date) : new Date(),
-        items: parsed.items || [],
-        receiptDetails: parsed.receiptDetails,
-        suggestedCategory: categoryId,
-        confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
-        receiptCount: Number(parsed.receiptCount) || 1,
-        fieldConfidence: readFieldConfidence(parsed),
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('Claude receipt parsing error:', error);
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Categorize multiple transactions
-  async categorizeTransactions(
-    transactions: RawTransaction[],
-    grounding?: string
-  ): Promise<CategorizedTransaction[]> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const categories = this.categoryService.categories();
-      const categoryList = buildCategoryPromptCatalog(
-        categories,
-        (name) => this.translateCategoryName(name)
-      );
-
-      const rendered = renderPrompt('categorizeTransactions', {
-        categoryCatalog: categoryList,
-        grounding,
-        rows: transactions.map((t, i) => ({
-          index: i,
-          description: t.description,
-          amount: t.amount,
-        })),
-      });
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [{ role: 'user', content: this.renderedText(rendered) }],
-      });
-
-      const responseText = this.extractTextFromResponse(response);
-      const cleanedJson = this.extractJson(responseText);
-      const categorizations = JSON.parse(cleanedJson);
-
-      return applyCategorizations(transactions, categorizations, categories);
-    } catch (error) {
-      console.error('Claude batch categorization error:', error);
-      return transactions.map((t) => ({
-        ...t,
-        suggestedCategoryId: 'other_expense',
-        confidence: 0.1,
-      }));
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
   /**
-   * Statement extraction. Same call as extractTransactionsFromImage here —
-   * this provider has always treated an image as a set of rows — but named for
-   * the intent so the import path can ask for it explicitly.
+   * Vision transport: every image, then the prompt text, in one Messages
+   * call. Images first is this provider's own ordering — OpenAI puts the
+   * prompt ahead of them.
    */
-  extractStatementTransactions(
-    imageBase64: string,
+  protected async sendVision(
+    promptId: PromptId,
+    rendered: RenderedPrompt,
+    imagesBase64: string[],
     options?: AIRequestOptions
-  ): Promise<ExtractedTransaction[]> {
-    return this.extractTransactionsFromImage(imageBase64, options);
+  ): Promise<ProviderResponse> {
+    this.assertTextTransport();
+
+    const content: Anthropic.Messages.ContentBlockParam[] = imagesBase64.map(imageBase64 => ({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: this.getMediaType(imageBase64),
+        data: imageBase64.replace(/^data:image\/\w+;base64,/, ''),
+      },
+    }));
+    content.push({ type: 'text', text: this.renderedText(rendered) });
+
+    const response = await this.client!.messages.create({
+      model: this.model,
+      max_tokens: rendered.maxOutputTokens,
+      ...this.systemParam(rendered),
+      messages: [{ role: 'user', content }],
+    }, this.requestOptions(options));
+
+    return {
+      text: this.extractTextFromResponse(response),
+      truncated: response.stop_reason === 'max_tokens',
+    };
   }
 
-  // Extract transactions from an image
-  async extractTransactionsFromImage(
-    imageBase64: string,
-    options?: AIRequestOptions
-  ): Promise<ExtractedTransaction[]> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-    this.lastError.set(null);
-
-    try {
-      const rendered = renderPrompt('statementTransactions');
-
-      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      const mediaType = this.getMediaType(imageBase64);
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType,
-                  data: base64Data,
-                },
-              },
-              { type: 'text', text: this.renderedText(rendered) },
-            ],
-          },
-        ],
-      }, this.requestOptions(options));
-
-      const responseText = this.extractTextFromResponse(response);
-      const cleanedJson = this.extractJson(responseText);
-      const extracted: ExtractedTransaction[] = JSON.parse(cleanedJson);
-
-      return extracted.map((t) => ({
-        date: t.date || dayKey(new Date()),
-        description: t.description || 'Unknown',
-        amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
-        currency: readCurrencyCode(t.currency),
-        category: t.category,
-        merchant: t.merchant,
-        details: t.details,
-        amountConfidence: t.amountConfidence,
-        dateConfidence: t.dateConfidence,
-      }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('Claude image extraction error:', error);
-      // Rethrow, matching GeminiService: an expired key or a billing cap must
-      // reach parseAIError and render as a typed error card, not as "no
-      // transactions found" — and the strategy layer can only fall back to
-      // another provider on a throw, never on a plausible empty result.
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Extract transactions from multiple images
-  async extractTransactionsFromMultipleImages(
-    imageBase64Array: string[],
-    options?: AIRequestOptions
-  ): Promise<MultiImageExtractedTransaction[]> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    if (imageBase64Array.length === 0) {
-      return [];
-    }
-
-    this.isProcessing.set(true);
-    this.lastError.set(null);
-
-    try {
-      const rendered = renderPrompt('multiImageReceipts', {
-        imageCount: imageBase64Array.length,
-      });
-
-      const content: Anthropic.Messages.ContentBlockParam[] = [];
-
-      // Add all images first
-      for (const imageBase64 of imageBase64Array) {
-        const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-        const mediaType = this.getMediaType(imageBase64);
-        content.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: mediaType,
-            data: base64Data,
-          },
-        });
-      }
-
-      // Add the prompt text
-      content.push({ type: 'text', text: this.renderedText(rendered) });
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [{ role: 'user', content }],
-      }, this.requestOptions(options));
-
-      const responseText = this.extractTextFromResponse(response);
-      const cleanedJson = this.extractJson(responseText);
-      const extracted: MultiImageExtractedTransaction[] = JSON.parse(cleanedJson);
-
-      return extracted.map((t) => ({
-        date: t.date || dayKey(new Date()),
-        description: t.description || 'Unknown',
-        amount: Math.abs(t.amount || 0),
-        type: t.type || 'expense',
-        currency: readCurrencyCode(t.currency),
-        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
-        merchant: t.merchant,
-        details: t.details,
-        imageIndex: t.imageIndex ?? 0,
-        positionInImage: t.positionInImage || 'middle',
-        confidence: t.confidence ?? 0.7,
-        receiptId: t.receiptId ?? 1,
-        receiptDetails: t.receiptDetails,
-        receiptTotal: readReceiptTotal(t.receiptTotal),
-        wasMerged: t.wasMerged || false,
-        mergedFromImages: t.mergedFromImages,
-      }));
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.lastError.set(errorMessage);
-      console.error('Claude multi-image extraction error:', error);
-      // Rethrow for the same reason as the single-image path above.
-      throw error;
-    } finally {
-      this.isProcessing.set(false);
-    }
-  }
-
-  // Detect CSV column mapping
-  async detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping> {
-    if (!this.client) {
-      throw new Error('Claude client not available');
-    }
-
-    this.isProcessing.set(true);
-
-    try {
-      const rendered = renderPrompt('csvMapping', { headers, sampleRows });
-
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: rendered.maxOutputTokens,
-        ...this.systemParam(rendered),
-        messages: [{ role: 'user', content: this.renderedText(rendered) }],
-      });
-
-      const responseText = this.extractTextFromResponse(response);
-      const cleanedJson = this.extractJson(responseText);
-      return JSON.parse(cleanedJson);
-    } catch (error) {
-      console.error('Claude CSV mapping detection error:', error);
-      return {
-        dateColumn: headers[0] || 'date',
-        descriptionColumn: headers[1] || 'description',
-        amountColumn: headers[2] || 'amount',
-        dateFormat: 'MM/DD/YYYY',
-        hasHeader: true,
-      };
-    } finally {
-      this.isProcessing.set(false);
-    }
+  /** One client serves text and images alike, so it is the same check. */
+  protected assertVisionTransport(): void {
+    this.assertTextTransport();
   }
 
   /**
