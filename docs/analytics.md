@@ -286,7 +286,43 @@ it simply reports nothing.
    `IS_ANALYTICS_ENABLED = false` and no `MEASUREMENT_ID`; that flag is a tell
    that the download happened after linking, not the switch that gates
    collection.
-7. **App Store privacy labels** — tracked in #127.
+7. **App Store privacy labels** — tracked in #127, drafted below.
+
+## App Store privacy declarations (planned)
+
+Not filed. There is no Apple developer account yet, so nothing here can be
+entered; it becomes a release blocker the first time the iOS build is
+submitted. What follows is the answer set worked out from the current GA4
+configuration — Google signals and ads personalisation off, no `setUserId`
+call, no advertising features — so that submission day is transcription
+rather than research. Re-derive it if any of those three change.
+
+| App Privacy category | What it covers | Linked to the user | Used for tracking |
+|---|---|---|---|
+| Usage Data → Product Interaction | Screen views and the feature events in the registry above | No | No |
+| Identifiers → Device ID | The Firebase app-instance id and the IDFV, which the measurement SDK collects whatever our event taxonomy says | No | No |
+| Location → Coarse Location | Google derives approximate geography from the request IP | No | No |
+
+Collection is opt-in and off by default (Settings → Preferences → Share
+anonymous usage statistics). Worth stating in the submission, but it does not
+remove the declaration: the question is what the app collects when the user
+says yes.
+
+Check Google's current Firebase privacy-label guidance at submission time
+rather than treating this table as settled. The coarse-location row is the one
+that moves, and it depends on the signals-off configuration.
+
+**Privacy manifest.** `GoogleAppMeasurement` ships its own
+`PrivacyInfo.xcprivacy`, so the app target needs one only for its own
+required-reason API use. Run Product → Archive → Generate Privacy Report in
+Xcode and add a manifest to cover what the aggregated report is missing —
+not before, since guessing at required-reason codes is how a submission gets
+rejected for declaring an API it does not call.
+
+**App Tracking Transparency.** No `NSUserTrackingUsageDescription` and no ATT
+prompt: the IDFA is never read. Re-evaluate only if the
+`AnalyticsWithoutAdIdSupport` SwiftPM trait is adopted (see the note above) or
+if advertising features are ever added.
 
 ### Verifying
 
