@@ -2,12 +2,6 @@ import { Routes } from '@angular/router';
 import { LoginComponent } from './features/auth/login/login.component';
 import { authGuard, lockGuard, publicGuard } from './core/guards';
 import { MainLayoutComponent } from './shared/layout/main-layout/main-layout.component';
-import { DashboardComponent } from './features/dashboard/dashboard.component';
-import { TransactionsComponent } from './features/transactions/transactions.component';
-import { BudgetsComponent } from './features/budgets/budgets.component';
-import { ReportsComponent } from './features/reports/reports.component';
-import { SettingsComponent } from './features/settings/settings.component';
-import { AboutComponent } from './features/about/about.component';
 
 export const routes: Routes = [
   {
@@ -27,18 +21,43 @@ export const routes: Routes = [
     canActivate: [authGuard],
     children: [
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
-      { path: 'dashboard', component: DashboardComponent },
-      { path: 'transactions', component: TransactionsComponent },
-      { path: 'budgets', component: BudgetsComponent },
-      { path: 'reports', component: ReportsComponent },
-      { path: 'settings', component: SettingsComponent },
-      { 
-        path: 'ai', 
-        loadComponent: () => 
+      {
+        path: 'dashboard',
+        loadComponent: () =>
+          import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent)
+      },
+      {
+        path: 'transactions',
+        loadComponent: () =>
+          import('./features/transactions/transactions.component')
+            .then(m => m.TransactionsComponent)
+      },
+      {
+        path: 'budgets',
+        loadComponent: () =>
+          import('./features/budgets/budgets.component').then(m => m.BudgetsComponent)
+      },
+      {
+        path: 'reports',
+        loadComponent: () =>
+          import('./features/reports/reports.component').then(m => m.ReportsComponent)
+      },
+      {
+        path: 'settings',
+        loadComponent: () =>
+          import('./features/settings/settings.component').then(m => m.SettingsComponent)
+      },
+      {
+        path: 'ai',
+        loadComponent: () =>
           import('./features/settings/ai-settings-page/ai-settings-page.component')
             .then(m => m.AiSettingsPageComponent)
       },
-      { path: 'about', component: AboutComponent },
+      {
+        path: 'about',
+        loadComponent: () =>
+          import('./features/about/about.component').then(m => m.AboutComponent)
+      },
       {
         path: 'search-history',
         loadComponent: () =>
