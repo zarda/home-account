@@ -8,28 +8,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { CustomPeriod, PeriodOption, PeriodSelection } from '../../../models';
+import { periodWindow } from '../../../core/utils/transaction-date.utils';
 
-export type PeriodOption = 'thisMonth' | 'lastMonth' | 'last3Months' | 'thisYear' | 'custom';
-
-interface CustomPeriod {
-  type: 'month' | 'year';
-  year: number;
-  month?: number; // 0-11, only for type 'month'
-}
-
-/**
- * A resolved period selection. start/end are full calendar boundaries
- * (first day 00:00 to last day 23:59:59); consumers with to-date
- * semantics (e.g. the dashboard's period-over-period deltas) clamp the
- * end themselves.
- */
-export interface PeriodSelection {
-  option: PeriodOption;
-  start: Date;
-  end: Date;
-  /** Localized label for the selection (custom periods; '' otherwise). */
-  label: string;
-}
+// The period vocabulary lives in the models barrel so transaction-date.utils
+// can resolve a window without importing a component. Re-exported here because
+// this is where every consumer already imports it from.
+export type { CustomPeriod, PeriodOption, PeriodSelection };
 
 /**
  * The selection every consumer starts from ('This Month', calendar
@@ -37,11 +22,9 @@ export interface PeriodSelection {
  * their initial load from this same source of truth.
  */
 export function defaultPeriodSelection(): PeriodSelection {
-  const now = new Date();
   return {
     option: 'thisMonth',
-    start: new Date(now.getFullYear(), now.getMonth(), 1),
-    end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
+    ...periodWindow('thisMonth', new Date()),
     label: '',
   };
 }
@@ -129,54 +112,10 @@ export class PeriodSelectorComponent {
   }
 
   private emitSelection(): void {
-    const { start, end } = this.resolveDates();
     this.selectionChange.emit({
       option: this.selectedPeriod(),
-      start,
-      end,
+      ...periodWindow(this.selectedPeriod(), new Date(), this.customPeriod()),
       label: this.customPeriodLabel(),
     });
-  }
-
-  private resolveDates(): { start: Date; end: Date } {
-    const now = new Date();
-    const cp = this.customPeriod();
-
-    if (this.selectedPeriod() === 'custom' && cp) {
-      if (cp.type === 'month') {
-        return {
-          start: new Date(cp.year, cp.month!, 1),
-          end: new Date(cp.year, cp.month! + 1, 0, 23, 59, 59),
-        };
-      }
-      return {
-        start: new Date(cp.year, 0, 1),
-        end: new Date(cp.year, 11, 31, 23, 59, 59),
-      };
-    }
-
-    switch (this.selectedPeriod()) {
-      case 'lastMonth':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-          end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
-        };
-      case 'last3Months':
-        return {
-          start: new Date(now.getFullYear(), now.getMonth() - 2, 1),
-          end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
-        };
-      case 'thisYear':
-        return {
-          start: new Date(now.getFullYear(), 0, 1),
-          end: new Date(now.getFullYear(), 11, 31, 23, 59, 59),
-        };
-      case 'thisMonth':
-      default:
-        return {
-          start: new Date(now.getFullYear(), now.getMonth(), 1),
-          end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
-        };
-    }
   }
 }
