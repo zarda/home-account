@@ -176,7 +176,8 @@ describe('AccountDeletionService (emulator smoke test)', () => {
 
     await setDoc(doc(firestore, `users/${uid}/searchAnswers/smoke-del-answer`), {
       userId: uid,
-      schemaVersion: 1,
+      schemaVersion: 2,
+      kind: 'aggregate',
       query: 'how much on food in august',
       operation: 'sum',
       limit: 3,

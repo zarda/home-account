@@ -254,7 +254,8 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
       Array.from({ length: MAX_SEARCH_ANSWERS }, (_, i) =>
         setDoc(doc(firestore, `users/${uid}/searchAnswers/seed-${i}`), {
           userId: uid,
-          schemaVersion: 1,
+          schemaVersion: 2,
+          kind: 'aggregate',
           query: `seed question ${i}`,
           operation: 'sum',
           limit: 3,
@@ -293,7 +294,8 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
       Array.from({ length: MAX_SEARCH_ANSWERS + 1 }, (_, i) =>
         setDoc(doc(firestore, `users/${uid}/searchAnswers/seed-${i}`), {
           userId: uid,
-          schemaVersion: 1,
+          schemaVersion: 2,
+          kind: 'aggregate',
           query: `seed question ${i}`,
           operation: 'sum',
           limit: 3,

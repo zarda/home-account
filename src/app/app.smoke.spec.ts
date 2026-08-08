@@ -296,13 +296,16 @@ describe('App routes (emulator smoke test)', () => {
       ).withContext('budget tabs').toBe(BUDGET_TABS.length);
 
       await expectPage('/reports', 'reports.title');
-      expect(
-        harness.routeNativeElement?.ownerDocument.querySelectorAll('.mdc-tab').length
-      ).withContext('report tabs').toBe(REPORT_TABS.length);
       await waitForDom(
         'reports chart canvas',
         () => !!harness.routeNativeElement?.ownerDocument.querySelector('canvas')
       );
+      // After the canvas, not before: the reports tab strip sits behind the
+      // page's loading gate, so it does not exist at the moment the landmark
+      // resolves.
+      expect(
+        harness.routeNativeElement?.ownerDocument.querySelectorAll('.mdc-tab').length
+      ).withContext('report tabs').toBe(REPORT_TABS.length);
 
       // Drive the lazily created Forecast tab: its recurring listener only
       // opens on selection, and with no seeded rules it must land on the
