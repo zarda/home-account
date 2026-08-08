@@ -31,10 +31,18 @@
 
     <div class="goal-progress">
       <div class="progress-line">
-        <span class="contributed">{{ formatCurrency(goal().contributedAmount) }}</span>
+        <span class="contributed">{{ formatCurrency(progressAmount()) }}</span>
         <span class="target">/ {{ formatCurrency(goal().targetAmount) }}</span>
         <span class="percentage">{{ percentage() }}%</span>
       </div>
+      @if (linkedAmount() > 0) {
+        <p class="linked-breakdown">
+          {{ 'goal.linkedBreakdown' | translate: {
+            manual: formatCurrency(goal().contributedAmount),
+            linked: formatCurrency(linkedAmount())
+          } }}
+        </p>
+      }
       <mat-progress-bar
         [mode]="'determinate'"
         [value]="barValue()"

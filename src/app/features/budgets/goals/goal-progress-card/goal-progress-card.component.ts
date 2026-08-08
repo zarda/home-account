@@ -7,7 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { CurrencyService } from '../../../../core/services/currency.service';
-import { goalPercentage } from '../../../../core/utils/goal-progress.utils';
+import { goalPercentage, goalProgressAmount } from '../../../../core/utils/goal-progress.utils';
 import { Goal } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
@@ -44,12 +44,21 @@ export class GoalProgressCardComponent {
 
   readonly percentage = computed(() => Math.round(goalPercentage(this.goal())));
   readonly barValue = computed(() => Math.min(100, this.percentage()));
+  // Manual contributions plus linked transactions — every figure on the card
+  // reads the same total, or the number line and the bar would disagree.
+  readonly progressAmount = computed(() => goalProgressAmount(this.goal()));
   readonly remaining = computed(() =>
-    Math.max(0, this.goal().targetAmount - this.goal().contributedAmount)
+    Math.max(0, this.goal().targetAmount - this.progressAmount())
   );
   readonly reached = computed(
-    () => this.goal().contributedAmount >= this.goal().targetAmount
+    () => this.progressAmount() >= this.goal().targetAmount
   );
+  /**
+   * The linked share, shown only when it exists: the Contribute dialog's
+   * withdraw floor is the manual counter alone, so a card whose total
+   * exceeds what withdrawing can reach should say where the rest lives.
+   */
+  readonly linkedAmount = computed(() => this.goal().linkedAmount ?? 0);
   readonly kindIcon = computed(() => (this.goal().kind === 'saving' ? 'savings' : 'flag'));
   readonly items = computed(() => this.goal().items ?? []);
   readonly doneCount = computed(() => this.items().filter(item => item.done).length);

@@ -63,6 +63,20 @@ export interface Transaction {
   recurringId?: string;          // Link to RecurringTransaction
   location?: TransactionLocation;
   period?: BudgetPeriod;         // Budget period association
+  /**
+   * Goal this transaction counts toward, when linked. Written and cleared
+   * only together with `goalAmount`; absent means not linked.
+   */
+  goalId?: string;
+  /**
+   * This transaction's contribution to the linked goal, in the GOAL's
+   * currency — converted when the link is written and re-snapshotted when
+   * the amount or currency changes, never at read time (the
+   * amountInBaseCurrency precedent). Unlinking or deleting backs exactly
+   * this figure out of the goal's counter, so a rate change between link
+   * and unlink cannot strand a remainder in the goal.
+   */
+  goalAmount?: number;
 }
 
 type ReceiptFields = Pick<Transaction, 'receiptUrl' | 'receiptUrls' | 'receiptCount'>;
@@ -168,6 +182,13 @@ export interface CreateTransactionDTO {
   recurringId?: string;
   location?: TransactionLocation;
   period?: BudgetPeriod;
+  /**
+   * Goal to link this transaction to. The service converts the amount into
+   * the goal's currency and keeps the goal's counter in step; on update,
+   * a key present with value undefined unlinks (the location/period
+   * convention), while an absent key leaves the link alone.
+   */
+  goalId?: string;
 }
 
 export interface MonthlyTotal {

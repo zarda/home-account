@@ -8,6 +8,7 @@ import { Router } from '@angular/router';
 import { of } from 'rxjs';
 import { TransactionFormComponent } from './transaction-form.component';
 import { TransactionService } from '../../../core/services/transaction.service';
+import { GoalService } from '../../../core/services/goal.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { ReceiptToNoteService } from '../../../core/services/receipt-to-note.service';
 import { AIImportService } from '../../../core/services/ai-import.service';
@@ -95,6 +96,11 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: ReceiptQuotaService, useValue: jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']) },
         { provide: ReceiptToNoteService, useValue: jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']) },
         { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']) },
+        { provide: GoalService, useValue: {
+          goals: signal([]),
+          activeGoals: signal([]),
+          getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
+        } },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     }).compileComponents();

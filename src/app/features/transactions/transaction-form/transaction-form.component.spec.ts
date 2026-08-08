@@ -6,7 +6,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, Subject } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { TransactionFormComponent } from './transaction-form.component';
-import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR, RECEIPT_ATTACH_FAILED } from '../../../core/services/transaction.service';
+import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR, RECEIPT_ATTACH_FAILED, GOAL_LINK_INVALID } from '../../../core/services/transaction.service';
+import { GoalService } from '../../../core/services/goal.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import { ReceiptToNoteService } from '../../../core/services/receipt-to-note.service';
 import { ReceiptLimitDialogComponent } from '../receipt-images/receipt-limit-dialog.component';
@@ -21,7 +22,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AIStrategyService, ProcessingResult, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
-import { Transaction, Category, User } from '../../../models';
+import { Transaction, Category, Goal, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
 import { NotificationService } from '../../../core/services/notification.service';
 
@@ -45,6 +46,11 @@ describe('TransactionFormComponent', () => {
   let receiptToNote: jasmine.SpyObj<ReceiptToNoteService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
+  let goalService: {
+    goals: ReturnType<typeof signal<Goal[]>>;
+    activeGoals: ReturnType<typeof signal<Goal[]>>;
+    getGoals: jasmine.Spy;
+  };
 
   /** One receipt photo, as the strategy service hands it back. */
   function scanResult(
@@ -120,6 +126,11 @@ describe('TransactionFormComponent', () => {
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
     analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']);
     currentUser = signal<User | null>(createUser());
+    goalService = {
+      goals: signal<Goal[]>([]),
+      activeGoals: signal<Goal[]>([]),
+      getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
+    };
 
     const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
@@ -146,6 +157,7 @@ describe('TransactionFormComponent', () => {
         { provide: ReceiptQuotaService, useValue: receiptQuota },
         { provide: ReceiptToNoteService, useValue: receiptToNote },
         { provide: AnalyticsService, useValue: analytics },
+        { provide: GoalService, useValue: goalService },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     })
@@ -196,6 +208,54 @@ describe('TransactionFormComponent', () => {
       component.form.patchValue({ categoryId: 'food' });
       component.form.get('type')?.setValue('income');
       expect(component.form.get('categoryId')?.value).toBe('');
+    });
+  });
+
+  describe('goal picker', () => {
+    function goalOf(overrides: Partial<Goal> = {}): Goal {
+      return {
+        id: 'g1',
+        userId: 'u1',
+        kind: 'saving',
+        name: 'Emergency fund',
+        targetAmount: 1000,
+        contributedAmount: 0,
+        currency: 'USD',
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        ...overrides,
+      };
+    }
+
+    it('owns a goals subscription: the signal is only warm if a page subscribed', () => {
+      build();
+      expect(goalService.getGoals).toHaveBeenCalled();
+    });
+
+    it('offers the active goals', () => {
+      goalService.activeGoals.set([goalOf()]);
+      const component = build().componentInstance;
+      expect(component.goalOptions().map(goal => goal.id)).toEqual(['g1']);
+    });
+
+    it('keeps a since-deactivated linked goal in the options on edit', () => {
+      const inactive = goalOf({ id: 'g9', isActive: false });
+      goalService.goals.set([inactive]);
+      goalService.activeGoals.set([]);
+      const txn = createTransaction({ id: 'e1', goalId: 'g9', goalAmount: 50 });
+
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+
+      // The stored value must render and stay clearable.
+      expect(component.goalOptions().map(goal => goal.id)).toEqual(['g9']);
+    });
+
+    it('labels a goal with its currency only when it differs from the form', () => {
+      const component = build().componentInstance; // form currency USD
+      expect(component.goalLabel(goalOf())).toBe('Emergency fund');
+      expect(component.goalLabel(goalOf({ currency: 'EUR' })))
+        .toBe('Emergency fund (EUR)');
     });
   });
 
@@ -394,6 +454,50 @@ describe('TransactionFormComponent', () => {
       const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
       // Omitting the field would leave the stored tags in place.
       expect(dto.tags).toEqual([]);
+    });
+
+    it('links the chosen goal on add', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      component.form.patchValue({ goalId: 'g1' });
+      await component.onSubmit();
+      expect(transactionService.addTransaction.calls.mostRecent().args[0].goalId).toBe('g1');
+    });
+
+    it('omits the goal key on add when none is chosen', async () => {
+      const component = build().componentInstance;
+      validForm(component);
+      await component.onSubmit();
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect('goalId' in dto).toBeFalse();
+    });
+
+    it('sends the goal key when editing clears it, so the link is removed', async () => {
+      const txn = createTransaction({ id: 'e1', goalId: 'g1', goalAmount: 100 });
+      const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+      validForm(component);
+      expect(component.form.get('goalId')?.value).toBe('g1');
+      component.form.patchValue({ goalId: null });
+
+      await component.onSubmit();
+
+      const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+      // Present-and-undefined, the period contract: absent would keep the link.
+      expect('goalId' in dto).toBeTrue();
+      expect(dto.goalId).toBeUndefined();
+    });
+
+    it('reports a dead goal link without closing the dialog', async () => {
+      transactionService.addTransaction.and.rejectWith(new Error(GOAL_LINK_INVALID));
+      const component = build().componentInstance;
+      validForm(component);
+      component.form.patchValue({ goalId: 'g1' });
+
+      await component.onSubmit();
+
+      expect(notifications.error).toHaveBeenCalledWith('transactions.goalLinkInvalid');
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(component.isSubmitting()).toBeFalse();
     });
 
     it('writes a name-only location without coordinates', async () => {

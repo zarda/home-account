@@ -27,6 +27,7 @@ import {
   buildCategoryPromptCatalog,
   mapCategoryNameToId,
 } from '../utils/categorization.utils';
+import { goalProgressAmount } from '../utils/goal-progress.utils';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
 import {
@@ -597,9 +598,11 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         goalSection = renderGoalSection(
           goals.map(g => {
             // Goals convert like budgets: compare in the base currency.
+            // "Saved" is the full progress — manual contributions plus
+            // linked transactions — matching what the card shows.
             const targetInBase = this.currencyService.convert(g.targetAmount, g.currency, baseCurrency);
             const savedInBase = this.currencyService.convert(
-              g.contributedAmount,
+              goalProgressAmount(g),
               g.currency,
               baseCurrency
             );

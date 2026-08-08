@@ -415,8 +415,8 @@ describe('ExportService', () => {
         // never moved as sections were added, so a schema change was shipping
         // under the same number each time.
         expect(parsed.version).toBe(BACKUP_SCHEMA_VERSION);
-        // Last bumped when goals joined the backup.
-        expect(parsed.version).toBe('1.3');
+        // Last bumped when goal links joined the transactions section.
+        expect(parsed.version).toBe('1.4');
         done();
       };
       reader.readAsText(blob);

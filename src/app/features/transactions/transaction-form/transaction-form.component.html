@@ -313,6 +313,20 @@
         </mat-select>
       </mat-form-field>
 
+      <!-- Goal (Optional) — hidden when there is nothing to link to -->
+      @if (goalOptions().length > 0) {
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>{{ 'transactions.goal' | translate }}</mat-label>
+          <mat-select formControlName="goalId">
+            <mat-option [value]="null">{{ 'transactions.none' | translate }}</mat-option>
+            @for (goal of goalOptions(); track goal.id) {
+              <mat-option [value]="goal.id">{{ goalLabel(goal) }}</mat-option>
+            }
+          </mat-select>
+          <mat-hint>{{ 'transactions.goalHint' | translate }}</mat-hint>
+        </mat-form-field>
+      }
+
       <!-- Tags (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.tags' | translate }}</mat-label>

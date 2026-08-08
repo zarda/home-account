@@ -22,7 +22,9 @@ import {
   TransactionService,
   RECEIPT_IMAGE_LIMIT_ERROR,
   RECEIPT_ATTACH_FAILED,
+  GOAL_LINK_INVALID,
 } from '../../../core/services/transaction.service';
+import { GoalService } from '../../../core/services/goal.service';
 import { ReceiptQuotaService } from '../../../core/services/receipt-quota.service';
 import {
   ReceiptToNoteService,
@@ -45,6 +47,7 @@ import {
   Category,
   CurrencyInfo,
   FieldConfidence,
+  Goal,
   VERIFY_FIELD_THRESHOLD,
   baseCurrencyOf
 } from '../../../models';
@@ -99,6 +102,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private dialogRef = inject(MatDialogRef<TransactionFormComponent>);
   data: DialogData = inject(MAT_DIALOG_DATA);
   private transactionService = inject(TransactionService);
+  private goalService = inject(GoalService);
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
@@ -220,6 +224,37 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     ];
   }
 
+  // The form's current currency, mirrored into a signal (the categoryIdSignal
+  // pattern) so goal option labels can react to it under OnPush.
+  private formCurrency = signal<string>('');
+  private goalsSub?: Subscription;
+
+  /**
+   * Goals the picker offers: every active goal, plus — on edit — the row's
+   * currently linked goal even when since deactivated, so the stored value
+   * still renders and can be cleared. A linked goal that no longer exists
+   * at all hides the picker; the held value then rides through the save
+   * unchanged, where the service tolerates it.
+   */
+  goalOptions = computed<Goal[]>(() => {
+    const active = this.goalService.activeGoals();
+    const linkedId = this.data.transaction?.goalId;
+    if (!linkedId || active.some(goal => goal.id === linkedId)) return active;
+    const linked = this.goalService.goals().find(goal => goal.id === linkedId);
+    return linked ? [...active, linked] : active;
+  });
+
+  /**
+   * Option label: the goal's name, with its currency appended when it
+   * differs from the transaction's — the amount will be converted at save,
+   * and the suffix is what says so.
+   */
+  goalLabel(goal: Goal): string {
+    return goal.currency === this.formCurrency()
+      ? goal.name
+      : `${goal.name} (${goal.currency})`;
+  }
+
   // Store transaction dates for calendar highlighting - keyed by "year-month"
   private transactionDatesCache = new Map<string, Map<string, 'income' | 'expense' | 'both'>>();
   private loadingMonths = new Set<string>();
@@ -263,6 +298,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   ngOnInit(): void {
     this.initForm();
     this.ensureCurrencyListed(this.data.transaction?.currency);
+    // The goals signal is only warm if some page subscribed (ADR 0009), and
+    // the transactions page has no goal surface — the picker owns its own.
+    this.goalsSub = this.goalService.getGoals().subscribe();
     this.seedStoredReceipts();
     this.tags.set([...(this.data.transaction?.tags ?? [])]);
     const location = this.data.transaction?.location;
@@ -341,6 +379,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   ngOnDestroy(): void {
     this.datesSubs.forEach(sub => sub.unsubscribe());
+    this.goalsSub?.unsubscribe();
   }
 
   private setupDatepickerListeners(): void {
@@ -425,7 +464,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       date: [transaction?.date?.toDate?.() || new Date(), Validators.required],
       note: [transaction?.note || ''],
       period: [transaction?.period || null],
+      goalId: [transaction?.goalId || null],
       locationName: [transaction?.location?.name || ''],
+    });
+
+    // Mirror the currency into its signal for the goal option labels.
+    this.formCurrency.set(transaction?.currency || defaultCurrency);
+    this.form.get('currency')?.valueChanges.subscribe((currency) => {
+      this.formCurrency.set(currency || '');
     });
 
     // Watch for type changes
@@ -480,6 +526,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           : formValue.period
             ? { period: formValue.period }
             : {}),
+        // Same presence contract as period: on edit the key always travels,
+        // so clearing the select unlinks rather than leaving the old goal.
+        ...(this.data.mode === 'edit'
+          ? { goalId: formValue.goalId ?? undefined }
+          : formValue.goalId
+            ? { goalId: formValue.goalId }
+            : {}),
         ...(receipts.length ? { receiptFiles: receipts } : {}),
         // Edit always sends tags — an emptied list must clear the stored
         // ones, which an omitted field would leave in place.
@@ -519,6 +572,10 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         // The batch rolled back: the transaction is unchanged and none of
         // the queued images were kept.
         this.notifications.error(this.translationService.t('receiptImages.attachFailed'));
+      } else if (error instanceof Error && error.message === GOAL_LINK_INVALID) {
+        // The chosen goal vanished or was deactivated under the open form;
+        // nothing was saved, and the entry is still here to re-aim.
+        this.notifications.error(this.translationService.t('transactions.goalLinkInvalid'));
       } else {
         // A rules rejection, a failed rates load, a network error — the
         // dialog is disableClose, so without this the user pressed Add,

@@ -138,6 +138,9 @@
     "dateRequired": "日付を選択してください",
     "budgetPeriod": "予算期間（任意）",
     "none": "なし",
+    "goal": "目標（任意）",
+    "goalHint": "金額が目標の進捗に加算されます",
+    "goalLinkInvalid": "この目標は利用できなくなりました。別の目標を選ぶか解除してください",
     "weekly": "週次",
     "monthly": "月次",
     "yearly": "年次",
@@ -252,7 +255,8 @@
     "deleteTitle": "目標を削除",
     "deleteMessage": "「{{name}}」を削除しますか？積み立ての記録も一緒に削除されます。",
     "contributionRecorded": "積み立てを記録しました",
-    "contributionFailed": "積み立てを記録できませんでした"
+    "contributionFailed": "積み立てを記録できませんでした",
+    "linkedBreakdown": "手動 {{manual}} · 取引から {{linked}}"
   },
   "reports": {
     "title": "レポート",

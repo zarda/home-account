@@ -60,14 +60,14 @@ export interface ReportData {
 }
 
 /** Bumped whenever the backup gains or reshapes a section. */
-export const BACKUP_SCHEMA_VERSION = '1.3';
+export const BACKUP_SCHEMA_VERSION = '1.4';
 
 /**
  * Versions this build can restore. Older ones simply carry fewer sections;
  * a version not in this list came from a newer build and is refused rather
  * than half-read.
  */
-export const SUPPORTED_BACKUP_VERSIONS = ['1.0', '1.1', '1.2', '1.3'] as const;
+export const SUPPORTED_BACKUP_VERSIONS = ['1.0', '1.1', '1.2', '1.3', '1.4'] as const;
 
 export interface ExportData {
   transactions: Transaction[];
@@ -80,7 +80,12 @@ export interface ExportData {
   /** Budgets and recurring rules. Optional for the same reason (added in 1.2). */
   budgets?: Budget[];
   recurring?: RecurringTransaction[];
-  /** Savings goals and projects. Optional for the same reason (added in 1.3). */
+  /**
+   * Savings goals and projects. Optional for the same reason (added in 1.3).
+   * From 1.4 transactions may carry goalId/goalAmount links and goals a
+   * linkedAmount counter; all three ride along because sections serialize
+   * whole documents, and restore recomputes the counter from the links.
+   */
   goals?: Goal[];
   exportDate: string;
   version: string;

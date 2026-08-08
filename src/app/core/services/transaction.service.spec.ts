@@ -2,8 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import {
   TransactionService,
   RECEIPT_IMAGE_LIMIT_ERROR,
-  RECEIPT_ATTACH_FAILED
+  RECEIPT_ATTACH_FAILED,
+  GOAL_LINK_INVALID
 } from './transaction.service';
+import { Goal, Transaction } from '../../models';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
@@ -18,7 +20,7 @@ import {
   createTransaction,
   createMixedTransactions
 } from './testing/test-data';
-import { Timestamp } from '@angular/fire/firestore';
+import { Timestamp, deleteField } from '@angular/fire/firestore';
 
 describe('TransactionService', () => {
   let service: TransactionService;
@@ -1166,7 +1168,9 @@ describe('TransactionService', () => {
 
       await service.deleteAllTransactions();
 
-      expect(mockFirestore.getCollectionSpy.mostRecent()?.args[0]).toBe(path);
+      // First call: the wipe's enumeration (the goal-counter sweep queries
+      // the goals collection afterwards).
+      expect(mockFirestore.getCollectionSpy.calls[0]?.args[0]).toBe(path);
     });
 
     it('clears the in-memory signal and forces a quota recount', async () => {
@@ -1216,6 +1220,318 @@ describe('TransactionService', () => {
 
       expect(deleted).toBe(0);
       expect(service.lastMutation()).toBeNull();
+    });
+
+    it('zeroes every goal counter the wipe orphaned', async () => {
+      seedCollection(1);
+      mockFirestore.setMockCollection('users/test-user-123/goals', [
+        { id: 'g1', linkedAmount: 50 },
+        { id: 'g2', linkedAmount: 0 },
+        { id: 'g3' } // pre-link document: nothing to zero
+      ]);
+
+      await service.deleteAllTransactions();
+
+      const goalWrites = mockFirestore.updateDocumentSpy.calls
+        .filter(c => (c.args[0] as string).startsWith('users/test-user-123/goals/'));
+      expect(goalWrites.map(c => c.args[0])).toEqual(['users/test-user-123/goals/g1']);
+      expect(goalWrites[0].args[1]).toEqual({ linkedAmount: 0 });
+    });
+  });
+
+  describe('goal links', () => {
+    const TX = 'users/test-user-123/transactions';
+    const GOALS = 'users/test-user-123/goals';
+
+    function seedGoal(id: string, overrides: Partial<Goal> = {}): void {
+      mockFirestore.setMockDocument(`${GOALS}/${id}`, {
+        id,
+        userId: 'test-user-123',
+        kind: 'saving',
+        name: 'Emergency fund',
+        targetAmount: 1000,
+        contributedAmount: 0,
+        linkedAmount: 0,
+        currency: 'EUR',
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        ...overrides
+      });
+    }
+
+    async function goalDoc(id: string): Promise<Record<string, unknown> | null> {
+      return mockFirestore.getDocument<Record<string, unknown>>(`${GOALS}/${id}`);
+    }
+
+    const dto = (goalId?: string) => ({
+      type: 'expense' as const,
+      amount: 100,
+      currency: 'USD',
+      categoryId: 'food_restaurants',
+      description: 'Transfer to savings',
+      date: new Date(),
+      ...(goalId ? { goalId } : {})
+    });
+
+    describe('addTransaction', () => {
+      it('commits the linked row and the converted counter in one transaction', async () => {
+        seedGoal('g1', { linkedAmount: 10 });
+
+        const id = await service.addTransaction(dto('g1'));
+
+        // The linked path never uses the plain writes.
+        expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
+        expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+
+        const [rowPath, written] =
+          (mockFirestore.txSetSpy.mostRecent()?.args ?? []) as [string, Record<string, unknown>];
+        expect(rowPath).toBe(`${TX}/${id}`);
+        expect(written['goalId']).toBe('g1');
+        // 100 USD into a EUR goal at the seeded 0.92.
+        expect(written['goalAmount']).toBe(92);
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(102);
+      });
+
+      it('rejects a link to a goal that does not exist, writing nothing', async () => {
+        await expectAsync(service.addTransaction(dto('missing')))
+          .toBeRejectedWithError(GOAL_LINK_INVALID);
+        expect(mockFirestore.txSetSpy.calls.length).toBe(0);
+        expect(service.isLoading()).toBeFalse();
+      });
+
+      it('rejects a link to a deactivated goal', async () => {
+        seedGoal('g1', { isActive: false });
+
+        await expectAsync(service.addTransaction(dto('g1')))
+          .toBeRejectedWithError(GOAL_LINK_INVALID);
+        expect(mockFirestore.txSetSpy.calls.length).toBe(0);
+      });
+
+      it('writes a goal snapshot verbatim without touching any counter', async () => {
+        seedGoal('g1', { linkedAmount: 10 });
+
+        await service.addTransaction(dto(), {
+          id: 'restored-1',
+          goalSnapshot: { goalId: 'g1', goalAmount: 55 }
+        });
+
+        // The verbatim path is a plain set — no transaction, no counter.
+        expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+        const written =
+          mockFirestore.setDocumentSpy.mostRecent()?.args[1] as Record<string, unknown>;
+        expect(written['goalId']).toBe('g1');
+        expect(written['goalAmount']).toBe(55);
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(10);
+      });
+
+      it('refuses a goal snapshot alongside a live link', async () => {
+        seedGoal('g1');
+
+        await expectAsync(
+          service.addTransaction(dto('g1'), {
+            id: 'restored-1',
+            goalSnapshot: { goalId: 'g1', goalAmount: 55 }
+          })
+        ).toBeRejected();
+      });
+    });
+
+    describe('updateTransaction', () => {
+      function seedRow(overrides: Partial<Transaction> = {}): void {
+        mockFirestore.setMockDocument(
+          `${TX}/txn-1`,
+          createTransaction({ id: 'txn-1', ...overrides })
+        );
+      }
+
+      function rowUpdatePayload(): Record<string, unknown> {
+        const call = mockFirestore.txUpdateSpy.calls
+          .find(c => c.args[0] === `${TX}/txn-1`);
+        return (call?.args[1] ?? {}) as Record<string, unknown>;
+      }
+
+      function goalUpdatePayload(goalId: string): Record<string, unknown> | undefined {
+        const call = mockFirestore.txUpdateSpy.calls
+          .find(c => c.args[0] === `${GOALS}/${goalId}`);
+        return call?.args[1] as Record<string, unknown> | undefined;
+      }
+
+      it('links an existing row, converting at the goal currency', async () => {
+        seedRow();
+        seedGoal('g1', { linkedAmount: 8 });
+
+        await service.updateTransaction('txn-1', { goalId: 'g1' });
+
+        const payload = rowUpdatePayload();
+        expect(payload['goalId']).toBe('g1');
+        expect(payload['goalAmount']).toBe(92);
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(100);
+      });
+
+      it('unlinks by clearing the pair and backing the stored figure out', async () => {
+        seedRow({ goalId: 'g1', goalAmount: 92 });
+        seedGoal('g1', { linkedAmount: 100 });
+
+        await service.updateTransaction('txn-1', { goalId: undefined });
+
+        const payload = rowUpdatePayload();
+        expect(payload['goalId']).toEqual(deleteField());
+        expect(payload['goalAmount']).toEqual(deleteField());
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(8);
+      });
+
+      it('re-snapshots the stored figure when the amount changes', async () => {
+        seedRow({ goalId: 'g1', goalAmount: 92 });
+        seedGoal('g1', { linkedAmount: 92 });
+
+        await service.updateTransaction('txn-1', { amount: 200 });
+
+        expect(rowUpdatePayload()['goalAmount']).toBe(184);
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(184);
+      });
+
+      it('leaves the stored figure alone when the edit touches neither amount nor currency', async () => {
+        seedRow({ goalId: 'g1', goalAmount: 92 });
+        seedGoal('g1', { linkedAmount: 92 });
+
+        await service.updateTransaction('txn-1', { note: 'monthly top-up' });
+
+        // A conversion at today's rates would move a counter the user never
+        // touched; the link must ride along unchanged.
+        expect('goalAmount' in rowUpdatePayload()).toBeFalse();
+        expect(goalUpdatePayload('g1')).toBeUndefined();
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(92);
+      });
+
+      it('moves the figure between goals on a switch, each in its own currency', async () => {
+        seedRow({ goalId: 'g1', goalAmount: 92 });
+        seedGoal('g1', { linkedAmount: 92 });
+        seedGoal('g2', { currency: 'USD', linkedAmount: 5 });
+
+        await service.updateTransaction('txn-1', { goalId: 'g2' });
+
+        const payload = rowUpdatePayload();
+        expect(payload['goalId']).toBe('g2');
+        expect(payload['goalAmount']).toBe(100);
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(0);
+        expect((await goalDoc('g2'))?.['linkedAmount']).toBe(105);
+      });
+
+      it('rejects a new link to a missing or inactive goal and commits nothing', async () => {
+        seedRow();
+        seedGoal('g1', { isActive: false });
+
+        await expectAsync(service.updateTransaction('txn-1', { goalId: 'g1' }))
+          .toBeRejectedWithError(GOAL_LINK_INVALID);
+        // The aborted transaction committed nothing to the row either.
+        const row = await mockFirestore.getDocument<Transaction>(`${TX}/txn-1`);
+        expect(row?.goalId).toBeUndefined();
+      });
+
+      it('clamps a back-out at zero rather than blocking the edit', async () => {
+        seedRow({ goalId: 'g1', goalAmount: 92 });
+        seedGoal('g1', { linkedAmount: 50 }); // drifted below the stored figure
+
+        await service.updateTransaction('txn-1', { goalId: undefined });
+
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(0);
+      });
+
+      it('tolerates unlinking from a goal that no longer exists', async () => {
+        seedRow({ goalId: 'gone', goalAmount: 92 });
+
+        await service.updateTransaction('txn-1', { goalId: undefined });
+
+        const payload = rowUpdatePayload();
+        expect(payload['goalId']).toEqual(deleteField());
+        expect(payload['goalAmount']).toEqual(deleteField());
+      });
+
+      it('finishes a raced deleteGoal sweep instead of resurrecting the link', async () => {
+        seedRow({ goalId: 'gone', goalAmount: 92 });
+
+        await service.updateTransaction('txn-1', { amount: 200 });
+
+        const payload = rowUpdatePayload();
+        expect(payload['goalId']).toEqual(deleteField());
+        expect(payload['goalAmount']).toEqual(deleteField());
+      });
+
+      it('carries a link transition through a receipt append in the same commit', async () => {
+        seedRow();
+        seedGoal('g1', { linkedAmount: 8 });
+        const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+        await service.updateTransaction('txn-1', {
+          goalId: 'g1',
+          receiptFiles: [receiptFile]
+        });
+
+        const payload = rowUpdatePayload();
+        expect(payload['goalId']).toBe('g1');
+        expect(payload['goalAmount']).toBe(92);
+        expect(payload['receiptCount']).toBe(1);
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(100);
+      });
+
+      it('sweeps uploaded receipts when the link in the same update is invalid', async () => {
+        seedRow();
+        const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
+
+        await expectAsync(
+          service.updateTransaction('txn-1', {
+            goalId: 'missing',
+            receiptFiles: [receiptFile]
+          })
+        ).toBeRejectedWithError(GOAL_LINK_INVALID);
+
+        // The upload landed before the aborted transaction; nothing
+        // references it, so it must be swept like any failed attach.
+        expect(mockStorage.deleteReceiptSlotsSpy.calls.length).toBe(1);
+        expect(mockStorage.deleteReceiptSlotsSpy.mostRecent()?.args).toEqual([
+          'test-user-123', 'txn-1', [0]
+        ]);
+        expect(mockQuota.noteImagesAdded).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('deleteTransaction', () => {
+      it('backs the stored figure out in the same commit as the delete', async () => {
+        mockFirestore.setMockDocument(
+          `${TX}/txn-1`,
+          createTransaction({ id: 'txn-1', goalId: 'g1', goalAmount: 92 })
+        );
+        seedGoal('g1', { linkedAmount: 100 });
+
+        await service.deleteTransaction('txn-1');
+
+        expect(await mockFirestore.getDocument(`${TX}/txn-1`)).toBeNull();
+        expect((await goalDoc('g1'))?.['linkedAmount']).toBe(8);
+        // The linked path deletes inside the transaction, not via the
+        // plain (offline-capable) helper.
+        expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(0);
+      });
+
+      it('deletes a linked row even when its goal is already gone', async () => {
+        mockFirestore.setMockDocument(
+          `${TX}/txn-1`,
+          createTransaction({ id: 'txn-1', goalId: 'gone', goalAmount: 92 })
+        );
+
+        await service.deleteTransaction('txn-1');
+
+        expect(await mockFirestore.getDocument(`${TX}/txn-1`)).toBeNull();
+      });
+
+      it('keeps the plain delete path for unlinked rows', async () => {
+        mockFirestore.setMockDocument(`${TX}/txn-1`, createTransaction({ id: 'txn-1' }));
+
+        await service.deleteTransaction('txn-1');
+
+        expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(1);
+        expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+      });
     });
   });
 

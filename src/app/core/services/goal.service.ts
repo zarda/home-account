@@ -4,7 +4,7 @@ import { Observable, map, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { roundMoney } from '../utils/transaction-aggregation.utils';
-import { CreateGoalDTO, Goal } from '../../models';
+import { CreateGoalDTO, Goal, Transaction } from '../../models';
 
 /** A contribution that would drive the stored amount below zero. */
 export const GOAL_CONTRIBUTION_BELOW_ZERO = 'GOAL_CONTRIBUTION_BELOW_ZERO';
@@ -43,6 +43,16 @@ export class GoalService {
     const userId = this.authService.userId();
     if (!userId) throw new Error('User not authenticated');
     return `users/${userId}/goals`;
+  }
+
+  // The ledger's path, addressed directly rather than through
+  // TransactionService: that service already reaches into goals for the
+  // linked counter, and injecting each into the other would close a cycle
+  // for the sake of a template literal.
+  private get userTransactionsPath(): string {
+    const userId = this.authService.userId();
+    if (!userId) throw new Error('User not authenticated');
+    return `users/${userId}/transactions`;
   }
 
   /** Live list; publishes the signal. Callers own the subscription (ADR 0009). */
@@ -97,6 +107,10 @@ export class GoalService {
         name: data.name,
         targetAmount: data.targetAmount,
         contributedAmount: options?.contributedAmount ?? 0,
+        // Always 0 at creation, including restore: the restore flow
+        // recomputes it from the ledger afterwards (the budget-`spent`
+        // precedent), so a backup's stored counter is never trusted.
+        linkedAmount: 0,
         currency: data.currency,
         isActive: true,
         createdAt: this.firestoreService.getTimestamp(),
@@ -151,7 +165,28 @@ export class GoalService {
     }
   }
 
+  /**
+   * Delete a goal, first clearing its link off every transaction that
+   * carries it — a dangling goalId would otherwise ride through edits and
+   * backups forever. The sweep needs no counter math (the counter dies
+   * with the document), and it runs before the delete so a failure leaves
+   * the goal in place rather than orphaning the links.
+   */
   async deleteGoal(id: string): Promise<void> {
+    const linked = await this.firestoreService.getCollection<Transaction>(
+      this.userTransactionsPath,
+      { where: [{ field: 'goalId', op: '==', value: id }] }
+    );
+    for (const row of linked) {
+      await this.firestoreService.updateDocument(
+        `${this.userTransactionsPath}/${row.id}`,
+        {
+          goalId: deleteField(),
+          goalAmount: deleteField(),
+          updatedAt: this.firestoreService.getTimestamp()
+        }
+      );
+    }
     await this.firestoreService.deleteDocument(`${this.userGoalsPath}/${id}`);
   }
 
@@ -189,6 +224,32 @@ export class GoalService {
         contributedAmount: next,
         updatedAt: this.firestoreService.getTimestamp()
       });
+    });
+  }
+
+  /**
+   * Rewrite `linkedAmount` as the sum the ledger actually carries — every
+   * transaction linked to this goal, by its stored converted figure. The
+   * restore path's only counter write: restored rows carry their links
+   * verbatim without touching counters (the goal may not even exist yet
+   * mid-restore), and this pass then makes the counter agree with the
+   * ledger, so restoring twice or over a live account cannot double-count.
+   * A goal id the account has no document for is skipped silently — a
+   * cross-account backup may link rows to goals it does not contain.
+   */
+  async recomputeLinkedAmount(goalId: string): Promise<void> {
+    const goalPath = `${this.userGoalsPath}/${goalId}`;
+    if (!(await this.firestoreService.getDocument<Goal>(goalPath))) return;
+
+    const linked = await this.firestoreService.getCollection<Transaction>(
+      this.userTransactionsPath,
+      { where: [{ field: 'goalId', op: '==', value: goalId }] }
+    );
+    const sum = linked.reduce((total, row) => total + (row.goalAmount ?? 0), 0);
+
+    await this.firestoreService.updateDocument(goalPath, {
+      linkedAmount: Math.max(0, roundMoney(sum)),
+      updatedAt: this.firestoreService.getTimestamp()
     });
   }
 

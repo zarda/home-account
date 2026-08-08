@@ -125,8 +125,11 @@ describe('BackupRestoreService', () => {
     recurring.createRecurring.and.resolveTo('id');
     snapshots = jasmine.createSpyObj<InsightSnapshotService>('InsightSnapshotService', ['restore']);
     snapshots.restore.and.resolveTo();
-    goals = jasmine.createSpyObj<GoalService>('GoalService', ['createGoal']);
+    goals = jasmine.createSpyObj<GoalService>('GoalService', [
+      'createGoal', 'recomputeLinkedAmount'
+    ]);
     goals.createGoal.and.resolveTo('id');
+    goals.recomputeLinkedAmount.and.resolveTo();
 
     TestBed.configureTestingModule({
       providers: [
@@ -156,7 +159,7 @@ describe('BackupRestoreService', () => {
     });
 
     it('accepts every version this build can read', () => {
-      for (const version of ['1.0', '1.1', '1.2']) {
+      for (const version of ['1.0', '1.1', '1.2', '1.3', '1.4']) {
         expect(service.parse({ transactions: [], version }).version).toBe(version);
       }
     });
@@ -397,6 +400,81 @@ describe('BackupRestoreService', () => {
 
       expect(parsed.goals).toEqual([]);
       expect(service.describe(parsed).goals).toBe(0);
+    });
+  });
+
+  describe('goal links', () => {
+    it('passes a linked row through verbatim, counters untouched', async () => {
+      await service.restore(backup({
+        version: '1.4',
+        transactions: [transaction({ goalId: 'g-1', goalAmount: 34.78 })],
+      }));
+
+      expect(transactions.addTransaction).toHaveBeenCalledWith(
+        jasmine.objectContaining({ description: 'Dinner' }),
+        jasmine.objectContaining({
+          id: 'txn-1',
+          goalSnapshot: { goalId: 'g-1', goalAmount: 34.78 },
+        })
+      );
+      // No goalId in the DTO itself: that is the live path, which would
+      // fail on a goal that restores later — and double-count after it.
+      const dto = transactions.addTransaction.calls.mostRecent().args[0];
+      expect('goalId' in dto).toBeFalse();
+    });
+
+    it('carries a hand-edited link with no stored figure as zero rather than dropping it', async () => {
+      await service.restore(backup({
+        version: '1.4',
+        transactions: [transaction({ goalId: 'g-1' })],
+      }));
+
+      expect(transactions.addTransaction).toHaveBeenCalledWith(
+        jasmine.anything(),
+        jasmine.objectContaining({ goalSnapshot: { goalId: 'g-1', goalAmount: 0 } })
+      );
+    });
+
+    it('recomputes each involved goal once: linked ids and restored goals, deduplicated', async () => {
+      await service.restore(backup({
+        version: '1.4',
+        transactions: [
+          transaction({ id: 'txn-1', goalId: 'g-1', goalAmount: 10 }),
+          transaction({ id: 'txn-2', goalId: 'g-1', goalAmount: 20 }),
+          transaction({ id: 'txn-3', goalId: 'g-other', goalAmount: 5 }),
+        ],
+        // g-1 is also in the backup; g-other is a link to a goal the file
+        // does not contain; g-2 has no links but may have pre-existing ones
+        // in the account, so it is settled too.
+        goals: [goal({ id: 'g-1' }), goal({ id: 'g-2' })],
+      }));
+
+      const recomputed = goals.recomputeLinkedAmount.calls.allArgs().map(([id]) => id);
+      expect(recomputed.length).toBe(3);
+      expect(new Set(recomputed)).toEqual(new Set(['g-1', 'g-other', 'g-2']));
+    });
+
+    it('leaves counters alone when a pre-link backup names no goals at all', async () => {
+      await service.restore(backup({
+        version: '1.2',
+        transactions: [transaction()],
+      }));
+
+      expect(goals.recomputeLinkedAmount).not.toHaveBeenCalled();
+    });
+
+    it('reports a failed recompute without abandoning the rest', async () => {
+      goals.recomputeLinkedAmount.and.rejectWith(new Error('offline'));
+
+      const summary = await service.restore(backup({
+        version: '1.4',
+        transactions: [transaction({ goalId: 'g-1', goalAmount: 10 })],
+      }));
+
+      expect(summary.transactions).toBe(1);
+      expect(summary.skipped).toEqual([
+        { section: 'goals', id: 'g-1', reason: 'offline' },
+      ]);
     });
   });
 });
