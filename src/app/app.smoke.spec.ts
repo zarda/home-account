@@ -250,6 +250,39 @@ describe('App routes (emulator smoke test)', () => {
       mockAuth.setMockUser(createMockUser(uid));
 
       await expectPage('/dashboard', 'dashboard.title', 'Blue Bottle Coffee', 'app-dashboard');
+
+      // Every component checks with OnPush (ADR 0024), so a view only
+      // repaints when something marks it dirty. Both seeded transactions are
+      // dated today, so the period totals must fall to zero on last month and
+      // come back on this month. The recent-transactions list is deliberately
+      // not the probe: it shows the last five regardless of period.
+      //
+      // A stale view here is the failure mode OnPush introduces, and no
+      // TestBed spec catches it — fixture.detectChanges() checks the view
+      // whether or not anything marked it.
+      const statValues = () =>
+        Array.from(
+          harness.routeNativeElement?.ownerDocument.querySelectorAll('.stat-value') ?? []
+        ).map(el => (el as HTMLElement).innerText);
+      const periodToggles =
+        harness.routeNativeElement?.ownerDocument.querySelectorAll<HTMLElement>(
+          '.mat-button-toggle-button'
+        );
+      expect(periodToggles?.length).toBeGreaterThan(1);
+      await waitForDom('dashboard totals for this month', () =>
+        statValues().some(v => /[1-9]/.test(v))
+      );
+
+      periodToggles?.[1]?.click();
+      await waitForDom('dashboard totals repainted for last month', () => {
+        const values = statValues();
+        return values.length > 0 && values.every(v => !/[1-9]/.test(v));
+      });
+
+      periodToggles?.[0]?.click();
+      await waitForDom('dashboard totals repainted back to this month', () =>
+        statValues().some(v => /[1-9]/.test(v))
+      );
       await expectPage('/transactions', 'transactions.title', 'Blue Bottle Coffee');
       await expectPage('/budgets', 'budget.title', 'Groceries Budget');
       await expectPage('/reports', 'reports.title');
