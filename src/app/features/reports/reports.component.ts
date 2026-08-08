@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -57,6 +57,7 @@ import { addMonths, clampToEndOfToday } from '../../core/utils/transaction-date.
     ForecastComponent,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './reports.component.html',
   styleUrl: './reports.component.scss',
 })

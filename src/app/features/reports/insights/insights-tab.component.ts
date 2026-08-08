@@ -1,14 +1,4 @@
-import {
-  Component,
-  DestroyRef,
-  OnInit,
-  computed,
-  effect,
-  inject,
-  input,
-  signal,
-  untracked,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -69,6 +59,7 @@ import { RecurringListComponent } from './recurring-list/recurring-list.componen
     InsightNarrativeComponent,
   ],
   providers: [InsightsService],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './insights-tab.component.html',
   styleUrl: './insights-tab.component.scss',
 })

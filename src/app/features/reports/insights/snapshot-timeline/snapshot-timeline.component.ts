@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -18,6 +18,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
   selector: 'app-snapshot-timeline',
   standalone: true,
   imports: [MatButtonModule, MatIconModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './snapshot-timeline.component.html',
   styleUrl: './snapshot-timeline.component.scss',
 })

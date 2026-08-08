@@ -1,4 +1,4 @@
-import { Component, computed, inject, Input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, computed, inject, output, signal } from '@angular/core';
 import { CommonModule, CurrencyPipe } from '@angular/common';
 
 import { MatCardModule } from '@angular/material/card';
@@ -44,6 +44,7 @@ interface CategoryBreakdown {
     TranslatePipe,
     FitTextDirective
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './category-breakdown.component.html',
   styleUrl: './category-breakdown.component.scss',
 })

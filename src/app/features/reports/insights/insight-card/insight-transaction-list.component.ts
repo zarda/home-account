@@ -1,4 +1,4 @@
-import { Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { Transaction } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -17,6 +17,7 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
   selector: 'app-insight-transaction-list',
   standalone: true,
   imports: [CurrencyPipe, DatePipe, TranslatePipe, FitTextDirective],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="insight-transactions">
       @for (transaction of rows(); track transaction.id) {

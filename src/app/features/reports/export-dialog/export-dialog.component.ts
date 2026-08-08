@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -40,6 +40,7 @@ interface ExportDialogData {
     MatProgressSpinnerModule,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './export-dialog.component.html',
   styleUrl: './export-dialog.component.scss',
 })

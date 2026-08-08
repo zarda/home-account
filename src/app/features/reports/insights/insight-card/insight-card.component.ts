@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { CurrencyPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -65,6 +65,7 @@ const ICONS: Partial<Record<InsightKind, string>> = {
     TranslatePipe,
     InsightTransactionListComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './insight-card.component.html',
   styleUrl: './insight-card.component.scss',
 })

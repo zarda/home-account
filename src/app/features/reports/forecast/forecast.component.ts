@@ -1,4 +1,4 @@
-import { Component, Input, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { BaseChartDirective } from 'ng2-charts';
 import { ChartConfiguration, ChartData } from 'chart.js';
@@ -41,6 +41,7 @@ export type ForecastHorizon = 30 | 60 | 90;
     EmptyStateComponent,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './forecast.component.html',
   styleUrl: './forecast.component.scss'
 })
