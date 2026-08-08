@@ -1,3 +1,4 @@
+import { BudgetPeriod } from './budget.model';
 import { CategoryType } from './category.model';
 import { Transaction, TransactionFilters } from './transaction.model';
 
@@ -17,6 +18,18 @@ export interface SearchQueryContext {
   today: string;
   baseCurrency: string;
   categories: { id: string; name: string; type: CategoryType }[];
+  /**
+   * Goals the query may name. A goal is something a transaction carries, so
+   * a matched one becomes a real scope field.
+   */
+  goals: { id: string; name: string }[];
+  /**
+   * Budgets the query may name. A budget is *not* a transaction field — it
+   * is a category plus a recurring window — so a matched one is resolved
+   * into those two and never survives into the scope. `anchor` is the
+   * budget's start date as a day key, which is what its period counts from.
+   */
+  budgets: { id: string; name: string; categoryId: string; period: BudgetPeriod; anchor: string }[];
 }
 
 /**

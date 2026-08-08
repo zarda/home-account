@@ -1,5 +1,44 @@
-import { applyClientTransactionFilters } from './transaction-query.utils';
+import { applyClientTransactionFilters, buildTransactionWhere } from './transaction-query.utils';
 import { createTransaction } from '../services/testing/test-data';
+
+describe('buildTransactionWhere', () => {
+  it('is undefined when there is nothing to constrain', () => {
+    expect(buildTransactionWhere()).toBeUndefined();
+    expect(buildTransactionWhere({})).toBeUndefined();
+  });
+
+  it('sends a goal filter to the server as an equality', () => {
+    // Server-side, not client-side: the windowed pager filters client-only
+    // fields per fetched page, which would leave sparse pages and cost the
+    // header its exact count.
+    expect(buildTransactionWhere({ goalId: 'g1' })).toEqual([
+      { field: 'goalId', op: '==', value: 'g1' }
+    ]);
+  });
+
+  it('composes a goal filter with the other server-side fields', () => {
+    const conditions = buildTransactionWhere({
+      goalId: 'g1',
+      type: 'expense',
+      categoryId: 'food',
+      currency: 'USD'
+    });
+
+    expect(conditions).toContain({ field: 'goalId', op: '==', value: 'g1' });
+    expect(conditions?.length).toBe(4);
+  });
+
+  it('leaves client-only fields out of the query', () => {
+    // Amount bounds, tags and search are applied after fetch; sending them
+    // here would demand composite indexes that do not exist.
+    expect(buildTransactionWhere({
+      minAmount: 10,
+      maxAmount: 20,
+      tags: ['coffee'],
+      searchQuery: 'latte'
+    })).toBeUndefined();
+  });
+});
 
 describe('applyClientTransactionFilters', () => {
   describe('searchQuery over intrinsic fields', () => {

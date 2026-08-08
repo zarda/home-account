@@ -355,7 +355,8 @@ service cloud.firestore {
     function answerScopeValid(s) {
       return s is map
         && s.keys().hasOnly(['type', 'categoryId', 'startDate', 'endDate',
-                             'minAmount', 'maxAmount', 'currency', 'searchQuery'])
+                             'minAmount', 'maxAmount', 'currency', 'searchQuery',
+                             'goalId'])
         && s.keys().hasAll(['startDate', 'endDate'])
         && isDayKey(s.startDate)
         && isDayKey(s.endDate)
@@ -364,7 +365,11 @@ service cloud.firestore {
         && (!('minAmount' in s) || s.minAmount is number)
         && (!('maxAmount' in s) || s.maxAmount is number)
         && (!('currency' in s) || s.currency is string)
-        && (!('searchQuery' in s) || s.searchQuery is string);
+        && (!('searchQuery' in s) || s.searchQuery is string)
+        // A goal-scoped question ("how much toward the Japan trip") stores
+        // the goal it resolved to; a budget-scoped one does not, because a
+        // budget resolves to a category and a window before it gets here.
+        && (!('goalId' in s) || s.goalId is string);
     }
 
     // `!('x' in d)` style rather than touched(): a refresh clears a vanished

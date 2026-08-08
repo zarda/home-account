@@ -83,6 +83,13 @@
   </mat-card-content>
 
   <mat-card-actions align="end">
+    <!-- Only once transactions feed this goal is there a list worth opening. -->
+    @if (linkedAmount() > 0) {
+      <button mat-button (click)="viewTransactions.emit()">
+        <mat-icon>receipt_long</mat-icon>
+        {{ 'goal.viewTransactions' | translate }}
+      </button>
+    }
     <button mat-stroked-button color="primary" (click)="contribute.emit()">
       <mat-icon>add</mat-icon>
       {{ 'goal.contribute' | translate }}

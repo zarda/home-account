@@ -140,7 +140,12 @@ export class TransactionWindowService {
       this.reachedEnd.set(page.items.length < INITIAL_BATCH);
       this.publish();
       this.resetSeq.update(seq => seq + 1);
-    } catch {
+    } catch (error) {
+      // Logged, not just surfaced as "Couldn't load transactions": that
+      // banner cannot tell a missing composite index from a rules rejection
+      // from a dead network, and the first of those is invisible to the
+      // emulator suite (it does not enforce composite indexes).
+      console.error('[TransactionWindow] Initial page failed:', error);
       if (gen === this.generation) this.loadError.set('initial');
     } finally {
       if (gen === this.generation) this.isInitialLoading.set(false);

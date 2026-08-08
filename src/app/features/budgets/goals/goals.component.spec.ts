@@ -3,10 +3,12 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { of } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
+import { Router } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { GoalsComponent } from './goals.component';
 import { GoalService } from '../../../core/services/goal.service';
+import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { CreateGoalDTO, Goal } from '../../../models';
@@ -17,6 +19,8 @@ describe('GoalsComponent', () => {
   let mockGoalService: jasmine.SpyObj<GoalService>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let notifications: jasmine.SpyObj<NotificationService>;
+  let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
+  let router: jasmine.SpyObj<Router>;
 
   const storedGoal: Goal = {
     id: 'g1',
@@ -50,13 +54,19 @@ describe('GoalsComponent', () => {
     const mockTranslation = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslation.t.and.callFake((key: string) => key);
 
+    pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
+    router = jasmine.createSpyObj('Router', ['navigate']);
+    router.navigate.and.resolveTo(true);
+
     await TestBed.configureTestingModule({
       imports: [GoalsComponent, NoopAnimationsModule],
       providers: [
         { provide: GoalService, useValue: mockGoalService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: NotificationService, useValue: notifications },
-        { provide: TranslationService, useValue: mockTranslation }
+        { provide: TranslationService, useValue: mockTranslation },
+        { provide: PendingFiltersService, useValue: pendingFilters },
+        { provide: Router, useValue: router }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -136,4 +146,22 @@ describe('GoalsComponent', () => {
 
     expect(mockGoalService.toggleItem).toHaveBeenCalledWith('g1', 1, true);
   }));
+
+  describe('viewTransactions', () => {
+    it('hands off the goal filter and navigates to the list', () => {
+      component.viewTransactions(storedGoal);
+
+      expect(pendingFilters.apply).toHaveBeenCalledWith({ goalId: 'g1' });
+      expect(router.navigate).toHaveBeenCalledWith(['/transactions']);
+    });
+
+    it('carries no date, so links from any month show', () => {
+      // The page defaults to this month; only replacing the whole filter set
+      // with a dateless one clears that window.
+      component.viewTransactions(storedGoal);
+
+      const applied = pendingFilters.apply.calls.mostRecent().args[0];
+      expect(Object.keys(applied)).toEqual(['goalId']);
+    });
+  });
 });

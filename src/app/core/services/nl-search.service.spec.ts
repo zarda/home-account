@@ -1,12 +1,15 @@
 import { TestBed } from '@angular/core/testing';
+import { Timestamp } from '@angular/fire/firestore';
 import { of, throwError } from 'rxjs';
 import { NlSearchService } from './nl-search.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
 import { AuthService } from './auth.service';
+import { BudgetService } from './budget.service';
 import { CategoryService } from './category.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { CurrencyService } from './currency.service';
+import { GoalService } from './goal.service';
 import { PwaService } from './pwa.service';
 import { SearchAnswerHistoryService } from './search-answer-history.service';
 import { SearchHistoryService } from './search-history.service';
@@ -24,6 +27,8 @@ describe('NlSearchService', () => {
   let searchHistory: jasmine.SpyObj<SearchHistoryService>;
   let answerHistory: jasmine.SpyObj<SearchAnswerHistoryService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
+  let goalService: { goals: jasmine.Spy; exportAll: jasmine.Spy };
+  let budgetService: { budgets: jasmine.Spy; exportAll: jasmine.Spy };
 
   function expense(amount: number, categoryId: string, overrides: Partial<Transaction> = {}): Transaction {
     return createTransaction({
@@ -46,6 +51,17 @@ describe('NlSearchService', () => {
     answerHistory = jasmine.createSpyObj('SearchAnswerHistoryService', ['recordAnswer']);
     answerHistory.recordAnswer.and.resolveTo();
     analytics = jasmine.createSpyObj('AnalyticsService', ['trackAiAssistUsed']);
+
+    // Cold signals with a one-shot fallback, which is how the catalogs reach
+    // a search opened from a page that never subscribed to either.
+    goalService = {
+      goals: jasmine.createSpy('goals').and.returnValue([]),
+      exportAll: jasmine.createSpy('exportAll').and.resolveTo([]),
+    };
+    budgetService = {
+      budgets: jasmine.createSpy('budgets').and.returnValue([]),
+      exportAll: jasmine.createSpy('exportAll').and.resolveTo([]),
+    };
 
     const categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
     categoryService.categories.and.returnValue([
@@ -74,6 +90,8 @@ describe('NlSearchService', () => {
     TestBed.configureTestingModule({
       providers: [
         NlSearchService,
+        { provide: GoalService, useValue: goalService },
+        { provide: BudgetService, useValue: budgetService },
         { provide: AIStrategyService, useValue: aiStrategy },
         { provide: PwaService, useValue: pwaService },
         { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
@@ -102,6 +120,80 @@ describe('NlSearchService', () => {
       const groceries = context.categories.find(c => c.id === 'food_groceries');
       expect(groceries?.name).toBe('Food & Drinks / Groceries');
       expect(context.categories.some(c => c.id === 'dormant')).toBeFalse();
+    });
+
+    it('carries the goal and budget catalogs so a named one can be resolved', async () => {
+      goalService.goals.and.returnValue([
+        { id: 'g1', name: 'Japan trip', isActive: true },
+        { id: 'g2', name: 'Retired goal', isActive: false },
+      ]);
+      budgetService.budgets.and.returnValue([
+        {
+          id: 'b1',
+          name: 'Groceries',
+          categoryId: 'food_groceries',
+          period: 'monthly',
+          isActive: true,
+          startDate: Timestamp.fromDate(new Date(2026, 0, 10)),
+        },
+      ]);
+      mockIntent({ kind: 'filter', filters: {} });
+
+      await service.search('anything');
+
+      const context = cloudLLMProvider.interpretSearchQuery.calls.mostRecent().args[1];
+      expect(context.goals).toEqual([{ id: 'g1', name: 'Japan trip' }]);
+      expect(context.budgets).toEqual([{
+        id: 'b1',
+        name: 'Groceries',
+        categoryId: 'food_groceries',
+        period: 'monthly',
+        anchor: '2026-01-10',
+      }]);
+    });
+
+    it('fetches both catalogs when no page has warmed their signals', async () => {
+      // Search opens from anywhere; a cold signal would quietly reduce every
+      // goal question to a keyword guess (ADR 0009).
+      goalService.goals.and.returnValue([]);
+      goalService.exportAll.and.resolveTo([{ id: 'g1', name: 'Japan trip', isActive: true }]);
+      mockIntent({ kind: 'filter', filters: {} });
+
+      await service.search('anything');
+
+      expect(goalService.exportAll).toHaveBeenCalled();
+      expect(budgetService.exportAll).toHaveBeenCalled();
+      const context = cloudLLMProvider.interpretSearchQuery.calls.mostRecent().args[1];
+      expect(context.goals).toEqual([{ id: 'g1', name: 'Japan trip' }]);
+    });
+  });
+
+  describe('goal-scoped aggregates', () => {
+    it('counts only the rows linked to the goal', async () => {
+      transactionService.getTransactionsInRange.and.returnValue(of([
+        expense(100, 'food', { id: 't1', goalId: 'g1' }),
+        expense(40, 'food', { id: 't2', goalId: 'g1' }),
+        expense(999, 'food', { id: 't3', goalId: 'g2' }),
+        expense(555, 'food', { id: 't4' }),
+      ]));
+      mockIntent({
+        kind: 'aggregate',
+        operation: 'sum',
+        filters: {
+          goalId: 'g1',
+          startDate: new Date(2026, 7, 1),
+          endDate: new Date(2026, 7, 31),
+        },
+        limit: 3,
+      });
+
+      const result = await service.search('how much toward the Japan trip');
+
+      expect(result.kind).toBe('answer');
+      if (result.kind !== 'answer') return;
+      expect(result.answer.value).toBe(140);
+      expect(result.answer.transactionCount).toBe(2);
+      expect(result.answer.scope.goalId).toBe('g1');
     });
   });
 

@@ -32,6 +32,7 @@ export function serializeScope(scope: TransactionFilters): SerializableSearchSco
   if (scope.maxAmount !== undefined) stored.maxAmount = scope.maxAmount;
   if (scope.currency !== undefined) stored.currency = scope.currency;
   if (scope.searchQuery !== undefined) stored.searchQuery = scope.searchQuery;
+  if (scope.goalId !== undefined) stored.goalId = scope.goalId;
   return stored;
 }
 
@@ -48,6 +49,7 @@ export function deserializeScope(scope: SerializableSearchScope): TransactionFil
   if (scope.maxAmount !== undefined) filters.maxAmount = scope.maxAmount;
   if (scope.currency !== undefined) filters.currency = scope.currency;
   if (scope.searchQuery !== undefined) filters.searchQuery = scope.searchQuery;
+  if (scope.goalId !== undefined) filters.goalId = scope.goalId;
   return filters;
 }
 

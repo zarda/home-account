@@ -40,6 +40,7 @@ export class GoalProgressCardComponent {
   edit = output<void>();
   delete = output<void>();
   contribute = output<void>();
+  viewTransactions = output<void>();
   toggleItem = output<{ index: number; done: boolean }>();
 
   readonly percentage = computed(() => Math.round(goalPercentage(this.goal())));

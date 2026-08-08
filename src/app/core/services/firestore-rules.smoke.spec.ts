@@ -896,6 +896,35 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a goal-scoped answer', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({
+          scope: { startDate: '2026-08-01', endDate: '2026-08-31', goalId: 'g1' }
+        })),
+        'goal scope'
+      );
+    });
+
+    it('rejects a non-string goalId in the scope', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({
+          scope: { startDate: '2026-08-01', endDate: '2026-08-31', goalId: 7 }
+        })),
+        'numeric goalId'
+      );
+    });
+
+    it('still rejects an unknown scope key, so the allowlist widened by one', async () => {
+      // A budget never reaches the stored scope — it resolves to a category
+      // and a window first — so budgetId must remain unwritable.
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')), validAnswer({
+          scope: { startDate: '2026-08-01', endDate: '2026-08-31', budgetId: 'b1' }
+        })),
+        'budgetId in scope'
+      );
+    });
+
     it('accepts the { lastUsedAt } touch', async () => {
       const p = path('searchAnswers');
       await setDoc(doc(firestore, p), validAnswer());
