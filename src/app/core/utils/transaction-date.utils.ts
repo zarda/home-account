@@ -283,7 +283,9 @@ export function countDaysByKind(
   }
 
   let weekend = 0;
-  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  // Advanced in place rather than through addDays: this runs once per day of
+  // the window, and setDate is a local-parts step like addDays is.
+  const cursor = startOfDay(start);
   for (let i = 0; i < totalDays; i += 1) {
     if (isWeekend(cursor, weekendDays)) {
       weekend += 1;
