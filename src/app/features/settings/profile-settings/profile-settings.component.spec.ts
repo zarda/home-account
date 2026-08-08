@@ -104,7 +104,7 @@ describe('ProfileSettingsComponent', () => {
 
   describe('initialization', () => {
     it('should load displayName from user', () => {
-      expect(component.displayName).toBe('Test User');
+      expect(component.displayName()).toBe('Test User');
     });
 
     it('should load baseCurrency from user preferences', () => {
@@ -201,35 +201,35 @@ describe('ProfileSettingsComponent', () => {
 
   describe('display name changes', () => {
     it('should save trimmed display name via updateUserProfile on blur', async () => {
-      component.displayName = '  New Name  ';
+      component.displayName.set('  New Name  ');
       await component.onDisplayNameChange();
 
       expect(mockAuthService.updateUserProfile).toHaveBeenCalledWith({ displayName: 'New Name' });
-      expect(component.displayName).toBe('New Name');
+      expect(component.displayName()).toBe('New Name');
     });
 
     it('should not save when display name is unchanged', async () => {
-      component.displayName = 'Test User';
+      component.displayName.set('Test User');
       await component.onDisplayNameChange();
 
       expect(mockAuthService.updateUserProfile).not.toHaveBeenCalled();
     });
 
     it('should reset empty input without saving', async () => {
-      component.displayName = '   ';
+      component.displayName.set('   ');
       await component.onDisplayNameChange();
 
       expect(mockAuthService.updateUserProfile).not.toHaveBeenCalled();
-      expect(component.displayName).toBe('Test User');
+      expect(component.displayName()).toBe('Test User');
     });
 
     it('should show error notification and revert when save fails', async () => {
       mockAuthService.updateUserProfile.and.returnValue(Promise.reject(new Error('fail')));
-      component.displayName = 'New Name';
+      component.displayName.set('New Name');
       await component.onDisplayNameChange();
 
       expect(notifications.error).toHaveBeenCalledWith('common.error');
-      expect(component.displayName).toBe('Test User');
+      expect(component.displayName()).toBe('Test User');
     });
   });
 });

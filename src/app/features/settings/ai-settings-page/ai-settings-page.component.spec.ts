@@ -313,14 +313,14 @@ describe('AiSettingsPageComponent', () => {
 
       await component['loadApiKeys']();
 
-      expect(component.geminiApiKey).toBe('g-key');
-      expect(component.claudeApiKey).toBe('c-key');
-      expect(component.openaiApiKey).toBe('');
+      expect(component.geminiApiKey()).toBe('g-key');
+      expect(component.claudeApiKey()).toBe('c-key');
+      expect(component.openaiApiKey()).toBe('');
     });
 
     // Keys go to the secrets document, never back onto the preferences map.
     it('saves a key through the secrets store, not user preferences', async () => {
-      component.geminiApiKey = 'new-key';
+      component.geminiApiKey.set('new-key');
 
       await component.onGeminiApiKeyChange();
 
@@ -329,7 +329,7 @@ describe('AiSettingsPageComponent', () => {
     });
 
     it('applies the saved key to the provider straight away', async () => {
-      component.openaiApiKey = 'o-key';
+      component.openaiApiKey.set('o-key');
 
       await component.onOpenaiApiKeyChange();
 
@@ -338,7 +338,7 @@ describe('AiSettingsPageComponent', () => {
     });
 
     it('clears a key when the field is emptied', async () => {
-      component.claudeApiKey = '';
+      component.claudeApiKey.set('');
 
       await component.onClaudeApiKeyChange();
 
@@ -349,7 +349,7 @@ describe('AiSettingsPageComponent', () => {
     // save here would write that blankness over the stored keys.
     it('saves nothing until the stored keys have actually been read', async () => {
       component.keysLoaded.set(false);
-      component.geminiApiKey = '';
+      component.geminiApiKey.set('');
 
       await component.onGeminiApiKeyChange();
 

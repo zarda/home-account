@@ -84,17 +84,17 @@
                      [(ngModel)]="geminiApiKey"
                      (blur)="onGeminiApiKeyChange()"
                      placeholder="AIza...">
-              @if (geminiApiKey) {
+              @if (geminiApiKey()) {
                 <button mat-icon-button matSuffix (click)="clearGeminiApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
                   <mat-icon>close</mat-icon>
                 </button>
               }
             </mat-form-field>
 
-            @if (geminiTestResult) {
-              <div class="test-result" [class.success]="geminiTestResult === 'success'" [class.error]="geminiTestResult === 'error'">
-                <mat-icon>{{ geminiTestResult === 'success' ? 'check_circle' : 'error' }}</mat-icon>
-                {{ geminiTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
+            @if (geminiTestResult()) {
+              <div class="test-result" [class.success]="geminiTestResult() === 'success'" [class.error]="geminiTestResult() === 'error'">
+                <mat-icon>{{ geminiTestResult() === 'success' ? 'check_circle' : 'error' }}</mat-icon>
+                {{ geminiTestResult() === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
               </div>
             }
 
@@ -131,10 +131,10 @@
             </a>
             <button mat-flat-button
                     color="primary"
-                    [disabled]="!geminiApiKey || isTestingGemini"
+                    [disabled]="!geminiApiKey() || isTestingGemini()"
                     (click)="testGeminiApiKey()"
                     type="button">
-              @if (isTestingGemini) {
+              @if (isTestingGemini()) {
                 <mat-spinner diameter="18"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}
@@ -170,17 +170,17 @@
                      [(ngModel)]="openaiApiKey"
                      (blur)="onOpenaiApiKeyChange()"
                      placeholder="sk-...">
-              @if (openaiApiKey) {
+              @if (openaiApiKey()) {
                 <button mat-icon-button matSuffix (click)="clearOpenaiApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
                   <mat-icon>close</mat-icon>
                 </button>
               }
             </mat-form-field>
 
-            @if (openaiTestResult) {
-              <div class="test-result" [class.success]="openaiTestResult === 'success'" [class.error]="openaiTestResult === 'error'">
-                <mat-icon>{{ openaiTestResult === 'success' ? 'check_circle' : 'error' }}</mat-icon>
-                {{ openaiTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
+            @if (openaiTestResult()) {
+              <div class="test-result" [class.success]="openaiTestResult() === 'success'" [class.error]="openaiTestResult() === 'error'">
+                <mat-icon>{{ openaiTestResult() === 'success' ? 'check_circle' : 'error' }}</mat-icon>
+                {{ openaiTestResult() === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
               </div>
             }
 
@@ -206,10 +206,10 @@
             </a>
             <button mat-flat-button
                     color="primary"
-                    [disabled]="!openaiApiKey || isTestingOpenai"
+                    [disabled]="!openaiApiKey() || isTestingOpenai()"
                     (click)="testOpenaiApiKey()"
                     type="button">
-              @if (isTestingOpenai) {
+              @if (isTestingOpenai()) {
                 <mat-spinner diameter="18"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}
@@ -245,17 +245,17 @@
                      [(ngModel)]="claudeApiKey"
                      (blur)="onClaudeApiKeyChange()"
                      placeholder="sk-ant-...">
-              @if (claudeApiKey) {
+              @if (claudeApiKey()) {
                 <button mat-icon-button matSuffix (click)="clearClaudeApiKey()" type="button" [attr.aria-label]="'common.remove' | translate">
                   <mat-icon>close</mat-icon>
                 </button>
               }
             </mat-form-field>
 
-            @if (claudeTestResult) {
-              <div class="test-result" [class.success]="claudeTestResult === 'success'" [class.error]="claudeTestResult === 'error'">
-                <mat-icon>{{ claudeTestResult === 'success' ? 'check_circle' : 'error' }}</mat-icon>
-                {{ claudeTestResult === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
+            @if (claudeTestResult()) {
+              <div class="test-result" [class.success]="claudeTestResult() === 'success'" [class.error]="claudeTestResult() === 'error'">
+                <mat-icon>{{ claudeTestResult() === 'success' ? 'check_circle' : 'error' }}</mat-icon>
+                {{ claudeTestResult() === 'success' ? ('settings.apiKeyValid' | translate) : ('settings.apiKeyInvalid' | translate) }}
               </div>
             }
 
@@ -281,10 +281,10 @@
             </a>
             <button mat-flat-button
                     color="primary"
-                    [disabled]="!claudeApiKey || isTestingClaude"
+                    [disabled]="!claudeApiKey() || isTestingClaude()"
                     (click)="testClaudeApiKey()"
                     type="button">
-              @if (isTestingClaude) {
+              @if (isTestingClaude()) {
                 <mat-spinner diameter="18"></mat-spinner>
               } @else {
                 {{ 'settings.testApiKey' | translate }}

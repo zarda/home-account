@@ -47,14 +47,14 @@
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
-  <button mat-button (click)="cancel()" [disabled]="isExporting">{{ 'common.cancel' | translate }}</button>
+  <button mat-button (click)="cancel()" [disabled]="isExporting()">{{ 'common.cancel' | translate }}</button>
   <button
     mat-flat-button
     color="primary"
     (click)="export()"
-    [disabled]="isExporting"
+    [disabled]="isExporting()"
   >
-    @if (isExporting) {
+    @if (isExporting()) {
       <mat-spinner diameter="20" class="btn-spinner"></mat-spinner>
       {{ 'reports.exporting' | translate }}
     } @else {

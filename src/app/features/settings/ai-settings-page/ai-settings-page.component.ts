@@ -83,9 +83,9 @@ export class AiSettingsPageComponent implements OnInit {
   claudeModels = CLAUDE_MODELS;
 
   // API Keys for all providers
-  geminiApiKey = '';
-  openaiApiKey = '';
-  claudeApiKey = '';
+  geminiApiKey = signal('');
+  openaiApiKey = signal('');
+  claudeApiKey = signal('');
 
   /**
    * Whether the stored keys were actually read. The fields are blank before
@@ -98,12 +98,12 @@ export class AiSettingsPageComponent implements OnInit {
   llmProviderPreferences: LLMProviderPreferences = DEFAULT_LLM_PROVIDER_PREFERENCES;
 
   // Testing state for each provider
-  isTestingGemini = false;
-  isTestingOpenai = false;
-  isTestingClaude = false;
-  geminiTestResult: 'success' | 'error' | null = null;
-  openaiTestResult: 'success' | 'error' | null = null;
-  claudeTestResult: 'success' | 'error' | null = null;
+  isTestingGemini = signal(false);
+  isTestingOpenai = signal(false);
+  isTestingClaude = signal(false);
+  geminiTestResult = signal<'success' | 'error' | null>(null);
+  openaiTestResult = signal<'success' | 'error' | null>(null);
+  claudeTestResult = signal<'success' | 'error' | null>(null);
 
   // Available providers for selection
   allProviders: { value: LLMProvider; label: string }[] = [
@@ -229,9 +229,9 @@ export class AiSettingsPageComponent implements OnInit {
       return;
     }
 
-    this.geminiApiKey = secrets.gemini ?? '';
-    this.openaiApiKey = secrets.openai ?? '';
-    this.claudeApiKey = secrets.claude ?? '';
+    this.geminiApiKey.set(secrets.gemini ?? '');
+    this.openaiApiKey.set(secrets.openai ?? '');
+    this.claudeApiKey.set(secrets.claude ?? '');
     this.keysLoaded.set(true);
   }
 
@@ -299,103 +299,103 @@ export class AiSettingsPageComponent implements OnInit {
 
   // Gemini API Key handling
   async onGeminiApiKeyChange(): Promise<void> {
-    this.geminiTestResult = null;
+    this.geminiTestResult.set(null);
     if (!this.keysLoaded()) return;
-    await this.providerKeys.setKey('gemini', this.geminiApiKey || undefined);
-    await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey || undefined);
+    await this.providerKeys.setKey('gemini', this.geminiApiKey() || undefined);
+    await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey() || undefined);
   }
 
   async testGeminiApiKey(): Promise<void> {
-    if (!this.geminiApiKey) return;
+    if (!this.geminiApiKey()) return;
 
-    this.isTestingGemini = true;
-    this.geminiTestResult = null;
+    this.isTestingGemini.set(true);
+    this.geminiTestResult.set(null);
 
     try {
-      await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('gemini', this.geminiApiKey());
       if (this.cloudLLMProvider.isProviderAvailable('gemini')) {
-        this.geminiTestResult = 'success';
+        this.geminiTestResult.set('success');
       } else {
-        this.geminiTestResult = 'error';
+        this.geminiTestResult.set('error');
       }
     } catch {
-      this.geminiTestResult = 'error';
+      this.geminiTestResult.set('error');
     } finally {
-      this.isTestingGemini = false;
+      this.isTestingGemini.set(false);
     }
   }
 
   clearGeminiApiKey(): void {
-    this.geminiApiKey = '';
-    this.geminiTestResult = null;
+    this.geminiApiKey.set('');
+    this.geminiTestResult.set(null);
     this.onGeminiApiKeyChange();
   }
 
   // OpenAI API Key handling
   async onOpenaiApiKeyChange(): Promise<void> {
-    this.openaiTestResult = null;
+    this.openaiTestResult.set(null);
     if (!this.keysLoaded()) return;
-    await this.providerKeys.setKey('openai', this.openaiApiKey || undefined);
-    await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey || undefined);
+    await this.providerKeys.setKey('openai', this.openaiApiKey() || undefined);
+    await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey() || undefined);
   }
 
   async testOpenaiApiKey(): Promise<void> {
-    if (!this.openaiApiKey) return;
+    if (!this.openaiApiKey()) return;
 
-    this.isTestingOpenai = true;
-    this.openaiTestResult = null;
+    this.isTestingOpenai.set(true);
+    this.openaiTestResult.set(null);
 
     try {
-      await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('openai', this.openaiApiKey());
       if (this.cloudLLMProvider.isProviderAvailable('openai')) {
-        this.openaiTestResult = 'success';
+        this.openaiTestResult.set('success');
       } else {
-        this.openaiTestResult = 'error';
+        this.openaiTestResult.set('error');
       }
     } catch {
-      this.openaiTestResult = 'error';
+      this.openaiTestResult.set('error');
     } finally {
-      this.isTestingOpenai = false;
+      this.isTestingOpenai.set(false);
     }
   }
 
   clearOpenaiApiKey(): void {
-    this.openaiApiKey = '';
-    this.openaiTestResult = null;
+    this.openaiApiKey.set('');
+    this.openaiTestResult.set(null);
     this.onOpenaiApiKeyChange();
   }
 
   // Claude API Key handling
   async onClaudeApiKeyChange(): Promise<void> {
-    this.claudeTestResult = null;
+    this.claudeTestResult.set(null);
     if (!this.keysLoaded()) return;
-    await this.providerKeys.setKey('claude', this.claudeApiKey || undefined);
-    await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey || undefined);
+    await this.providerKeys.setKey('claude', this.claudeApiKey() || undefined);
+    await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey() || undefined);
   }
 
   async testClaudeApiKey(): Promise<void> {
-    if (!this.claudeApiKey) return;
+    if (!this.claudeApiKey()) return;
 
-    this.isTestingClaude = true;
-    this.claudeTestResult = null;
+    this.isTestingClaude.set(true);
+    this.claudeTestResult.set(null);
 
     try {
-      await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey);
+      await this.cloudLLMProvider.updateProviderApiKey('claude', this.claudeApiKey());
       if (this.cloudLLMProvider.isProviderAvailable('claude')) {
-        this.claudeTestResult = 'success';
+        this.claudeTestResult.set('success');
       } else {
-        this.claudeTestResult = 'error';
+        this.claudeTestResult.set('error');
       }
     } catch {
-      this.claudeTestResult = 'error';
+      this.claudeTestResult.set('error');
     } finally {
-      this.isTestingClaude = false;
+      this.isTestingClaude.set(false);
     }
   }
 
   clearClaudeApiKey(): void {
-    this.claudeApiKey = '';
-    this.claudeTestResult = null;
+    this.claudeApiKey.set('');
+    this.claudeTestResult.set(null);
     this.onClaudeApiKeyChange();
   }
 

@@ -62,7 +62,7 @@ describe('AppLockComponent', () => {
   });
 
   it('refuses to submit an incomplete PIN', async () => {
-    component.pin = '123';
+    component.pin.set('123');
 
     expect(component.canSubmit).toBe(false);
     await component.submit();
@@ -71,7 +71,7 @@ describe('AppLockComponent', () => {
   });
 
   it('returns the user to where they were headed on success', async () => {
-    component.pin = '123456';
+    component.pin.set('123456');
 
     await component.submit();
 
@@ -81,11 +81,11 @@ describe('AppLockComponent', () => {
 
   it('clears the field and reports a wrong PIN', async () => {
     appLock.unlockWithPin.and.resolveTo(false);
-    component.pin = '000000';
+    component.pin.set('000000');
 
     await component.submit();
 
-    expect(component.pin).toBe('');
+    expect(component.pin()).toBe('');
     expect(component.errorKey()).toBe('appLock.wrongPin');
     expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
@@ -93,7 +93,7 @@ describe('AppLockComponent', () => {
   it('says so once the attempts are used up', async () => {
     appLock.unlockWithPin.and.resolveTo(false);
     attemptsExhausted.set(true);
-    component.pin = '000000';
+    component.pin.set('000000');
 
     await component.submit();
 
@@ -131,7 +131,7 @@ describe('AppLockComponent', () => {
 
   it('blocks submission while throttled', () => {
     appLock.blockedForMs.and.returnValue(8_000);
-    component.pin = '123456';
+    component.pin.set('123456');
     component.blockedSeconds.set(8);
 
     expect(component.isBlocked()).toBe(true);
