@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -38,6 +38,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
     SecuritySettingsComponent,
     AnalyticsSettingsComponent,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile-settings.component.html',
   styleUrl: './profile-settings.component.scss',
 })

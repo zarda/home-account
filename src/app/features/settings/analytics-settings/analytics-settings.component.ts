@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
 import { AuthService } from '../../../core/services/auth.service';
@@ -24,6 +24,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   selector: 'app-analytics-settings',
   standalone: true,
   imports: [MatSlideToggleModule, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './analytics-settings.component.html',
   styleUrl: './analytics-settings.component.scss',
 })

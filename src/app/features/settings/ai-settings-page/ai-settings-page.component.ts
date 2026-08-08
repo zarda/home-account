@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule, Location } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -48,6 +48,7 @@ import { CategoryMemoryService } from '../../../core/services/category-memory.se
     MatTooltipModule,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './ai-settings-page.component.html',
   styleUrl: './ai-settings-page.component.scss',
 })
