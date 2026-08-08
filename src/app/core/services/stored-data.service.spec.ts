@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import en from '../../../assets/i18n/en.json';
 import { DELETION_STEPS } from './account-deletion.service';
 import { AuthService } from './auth.service';
 import { FirestoreService } from './firestore.service';
@@ -82,6 +83,33 @@ describe('StoredDataService', () => {
         expect(kind.icon).withContext(`${kind.id} icon`).toBeTruthy();
         expect(kind.route).withContext(`${kind.id} route`).toMatch(/^\//);
       }
+    });
+
+    // The hub reads these keys off the catalogue, so check-i18n.mjs counts
+    // them as dynamic usages and skips them. Nothing else would notice a kind
+    // whose strings were never written: t() renders the raw key and the
+    // locale-parity spec only compares the catalogs against each other.
+    it('has copy in the catalog for every kind', () => {
+      const kinds = (en as { data: { kinds: Record<string, { label?: string; description?: string }> } })
+        .data.kinds;
+
+      for (const kind of STORED_DATA_KINDS) {
+        expect(kinds[kind.id]?.label)
+          .withContext(`${kind.labelKey} is missing from en.json`)
+          .toBeTruthy();
+        expect(kinds[kind.id]?.description)
+          .withContext(`${kind.descriptionKey} is missing from en.json`)
+          .toBeTruthy();
+      }
+    });
+
+    it('has no copy for a kind the catalogue dropped', () => {
+      const kinds = Object.keys(
+        (en as { data: { kinds: Record<string, unknown> } }).data.kinds
+      );
+      const catalogued = new Set<string>(STORED_DATA_KINDS.map(kind => kind.id));
+
+      expect(kinds.filter(id => !catalogued.has(id))).toEqual([]);
     });
   });
 
