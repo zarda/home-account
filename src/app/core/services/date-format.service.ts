@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from './auth.service';
 import { TranslationService } from './translation.service';
+import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 
 @Injectable({ providedIn: 'root' })
 export class DateFormatService {
@@ -30,7 +31,7 @@ export class DateFormatService {
       case 'DD/MM/YYYY':
         return `${day}/${month}/${year}`;
       case 'YYYY-MM-DD':
-        return `${year}-${month}-${day}`;
+        return dayKey(d);
       case 'MM/DD/YYYY':
       default:
         return `${month}/${day}/${year}`;
@@ -43,9 +44,9 @@ export class DateFormatService {
   formatRelativeDate(date: Date | Timestamp): string {
     const d = (date as Timestamp)?.toDate?.() ?? new Date(date as Date);
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today.getTime() - 86400000);
-    const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const today = startOfDay(now);
+    const yesterday = addDays(today, -1);
+    const dateOnly = startOfDay(d);
 
     if (dateOnly.getTime() === today.getTime()) {
       return this.translationService.t('dates.today');

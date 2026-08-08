@@ -11,7 +11,10 @@ import {
   computeAmountAnomalies,
   computeCategoryDeltas,
 } from '../utils/spending-insight.utils';
-import { dateOf } from '../utils/transaction-date.utils';
+import {
+  dateOf,
+  monthWindow,
+} from '../utils/transaction-date.utils';
 
 export type InsightChipKind = 'anomaly' | 'newCategory' | 'topCategory';
 
@@ -54,13 +57,13 @@ export class InsightChipsService {
 
   load(): void {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const { start: monthStart, end: monthEnd } = monthWindow(now);
     // Same trailing window the standard RAG tier uses for its anomaly baseline.
     const baselineMonths = RAG_TIER_CONFIGS.standard.baselineWindowMonths;
-    const baselineStart = new Date(now.getFullYear(), now.getMonth() - baselineMonths, 1);
-    const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const baselineStart = monthWindow(
+      { year: now.getFullYear(), month: now.getMonth() - baselineMonths }).start;
+    const { start: prevStart, end: prevEnd } = monthWindow(
+      { year: now.getFullYear(), month: now.getMonth() - 1 });
 
     this.isLoading.set(true);
     combineLatest([

@@ -9,6 +9,7 @@ import {
   INSIGHT_DETECTOR_VERSION,
   InsightCard,
   InsightFacts,
+  PeriodSelection,
   RAG_TIER_CONFIGS,
   Transaction,
   baseCurrencyOf
@@ -24,12 +25,12 @@ import {
   addMonths,
   clampToEndOfToday,
   dayKey,
+  daysInMonth,
   monthKey,
   monthKeysBetween,
   startOfMonth,
 } from '../utils/transaction-date.utils';
 import { fnv1a32 } from '../utils/transaction-aggregation.utils';
-import { PeriodSelection } from '../../shared/components/period-selector/period-selector.component';
 
 /**
  * Drives the spending-pattern Insights tab.
@@ -79,8 +80,7 @@ export function insightWindow(selection: PeriodSelection, now: Date): InsightWin
   // A month still in progress drags every trend downward, which would produce
   // "your groceries are falling 40%" on the third of the month. The trend series
   // therefore stops at the last complete month.
-  const endsMidMonth = monthKey(end) === monthKey(now)
-    && end.getDate() < new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+  const endsMidMonth = monthKey(end) === monthKey(now) && end.getDate() < daysInMonth(end);
   const allMonths = monthKeysBetween(start, end);
   const months = endsMidMonth ? allMonths.slice(0, -1) : allMonths;
 

@@ -19,6 +19,14 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { isImeComposition } from '../../../core/utils/keyboard.utils';
+import {
+  DateWindow,
+  endOfDay,
+  monthWindow,
+  startOfDay,
+  weekWindow,
+  yearWindow,
+} from '../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -438,23 +446,15 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
     switch (filter) {
       case 'today':
-        this.filters.startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        this.filters.endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        this.applyWindow({ start: startOfDay(now), end: endOfDay(now) });
         break;
 
-      case 'thisWeek': {
-        const dayOfWeek = now.getDay();
-        const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-        const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday);
-        const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6, 23, 59, 59, 999);
-        this.filters.startDate = monday;
-        this.filters.endDate = sunday;
+      case 'thisWeek':
+        this.applyWindow(weekWindow(now));
         break;
-      }
 
       case 'thisMonth':
-        this.filters.startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        this.filters.endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        this.applyWindow(monthWindow(now));
         break;
     }
 
@@ -464,9 +464,13 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   setDateFilter(date: Date | null): void {
     if (!date) return;
     this.activeQuickFilter.set(null);
-    this.filters.startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    this.filters.endDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+    this.applyWindow({ start: startOfDay(date), end: endOfDay(date) });
     this.emitFilters();
+  }
+
+  private applyWindow(window: DateWindow): void {
+    this.filters.startDate = window.start;
+    this.filters.endDate = window.end;
   }
 
   openMonthPicker(): void {
@@ -480,16 +484,14 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   onMonthSelected(date: Date, picker: MatDatepicker<Date>): void {
     picker.close();
     this.activeQuickFilter.set(null);
-    this.filters.startDate = new Date(date.getFullYear(), date.getMonth(), 1);
-    this.filters.endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+    this.applyWindow(monthWindow(date));
     this.emitFilters();
   }
 
   onYearSelected(date: Date, picker: MatDatepicker<Date>): void {
     picker.close();
     this.activeQuickFilter.set(null);
-    this.filters.startDate = new Date(date.getFullYear(), 0, 1);
-    this.filters.endDate = new Date(date.getFullYear(), 11, 31, 23, 59, 59, 999);
+    this.applyWindow(yearWindow(date.getFullYear()));
     this.emitFilters();
   }
 

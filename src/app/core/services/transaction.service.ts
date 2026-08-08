@@ -40,6 +40,7 @@ import {
   applyClientTransactionFilters,
   buildTransactionWhere
 } from '../utils/transaction-query.utils';
+import { endOfDay, monthWindow } from '../utils/transaction-date.utils';
 
 export interface TransactionMutation {
   kind: 'add' | 'update' | 'delete';
@@ -829,7 +830,7 @@ export class TransactionService {
       orderBy: [{ field: 'date', direction: 'desc' }],
       where: [
         { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
-        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+        { field: 'date', op: '<=', value: Timestamp.fromDate(endOfDay(end)) }
       ]
     };
 
@@ -859,8 +860,8 @@ export class TransactionService {
 
   // Get monthly totals
   getMonthlyTotals(year: number, month: number): Observable<MonthlyTotal> {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+    // One-based month here, unlike everywhere else in the app.
+    const { start: startDate, end: endDate } = monthWindow({ year, month: month - 1 });
 
     return this.getByDateRange(startDate, endDate).pipe(
       map(transactions => {
@@ -901,7 +902,7 @@ export class TransactionService {
       orderBy: [{ field: 'date', direction: 'desc' }],
       where: [
         { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
-        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+        { field: 'date', op: '<=', value: Timestamp.fromDate(endOfDay(end)) }
       ]
     };
 
@@ -948,7 +949,7 @@ export class TransactionService {
       orderBy: [{ field: 'date', direction: 'desc' }],
       where: [
         { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
-        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+        { field: 'date', op: '<=', value: Timestamp.fromDate(endOfDay(end)) }
       ]
     };
 
@@ -978,7 +979,7 @@ export class TransactionService {
       orderBy: [{ field: 'date', direction: 'desc' }],
       where: [
         { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
-        { field: 'date', op: '<=', value: Timestamp.fromDate(new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999)) }
+        { field: 'date', op: '<=', value: Timestamp.fromDate(endOfDay(end)) }
       ]
     };
 
@@ -1056,8 +1057,7 @@ export class TransactionService {
 
   // Get transaction dates for a month (for calendar highlighting)
   getTransactionDatesForMonth(year: number, month: number): Observable<Map<string, 'income' | 'expense' | 'both'>> {
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    const { start: startDate, end: endDate } = monthWindow({ year, month });
 
     const userId = this.authService.userId();
     if (!userId) return of(new Map());
