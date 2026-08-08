@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectorRef, Component, computed, inject, OnDestroy, OnInit, signal, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { CommonModule } from '@angular/common';
@@ -89,6 +89,7 @@ interface DialogData {
     TranslatePipe,
     CdkTextareaAutosize
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './transaction-form.component.html',
   styleUrl: './transaction-form.component.scss',
 })

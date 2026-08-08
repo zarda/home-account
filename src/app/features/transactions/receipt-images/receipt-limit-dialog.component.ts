@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -18,6 +18,7 @@ import { FREE_TIER_RECEIPT_IMAGE_LIMIT } from '../../../models';
   selector: 'app-receipt-limit-dialog',
   standalone: true,
   imports: [MatDialogModule, MatButtonModule, MatIconModule, TranslatePipe, DialogHeaderComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <app-dialog-header
       titleKey="receiptImages.limitTitle"

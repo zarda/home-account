@@ -1,4 +1,4 @@
-import { Component, EventEmitter, OnInit, Output, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, OnInit, Output, inject } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { InsightChip, InsightChipsService } from '../../../core/services/insight-chips.service';
 import { TransactionFilters } from '../../../models';
@@ -14,6 +14,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   standalone: true,
   imports: [MatIconModule, TranslatePipe],
   providers: [InsightChipsService],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './insight-chips.component.html',
   styleUrl: './insight-chips.component.scss',
 })
