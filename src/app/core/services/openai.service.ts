@@ -1,9 +1,7 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable } from '@angular/core';
 import type OpenAI from 'openai';
 import { DEFAULT_OPENAI_MODEL } from '../config/ai-models';
-import { CategoryService } from './category.service';
-import { CurrencyService } from './currency.service';
-import { TranslationService } from './translation.service';
+import { CloudLLMProviderBase } from './cloud-llm-provider.base';
 import { Budget, Category, Goal, Transaction, MonthlyTotal } from '../../models';
 import {
   ParsedReceipt,
@@ -17,7 +15,6 @@ import {
 import {
   applyCategorizations,
   buildCategoryPromptCatalog,
-  mapCategoryNameToId,
 } from '../utils/categorization.utils';
 import {
   readCurrencyCode,
@@ -28,7 +25,6 @@ import { parseSearchIntent } from '../utils/nl-search.utils';
 import { SearchIntent, SearchQueryContext } from '../../models';
 import {
   RenderedPrompt,
-  languageInstruction,
   renderBudgetSection,
   renderGoalSection,
   renderCategoryBreakdown,
@@ -45,21 +41,11 @@ import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 import { dayKey } from '../utils/transaction-date.utils';
 
 @Injectable({ providedIn: 'root' })
-export class OpenAIService implements CloudLLMProviderAdapter {
-  private categoryService = inject(CategoryService);
-  private currencyService = inject(CurrencyService);
-  private translationService = inject(TranslationService);
+export class OpenAIService extends CloudLLMProviderBase implements CloudLLMProviderAdapter {
+  protected readonly providerLabel = 'OpenAI';
 
   private client: OpenAI | null = null;
   private currentApiKey: string | null = null;
-
-  // Signals
-  isProcessing = signal<boolean>(false);
-  lastError = signal<string | null>(null);
-  private _isAvailable = signal<boolean>(false);
-
-  // Computed signal for availability
-  isAvailableSignal = computed(() => this._isAvailable());
 
   // Models
   // OpenAI models are multimodal — one selectable model serves both text
@@ -67,6 +53,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
   private model = DEFAULT_OPENAI_MODEL;
 
   constructor() {
+    super();
     // OpenAI is not initialized by default - requires user API key
   }
 
@@ -75,7 +62,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
       console.warn('OpenAI API key not provided');
       this.client = null;
       this.currentApiKey = null;
-      this._isAvailable.set(false);
+      this.available.set(false);
       return;
     }
 
@@ -92,12 +79,12 @@ export class OpenAIService implements CloudLLMProviderAdapter {
         dangerouslyAllowBrowser: true, // Required for browser usage
       });
       this.currentApiKey = apiKey;
-      this._isAvailable.set(true);
+      this.available.set(true);
     } catch (error) {
       console.error('Failed to initialize OpenAI:', error);
       this.client = null;
       this.currentApiKey = null;
-      this._isAvailable.set(false);
+      this.available.set(false);
     }
   }
 
@@ -115,7 +102,7 @@ export class OpenAIService implements CloudLLMProviderAdapter {
     }
     this.client = null;
     this.currentApiKey = null;
-    this._isAvailable.set(false);
+    this.available.set(false);
     return Promise.resolve();
   }
 
@@ -760,11 +747,6 @@ export class OpenAIService implements CloudLLMProviderAdapter {
     }
   }
 
-  // Helper: Get language instruction
-  private getLanguageInstruction(): string {
-    return languageInstruction(this.translationService.currentLocale());
-  }
-
   /**
    * Flatten a registry prompt for the Responses API, which has no separate
    * system field — unlike Claude, which takes one at the top level.
@@ -783,33 +765,5 @@ export class OpenAIService implements CloudLLMProviderAdapter {
    */
   private requestOptions(options?: AIRequestOptions): { signal: AbortSignal } | undefined {
     return options?.signal ? { signal: options.signal } : undefined;
-  }
-
-  // Helper: Extract JSON from response
-  private extractJson(text: string): string {
-    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-    const jsonMatch = cleaned.match(/[[{][\s\S]*[\]}]/);
-    if (jsonMatch) {
-      return jsonMatch[0];
-    }
-    return cleaned.trim();
-  }
-
-  /**
-   * Category names of default categories are stored as i18n keys
-   * (e.g. categoryNames.groceries) — translate them before they reach a
-   * prompt, otherwise the model echoes the raw key into the insights text.
-   */
-  private translateCategoryName(name?: string): string {
-    return name ? this.translationService.t(name) : 'Other';
-  }
-
-  // Helper: Map category name to ID
-  private mapCategoryNameToId(categoryName: string): string {
-    return mapCategoryNameToId(
-      categoryName,
-      this.categoryService.categories(),
-      (name) => this.translateCategoryName(name)
-    );
   }
 }

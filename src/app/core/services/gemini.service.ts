@@ -1,13 +1,11 @@
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable } from '@angular/core';
 import type {
   GoogleGenerativeAI,
   GenerativeModel,
   GenerateContentResult,
   SingleRequestOptions,
 } from '@google/generative-ai';
-import { CategoryService } from './category.service';
-import { CurrencyService } from './currency.service';
-import { TranslationService } from './translation.service';
+import { CloudLLMProviderBase } from './cloud-llm-provider.base';
 import { Budget, Category, Goal, Transaction, MonthlyTotal } from '../../models';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import {
@@ -25,14 +23,12 @@ import {
 import {
   applyCategorizations,
   buildCategoryPromptCatalog,
-  mapCategoryNameToId,
 } from '../utils/categorization.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
 import { SearchIntent, SearchQueryContext } from '../../models';
 import {
   JSON_ONLY_PREAMBLE,
   RenderedPrompt,
-  languageInstruction,
   renderBudgetSection,
   renderGoalSection,
   renderCategoryBreakdown,
@@ -73,10 +69,8 @@ export type {
 } from './llm-provider.interface';
 
 @Injectable({ providedIn: 'root' })
-export class GeminiService implements CloudLLMProviderAdapter {
-  private categoryService = inject(CategoryService);
-  private currencyService = inject(CurrencyService);
-  private translationService = inject(TranslationService);
+export class GeminiService extends CloudLLMProviderBase implements CloudLLMProviderAdapter {
+  protected readonly providerLabel = 'Gemini';
 
   private genAI: GoogleGenerativeAI | null = null;
   private textModel: GenerativeModel | null = null;
@@ -85,15 +79,8 @@ export class GeminiService implements CloudLLMProviderAdapter {
   private currentTextModelId = DEFAULT_TEXT_MODEL;
   private currentVisionModelId = DEFAULT_VISION_MODEL;
 
-  // Signals
-  isProcessing = signal<boolean>(false);
-  lastError = signal<string | null>(null);
-  private _isAvailable = signal<boolean>(false);
-
-  // Computed signal for availability
-  isAvailableSignal = computed(() => this._isAvailable());
-
   constructor() {
+    super();
     void this.initializeGemini();
   }
 
@@ -136,7 +123,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
       this.currentApiKey = apiKey;
       this.currentTextModelId = finalTextModel;
       this.currentVisionModelId = finalVisionModel;
-      this._isAvailable.set(true);
+      this.available.set(true);
 
       console.log(`[GeminiService] ✓ Initialized successfully with text model: ${finalTextModel}, vision model: ${finalVisionModel}`);
     } catch (error) {
@@ -145,7 +132,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
       this.textModel = null;
       this.visionModel = null;
       this.currentApiKey = null;
-      this._isAvailable.set(false);
+      this.available.set(false);
     }
   }
 
@@ -170,7 +157,7 @@ export class GeminiService implements CloudLLMProviderAdapter {
     this.textModel = null;
     this.visionModel = null;
     this.currentApiKey = null;
-    this._isAvailable.set(false);
+    this.available.set(false);
   }
 
   // Check if Gemini is available
@@ -1012,11 +999,6 @@ export class GeminiService implements CloudLLMProviderAdapter {
     }
   }
 
-  // Helper: Get language instruction for AI prompts based on user's locale
-  private getLanguageInstruction(): string {
-    return languageInstruction(this.translationService.currentLocale());
-  }
-
   /**
    * Render a registry prompt into the text Gemini should receive.
    *
@@ -1106,7 +1088,12 @@ export class GeminiService implements CloudLLMProviderAdapter {
     throw new Error('Malformed JSON - no closing bracket found');
   }
 
-  private extractJson(text: string): string {
+  /**
+   * Gemini narrates before its JSON often enough that a greedy bracket match
+   * grabs prose, so this counts brackets from the first one instead. That is
+   * why the shared implementation is overridden rather than shared.
+   */
+  protected override extractJson(text: string): string {
     // Only apply aggressive reasoning filtering for Gemma 4 models
     let cleaned: string;
     if (this.currentTextModelId.includes('gemma-4')) {
@@ -1344,15 +1331,6 @@ export class GeminiService implements CloudLLMProviderAdapter {
     return isRateLimitMessage(message);
   }
 
-  /**
-   * Category names of default categories are stored as i18n keys
-   * (e.g. categoryNames.groceries) — translate them before they reach a
-   * prompt, otherwise the model echoes the raw key into the insights text.
-   */
-  private translateCategoryName(name?: string): string {
-    return name ? this.translationService.t(name) : 'Other';
-  }
-
   /** True when generation stopped because the output token limit was reached. */
   private hitTokenLimit(result: GenerateContentResult): boolean {
     return String(result.response.candidates?.[0]?.finishReason) === 'MAX_TOKENS';
@@ -1380,13 +1358,5 @@ export class GeminiService implements CloudLLMProviderAdapter {
       await new Promise(resolve => setTimeout(resolve, 2500));
       return await this.textModel.generateContent(request);
     }
-  }
-
-  private mapCategoryNameToId(categoryName: string): string {
-    return mapCategoryNameToId(
-      categoryName,
-      this.categoryService.categories(),
-      name => this.translateCategoryName(name)
-    );
   }
 }
