@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import en from '../../../assets/i18n/en.json';
+import { BUDGET_TABS } from '../../features/budgets/budgets.component';
+import { REPORT_TABS } from '../../features/reports/reports.component';
 import { DELETION_STEPS } from './account-deletion.service';
 import { AuthService } from './auth.service';
 import { FirestoreService } from './firestore.service';
@@ -101,6 +103,36 @@ describe('StoredDataService', () => {
           .withContext(`${kind.descriptionKey} is missing from en.json`)
           .toBeTruthy();
       }
+    });
+
+    // A row deep-links at a tab by name. A name the target page does not have
+    // resolves to its first tab, so the link would silently land on the wrong
+    // section rather than fail — nothing else would catch a rename.
+    it('names tabs the target page actually has', () => {
+      const known: Record<string, readonly string[]> = {
+        '/budgets': BUDGET_TABS,
+        '/reports': REPORT_TABS
+      };
+
+      for (const kind of STORED_DATA_KINDS) {
+        const tab = kind.queryParams?.['tab'];
+        if (!tab) continue;
+
+        expect(known[kind.route])
+          .withContext(`${kind.id} deep-links into ${kind.route}, which declares no tabs`)
+          .toBeTruthy();
+        expect(known[kind.route])
+          .withContext(`${kind.id} asks ${kind.route} for a "${tab}" tab`)
+          .toContain(tab);
+      }
+    });
+
+    it('names panels the settings page actually has', () => {
+      const panels = STORED_DATA_KINDS.filter(kind => kind.queryParams?.['panel']).map(
+        kind => kind.queryParams?.['panel']
+      );
+
+      expect(panels).toEqual(['categories']);
     });
 
     it('has no copy for a kind the catalogue dropped', () => {

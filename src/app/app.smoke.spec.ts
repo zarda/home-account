@@ -46,6 +46,8 @@ import { currentScreenView } from './core/services/analytics-screen-view';
 import { AuthService } from './core/services/auth.service';
 import { CurrencyService } from './core/services/currency.service';
 import { MockAuthService, createMockUser } from './core/services/testing';
+import { BUDGET_TABS } from './features/budgets/budgets.component';
+import { REPORT_TABS } from './features/reports/reports.component';
 
 // Declaration order matters here: the final spec shuts the shared Firebase
 // app down, so no spec may run after it. Random ordering would break that.
@@ -285,7 +287,18 @@ describe('App routes (emulator smoke test)', () => {
       );
       await expectPage('/transactions', 'transactions.title', 'Blue Bottle Coffee');
       await expectPage('/budgets', 'budget.title', 'Groceries Budget');
+      // BUDGET_TABS and REPORT_TABS are what the data hub's ?tab= links are
+      // checked against, and this is the only place the real strips render.
+      // A tab added to a template without a name added to the list would
+      // otherwise leave the hub silently linking at the wrong section.
+      expect(
+        harness.routeNativeElement?.ownerDocument.querySelectorAll('.mdc-tab').length
+      ).withContext('budget tabs').toBe(BUDGET_TABS.length);
+
       await expectPage('/reports', 'reports.title');
+      expect(
+        harness.routeNativeElement?.ownerDocument.querySelectorAll('.mdc-tab').length
+      ).withContext('report tabs').toBe(REPORT_TABS.length);
       await waitForDom(
         'reports chart canvas',
         () => !!harness.routeNativeElement?.ownerDocument.querySelector('canvas')

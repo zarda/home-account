@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { MatTabsModule } from '@angular/material/tabs';
@@ -36,6 +36,10 @@ import {
   sumByType,
 } from '../../core/utils/transaction-aggregation.utils';
 import { addMonths, clampToEndOfToday } from '../../core/utils/transaction-date.utils';
+import { tabIndexFromParam } from '../../core/utils/tab-query-param.utils';
+
+/** The tab strip's sections, in the order the template lays them out. */
+export const REPORT_TABS = ['analysis', 'categories', 'monthly', 'insights', 'forecast'] as const;
 
 @Component({
   selector: 'app-reports',
@@ -72,7 +76,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private router = inject(Router);
 
   isLoading = signal(true);
-  selectedTabIndex = 0;
+
+  /**
+   * Which tab a ?tab= link opens on. Read once at construction rather than
+   * bound to the param stream: after that the tab strip owns the selection,
+   * and re-reading would drag the user back on every param change.
+   */
+  selectedTabIndex = tabIndexFromParam(
+    inject(ActivatedRoute).snapshot.queryParamMap.get('tab'),
+    REPORT_TABS
+  );
 
   // 0ms under prefers-reduced-motion (tab slide bypasses the CSS switch).
   readonly tabAnimationDuration = tabAnimationDuration();

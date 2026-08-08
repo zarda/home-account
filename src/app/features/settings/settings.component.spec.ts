@@ -7,7 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatIconModule } from '@angular/material/icon';
 import { By } from '@angular/platform-browser';
-import { RouterLink, provideRouter } from '@angular/router';
+import { ActivatedRoute, RouterLink, convertToParamMap, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 
@@ -41,6 +41,7 @@ describe('SettingsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [SettingsComponent, NoopAnimationsModule],
       providers: [
+        provideRouter([]),
         { provide: AuthService, useValue: mockAuthService },
         { provide: MatDialog, useValue: mockDialog },
         { provide: TranslationService, useValue: mockTranslationService }
@@ -108,6 +109,7 @@ describe('SettingsComponent', () => {
       await TestBed.configureTestingModule({
         imports: [SettingsComponent, NoopAnimationsModule],
         providers: [
+          provideRouter([]),
           { provide: AuthService, useValue: mockAuthServiceNoUser },
           { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
           { provide: TranslationService, useValue: mockTranslationService }
@@ -205,6 +207,59 @@ describe('SettingsComponent', () => {
     it('keeps preferences and categories in the accordion', () => {
       expect(panelTitles().some(title => title.includes('settings.preferences'))).toBe(true);
       expect(panelTitles().some(title => title.includes('settings.categories'))).toBe(true);
+    });
+
+    it('opens preferences by default', () => {
+      const component = fixture.componentInstance;
+
+      expect(component.preferencesExpanded).toBe(true);
+      expect(component.categoriesExpanded).toBe(false);
+    });
+  });
+
+  describe('?panel=', () => {
+    const build = async (panel: string | null): Promise<SettingsComponent> => {
+      TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [SettingsComponent, NoopAnimationsModule],
+        providers: [
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: MatDialog, useValue: mockDialog },
+          { provide: TranslationService, useValue: mockTranslationService },
+          {
+            provide: ActivatedRoute,
+            useValue: { snapshot: { queryParamMap: convertToParamMap(panel ? { panel } : {}) } }
+          }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(SettingsComponent, {
+          set: { imports: [], template: '<div></div>' }
+        })
+        .compileComponents();
+
+      return TestBed.createComponent(SettingsComponent).componentInstance;
+    };
+
+    it('opens the categories panel when the hub links at it', async () => {
+      const component = await build('categories');
+
+      expect(component.categoriesExpanded).toBe(true);
+    });
+
+    // multi accordion, so leaving Preferences open would push the requested
+    // panel below the fold and the link would not have answered anything.
+    it('closes preferences so the requested panel lands near the top', async () => {
+      const component = await build('categories');
+
+      expect(component.preferencesExpanded).toBe(false);
+    });
+
+    it('falls back to the default shape for a panel it does not have', async () => {
+      const component = await build('nonsense');
+
+      expect(component.preferencesExpanded).toBe(true);
+      expect(component.categoriesExpanded).toBe(false);
     });
   });
 });

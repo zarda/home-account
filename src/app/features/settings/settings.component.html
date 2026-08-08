@@ -23,7 +23,7 @@
   <!-- Settings Sections -->
   <mat-accordion class="settings-accordion" multi>
     <!-- Profile & Preferences -->
-    <mat-expansion-panel [expanded]="true">
+    <mat-expansion-panel [expanded]="preferencesExpanded">
       <mat-expansion-panel-header>
         <mat-panel-title>
           <mat-icon class="section-icon">tune</mat-icon>
@@ -49,7 +49,7 @@
     </div>
 
     <!-- Category Manager -->
-    <mat-expansion-panel>
+    <mat-expansion-panel [expanded]="categoriesExpanded">
       <mat-expansion-panel-header>
         <mat-panel-title>
           <mat-icon class="section-icon">category</mat-icon>

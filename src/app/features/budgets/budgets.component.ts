@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatDialog } from '@angular/material/dialog';
+import { ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { BudgetService } from '../../core/services/budget.service';
@@ -22,6 +23,10 @@ import { PageHeaderComponent } from '../../shared/components/page-header/page-he
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { tabAnimationDuration } from '../../core/layout/motion';
+import { tabIndexFromParam } from '../../core/utils/tab-query-param.utils';
+
+/** The tab strip's sections, in the order the template lays them out. */
+export const BUDGET_TABS = ['budgets', 'recurring', 'goals'] as const;
 
 @Component({
   selector: 'app-budgets',
@@ -68,6 +73,16 @@ export class BudgetsComponent implements OnInit, OnDestroy {
   // 0ms when the user prefers reduced motion (Material tab slide runs via the
   // Web Animations API, which the global CSS switch can't reach).
   readonly tabAnimationDuration = tabAnimationDuration();
+
+  /**
+   * Which tab a ?tab= link opens on. Read once at construction rather than
+   * bound to the param stream: after that the tab strip owns the selection,
+   * and re-reading would drag the user back on every param change.
+   */
+  selectedTabIndex = tabIndexFromParam(
+    inject(ActivatedRoute).snapshot.queryParamMap.get('tab'),
+    BUDGET_TABS
+  );
 
   private budgetsSub?: Subscription;
   private categoriesSub?: Subscription;
