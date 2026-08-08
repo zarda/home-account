@@ -302,6 +302,19 @@ describe('App routes (emulator smoke test)', () => {
         () => pageText().includes('reports.forecastNoRulesTitle')
       );
       await expectPage('/settings', 'settings.title', 'Test User');
+      // The hub counts each stored kind through a server-side aggregate. The
+      // seeded categories prove the counts land as numbers rather than as the
+      // dash a failed aggregate would leave behind.
+      await expectPage('/data', 'data.title', undefined, 'app-data-hub');
+      await waitForDom(
+        'a stored-kind count',
+        () =>
+          Array.from(
+            harness.routeNativeElement?.ownerDocument.querySelectorAll<HTMLElement>(
+              '.kind-count'
+            ) ?? []
+          ).some(cell => /^\d+$/.test(cell.textContent?.trim() ?? ''))
+      );
       // The sixth child route. It has no seeded data of its own, so the
       // landmark is the whole assertion: what it proves is that the route
       // resolves its component at all, which is the part that changed when

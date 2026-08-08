@@ -151,6 +151,7 @@ table can enumerate.
 | `reports` | `reports` | nav |
 | `settings` | `settings` | nav |
 | `ai` | `ai` | settings |
+| `data` | `data` | sidebar |
 | `about` | `about` | sidebar |
 | `search-history` | `search-history` | smart-search dialog |
 | `import/file` | `import/file` | import wizard |
