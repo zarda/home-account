@@ -86,13 +86,18 @@ describe('App routes (emulator smoke test)', () => {
     return (harness.routeNativeElement?.ownerDocument.body.textContent ?? '');
   }
 
-  async function expectPage(url: string, landmark: string, data?: string): Promise<void> {
+  async function expectPage(
+    url: string,
+    landmark: string,
+    data?: string,
+    screenClass?: string
+  ): Promise<void> {
     await harness.navigateByUrl(url);
     await waitForDom(`${url} landmark "${landmark}"`, () => pageText().includes(landmark));
     if (data) {
       await waitForDom(`${url} data "${data}"`, () => pageText().includes(data));
     }
-    expectScreenName(url);
+    expectScreenName(url, screenClass);
   }
 
   /**
@@ -106,11 +111,19 @@ describe('App routes (emulator smoke test)', () => {
    * web transport, and the hand-written iOS one), and this is what keeps all
    * three describing the same screen.
    */
-  function expectScreenName(url: string): void {
+  function expectScreenName(url: string, screenClass?: string): void {
     const expected = url.replace(/^\//, '').split('?')[0];
     const screen = currentScreenView(TestBed.inject(Router));
 
     expect(screen?.screenName).withContext(`screen_name for ${url}`).toBe(expected);
+    if (screenClass) {
+      // screen_class reads the activated snapshot's component, which the
+      // router fills in from the loaded component only after a lazy route
+      // resolves. Asserting it on a real navigation is what proves a page
+      // still reports its own selector rather than 'unknown' now that every
+      // child route loads on demand.
+      expect(screen?.screenClass).withContext(`screen_class for ${url}`).toBe(screenClass);
+    }
   }
 
   beforeAll(async () => {
@@ -236,7 +249,7 @@ describe('App routes (emulator smoke test)', () => {
       // users/{uid}/… reads pass the isOwner Firestore rules.
       mockAuth.setMockUser(createMockUser(uid));
 
-      await expectPage('/dashboard', 'dashboard.title', 'Blue Bottle Coffee');
+      await expectPage('/dashboard', 'dashboard.title', 'Blue Bottle Coffee', 'app-dashboard');
       await expectPage('/transactions', 'transactions.title', 'Blue Bottle Coffee');
       await expectPage('/budgets', 'budget.title', 'Groceries Budget');
       await expectPage('/reports', 'reports.title');
@@ -256,7 +269,12 @@ describe('App routes (emulator smoke test)', () => {
         () => pageText().includes('reports.forecastNoRulesTitle')
       );
       await expectPage('/settings', 'settings.title', 'Test User');
-      expect(TestBed.inject(Router).url).toBe('/settings');
+      // The sixth child route. It has no seeded data of its own, so the
+      // landmark is the whole assertion: what it proves is that the route
+      // resolves its component at all, which is the part that changed when
+      // the layout's children stopped being imported eagerly.
+      await expectPage('/about', 'about.title', undefined, 'app-about');
+      expect(TestBed.inject(Router).url).toBe('/about');
 
       // Drain in-flight async work before shutting Firebase down, so nothing
       // races the teardown into the afterAll window: the exchange-rate
