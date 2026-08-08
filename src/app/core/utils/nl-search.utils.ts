@@ -5,7 +5,7 @@ import {
   SearchQueryContext,
   TransactionFilters,
 } from '../../models';
-import { parseDayKey } from './transaction-date.utils';
+import { budgetPeriodWindow, parseDayKey } from './transaction-date.utils';
 
 /** Longest free-text remainder carried into the keyword filter. */
 const MAX_SEARCH_QUERY_LENGTH = 100;
@@ -28,6 +28,12 @@ interface RawFilters {
   maxAmount?: unknown;
   currency?: unknown;
   searchQuery?: unknown;
+  goalId?: unknown;
+  /**
+   * Accepted from the model, never stored: a budget is a category plus a
+   * window, not a field on a transaction. See sanitizeFilters.
+   */
+  budgetId?: unknown;
 }
 
 /**
@@ -80,11 +86,47 @@ function sanitizeFilters(rawFilters: unknown, context: SearchQueryContext): Tran
     }
   }
 
+  // A goal is a field a transaction carries, so a matched one becomes a real
+  // scope field. Same contract as categoryId: unknown ids are dropped, never
+  // guessed, and the term falls back into searchQuery below.
+  let droppedGoal: string | null = null;
+  if (typeof raw.goalId === 'string' && raw.goalId) {
+    if (context.goals.some(g => g.id === raw.goalId)) {
+      filters.goalId = raw.goalId;
+    } else {
+      droppedGoal = raw.goalId;
+    }
+  }
+
   let startDate = parseIsoDate(raw.startDate);
   let endDate = parseIsoDate(raw.endDate);
   if (startDate && endDate && startDate > endDate) {
     [startDate, endDate] = [endDate, startDate];
   }
+
+  /*
+   * A budget is resolved, not stored. There is no budget field on a
+   * transaction — a budget is a category plus a recurring window — so a
+   * matched budgetId contributes those two and then disappears. Keeping it
+   * on the filters would put a field there that nothing downstream (the list
+   * query, the window pager, the aggregate path) could execute.
+   *
+   * Neither contribution overwrites the model: a category it named itself
+   * wins, and its dates win too, so "groceries budget last year" narrows to
+   * last year rather than snapping back to the current period.
+   */
+  if (typeof raw.budgetId === 'string' && raw.budgetId) {
+    const budget = context.budgets.find(b => b.id === raw.budgetId);
+    if (budget) {
+      if (!filters.categoryId) filters.categoryId = budget.categoryId;
+      const anchor = parseDayKey(budget.anchor);
+      const today = parseDayKey(context.today);
+      if (!startDate && !endDate && anchor && today) {
+        ({ start: startDate, end: endDate } = budgetPeriodWindow(budget.period, anchor, today));
+      }
+    }
+  }
+
   if (startDate) filters.startDate = startDate;
   if (endDate) filters.endDate = endDate;
 
@@ -101,9 +143,9 @@ function sanitizeFilters(rawFilters: unknown, context: SearchQueryContext): Tran
   }
 
   let searchQuery = typeof raw.searchQuery === 'string' ? raw.searchQuery.trim() : '';
-  if (!searchQuery && droppedCategory) {
-    // Keep the term the model tried to categorize so it isn't lost.
-    searchQuery = droppedCategory.trim();
+  if (!searchQuery && (droppedCategory || droppedGoal)) {
+    // Keep the term the model tried to resolve so it isn't lost.
+    searchQuery = (droppedCategory ?? droppedGoal ?? '').trim();
   }
   if (searchQuery) {
     filters.searchQuery = searchQuery.slice(0, MAX_SEARCH_QUERY_LENGTH);

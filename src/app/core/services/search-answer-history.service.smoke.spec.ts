@@ -196,6 +196,45 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     expect(raw.docs.some(d => d.id === maxRecord!.id)).toBeFalse();
   });
 
+  it('stores a goal-scoped answer through the real scope rules', async () => {
+    await freshUser();
+
+    // answerScopeValid is a closed allowlist: before goalId was added to it,
+    // this write was rejected outright, and no unit spec could see that.
+    await service.recordAnswer(
+      'how much toward the japan trip',
+      { operation: 'sum', limit: 3 },
+      sumAnswer({ scope: { ...augustScope(), goalId: 'goal-alpha' } }),
+    );
+    await reload();
+
+    expect(service.answers().length).toBe(1);
+    expect(service.answers()[0].scope).toEqual({
+      startDate: '2026-08-01',
+      endDate: '2026-08-31',
+      goalId: 'goal-alpha',
+    });
+  });
+
+  it('treats two goals as two questions, not one to dedupe', async () => {
+    await freshUser();
+
+    const ask = (goalId: string) => service.recordAnswer(
+      'how much toward it',
+      { operation: 'sum', limit: 3 },
+      sumAnswer({ scope: { ...augustScope(), goalId } }),
+    );
+
+    await ask('goal-alpha');
+    await settle();
+    await ask('goal-beta');
+    await reload();
+
+    // The dedupe key is question + operation + limit + scope, so the goal
+    // has to be part of the stored scope for these to stay distinct.
+    expect(service.answers().length).toBe(2);
+  });
+
   it('prunes the oldest record past the cap against server ordering', async () => {
     await freshUser();
 

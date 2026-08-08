@@ -48,6 +48,10 @@ export function buildTransactionWhere(
     whereConditions.push({ field: 'currency', op: '==', value: filters.currency });
   }
 
+  if (filters.goalId) {
+    whereConditions.push({ field: 'goalId', op: '==', value: filters.goalId });
+  }
+
   return whereConditions.length > 0 ? whereConditions : undefined;
 }
 

@@ -292,7 +292,7 @@ describe('CloudLLMProviderService', () => {
   // Search delegation
   // ----------------------------------------------------------------
   describe('interpretSearchQuery', () => {
-    const context = { today: '2026-07-24', baseCurrency: 'USD', categories: [] };
+    const context = { today: '2026-07-24', baseCurrency: 'USD', categories: [], goals: [], budgets: [] };
 
     it('routes to the preferred provider', async () => {
       gemini.isAvailableSignal.and.returnValue(true);

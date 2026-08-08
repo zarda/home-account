@@ -13,9 +13,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Subject, Subscription, debounceTime } from 'rxjs';
-import { Category, CurrencyInfo, SavedSearch, TransactionFilters } from '../../../models';
+import { Category, CurrencyInfo, Goal, SavedSearch, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { GoalService } from '../../../core/services/goal.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { isImeComposition } from '../../../core/utils/keyboard.utils';
@@ -54,6 +55,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);
   private currencyService = inject(CurrencyService);
+  private goalService = inject(GoalService);
   private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   searchHistory = inject(SearchHistoryService);
   private analytics = inject(AnalyticsService);
@@ -84,6 +86,24 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
 
   currencies: CurrencyInfo[] = this.currencyService.getSupportedCurrencies();
 
+  /**
+   * Goals the filter offers: the active ones, plus the goal a filter already
+   * names even if it has since been deactivated — an arriving filter (from a
+   * goal card or a stored search answer) must render its value and stay
+   * clearable. Same rule as the transaction form's picker.
+   *
+   * A getter rather than a computed: `filters` is a plain object, so the
+   * selected id is not a signal. Every path that changes it runs through an
+   * event handler, which checks the view anyway.
+   */
+  get goalOptions(): Goal[] {
+    const active = this.goalService.activeGoals();
+    const selected = this.filters.goalId;
+    if (!selected || active.some(goal => goal.id === selected)) return active;
+    const filtered = this.goalService.goals().find(goal => goal.id === selected);
+    return filtered ? [...active, filtered] : active;
+  }
+
   // Store transaction dates for calendar highlighting - keyed by "year-month"
   private transactionDatesCache = new Map<string, Map<string, 'income' | 'expense' | 'both'>>();
   private loadingMonths = new Set<string>();
@@ -99,6 +119,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   private searchInput$ = new Subject<void>();
   private searchSub?: Subscription;
   private searchHistorySub?: Subscription;
+  private goalsSub?: Subscription;
   // Last searchQuery included in any emission; a pending debounce tick whose
   // value already went out (via Enter, blur, or another filter change) no-ops.
   private lastEmittedSearch = '';
@@ -129,6 +150,9 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
       .subscribe(() => this.commitAmounts());
 
     this.searchHistorySub = this.searchHistory.loadSearches().subscribe();
+    // The goals signal is only warm where a page subscribed (ADR 0009), and
+    // the transactions page has no goal surface of its own.
+    this.goalsSub = this.goalService.getGoals().subscribe();
 
     // Default filter will be applied in ngOnChanges or after a tick if no initialDate
     setTimeout(() => {
@@ -172,6 +196,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     this.searchSub?.unsubscribe();
     this.amountSub?.unsubscribe();
     this.searchHistorySub?.unsubscribe();
+    this.goalsSub?.unsubscribe();
     this.searchInput$.complete();
     this.amountInput$.complete();
   }
@@ -256,6 +281,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
       typeof this.filters.minAmount === 'number' ||
       typeof this.filters.maxAmount === 'number' ||
       !!this.filters.tags?.length ||
+      !!this.filters.goalId ||
       this.activeQuickFilter() !== 'thisMonth'
     );
   }
@@ -415,6 +441,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (typeof this.filters.maxAmount === 'number') count++;
     if (this.filters.currency) count++;
     if (this.filters.tags?.length) count++;
+    if (this.filters.goalId) count++;
     return count;
   }
 
@@ -524,6 +551,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (typeof this.filters.maxAmount === 'number') cleanFilters.maxAmount = this.filters.maxAmount;
     if (this.filters.currency) cleanFilters.currency = this.filters.currency;
     if (this.filters.tags?.length) cleanFilters.tags = this.filters.tags;
+    if (this.filters.goalId) cleanFilters.goalId = this.filters.goalId;
 
     this.filtersChanged.emit(cleanFilters);
   }

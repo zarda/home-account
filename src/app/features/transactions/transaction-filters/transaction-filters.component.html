@@ -270,6 +270,19 @@
           </mat-select>
         </mat-form-field>
 
+        <!-- Goal: hidden when there is nothing to link against -->
+        @if (goalOptions.length > 0) {
+          <mat-form-field appearance="outline" class="compact-field">
+            <mat-label>{{ 'transactions.goalFilter' | translate }}</mat-label>
+            <mat-select [(ngModel)]="filters.goalId" (selectionChange)="onFilterChange()">
+              <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
+              @for (goal of goalOptions; track goal.id) {
+                <mat-option [value]="goal.id">{{ goal.name }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+        }
+
         <!-- Tags: rows must carry every selected tag -->
         <mat-form-field
           appearance="outline"

@@ -4,8 +4,11 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 
+import { Router } from '@angular/router';
+
 import { GoalService } from '../../../core/services/goal.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CreateGoalDTO, Goal } from '../../../models';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
@@ -46,6 +49,8 @@ export class GoalsComponent implements OnInit {
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
   private destroyRef = inject(DestroyRef);
+  private pendingFilters = inject(PendingFiltersService);
+  private router = inject(Router);
 
   goals = signal<Goal[]>([]);
   isLoading = signal(true);
@@ -120,6 +125,21 @@ export class GoalsComponent implements OnInit {
           .then(() => this.notifications.success(this.t('goal.deleted')))
           .catch(() => this.notifications.error(this.t('goal.deleteFailed')));
       });
+  }
+
+  /**
+   * Open the Transactions page showing this goal's linked rows.
+   *
+   * The filter carries only the goal: replacing the whole filter set is what
+   * clears the page's default this-month window, so a link posted in March
+   * shows up in August. Handed off through PendingFiltersService — the
+   * channel insight drill-downs and smart search already use — rather than a
+   * route param, so the page picks it up whether it was already open or is
+   * created by this navigation.
+   */
+  viewTransactions(goal: Goal): void {
+    this.pendingFilters.apply({ goalId: goal.id });
+    void this.router.navigate(['/transactions']);
   }
 
   onToggleItem(goal: Goal, event: { index: number; done: boolean }): void {

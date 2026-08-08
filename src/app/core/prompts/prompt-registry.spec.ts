@@ -82,6 +82,14 @@ const SAMPLE_INPUT: { [K in PromptId]: Parameters<(typeof PROMPTS)[K]['render']>
         { id: 'food_groceries', name: 'Food & Drinks / Groceries', type: 'expense' },
         { id: 'employment', name: 'Employment', type: 'income' },
       ],
+      goals: [{ id: 'g1', name: 'Japan trip' }],
+      budgets: [{
+        id: 'b1',
+        name: 'Groceries',
+        categoryId: 'food_groceries',
+        period: 'monthly',
+        anchor: '2026-01-10',
+      }],
     } satisfies SearchQueryContext,
   },
 };
@@ -297,6 +305,31 @@ describe('prompt registry', () => {
       // Every number the user sees is computed locally; the model only returns
       // a scope and an operation.
       expect(render('searchQuery')).toContain('Never invent amounts or dates');
+    });
+
+    it('lists the goal and budget catalogs the query may name', () => {
+      const prompt = render('searchQuery');
+      expect(prompt).toContain('g1: Japan trip');
+      expect(prompt).toContain('b1: Groceries');
+      expect(prompt).toContain('Use goalId when the question names a goal');
+      expect(prompt).toContain('Use budgetId when the question names a budget');
+    });
+
+    it('omits a catalog heading the account cannot fill', () => {
+      // An empty heading is an invitation to invent an id.
+      const prompt = renderPrompt('searchQuery', {
+        query: 'coffee',
+        context: {
+          today: '2026-07-24',
+          baseCurrency: 'USD',
+          categories: [{ id: 'food', name: 'Food', type: 'expense' }],
+          goals: [],
+          budgets: [],
+        },
+      }).user;
+
+      expect(prompt).not.toContain('Valid goalId values');
+      expect(prompt).not.toContain('Valid budgetId values');
     });
   });
 

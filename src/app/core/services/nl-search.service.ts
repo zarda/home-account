@@ -2,7 +2,9 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { AIStrategyService } from './ai-strategy.service';
 import { AuthService } from './auth.service';
+import { BudgetService } from './budget.service';
 import { CategoryService } from './category.service';
+import { GoalService } from './goal.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { CurrencyService } from './currency.service';
 import { PwaService } from './pwa.service';
@@ -11,7 +13,7 @@ import { SearchHistoryService } from './search-history.service';
 import { AnalyticsService } from './analytics.service';
 import { TransactionService } from './transaction.service';
 import { TranslationService } from './translation.service';
-import { endOfDay, monthWindow } from '../utils/transaction-date.utils';
+import { dayKey, endOfDay, monthWindow } from '../utils/transaction-date.utils';
 import {
   AggregateAnswer,
   AggregateOperation,
@@ -39,6 +41,8 @@ export class NlSearchService {
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
+  private goalService = inject(GoalService);
+  private budgetService = inject(BudgetService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private authService = inject(AuthService);
@@ -59,7 +63,10 @@ export class NlSearchService {
     this.analytics.trackAiAssistUsed({ feature: 'search' });
 
     try {
-      const intent = await this.cloudLLMProvider.interpretSearchQuery(trimmed, this.buildContext());
+      const intent = await this.cloudLLMProvider.interpretSearchQuery(
+        trimmed,
+        await this.buildContext()
+      );
       if (intent.kind === 'filter') {
         return { kind: 'filter', filters: intent.filters };
       }
@@ -104,12 +111,17 @@ export class NlSearchService {
     };
   }
 
-  private buildContext(): SearchQueryContext {
+  private async buildContext(): Promise<SearchQueryContext> {
     const categories = this.categoryService.categories().filter(c => c.isActive);
     const nameOf = (id: string) => {
       const category = categories.find(c => c.id === id);
       return category?.name ? this.translationService.t(category.name) : 'Other';
     };
+
+    const [goals, budgets] = await Promise.all([
+      this.goalCatalog(),
+      this.budgetCatalog(),
+    ]);
 
     return {
       today: this.toIsoDate(new Date()),
@@ -120,7 +132,40 @@ export class NlSearchService {
         name: c.parentId ? `${nameOf(c.parentId)} / ${this.translationService.t(c.name)}` : this.translationService.t(c.name),
         type: c.type,
       })),
+      goals,
+      budgets,
     };
+  }
+
+  /**
+   * Goals the query may name. Read from the published signal when a page has
+   * warmed it, otherwise fetched once — search opens from anywhere, including
+   * pages that never subscribed to goals (ADR 0009), and a cold signal would
+   * silently reduce every goal question to a keyword guess.
+   */
+  private async goalCatalog(): Promise<SearchQueryContext['goals']> {
+    const published = this.goalService.goals();
+    const goals = published.length ? published : await this.goalService.exportAll();
+    return goals
+      .filter(goal => goal.isActive)
+      .map(goal => ({ id: goal.id, name: goal.name }));
+  }
+
+  /** Budgets the query may name, same cold-signal rule as goals. */
+  private async budgetCatalog(): Promise<SearchQueryContext['budgets']> {
+    const published = this.budgetService.budgets();
+    const budgets = published.length ? published : await this.budgetService.exportAll();
+    return budgets
+      .filter(budget => budget.isActive)
+      .map(budget => ({
+        id: budget.id,
+        name: budget.name,
+        categoryId: budget.categoryId,
+        period: budget.period,
+        // The date its period counts from, which is what budgetPeriodWindow
+        // anchors on when the sanitizer resolves the current window.
+        anchor: dayKey(budget.startDate.toDate()),
+      }));
   }
 
   private async computeAggregate(
@@ -228,6 +273,9 @@ export class NlSearchService {
     }
     if (scope.currency) {
       result = result.filter(t => t.currency === scope.currency);
+    }
+    if (scope.goalId) {
+      result = result.filter(t => t.goalId === scope.goalId);
     }
 
     // Amount bounds compare in base currency: the model was told the base

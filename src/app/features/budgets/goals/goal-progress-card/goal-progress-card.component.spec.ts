@@ -109,6 +109,15 @@ describe('GoalProgressCardComponent', () => {
     expect(component.kindIcon()).toBe('flag');
   });
 
+  it('emits viewTransactions when the button is activated', () => {
+    let emitted = 0;
+    component.viewTransactions.subscribe(() => emitted++);
+
+    component.viewTransactions.emit();
+
+    expect(emitted).toBe(1);
+  });
+
   it('emits toggleItem with the item position and next state', () => {
     const emitted: { index: number; done: boolean }[] = [];
     component.toggleItem.subscribe(event => emitted.push(event));

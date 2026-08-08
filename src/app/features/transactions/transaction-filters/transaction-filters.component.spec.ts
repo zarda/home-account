@@ -8,7 +8,8 @@ import { TransactionService } from '../../../core/services/transaction.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
-import { Category, SavedSearch, TransactionFilters } from '../../../models';
+import { GoalService } from '../../../core/services/goal.service';
+import { Category, Goal, SavedSearch, TransactionFilters } from '../../../models';
 
 describe('TransactionFiltersComponent', () => {
   let component: TransactionFiltersComponent;
@@ -27,6 +28,25 @@ describe('TransactionFiltersComponent', () => {
     touch: jasmine.Spy;
     deleteSearch: jasmine.Spy;
   };
+  let mockGoalService: {
+    goals: ReturnType<typeof signal<Goal[]>>;
+    activeGoals: ReturnType<typeof signal<Goal[]>>;
+    getGoals: jasmine.Spy;
+  };
+
+  const goal = (id: string, overrides: Partial<Goal> = {}): Goal => ({
+    id,
+    userId: 'user123',
+    kind: 'saving',
+    name: `Goal ${id}`,
+    targetAmount: 1000,
+    contributedAmount: 0,
+    currency: 'USD',
+    isActive: true,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+    ...overrides
+  });
 
   const savedSearch = (id: string, query: string, overrides: Partial<SavedSearch> = {}): SavedSearch => ({
     id,
@@ -117,13 +137,20 @@ describe('TransactionFiltersComponent', () => {
       deleteSearch: jasmine.createSpy('deleteSearch').and.resolveTo()
     };
 
+    mockGoalService = {
+      goals: signal<Goal[]>([]),
+      activeGoals: signal<Goal[]>([]),
+      getGoals: jasmine.createSpy('getGoals').and.returnValue(of([]))
+    };
+
     await TestBed.configureTestingModule({
       imports: [TransactionFiltersComponent, NoopAnimationsModule],
       providers: [
         { provide: TransactionService, useValue: mockTransactionService },
         { provide: TranslationService, useValue: mockTranslationService },
         { provide: CurrencyService, useValue: mockCurrencyService },
-        { provide: SearchHistoryService, useValue: mockSearchHistory }
+        { provide: SearchHistoryService, useValue: mockSearchHistory },
+        { provide: GoalService, useValue: mockGoalService }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -304,6 +331,71 @@ describe('TransactionFiltersComponent', () => {
     });
   });
 
+  describe('goal filter', () => {
+    it('owns a goals subscription: the signal is only warm if a page subscribed', () => {
+      expect(mockGoalService.getGoals).toHaveBeenCalled();
+    });
+
+    it('offers the active goals', () => {
+      mockGoalService.activeGoals.set([goal('g1'), goal('g2')]);
+      expect(component.goalOptions.map(g => g.id)).toEqual(['g1', 'g2']);
+    });
+
+    it('offers nothing when the account has no goals, so the field hides', () => {
+      expect(component.goalOptions).toEqual([]);
+    });
+
+    it('keeps a since-deactivated goal the filter already names', () => {
+      // A goal card can hand off a filter, then the goal is deactivated: the
+      // select must still render the value so it can be cleared.
+      const retired = goal('g9', { isActive: false });
+      mockGoalService.goals.set([retired]);
+      mockGoalService.activeGoals.set([goal('g1')]);
+      component.filters = { goalId: 'g9' };
+
+      expect(component.goalOptions.map(g => g.id)).toEqual(['g1', 'g9']);
+    });
+
+    it('does not duplicate a filtered goal that is still active', () => {
+      const active = goal('g1');
+      mockGoalService.goals.set([active]);
+      mockGoalService.activeGoals.set([active]);
+      component.filters = { goalId: 'g1' };
+
+      expect(component.goalOptions.map(g => g.id)).toEqual(['g1']);
+    });
+
+    it('emits the goal filter and drops it once cleared', () => {
+      const emitted: TransactionFilters[] = [];
+      component.filtersChanged.subscribe(filters => emitted.push(filters));
+
+      component.filters = { goalId: 'g1' };
+      component.onFilterChange();
+      expect(emitted[0].goalId).toBe('g1');
+
+      component.filters = { goalId: undefined };
+      component.onFilterChange();
+      expect('goalId' in emitted[1]).toBeFalse();
+    });
+
+    it('arrives from a preset and lands in the panel unwindowed', () => {
+      // The goal-card hand-off passes only { goalId }: replacing the whole
+      // filter set is what clears the default this-month window, so every
+      // linked transaction shows regardless of date.
+      const emitted: TransactionFilters[] = [];
+      component.filtersChanged.subscribe(filters => emitted.push(filters));
+
+      component.presetFilters = { goalId: 'g1' };
+      component.ngOnChanges({
+        presetFilters: new SimpleChange(undefined, { goalId: 'g1' }, true)
+      });
+
+      expect(component.filters.goalId).toBe('g1');
+      expect(emitted[0]).toEqual({ goalId: 'g1' });
+      expect(component.activeQuickFilter()).toBeNull();
+    });
+  });
+
   describe('activeFilterCount', () => {
     it('should return 0 when only date filters are set (from quick filters)', () => {
       // Quick filters set startDate and endDate, which count as 2
@@ -351,6 +443,11 @@ describe('TransactionFiltersComponent', () => {
 
     it('should count currency filter', () => {
       component.filters = { currency: 'USD' };
+      expect(component.activeFilterCount()).toBe(1);
+    });
+
+    it('should count goal filter', () => {
+      component.filters = { goalId: 'g1' };
       expect(component.activeFilterCount()).toBe(1);
     });
 

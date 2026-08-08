@@ -78,6 +78,11 @@ describe('search-answer.utils', () => {
       const scope = serializeScope({ ...august(), tags: ['travel'] });
       expect('tags' in scope).toBeFalse();
     });
+
+    it('carries a goal scope, so a goal-worded answer replays as asked', () => {
+      const scope = serializeScope({ ...august(), goalId: 'g1' });
+      expect(scope.goalId).toBe('g1');
+    });
   });
 
   describe('deserializeScope', () => {
@@ -90,6 +95,15 @@ describe('search-answer.utils', () => {
     it('keeps absent fields absent', () => {
       const filters = deserializeScope({ startDate: '2026-08-01', endDate: '2026-08-31' });
       expect(Object.keys(filters).sort()).toEqual(['endDate', 'startDate']);
+    });
+
+    it('revives a goal scope, so replay and "view transactions" both narrow', () => {
+      const filters = deserializeScope({
+        startDate: '2026-08-01',
+        endDate: '2026-08-31',
+        goalId: 'g1',
+      });
+      expect(filters.goalId).toBe('g1');
     });
 
     it('round-trips a serialized scope to the same day keys', () => {

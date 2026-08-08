@@ -225,6 +225,8 @@ describe('provider prompt parity', () => {
       today: '2026-07-24',
       baseCurrency: 'USD',
       categories: [{ id: 'food', name: 'Food', type: 'expense' as const }],
+      goals: [],
+      budgets: [],
     };
 
     it('sends byte-identical text from all three providers', async () => {

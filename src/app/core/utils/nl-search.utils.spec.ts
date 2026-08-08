@@ -10,6 +10,19 @@ describe('nl-search.utils', () => {
       { id: 'food_groceries', name: 'Food & Drinks / Groceries', type: 'expense' },
       { id: 'employment', name: 'Employment', type: 'income' },
     ],
+    goals: [
+      { id: 'g1', name: 'Japan trip' },
+      { id: 'g2', name: 'Emergency fund' },
+    ],
+    budgets: [
+      {
+        id: 'b1',
+        name: 'Groceries',
+        categoryId: 'food_groceries',
+        period: 'monthly',
+        anchor: '2026-01-10',
+      },
+    ],
   };
 
   describe('parseSearchIntent', () => {
@@ -152,6 +165,97 @@ describe('nl-search.utils', () => {
         filters: { searchQuery: `  ${'x'.repeat(300)}  ` },
       }, context);
       expect(intent.filters.searchQuery?.length).toBe(100);
+    });
+  });
+
+  describe('goal scope', () => {
+    it('keeps a goal from the catalog', () => {
+      const intent = parseSearchIntent({
+        kind: 'aggregate',
+        operation: 'sum',
+        filters: { goalId: 'g1' },
+      }, context);
+
+      expect(intent.filters.goalId).toBe('g1');
+    });
+
+    it('drops an unlisted goal into the search query rather than guessing', () => {
+      const intent = parseSearchIntent({
+        kind: 'filter',
+        filters: { goalId: 'new boat' },
+      }, context);
+
+      expect(intent.filters.goalId).toBeUndefined();
+      expect(intent.filters.searchQuery).toBe('new boat');
+    });
+
+    it('leaves an explicit search query alone when it drops a goal', () => {
+      const intent = parseSearchIntent({
+        kind: 'filter',
+        filters: { goalId: 'unknown', searchQuery: 'ferry' },
+      }, context);
+
+      expect(intent.filters.goalId).toBeUndefined();
+      expect(intent.filters.searchQuery).toBe('ferry');
+    });
+  });
+
+  describe('budget scope', () => {
+    it('resolves a budget to its category and current window', () => {
+      // Monthly budget anchored on the 10th, asked on 2026-07-24: the live
+      // period runs 10 July – 9 August.
+      const intent = parseSearchIntent({
+        kind: 'aggregate',
+        operation: 'sum',
+        filters: { budgetId: 'b1' },
+      }, context);
+
+      expect(intent.filters.categoryId).toBe('food_groceries');
+      expect(intent.filters.startDate).toEqual(new Date(2026, 6, 10));
+      expect(intent.filters.endDate?.getMonth()).toBe(7);
+      expect(intent.filters.endDate?.getDate()).toBe(9);
+    });
+
+    it('never lets budgetId reach the filters — a transaction has no such field', () => {
+      const intent = parseSearchIntent({
+        kind: 'filter',
+        filters: { budgetId: 'b1' },
+      }, context);
+
+      expect('budgetId' in intent.filters).toBeFalse();
+    });
+
+    it('keeps the dates the question supplied over the budget window', () => {
+      // "against my groceries budget last year" must narrow to last year,
+      // not snap back to the current period.
+      const intent = parseSearchIntent({
+        kind: 'aggregate',
+        operation: 'sum',
+        filters: { budgetId: 'b1', startDate: '2025-01-01', endDate: '2025-12-31' },
+      }, context);
+
+      expect(intent.filters.startDate).toEqual(new Date(2025, 0, 1));
+      expect(intent.filters.endDate).toEqual(new Date(2025, 11, 31));
+      expect(intent.filters.categoryId).toBe('food_groceries');
+    });
+
+    it('keeps a category the model named itself', () => {
+      const intent = parseSearchIntent({
+        kind: 'filter',
+        filters: { budgetId: 'b1', categoryId: 'food' },
+      }, context);
+
+      expect(intent.filters.categoryId).toBe('food');
+    });
+
+    it('ignores an unlisted budget entirely', () => {
+      const intent = parseSearchIntent({
+        kind: 'filter',
+        filters: { budgetId: 'nope' },
+      }, context);
+
+      expect(intent.filters.categoryId).toBeUndefined();
+      expect(intent.filters.startDate).toBeUndefined();
     });
   });
 });

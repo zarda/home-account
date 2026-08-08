@@ -401,6 +401,8 @@ describe('ClaudeService', () => {
       today: '2026-07-24',
       baseCurrency: 'USD',
       categories: [{ id: 'food', name: 'Restaurants', type: 'expense' as const }],
+      goals: [],
+      budgets: [],
     };
 
     it('throws when the client is unavailable', async () => {

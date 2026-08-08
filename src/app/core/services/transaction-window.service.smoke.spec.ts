@@ -60,6 +60,7 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
       location: { name: string; lat?: number; lng?: number };
       note: string;
       tags: string[];
+      goalId: string;
     }>
   ) => ({
     id,
@@ -74,7 +75,10 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     isRecurring: false,
     ...(overrides.location ? { location: overrides.location } : {}),
     ...(overrides.note ? { note: overrides.note } : {}),
-    ...(overrides.tags ? { tags: overrides.tags } : {})
+    ...(overrides.tags ? { tags: overrides.tags } : {}),
+    // A link carries its converted figure (ADR 0027); the amount is
+    // irrelevant to the filter, the pair is what the rules require.
+    ...(overrides.goalId ? { goalId: overrides.goalId, goalAmount: 10 } : {})
   });
 
   const SEEDED = [
@@ -82,12 +86,14 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
       description: 'Morning espresso',
       categoryId: 'cat-coffee',
       hoursAgo: 0,
-      tags: ['reimbursable']
+      tags: ['reimbursable'],
+      goalId: 'goal-alpha'
     }),
     txn('txn-bus', {
       description: 'Bus ticket',
       hoursAgo: 1,
-      tags: ['reimbursable', 'travel']
+      tags: ['reimbursable', 'travel'],
+      goalId: 'goal-beta'
     }),
     txn('txn-market', {
       description: 'Fruit',
@@ -98,7 +104,14 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     }),
     txn('txn-salary', { description: 'Salary', categoryId: 'cat-salary', type: 'income', hoursAgo: 3 }),
     txn('txn-toffee', { description: 'Toffee crisps', hoursAgo: 4 }),
-    txn('txn-old', { description: 'Old espresso machine', hoursAgo: 24 * 40, tags: ['travel'] })
+    // Forty days back and linked: what proves a goal filter reaches past the
+    // page's default this-month window.
+    txn('txn-old', {
+      description: 'Old espresso machine',
+      hoursAgo: 24 * 40,
+      tags: ['travel'],
+      goalId: 'goal-alpha'
+    })
   ];
 
   const CATEGORIES = [
@@ -247,6 +260,49 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
       await new Promise(resolve => setTimeout(resolve, 25));
     }
     expect(service.totalCount()).toBe(4);
+  });
+
+  describe('goal filter', () => {
+    // NOTE: the emulator does not enforce composite indexes, so these pass
+    // whether or not firestore.indexes.json carries the goalId+date pair.
+    // The index file is reviewed, not tested; production needs the deploy.
+
+    it('narrows to one goal across every date, the goal-card hand-off shape', async () => {
+      // Exactly what the goal card applies: a filter naming only the goal,
+      // so nothing windows it to the current month.
+      await service.reset({ goalId: 'goal-alpha' });
+
+      // Forty days apart, both present, in server date order.
+      expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso', 'txn-old']);
+    });
+
+    it('counts the filtered set exactly, because the filter runs server-side', async () => {
+      await service.reset({ goalId: 'goal-alpha' });
+
+      const deadline = Date.now() + 5000;
+      while (service.totalCount() === null && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      // A client-side goal filter would leave this at the unfiltered 6 and
+      // cost the page header its exact count (it would render "2+").
+      expect(service.totalCount()).toBe(2);
+    });
+
+    it('excludes rows linked to another goal and rows linked to none', async () => {
+      await service.reset({ goalId: 'goal-beta' });
+      expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-bus']);
+    });
+
+    it('composes with a date range, both constraints server-side', async () => {
+      await service.reset({
+        goalId: 'goal-alpha',
+        startDate: new Date(BASE - 12 * HOUR),
+        endDate: new Date(BASE)
+      });
+
+      // txn-old carries the goal but falls outside the range.
+      expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
+    });
   });
 
   it('narrows the window to a category inside a date range (chart drill-down shape)', async () => {

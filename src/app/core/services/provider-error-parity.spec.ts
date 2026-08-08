@@ -250,6 +250,8 @@ describe('provider error parity', () => {
             today: '2026-07-24',
             baseCurrency: 'USD',
             categories: [{ id: 'food', name: 'Food', type: 'expense' as const }],
+            goals: [],
+            budgets: [],
           })
         )
           .withContext(name)

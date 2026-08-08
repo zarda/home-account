@@ -481,6 +481,8 @@ describe('GeminiService', () => {
       today: '2026-07-24',
       baseCurrency: 'USD',
       categories: [{ id: 'food_groceries', name: 'Groceries', type: 'expense' as const }],
+      goals: [],
+      budgets: [],
     };
 
     it('throws when the text model is not available', async () => {

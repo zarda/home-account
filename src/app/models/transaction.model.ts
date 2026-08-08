@@ -161,6 +161,13 @@ export interface TransactionFilters {
   /** Rows must carry every listed tag. Applied client-side, like the amount
    * range and search — see applyClientTransactionFilters. */
   tags?: string[];
+  /**
+   * Only rows linked to this goal. Server-side, like categoryId and currency:
+   * the windowed pager applies client-only filters per fetched page, so a
+   * sparse client-side match would render near-empty pages and cost the
+   * header its exact count.
+   */
+  goalId?: string;
 }
 
 export interface CreateTransactionDTO {

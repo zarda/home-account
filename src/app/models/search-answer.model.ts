@@ -16,6 +16,13 @@ export const SEARCH_ANSWER_SCHEMA_VERSION = 1;
  */
 export interface SerializableSearchScope extends SerializableFilters {
   searchQuery?: string;
+  /**
+   * The goal the question named, when it named one. Declared here rather
+   * than on SerializableFilters because only a search answer can carry a
+   * goal scope — an insight drill-down never produces one, and widening the
+   * shared type would widen the insight snapshot rules with it.
+   */
+  goalId?: string;
 }
 
 /**
