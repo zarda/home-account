@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 import { Budget, Category, baseCurrencyOf } from '../../../models';
@@ -11,6 +11,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
   selector: 'app-budget-overview',
   standalone: true,
   imports: [CommonModule, BudgetProgressCardComponent, TranslatePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './budget-overview.component.html',
   styleUrl: './budget-overview.component.scss'
 })

@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 
@@ -50,6 +50,7 @@ export interface BudgetFormDialogData {
     MatTooltipModule,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './budget-form.component.html',
   styleUrl: './budget-form.component.scss'
 })

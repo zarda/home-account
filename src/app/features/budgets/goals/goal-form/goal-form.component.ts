@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   FormArray,
@@ -55,6 +55,7 @@ export interface GoalFormDialogData {
     MatNativeDateModule,
     TranslatePipe
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './goal-form.component.html',
   styleUrl: './goal-form.component.scss'
 })

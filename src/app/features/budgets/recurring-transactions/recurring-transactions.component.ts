@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, signal, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, DatePipe } from '@angular/common';
 
@@ -36,6 +36,7 @@ import { NotificationService } from '../../../core/services/notification.service
     DatePipe,
     TranslatePipe,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './recurring-transactions.component.html',
   styleUrl: './recurring-transactions.component.scss',
 })
