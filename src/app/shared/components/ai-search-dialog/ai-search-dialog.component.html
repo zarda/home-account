@@ -67,7 +67,11 @@
             <button type="button" class="history-open" (click)="openRecord(record)">
               <span class="history-query">{{ record.query }}</span>
               <span class="history-meta">
-                {{ recordValueLabel(record) }} · {{ recordDateLabel(record) }}
+                @if (isAnswer(record)) {
+                  {{ recordValueLabel(record) }} · {{ recordDateLabel(record) }}
+                } @else {
+                  {{ 'aiSearch.historyFilterRecord' | translate }} · {{ recordDateLabel(record) }}
+                }
               </span>
             </button>
             <button

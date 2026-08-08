@@ -390,37 +390,55 @@ service cloud.firestore {
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }
 
+    // The figure-carrying half of an aggregate record. A filter record has
+    // none of these and must not be allowed to smuggle one in: a stored
+    // record that claims to be a scope but carries a value would render as an
+    // answer nobody computed.
+    function answerFiguresValid(d) {
+      return d.keys().hasAll(['operation', 'limit', 'baseCurrency', 'value',
+                              'transactionCount'])
+        && d.operation in ['sum', 'count', 'average', 'max', 'min', 'topCategories']
+        && d.limit is int && d.limit >= 1 && d.limit <= 10
+        && d.baseCurrency is string
+        && d.value is number
+        && d.transactionCount is int && d.transactionCount >= 0;
+    }
+
+    function filterFiguresAbsent(d) {
+      return !('operation' in d) && !('limit' in d) && !('baseCurrency' in d)
+        && !('value' in d) && !('transactionCount' in d)
+        && !('currency' in d) && !('extremeTransactionId' in d) && !('groups' in d);
+    }
+
     function answerCreateValid(userId) {
       let d = request.resource.data;
       return d.userId == userId
-        && d.keys().hasOnly(['userId', 'schemaVersion', 'query', 'operation', 'limit',
-                             'scope', 'baseCurrency', 'value', 'currency',
+        && d.keys().hasOnly(['userId', 'schemaVersion', 'kind', 'query', 'operation',
+                             'limit', 'scope', 'baseCurrency', 'value', 'currency',
                              'transactionCount', 'extremeTransactionId', 'groups',
                              'pinned', 'computedAt', 'lastUsedAt',
                              'createdAt', 'updatedAt'])
-        && d.keys().hasAll(['userId', 'schemaVersion', 'query', 'operation', 'limit',
-                            'scope', 'baseCurrency', 'value', 'transactionCount',
+        && d.keys().hasAll(['userId', 'schemaVersion', 'kind', 'query', 'scope',
                             'computedAt', 'lastUsedAt'])
         && d.schemaVersion is int && d.schemaVersion > 0
+        && d.kind in ['aggregate', 'filter']
         && d.query is string && d.query.size() > 0
-        && d.operation in ['sum', 'count', 'average', 'max', 'min', 'topCategories']
-        && d.limit is int && d.limit >= 1 && d.limit <= 10
         && answerScopeValid(d.scope)
-        && d.baseCurrency is string
-        && d.value is number
-        && d.transactionCount is int && d.transactionCount >= 0
         && d.computedAt is timestamp
         && d.lastUsedAt is timestamp
+        // The required set is the kind's: an aggregate must carry its figures,
+        // a filter must carry none of them.
+        && (d.kind == 'aggregate' ? answerFiguresValid(d) : filterFiguresAbsent(d))
         && answerOptionalsValid(d);
     }
 
     function answerUpdateValid(userId) {
       let d = request.resource.data;
       return ownerKept(userId)
-        // The question and its resolved scope are the record's identity; a
-        // refresh replaces the figures, never what was asked.
+        // The question, its resolved scope and what kind of record it is are
+        // the identity; a refresh replaces the figures, never what was asked.
         && !touched('query') && !touched('operation') && !touched('limit')
-        && !touched('scope') && !touched('schemaVersion')
+        && !touched('scope') && !touched('schemaVersion') && !touched('kind')
         && (!touched('baseCurrency')
             || ('baseCurrency' in d && d.baseCurrency is string))
         && (!touched('value') || ('value' in d && d.value is number))

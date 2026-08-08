@@ -16,8 +16,17 @@ import { PendingFiltersService } from '../../../core/services/pending-filters.se
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { isImeComposition } from '../../../core/utils/keyboard.utils';
-import { recordToAnswer, recordToIntent } from '../../../core/utils/search-answer.utils';
-import { NlSearchResult, SearchAnswerRecord, TransactionFilters } from '../../../models';
+import {
+  recordToAnswer,
+  recordToFilters,
+  recordToIntent,
+} from '../../../core/utils/search-answer.utils';
+import {
+  NlSearchResult,
+  SearchRecord,
+  TransactionFilters,
+  isAnswerRecord,
+} from '../../../models';
 import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 import { NlAnswerCardComponent } from '../nl-answer-card/nl-answer-card.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -85,7 +94,7 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     this.answerHistory.answers().find(r => r.id === this.openedRecordId()) ?? null);
   snapshotAnswer = computed(() => {
     const record = this.openedRecord();
-    return record ? recordToAnswer(record) : null;
+    return record && isAnswerRecord(record) ? recordToAnswer(record) : null;
   });
   openedComputedAt = computed(() => this.openedRecord()?.computedAt.toDate() ?? null);
   showHistory = computed(() =>
@@ -116,10 +125,23 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     }
   }
 
-  openRecord(record: SearchAnswerRecord): void {
+  /**
+   * Open a record. An aggregate reopens its stored card in place; a filter
+   * has no figures to show, so it applies its scope and leaves for the
+   * transactions list, which is what the interpretation meant.
+   */
+  openRecord(record: SearchRecord): void {
+    void this.answerHistory.touch(record.id);
+    if (!isAnswerRecord(record)) {
+      this.applyFilters(recordToFilters(record));
+      return;
+    }
     this.result.set(null);
     this.openedRecordId.set(record.id);
-    void this.answerHistory.touch(record.id);
+  }
+
+  isAnswer(record: SearchRecord): boolean {
+    return isAnswerRecord(record);
   }
 
   closeSnapshot(): void {
@@ -129,7 +151,7 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
   /** Recompute the opened snapshot locally from its stored scope — no model call. */
   async refreshOpened(): Promise<void> {
     const record = this.openedRecord();
-    if (!record || this.isRefreshing()) return;
+    if (!record || !isAnswerRecord(record) || this.isRefreshing()) return;
 
     this.isRefreshing.set(true);
     try {
@@ -141,11 +163,11 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     }
   }
 
-  togglePin(record: SearchAnswerRecord): void {
+  togglePin(record: SearchRecord): void {
     void this.answerHistory.togglePin(record.id, !record.pinned);
   }
 
-  deleteRecord(record: SearchAnswerRecord): void {
+  deleteRecord(record: SearchRecord): void {
     const confirmRef = this.matDialog.open(ConfirmDialogComponent, {
       data: {
         title: this.translationService.t('aiSearch.historyDeleteTitle'),
@@ -166,7 +188,9 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     void this.router.navigate(['/search-history']);
   }
 
-  recordValueLabel(record: SearchAnswerRecord): string {
+  /** The figures line under a stored answer. Filter records have none. */
+  recordValueLabel(record: SearchRecord): string {
+    if (!isAnswerRecord(record)) return '';
     if (record.operation === 'count') {
       return `${record.value}`;
     }
@@ -175,7 +199,7 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
       : `${record.value}`;
   }
 
-  recordDateLabel(record: SearchAnswerRecord): string {
+  recordDateLabel(record: SearchRecord): string {
     return this.dateFormatService.formatDate(record.computedAt.toDate());
   }
 

@@ -48,8 +48,12 @@ describe('NlSearchService', () => {
     transactionService.getTransactionsInRange.and.returnValue(of([]));
     searchHistory = jasmine.createSpyObj('SearchHistoryService', ['recordRecent']);
     searchHistory.recordRecent.and.resolveTo();
-    answerHistory = jasmine.createSpyObj('SearchAnswerHistoryService', ['recordAnswer']);
+    answerHistory = jasmine.createSpyObj('SearchAnswerHistoryService', [
+      'recordAnswer',
+      'recordFilter',
+    ]);
     answerHistory.recordAnswer.and.resolveTo();
+    answerHistory.recordFilter.and.resolveTo();
     analytics = jasmine.createSpyObj('AnalyticsService', ['trackAiAssistUsed']);
 
     // Cold signals with a one-shot fallback, which is how the catalogs reach
@@ -210,6 +214,29 @@ describe('NlSearchService', () => {
 
       expect(result).toEqual({ kind: 'filter', filters });
       expect(searchHistory.recordRecent).not.toHaveBeenCalled();
+    });
+
+    // The model call is already paid for either way, so a filter reading is
+    // worth the same slot as an aggregate: reopening it replays the scope.
+    it('records the interpretation, so reopening it costs no model call', async () => {
+      const filters = { categoryId: 'food', startDate: new Date(2026, 5, 1) };
+      mockIntent({ kind: 'filter', filters });
+
+      await service.search('show coffee purchases last month');
+
+      expect(answerHistory.recordFilter).toHaveBeenCalledWith(
+        'show coffee purchases last month',
+        filters,
+      );
+      expect(answerHistory.recordAnswer).not.toHaveBeenCalled();
+    });
+
+    it('records the trimmed question, matching the aggregate path', async () => {
+      mockIntent({ kind: 'filter', filters: {} });
+
+      await service.search('   coffee last month   ');
+
+      expect(answerHistory.recordFilter).toHaveBeenCalledWith('coffee last month', {});
     });
 
     it('"groceries over $50 this month" keeps the amount bound', async () => {

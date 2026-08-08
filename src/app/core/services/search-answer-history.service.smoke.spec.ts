@@ -20,7 +20,7 @@ import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { MAX_SEARCH_ANSWERS, SearchAnswerHistoryService } from './search-answer-history.service';
 import { createTransaction } from './testing/test-data';
-import { AggregateAnswer } from '../../models';
+import { AggregateAnswer, SearchAnswerRecord, SearchRecord } from '../../models';
 
 /**
  * Integration smoke test for SearchAnswerHistoryService against the Firestore
@@ -111,6 +111,15 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     ...overrides,
   });
 
+  // The collection holds both kinds now, so the aggregate-only assertions
+  // below have to say which one they mean.
+  const asAnswer = (record: SearchRecord | undefined): SearchAnswerRecord => {
+    if (!record || record.kind !== 'aggregate') {
+      throw new Error(`expected an aggregate record, got ${record?.kind ?? 'nothing'}`);
+    }
+    return record;
+  };
+
   it('runs the record / dedupe / refresh / touch / delete lifecycle', async () => {
     await freshUser();
 
@@ -123,9 +132,9 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     const first = service.answers()[0];
     expect(first.query).toBe('how much on food in august');
     expect(first.scope).toEqual({ startDate: '2026-08-01', endDate: '2026-08-31' });
-    expect(first.value).toBe(421.5);
-    expect(first.currency).toBe('USD');
-    expect(first.baseCurrency).toBe('USD');
+    expect(asAnswer(first).value).toBe(421.5);
+    expect(asAnswer(first).currency).toBe('USD');
+    expect(asAnswer(first).baseCurrency).toBe('USD');
     expect(first.createdAt).toBeDefined();
     expect(first.updatedAt).toBeDefined();
     const firstComputedAt = first.computedAt.toMillis();
@@ -137,7 +146,7 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
 
     expect(service.answers().length).toBe(1);
     expect(service.answers()[0].id).toBe(first.id);
-    expect(service.answers()[0].value).toBe(500);
+    expect(asAnswer(service.answers()[0]).value).toBe(500);
     expect(service.answers()[0].computedAt.toMillis()).toBeGreaterThan(firstComputedAt);
 
     // A count stores no currency field at all.
@@ -165,7 +174,7 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
     }));
     await reload();
     const maxRecord = service.answers().find(r => r.query === 'biggest expense');
-    expect(maxRecord?.extremeTransactionId).toBe('tx-1');
+    expect(asAnswer(maxRecord).extremeTransactionId).toBe('tx-1');
 
     await settle();
     await service.refreshAnswer(maxRecord!.id, sumAnswer({

@@ -38,11 +38,12 @@ describe('SearchAnswerHistoryService', () => {
   const stored = (
     id: string,
     lastUsedMillis: number,
-    overrides: Partial<SearchAnswerRecord> = {},
+    overrides: Partial<Omit<SearchAnswerRecord, 'kind'>> = {},
   ): SearchAnswerRecord => ({
     id,
     userId: 'user123',
     schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+    kind: 'aggregate',
     query: `query ${id}`,
     operation: 'sum',
     limit: 3,
@@ -252,6 +253,92 @@ describe('SearchAnswerHistoryService', () => {
       await service.recordAnswer('a brand new question', { operation: 'sum', limit: 3 }, sumAnswer());
 
       expect(mockFirestoreService.deleteDocument).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordFilter', () => {
+    const AUGUST = {
+      startDate: new Date(2026, 7, 1),
+      endDate: new Date(2026, 7, 31, 23, 59, 59, 999),
+    };
+
+    it('stores the question and its scope, and none of the aggregate fields', async () => {
+      await service.recordFilter('coffee last month', { ...AUGUST, searchQuery: 'coffee' });
+
+      const payload = mockFirestoreService.addDocument.calls.mostRecent().args[1] as Record<
+        string,
+        unknown
+      >;
+      expect(payload['kind']).toBe('filter');
+      expect(payload['query']).toBe('coffee last month');
+      expect(payload['scope']).toEqual({
+        startDate: '2026-08-01',
+        endDate: '2026-08-31',
+        searchQuery: 'coffee',
+      });
+      for (const key of ['operation', 'limit', 'baseCurrency', 'value', 'transactionCount']) {
+        expect(key in payload).withContext(key).toBeFalse();
+      }
+    });
+
+    // There are no figures to rewrite, which is the whole difference from
+    // recordAnswer: re-asking only moves the record back up the list.
+    it('only refreshes recency when the same filter is asked again', async () => {
+      await seed([
+        {
+          ...stored('f-1', 1_000),
+          kind: 'filter',
+          query: 'coffee last month',
+        } as never,
+      ]);
+
+      await service.recordFilter('  Coffee LAST Month ', AUGUST);
+
+      expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(`${PATH}/f-1`, {
+        lastUsedAt: NOW,
+      });
+    });
+
+    it('does not collide with an aggregate record of the same question', async () => {
+      await seed([stored('a-1', 1_000, { query: 'coffee last month' })]);
+
+      await service.recordFilter('coffee last month', AUGUST);
+
+      expect(mockFirestoreService.addDocument).toHaveBeenCalled();
+    });
+
+    it('does nothing signed out', async () => {
+      userIdSpy.and.returnValue(null);
+
+      await service.recordFilter('coffee last month', AUGUST);
+
+      expect(mockFirestoreService.addDocument).not.toHaveBeenCalled();
+    });
+
+    it('takes a slot like any other record', async () => {
+      const full = Array.from({ length: MAX_SEARCH_ANSWERS }, (_, i) =>
+        stored(`a-${i}`, 1_000_000 - i));
+      await seed(full);
+
+      await service.recordFilter('a brand new filter', AUGUST);
+
+      expect(mockFirestoreService.deleteDocument).toHaveBeenCalledWith(
+        `${PATH}/a-${MAX_SEARCH_ANSWERS - 1}`,
+      );
+    });
+  });
+
+  describe('records written before the kind existed', () => {
+    // Aggregates are all this collection ever held, so a record with no kind
+    // has to read as one — otherwise every pre-version-2 row renders as a
+    // filter with no figures.
+    it('reads as an aggregate', async () => {
+      const legacy = stored('old-1', 1_000) as unknown as Record<string, unknown>;
+      delete legacy['kind'];
+      await seed([legacy as never]);
+
+      expect(service.answers()[0].kind).toBe('aggregate');
     });
   });
 

@@ -237,11 +237,12 @@ describe('AiSearchDialogComponent', () => {
     const rec = (
       id: string,
       millis: number,
-      overrides: Partial<SearchAnswerRecord> = {},
+      overrides: Partial<Omit<SearchAnswerRecord, 'kind'>> = {},
     ): SearchAnswerRecord => ({
       id,
       userId: 'user123',
       schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+      kind: 'aggregate',
       query: `question ${id}`,
       operation: 'sum',
       limit: 3,

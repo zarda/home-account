@@ -8,11 +8,13 @@ import {
 } from '../../models';
 import { createTransaction } from '../services/testing/test-data';
 import {
-  answerDedupeKey,
   buildAnswerFields,
+  buildFilterFields,
   deserializeScope,
   recordToAnswer,
+  recordToFilters,
   recordToIntent,
+  searchRecordDedupeKey,
   serializeScope,
 } from './search-answer.utils';
 
@@ -29,6 +31,7 @@ describe('search-answer.utils', () => {
     id: 'rec-1',
     userId: 'user123',
     schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+    kind: 'aggregate',
     query: 'how much on food in august',
     operation: 'sum',
     limit: 3,
@@ -128,6 +131,7 @@ describe('search-answer.utils', () => {
       const fields = buildAnswerFields('How much on food in August', { operation: 'sum', limit: 3 }, sumAnswer(), 'USD');
       expect(fields).toEqual({
         schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+        kind: 'aggregate',
         query: 'How much on food in August',
         operation: 'sum',
         limit: 3,
@@ -226,25 +230,83 @@ describe('search-answer.utils', () => {
     });
   });
 
-  describe('answerDedupeKey', () => {
+  describe('searchRecordDedupeKey', () => {
     const scope: SerializableSearchScope = { startDate: '2026-08-01', endDate: '2026-08-31' };
+    const agg = (overrides = {}) =>
+      ({ kind: 'aggregate' as const, query: 'food', operation: 'sum' as const, limit: 3, scope, ...overrides });
 
     it('is insensitive to query case and surrounding whitespace', () => {
-      expect(answerDedupeKey('  Food THIS Month ', 'sum', 3, scope))
-        .toBe(answerDedupeKey('food this month', 'sum', 3, scope));
+      expect(searchRecordDedupeKey(agg({ query: '  Food THIS Month ' })))
+        .toBe(searchRecordDedupeKey(agg({ query: 'food this month' })));
     });
 
     it('is insensitive to scope key order', () => {
       const reordered: SerializableSearchScope = { endDate: '2026-08-31', startDate: '2026-08-01' };
-      expect(answerDedupeKey('food', 'sum', 3, scope))
-        .toBe(answerDedupeKey('food', 'sum', 3, reordered));
+      expect(searchRecordDedupeKey(agg()))
+        .toBe(searchRecordDedupeKey(agg({ scope: reordered })));
     });
 
     it('separates different operations, limits and scopes', () => {
-      const base = answerDedupeKey('food', 'sum', 3, scope);
-      expect(answerDedupeKey('food', 'average', 3, scope)).not.toBe(base);
-      expect(answerDedupeKey('food', 'sum', 5, scope)).not.toBe(base);
-      expect(answerDedupeKey('food', 'sum', 3, { ...scope, currency: 'JPY' })).not.toBe(base);
+      const base = searchRecordDedupeKey(agg());
+      expect(searchRecordDedupeKey(agg({ operation: 'average' }))).not.toBe(base);
+      expect(searchRecordDedupeKey(agg({ limit: 5 }))).not.toBe(base);
+      expect(searchRecordDedupeKey(agg({ scope: { ...scope, currency: 'JPY' } }))).not.toBe(base);
+    });
+
+    // The same sentence can produce either shape across prompt revisions, and
+    // an answer must never be overwritten by a filter reading of those words.
+    it('separates the two kinds of record for one question', () => {
+      expect(searchRecordDedupeKey({ kind: 'filter', query: 'food', scope }))
+        .not.toBe(searchRecordDedupeKey(agg()));
+    });
+
+    // A filter record has no operation or limit, so folding them in would make
+    // its identity depend on fields it never carries.
+    it('ignores operation and limit on a filter record', () => {
+      expect(searchRecordDedupeKey({ kind: 'filter', query: 'food', scope, operation: 'sum', limit: 3 }))
+        .toBe(searchRecordDedupeKey({ kind: 'filter', query: 'food', scope }));
+    });
+
+    it('still separates filter records by scope', () => {
+      expect(searchRecordDedupeKey({ kind: 'filter', query: 'food', scope: { ...scope, type: 'expense' } }))
+        .not.toBe(searchRecordDedupeKey({ kind: 'filter', query: 'food', scope }));
+    });
+  });
+
+  describe('buildFilterFields', () => {
+    it('stores the question and its resolved scope, and nothing else', () => {
+      const fields = buildFilterFields('coffee last month', { ...august(), searchQuery: 'coffee' });
+
+      expect(fields).toEqual({
+        schemaVersion: SEARCH_ANSWER_SCHEMA_VERSION,
+        kind: 'filter',
+        query: 'coffee last month',
+        scope: { startDate: '2026-08-01', endDate: '2026-08-31', searchQuery: 'coffee' },
+        pinned: false,
+      });
+    });
+
+    // A filter record carrying a value would render as an answer nobody
+    // computed, so the shape has to stay free of the aggregate half.
+    it('carries none of the aggregate fields', () => {
+      const fields = buildFilterFields('coffee last month', august()) as Record<string, unknown>;
+
+      for (const key of ['operation', 'limit', 'baseCurrency', 'value', 'transactionCount']) {
+        expect(key in fields).withContext(key).toBeFalse();
+      }
+    });
+  });
+
+  describe('recordToFilters', () => {
+    it('revives the scope a filter record replays', () => {
+      const filters = recordToFilters({
+        ...record(),
+        kind: 'filter',
+        scope: { startDate: '2026-08-01', endDate: '2026-08-31', type: 'expense' },
+      } as never);
+
+      expect(filters.startDate).toEqual(new Date(2026, 7, 1));
+      expect(filters.type).toBe('expense');
     });
   });
 });

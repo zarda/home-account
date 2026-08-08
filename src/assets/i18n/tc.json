@@ -855,6 +855,7 @@
     "historySeeAll": "查看全部",
     "historyPin": "釘選此結果",
     "historyUnpin": "取消釘選",
+    "historyFilterRecord": "篩選條件",
     "historyDeleteTitle": "刪除此答案？",
     "historyDeleteMessage": "只會移除儲存的答案，不影響任何交易。",
     "historyPageTitle": "智慧搜尋紀錄",

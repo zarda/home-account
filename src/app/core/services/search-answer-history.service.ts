@@ -7,19 +7,31 @@ import {
   AggregateAnswer,
   AggregateOperation,
   SearchAnswerRecord,
+  SearchRecord,
+  TransactionFilters,
   baseCurrencyOf,
 } from '../../models';
-import { answerDedupeKey, buildAnswerFields } from '../utils/search-answer.utils';
+import {
+  SearchAnswerSnapshot,
+  SearchFilterSnapshot,
+  buildAnswerFields,
+  buildFilterFields,
+  searchRecordDedupeKey,
+} from '../utils/search-answer.utils';
 
 export const MAX_SEARCH_ANSWERS = 50;
 
 /**
- * Per-user history of smart-search aggregate answers, one Firestore
- * subcollection (`users/{uid}/searchAnswers`). Each record is a snapshot of
- * the figures at `computedAt` over a resolved scope; re-asking the same
- * question over the same scope refreshes the one record instead of
- * duplicating it, and the newest MAX_SEARCH_ANSWERS win — the oldest by
- * recency are pruned on write.
+ * Per-user history of interpreted smart searches, one Firestore subcollection
+ * (`users/{uid}/searchAnswers`). Two kinds share it: an aggregate record is a
+ * snapshot of the figures at `computedAt` over a resolved scope, a filter
+ * record is the scope alone. Both cost the same model call, which is why both
+ * are worth storing.
+ *
+ * Re-asking the same question over the same scope reuses the one record
+ * instead of duplicating it — refreshing its figures for an aggregate, its
+ * recency for a filter. The newest MAX_SEARCH_ANSWERS unpinned records win;
+ * the rest are pruned on write.
  */
 @Injectable({ providedIn: 'root' })
 export class SearchAnswerHistoryService {
@@ -27,7 +39,7 @@ export class SearchAnswerHistoryService {
   private authService = inject(AuthService);
 
   // All records, lastUsedAt desc (the query order).
-  private allAnswers = signal<SearchAnswerRecord[]>([]);
+  private allAnswers = signal<SearchRecord[]>([]);
 
   /**
    * Pinned records first, then the rest by recency.
@@ -57,7 +69,7 @@ export class SearchAnswerHistoryService {
     return `users/${userId}/searchAnswers`;
   }
 
-  loadAnswers(): Observable<SearchAnswerRecord[]> {
+  loadAnswers(): Observable<SearchRecord[]> {
     const userId = this.authService.userId();
     if (!userId) {
       // Root-provided service: drop the previous account's records so they
@@ -67,13 +79,19 @@ export class SearchAnswerHistoryService {
     }
 
     return this.firestoreService
-      .subscribeToCollection<SearchAnswerRecord>(this.userAnswersPath, {
+      .subscribeToCollection<SearchRecord>(this.userAnswersPath, {
         orderBy: [{ field: 'lastUsedAt', direction: 'desc' }]
       })
       .pipe(
         map(records => {
-          this.allAnswers.set(records);
-          return records;
+          // The one read path, so the one place a pre-version-2 record without
+          // a kind is settled: aggregates are all this collection ever held.
+          const normalized = records.map(record => ({
+            ...record,
+            kind: record.kind ?? 'aggregate',
+          })) as SearchRecord[];
+          this.allAnswers.set(normalized);
+          return normalized;
         })
       );
   }
@@ -93,15 +111,50 @@ export class SearchAnswerHistoryService {
     if (!userId) return;
 
     const fields = buildAnswerFields(query, intent, answer, this.baseCurrencyFor(answer));
-    const key = answerDedupeKey(fields.query, fields.operation, fields.limit, fields.scope);
-    const existing = this.allAnswers().find(
-      record => answerDedupeKey(record.query, record.operation, record.limit, record.scope) === key
-    );
+    const existing = this.findByIdentity(fields);
     if (existing) {
       await this.writeSnapshot(existing.id, answer);
       return;
     }
 
+    await this.create(userId, fields);
+  }
+
+  /**
+   * Persist a filter-shaped interpretation. It costs the same model call as
+   * an aggregate one, so it earns the same slot: reopening it re-applies the
+   * scope without asking the model again.
+   *
+   * Re-asking the same question over the same scope only refreshes recency —
+   * there are no figures to rewrite, which is the whole difference from
+   * recordAnswer.
+   */
+  async recordFilter(query: string, filters: TransactionFilters): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) return;
+
+    const fields = buildFilterFields(query, filters);
+    const existing = this.findByIdentity(fields);
+    if (existing) {
+      await this.touch(existing.id);
+      return;
+    }
+
+    await this.create(userId, fields);
+  }
+
+  private findByIdentity(
+    fields: SearchAnswerSnapshot | SearchFilterSnapshot,
+  ): SearchRecord | undefined {
+    const key = searchRecordDedupeKey(fields);
+    return this.allAnswers().find(record => searchRecordDedupeKey(record) === key);
+  }
+
+  /** Write a new record and prune the unpinned tail back to the cap. */
+  private async create(
+    userId: string,
+    fields: SearchAnswerSnapshot | SearchFilterSnapshot,
+  ): Promise<void> {
     const now = this.firestoreService.getTimestamp();
     const newId = await this.firestoreService.addDocument(this.userAnswersPath, {
       userId,
@@ -147,7 +200,7 @@ export class SearchAnswerHistoryService {
    * pinning is a decision about the record, and a refresh must not disturb it.
    */
   async togglePin(id: string, pinned: boolean): Promise<void> {
-    await this.firestoreService.updateDocument<SearchAnswerRecord>(
+    await this.firestoreService.updateDocument<SearchRecord>(
       `${this.userAnswersPath}/${id}`,
       { pinned }
     );
@@ -155,7 +208,7 @@ export class SearchAnswerHistoryService {
 
   // Re-opening a record refreshes its recency.
   async touch(id: string): Promise<void> {
-    await this.firestoreService.updateDocument<SearchAnswerRecord>(
+    await this.firestoreService.updateDocument<SearchRecord>(
       `${this.userAnswersPath}/${id}`,
       { lastUsedAt: this.firestoreService.getTimestamp() }
     );
@@ -173,7 +226,7 @@ export class SearchAnswerHistoryService {
   async deleteAll(): Promise<number> {
     const userId = this.authService.userId();
     if (!userId) return 0;
-    const rows = await this.firestoreService.getCollection<SearchAnswerRecord>(this.userAnswersPath);
+    const rows = await this.firestoreService.getCollection<SearchRecord>(this.userAnswersPath);
     for (const row of rows) {
       await this.firestoreService.deleteDocument(`${this.userAnswersPath}/${row.id}`);
     }

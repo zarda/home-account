@@ -855,6 +855,7 @@
     "historySeeAll": "See all",
     "historyPin": "Pin this answer",
     "historyUnpin": "Unpin this answer",
+    "historyFilterRecord": "Filters",
     "historyDeleteTitle": "Delete this answer?",
     "historyDeleteMessage": "This removes the stored answer only — no transactions are affected.",
     "historyPageTitle": "Smart Search history",
