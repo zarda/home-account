@@ -68,6 +68,26 @@ The linked share feeds everything progress feeds: the card (with a
 "manual · from transactions" breakdown once links exist), and the AI
 summary's goal section and cache key.
 
+## Finding a goal's transactions
+
+Once a goal has linked rows its card offers **View transactions**, which opens
+the Transactions page filtered to that goal. The filter carries only the goal,
+so it reaches links from any month rather than the page's usual current-month
+window.
+
+`goalId` is a first-class transaction filter (`TransactionFilters`,
+`buildTransactionWhere`): server-side like `categoryId` and `currency`, which
+is what keeps the paged window dense and the header's count exact. It needs
+the `goalId`+`date` composite index pair in `firestore.indexes.json` — the
+emulator does not enforce composite indexes, so nothing in the test suite
+catches a missing one.
+
+The same filter is reachable two other ways: the **Goal** dropdown in the
+transactions filter panel (which names whatever filter arrived from a card,
+and keeps a since-deactivated goal listed so it can still be cleared), and a
+goal-scoped smart-search answer's "view transactions" — see
+[smart-search.md](smart-search.md).
+
 ## Where goals surface
 
 - **Budgets → Goals tab**: progress cards. The bar clamps at 100% while

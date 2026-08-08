@@ -14,8 +14,9 @@ The reasoning behind the answer history's shape is in
 The cloud model does exactly one job: it translates your sentence into a
 structured intent. `NlSearchService`
 (`src/app/core/services/nl-search.service.ts`) sends the question with a
-small context — today's date, your base currency, and the active category
-catalog with children prefixed by their parents — and gets back either
+small context — today's date, your base currency, the active category
+catalog with children prefixed by their parents, and the active goal and
+budget catalogs (names and ids only) — and gets back either
 
 | Intent | What happens |
 |---|---|
@@ -34,6 +35,29 @@ is clamped to today at the far end and 1970 at the near end. The answer card
 always displays the resolved range, so the default is visible rather than
 implied. Amount bounds ("over $100") compare in your base currency, matching
 how every figure in the answer is computed.
+
+## Goals and budgets in a question
+
+"How much have I put toward the Japan trip?" and "what did I spend against
+the groceries budget?" both resolve to a real scope rather than a keyword
+guess — but by different routes, because only one of the two is a thing a
+transaction carries (see
+[ADR/0028](ADR/0028-a-search-scope-only-names-what-a-transaction-carries.md)):
+
+- **A goal becomes a scope field.** A transaction can be linked to a goal
+  (see [goals.md](goals.md)), so a matched `goalId` stays on the filters, is
+  stored with the answer, and narrows the transactions page when you open the
+  answer's rows. An unlisted goal is dropped into the keyword like an
+  unrecognized category.
+- **A budget is resolved and discarded.** A budget is a category plus a
+  recurring window, not a field on a transaction, so a matched `budgetId`
+  contributes its category and — only when the question gave no dates of its
+  own — its current period window, then disappears. "Against my groceries
+  budget last year" therefore narrows to last year rather than snapping back
+  to this period, and a category the model named itself is never overwritten.
+
+Both catalogs list only active goals and budgets, and are fetched on demand
+when no open page has already loaded them.
 
 ## When it falls back to keyword search
 
@@ -79,9 +103,10 @@ than a copy. The description line returns after a refresh.
 
 ## Privacy: what leaves the device, what is stored
 
-- The question text and the category catalog (names and types) go to your
+- The question text and three catalogs — categories (names and types), goals
+  (names) and budgets (names, with their category and period) — go to your
   configured cloud provider once, for interpretation. Transaction rows never
-  do.
+  do, and no amount from any goal or budget goes with the names.
 - A stored answer holds the question text and aggregate figures only — ids
   and day keys, no transaction copies. It lives in your own user document
   tree, is validated by a closed-field security rule
@@ -98,3 +123,6 @@ than a copy. The description line returns after a refresh.
   only aggregate answers persist.
 - Records cannot be pinned: fifty idle questions can prune an answer you
   cared about.
+- The answer card's scope line shows only the resolved date range. A goal or
+  category in the scope narrows the figures but is not named there; opening
+  the matching transactions is where you see it.
