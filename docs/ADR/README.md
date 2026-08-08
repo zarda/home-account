@@ -27,6 +27,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0020](0020-detected-groups-convert-through-the-prefilled-form.md) | Detected groups convert through the prefilled form | Accepted | 2026-08-07 |
 | [0021](0021-one-goal-model-carries-savings-and-projects.md) | One goal model carries savings and projects | Accepted | 2026-08-07 |
 | [0022](0022-the-forecast-baselines-at-zero-today.md) | The forecast baselines at zero today | Accepted | 2026-08-07 |
+| [0023](0023-the-initial-bundle-carries-only-the-entry-route.md) | The initial bundle carries only the entry route | Accepted | 2026-08-08 |
 
 ## What belongs here
 
