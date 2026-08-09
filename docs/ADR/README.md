@@ -35,6 +35,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0028](0028-a-search-scope-only-names-what-a-transaction-carries.md) | A search scope only names what a transaction carries | Accepted | 2026-08-08 |
 | [0029](0029-every-stored-kind-has-one-door.md) | Every stored kind has one door, checked against the deletion cascade | Accepted | 2026-08-08 |
 | [0030](0030-a-stored-search-holds-either-figures-or-a-scope.md) | A stored search holds either figures or a scope; a pinned one does not expire | Accepted; amends 0016 | 2026-08-08 |
+| [0031](0031-a-restore-merges-into-the-row-it-finds.md) | A restore merges into the row it finds; the backup's flags outrank the create defaults | Accepted; amends 0021 | 2026-08-09 |
 
 ## What belongs here
 

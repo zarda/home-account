@@ -89,5 +89,6 @@ same page. It moved here from a Settings expansion panel; Settings keeps a link
 card pointing at `/data`. Nothing about what those actions do changed, and the
 consent flows in front of the destructive ones are unaltered. See
 [docs/account-deletion.md](account-deletion.md) for the erasure cascade the
-catalogue is checked against, and [docs/csv-format.md](csv-format.md) for what
-the export contract carries.
+catalogue is checked against, [docs/csv-format.md](csv-format.md) for what the
+CSV contract carries, and [docs/backup-restore.md](backup-restore.md) for what
+a JSON restore writes and what it deliberately leaves alone.

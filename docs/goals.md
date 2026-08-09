@@ -118,6 +118,8 @@ goal-scoped smart-search answer's "view transactions" — see
   goal may not exist yet mid-restore), and a final pass recomputes each
   involved goal's counter from what the ledger then actually holds — so
   restoring twice, or over a live account with links of its own, cannot
-  double-count.
+  double-count. A restore merges into the row it finds rather than
+  replacing it, so a backup row that predates a link cannot strip the live
+  one either; see [backup-restore.md](backup-restore.md).
 - Account deletion sweeps `users/{uid}/goals` like every other
   subcollection (see [account-deletion.md](account-deletion.md)).

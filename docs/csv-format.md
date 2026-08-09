@@ -48,7 +48,8 @@ Note, Tags, Location, Period, Recurring
 | description, note, tags, location name | yes | — | yes |
 | budget period, recurring flag | yes | — | yes |
 | **category** | written, **not read back** | written, not read back | yes |
-| location coordinates, receipt images, ids | — | — | yes |
+| location coordinates, ids | — | — | yes |
+| **receipt images** | — | — | see below |
 
 **Category is written but never re-imported.** The importer has no `category`
 probe, so every row from a CSV lands in the catch-all category and has to be
@@ -59,8 +60,13 @@ restoring from it. This is the sharpest reason not to treat a CSV as a backup.
 so carrying a period would not make it round-trip — it would only cost it the
 at-a-glance shape it exists for. Export detailed if you intend to import again.
 
-For a full-fidelity copy, use **Settings → Export full backup** (JSON), which
-carries the whole document, categories included.
+**No export carries receipt images.** They are Storage objects, and a text file
+holds none. A JSON restore therefore cannot bring a receipt back — but it does
+not destroy the ones already on a row it writes over, because it merges rather
+than replaces. See [backup-restore.md](backup-restore.md).
+
+For a full-fidelity copy, use **Data Management → Export full backup** (JSON),
+which carries the whole document, categories included.
 
 ## Quoting and formula guarding
 
