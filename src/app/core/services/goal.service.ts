@@ -88,11 +88,15 @@ export class GoalService {
    * `options.id` writes at a caller-chosen id so restoring a backup twice
    * overwrites rather than duplicating; `options.contributedAmount` carries
    * a restored balance verbatim — unlike a budget's `spent`, contributions
-   * have no transaction source to recompute from.
+   * have no transaction source to recompute from. `options.isActive` is the
+   * same channel for a stored flag. Nothing in the shipped app can deactivate
+   * a goal yet, so it cannot fire today; it is here so wiring up archiving
+   * later does not have to discover that restore silently reactivates
+   * everything.
    */
   async createGoal(
     data: CreateGoalDTO,
-    options?: { id?: string; contributedAmount?: number }
+    options?: { id?: string; contributedAmount?: number; isActive?: boolean }
   ): Promise<string> {
     this.isLoading.set(true);
 
@@ -112,7 +116,7 @@ export class GoalService {
         // precedent), so a backup's stored counter is never trusted.
         linkedAmount: 0,
         currency: data.currency,
-        isActive: true,
+        isActive: options?.isActive ?? true,
         createdAt: this.firestoreService.getTimestamp(),
         updatedAt: this.firestoreService.getTimestamp()
       };

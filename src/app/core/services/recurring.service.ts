@@ -144,8 +144,17 @@ export class RecurringService {
    *
    * `options.id` writes at a caller-chosen id instead of an auto-generated
    * one, so restoring a backup twice overwrites rather than duplicating.
+   * `options.isActive` is the restore's channel for a rule that was paused
+   * when the backup was taken: nothing in the ledger can recompute a pause,
+   * so it has to travel verbatim or the restore silently resumes it. Note
+   * `nextOccurrence` is still recomputed from today either way, so resuming a
+   * restored pause behaves like a fresh resume rather than restoring the
+   * stored pointer — the same thing `resumeRecurring` does.
    */
-  async createRecurring(data: CreateRecurringDTO, options?: { id?: string }): Promise<string> {
+  async createRecurring(
+    data: CreateRecurringDTO,
+    options?: { id?: string; isActive?: boolean }
+  ): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -179,7 +188,7 @@ export class RecurringService {
           ? { endDate: this.firestoreService.dateToTimestamp(data.endDate) }
           : {}),
         nextOccurrence: this.firestoreService.dateToTimestamp(nextOccurrence),
-        isActive: true,
+        isActive: options?.isActive ?? true,
         createdAt: this.firestoreService.getTimestamp(),
         updatedAt: this.firestoreService.getTimestamp()
       };

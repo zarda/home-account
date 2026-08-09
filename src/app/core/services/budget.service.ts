@@ -172,8 +172,15 @@ export class BudgetService {
    *
    * `options.id` writes at a caller-chosen id instead of an auto-generated
    * one, so restoring a backup twice overwrites rather than duplicating.
+   * `options.isActive` carries a stored flag verbatim for the same reason.
+   * Nothing in the shipped app can deactivate a budget yet, so this cannot
+   * fire today — it is here so wiring up archiving later does not have to
+   * discover that restore silently reactivates everything.
    */
-  async createBudget(data: CreateBudgetDTO, options?: { id?: string }): Promise<string> {
+  async createBudget(
+    data: CreateBudgetDTO,
+    options?: { id?: string; isActive?: boolean }
+  ): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -191,7 +198,7 @@ export class BudgetService {
           ? this.firestoreService.dateToTimestamp(data.startDate)
           : this.getDefaultStartDate(data.period),
         spent: 0,
-        isActive: true,
+        isActive: options?.isActive ?? true,
         alertThreshold: data.alertThreshold ?? 80,
         createdAt: this.firestoreService.getTimestamp(),
         updatedAt: this.firestoreService.getTimestamp()

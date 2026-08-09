@@ -118,8 +118,14 @@ export class CategoryService {
    *
    * `options.id` writes at a caller-chosen id instead of an auto-generated
    * one, so restoring a backup twice overwrites rather than duplicating.
+   * `options.isActive` carries a restore's soft-deleted category back as
+   * deleted; without it a restore returns every category the user removed to
+   * the pickers.
    */
-  async addCategory(data: CreateCategoryDTO, options?: { id?: string }): Promise<string> {
+  async addCategory(
+    data: CreateCategoryDTO,
+    options?: { id?: string; isActive?: boolean }
+  ): Promise<string> {
     this.isLoading.set(true);
 
     try {
@@ -140,7 +146,7 @@ export class CategoryService {
         // Only include optional fields if they have values (Firestore rejects undefined)
         ...(data.parentId ? { parentId: data.parentId } : {}),
         order: maxOrder + 1,
-        isActive: true,
+        isActive: options?.isActive ?? true,
         isDefault: false
       };
 
