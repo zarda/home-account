@@ -79,4 +79,54 @@ describe('translation files', () => {
       expect(bad.join(', ')).toBe('', `blank or non-string values in ${name}`);
     });
   }
+
+  // Nothing else can see this. The key-set check above passes when a
+  // placeholder is added to English alone, scripts/check-i18n.mjs only asks
+  // whether a key resolves at all, and interpolate() renders an unknown
+  // placeholder as the literal `{{goals}}` rather than throwing — so the two
+  // locales nobody on the team reads quietly ship braces to their users.
+  for (const { name, tree } of LOCALES.filter(l => l.name !== REFERENCE)) {
+    it(`fills the same placeholders in ${name} as in ${REFERENCE}`, () => {
+      const drift = reference
+        .map(key => {
+          const optional = OPTIONAL_PLACEHOLDERS[key] ?? [];
+          const wanted = placeholders(leafValue(en, key));
+          const got = placeholders(leafValue(tree, key));
+          const missing = [...wanted].filter(p => !got.has(p) && !optional.includes(p));
+          // No carve-out in this direction: a call site builds its params from
+          // the English string, so a slot only a translation has can never be
+          // filled and renders with its braces showing.
+          const extra = [...got].filter(p => !wanted.has(p));
+          return missing.length || extra.length
+            ? `${key} (missing ${missing.join('/') || 'none'}, extra ${extra.join('/') || 'none'})`
+            : '';
+        })
+        .filter(Boolean);
+
+      expect(drift.join('; ')).toBe('', `placeholder drift in ${name}`);
+    });
+  }
 });
+
+/**
+ * Placeholders a translation may leave out on purpose, with the reason.
+ *
+ * An allow-list rather than a looser rule: each of these is a judgement call
+ * about one string, and the whole value of the check is that adding a slot to
+ * English and forgetting the other two files fails loudly.
+ */
+const OPTIONAL_PLACEHOLDERS: Record<string, string[]> = {
+  // The English ordinal suffix. Japanese and Chinese write the day as 15日 /
+  // 15 號, where an appended "th" would simply be wrong.
+  'settings.everyMonthOn': ['suffix'],
+  'settings.everyNMonthsOn': ['suffix'],
+  // The underlying error text is English whatever the locale, so ja and tc
+  // report the failure rather than switching script mid-sentence.
+  'import.importFailed': ['error'],
+};
+
+/** The `{{name}}` slots a string interpolates, ignoring their order. */
+function placeholders(value: unknown): Set<string> {
+  if (typeof value !== 'string') return new Set();
+  return new Set([...value.matchAll(/\{\{(\w+)\}\}/g)].map(match => match[1]));
+}

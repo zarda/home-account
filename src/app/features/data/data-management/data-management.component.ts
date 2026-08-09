@@ -318,6 +318,7 @@ export class DataManagementComponent {
           categories: contents?.categories ?? 0,
           budgets: contents?.budgets ?? 0,
           recurring: contents?.recurring ?? 0,
+          goals: contents?.goals ?? 0,
           insightSnapshots: contents?.insightSnapshots ?? 0,
         }),
         confirmLabel: this.t('common.import'),
@@ -332,13 +333,20 @@ export class DataManagementComponent {
       this.importProgress.set(0);
       try {
         const summary = await this.backupRestore.restore(backup);
-        const restored = summary.transactions + summary.categories + summary.budgets
-          + summary.recurring + summary.insightSnapshots;
+        // Every numeric field, rather than a hand-listed five: goals were
+        // dropped from the total that way, and the next section added to a
+        // backup would have gone the same way. `skipped` stays out because it
+        // is an array, not because it is named here.
+        const restored = Object.values(summary).reduce<number>(
+          (total, value) => total + (typeof value === 'number' ? value : 0), 0);
 
         if (summary.skipped.length > 0) {
           console.error('Backup restore skipped rows', summary.skipped);
+          // Name the sections. A bare count told the user something went wrong
+          // and nothing about where, which is the whole complaint.
+          const sections = [...new Set(summary.skipped.map(row => row.section))].join(', ');
           this.notifications.info(this.t('settings.backupRestoredPartial', {
-            count: restored, skipped: summary.skipped.length,
+            count: restored, skipped: summary.skipped.length, sections,
           }));
         } else {
           this.notifications.success(
