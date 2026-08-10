@@ -20,16 +20,25 @@ describe('RagContextService', () => {
   };
 
   let nextId = 0;
-  const expense = (overrides: Partial<Transaction>): Transaction => ({
+  // `date` is widened to Date: the service reads it through `toDate`, which
+  // takes either, and a fixture is far more legible as local parts than as a
+  // Timestamp.
+  const expense = (
+    overrides: Partial<Omit<Transaction, 'date'>> & { date?: Date },
+  ): Transaction => ({
     id: `t${nextId++}`,
     description: 'Expense',
     amount: 10,
     currency: 'TWD',
     type: 'expense',
     categoryId: 'food_groceries',
-    date: new Date('2026-06-01'),
+    // Local parts, because that is the only shape a real row has: a
+    // transaction is stored at a local wall-clock time. A UTC-midnight
+    // fixture cannot tell a local day key from a UTC one, which is how the
+    // grounding block shipped citing the neighbouring day.
+    date: new Date(2026, 5, 1),
     ...overrides,
-  } as Transaction);
+  } as unknown as Transaction);
 
   beforeEach(() => {
     const currencyMock = jasmine.createSpyObj('CurrencyService', ['amountInBase', 'formatAmount']);
@@ -82,6 +91,27 @@ describe('RagContextService', () => {
     const lambIndex = context.indexOf('Lamb');
     const grapesIndex = context.indexOf('Grapes');
     expect(lambIndex).toBeLessThan(grapesIndex);
+  });
+
+  /**
+   * The prompt asks the model to cite these specifics, so a shifted day is
+   * repeated back to the user as advisory prose — sometimes naming a date
+   * outside the period the summary claims to cover — and the result is cached
+   * for an hour. The two directions need separate fixtures: a midnight row
+   * shifts east of UTC, an evening row shifts west.
+   */
+  it('dates a top expense by its local day, east and west of UTC', () => {
+    const context = service.buildSummaryGrounding({
+      transactions: [
+        expense({ description: 'Midnight', amount: 500, date: new Date(2026, 7, 1) }),
+        expense({ description: 'Evening', amount: 400, date: new Date(2026, 7, 31, 20, 0) }),
+      ],
+      previousByCategory: null,
+      baseCurrency: 'TWD',
+    });
+
+    expect(context).toContain('- Midnight — 500 TWD (Groceries, 2026-08-01)');
+    expect(context).toContain('- Evening — 400 TWD (Groceries, 2026-08-31)');
   });
 
   it('should cap top expenses at 10', () => {

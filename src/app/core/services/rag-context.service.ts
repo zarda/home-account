@@ -4,6 +4,7 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { CategoryTotal, RAG_TIER_CONFIGS, RagTierConfig, Transaction } from '../../models';
 import { normalizeMerchantKey } from '../utils/merchant-key.utils';
+import { dayKey, toDate } from '../utils/transaction-date.utils';
 import {
   computeAmountAnomalies,
   computeCategoryDeltas,
@@ -215,10 +216,14 @@ export class RagContextService {
     return category?.name ? this.translationService.t(category.name) : 'Other';
   }
 
+  /**
+   * The local calendar day, matching what the app displays. toISOString would
+   * hand the model a UTC day — the day before for an evening row west of UTC,
+   * the day after for a midnight row east of it — and the prompt asks the
+   * model to cite these dates back to the user.
+   */
   private formatDate(date: Transaction['date'] | Date): string {
-    const parsed = date instanceof Date ? date : date?.toDate?.();
-    return parsed instanceof Date && !isNaN(parsed.getTime())
-      ? parsed.toISOString().split('T')[0]
-      : '';
+    const parsed = toDate(date);
+    return parsed ? dayKey(parsed) : '';
   }
 }
