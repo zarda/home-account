@@ -52,6 +52,15 @@ import { INSIGHT_WINDOW_MONTHS } from './insights.service';
 /** How far back a fresh install will backfill. */
 export const SNAPSHOT_BACKFILL_MONTHS = 12;
 
+/**
+ * What a restore did with one month.
+ *
+ * `alreadyCurrent` is not a failure: the stored month is at the revision the
+ * backup asks for, or a newer one, so the account already holds what the file
+ * wanted. Restore counts it as accounted for rather than reporting a skip.
+ */
+export type SnapshotRestoreOutcome = 'written' | 'alreadyCurrent';
+
 @Injectable({ providedIn: 'root' })
 export class InsightSnapshotService {
   private firestoreService = inject(FirestoreService);
@@ -329,18 +338,48 @@ export class InsightSnapshotService {
    * Re-stamps `userId` from auth rather than trusting the file, both because
    * the rules require it and because a backup may legitimately be restored
    * into a different account.
+   *
+   * Reads the stored month first, which the other sections do not have to do.
+   * The rules treat a non-merge write over an existing document as an update,
+   * and the update rule demands a strictly higher `revision` — so passing the
+   * file's revision through made restoring the same backup twice fail every
+   * month, in a flow whose whole contract is that the second run is a no-op.
+   * Yielding when the stored revision is already at or above the file's is
+   * also the right answer on its own terms: a month the user has since
+   * regenerated holds newer detector output than the backup does.
+   *
+   * The write stays non-merge deliberately. `snapshotValid` revalidates the
+   * whole document, so a partial write cannot pass the rules at all.
    */
-  async restore(snapshot: InsightSnapshot): Promise<void> {
+  async restore(snapshot: InsightSnapshot): Promise<SnapshotRestoreOutcome> {
     const userId = this.authService.userId();
     if (!userId) {
       throw new Error('User not authenticated');
     }
 
     const { id, ...rest } = snapshot;
-    await this.firestoreService.setDocument(
-      `${this.path(userId)}/${id}`,
-      { ...rest, userId },
-    );
+    const path = `${this.path(userId)}/${id}`;
+    // A one-shot read, not the live signal: mid-restore the collection
+    // listener may never have been mounted, and an empty signal would read as
+    // "no stored month" for every month.
+    const stored = await this.firestoreService.getDocument<InsightSnapshot>(path);
+    // A backup predating the field, or carrying a junk one, reads as the first
+    // revision rather than as a write the rules would refuse outright.
+    const wanted = Number.isInteger(rest.revision) && rest.revision > 0 ? rest.revision : 1;
+
+    if (stored && (stored.revision ?? 0) >= wanted) {
+      return 'alreadyCurrent';
+    }
+
+    await this.firestoreService.setDocument(path, {
+      ...rest,
+      userId,
+      revision: wanted,
+      // Unchanged from whichever document was already there, the same rule
+      // regenerate follows: a rewrite records a new revision, not a new birth.
+      createdAt: stored?.createdAt ?? rest.createdAt,
+    });
+    return 'written';
   }
 
   /** One-shot read for the backup export. */

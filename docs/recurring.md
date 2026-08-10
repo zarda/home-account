@@ -207,9 +207,23 @@ account credentials all reach the document directly.
 
 A restore replays the file verbatim, so a hand-edited or very old backup can carry
 a rule the current build refuses. That rule is **skipped**, not fatal: the restore
-finishes the rest of the file and Settings reports `N records restored, M
-skipped`, with the per-row reasons in the browser console. Everything else in the
-backup — including the other recurring rules — restores normally.
+finishes the rest of the file and Data Management reports `N records restored, M
+skipped`, naming the sections, with the per-row reasons in the browser console.
+Everything else in the backup — including the other recurring rules — restores
+normally.
+
+### A restored rule keeps its pause
+
+The backup records whether each rule was paused, and the restore honours it. It
+has to: catch-up runs on dashboard load with no user action, so a rule restored
+as active would resume posting money at its next due date with nothing saying
+the pause had been undone.
+
+What does not survive is the pointer. `nextOccurrence` is recomputed from the
+rule's start date forward past today, exactly as it is for a rule created by
+hand, so nothing accrues for the stretch the backup sat on disk and resuming a
+restored pause later behaves like a fresh resume. [docs/backup-restore.md](backup-restore.md)
+covers the rest of what a restore carries verbatim.
 
 ## Known gaps
 

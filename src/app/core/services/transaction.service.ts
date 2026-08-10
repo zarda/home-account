@@ -207,21 +207,33 @@ export class TransactionService {
   /**
    * Add a new transaction.
    *
-   * `options.id` writes at a caller-chosen id (recurring-engine idempotency,
-   * backup restore). `options.snapshot` writes the base-currency conversion
-   * verbatim instead of recomputing it: a restore must not rewrite a row's
-   * historical rate at today's, which would both change stored figures and
-   * make restoring the same backup twice produce different documents.
-   * `options.goalSnapshot` is the same contract for a goal link: the pair is
-   * written verbatim and no goal counter is touched — mid-restore the goal
-   * may not even exist yet, and the restore flow recomputes every counter
-   * from the ledger afterwards. `data.goalId` is the live path instead: the
-   * link and the goal's counter commit in one Firestore transaction.
+   * `options.id` writes at a caller-chosen id (backup restore, and the offline
+   * queue replaying a row it already keyed). `options.snapshot` writes the
+   * base-currency conversion verbatim instead of recomputing it: a restore
+   * must not rewrite a row's historical rate at today's, which would both
+   * change stored figures and make restoring the same backup twice produce
+   * different documents. `options.goalSnapshot` is the same contract for a
+   * goal link: the pair is written verbatim and no goal counter is touched —
+   * mid-restore the goal may not even exist yet, and the restore flow
+   * recomputes every counter from the ledger afterwards. `data.goalId` is the
+   * live path instead: the link and the goal's counter commit in one
+   * Firestore transaction.
+   *
+   * `options.merge` and `options.createdAt` are restore-only too. Merging
+   * leaves keys the write does not mention alone, which is what stops a
+   * restore erasing the receipt fields a live row already carries — a backup
+   * holds no storage objects, so it can never re-supply them. The cost is
+   * that a restore can no longer *clear* a field the backup dropped. And
+   * `createdAt` has to come from the file for the same reason the rate does:
+   * stamping now would restamp every pre-existing row and make a second
+   * restore of the same file produce different documents.
    */
   async addTransaction(
     data: CreateTransactionDTO,
     options?: {
       id?: string;
+      merge?: boolean;
+      createdAt?: Timestamp;
       snapshot?: { exchangeRate: number; baseCurrency: string; amountInBaseCurrency: number };
       goalSnapshot?: { goalId: string; goalAmount: number };
     }
@@ -236,6 +248,19 @@ export class TransactionService {
       // get a row they can report rather than an opaque permission error.
       if (!Number.isFinite(data.amount) || data.amount <= 0) {
         throw new Error(INVALID_AMOUNT_ERROR);
+      }
+
+      // Both refusals are the same shape as the two below: a merge that cannot
+      // reach the write would be dropped in silence, and silence is what made
+      // the receipt erasure survive a spec suite. Without an id the write goes
+      // through addDocument, which has no merge to pass; with a goal link it
+      // goes through createWithGoalLink, whose set() inside runTransaction
+      // replaces the document outright — exactly the write being fixed here.
+      if (options?.merge && !options.id) {
+        throw new Error('A merge write needs a caller-chosen id');
+      }
+      if (options?.merge && data.goalId) {
+        throw new Error('A merge write cannot be combined with a goal link');
       }
 
       let baseCurrency: string;
@@ -265,7 +290,7 @@ export class TransactionService {
         categoryId: data.categoryId,
         description: data.description,
         date: this.firestoreService.dateToTimestamp(data.date),
-        createdAt: this.firestoreService.getTimestamp(),
+        createdAt: options?.createdAt ?? this.firestoreService.getTimestamp(),
         updatedAt: this.firestoreService.getTimestamp(),
         isRecurring: data.isRecurring ?? false,
         // Only include optional fields if they have values (Firestore rejects undefined)
@@ -321,16 +346,19 @@ export class TransactionService {
         }
         this.receiptQuota.noteImagesAdded(urls.length);
       } else if (options?.id) {
-        // Caller-supplied deterministic id (recurring engine idempotency):
-        // posting the same occurrence twice overwrites one document instead
-        // of duplicating it.
+        // Caller-supplied deterministic id: writing the same row twice lands
+        // on one document instead of duplicating it. Whether that write
+        // replaces or merges is the caller's to say — a restore merges so a
+        // live row keeps what the file could not carry, while a replayed
+        // queue row wants the plain overwrite.
         id = options.id;
         if (data.goalId) {
           await this.createWithGoalLink(id, transaction, data.goalId);
         } else {
           await this.firestoreService.setDocument(
             `${this.userTransactionsPath}/${id}`,
-            transaction
+            transaction,
+            options.merge ?? false
           );
         }
       } else if (data.goalId) {

@@ -460,6 +460,122 @@ describe('TransactionService', () => {
       expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
     });
 
+    // A restore writes over rows that are still there, and a replacing write
+    // erased the receipt fields they carried. Storage objects are reachable
+    // only through the transaction that names them, so those bytes could
+    // never be reclaimed by any delete path afterwards.
+    it('merges at the caller-supplied id when the caller asks for it', async () => {
+      await service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Restored row',
+          date: new Date()
+        },
+        { id: 'txn-42', merge: true }
+      );
+
+      expect(mockFirestore.setDocumentSpy.mostRecent()?.args[2]).toBeTrue();
+    });
+
+    it('replaces at the caller-supplied id by default', async () => {
+      await service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Replayed row',
+          date: new Date()
+        },
+        { id: 'txn-42' }
+      );
+
+      expect(mockFirestore.setDocumentSpy.mostRecent()?.args[2]).toBeFalse();
+    });
+
+    // Without an id the write goes through addDocument, which has no merge to
+    // pass — the flag would be dropped in silence, and silence is how the
+    // receipt erasure survived a spec suite in the first place.
+    it('refuses a merge with no id to merge into', async () => {
+      await expectAsync(service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Nowhere to merge',
+          date: new Date()
+        },
+        { merge: true }
+      )).toBeRejected();
+
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+      expect(mockFirestore.addDocumentSpy.calls.length).toBe(0);
+    });
+
+    // A goal link routes through createWithGoalLink, whose set() inside
+    // runTransaction replaces the document outright — the merge would be
+    // dropped and the row rewritten, which is the write being fixed.
+    it('refuses a merge combined with a goal link', async () => {
+      await expectAsync(service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Merge into a link',
+          date: new Date(),
+          goalId: 'g-1'
+        },
+        { id: 'txn-42', merge: true }
+      )).toBeRejected();
+
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+      expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
+    });
+
+    // Stamping today restamped every pre-existing row, so restoring one file
+    // twice produced different documents each time.
+    it('writes a caller-supplied createdAt instead of stamping now', async () => {
+      const stored = Timestamp.fromDate(new Date('2026-06-15T00:00:00Z'));
+
+      await service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Restored row',
+          date: new Date()
+        },
+        { id: 'txn-42', merge: true, createdAt: stored }
+      );
+
+      const written = mockFirestore.setDocumentSpy.mostRecent()
+        ?.args[1] as Record<string, unknown>;
+      expect(written['createdAt']).toEqual(stored);
+    });
+
+    it('stamps createdAt when the caller supplies none', async () => {
+      const before = Timestamp.now().toMillis();
+
+      await service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'A fresh row',
+        date: new Date()
+      });
+
+      const written = mockFirestore.addDocumentSpy.mostRecent()
+        ?.args[1] as Record<string, unknown>;
+      expect((written['createdAt'] as Timestamp).toMillis()).toBeGreaterThanOrEqual(before);
+    });
+
     it('refuses a caller-chosen id alongside receipt files', async () => {
       const receiptFile = new File(['receipt-bytes'], 'receipt.jpg', { type: 'image/jpeg' });
 

@@ -124,7 +124,7 @@ describe('BackupRestoreService', () => {
     recurring = jasmine.createSpyObj<RecurringService>('RecurringService', ['createRecurring']);
     recurring.createRecurring.and.resolveTo('id');
     snapshots = jasmine.createSpyObj<InsightSnapshotService>('InsightSnapshotService', ['restore']);
-    snapshots.restore.and.resolveTo();
+    snapshots.restore.and.resolveTo('written');
     goals = jasmine.createSpyObj<GoalService>('GoalService', [
       'createGoal', 'recomputeLinkedAmount'
     ]);
@@ -192,14 +192,18 @@ describe('BackupRestoreService', () => {
           currency: 'USD', categoryId: 'housing_rent', description: 'Rent',
           frequency: { type: 'monthly', interval: 1 }, startDate: ts('2026-01-01'),
           nextOccurrence: ts('2026-07-01'), isActive: true } as RecurringTransaction],
+        goals: [goal()],
         insightSnapshots: [{ id: '2026-06', monthKey: '2026-06',
           generatedAt: ts('2026-07-01'), createdAt: ts('2026-07-01') } as InsightSnapshot],
       }));
 
-      expect(summary).toEqual(jasmine.objectContaining({
-        transactions: 1, categories: 1, budgets: 1, recurring: 1, insightSnapshots: 1,
-      }));
-      expect(summary.skipped).toEqual([]);
+      // The whole shape, not objectContaining: goals were absent from this
+      // assertion, which is how the component came to leave them out of the
+      // total it reports. A seventh section has to be added here to pass.
+      expect(summary).toEqual({
+        transactions: 1, categories: 1, budgets: 1, recurring: 1, goals: 1,
+        insightSnapshots: 1, skipped: [],
+      });
     });
 
     // Restoring used to call addTransaction with no id — an unconditional
@@ -214,7 +218,7 @@ describe('BackupRestoreService', () => {
       expect(transactions.addTransaction).toHaveBeenCalledWith(
         jasmine.anything(), jasmine.objectContaining({ id: 'txn-42' }));
       expect(categories.addCategory).toHaveBeenCalledWith(
-        jasmine.anything(), { id: 'cat-7' });
+        jasmine.anything(), jasmine.objectContaining({ id: 'cat-7' }));
     });
 
     it('restores the same file twice with the same ids, so the second is a no-op', async () => {
@@ -242,7 +246,12 @@ describe('BackupRestoreService', () => {
       });
     });
 
-    it('does not restore receipt fields, which point at objects a backup cannot hold', async () => {
+    // Both halves of the receipt contract. A backup holds no storage objects,
+    // so a receiptUrl can never be sourced from one — but the write that
+    // followed replaced the whole document, which erased the receipts the
+    // live row already had, and Storage objects are reachable only through
+    // the transaction that names them, so nothing could ever reclaim them.
+    it('sources no receipt field from the file, and merges so the stored ones survive', async () => {
       await service.restore(backup({
         transactions: [transaction({
           receiptUrl: 'https://example.test/r0.png',
@@ -251,12 +260,43 @@ describe('BackupRestoreService', () => {
         })],
       }));
 
-      const [dto] = transactions.addTransaction.calls.mostRecent().args;
+      const [dto, options] = transactions.addTransaction.calls.mostRecent().args;
       const written = dto as unknown as Record<string, unknown>;
       expect('receiptUrl' in written).toBeFalse();
       expect('receiptUrls' in written).toBeFalse();
       expect('receiptCount' in written).toBeFalse();
       expect('receiptFiles' in written).toBeFalse();
+      expect((options as { merge?: boolean }).merge).toBeTrue();
+    });
+
+    // Restore used to stamp createdAt at today, so every pre-existing row was
+    // restamped and the second restore of one file produced different
+    // documents than the first.
+    it('writes the createdAt the file carries rather than stamping today', async () => {
+      await service.restore(backup({
+        transactions: [transaction({ createdAt: ts('2026-06-15') })],
+      }));
+
+      const [, options] = transactions.addTransaction.calls.mostRecent().args;
+      expect((options as { createdAt?: Timestamp }).createdAt).toEqual(ts('2026-06-15'));
+    });
+
+    // Without it the subscription detector reads engine-posted history as
+    // untagged charges and re-offers rules the user already declared.
+    it('restores the link to the rule that posted a row', async () => {
+      await service.restore(backup({
+        transactions: [transaction({ recurringId: 'r-9' })],
+      }));
+
+      const [dto] = transactions.addTransaction.calls.mostRecent().args;
+      expect(dto.recurringId).toBe('r-9');
+    });
+
+    it('omits recurringId for a row no rule posted, rather than writing an empty one', async () => {
+      await service.restore(backup({ transactions: [transaction()] }));
+
+      const [dto] = transactions.addTransaction.calls.mostRecent().args;
+      expect('recurringId' in dto).toBeFalse();
     });
 
     it('carries the budget period a backed-up transaction was saved with', async () => {
@@ -306,7 +346,8 @@ describe('BackupRestoreService', () => {
       }));
 
       expect(categories.addCategory).toHaveBeenCalledTimes(1);
-      expect(categories.addCategory).toHaveBeenCalledWith(jasmine.anything(), { id: 'cat-1' });
+      expect(categories.addCategory).toHaveBeenCalledWith(
+        jasmine.anything(), jasmine.objectContaining({ id: 'cat-1' }));
     });
 
     it('reports the rows it could not write instead of abandoning the rest', async () => {
@@ -353,6 +394,101 @@ describe('BackupRestoreService', () => {
     });
   });
 
+  // The create paths hard-coded isActive: true, so a restore switched
+  // everything back on. Catch-up runs unprompted on every dashboard load, so
+  // a resurrected rule starts posting money the user had stopped.
+  describe('the active flag', () => {
+    it('brings a paused rule back paused', async () => {
+      await service.restore(backup({
+        recurring: [recurringRule({ id: 'r-paused', isActive: false })],
+      }));
+
+      expect(recurring.createRecurring).toHaveBeenCalledWith(
+        jasmine.anything(), { id: 'r-paused', isActive: false });
+    });
+
+    it('brings a running rule back running', async () => {
+      await service.restore(backup({ recurring: [recurringRule({ id: 'r-live' })] }));
+
+      expect(recurring.createRecurring).toHaveBeenCalledWith(
+        jasmine.anything(), { id: 'r-live', isActive: true });
+    });
+
+    // Deleting a category is a soft delete, so the file records the deletion
+    // and the restore has to honour it rather than repopulating every picker.
+    it('leaves a deleted category deleted', async () => {
+      await service.restore(backup({
+        categories: [category({ id: 'cat-gone', isActive: false })],
+      }));
+
+      expect(categories.addCategory).toHaveBeenCalledWith(
+        jasmine.anything(), { id: 'cat-gone', isActive: false });
+    });
+
+    // Latent: nothing in the app can deactivate a budget or a goal yet. Pinned
+    // so wiring up archiving later does not have to rediscover this.
+    it('threads the flag for budgets and goals too', async () => {
+      await service.restore(backup({
+        version: '1.3',
+        budgets: [{ id: 'b-off', categoryId: 'food_restaurants', name: 'Food', amount: 300,
+          currency: 'USD', period: 'monthly', startDate: ts('2026-06-01'), spent: 0,
+          isActive: false, alertThreshold: 80 } as Budget],
+        goals: [goal({ id: 'g-off', isActive: false })],
+      }));
+
+      expect(budgets.createBudget).toHaveBeenCalledWith(
+        jasmine.anything(), { id: 'b-off', isActive: false });
+      expect(goals.createGoal).toHaveBeenCalledWith(
+        jasmine.anything(),
+        jasmine.objectContaining({ id: 'g-off', isActive: false }));
+    });
+
+    // A backup written before the flag existed: those rows were all live.
+    it('reads an absent flag as active', async () => {
+      const rule = recurringRule({ id: 'r-old' });
+      delete (rule as Partial<RecurringTransaction>).isActive;
+
+      await service.restore(backup({ recurring: [rule] }));
+
+      expect(recurring.createRecurring).toHaveBeenCalledWith(
+        jasmine.anything(), { id: 'r-old', isActive: true });
+    });
+  });
+
+  // Restoring the same file twice is supposed to be a no-op, but the rules
+  // demand a strictly higher revision on every snapshot rewrite, so the second
+  // run reported every month as skipped in the one flow built to be idempotent.
+  describe('insight snapshots', () => {
+    const snapshot = (id: string) => ({
+      id, monthKey: id, revision: 1,
+      generatedAt: ts('2026-07-01'), createdAt: ts('2026-07-01'),
+    } as InsightSnapshot);
+
+    it('counts a month left alone because the stored one is already current', async () => {
+      snapshots.restore.and.resolveTo('alreadyCurrent');
+
+      const summary = await service.restore(backup({
+        insightSnapshots: [snapshot('2026-06'), snapshot('2026-07')],
+      }));
+
+      expect(summary.insightSnapshots).toBe(2);
+      expect(summary.skipped).toEqual([]);
+    });
+
+    it('still reports a month it genuinely could not write', async () => {
+      snapshots.restore.and.rejectWith(new Error('PERMISSION_DENIED'));
+
+      const summary = await service.restore(backup({
+        insightSnapshots: [snapshot('2026-06')],
+      }));
+
+      expect(summary.insightSnapshots).toBe(0);
+      expect(summary.skipped).toEqual([
+        { section: 'insightSnapshots', id: '2026-06', reason: 'PERMISSION_DENIED' },
+      ]);
+    });
+  });
+
   describe('describe', () => {
     it('counts every section for the confirmation dialog', () => {
       const contents = service.describe(backup({
@@ -386,7 +522,7 @@ describe('BackupRestoreService', () => {
           currency: 'USD',
           items: [{ name: 'Flights', amount: 800, done: true }]
         }),
-        { id: 'g-1', contributedAmount: 750 }
+        { id: 'g-1', contributedAmount: 750, isActive: true }
       );
     });
 

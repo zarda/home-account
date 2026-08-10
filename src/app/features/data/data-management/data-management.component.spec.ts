@@ -289,6 +289,111 @@ describe('DataManagementComponent', () => {
     });
   });
 
+  // The service half was already right; the component discarded a counter it
+  // was handed. A backup of nothing but goals reported "0 records restored"
+  // while every goal landed, and the preview panel one line above the dialog
+  // showed the goal count all along.
+  describe('confirmRestore', () => {
+    const emptySummary = {
+      transactions: 0, categories: 0, budgets: 0, recurring: 0, goals: 0,
+      insightSnapshots: 0, skipped: [] as { section: string; id: string; reason: string }[],
+    };
+
+    const emptyContents = {
+      version: '1.4', exportDate: '2026-08-01',
+      transactions: 0, categories: 0, budgets: 0, recurring: 0, goals: 0, insightSnapshots: 0,
+    };
+
+    /** Stage a parsed backup and a confirmed dialog, then run the restore. */
+    async function restoreWith(
+      summary: Partial<typeof emptySummary>,
+      contents: Partial<typeof emptyContents> = {},
+    ): Promise<void> {
+      component.pendingBackup.set({
+        transactions: [], categories: [], exportDate: '2026-08-01', version: '1.4',
+      } as never);
+      component.backupContents.set({ ...emptyContents, ...contents } as never);
+      mockDialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      mockBackupRestore.restore.and.resolveTo({ ...emptySummary, ...summary });
+
+      component.confirmImport();
+
+      const deadline = Date.now() + 3000;
+      while (!notifications.success.calls.any() && !notifications.info.calls.any()
+        && !notifications.error.calls.any() && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    }
+
+    it('counts the goals it restored, in a backup that holds nothing else', async () => {
+      await restoreWith({ goals: 12 });
+
+      expect(notifications.success).toHaveBeenCalledWith('settings.backupRestored');
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.backupRestored', { count: 12 });
+    });
+
+    it('totals every section, so the toast matches the preview panel', async () => {
+      await restoreWith({
+        transactions: 12, categories: 3, budgets: 2, recurring: 1, goals: 4,
+        insightSnapshots: 5,
+      });
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.backupRestored', { count: 27 });
+    });
+
+    it('names the goal count in the confirmation dialog', async () => {
+      await restoreWith({}, { transactions: 12, goals: 4 });
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.confirmRestoreMessage',
+        jasmine.objectContaining({ transactions: 12, goals: 4 }));
+    });
+
+    // A bare count told the user something had gone wrong and nothing about
+    // where; the console line naming the sections was the only signal.
+    it('names the sections a partial restore could not write', async () => {
+      await restoreWith({
+        transactions: 8,
+        skipped: [
+          { section: 'insightSnapshots', id: '2026-06', reason: 'PERMISSION_DENIED' },
+          { section: 'insightSnapshots', id: '2026-07', reason: 'PERMISSION_DENIED' },
+          { section: 'goals', id: 'g-1', reason: 'offline' },
+        ],
+      });
+
+      expect(notifications.info).toHaveBeenCalledWith('settings.backupRestoredPartial');
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.backupRestoredPartial',
+        { count: 8, skipped: 3, sections: 'insightSnapshots, goals' });
+    });
+
+    it('leaves a failed section out of the total and reports it as skipped', async () => {
+      await restoreWith({
+        transactions: 3, goals: 0,
+        skipped: [{ section: 'goals', id: 'g-1', reason: 'offline' }],
+      });
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith(
+        'settings.backupRestoredPartial',
+        jasmine.objectContaining({ count: 3, skipped: 1 }));
+    });
+
+    it('does nothing at all when the dialog is dismissed', async () => {
+      component.pendingBackup.set({
+        transactions: [], categories: [], exportDate: '2026-08-01', version: '1.4',
+      } as never);
+      component.backupContents.set(emptyContents as never);
+      mockDialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+
+      component.confirmImport();
+      await new Promise(resolve => setTimeout(resolve, 40));
+
+      expect(mockBackupRestore.restore).not.toHaveBeenCalled();
+    });
+  });
+
   describe('cancelImport', () => {
     it('should reset import state', () => {
       component.importedTransactions.set([{ description: 'test', amount: 100, date: new Date(), type: 'expense' }]);

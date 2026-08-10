@@ -77,7 +77,7 @@ function toTimestamp(value: unknown): Timestamp {
  * which is structurally why every non-transaction section was silently dropped
  * and why document ids could not survive: the shape had nowhere to put them.
  *
- * Two rules hold everywhere here:
+ * Three rules hold everywhere here:
  *
  * - **Write by the backup's own id.** Restoring the same file twice then
  *   overwrites the same documents instead of appending a second copy of every
@@ -87,6 +87,17 @@ function toTimestamp(value: unknown): Timestamp {
  *   require `userId == request.auth.uid` on create, and the service create
  *   paths already take it from auth — which is also what lets a backup be
  *   restored into a different account at all.
+ * - **Merge into the document already there, do not replace it.** A backup
+ *   cannot carry everything a live row holds: receipt images live in Storage
+ *   and are reachable only through the transaction that names them, so a
+ *   replacing write erased them and orphaned the bytes for good. Merging is
+ *   what keeps them. The cost is stated rather than hidden: a restore can no
+ *   longer *clear* a field the backup dropped, so a note or tag removed after
+ *   the file was taken survives restoring that file. Everything a restore
+ *   does write is either verbatim from the file (ids, rates, links, flags,
+ *   `createdAt`) or recomputed from the restored ledger (`spent`,
+ *   `linkedAmount`) — never stamped from today, so restoring the same file
+ *   twice lands the same documents both times.
  */
 @Injectable({ providedIn: 'root' })
 export class BackupRestoreService {
@@ -180,7 +191,10 @@ export class BackupRestoreService {
           color: category.color,
           type: category.type,
           ...(category.parentId ? { parentId: category.parentId } : {}),
-        }, { id: category.id });
+          // A deleted category is a soft delete, so the file records it as
+          // inactive and the restore has to keep it that way. Absent means a
+          // backup predating the flag; those rows were all live.
+        }, { id: category.id, isActive: category.isActive ?? true });
         summary.categories++;
       } catch (error) {
         skip('categories', category.id, error);
@@ -201,12 +215,23 @@ export class BackupRestoreService {
           ...(transaction.tags?.length ? { tags: transaction.tags } : {}),
           ...(transaction.period ? { period: transaction.period } : {}),
           ...(transaction.location ? { location: transaction.location } : {}),
+          // Restored: the field says which rule posted the row, and the same
+          // file restores those rules at their own ids, so it cannot dangle.
+          // Without it the detector reads engine-posted history as untagged
+          // charges and re-offers subscriptions already declared.
+          ...(transaction.recurringId ? { recurringId: transaction.recurringId } : {}),
         };
-        // Receipt fields are deliberately not restored: a backup holds no
-        // storage objects, so a restored receiptUrl would point at a dead (or
-        // another account's) object and inflate the image quota.
+        // Receipt fields are deliberately not *sourced* from the file: a backup
+        // holds no storage objects, so a restored receiptUrl would point at a
+        // dead (or another account's) object and inflate the image quota.
+        // `merge` is the other half of that — it is what stops this write
+        // erasing the receipts a live row already carries, which nothing could
+        // then reclaim. `createdAt` comes from the file so a pre-existing row
+        // is not restamped and a second restore is a genuine no-op.
         await this.transactionService.addTransaction(dto, {
           id: transaction.id,
+          merge: true,
+          createdAt: toTimestamp(transaction.createdAt),
           ...(typeof transaction.exchangeRate === 'number'
             && typeof transaction.amountInBaseCurrency === 'number'
             && transaction.baseCurrency
@@ -249,7 +274,7 @@ export class BackupRestoreService {
           startDate: toDate(budget.startDate),
           alertThreshold: budget.alertThreshold,
           ...(budget.endDate ? { endDate: toDate(budget.endDate) } : {}),
-        }, { id: budget.id });
+        }, { id: budget.id, isActive: budget.isActive ?? true });
         summary.budgets++;
       } catch (error) {
         skip('budgets', budget.id, error);
@@ -268,7 +293,10 @@ export class BackupRestoreService {
           frequency: rule.frequency,
           startDate: toDate(rule.startDate),
           ...(rule.endDate ? { endDate: toDate(rule.endDate) } : {}),
-        }, { id: rule.id });
+          // A paused rule must come back paused: catch-up runs unprompted on
+          // every dashboard load, so restoring one as active starts posting
+          // money the user stopped.
+        }, { id: rule.id, isActive: rule.isActive ?? true });
         summary.recurring++;
       } catch (error) {
         skip('recurring', rule.id, error);
@@ -287,7 +315,11 @@ export class BackupRestoreService {
           ...(goal.targetDate ? { targetDate: toDate(goal.targetDate) } : {}),
           ...(goal.items?.length ? { items: goal.items } : {}),
           ...(goal.note ? { note: goal.note } : {}),
-        }, { id: goal.id, contributedAmount: goal.contributedAmount ?? 0 });
+        }, {
+          id: goal.id,
+          contributedAmount: goal.contributedAmount ?? 0,
+          isActive: goal.isActive ?? true,
+        });
         summary.goals++;
       } catch (error) {
         skip('goals', goal.id, error);
@@ -319,6 +351,11 @@ export class BackupRestoreService {
 
     for (const snapshot of data.insightSnapshots ?? []) {
       try {
+        // Both outcomes count. A month left alone because the stored snapshot
+        // is already at or above the backup's revision is accounted for, not
+        // skipped — the skipped list is for rows the restore could not write,
+        // and reporting a no-op there produced a partial-restore warning for
+        // the one flow that is supposed to be idempotent.
         await this.insightSnapshots.restore({
           ...snapshot,
           generatedAt: toTimestamp(snapshot.generatedAt),

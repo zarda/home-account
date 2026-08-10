@@ -104,6 +104,11 @@ from the same pure functions the live tab uses. Model in
   detector. That is what keeps old history readable as the detectors evolve.
 - **Regeneration** is an explicit, confirmed user action that advances `revision`,
   so a rewrite is recorded rather than history being silently amended.
+- **A restore never advances `revision`.** It writes the backup's own, and only
+  when the stored month is behind it — a month regenerated since the backup was
+  taken keeps its newer version, and a month already at that revision is left
+  alone rather than reported as a failure. See
+  [backup-restore.md](backup-restore.md).
 
 ### Generation requires connectivity — a deliberate deviation from #117
 

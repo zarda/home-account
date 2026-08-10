@@ -70,10 +70,11 @@ describe('InsightSnapshotService', () => {
 
     firestoreService = jasmine.createSpyObj<FirestoreService>(
       'FirestoreService',
-      ['subscribeToCollection', 'setDocument', 'getCollection', 'deleteDocument',
-        'getTimestamp']);
+      ['subscribeToCollection', 'setDocument', 'getCollection', 'getDocument',
+        'deleteDocument', 'getTimestamp']);
     firestoreService.subscribeToCollection.and.returnValue(of([]));
     firestoreService.setDocument.and.returnValue(Promise.resolve());
+    firestoreService.getDocument.and.returnValue(Promise.resolve(null));
     firestoreService.getCollection.and.returnValue(Promise.resolve([]));
     firestoreService.deleteDocument.and.returnValue(Promise.resolve());
     firestoreService.getTimestamp.and.returnValue(
@@ -329,6 +330,85 @@ describe('InsightSnapshotService', () => {
 
     it('refuses a malformed month key', async () => {
       expect(await service.regenerate('2026-13')).toBeNull();
+      expect(firestoreService.setDocument).not.toHaveBeenCalled();
+    });
+  });
+
+  // The rules treat a non-merge write over an existing document as an update,
+  // and the update rule demands a strictly higher revision. Passing the file's
+  // revision through meant restoring the same backup twice failed every month
+  // — in the one flow whose contract is that the second run changes nothing.
+  describe('restore', () => {
+    it('writes the backup verbatim into a month that has none', async () => {
+      const outcome = await service.restore(stored('2026-06', { revision: 2 }));
+
+      expect(outcome).toBe('written');
+      const [path, written] = firestoreService.setDocument.calls.mostRecent().args;
+      expect(path).toBe('users/u1/insightSnapshots/2026-06');
+      expect((written as Record<string, unknown>)['revision']).toBe(2);
+      // Stamped from auth, never from the file: a backup can legitimately be
+      // restored into a different account.
+      expect((written as Record<string, unknown>)['userId']).toBe('u1');
+      // The id is the document key, not a field the rules will accept.
+      expect('id' in (written as Record<string, unknown>)).toBeFalse();
+    });
+
+    it('leaves a month already at the backup revision alone', async () => {
+      firestoreService.getDocument.and.resolveTo(stored('2026-06', { revision: 1 }));
+
+      const outcome = await service.restore(stored('2026-06', { revision: 1 }));
+
+      expect(outcome).toBe('alreadyCurrent');
+      expect(firestoreService.setDocument).not.toHaveBeenCalled();
+    });
+
+    // The user regenerated this month after the backup was taken, so the
+    // stored document holds newer detector output than the file does.
+    it('yields to a month regenerated past the backup', async () => {
+      firestoreService.getDocument.and.resolveTo(stored('2026-06', { revision: 5 }));
+
+      const outcome = await service.restore(stored('2026-06', { revision: 2 }));
+
+      expect(outcome).toBe('alreadyCurrent');
+      expect(firestoreService.setDocument).not.toHaveBeenCalled();
+    });
+
+    it('writes over an older stored month, keeping the createdAt already there', async () => {
+      firestoreService.getDocument.and.resolveTo(stored('2026-06', {
+        revision: 1,
+        createdAt: Timestamp.fromDate(new Date(2026, 5, 2)),
+      }));
+
+      const outcome = await service.restore(stored('2026-06', {
+        revision: 4,
+        createdAt: Timestamp.fromDate(new Date(2026, 6, 20)),
+      }));
+
+      expect(outcome).toBe('written');
+      const written = firestoreService.setDocument.calls.mostRecent()
+        .args[1] as Record<string, unknown>;
+      expect(written['revision']).toBe(4);
+      // Same rule regenerate follows: a rewrite records a new revision, not a
+      // new birth.
+      expect((written['createdAt'] as Timestamp).toDate().getMonth()).toBe(5);
+    });
+
+    // A backup written before the field existed. Revision 0 is unwritable —
+    // snapshotValid requires revision > 0 — so it would fail on create too.
+    it('reads a missing revision as the first one rather than an unwritable zero', async () => {
+      const old = stored('2026-06');
+      delete (old as Partial<InsightSnapshot>).revision;
+
+      expect(await service.restore(old)).toBe('written');
+      const written = firestoreService.setDocument.calls.mostRecent()
+        .args[1] as Record<string, unknown>;
+      expect(written['revision']).toBe(1);
+    });
+
+    it('refuses to write without a signed-in account', async () => {
+      userId.set(null);
+
+      await expectAsync(service.restore(stored('2026-06'))).toBeRejected();
       expect(firestoreService.setDocument).not.toHaveBeenCalled();
     });
   });
