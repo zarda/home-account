@@ -17,14 +17,14 @@ import {
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
-import { of } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service';
-import { dayKey } from '../utils/transaction-date.utils';
+import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import { prefillFromGroup } from '../utils/recurring-conversion.utils';
 import { StorableRecurringGroup } from '../../models';
 
@@ -225,6 +225,63 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
       );
     }
   }, 120000);
+
+  /**
+   * The horizon the Forecast tab asks for, against a real stored Timestamp.
+   *
+   * The unit spec proves which bound `getNextOccurrences` computes, but it
+   * compares a Date the test built to a Date the service built — the
+   * comparison that cannot fail. What decides whether an occurrence is inside
+   * the horizon in production is a `Timestamp` that went through Firestore and
+   * came back through `.toDate()`, which is what this seeds.
+   *
+   * The clock is not mocked here: `jasmine.clock()` replaces setTimeout, and
+   * the Firestore SDK needs real timers. Instead the occurrence is stamped
+   * late in the day, so it is later than "now" for every run except one inside
+   * the final minute of the day — which is exactly the band the raw
+   * millisecond window used to drop.
+   */
+  it('returns an occurrence late on the last day of the horizon', async () => {
+    const EDGE_ID = 'smoke-horizon-edge';
+    const HORIZON = 30;
+    const lastDay = addDays(startOfDay(new Date()), HORIZON);
+    const lateOnLastDay = new Date(
+      lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 23, 59, 0);
+    const pastHorizon = addDays(lateOnLastDay, 1);
+
+    const seed = (id: string, when: Date) =>
+      setDoc(doc(firestore, `users/${uid}/recurring/${id}`), {
+        userId: uid,
+        name: 'Edge rule',
+        type: 'expense',
+        amount: 12,
+        currency: 'USD',
+        categoryId: 'food_coffee',
+        description: 'Edge',
+        // Yearly, so exactly one occurrence can land inside a 30-day horizon
+        // and the boundary is the only thing under test.
+        frequency: { type: 'yearly', interval: 1 },
+        startDate: Timestamp.fromDate(when),
+        nextOccurrence: Timestamp.fromDate(when),
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+
+    try {
+      await seed(EDGE_ID, lateOnLastDay);
+      await seed(`${EDGE_ID}-past`, pastHorizon);
+
+      const occurrences = await firstValueFrom(service.getNextOccurrences(HORIZON));
+      const edges = occurrences.filter(o => o.recurringId.startsWith(EDGE_ID));
+
+      expect(edges.map(o => o.recurringId)).toEqual([EDGE_ID]);
+      expect(dayKey(edges[0].date)).toBe(dayKey(lateOnLastDay));
+    } finally {
+      await deleteDoc(doc(firestore, `users/${uid}/recurring/${EDGE_ID}`)).catch(() => undefined);
+      await deleteDoc(doc(firestore, `users/${uid}/recurring/${EDGE_ID}-past`)).catch(() => undefined);
+    }
+  }, 60000);
 
   it('is idempotent: a second catch-up adds no documents', async () => {
     await service.catchUpRecurringTransactions();
