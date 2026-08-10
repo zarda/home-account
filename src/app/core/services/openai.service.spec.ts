@@ -219,7 +219,10 @@ describe('OpenAIService', () => {
       expect(result.merchant).toBe('Cafe');
       expect(result.amount).toBe(12.5);
       expect(result.currency).toBe('EUR');
-      expect(result.date).toEqual(new Date('2024-02-03'));
+      // Built from local parts. Comparing against `new Date('2024-02-03')` ran
+      // the parse under test on both sides of the assertion, so it held in
+      // every zone while the receipt filed into the wrong month.
+      expect(result.date).toEqual(new Date(2024, 1, 3));
       expect(result.suggestedCategory).toBe('food');
       expect(result.confidence).toBe(0.85);
       expect(service.isProcessing()).toBeFalse();

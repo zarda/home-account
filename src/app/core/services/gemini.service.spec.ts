@@ -254,7 +254,8 @@ describe('GeminiService', () => {
       expect(result.merchant).toBe('Store A');
       expect(result.amount).toBe(42.5);
       expect(result.currency).toBe('EUR');
-      expect(result.date).toEqual(new Date('2024-03-01'));
+      // Local parts — a receipt dated the 1st means the 1st wherever it is read.
+      expect(result.date).toEqual(new Date(2024, 2, 1));
       expect(result.suggestedCategory).toBe('food_groceries');
       expect(result.confidence).toBe(0.85);
       expect(service.isProcessing()).toBeFalse();

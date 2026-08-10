@@ -155,7 +155,9 @@ describe('NativeReceiptService', () => {
       expect(transaction.currency).toBe('JPY');
       expect(transaction.notes).toBe('Latte\nCroissant');
       expect(transaction.suggestedCategoryId).toBe('food_coffee_&_drinks');
-      expect(transaction.date.getTime()).toBe(new Date('2026-01-15').getTime());
+      // Local parts, not `new Date('2026-01-15')` — that is the parse under
+      // test, so comparing against it holds in every zone and proves nothing.
+      expect(transaction.date.getTime()).toBe(new Date(2026, 0, 15).getTime());
     });
 
     it('should leave the category unset when the model picks an unknown name', async () => {
@@ -194,6 +196,56 @@ describe('NativeReceiptService', () => {
       const result = await service.processImage(imageFile());
 
       expect(result.transactions[0].currency).toBe('');
+    });
+
+    /**
+     * `AppleReceiptExtraction.date` is documented as `YYYY-MM-DD`, so the
+     * on-device path carries the same UTC-midnight hazard as the cloud one.
+     * It reached here by a different route — the #168 sweep never looked at
+     * the Vision/foundation-model pipeline at all.
+     */
+    describe('dates', () => {
+      const today = new Date(2026, 7, 20, 9, 30);
+
+      const extractionDated = (date: string) =>
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Cafe', date, amount: 5, currency: 'USD', category: '', details: '',
+        });
+
+      beforeEach(() => {
+        jasmine.clock().install();
+        jasmine.clock().mockDate(today);
+      });
+
+      afterEach(() => jasmine.clock().uninstall());
+
+      const dateFrom = async (raw: string): Promise<Date> => {
+        extractionDated(raw);
+        return (await service.processImage(imageFile())).transactions[0].date;
+      };
+
+      it('reads a date-only extraction as local midnight, not UTC midnight', async () => {
+        const date = await dateFrom('2026-08-01');
+
+        expect(date.getFullYear()).toBe(2026);
+        expect(date.getMonth()).toBe(7);
+        expect(date.getDate()).toBe(1);
+        expect(date.getHours()).toBe(0);
+      });
+
+      it('falls back to today for a well-shaped date that does not exist', async () => {
+        const date = await dateFrom('2026-02-31');
+
+        expect(date.getMonth()).toBe(today.getMonth());
+        expect(date.getDate()).toBe(today.getDate());
+      });
+
+      it('falls back to today when the model found no date', async () => {
+        const date = await dateFrom('');
+
+        expect(isNaN(date.getTime())).toBeFalse();
+        expect(date.getDate()).toBe(today.getDate());
+      });
     });
 
     it('should fall back to the regex parser when the model fails', async () => {

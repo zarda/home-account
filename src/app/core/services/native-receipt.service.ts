@@ -5,6 +5,7 @@ import { CategoryService } from './category.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { parseReceiptOcrText } from './receipt-text-parser';
 import { readCurrencyCode } from '../utils/receipt-extraction.utils';
+import { parseDateInput } from '../utils/transaction-date.utils';
 import { fileToBase64 } from '../utils/file.utils';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
 
@@ -102,13 +103,16 @@ export class NativeReceiptService {
       categories: categories.map(c => c.name),
     });
 
-    const parsedDate = extraction.date ? new Date(extraction.date) : new Date();
     const matchedCategory = extraction.category
       ? categories.find(c => c.name.toLowerCase() === extraction.category.toLowerCase())
       : undefined;
 
     return {
-      date: isNaN(parsedDate.getTime()) ? new Date() : parsedDate,
+      // The model answers `YYYY-MM-DD`, which the Date constructor reads as UTC
+      // midnight — the day before, west of UTC. parseDateInput anchors on the
+      // day-key shape and returns null rather than an Invalid Date, so the
+      // fallback covers an unreadable string too.
+      date: parseDateInput(extraction.date) ?? new Date(),
       description: extraction.merchant || 'Unknown Merchant',
       amount: Math.abs(extraction.amount) || 0,
       type: 'expense',

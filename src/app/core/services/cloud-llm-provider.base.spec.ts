@@ -259,6 +259,65 @@ describe('CloudLLMProviderBase', () => {
 
       expect(receipt.suggestedCategory).toBe(FALLBACK_CATEGORY_ID);
     });
+
+    /**
+     * The model answers with a date-only string — the receiptParse prompt pins
+     * the format — and `new Date('2026-08-01')` is UTC midnight by language
+     * specification. West of UTC that instant is 31 July, so the scan filed
+     * into the previous month's budget, comparison and snapshot.
+     *
+     * Every assertion here reads local parts. Comparing against a Date built
+     * the same broken way, as the provider specs used to, holds in every zone
+     * and proves nothing.
+     */
+    describe('dates', () => {
+      const today = new Date(2026, 7, 20, 9, 30);
+
+      beforeEach(() => {
+        jasmine.clock().install();
+        jasmine.clock().mockDate(today);
+      });
+
+      afterEach(() => jasmine.clock().uninstall());
+
+      const dateFrom = async (json: string): Promise<Date> => {
+        provider.response = { text: json, truncated: false };
+        return (await provider.parseReceipt('img')).date;
+      };
+
+      it('reads a date-only reply as local midnight, not UTC midnight', async () => {
+        const date = await dateFrom('{"merchant":"Cafe","amount":4,"date":"2026-08-01"}');
+
+        expect(date.getFullYear()).toBe(2026);
+        expect(date.getMonth()).toBe(7);
+        expect(date.getDate()).toBe(1);
+        expect(date.getHours()).toBe(0);
+      });
+
+      it('falls back to today for a well-shaped date that does not exist', async () => {
+        // new Date('2026-02-31') is 3 March in V8. A date the receipt never
+        // named is better reported than quietly moved.
+        const date = await dateFrom('{"merchant":"Cafe","amount":4,"date":"2026-02-31"}');
+
+        expect(date.getMonth()).toBe(today.getMonth());
+        expect(date.getDate()).toBe(today.getDate());
+      });
+
+      it('falls back to today for a shape it cannot read at all', async () => {
+        // An Invalid Date is truthy, so the form's `|| new Date()` guard never
+        // replaced it and the datepicker rendered blank with no error.
+        const date = await dateFrom('{"merchant":"Cafe","amount":4,"date":"31/12/2024"}');
+
+        expect(isNaN(date.getTime())).toBeFalse();
+        expect(date.getDate()).toBe(today.getDate());
+      });
+
+      it('falls back to today when the model names no date', async () => {
+        const date = await dateFrom('{"merchant":"Cafe","amount":4}');
+
+        expect(date.getDate()).toBe(today.getDate());
+      });
+    });
   });
 
   describe('extractTransactionsFromImage', () => {
