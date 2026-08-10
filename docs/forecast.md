@@ -35,6 +35,15 @@ that is what the chart shows, and the on-page note says so.
   arithmetic, so DST transitions neither skip nor duplicate a tick. The
   series builder (`forecast-series.utils.ts`) is covered in both
   zone-shifted `test:dates` runs.
+- The occurrence query closes on the **last millisecond of the final day
+  the chart draws** — `endOfDay(addDays(startOfDay(now), horizonDays))`,
+  the ADR 0026 rule — so the supplier and the builder agree on where the
+  horizon ends. While the query closed `N × 24h` from the current instant
+  instead, the two disagreed from the current time of day to the end of
+  that final day: an occurrence stamped later in the day than "now" was
+  absent, the final tick rendered flat, and `projectedNet` was short by
+  that rule's amount until the page was reloaded later in the day. Across
+  a DST fall-back the whole final day dropped (#267).
 
 ## Multi-currency
 
