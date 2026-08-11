@@ -1028,6 +1028,76 @@ describe('AIImportService', () => {
       expect(stats.totalExpenses).toBe(40);
     });
 
+    describe('budget recalculation', () => {
+      it('recalculates each distinct expense category once, after the loop', async () => {
+        const order: string[] = [];
+        transactionService.addTransaction.and.callFake(async () => {
+          order.push('save');
+          return 'txn-id';
+        });
+        budgetService.recalculateBudgetsForCategory.and.callFake(async (categoryId: string) => {
+          order.push(`recalc:${categoryId}`);
+        });
+
+        await service.confirmImport(
+          [
+            selected({ id: 'a', suggestedCategoryId: 'food' }),
+            selected({ id: 'b', suggestedCategoryId: 'food' }),
+            selected({ id: 'c', suggestedCategoryId: 'transport' }),
+            selected({ id: 'd', type: 'income', suggestedCategoryId: 'salary' })
+          ],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        // Every row defers the recalculation to the deduped pass below.
+        for (const args of transactionService.addTransaction.calls.allArgs()) {
+          expect(args[1]).toEqual({ skipBudgetRecalc: true });
+        }
+        // One recalculation per distinct expense category, after every save.
+        expect(order).toEqual(['save', 'save', 'save', 'save', 'recalc:food', 'recalc:transport']);
+      });
+
+      it('does not recalculate a category whose only row failed to save', async () => {
+        transactionService.addTransaction.and.returnValues(
+          Promise.reject(new Error('save failed')),
+          Promise.resolve('txn-2')
+        );
+
+        await service.confirmImport(
+          [
+            selected({ id: 'a', suggestedCategoryId: 'doomed' }),
+            selected({ id: 'b', suggestedCategoryId: 'food' })
+          ],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(budgetService.recalculateBudgetsForCategory.calls.allArgs()).toEqual([['food']]);
+      });
+
+      it('recalculates nothing for an income-only import', async () => {
+        await service.confirmImport(
+          [selected({ id: 'a', type: 'income' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(budgetService.recalculateBudgetsForCategory).not.toHaveBeenCalled();
+      });
+
+      it('completes the import even when a recalculation fails', async () => {
+        // The rows are saved; a lagging spent counter is recovered by the
+        // next recalculation, so it must not stamp the import as failed.
+        spyOn(console, 'warn');
+        budgetService.recalculateBudgetsForCategory.and.rejectWith(new Error('offline'));
+
+        const history = await service.confirmImport(
+          [selected()], 'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(history).toEqual(completedHistory);
+        expect(importHistoryService.failImport).not.toHaveBeenCalled();
+      });
+    });
+
     it('should skip unselected transactions and count skipped duplicates', async () => {
       await service.confirmImport(
         [selected({ id: 'a' }), selected({ id: 'b', selected: false, isDuplicate: true })],

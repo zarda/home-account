@@ -517,6 +517,15 @@ describe('BudgetService', () => {
       );
     });
 
+    it('reads the expense rows one-shot, never through the live query', async () => {
+      // The sum this method persists must not come from a live listener's
+      // first emission — a warm cache can be missing another device's rows.
+      await service.recalculateBudgetSpent('budget1');
+
+      expect(mockTransactionService.getExpensesInRangeOnce).toHaveBeenCalledTimes(1);
+      expect(mockTransactionService.getExpensesInRange).not.toHaveBeenCalled();
+    });
+
     it('should never run the signal-mutating getTransactions query', async () => {
       // Regression: recalculation used to run getTransactions, whose map()
       // overwrites the shared transactions signal the dashboard summary
@@ -782,6 +791,48 @@ describe('BudgetService', () => {
 
       expect(mockFirestoreService.getDocument).toHaveBeenCalledWith('users/user123/budgets/budget1');
       expect(mockTransactionService.getExpensesInRangeOnce).toHaveBeenCalledTimes(1);
+    });
+
+    it('enumerates the collection rather than the signal', async () => {
+      // The signal is only populated by a dashboard or budgets-page
+      // subscription. A session that posts a transaction without mounting
+      // either (share-target import, a reload on /transactions) used to
+      // recalculate against [] and silently skip the spent update.
+      const currencyService = TestBed.inject(CurrencyService);
+      spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
+      spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
+      mockFirestoreService.getCollection.and.resolveTo([mockBudgets[0]]);
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(mockBudgets[0]));
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+      mockTransactionService.getExpensesInRangeOnce.and.resolveTo([
+        { amount: 40, currency: 'USD', amountInBaseCurrency: 40 } as Transaction
+      ]);
+      service.budgets.set([]);
+
+      await service.recalculateBudgetsForCategory('cat1');
+
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(
+        'users/user123/budgets',
+        {
+          where: [
+            { field: 'categoryId', op: '==', value: 'cat1' },
+            { field: 'isActive', op: '==', value: true }
+          ]
+        }
+      );
+      // The spent figure is still written, signal or no signal.
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+        'users/user123/budgets/budget1',
+        { spent: 40, spentPeriod: jasmine.any(String) }
+      );
+    });
+
+    it('returns without reading when signed out', async () => {
+      (mockAuthService.userId as jasmine.Spy).and.returnValue(null);
+
+      await service.recalculateBudgetsForCategory('cat1');
+
+      expect(mockFirestoreService.getCollection).not.toHaveBeenCalled();
     });
   });
 

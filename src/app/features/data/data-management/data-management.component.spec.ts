@@ -24,6 +24,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { AccountDeletionService } from '../../../core/services/account-deletion.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { Firestore } from '@angular/fire/firestore';
+import { Transaction } from '../../../models';
 
 describe('DataManagementComponent', () => {
   let component: DataManagementComponent;
@@ -209,6 +210,28 @@ describe('DataManagementComponent', () => {
       component.exportTransactionsCSV();
       tick();
 
+      expect(notifications.success).toHaveBeenCalledWith('settings.transactionsExported');
+    }));
+
+    it('writes the one-shot read, not the window the signal holds', fakeAsync(() => {
+      const full = [{ id: 't1' }, { id: 't2' }, { id: 't3' }] as Transaction[];
+      mockTransactionService.transactions.set([full[0]]);
+      mockTransactionService.exportAll.and.resolveTo(full);
+
+      component.exportTransactionsCSV();
+      tick();
+
+      expect(mockExportService.exportToCSV).toHaveBeenCalledWith(full);
+    }));
+
+    it('shows the error notification when the server read fails', fakeAsync(() => {
+      mockTransactionService.exportAll.and.rejectWith(new Error('unavailable'));
+
+      component.exportTransactionsCSV();
+      tick();
+
+      expect(mockExportService.exportToCSV).not.toHaveBeenCalled();
+      expect(notifications.error).toHaveBeenCalledWith('settings.transactionsExportFailed');
     }));
   });
 
@@ -452,6 +475,35 @@ describe('DataManagementComponent', () => {
       expect(result).toBeFalse();
       expect(notifications.success).not.toHaveBeenCalled();
     }));
+
+    it('writes the one-shot read, not the window the signal holds', fakeAsync(() => {
+      // The signal holds one browsed row; the account holds three. The blob
+      // must carry what the collection read returned, never the signal.
+      const full = [{ id: 't1' }, { id: 't2' }, { id: 't3' }] as Transaction[];
+      mockTransactionService.transactions.set([full[0]]);
+      mockTransactionService.exportAll.and.resolveTo(full);
+
+      component.exportFullBackup();
+      tick();
+
+      const payload = mockExportService.exportToJSON.calls.mostRecent()
+        .args[0] as { transactions: Transaction[] };
+      expect(payload.transactions).toEqual(full);
+    }));
+
+    it('resolves false and notifies when the transactions read fails', fakeAsync(() => {
+      // Offline, the server-only read rejects rather than serving the cache;
+      // a backup that cannot see the whole account must not report success.
+      mockTransactionService.exportAll.and.rejectWith(new Error('unavailable'));
+
+      let result: boolean | undefined;
+      component.exportFullBackup().then(r => (result = r));
+      tick();
+
+      expect(result).toBeFalse();
+      expect(mockExportService.exportToJSON).not.toHaveBeenCalled();
+      expect(notifications.error).toHaveBeenCalledWith('settings.backupExportFailed');
+    }));
   });
 
   describe('deleteAccount', () => {
@@ -497,6 +549,21 @@ describe('DataManagementComponent', () => {
     it('stops when the chosen backup export is cancelled', fakeAsync(() => {
       const redirect = redirectSpy();
       mockExportService.downloadBlobWithPicker.and.resolveTo(false);
+      stubDialogs(true);
+
+      component.deleteAccount();
+      tick();
+
+      expect(mockDialog.open).toHaveBeenCalledTimes(1);
+      expect(mockAccountDeletion.deleteAccount).not.toHaveBeenCalled();
+      expect(redirect).not.toHaveBeenCalled();
+    }));
+
+    it('stops when the chosen backup export fails to read the account', fakeAsync(() => {
+      // The boolean the export resolves is the only gate on the cascade: a
+      // failed read must hold it, not fall through to the confirmations.
+      const redirect = redirectSpy();
+      mockTransactionService.exportAll.and.rejectWith(new Error('unavailable'));
       stubDialogs(true);
 
       component.deleteAccount();

@@ -35,6 +35,8 @@ export class MockFirestoreService {
   // Spies for verifying calls
   private _getDocumentSpy = new SimpleSpy();
   private _getCollectionSpy = new SimpleSpy();
+  private _getCollectionFromServerSpy = new SimpleSpy();
+  private _subscribeToCollectionSpy = new SimpleSpy();
   private _getPageSpy = new SimpleSpy();
   private _addDocumentSpy = new SimpleSpy();
   private _setDocumentSpy = new SimpleSpy();
@@ -46,6 +48,8 @@ export class MockFirestoreService {
 
   get getDocumentSpy() { return this._getDocumentSpy; }
   get getCollectionSpy() { return this._getCollectionSpy; }
+  get getCollectionFromServerSpy() { return this._getCollectionFromServerSpy; }
+  get subscribeToCollectionSpy() { return this._subscribeToCollectionSpy; }
   get getPageSpy() { return this._getPageSpy; }
   get addDocumentSpy() { return this._addDocumentSpy; }
   get setDocumentSpy() { return this._setDocumentSpy; }
@@ -80,6 +84,8 @@ export class MockFirestoreService {
     this.mockCollections.clear();
     this._getDocumentSpy.reset();
     this._getCollectionSpy.reset();
+    this._getCollectionFromServerSpy.reset();
+    this._subscribeToCollectionSpy.reset();
     this._getPageSpy.reset();
     this._addDocumentSpy.reset();
     this._setDocumentSpy.reset();
@@ -98,6 +104,13 @@ export class MockFirestoreService {
 
   async getCollection<T>(collectionPath: string, options?: unknown): Promise<T[]> {
     this._getCollectionSpy.call(collectionPath, options);
+    return (this.mockCollections.get(collectionPath) as T[]) ?? [];
+  }
+
+  // Serves from the same store as getCollection — the split spy is what
+  // matters, so specs can assert a read went through the server-only variant.
+  async getCollectionFromServer<T>(collectionPath: string, options?: unknown): Promise<T[]> {
+    this._getCollectionFromServerSpy.call(collectionPath, options);
     return (this.mockCollections.get(collectionPath) as T[]) ?? [];
   }
 
@@ -161,7 +174,7 @@ export class MockFirestoreService {
   }
 
   subscribeToCollection<T>(collectionPath: string, options?: unknown): Observable<T[]> {
-    this._getCollectionSpy.call(collectionPath, options);
+    this._subscribeToCollectionSpy.call(collectionPath, options);
     const data = (this.mockCollections.get(collectionPath) as T[]) ?? [];
     return of(data);
   }
