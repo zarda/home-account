@@ -31,6 +31,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { AccountDeletionService } from '../../../core/services/account-deletion.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { baseCurrencyOf } from '../../../models';
+import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
@@ -132,7 +133,8 @@ export class DataManagementComponent {
         version: BACKUP_SCHEMA_VERSION
       });
 
-      const date = new Date().toISOString().split('T')[0];
+      // The local day, so the filename names the day the user is having.
+      const date = dayKey(new Date());
       const success = await this.exportService.downloadBlobWithPicker(
         blob,
         `home-account-backup-${date}.json`
@@ -159,7 +161,7 @@ export class DataManagementComponent {
       const transactions = await firstValueFrom(this.transactionService.getAllTransactions());
       const blob = this.exportService.exportToCSV(transactions);
 
-      const date = new Date().toISOString().split('T')[0];
+      const date = dayKey(new Date());
       const success = await this.exportService.downloadBlobWithPicker(
         blob,
         `transactions-${date}.csv`

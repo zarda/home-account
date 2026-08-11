@@ -35,7 +35,7 @@ import {
   readFieldConfidence,
   readReceiptTotal,
 } from '../utils/receipt-extraction.utils';
-import { dayKey } from '../utils/transaction-date.utils';
+import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import {
   AIRequestOptions,
   CSVColumnMapping,
@@ -234,7 +234,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         merchant: parsed.merchant || 'Unknown',
         amount: Number(parsed.amount) || 0,
         currency: readCurrencyCode(parsed.currency),
-        date: parsed.date ? new Date(parsed.date) : new Date(),
+        date: parseDateInput(parsed.date) ?? new Date(),
         items: parsed.items || [],
         receiptDetails: parsed.receiptDetails,
         suggestedCategory: this.mapCategoryNameToId(parsed.suggestedCategory),

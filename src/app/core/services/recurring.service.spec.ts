@@ -13,7 +13,7 @@ import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { findSerializationIssues } from '../utils/firestore-value.utils';
-import { dayKey } from '../utils/transaction-date.utils';
+import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -255,6 +255,36 @@ describe('RecurringService', () => {
 
       const upcoming = service.upcomingRecurring();
       expect(upcoming.map(r => r.id)).toEqual(['soonest', 'soon']);
+    });
+
+    /**
+     * Same raw-millisecond window as getNextOccurrences had. This one has no
+     * consumer outside its specs today, so it was latent rather than visible —
+     * but it is the shape the next surface would have copied.
+     */
+    it('upcomingRecurring should include a rule due later in the day on day 30', () => {
+      jasmine.clock().install();
+      try {
+        const now = new Date(2026, 7, 10, 10, 0);
+        jasmine.clock().mockDate(now);
+        const lastDay = addDays(startOfDay(now), 30);
+
+        service.recurringTransactions.set([
+          createRecurring({
+            id: 'edge',
+            nextOccurrence: Timestamp.fromDate(new Date(
+              lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 15, 0))
+          }),
+          createRecurring({
+            id: 'past-edge',
+            nextOccurrence: Timestamp.fromDate(addDays(lastDay, 1))
+          })
+        ]);
+
+        expect(service.upcomingRecurring().map(r => r.id)).toEqual(['edge']);
+      } finally {
+        jasmine.clock().uninstall();
+      }
     });
   });
 
@@ -1243,6 +1273,93 @@ describe('RecurringService', () => {
           expect(occ.date.getTime()).toBeLessThanOrEqual(endDate.getTime());
         }
         done();
+      });
+    });
+
+    /**
+     * The window used to close `days × 24h` from the current instant, while the
+     * chart draws `days` whole calendar days. Everything from the current time
+     * of day to the end of the final day fell in the gap, so an occurrence
+     * stamped later in the day than "now" was dropped: the last tick rendered
+     * flat and projectedNet understated the horizon by that rule's amount.
+     * Open the same page after that time of day and it reappeared.
+     *
+     * Non-midnight stamps are ordinary. The recurring form defaults its start
+     * date to the current instant, and resumeRecurring recomputes the pointer
+     * from `new Date()`, so a rule resumed at 15:00 carries 15:00 forever.
+     *
+     * None of the specs below this could see it: `occurrencesFrom` pins today
+     * to midnight, the one moment of the day at which a raw-millisecond window
+     * and a whole-day window coincide.
+     */
+    describe('horizon boundary', () => {
+      const HORIZON = 30;
+
+      /** One yearly rule, so only the boundary decides what comes back. */
+      const occurrencesAt = (now: Date, occurrence: Date, days = HORIZON): Date[] => {
+        jasmine.clock().install();
+        try {
+          jasmine.clock().mockDate(now);
+          mockFirestoreService.subscribeToCollection.and.returnValue(of([
+            createRecurring({
+              id: 'boundary',
+              frequency: { type: 'yearly', interval: 1 },
+              startDate: Timestamp.fromDate(occurrence),
+              nextOccurrence: Timestamp.fromDate(occurrence)
+            })
+          ]));
+
+          let dates: Date[] = [];
+          service.getNextOccurrences(days).subscribe(o => {
+            dates = o.map(occ => occ.date);
+          });
+          return dates;
+        } finally {
+          jasmine.clock().uninstall();
+        }
+      };
+
+      it('returns an occurrence later in the day than now on the final charted day', () => {
+        const now = new Date(2026, 7, 10, 10, 0);
+        const lastDay = addDays(startOfDay(now), HORIZON);
+        const occurrence = new Date(
+          lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 15, 0);
+
+        expect(occurrencesAt(now, occurrence).map(dayKey)).toEqual([dayKey(occurrence)]);
+      });
+
+      it('returns the same occurrences whatever time of day the tab is opened', () => {
+        const day = new Date(2026, 7, 10);
+        const lastDay = addDays(day, HORIZON);
+        const occurrence = new Date(
+          lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 15, 0);
+
+        const morning = occurrencesAt(new Date(2026, 7, 10, 10, 0), occurrence).map(dayKey);
+        const afternoon = occurrencesAt(new Date(2026, 7, 10, 16, 0), occurrence).map(dayKey);
+
+        expect(morning).toEqual(afternoon);
+      });
+
+      /**
+       * Worse variant, and it needs no non-midnight stamp: across a DST
+       * fall-back `now + N × 24h` lands an hour earlier in local wall clock
+       * than N calendar days later, so opening the tab between 00:00 and 01:00
+       * excluded the entire final day. Asia/Tokyo has no DST, so there the
+       * same assertion is simply the ordinary midnight case — true in both
+       * zones, only reachable through the fall-back in America/New_York.
+       */
+      it('returns a midnight occurrence on the final day when the horizon spans a DST change', () => {
+        const now = new Date(2026, 9, 20, 0, 30);
+        const occurrence = addDays(startOfDay(now), HORIZON);
+
+        expect(occurrencesAt(now, occurrence).map(dayKey)).toEqual([dayKey(occurrence)]);
+      });
+
+      it('still excludes an occurrence one calendar day past the horizon', () => {
+        const now = new Date(2026, 7, 10, 10, 0);
+        const occurrence = addDays(startOfDay(now), HORIZON + 1);
+
+        expect(occurrencesAt(now, occurrence)).toEqual([]);
       });
     });
 

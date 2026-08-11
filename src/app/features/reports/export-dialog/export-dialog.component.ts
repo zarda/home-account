@@ -13,6 +13,7 @@ import { ExportService, ReportData } from '../../../core/services/export.service
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
+import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 
@@ -94,7 +95,7 @@ export class ExportDialogComponent {
 
     try {
       const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
+      const dateStr = dayKey(now);
 
       let success = false;
       switch (this.selectedFormat) {

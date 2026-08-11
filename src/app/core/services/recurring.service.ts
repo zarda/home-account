@@ -6,7 +6,7 @@ import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
-import { dateAtClampedDay } from '../utils/transaction-date.utils';
+import { addDays, dateAtClampedDay, endOfDay, startOfDay } from '../utils/transaction-date.utils';
 import {
   RecurringTransaction,
   RecurringFrequency,
@@ -74,7 +74,7 @@ export class RecurringService {
 
   upcomingRecurring = computed(() => {
     const now = new Date();
-    const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysLater = endOfDay(addDays(startOfDay(now), 30));
 
     return this.activeRecurring()
       .filter(r => {
@@ -538,7 +538,12 @@ export class RecurringService {
     return this.getRecurring().pipe(
       map(recurring => {
         const now = new Date();
-        const endDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+        // Close on the last millisecond of the final day the chart draws, not
+        // `days × 24h` from this instant. The series builder walks whole local
+        // calendar days, so a window measured in raw milliseconds disagreed
+        // with it from the current time of day to the end of that final day —
+        // and across a DST fall-back it fell short of the day entirely.
+        const endDate = endOfDay(addDays(startOfDay(now), days));
         const occurrences: RecurringOccurrence[] = [];
 
         for (const r of recurring) {

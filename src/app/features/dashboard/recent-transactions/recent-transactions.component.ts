@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { Timestamp } from '@angular/fire/firestore';
 import { Transaction, Category } from '../../../models';
+import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
@@ -42,11 +43,9 @@ export class RecentTransactionsComponent {
     const date = transaction.date instanceof Timestamp
       ? transaction.date.toDate()
       : new Date(transaction.date as unknown as Date);
-    // Format as YYYY-MM-DD using local timezone (not UTC)
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const dateStr = `${year}-${month}-${day}`;
-    this.router.navigate(['/transactions'], { queryParams: { date: dateStr } });
+    // A local day key, which the transactions page reads back with
+    // parseDayKey. The two are exact inverses; a private copy of either half
+    // is how the round trip came to write local and read UTC.
+    this.router.navigate(['/transactions'], { queryParams: { date: dayKey(date) } });
   }
 }

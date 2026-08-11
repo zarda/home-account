@@ -11,6 +11,7 @@ import { CategoryHelperService } from '../../../core/services/category-helper.se
 import { TranslationService } from '../../../core/services/translation.service';
 import { Transaction } from '../../../models';
 import { createUser } from '../../../core/services/testing';
+import { parseDayKey } from '../../../core/utils/transaction-date.utils';
 
 describe('RecentTransactionsComponent', () => {
   let component: RecentTransactionsComponent;
@@ -95,5 +96,27 @@ describe('RecentTransactionsComponent', () => {
     const txn = { date: new Date(2026, 0, 5) } as unknown as Transaction;
     component.onTransactionClick(txn);
     expect(navSpy).toHaveBeenCalledWith(['/transactions'], { queryParams: { date: '2026-01-05' } });
+  });
+
+  /**
+   * The two halves of the round trip are exact inverses, and only asserting
+   * them together catches a drift in either. This side always wrote a local
+   * day; the transactions page read it back with `new Date()`, which is UTC,
+   * so clicking an evening row west of UTC pre-filtered to the following day.
+   */
+  it('emits a day the transactions page parses back to the same local day', () => {
+    const navSpy = spyOn(router, 'navigate');
+
+    for (const local of [new Date(2026, 5, 15), new Date(2026, 7, 31, 20, 30)]) {
+      component.onTransactionClick({ date: Timestamp.fromDate(local) } as Transaction);
+
+      const emitted = navSpy.calls.mostRecent().args[1]!.queryParams!['date'] as string;
+      const parsed = parseDayKey(emitted);
+
+      expect(parsed).not.toBeNull();
+      expect(parsed!.getFullYear()).toBe(local.getFullYear());
+      expect(parsed!.getMonth()).toBe(local.getMonth());
+      expect(parsed!.getDate()).toBe(local.getDate());
+    }
   });
 });

@@ -23,6 +23,23 @@ The consequence to keep in mind: day-of-week and day-of-month are a function of
 the runtime's IANA zone. Anything that *persists* one of those results records
 the zone alongside it (the insight snapshots do).
 
+### Anything the app did not compute is untrusted input
+
+A model's JSON, an on-device OCR extraction, a CSV cell, a queued row, a
+restored backup, a query param — none of these is a date until `parseDateInput`
+or `parseDayKey` has read it, and both answer `null` rather than an Invalid
+Date. That matters because an Invalid Date is *truthy*: the receipt form's
+`primary.date || new Date()` fallback never fired, and the datepicker rendered
+blank with no error to explain it (#248).
+
+The receipt prompts pin the reply at `YYYY-MM-DD`, so this is the ordinary
+path through `parseReceipt`, not an edge case.
+
+A day that leaves the app and comes back — the transactions page's `date` query
+param is the one that exists — is written with `dayKey` and read with
+`parseDayKey`. They are exact inverses; a private copy of either half is how
+that round trip came to write local and read UTC.
+
 ## Keys
 
 | Helper | Shape | Notes |
@@ -115,16 +132,58 @@ consecutive periods cannot overlap or leave a gap.
   emulator, where a real `Timestamp` comparison decides what is inside a
   period. Seeded on the first millisecond of a month, the last, and one
   millisecond past the end.
+- `recurring.service.smoke.spec.ts` — the forecast horizon against a stored
+  `Timestamp`, seeded late on the last day the chart draws.
+- The `test:dates` include list is the enumeration of specs whose assertions
+  depend on the zone. Anything asserting a calendar day or a window bound
+  belongs in it; a spec left out of it is only ever run at one offset.
 
-Two greps should stay empty outside this module and its specs:
+### The audit greps
+
+Reviewer instructions, not automation — there is no `dates:check` script and no
+lint rule (see *Known gaps*). Run them when touching anything date-shaped.
+
+These should return **nothing in production code** outside this module. Every
+one of them has caught a real bug, which is why it is listed rather than
+described:
 
 ```
 grep -rn "23, 59, 59\|setHours(23" src/app --include='*.ts'
 grep -rn "getMonth() + 1, 0" src/app --include='*.ts'
+grep -rn "toISOString().split" src/app --include='*.ts'
+grep -rEn "getTime\(\) [+-] .*24 \* 60 \* 60 \* 1000" src/app --include='*.ts'
 ```
+
+Specs match the first two freely — an expectation literal is not arithmetic, and
+about fifteen suites build their bounds that way on purpose.
+
+This last one cannot be zero, because cloning a `Date` looks the same as parsing
+a string. Read every hit:
+
+```
+grep -rEn "new Date\([a-zA-Z0-9_$]+\.(date|startDate|endDate)\b" src/app --include='*.ts'
+```
+
+Allowed today, and why:
+
+| Hit | Why it is fine |
+|---|---|
+| `recent-transactions.component.ts` | cloning a value already typed as a `Date`, not parsing a string |
+| `insight-card.component.ts` | the legacy-ISO-instant fallback, reached only after `parseDayKey` returns null |
+
+Anything else is the #174 shape and should go through `parseDateInput`.
 
 ## Known gaps
 
+- **Nothing runs the audit greps.** They are reviewer instructions. There is no
+  `dates:check` script beside `check-i18n.mjs` and friends, and `eslint.config.js`
+  has no date rule, so a new instance of any shape above ships green and is
+  found by reading. Two sweeps' worth of stragglers (#248, #266, #267) is what
+  that costs; see ADR 0032.
+- **The smoke suite runs at one offset.** `npm run smoke` is invoked with no
+  `TZ` in CI, although comments in `transaction.service.smoke.spec.ts` and
+  `period-window.smoke.spec.ts` describe it as running under a shifted zone. The
+  bounds those files assert are the ones a zone would move.
 - **Weekly budgets label with an ISO week but window on their own weekday.**
   `budgetPeriodWindow('weekly', …)` runs from the anchor's day of the week,
   while `budgetPeriodKey(…, 'weekly')` is an ISO week number, which always

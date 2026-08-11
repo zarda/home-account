@@ -65,6 +65,20 @@ effective level via `effectiveRagLevel()` in `src/app/models/user.model.ts` —
 never read either field directly. Tier contents live in `RAG_TIER_CONFIGS` in
 the same file.
 
+## Date formatting
+
+Dates in the grounding block — the "Top expenses" lines are the only ones that
+carry a transaction's own day — are **local day keys**, built with `dayKey` from
+the same local parts the transaction list displays. So a date the model cites
+back in its prose can be checked against the row it came from.
+
+Rendering them with `toISOString` handed the model UTC days instead: the day
+before for an evening row west of UTC, the day after for a midnight row east of
+it. The prompt asks the model to cite these specifics, so the shifted day was
+repeated to the user as advice — sometimes naming a date outside the period the
+summary claimed to cover — and cached for an hour (#266). See
+[dates.md](dates.md).
+
 ## Amount formatting
 
 All amounts placed in AI prompts (grounding block, totals, budgets) are

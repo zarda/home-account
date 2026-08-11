@@ -12,6 +12,7 @@ import { CategoryService } from '../../core/services/category.service';
 import { DeviceService } from '../../core/services/device.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, TransactionFilters, Category } from '../../models';
+import { parseDayKey } from '../../core/utils/transaction-date.utils';
 import { TransactionListComponent } from './transaction-list/transaction-list.component';
 import { TransactionFiltersComponent } from './transaction-filters/transaction-filters.component';
 import { InsightChipsComponent } from './insight-chips/insight-chips.component';
@@ -154,10 +155,13 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     }
 
     // Check for date query param to pre-filter
+    // The producer writes a local day key; new Date() would read it back as
+    // UTC, pre-filtering to the neighbouring day west of UTC. parseDayKey is
+    // the exact inverse, and returns null rather than an Invalid Date.
     const dateParam = this.route.snapshot.queryParamMap.get('date');
     if (dateParam) {
-      const date = new Date(dateParam);
-      if (!isNaN(date.getTime())) {
+      const date = parseDayKey(dateParam);
+      if (date) {
         this.initialDate.set(date);
       }
     }
