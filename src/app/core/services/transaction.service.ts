@@ -6,7 +6,7 @@ import {
   Transaction as FirestoreTransaction
 } from '@angular/fire/firestore';
 import { Observable, map, of, tap } from 'rxjs';
-import { FirestoreService } from './firestore.service';
+import { FirestoreService, QueryOptions } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { StorageService, MAX_RECEIPTS_PER_TRANSACTION } from './storage.service';
@@ -1321,7 +1321,35 @@ export class TransactionService {
     const userId = this.authService.userId();
     if (!userId) return of([]);
 
-    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      this.expensesInRangeOptions(start, end, categoryId)
+    ).pipe(
+      map(transactions => transactions.filter(t => t.type === 'expense'))
+    );
+  }
+
+  /**
+   * One-shot variant of getExpensesInRange, for figures that get persisted.
+   * The budget-spent recalculation stores what this returns; taking a live
+   * listener's first emission there meant a warm cache could hand back a
+   * subset (rows written on another device sync in later) and the short sum
+   * would be written as the budget's spent.
+   */
+  async getExpensesInRangeOnce(start: Date, end: Date, categoryId?: string): Promise<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+
+    const transactions = await this.firestoreService.getCollection<Transaction>(
+      this.userTransactionsPath,
+      this.expensesInRangeOptions(start, end, categoryId)
+    );
+    return transactions.filter(t => t.type === 'expense');
+  }
+
+  // Shared by the live and one-shot variants so the two queries cannot drift.
+  private expensesInRangeOptions(start: Date, end: Date, categoryId?: string): QueryOptions {
+    const options: QueryOptions = {
       orderBy: [{ field: 'date', direction: 'desc' }],
       where: [
         { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
@@ -1333,12 +1361,7 @@ export class TransactionService {
       options.where!.push({ field: 'categoryId', op: '==', value: categoryId });
     }
 
-    return this.firestoreService.subscribeToCollection<Transaction>(
-      this.userTransactionsPath,
-      options
-    ).pipe(
-      map(transactions => transactions.filter(t => t.type === 'expense'))
-    );
+    return options;
   }
 
   /**

@@ -1,6 +1,6 @@
 import { Injectable, effect, inject, signal, computed } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
-import { Observable, map, of, firstValueFrom } from 'rxjs';
+import { Observable, map, of } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TransactionService } from './transaction.service';
@@ -348,11 +348,13 @@ export class BudgetService {
     const { start, end } = this.getBudgetPeriodDates(budget);
 
     // Get expense transactions for this category in the budget period.
-    // Uses the non-mutating query: recalculation runs as a side effect of
-    // posting transactions and must never overwrite the shared transactions
+    // One-shot and non-mutating: the sum below is persisted, so it must not
+    // come from a live listener's first emission (a warm cache can be missing
+    // rows another device wrote), and recalculation runs as a side effect of
+    // posting transactions so it must never overwrite the shared transactions
     // signal the dashboard binds its summary to.
-    const txns = await firstValueFrom(
-      this.transactionService.getExpensesInRange(start, end, budget.categoryId)
+    const txns = await this.transactionService.getExpensesInRangeOnce(
+      start, end, budget.categoryId
     );
 
     // Ensure exchange rates are loaded before currency conversion
