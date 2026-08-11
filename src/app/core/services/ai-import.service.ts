@@ -6,6 +6,7 @@ import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
 import { TransactionService } from './transaction.service';
+import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService, AI_CLOUD_UNAVAILABLE, ProcessingResult } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
@@ -84,6 +85,7 @@ export class AIImportService {
   private duplicateService = inject(DuplicateDetectionService);
   private importHistoryService = inject(ImportHistoryService);
   private transactionService = inject(TransactionService);
+  private budgetService = inject(BudgetService);
   private authService = inject(AuthService);
   private strategyService = inject(AIStrategyService);
   private analytics = inject(AnalyticsService);
@@ -829,6 +831,11 @@ export class AIImportService {
     // Get user's base currency for fallback
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
+    // Budgets are recalculated once per distinct category after the loop —
+    // recalculating inside addTransaction would re-read and rewrite the same
+    // budgets for every row of the import.
+    const affectedExpenseCategories = new Set<string>();
+
     try {
       for (let i = 0; i < selectedTransactions.length; i++) {
         const txn = selectedTransactions[i];
@@ -851,13 +858,14 @@ export class AIImportService {
             note: txn.notes
           };
 
-          await this.transactionService.addTransaction(dto);
+          await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
           successCount++;
 
           if (txn.type === 'income') {
             totalIncome += txn.amount;
           } else {
             totalExpenses += txn.amount;
+            affectedExpenseCategories.add(dto.categoryId);
           }
         } catch (error) {
           errorCount++;
@@ -866,6 +874,18 @@ export class AIImportService {
             message: error instanceof Error ? error.message : 'Unknown error',
             originalValue: txn.description
           });
+        }
+      }
+
+      // One recalculation per distinct category the loop actually posted to,
+      // the same shape the recurring catch-up uses after its claims commit.
+      // A failure here must not fail the import: the rows are saved, and a
+      // spent counter that lagged is recovered by the next recalculation.
+      for (const categoryId of affectedExpenseCategories) {
+        try {
+          await this.budgetService.recalculateBudgetsForCategory(categoryId);
+        } catch (error) {
+          console.warn('[AIImport] Budget recalculation failed for', categoryId, error);
         }
       }
 

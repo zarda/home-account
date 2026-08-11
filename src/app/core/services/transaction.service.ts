@@ -227,6 +227,12 @@ export class TransactionService {
    * `createdAt` has to come from the file for the same reason the rate does:
    * stamping now would restamp every pre-existing row and make a second
    * restore of the same file produce different documents.
+   *
+   * `options.skipBudgetRecalc` is for batch importers posting many rows in a
+   * loop: recalculating per row reads and rewrites the same budgets over and
+   * over. A caller that sets it owns the recalculation — one
+   * recalculateBudgetsForCategory per distinct expense category, after the
+   * loop.
    */
   async addTransaction(
     data: CreateTransactionDTO,
@@ -236,6 +242,7 @@ export class TransactionService {
       createdAt?: Timestamp;
       snapshot?: { exchangeRate: number; baseCurrency: string; amountInBaseCurrency: number };
       goalSnapshot?: { goalId: string; goalAmount: number };
+      skipBudgetRecalc?: boolean;
     }
   ): Promise<string> {
     this.isLoading.set(true);
@@ -375,7 +382,7 @@ export class TransactionService {
       }
 
       // Update affected budgets if this is an expense
-      if (data.type === 'expense') {
+      if (data.type === 'expense' && !options?.skipBudgetRecalc) {
         await this.updateAffectedBudgets(data.categoryId);
       }
 

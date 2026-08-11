@@ -14,6 +14,7 @@ import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
 import { TransactionService } from './transaction.service';
+import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { OfflineQueueService } from './offline-queue.service';
@@ -37,6 +38,7 @@ describe('AIImportService', () => {
   let duplicateService: jasmine.SpyObj<DuplicateDetectionService>;
   let importHistoryService: jasmine.SpyObj<ImportHistoryService>;
   let transactionService: jasmine.SpyObj<TransactionService>;
+  let budgetService: jasmine.SpyObj<BudgetService>;
   let authService: jasmine.SpyObj<AuthService>;
   let strategyService: jasmine.SpyObj<AIStrategyService>;
   let offlineQueue: jasmine.SpyObj<OfflineQueueService>;
@@ -70,6 +72,8 @@ describe('AIImportService', () => {
       'getImportById'
     ]);
     transactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'getTransactions']);
+    budgetService = jasmine.createSpyObj('BudgetService', ['recalculateBudgetsForCategory']);
+    budgetService.recalculateBudgetsForCategory.and.resolveTo();
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: jasmine.createSpy('currentUser').and.returnValue(createMockUser('user123')),
       userId: jasmine.createSpy('userId').and.returnValue('user123')
@@ -119,6 +123,7 @@ describe('AIImportService', () => {
         { provide: DuplicateDetectionService, useValue: duplicateService },
         { provide: ImportHistoryService, useValue: importHistoryService },
         { provide: TransactionService, useValue: transactionService },
+        { provide: BudgetService, useValue: budgetService },
         { provide: AuthService, useValue: authService },
         { provide: AIStrategyService, useValue: strategyService },
         { provide: OfflineQueueService, useValue: offlineQueue },
