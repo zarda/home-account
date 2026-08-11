@@ -142,16 +142,38 @@ export class GoalService {
     }
   }
 
+  /**
+   * Update a goal's editable fields.
+   *
+   * The currency is editable only while the goal holds no money. It is the
+   * unit both counters are denominated in, and neither can be re-derived:
+   * `linkedAmount` is a sum of figures already converted and stored on the
+   * rows, and `contributedAmount` has no per-row provenance at all. Changing
+   * it would relabel those magnitudes rather than convert them — 300,000 yen
+   * of progress reading as $300,000 — and the next linked-row write would
+   * then mix the units and floor the counter at zero. So a change is dropped
+   * rather than rejected: the form disables the control, this is the
+   * backstop, and the rest of the edit has no reason to fail with it.
+   */
   async updateGoal(id: string, data: Partial<CreateGoalDTO>): Promise<void> {
     this.isLoading.set(true);
 
     try {
+      const goalPath = `${this.userGoalsPath}/${id}`;
       const updateData: Record<string, unknown> = {};
+
+      if (data.currency !== undefined) {
+        const current = await this.firestoreService.getDocument<Goal>(goalPath);
+        const funded =
+          (current?.contributedAmount ?? 0) !== 0 || (current?.linkedAmount ?? 0) !== 0;
+        if (!funded || data.currency === current?.currency) {
+          updateData['currency'] = data.currency;
+        }
+      }
 
       if (data.kind !== undefined) updateData['kind'] = data.kind;
       if (data.name !== undefined) updateData['name'] = data.name;
       if (data.targetAmount !== undefined) updateData['targetAmount'] = data.targetAmount;
-      if (data.currency !== undefined) updateData['currency'] = data.currency;
       if (data.items !== undefined) updateData['items'] = data.items;
       if (data.note !== undefined) updateData['note'] = data.note;
 
@@ -163,7 +185,7 @@ export class GoalService {
       }
 
       updateData['updatedAt'] = this.firestoreService.getTimestamp();
-      await this.firestoreService.updateDocument(`${this.userGoalsPath}/${id}`, updateData);
+      await this.firestoreService.updateDocument(goalPath, updateData);
     } finally {
       this.isLoading.set(false);
     }

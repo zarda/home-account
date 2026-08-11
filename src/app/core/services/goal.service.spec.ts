@@ -118,6 +118,61 @@ describe('GoalService', () => {
     });
   });
 
+  describe('updateGoal', () => {
+    function seedGoal(overrides: Partial<Goal> = {}): void {
+      mockFirestoreService.getDocument.and.resolveTo({
+        ...mockGoals[0],
+        contributedAmount: 0,
+        linkedAmount: 0,
+        currency: 'JPY',
+        ...overrides
+      } as Goal);
+    }
+
+    function payload(): Record<string, unknown> {
+      const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      return data as Record<string, unknown>;
+    }
+
+    it('changes the currency of a goal with no money against it', async () => {
+      seedGoal();
+
+      await service.updateGoal('g1', { currency: 'USD', name: 'Kyoto' });
+
+      expect(payload()['currency']).toBe('USD');
+    });
+
+    it('refuses a currency change once linked transactions have arrived', async () => {
+      seedGoal({ linkedAmount: 300000 });
+
+      await service.updateGoal('g1', { currency: 'USD', name: 'Kyoto' });
+
+      // Relabelling 300,000 yen as dollars would read as a goal completed.
+      expect('currency' in payload()).toBeFalse();
+      // The rest of the edit still lands: this is a frozen field, not a
+      // rejected save.
+      expect(payload()['name']).toBe('Kyoto');
+    });
+
+    it('refuses a currency change once a manual contribution has arrived', async () => {
+      seedGoal({ contributedAmount: 500 });
+
+      await service.updateGoal('g1', { currency: 'USD' });
+
+      expect('currency' in payload()).toBeFalse();
+    });
+
+    it('still writes the currency a funded goal already has', async () => {
+      seedGoal({ linkedAmount: 300000 });
+
+      await service.updateGoal('g1', { currency: 'JPY', name: 'Kyoto' });
+
+      // The form sends the stored code on every submit; only a *change* is
+      // refused, so this must not be mistaken for one.
+      expect(payload()['currency']).toBe('JPY');
+    });
+  });
+
   describe('deleteGoal', () => {
     it('clears the link off every carrying transaction before deleting', async () => {
       mockFirestoreService.getCollection.and.resolveTo([{ id: 't1' }, { id: 't2' }]);

@@ -256,9 +256,13 @@ export class BudgetService {
         updateData
       );
 
-      // Recalculate spent if category, period, or dates changed
+      // Recalculate spent if anything it is derived from changed: which rows
+      // it counts (category, period, dates) or the currency it is expressed
+      // in. Unlike a goal's counters, `spent` is fully derived, so a currency
+      // change re-derives it rather than having to freeze the unit.
       if (data.categoryId !== undefined || data.period !== undefined ||
-          data.startDate !== undefined || data.endDate !== undefined) {
+          data.startDate !== undefined || data.endDate !== undefined ||
+          data.currency !== undefined) {
         await this.recalculateBudgetSpent(id);
       }
     } finally {

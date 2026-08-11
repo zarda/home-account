@@ -48,6 +48,15 @@
         </mat-form-field>
       </div>
 
+      <!-- Why the currency above is not editable. Sits under the row rather
+           than in the field's own hint slot: the select is 7rem wide, and a
+           hint there wraps to four lines and overlaps the next row. -->
+      @if (currencyLocked()) {
+        <p class="-mt-2 mb-4 text-xs text-gray-500 dark:text-gray-400">
+          {{ 'goal.currencyLocked' | translate }}
+        </p>
+      }
+
       <!-- Target date (optional) -->
       <mat-form-field appearance="outline" class="w-full">
         <mat-label>{{ 'goal.targetDate' | translate }}</mat-label>

@@ -259,7 +259,8 @@
     "deleteMessage": "要刪除「{{name}}」嗎？存入紀錄將一併刪除。",
     "contributionRecorded": "已記錄存入",
     "contributionFailed": "無法記錄存入",
-    "linkedBreakdown": "手動 {{manual}} · 來自交易 {{linked}}"
+    "linkedBreakdown": "手動 {{manual}} · 來自交易 {{linked}}",
+    "currencyLocked": "已有款項後即無法變更"
   },
   "reports": {
     "title": "報表",

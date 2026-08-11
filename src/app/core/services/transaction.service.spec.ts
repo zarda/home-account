@@ -5,7 +5,7 @@ import {
   RECEIPT_ATTACH_FAILED,
   GOAL_LINK_INVALID
 } from './transaction.service';
-import { Goal, Transaction } from '../../models';
+import { CreateTransactionDTO, Goal, Transaction } from '../../models';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
@@ -1648,6 +1648,197 @@ describe('TransactionService', () => {
         expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(1);
         expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
       });
+    });
+  });
+
+  /**
+   * The guards in updateTransaction ask "did this change?" and the answer has
+   * to come from the stored row, because the only editor the app ships sends
+   * every key on every edit. Specs that call updateTransaction with a narrow
+   * object ({ note }) prove the guards against a shape the app never produces.
+   * Everything here drives the literal DTO TransactionForm.onSubmit builds.
+   */
+  describe('the edit DTO the transaction form actually sends', () => {
+    const TX = 'users/test-user-123/transactions';
+    const GOALS = 'users/test-user-123/goals';
+
+    /**
+     * TransactionForm.onSubmit, edit branch: type/amount/currency/categoryId/
+     * description/date always, and period, goalId, tags and location always
+     * travelling too — an omitted key would leave a cleared select at its old
+     * value, so the form installs them even when they are empty.
+     */
+    function formEditDto(
+      overrides: Partial<CreateTransactionDTO> = {}
+    ): CreateTransactionDTO {
+      return {
+        type: 'expense',
+        amount: 100,
+        currency: 'EUR',
+        categoryId: 'food_restaurants',
+        description: 'Dinner in Lisbon, with Ana',
+        date: new Date(),
+        period: undefined,
+        goalId: undefined,
+        tags: [],
+        location: undefined,
+        ...overrides
+      };
+    }
+
+    /** A row written in March, when EUR bought 1.08 dollars. */
+    function seedMarchRow(overrides: Partial<Transaction> = {}): void {
+      mockFirestore.setMockDocument(
+        `${TX}/txn-1`,
+        createTransaction({
+          id: 'txn-1',
+          amount: 100,
+          currency: 'EUR',
+          exchangeRate: 1.08,
+          amountInBaseCurrency: 108,
+          baseCurrency: 'USD',
+          description: 'Dinner in Lisbon',
+          ...overrides
+        })
+      );
+    }
+
+    function seedGoal(id: string, overrides: Partial<Goal> = {}): void {
+      mockFirestore.setMockDocument(`${GOALS}/${id}`, {
+        id,
+        userId: 'test-user-123',
+        kind: 'saving',
+        name: 'Emergency fund',
+        targetAmount: 1000,
+        contributedAmount: 0,
+        linkedAmount: 0,
+        currency: 'USD',
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        ...overrides
+      });
+    }
+
+    function plainUpdatePayload(): Record<string, unknown> {
+      const call = mockFirestore.updateDocumentSpy.calls
+        .find(c => c.args[0] === `${TX}/txn-1`);
+      return (call?.args[1] ?? {}) as Record<string, unknown>;
+    }
+
+    function rowUpdatePayload(): Record<string, unknown> {
+      const call = mockFirestore.txUpdateSpy.calls
+        .find(c => c.args[0] === `${TX}/txn-1`);
+      return (call?.args[1] ?? {}) as Record<string, unknown>;
+    }
+
+    function goalUpdatePayload(goalId: string): Record<string, unknown> | undefined {
+      const call = mockFirestore.txUpdateSpy.calls
+        .find(c => c.args[0] === `${GOALS}/${goalId}`);
+      return call?.args[1] as Record<string, unknown> | undefined;
+    }
+
+    async function goalDoc(id: string): Promise<Record<string, unknown> | null> {
+      return mockFirestore.getDocument<Record<string, unknown>>(`${GOALS}/${id}`);
+    }
+
+    beforeEach(async () => {
+      // The constructor starts a rates refresh; its stubbed fetch rejects and
+      // the fallback writes the compiled-in table on a later microtask. Let
+      // that land before seeding, or it overwrites the rates below — the
+      // blocks above only survive it because 0.92 is also the compiled-in EUR.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      // Rates have moved since the row was written: EUR now buys 1.25 dollars,
+      // so any recomputation shows up rather than reproducing the stored figure.
+      currencyService.exchangeRates.set(new Map([['USD', 1], ['EUR', 0.8]]));
+    });
+
+    it('leaves the money snapshot alone when only the description changed', async () => {
+      seedMarchRow();
+
+      await service.updateTransaction('txn-1', formEditDto());
+
+      const payload = plainUpdatePayload();
+      expect(payload['description']).toBe('Dinner in Lisbon, with Ana');
+      // The five fields the snapshot is made of, none of them this edit's business.
+      expect('exchangeRate' in payload).toBeFalse();
+      expect('amountInBaseCurrency' in payload).toBeFalse();
+      expect('baseCurrency' in payload).toBeFalse();
+      expect('amount' in payload).toBeFalse();
+      expect('currency' in payload).toBeFalse();
+    });
+
+    it('leaves the goal counter alone when only the description changed', async () => {
+      seedMarchRow({ goalId: 'g1', goalAmount: 108 });
+      seedGoal('g1', { linkedAmount: 108 });
+
+      await service.updateTransaction('txn-1', formEditDto({ goalId: 'g1' }));
+
+      expect('goalAmount' in rowUpdatePayload()).toBeFalse();
+      expect(goalUpdatePayload('g1')).toBeUndefined();
+      expect((await goalDoc('g1'))?.['linkedAmount']).toBe(108);
+    });
+
+    it('re-snapshots both figures when the amount really changed', async () => {
+      seedMarchRow({ goalId: 'g1', goalAmount: 108 });
+      seedGoal('g1', { linkedAmount: 108 });
+
+      await service.updateTransaction('txn-1', formEditDto({ amount: 200, goalId: 'g1' }));
+
+      const payload = rowUpdatePayload();
+      expect(payload['amount']).toBe(200);
+      expect(payload['currency']).toBe('EUR');
+      expect(payload['exchangeRate']).toBe(1.25);
+      expect(payload['amountInBaseCurrency']).toBe(250);
+      expect(payload['baseCurrency']).toBe('USD');
+      expect(payload['goalAmount']).toBe(250);
+      expect((await goalDoc('g1'))?.['linkedAmount']).toBe(250);
+    });
+
+    it('re-snapshots when only the currency changed', async () => {
+      seedMarchRow();
+
+      await service.updateTransaction('txn-1', formEditDto({ currency: 'USD' }));
+
+      const payload = plainUpdatePayload();
+      expect(payload['currency']).toBe('USD');
+      expect(payload['exchangeRate']).toBe(1);
+      expect(payload['amountInBaseCurrency']).toBe(100);
+    });
+
+    it('keeps an unlinked edit on the offline-capable write', async () => {
+      seedMarchRow();
+
+      await service.updateTransaction('txn-1', formEditDto());
+
+      // runTransaction rejects while offline; an edit that cannot move a
+      // counter has no business needing the network. Staying off it is also
+      // what makes the save one document read instead of two — the second
+      // read only exists to re-read the row inside the transaction.
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(0);
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(1);
+    });
+
+    it('still routes a linked edit through the transaction', async () => {
+      seedMarchRow({ goalId: 'g1', goalAmount: 108 });
+      seedGoal('g1', { linkedAmount: 108 });
+
+      await service.updateTransaction('txn-1', formEditDto({ amount: 200, goalId: 'g1' }));
+
+      expect(mockFirestore.runTransactionSpy.calls.length).toBe(1);
+      expect(mockFirestore.updateDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('still unlinks when the goal select is cleared', async () => {
+      seedMarchRow({ goalId: 'g1', goalAmount: 108 });
+      seedGoal('g1', { linkedAmount: 108 });
+
+      await service.updateTransaction('txn-1', formEditDto({ goalId: undefined }));
+
+      const payload = rowUpdatePayload();
+      expect(payload['goalId']).toEqual(deleteField());
+      expect(payload['goalAmount']).toEqual(deleteField());
+      expect((await goalDoc('g1'))?.['linkedAmount']).toBe(0);
     });
   });
 

@@ -259,7 +259,8 @@
     "deleteMessage": "「{{name}}」を削除しますか？積み立ての記録も一緒に削除されます。",
     "contributionRecorded": "積み立てを記録しました",
     "contributionFailed": "積み立てを記録できませんでした",
-    "linkedBreakdown": "手動 {{manual}} · 取引から {{linked}}"
+    "linkedBreakdown": "手動 {{manual}} · 取引から {{linked}}",
+    "currencyLocked": "積み立てがあると変更できません"
   },
   "reports": {
     "title": "レポート",

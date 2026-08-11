@@ -22,6 +22,16 @@ pattern (`goal.model.ts`, `goal.service.ts`):
 - `linkedAmount` — a counter of linked transactions (see below;
   [ADR 0027](ADR/0027-a-linked-transaction-carries-its-converted-amount.md)).
   Absent on documents written before links existed and read as 0.
+- `currency` — the unit **both counters** are denominated in, and therefore
+  **fixed once either is non-zero**. Neither counter can be rebuilt in another
+  unit: `linkedAmount` sums figures already converted onto the rows, and
+  `contributedAmount` has no per-row provenance at all. Changing it would
+  relabel the stored magnitudes rather than convert them, so the form disables
+  the control on a funded goal and the service drops the change rather than
+  failing the rest of the edit
+  ([ADR 0033](ADR/0033-a-stored-figure-is-re-taken-only-when-its-input-moved.md)).
+  An empty goal can still be corrected. If a funded goal really needs another
+  currency, the honest shape is a new goal.
 - `items` — an optional checklist for projects (`{name, amount, done}`,
   at most 50). The form can copy the list total into the target on
   demand, but the list is never a second source of truth: editing an item
@@ -52,11 +62,19 @@ progress without being typed in twice. Mechanics
   written, re-snapshotted when the amount or currency changes, never at
   read time (the `amountInBaseCurrency` precedent). Unlinking or deleting
   backs out exactly the stored figure, so rate movement between link and
-  unlink cannot strand a remainder.
+  unlink cannot strand a remainder. "Changes" means **compared against the
+  stored row**, not "the caller sent the field": the transaction form sends
+  every field on every edit, so a presence test would re-snapshot under a
+  description edit and move a counter nobody touched. Both stored figures and
+  the rules for re-taking them are collected in
+  [money-snapshots.md](money-snapshots.md).
 - Every counter change commits in the same Firestore transaction as the
   row write — link, unlink, switch, amount edit, delete — so two devices
   cannot double-count and the link can never disagree with the counter.
-  Linked writes therefore need the network, like Contribute.
+  Linked writes therefore need the network, like Contribute — and only
+  linked ones: whether a write is linked is decided by the *value* of
+  `goalId` and of the row's stored link, so an edit to an unlinked row keeps
+  the ordinary offline-capable path and one document read.
 - Only a **new** link demands an existing, active goal
   (`GOAL_LINK_INVALID` otherwise). A link a row already carries keeps
   counting after the goal is deactivated; deleting a goal sweeps its links
