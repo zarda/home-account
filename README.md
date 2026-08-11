@@ -230,6 +230,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translatio
 | [docs/backup-restore.md](docs/backup-restore.md) | The JSON backup: what the file carries, what a restore merges rather than replaces, and what it will not touch |
 | [docs/performance.md](docs/performance.md) | What loads eagerly, where the heavy dependencies load instead, and the bundle budget |
 | [docs/dates.md](docs/dates.md) | Date and period conventions: local parts, day and month keys, and the window contracts |
+| [docs/money-snapshots.md](docs/money-snapshots.md) | Money that is stored already converted: what each figure is denominated in, when it is re-taken, and what repairs it |
 | [docs/data.md](docs/data.md) | The stored-data hub: every kind of record, where each is managed, and what the counts do and do not mean |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
