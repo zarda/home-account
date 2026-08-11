@@ -1,0 +1,118 @@
+# Reads that must see the whole collection
+
+The app talks to Firestore two ways, and they answer different questions.
+`subscribeToCollection` opens a live listener: with the persistent local cache
+enabled, it answers *"what did this session last see?"* immediately and
+corrects itself when the server replies. `getCollection` (a `getDocs`
+underneath) asks once and, while online, waits for the server.
+
+For anything painted on screen, the listener's cached-first answer is the
+point — the dashboard renders instantly on a plane and heals itself on wifi.
+The trap is taking **one** value from a listener: `firstValueFrom` grabs the
+cached emission and unsubscribes before the correction arrives. The cache
+holds whatever narrow windows the session happened to browse, so the value is
+a plausible-looking subset. Three shipped defects came from exactly this, and
+this page is the registry of the reads that must never do it.
+
+The reasoning and the rejected alternatives are in
+[ADR 0034](ADR/0034-a-correctness-read-enumerates-the-collection.md). The
+first instance of the class was #160, fixed before the rule had a name.
+
+## Deleting the account's transactions (#160)
+
+`TransactionService.deleteAllTransactions` enumerates the collection and
+deletes what it finds. Reading the in-memory signal here once deleted the
+window on screen — usually the current month — and reported the wipe complete.
+Its doc comment is the original statement of the rule: the signal only holds
+what a subscription happened to deliver.
+
+## The backup and CSV exports (#244)
+
+`TransactionService.exportAll()` feeds both "Export full backup" and "Export
+transactions CSV", and it is the strictest read in the app: it goes through
+`FirestoreService.getCollectionFromServer`, which rejects when the server
+cannot be reached instead of falling back to the cache.
+
+It is server-only because the full backup's boolean **gates account
+deletion**. A backup written from the cache is a truncated file reported as
+success, and the deletion flow would then accept it as proof the data is safe
+before erasing the real thing. Offline, the export now fails loudly — the
+error notification shows, `exportFullBackup` resolves false, and the deletion
+flow stops.
+
+Ordering note: transactions are read first among the backup's sections, and
+the other five (`categories`, `budgets`, `recurring`, `goals`, insight
+snapshots) use plain one-shot `exportAll()` reads that *would* serve the cache
+offline. They are safe today only because the transactions read runs first and
+its rejection aborts the whole export. Do not reorder these reads without
+converting the siblings to `getCollectionFromServer`.
+
+## The budget recalculation's work list (#247)
+
+`BudgetService.recalculateBudgetsForCategory` runs as a side effect of every
+transaction mutation and answers "which budgets does this category have?" by
+enumerating the collection with the same `categoryId + isActive` clause the
+live `getBudgetsByCategory` uses. It used to filter the `budgets()` signal,
+which only the dashboard and the budgets page populate — so a write from the
+share-target import, or from a session reloaded on `/transactions`, found no
+budgets and silently skipped the update. There is no retry inside a period:
+once skipped, `spent` stayed wrong until the next rollover.
+
+Plain `getCollection`, not the server-only variant: nothing here gates an
+irreversible action, latency compensation makes just-written local rows
+visible, and a figure that lags is re-derived by the next recalculation.
+
+## The expense rows that recalculation sums (#247)
+
+`TransactionService.getExpensesInRangeOnce` is the one-shot sibling of the
+live `getExpensesInRange`, and `recalculateBudgetSpent` uses it because the
+sum it produces is **persisted** as the budget's `spent`. A live listener's
+first emission can be missing rows another device wrote; writing that short
+sum down makes the miss durable. The two variants share one private
+options-builder so their queries cannot drift apart.
+
+## The deliberate live readers
+
+These are not exceptions to the rule — they are the other question. The
+dashboard's period window, the reports, the insight chips' baseline and the
+budget/goal page subscriptions all *want* the cached emission first: they
+paint stale-then-correct, stay subscribed, and never persist what they read.
+If one of them ever starts writing its value down, it moves into the registry
+above.
+
+## Summary
+
+| Read | Feeds | Mechanism | Offline |
+|---|---|---|---|
+| `deleteAllTransactions` | the account wipe | `getCollection` | queues deletes against the cache |
+| `exportAll` (transactions) | backup + CSV files, the deletion gate | `getCollectionFromServer` | **rejects; export reports failure** |
+| sibling `exportAll()`s | the backup's other five sections | `getCollection` | cache fallback — safe only because transactions read first |
+| `recalculateBudgetsForCategory` | the recalculation work list | `getCollection` | cache, incl. latency-compensated writes |
+| `getExpensesInRangeOnce` | the persisted `spent` sum | `getCollection` | cache, incl. latency-compensated writes |
+
+## When you add another one
+
+Three questions, in this order.
+
+**Is the value acted on once, or rendered and corrected?** Rendered-and-
+corrected wants the live listener. Acted-on-once — persisted, summed into a
+stored figure, counted, deleted against, or used as a gate — must enumerate
+the collection. `firstValueFrom(subscribeToCollection(...))` is never the
+answer; if you need one value, there is a one-shot method or there should be.
+
+**Does it gate something irreversible?** Then the cache is not an acceptable
+answer even from `getDocs` — use `getCollectionFromServer` and let offline
+fail loudly. A wrong file, a wrong count or a wrong "yes" is worse than an
+error.
+
+**Does latency compensation actually cover you?** The local cache includes
+this device's unsynced writes, so a read-after-own-write is safe. It does not
+include another device's writes, or the rows a warm cache never fetched. If
+the value must reflect the account rather than the session, only the
+collection read does that — and only the server read does it offline.
+
+In specs, prove the source, not just the result: seed the collection with the
+signal left empty (the mock now records `subscribeToCollection` and
+`getCollectionFromServer` on their own spies), and remember the emulator has
+no persistent cache — a smoke test proves enumeration, not the cached-first
+emission itself.
