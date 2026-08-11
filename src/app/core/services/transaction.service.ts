@@ -430,9 +430,12 @@ export class TransactionService {
    *
    * The stored figure is re-snapshotted only when the update touches amount
    * or currency — an unrelated edit converting at today's rates would move
-   * a counter the user never touched. Decrements clamp at zero so counter
-   * drift can never block an edit; a vanished goal is finished off rather
-   * than resurrected; only a NEW link demands an existing, active goal.
+   * a counter the user never touched. `moneyTouched` is that decision, made
+   * once in updateTransaction against the stored row and passed in rather
+   * than re-derived here: it is a comparison, not something the shape of
+   * `updateData` can be trusted to reveal. Decrements clamp at zero so
+   * counter drift can never block an edit; a vanished goal is finished off
+   * rather than resurrected; only a NEW link demands an existing, active goal.
    *
    * Precondition: rates are loaded whenever a conversion may be needed
    * (updateTransaction awaits ensureRatesLoaded before any link-involved
@@ -442,13 +445,19 @@ export class TransactionService {
     tx: FirestoreTransaction,
     row: Transaction,
     data: Partial<CreateTransactionDTO>,
-    updateData: Partial<Transaction>
+    updateData: Partial<Transaction>,
+    moneyTouched: boolean
   ): Promise<{
     linkFields: Record<string, unknown>;
     goalWrites: { ref: DocumentReference; data: Record<string, unknown> }[];
   }> {
     const none = { linkFields: {}, goalWrites: [] };
     const oldGoalId = row.goalId;
+    // A PRESENCE test, deliberately: it separates "clear the link" (key
+    // present, value undefined) from "the caller did not mention it" (key
+    // absent), which a truthiness test would collapse into an unlink. Not the
+    // same question as the `linkInvolved` gate in updateTransaction, which
+    // tests the value.
     const newGoalId = 'goalId' in data ? data.goalId : oldGoalId;
     if (!oldGoalId && !newGoalId) return none;
 
@@ -456,8 +465,6 @@ export class TransactionService {
     // What the row will hold after this update, whichever side supplies it.
     const amount = updateData.amount ?? row.amount;
     const currency = updateData.currency ?? row.currency;
-    const amountTouched =
-      updateData.amount !== undefined || updateData.currency !== undefined;
     const clearedLink = { goalId: deleteField(), goalAmount: deleteField() };
     const goalRefOf = (goalId: string): DocumentReference =>
       this.firestoreService.getDocRef(`${this.userGoalsPath}/${goalId}`);
@@ -490,7 +497,7 @@ export class TransactionService {
         // rather than resurrect a link to nothing.
         return { linkFields: clearedLink, goalWrites: [] };
       }
-      if (!amountTouched) return none;
+      if (!moneyTouched) return none;
       const goal = snapshot.data() as Goal;
       const goalAmount = roundMoney(
         this.currencyService.convert(amount, currency, goal.currency)
@@ -534,7 +541,8 @@ export class TransactionService {
   private async updateWithGoalSync(
     id: string,
     data: Partial<CreateTransactionDTO>,
-    updateData: Partial<Transaction>
+    updateData: Partial<Transaction>,
+    moneyTouched: boolean
   ): Promise<void> {
     const rowRef = this.firestoreService.getDocRef(`${this.userTransactionsPath}/${id}`);
 
@@ -546,7 +554,8 @@ export class TransactionService {
         tx,
         snapshot.data() as Transaction,
         data,
-        updateData
+        updateData,
+        moneyTouched
       );
       tx.update(rowRef, {
         ...updateData,
@@ -593,29 +602,41 @@ export class TransactionService {
         updateData.date = this.firestoreService.dateToTimestamp(data.date);
       }
 
-      // Recalculate amount in base currency if amount or currency changed
-      if (data.amount !== undefined || data.currency !== undefined) {
-        if (currentTransaction) {
-          const amount = data.amount ?? currentTransaction.amount;
-          const currency = data.currency ?? currentTransaction.currency;
-          const baseCurrency = baseCurrencyOf(this.authService.currentUser());
-          // Same guard as addTransaction: never snapshot against unloaded rates.
-          await this.currencyService.ensureRatesLoaded();
-          const exchangeRate = this.currencyService.getExchangeRate(currency, baseCurrency);
+      // Whether this edit moved the money, measured against the STORED row
+      // rather than against which keys the caller supplied. The transaction
+      // form sends amount and currency on every edit, so a key-presence test
+      // re-snapshots at today's rate under a description edit — rewriting the
+      // row's base-currency value and every total that reads it.
+      const moneyTouched = !!currentTransaction && (
+        (data.amount !== undefined && data.amount !== currentTransaction.amount) ||
+        (data.currency !== undefined && data.currency !== currentTransaction.currency)
+      );
 
-          updateData.amount = amount;
-          updateData.currency = currency;
-          updateData.exchangeRate = exchangeRate;
-          updateData.amountInBaseCurrency = amount * exchangeRate;
-          updateData.baseCurrency = baseCurrency;
-        }
+      // Recalculate amount in base currency if amount or currency changed
+      if (moneyTouched && currentTransaction) {
+        const amount = data.amount ?? currentTransaction.amount;
+        const currency = data.currency ?? currentTransaction.currency;
+        const baseCurrency = baseCurrencyOf(this.authService.currentUser());
+        // Same guard as addTransaction: never snapshot against unloaded rates.
+        await this.currencyService.ensureRatesLoaded();
+        const exchangeRate = this.currencyService.getExchangeRate(currency, baseCurrency);
+
+        updateData.amount = amount;
+        updateData.currency = currency;
+        updateData.exchangeRate = exchangeRate;
+        updateData.amountInBaseCurrency = amount * exchangeRate;
+        updateData.baseCurrency = baseCurrency;
       }
 
-      // Whether this update can move a goal counter: it names a link (set,
-      // switch or clear), or the row already carries one whose stored
-      // figure an amount/currency change would re-snapshot. Conversions
-      // must never run against the unloaded 1:1 fallback table.
-      const linkInvolved = 'goalId' in data || !!currentTransaction?.goalId;
+      // Whether this update can move a goal counter: it names a link (set or
+      // switch), or the row already carries one — which covers clearing it
+      // too, since there is nothing to clear otherwise. A test on the VALUE,
+      // not the key: the transaction form installs `goalId` on every edit, so
+      // a presence test sends every unlinked edit down the transactional path
+      // and off the offline-capable one. Not to be confused with the presence
+      // test in stageGoalTransition, which answers a different question.
+      // Conversions must never run against the unloaded 1:1 fallback table.
+      const linkInvolved = !!data.goalId || !!currentTransaction?.goalId;
       if (linkInvolved) {
         await this.currencyService.ensureRatesLoaded();
       }
@@ -640,13 +661,14 @@ export class TransactionService {
           data.receiptFiles,
           this.receiptSlotsOf(currentTransaction).length,
           updateData,
-          data
+          data,
+          moneyTouched
         );
         // After the commit, not before: a placement retry or abort must not
         // bump the local quota count for images that never landed.
         this.receiptQuota.noteImagesAdded(appended);
       } else if (linkInvolved) {
-        await this.updateWithGoalSync(id, data, updateData);
+        await this.updateWithGoalSync(id, data, updateData, moneyTouched);
       } else {
         await this.firestoreService.updateDocument(
           `${this.userTransactionsPath}/${id}`,
@@ -775,7 +797,8 @@ export class TransactionService {
     files: File[],
     optimisticFirstSlot: number,
     updateData: Partial<Transaction>,
-    data: Partial<CreateTransactionDTO>
+    data: Partial<CreateTransactionDTO>,
+    moneyTouched: boolean
   ): Promise<number> {
     const path = `${this.userTransactionsPath}/${id}`;
     const docRef = this.firestoreService.getDocRef(path);
@@ -805,7 +828,9 @@ export class TransactionService {
           // Goal reads must land here, after the row read and before the
           // first write (Firestore orders all of a transaction's reads
           // ahead of its writes).
-          const staged = await this.stageGoalTransition(tx, row, data, updateData);
+          const staged = await this.stageGoalTransition(
+            tx, row, data, updateData, moneyTouched
+          );
 
           // Pad up to our first index with tombstones — a racing removal may
           // have truncated the array underneath the upload — so that
