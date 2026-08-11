@@ -160,4 +160,48 @@ describe('GoalFormComponent', () => {
       expect(dto.items).toEqual([]);
     });
   });
+
+  describe('the currency of a funded goal', () => {
+    it('is fixed once money is against the goal', async () => {
+      await create({ mode: 'edit', goal: savedGoal });
+
+      expect(component.currencyLocked()).toBeTrue();
+      expect(component.form.get('currency')?.disabled).toBeTrue();
+    });
+
+    it('still travels on submit, so the stored code is what the service sees', async () => {
+      await create({ mode: 'edit', goal: savedGoal });
+
+      component.onSubmit();
+
+      const dto = dialogRef.close.calls.mostRecent().args[0] as CreateGoalDTO;
+      expect(dto.currency).toBe('USD');
+    });
+
+    it('is fixed by linked transactions alone, with nothing contributed', async () => {
+      await create({
+        mode: 'edit',
+        goal: { ...savedGoal, contributedAmount: 0, linkedAmount: 420 }
+      });
+
+      expect(component.currencyLocked()).toBeTrue();
+    });
+
+    it('stays editable on a goal that holds no money yet', async () => {
+      await create({
+        mode: 'edit',
+        goal: { ...savedGoal, contributedAmount: 0, linkedAmount: 0 }
+      });
+
+      expect(component.currencyLocked()).toBeFalse();
+      expect(component.form.get('currency')?.enabled).toBeTrue();
+    });
+
+    it('stays editable on a new goal', async () => {
+      await create({ mode: 'add' });
+
+      expect(component.currencyLocked()).toBeFalse();
+      expect(component.form.get('currency')?.enabled).toBeTrue();
+    });
+  });
 });

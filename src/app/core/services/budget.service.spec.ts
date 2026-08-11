@@ -292,6 +292,26 @@ describe('BudgetService', () => {
       expect(data['amount']).toBe(600);
       expect(data['name']).toBe('Updated Budget');
     });
+
+    it('recalculates spend when the currency changed', async () => {
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+      const recalculate = spyOn(service, 'recalculateBudgetSpent').and.resolveTo();
+
+      await service.updateBudget('budget1', { currency: 'EUR' });
+
+      // `spent` is stored in the budget's currency, so changing that currency
+      // invalidates it exactly as changing the category does.
+      expect(recalculate).toHaveBeenCalledWith('budget1');
+    });
+
+    it('leaves spend alone when nothing that feeds it changed', async () => {
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+      const recalculate = spyOn(service, 'recalculateBudgetSpent').and.resolveTo();
+
+      await service.updateBudget('budget1', { name: 'Groceries' });
+
+      expect(recalculate).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteBudget', () => {
