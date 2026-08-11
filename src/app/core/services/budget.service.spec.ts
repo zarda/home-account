@@ -772,10 +772,10 @@ describe('BudgetService', () => {
       const currencyService = TestBed.inject(CurrencyService);
       spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
       spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
+      mockFirestoreService.getCollection.and.resolveTo([mockBudgets[0]]);
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(mockBudgets[0]));
       mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
       mockTransactionService.getExpensesInRange.and.returnValue(of([]));
-      service.budgets.set(mockBudgets);
 
       await service.recalculateBudgetsForCategory('cat1');
 

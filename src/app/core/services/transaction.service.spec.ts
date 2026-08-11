@@ -8,7 +8,6 @@ import {
 import { CreateTransactionDTO, Goal, Transaction } from '../../models';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
-import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
@@ -602,9 +601,11 @@ describe('TransactionService', () => {
     });
 
     it('recalculates affected budgets after posting an expense', async () => {
-      const budgetService = TestBed.inject(BudgetService);
+      // Seed only the collection: the recalculation enumerates it, so an
+      // empty budgets signal (a session that never mounted the dashboard)
+      // must not stop the spent update.
       const budget = createBudget({ id: 'b1', categoryId: 'food' });
-      budgetService.budgets.set([budget]);
+      mockFirestore.setMockCollection('users/test-user-123/budgets', [budget]);
       mockFirestore.setMockDocument('users/test-user-123/budgets/b1', budget);
 
       await service.addTransaction({

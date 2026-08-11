@@ -337,11 +337,10 @@ export class RecurringService {
 
     this.catchUpInFlight = (async () => {
       try {
-        // Rates and budgets must be in memory so posted amounts convert
-        // correctly and recalculateBudgetsForCategory can find the budgets
-        // to recalculate after the claims commit.
+        // Rates must be in memory so posted amounts convert correctly.
+        // Budgets need no pre-warming: recalculateBudgetsForCategory
+        // enumerates the collection after the claims commit.
         await this.currencyService.ensureRatesLoaded();
-        await firstValueFrom(this.budgetService.getBudgets());
         await firstValueFrom(this.getRecurring());
         return await this.processRecurringTransactions();
       } finally {

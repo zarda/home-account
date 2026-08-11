@@ -374,10 +374,27 @@ export class BudgetService {
     await this.updateBudgetSpent(budgetId, roundMoney(totalSpent), dayKey(start));
   }
 
-  // Recalculate spent for all active budgets in a category
+  /**
+   * Recalculate spent for all active budgets in a category, as a side effect
+   * of every transaction mutation.
+   *
+   * Enumerates the collection rather than the signal — the signal only holds
+   * what a subscription happened to deliver, and only the dashboard and the
+   * budgets page subscribe. A session that wrote a transaction without
+   * mounting either (share-target import, a reload on /transactions) used to
+   * find no budgets here and silently skip the recalculation.
+   */
   async recalculateBudgetsForCategory(categoryId: string): Promise<void> {
-    const budgets = this.budgets().filter(b =>
-      b.categoryId === categoryId && b.isActive
+    if (!this.authService.userId()) return;
+
+    const budgets = await this.firestoreService.getCollection<Budget>(
+      this.userBudgetsPath,
+      {
+        where: [
+          { field: 'categoryId', op: '==', value: categoryId },
+          { field: 'isActive', op: '==', value: true }
+        ]
+      }
     );
 
     for (const budget of budgets) {
