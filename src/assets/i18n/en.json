@@ -259,7 +259,8 @@
     "deleteMessage": "Delete \"{{name}}\"? Its contribution history goes with it.",
     "contributionRecorded": "Contribution recorded",
     "contributionFailed": "Could not record the contribution",
-    "linkedBreakdown": "{{manual}} manual · {{linked}} from transactions"
+    "linkedBreakdown": "{{manual}} manual · {{linked}} from transactions",
+    "currencyLocked": "Fixed once money is against this goal"
   },
   "reports": {
     "title": "Reports",

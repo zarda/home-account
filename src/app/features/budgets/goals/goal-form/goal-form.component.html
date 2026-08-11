@@ -45,6 +45,9 @@
               <mat-option [value]="currency.code">{{ currency.code }}</mat-option>
             }
           </mat-select>
+          @if (currencyLocked()) {
+            <mat-hint>{{ 'goal.currencyLocked' | translate }}</mat-hint>
+          }
         </mat-form-field>
       </div>
 

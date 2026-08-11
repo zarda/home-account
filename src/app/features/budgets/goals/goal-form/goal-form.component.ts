@@ -70,6 +70,15 @@ export class GoalFormComponent implements OnInit {
   form!: FormGroup;
   isSubmitting = signal(false);
 
+  /**
+   * A goal's currency is the unit its counters are denominated in, and
+   * neither counter can be re-derived: switching it would relabel the stored
+   * magnitudes rather than convert them. Once money is against the goal the
+   * unit is fixed. Gated on the counters rather than on edit mode, so a goal
+   * created with the wrong currency can still be corrected.
+   */
+  readonly currencyLocked = signal(false);
+
   currencies = this.currencyService.getSupportedCurrencies();
 
   get kinds(): { value: GoalKind; label: string }[] {
@@ -82,12 +91,23 @@ export class GoalFormComponent implements OnInit {
   ngOnInit(): void {
     const goal = this.data.goal;
 
+    this.currencyLocked.set(
+      this.data.mode === 'edit' &&
+        ((goal?.contributedAmount ?? 0) !== 0 || (goal?.linkedAmount ?? 0) !== 0)
+    );
+
     this.form = this.fb.group({
       kind: [goal?.kind ?? 'saving', Validators.required],
       name: [goal?.name ?? '', Validators.required],
       targetAmount: [goal?.targetAmount ?? '', [Validators.required, Validators.min(0.01)]],
+      // Disabled rather than omitted: getRawValue() still reads the stored
+      // code, so onSubmit keeps sending the currency the goal already has
+      // and GoalService only ever sees a change it can refuse.
       currency: [
-        goal?.currency ?? baseCurrencyOf(this.authService.currentUser()),
+        {
+          value: goal?.currency ?? baseCurrencyOf(this.authService.currentUser()),
+          disabled: this.currencyLocked()
+        },
         Validators.required
       ],
       targetDate: [goal?.targetDate?.toDate() ?? null],
