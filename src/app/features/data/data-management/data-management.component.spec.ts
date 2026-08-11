@@ -51,8 +51,7 @@ describe('DataManagementComponent', () => {
       'downloadBlob',
       'downloadBlobWithPicker',
       'importFromCSV',
-      'parseImportedData',
-      'getAllTransactions'
+      'parseImportedData'
     ]);
     mockExportService.exportToJSON.and.returnValue(new Blob(['{}'], { type: 'application/json' }));
     mockExportService.exportToCSV.and.returnValue(new Blob(['csv'], { type: 'text/csv' }));
@@ -60,12 +59,12 @@ describe('DataManagementComponent', () => {
     mockExportService.importFromCSV.and.returnValue(Promise.resolve([]));
     mockExportService.parseImportedData.and.returnValue([]);
 
-    mockTransactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'deleteAllTransactions', 'getAllTransactions'], {
+    mockTransactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'deleteAllTransactions', 'exportAll'], {
       transactions: signal([])
     });
     mockTransactionService.addTransaction.and.returnValue(Promise.resolve('new-id'));
     mockTransactionService.deleteAllTransactions.and.returnValue(Promise.resolve(0));
-    mockTransactionService.getAllTransactions.and.returnValue(of([]));
+    mockTransactionService.exportAll.and.resolveTo([]);
 
     mockCategoryService = jasmine.createSpyObj('CategoryService', ['exportAll'], {
       categories: signal([])

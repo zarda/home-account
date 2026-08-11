@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -114,8 +113,12 @@ export class DataManagementComponent {
     try {
       // Every section is read one-shot from the database, never from a live
       // signal — a signal only holds whatever a subscription happened to
-      // deliver, which is not a backup.
-      const transactions = await firstValueFrom(this.transactionService.getAllTransactions());
+      // deliver, which is not a backup. Transactions are read first and
+      // server-only: offline, that read rejects and the whole export fails
+      // before anything is written, so the deletion gate below holds. The
+      // sibling exportAll() reads can still be served from cache, which is
+      // safe only while they run after this one.
+      const transactions = await this.transactionService.exportAll();
       const categories = await this.categoryService.exportAll();
       const insightSnapshots = await this.insightSnapshots.exportAll();
       const budgets = await this.budgetService.exportAll();
@@ -157,8 +160,9 @@ export class DataManagementComponent {
   async exportTransactionsCSV(): Promise<void> {
     this.isExporting.set(true);
     try {
-      // Fetch ALL transactions from database (not just what's loaded in the signal)
-      const transactions = await firstValueFrom(this.transactionService.getAllTransactions());
+      // Fetch ALL transactions from the server (not just what's loaded in the
+      // signal, and never a cached subset the file would silently truncate to)
+      const transactions = await this.transactionService.exportAll();
       const blob = this.exportService.exportToCSV(transactions);
 
       const date = dayKey(new Date());

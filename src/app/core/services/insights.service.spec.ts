@@ -54,7 +54,7 @@ describe('InsightsService', () => {
     transactionService = jasmine.createSpyObj<TransactionService>(
       'TransactionService',
       ['getTransactionsInRange', 'getByDateRange', 'getTransactions', 'getMonthlyTotals',
-        'getExpensesInRange', 'getAllTransactions']);
+        'getExpensesInRange']);
     transactionService.getTransactionsInRange.and.returnValue(of([]));
 
     currencyService = jasmine.createSpyObj<CurrencyService>('CurrencyService', ['amountInBase']);

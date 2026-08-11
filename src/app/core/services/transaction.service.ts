@@ -1383,16 +1383,21 @@ export class TransactionService {
     }));
   }
 
-  // Get all transactions (for full export - no filters)
-  getAllTransactions(): Observable<Transaction[]> {
+  /**
+   * One-shot read of every transaction, for the backup and CSV exports.
+   *
+   * Answered by the server, not the cache: this read gates account deletion,
+   * and with the persistent cache enabled a warm session's first listener
+   * emission is whatever narrow windows it happened to browse. Offline it
+   * rejects, so the export reports failure instead of writing a subset and
+   * calling it a backup.
+   */
+  async exportAll(): Promise<Transaction[]> {
     const userId = this.authService.userId();
-    if (!userId) return of([]);
-
-    return this.firestoreService.subscribeToCollection<Transaction>(
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<Transaction>(
       this.userTransactionsPath,
-      {
-        orderBy: [{ field: 'date', direction: 'desc' }]
-      }
+      { orderBy: [{ field: 'date', direction: 'desc' }] }
     );
   }
 
