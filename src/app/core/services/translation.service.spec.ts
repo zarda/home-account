@@ -147,6 +147,67 @@ describe('TranslationService', () => {
     });
   });
 
+  describe('plural entries', () => {
+    const enCatalog = {
+      aiSearch: {
+        matchCount: { one: '{{count}} matching transaction', other: '{{count}} matching transactions' },
+      },
+    };
+
+    async function load(locale: 'en' | 'ja' | 'tc', body: object): Promise<void> {
+      const promise = service.setLocale(locale);
+      httpMock.expectOne(`/assets/i18n/${locale}.json`).flush(body);
+      await promise;
+    }
+
+    it('selects one at 1 and other at 0 and 2 in English', async () => {
+      await load('en', enCatalog);
+      expect(service.t('aiSearch.matchCount', { count: 0 })).toBe('0 matching transactions');
+      expect(service.t('aiSearch.matchCount', { count: 1 })).toBe('1 matching transaction');
+      expect(service.t('aiSearch.matchCount', { count: 2 })).toBe('2 matching transactions');
+    });
+
+    it('falls back to other when the selected category has no member', async () => {
+      await load('en', { insights: { historyCount: { other: '{{count}} months saved' } } });
+      expect(service.t('insights.historyCount', { count: 1 })).toBe('1 months saved');
+    });
+
+    it('interpolates the other placeholders of the selected member', async () => {
+      await load('en', {
+        settings: {
+          backupRestoredPartial: {
+            one: '{{count}} record restored, {{skipped}} skipped',
+            other: '{{count}} records restored, {{skipped}} skipped',
+          },
+        },
+      });
+      expect(service.t('settings.backupRestoredPartial', { count: 1, skipped: 3 }))
+        .toBe('1 record restored, 3 skipped');
+    });
+
+    it('returns the key when a plural entry is reached without a numeric count', async () => {
+      await load('en', enCatalog);
+      expect(service.t('aiSearch.matchCount')).toBe('aiSearch.matchCount');
+      expect(service.t('aiSearch.matchCount', { count: '2' })).toBe('aiSearch.matchCount');
+    });
+
+    it('still returns the key for a namespace object even with a count', async () => {
+      await load('en', enCatalog);
+      expect(service.t('aiSearch', { count: 2 })).toBe('aiSearch');
+    });
+
+    it('leaves a Japanese plain string untouched at every count', async () => {
+      await load('ja', { aiSearch: { matchCount: '該当する取引: {{count}}件' } });
+      expect(service.t('aiSearch.matchCount', { count: 1 })).toBe('該当する取引: 1件');
+      expect(service.t('aiSearch.matchCount', { count: 2 })).toBe('該当する取引: 2件');
+    });
+
+    it('leaves a Traditional Chinese plain string untouched at every count', async () => {
+      await load('tc', { aiSearch: { matchCount: '{{count}} 筆符合的交易' } });
+      expect(service.t('aiSearch.matchCount', { count: 1 })).toBe('1 筆符合的交易');
+    });
+  });
+
   describe('currentLanguage', () => {
     it('should return current language object', async () => {
       const promise = service.setLocale('ja');

@@ -17,7 +17,7 @@
     class="sidebar-backdrop"
     role="button"
     tabindex="0"
-    aria-label="Close sidebar"
+    [attr.aria-label]="'common.closeSidebar' | translate"
     (click)="closeSidebar()"
     (keydown.enter)="closeSidebar()"
     (keydown.escape)="closeSidebar()"
@@ -26,7 +26,7 @@
     class="sidebar-drawer"
     role="dialog"
     aria-modal="true"
-    aria-label="Navigation"
+    [attr.aria-label]="'common.navigation' | translate"
     cdkTrapFocus
     cdkTrapFocusAutoCapture
   >

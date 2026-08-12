@@ -3,7 +3,7 @@
     mat-icon-button
     (click)="toggleSidebar.emit()"
     [matTooltip]="'common.toggleSidebar' | translate"
-    aria-label="Toggle sidebar"
+    [attr.aria-label]="'common.toggleSidebar' | translate"
     class="menu-button"
   >
     <mat-icon>{{ isSidebarOpen ? 'menu_open' : 'menu' }}</mat-icon>
@@ -25,7 +25,12 @@
 
   <!-- User Menu -->
   @if (currentUser(); as user) {
-    <button mat-icon-button [matMenuTriggerFor]="userMenu" aria-label="User menu">
+    <button
+      mat-icon-button
+      [matMenuTriggerFor]="userMenu"
+      class="user-menu-button"
+      [attr.aria-label]="'common.userMenu' | translate"
+    >
       @if (user.photoURL) {
         <img
           [src]="user.photoURL"

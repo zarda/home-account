@@ -92,7 +92,7 @@
                   (click)="moveFileUp(i, $event)"
                   [disabled]="i === 0"
                   class="reorder-btn"
-                  aria-label="Move up"
+                  [attr.aria-label]="'common.moveUp' | translate"
                 >
                   <mat-icon>arrow_upward</mat-icon>
                 </button>
@@ -101,7 +101,7 @@
                   (click)="moveFileDown(i, $event)"
                   [disabled]="i === selectedFiles().length - 1"
                   class="reorder-btn"
-                  aria-label="Move down"
+                  [attr.aria-label]="'common.moveDown' | translate"
                 >
                   <mat-icon>arrow_downward</mat-icon>
                 </button>
@@ -112,7 +112,7 @@
               mat-icon-button
               (click)="removeFile(file, $event)"
               class="remove-btn"
-              aria-label="Remove file"
+              [attr.aria-label]="'common.remove' | translate"
             >
               <mat-icon>close</mat-icon>
             </button>

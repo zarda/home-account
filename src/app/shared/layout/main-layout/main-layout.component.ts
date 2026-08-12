@@ -9,6 +9,7 @@ import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { HeaderComponent } from '../header/header.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /** localStorage key for the user's docked-sidebar collapse preference. */
 const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
@@ -16,7 +17,7 @@ const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
 @Component({
   selector: 'app-main-layout',
   standalone: true,
-  imports: [RouterOutlet, A11yModule, HeaderComponent, SidebarComponent, BottomNavComponent],
+  imports: [RouterOutlet, A11yModule, HeaderComponent, SidebarComponent, BottomNavComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './main-layout.component.html',
   styleUrl: './main-layout.component.scss',

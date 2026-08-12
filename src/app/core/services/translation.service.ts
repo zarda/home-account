@@ -4,6 +4,15 @@ import { firstValueFrom } from 'rxjs';
 
 export type SupportedLocale = 'en' | 'tc' | 'ja';
 
+/**
+ * The member names a pluralized catalog entry may carry (CLDR cardinal
+ * categories). A leaf whose keys all come from this set, with string values,
+ * is a plural object rather than a namespace — scripts/check-i18n.mjs and
+ * translation-keys.spec.ts apply the same rule. Only en.json carries members;
+ * ja and tc have no number agreement and stay plain strings (docs/i18n.md).
+ */
+const PLURAL_CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
+
 export interface Language {
   code: SupportedLocale;
   name: string;
@@ -84,14 +93,39 @@ export class TranslationService {
     }
 
     if (typeof value !== 'string') {
-      return key;
+      const selected = this.selectPluralMember(value, params?.['count']);
+      if (selected === undefined) {
+        return key;
+      }
+      value = selected;
     }
 
     if (params) {
-      return this.interpolate(value, params);
+      return this.interpolate(value as string, params);
     }
 
-    return value;
+    return value as string;
+  }
+
+  /**
+   * Resolves a plural object to one member via Intl.PluralRules for the
+   * active locale, falling back to `other` when the selected category has no
+   * member. Anything that is not plural-shaped — or a plural entry reached
+   * without a numeric `count` — resolves to nothing, and t() returns the key,
+   * as it always has for non-string leaves.
+   */
+  private selectPluralMember(value: unknown, count: unknown): string | undefined {
+    if (typeof count !== 'number' || value === null || typeof value !== 'object') {
+      return undefined;
+    }
+    const members = value as Record<string, unknown>;
+    const names = Object.keys(members);
+    if (names.length === 0 || !names.every(name => PLURAL_CATEGORIES.has(name))) {
+      return undefined;
+    }
+    const category = new Intl.PluralRules(this.getIntlLocale()).select(count);
+    const selected = members[category] ?? members['other'];
+    return typeof selected === 'string' ? selected : undefined;
   }
 
   private interpolate(text: string, params: Record<string, string | number>): string {

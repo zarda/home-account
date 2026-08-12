@@ -82,6 +82,13 @@ describe('insight-card.utils', () => {
       it(`resolves every insight card key in ${name}`, () => {
         const missing = INSIGHT_CARD_KEYS.filter(key => {
           const value = leafAt(dictionary, key);
+          if (value !== null && typeof value === 'object') {
+            // A pluralized entry (insights.recurringPortfolioBody in en):
+            // every member must be a non-empty string.
+            const members = Object.values(value as Record<string, unknown>);
+            return members.length === 0
+              || members.some(member => typeof member !== 'string' || member.length === 0);
+          }
           return typeof value !== 'string' || value.length === 0;
         });
         expect(missing).toEqual([]);

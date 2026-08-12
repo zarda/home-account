@@ -42,6 +42,9 @@
     "warning": "Warning",
     "info": "Info",
     "toggleSidebar": "Toggle sidebar",
+    "userMenu": "User menu",
+    "closeSidebar": "Close sidebar",
+    "navigation": "Navigation",
     "welcome": "Welcome back",
     "tryAgain": "Try Again",
     "selected": "selected",
@@ -151,7 +154,10 @@
     "saveChanges": "Save Changes",
     "receipt": "Receipt",
     "viewReceipt": "View receipt",
-    "resultCountAnnouncement": "{{count}} transactions shown",
+    "resultCountAnnouncement": {
+      "one": "{{count}} transaction shown",
+      "other": "{{count}} transactions shown"
+    },
     "loadMoreError": "Couldn't load transactions",
     "sortNeedsFullList": "Load the complete filtered list to sort by this column",
     "insightChipsLabel": "Notable spending this month",
@@ -214,7 +220,10 @@
     "alertSnackbarExceeded": "{{name}}: budget exceeded ({{percent}}% used)",
     "alertSnackbarCritical": "{{name}}: almost at limit ({{percent}}% used)",
     "alertSnackbarWarning": "{{name}}: approaching limit ({{percent}}% used)",
-    "alertSnackbarMore": "+{{count}} more budget alerts",
+    "alertSnackbarMore": {
+      "one": "+{{count}} more budget alert",
+      "other": "+{{count}} more budget alerts"
+    },
     "viewBudgets": "View budgets"
   },
   "goal": {
@@ -391,7 +400,9 @@
     "categoryName": "Category Name",
     "categoryNamePlaceholder": "e.g., Coffee",
     "icon": "Icon",
+    "iconSelection": "Icon selection",
     "color": "Color",
+    "colorSelection": "Color selection",
     "preview": "Preview",
     "saveChanges": "Save Changes",
     "createCategory": "Create Category",
@@ -406,10 +417,19 @@
     "processingFile": "Processing file...",
     "uploadPrompt": "Click to upload CSV or JSON file",
     "uploadHint": "Supports bank exports and backup files",
-    "previewTransactions": "Preview: {{count}} transactions found",
-    "moreTransactions": "...and {{count}} more transactions",
+    "previewTransactions": {
+      "one": "Preview: {{count}} transaction found",
+      "other": "Preview: {{count}} transactions found"
+    },
+    "moreTransactions": {
+      "one": "...and {{count}} more transaction",
+      "other": "...and {{count}} more transactions"
+    },
     "importingProgress": "Importing... {{progress}}%",
-    "importTransactions": "Import {{count}} Transactions",
+    "importTransactions": {
+      "one": "Import {{count}} Transaction",
+      "other": "Import {{count}} Transactions"
+    },
     "dangerZone": "Danger Zone",
     "irreversibleActions": "Irreversible actions",
     "deleteAllTransactions": "Delete All Transactions",
@@ -448,17 +468,35 @@
     "sectionRecurring": "Recurring",
     "sectionGoals": "Goals",
     "sectionInsightSnapshots": "Monthly insights",
-    "backupRestored": "{{count}} records restored",
-    "backupRestoredPartial": "{{count}} records restored, {{skipped}} skipped ({{sections}})",
+    "backupRestored": {
+      "one": "{{count}} record restored",
+      "other": "{{count}} records restored"
+    },
+    "backupRestoredPartial": {
+      "one": "{{count}} record restored, {{skipped}} skipped ({{sections}})",
+      "other": "{{count}} records restored, {{skipped}} skipped ({{sections}})"
+    },
     "backupRestoreFailed": "Failed to restore the backup",
     "unsupportedBackupVersion": "This backup was made by a newer version of the app",
     "fileReadFailed": "Failed to read file",
-    "transactionsImported": "{{count}} transactions imported",
-    "transactionsImportedPartial": "{{count}} transactions imported, {{skipped}} skipped",
-    "allTransactionsDeleted": "{{count}} transactions deleted",
+    "transactionsImported": {
+      "one": "{{count}} transaction imported",
+      "other": "{{count}} transactions imported"
+    },
+    "transactionsImportedPartial": {
+      "one": "{{count}} transaction imported, {{skipped}} skipped",
+      "other": "{{count}} transactions imported, {{skipped}} skipped"
+    },
+    "allTransactionsDeleted": {
+      "one": "{{count}} transaction deleted",
+      "other": "{{count}} transactions deleted"
+    },
     "deleteTransactionsFailed": "Failed to delete transactions",
     "confirmImport": "Confirm Import",
-    "confirmImportMessage": "Import {{count}} transactions? This will add new transactions to your account.",
+    "confirmImportMessage": {
+      "one": "Import {{count}} transaction? This will add a new transaction to your account.",
+      "other": "Import {{count}} transactions? This will add new transactions to your account."
+    },
     "deleteAllConfirmMessage": "This will permanently delete ALL transactions. This action cannot be undone. Are you absolutely sure?",
     "finalConfirmation": "Final Confirmation",
     "typeDeleteConfirm": "Type \"DELETE\" to confirm deletion of all transactions.",
@@ -849,7 +887,10 @@
     "apply": "Apply filters",
     "viewTransactions": "View matching transactions",
     "applyKeyword": "Search by keyword",
-    "matchCount": "{{count}} matching transactions",
+    "matchCount": {
+      "one": "{{count}} matching transaction",
+      "other": "{{count}} matching transactions"
+    },
     "noMatches": "No transactions match this question.",
     "historyComputedAt": "Computed {{date}}",
     "historyTitle": "Past answers",
@@ -895,15 +936,24 @@
     "extractingData": "Extracting data from file",
     "categorizingTransactions": "Categorizing transactions...",
     "checkingDuplicates": "Checking for duplicates...",
-    "foundTransactions": "Found {{count}} transactions",
-    "reviewTitle": "Review {{count}} Transactions",
+    "foundTransactions": {
+      "one": "Found {{count}} transaction",
+      "other": "Found {{count}} transactions"
+    },
+    "reviewTitle": {
+      "one": "Review {{count}} Transaction",
+      "other": "Review {{count}} Transactions"
+    },
     "reviewDescription": "Review and edit extracted transactions before importing",
     "confidenceHigh": "High confidence ({{percent}}%) — the AI is confident about this category",
     "confidenceMedium": "Medium confidence ({{percent}}%) — you may want to verify this category",
     "confidenceLow": "Low confidence ({{percent}}%) — please review and select the correct category",
     "notesPlaceholder": "Items, details, or notes...",
     "noTransactions": "No transactions to import",
-    "duplicatesFound": "{{count}} potential duplicates detected",
+    "duplicatesFound": {
+      "one": "{{count}} potential duplicate detected",
+      "other": "{{count}} potential duplicates detected"
+    },
     "duplicatesDescription": "These transactions may already exist in your account. They are deselected by default.",
     "duplicate": "Duplicate",
     "excludeDuplicates": "Exclude all duplicates",
@@ -913,8 +963,14 @@
     "matchPossible": "Possible match",
     "matchUnknown": "Unknown match",
     "importSummary": "Import Summary",
-    "confirmImport": "Import {{count}} Transactions",
-    "importComplete": "Successfully imported {{count}} transactions",
+    "confirmImport": {
+      "one": "Import {{count}} Transaction",
+      "other": "Import {{count}} Transactions"
+    },
+    "importComplete": {
+      "one": "Successfully imported {{count}} transaction",
+      "other": "Successfully imported {{count}} transactions"
+    },
     "importFailed": "Import failed: {{error}}",
     "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
     "importSavedHistoryUnavailable": "Import finished, but the summary could not be loaded. See Import History for details.",
@@ -958,7 +1014,10 @@
     "processMultipleWithAI": "Process All with AI",
     "processingMultipleImages": "Processing {{count}} images...",
     "processedMultipleImages": "Processed {{count}} images",
-    "itemsMerged": "{{count}} items merged",
+    "itemsMerged": {
+      "one": "{{count}} item merged",
+      "other": "{{count}} items merged"
+    },
     "receiptPhotoBadge": "Receipt {{receipt}} (photo {{photos}})",
     "receiptsDetected": "{{count}} receipts detected",
     "itemsMergedLabel": "Items merged",
@@ -970,7 +1029,10 @@
     "nativeOCR": "Native Vision OCR",
     "configureAI": "Configure API key in Settings",
     "iosInstallHint": "For the best camera experience, add this app to your Home Screen",
-    "queuedForLater": "{{count}} images queued for processing when online",
+    "queuedForLater": {
+      "one": "{{count}} image queued for processing when online",
+      "other": "{{count}} images queued for processing when online"
+    },
     "notes": "Notes",
     "errorTitleRateLimit": "Rate Limit Reached",
     "errorTitleAuth": "API Key Issue",
@@ -1164,7 +1226,10 @@
     "cadenceQuarterly": "quarterly",
     "cadenceYearly": "yearly",
     "recurringPortfolioTitle": "Recurring payments",
-    "recurringPortfolioBody": "{{count}} recurring payments — {{declared}} you set up, {{detected}} found in your history.",
+    "recurringPortfolioBody": {
+      "one": "{{count}} recurring payment — {{declared}} you set up, {{detected}} found in your history.",
+      "other": "{{count}} recurring payments — {{declared}} you set up, {{detected}} found in your history."
+    },
     "recurringIncreasedTitle": "A recurring payment went up",
     "recurringIncreasedBody": "This {{cadence}} charge is higher than it was, across {{occurrences}} payments.",
     "recurringNewTitle": "A new recurring payment",
@@ -1186,8 +1251,14 @@
     "smallDripTitle": "Small purchases add up",
     "smallDripBody": "{{count}} small purchases came to {{percent}}% of your spending over {{months}} months.",
     "computing": "Looking for patterns…",
-    "basedOn": "Based on {{range}} · {{count}} transactions",
-    "basedOnCount": "Based on {{count}} transactions",
+    "basedOn": {
+      "one": "Based on {{range}} · {{count}} transaction",
+      "other": "Based on {{range}} · {{count}} transactions"
+    },
+    "basedOnCount": {
+      "one": "Based on {{count}} transaction",
+      "other": "Based on {{count}} transactions"
+    },
     "viewTransactions": "View transactions",
     "showTransactions": "Show transactions",
     "hideTransactions": "Hide transactions",
@@ -1222,7 +1293,10 @@
     "needMonths": "{{needed}} full months of history — you have {{have}}",
     "needTransactions": "{{needed}} transactions in the period — you have {{have}}",
     "historyTitle": "Pattern history",
-    "historyCount": "{{count}} months saved",
+    "historyCount": {
+      "one": "{{count}} month saved",
+      "other": "{{count}} months saved"
+    },
     "timelineLabel": "Saved months",
     "viewingMonth": "Viewing {{month}}",
     "backToCurrent": "Back to current",
