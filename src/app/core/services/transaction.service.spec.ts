@@ -31,6 +31,11 @@ describe('TransactionService', () => {
   let currencyService: CurrencyService;
 
   beforeEach(() => {
+    // A rates cache leaked from another spec file would win over the
+    // constants under the initialization ladder and clobber the seeded
+    // table below a microtask after the seed. Start clean.
+    localStorage.removeItem('home-account.exchangeRates');
+
     mockQuota = jasmine.createSpyObj<ReceiptQuotaService>('ReceiptQuotaService', [
       'canAddImages', 'noteImagesAdded', 'noteImagesRemoved', 'invalidateCount',
     ]);
@@ -2204,5 +2209,124 @@ describe('TransactionService', () => {
         done();
       });
     });
+  });
+});
+
+// Sibling block on purpose: the block above stubs ensureRatesLoaded away and
+// hand-seeds the rate table, and both would hide exactly the defect these
+// specs pin down — the write path's guard resolving onto an unusable table
+// when the rates API answers HTTP 200 with an error body. Here the real
+// CurrencyService runs its whole initialization chain.
+describe('TransactionService when the rates API answers with an error body', () => {
+  const RATES_CACHE_KEY = 'home-account.exchangeRates';
+  const TX = 'users/test-user-123/transactions';
+  const GOALS = 'users/test-user-123/goals';
+
+  let service: TransactionService;
+  let mockFirestore: MockFirestoreService;
+  let mockAuth: MockAuthService;
+  let mockStorage: MockStorageService;
+  let mockQuota: jasmine.SpyObj<ReceiptQuotaService>;
+
+  beforeEach(() => {
+    // No cache on the device: the ladder must end on the compiled-in
+    // constants (JPY at 149.5), which the conversions below assert against.
+    localStorage.removeItem(RATES_CACHE_KEY);
+
+    // The in-band failure shape open.er-api.com actually produces. A fresh
+    // Response per call, since json() is single-use.
+    spyOn(window, 'fetch').and.callFake(async () =>
+      new Response(
+        JSON.stringify({ result: 'error', 'error-type': 'rate-limited' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+
+    mockQuota = jasmine.createSpyObj<ReceiptQuotaService>('ReceiptQuotaService', [
+      'canAddImages', 'noteImagesAdded', 'noteImagesRemoved', 'invalidateCount',
+    ]);
+    mockQuota.canAddImages.and.resolveTo(true);
+
+    TestBed.configureTestingModule({
+      providers: [
+        TransactionService,
+        CurrencyService,
+        { provide: FirestoreService, useClass: MockFirestoreService },
+        { provide: AuthService, useClass: MockAuthService },
+        { provide: StorageService, useClass: MockStorageService },
+        { provide: ReceiptQuotaService, useValue: mockQuota }
+      ]
+    });
+
+    mockFirestore = TestBed.inject(FirestoreService) as unknown as MockFirestoreService;
+    mockAuth = TestBed.inject(AuthService) as unknown as MockAuthService;
+    mockStorage = TestBed.inject(StorageService) as unknown as MockStorageService;
+    service = TestBed.inject(TransactionService);
+
+    mockAuth.setAuthenticated(true);
+  });
+
+  afterEach(() => {
+    mockFirestore.clearMocks();
+    mockAuth.clearMocks();
+    mockStorage.clearMocks();
+    localStorage.removeItem(RATES_CACHE_KEY);
+  });
+
+  it('persists a JPY row converted through the fallback table, not 1:1', async () => {
+    await service.addTransaction({
+      type: 'expense',
+      amount: 1000,
+      currency: 'JPY',
+      categoryId: 'food_restaurants',
+      description: 'Ramen',
+      date: new Date()
+    });
+
+    const written =
+      mockFirestore.addDocumentSpy.mostRecent()?.args[1] as Record<string, unknown>;
+    expect(written['exchangeRate']).toBeCloseTo(1 / 149.5, 6);
+    expect(written['exchangeRate']).not.toBe(1);
+    expect(written['amountInBaseCurrency']).toBeCloseTo(1000 / 149.5, 2);
+    expect(written['amountInBaseCurrency']).not.toBe(1000);
+    expect(written['baseCurrency']).toBe('USD');
+  });
+
+  it('moves a USD goal counter by the converted figure for a JPY link', async () => {
+    mockFirestore.setMockDocument(`${GOALS}/g1`, {
+      id: 'g1',
+      userId: 'test-user-123',
+      kind: 'saving',
+      name: 'Emergency fund',
+      targetAmount: 1000,
+      contributedAmount: 0,
+      linkedAmount: 0,
+      currency: 'USD',
+      isActive: true,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now()
+    });
+
+    const id = await service.addTransaction({
+      type: 'expense',
+      amount: 1000,
+      currency: 'JPY',
+      categoryId: 'food_restaurants',
+      description: 'Transfer to savings',
+      date: new Date(),
+      goalId: 'g1'
+    });
+
+    const [rowPath, row] =
+      (mockFirestore.txSetSpy.mostRecent()?.args ?? []) as [string, Record<string, unknown>];
+    expect(rowPath).toBe(`${TX}/${id}`);
+    // roundMoney(1000 × 1/149.5): the converted figure, not the raw JPY —
+    // the raw figure is the ~150x goal overstatement this path used to write.
+    expect(row['goalAmount']).toBeCloseTo(6.69, 2);
+    expect(row['goalAmount']).not.toBe(1000);
+
+    const goal = await mockFirestore.getDocument<Record<string, unknown>>(`${GOALS}/g1`);
+    expect(goal?.['linkedAmount']).toBeCloseTo(6.69, 2);
+    expect(goal?.['linkedAmount']).not.toBe(1000);
   });
 });
