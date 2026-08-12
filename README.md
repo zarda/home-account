@@ -197,7 +197,7 @@ The web app is a fully-featured Progressive Web App:
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
 | `npm run lint` | ESLint |
-| `npm run i18n:check` | Verify every literal translation key resolves in all locales |
+| `npm run i18n:check` | Verify every literal translation key resolves in all locales and no template hard-codes an aria-label |
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
@@ -235,6 +235,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translatio
 | [docs/one-shot-reads.md](docs/one-shot-reads.md) | Reads that must see the whole collection: which values may never come from a listener's first emission, and which must be answered by the server |
 | [docs/data.md](docs/data.md) | The stored-data hub: every kind of record, where each is managed, and what the counts do and do not mean |
 | [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, and the checks that stand in |
+| [docs/i18n.md](docs/i18n.md) | The translation catalog: three locales, plural entries that only English carries, the checker's three scans, and what still escapes them |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 
