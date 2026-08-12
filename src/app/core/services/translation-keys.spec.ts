@@ -12,9 +12,28 @@ import tc from '../../../assets/i18n/tc.json';
  * this covers every namespace in the file. Keys referenced by the source but defined in
  * no locale at all are checked separately by scripts/check-i18n.mjs, which can read
  * templates off disk.
+ *
+ * A leaf may be a plural object (#272): members drawn from the CLDR cardinal
+ * categories, string values, English only — ja and tc have no number agreement
+ * and stay plain strings. Parity is asserted on the bare leaf path, and a
+ * plural object's members must be exactly its locale's cardinal categories.
  */
 
 type Tree = Record<string, unknown>;
+
+const PLURAL_CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
+const INTL_LOCALES: Record<string, string> = { en: 'en-US', ja: 'ja-JP', tc: 'zh-Hant-TW' };
+
+/** A leaf may be a plural object: every member a CLDR category name, every value a string. */
+function isPluralObject(value: unknown): value is Record<string, string> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return (
+    keys.length > 0 &&
+    keys.every(key => PLURAL_CATEGORIES.has(key)) &&
+    Object.values(value).every(member => typeof member === 'string')
+  );
+}
 
 const REFERENCE = 'en';
 const LOCALES: { name: string; tree: Tree }[] = [
@@ -27,7 +46,7 @@ const LOCALES: { name: string; tree: Tree }[] = [
 function leafKeys(tree: Tree, prefix = '', out: string[] = []): string[] {
   for (const [key, value] of Object.entries(tree)) {
     const path = prefix ? `${prefix}.${key}` : key;
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    if (value !== null && typeof value === 'object' && !Array.isArray(value) && !isPluralObject(value)) {
       leafKeys(value as Tree, path, out);
     } else {
       out.push(path);
@@ -74,9 +93,29 @@ describe('translation files', () => {
         .get(name)!
         .filter(key => {
           const value = leafValue(tree, key);
+          if (isPluralObject(value)) {
+            return Object.values(value).some(member => member.trim() === '');
+          }
           return typeof value !== 'string' || value.trim() === '';
         });
       expect(bad.join(', ')).toBe('', `blank or non-string values in ${name}`);
+    });
+  }
+
+  // A plural object's members are exactly its locale's cardinal categories.
+  // en resolves one+other; ja and tc resolve only `other`, so in those files
+  // a pluralized entry is a mistake — the entry stays a plain string and the
+  // path-level parity above is the contract (docs/i18n.md, ADR 0036).
+  for (const { name, tree } of LOCALES) {
+    it(`shapes every plural entry after ${name}'s cardinal categories`, () => {
+      const expected = [...new Intl.PluralRules(INTL_LOCALES[name]).resolvedOptions().pluralCategories]
+        .sort()
+        .join(',');
+      const bad = keysByLocale.get(name)!.filter(key => {
+        const value = leafValue(tree, key);
+        return isPluralObject(value) && Object.keys(value).sort().join(',') !== expected;
+      });
+      expect(bad.join(', ')).toBe('', `plural members out of shape in ${name}`);
     });
   }
 
@@ -125,8 +164,15 @@ const OPTIONAL_PLACEHOLDERS: Record<string, string[]> = {
   'import.importFailed': ['error'],
 };
 
-/** The `{{name}}` slots a string interpolates, ignoring their order. */
+/** The `{{name}}` slots a value interpolates; for a plural object, the union across members. */
 function placeholders(value: unknown): Set<string> {
+  if (isPluralObject(value)) {
+    const union = new Set<string>();
+    for (const member of Object.values(value)) {
+      for (const slot of placeholders(member)) union.add(slot);
+    }
+    return union;
+  }
   if (typeof value !== 'string') return new Set();
   return new Set([...value.matchAll(/\{\{(\w+)\}\}/g)].map(match => match[1]));
 }

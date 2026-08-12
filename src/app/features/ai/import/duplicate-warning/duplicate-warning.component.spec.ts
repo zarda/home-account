@@ -102,7 +102,7 @@ describe('DuplicateWarningComponent', () => {
       for (const locale of [en, ja, tc]) {
         for (const type of matchTypes) {
           const leaf = component.getMatchLabelKey(type).split('.')[1];
-          const value = (locale.import as Record<string, string>)[leaf];
+          const value = (locale.import as Record<string, unknown>)[leaf];
           expect(value)
             .withContext(`${component.getMatchLabelKey(type)} is missing or empty`)
             .toBeTruthy();

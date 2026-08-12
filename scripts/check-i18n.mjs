@@ -42,10 +42,23 @@ function walk(dir) {
   return out;
 }
 
+const PLURAL_CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
+
+/** A leaf may be a plural object: every key a CLDR category, every value a string. */
+function isPluralObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return (
+    keys.length > 0 &&
+    keys.every(key => PLURAL_CATEGORIES.has(key)) &&
+    Object.values(value).every(member => typeof member === 'string')
+  );
+}
+
 function flatten(value, prefix = '', out = new Set()) {
   for (const [key, child] of Object.entries(value)) {
     const path = prefix ? `${prefix}.${key}` : key;
-    if (child && typeof child === 'object' && !Array.isArray(child)) {
+    if (child && typeof child === 'object' && !Array.isArray(child) && !isPluralObject(child)) {
       flatten(child, path, out);
     } else {
       out.add(path);
