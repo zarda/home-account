@@ -47,7 +47,10 @@ and the wholesale rewrite has an owner.
 
 Rates are never snapshotted against the unloaded fallback table — every write
 path awaits `ensureRatesLoaded()` first, or it would stamp a real cross-rate
-as 1:1 and poison the corruption check above.
+as 1:1 and poison the corruption check above. Which table those writes
+convert through — the live fetch, the device cache, or the compiled-in
+constants — is the initialization ladder in
+[exchange-rates.md](exchange-rates.md).
 
 ## The converted figure on a linked transaction, and the goal's counters
 

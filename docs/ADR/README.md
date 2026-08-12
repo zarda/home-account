@@ -41,6 +41,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0034](0034-a-correctness-read-enumerates-the-collection.md) | A correctness-bearing read enumerates the collection, never a listener's first emission | Accepted | 2026-08-11 |
 | [0035](0035-what-the-emulator-cannot-see-is-checked-from-the-files.md) | What the emulator cannot see is checked from the files | Accepted | 2026-08-12 |
 | [0036](0036-a-user-facing-string-lives-in-the-catalog.md) | A user-facing string lives in the catalog, and only English declines | Accepted | 2026-08-12 |
+| [0037](0037-an-error-body-is-a-failed-fetch.md) | An error body is a failed fetch, and an expired cache beats the constants | Accepted | 2026-08-12 |
 
 ## What belongs here
 
