@@ -105,8 +105,8 @@ describe('TransactionFiltersComponent', () => {
     mockTranslationService.t.and.callFake((key: string) => {
       const translations: Record<string, string> = {
         'transactions.today': 'Today',
-        'transactions.thisWeek': 'Week',
-        'transactions.thisMonth': 'Month',
+        'transactions.week': 'Week',
+        'transactions.month': 'Month',
         'transactions.addTransaction': 'Add',
         'transactions.type': 'Type',
         'transactions.category': 'Category',
@@ -115,8 +115,8 @@ describe('TransactionFiltersComponent', () => {
         'transactions.maxAmount': 'Max Amount',
         'transactions.clearFilters': 'Clear Filters',
         'transactions.filters': 'Filters',
-        'transactions.income': 'Income',
-        'transactions.expense': 'Expense'
+        'common.income': 'Income',
+        'common.expense': 'Expense'
       };
       return translations[key] || key;
     });

@@ -225,7 +225,7 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     const parts: string[] = [];
     if (filters.type) {
       parts.push(this.translationService.t(
-        filters.type === 'expense' ? 'transactions.expense' : 'transactions.income'));
+        filters.type === 'expense' ? 'common.expense' : 'common.income'));
     }
     if (filters.categoryId) {
       parts.push(this.categoryName(filters.categoryId));

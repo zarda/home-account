@@ -71,7 +71,15 @@ describe('AiSearchDialogComponent', () => {
     currencyService.formatCurrency.and.callFake(
       (amount: number, code: string) => `${code} ${amount.toFixed(2)}`);
     const translationService = jasmine.createSpyObj('TranslationService', ['t']);
-    translationService.t.and.callFake((key: string) => key);
+    // Keys the assertions care about resolve to text; everything else echoes,
+    // as the real t() does on a miss. Reverting describeFilters to the phantom
+    // transactions.* keys therefore fails the chip assertion below — the map
+    // has no entry for them, so the chip would render the raw key.
+    const translations: Record<string, string> = {
+      'common.expense': 'Expense',
+      'common.income': 'Income',
+    };
+    translationService.t.and.callFake((key: string) => translations[key] ?? key);
     const dateFormatService = jasmine.createSpyObj('DateFormatService', ['formatDate']);
     dateFormatService.formatDate.and.callFake((d: Date) => d.toISOString().slice(0, 10));
 
@@ -130,7 +138,7 @@ describe('AiSearchDialogComponent', () => {
       const chips = Array.from(
         fixture.nativeElement.querySelectorAll('.summary-chip'),
         (el) => (el as HTMLElement).textContent?.trim());
-      expect(chips).toContain('transactions.expense');
+      expect(chips).toContain('Expense');
       expect(chips).toContain('Food & Drinks');
       expect(chips).toContain('≥ 50');
     });
