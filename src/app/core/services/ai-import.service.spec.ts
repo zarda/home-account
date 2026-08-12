@@ -14,6 +14,7 @@ import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
 import { TransactionService } from './transaction.service';
+import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { OfflineQueueService } from './offline-queue.service';
@@ -37,6 +38,7 @@ describe('AIImportService', () => {
   let duplicateService: jasmine.SpyObj<DuplicateDetectionService>;
   let importHistoryService: jasmine.SpyObj<ImportHistoryService>;
   let transactionService: jasmine.SpyObj<TransactionService>;
+  let budgetService: jasmine.SpyObj<BudgetService>;
   let authService: jasmine.SpyObj<AuthService>;
   let strategyService: jasmine.SpyObj<AIStrategyService>;
   let offlineQueue: jasmine.SpyObj<OfflineQueueService>;
@@ -70,6 +72,8 @@ describe('AIImportService', () => {
       'getImportById'
     ]);
     transactionService = jasmine.createSpyObj('TransactionService', ['addTransaction', 'getTransactions']);
+    budgetService = jasmine.createSpyObj('BudgetService', ['recalculateBudgetsForCategory']);
+    budgetService.recalculateBudgetsForCategory.and.resolveTo();
     authService = jasmine.createSpyObj('AuthService', [], {
       currentUser: jasmine.createSpy('currentUser').and.returnValue(createMockUser('user123')),
       userId: jasmine.createSpy('userId').and.returnValue('user123')
@@ -119,6 +123,7 @@ describe('AIImportService', () => {
         { provide: DuplicateDetectionService, useValue: duplicateService },
         { provide: ImportHistoryService, useValue: importHistoryService },
         { provide: TransactionService, useValue: transactionService },
+        { provide: BudgetService, useValue: budgetService },
         { provide: AuthService, useValue: authService },
         { provide: AIStrategyService, useValue: strategyService },
         { provide: OfflineQueueService, useValue: offlineQueue },
@@ -1021,6 +1026,76 @@ describe('AIImportService', () => {
       const stats = importHistoryService.completeImport.calls.mostRecent().args[1];
       expect(stats.totalIncome).toBe(100);
       expect(stats.totalExpenses).toBe(40);
+    });
+
+    describe('budget recalculation', () => {
+      it('recalculates each distinct expense category once, after the loop', async () => {
+        const order: string[] = [];
+        transactionService.addTransaction.and.callFake(async () => {
+          order.push('save');
+          return 'txn-id';
+        });
+        budgetService.recalculateBudgetsForCategory.and.callFake(async (categoryId: string) => {
+          order.push(`recalc:${categoryId}`);
+        });
+
+        await service.confirmImport(
+          [
+            selected({ id: 'a', suggestedCategoryId: 'food' }),
+            selected({ id: 'b', suggestedCategoryId: 'food' }),
+            selected({ id: 'c', suggestedCategoryId: 'transport' }),
+            selected({ id: 'd', type: 'income', suggestedCategoryId: 'salary' })
+          ],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        // Every row defers the recalculation to the deduped pass below.
+        for (const args of transactionService.addTransaction.calls.allArgs()) {
+          expect(args[1]).toEqual({ skipBudgetRecalc: true });
+        }
+        // One recalculation per distinct expense category, after every save.
+        expect(order).toEqual(['save', 'save', 'save', 'save', 'recalc:food', 'recalc:transport']);
+      });
+
+      it('does not recalculate a category whose only row failed to save', async () => {
+        transactionService.addTransaction.and.returnValues(
+          Promise.reject(new Error('save failed')),
+          Promise.resolve('txn-2')
+        );
+
+        await service.confirmImport(
+          [
+            selected({ id: 'a', suggestedCategoryId: 'doomed' }),
+            selected({ id: 'b', suggestedCategoryId: 'food' })
+          ],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(budgetService.recalculateBudgetsForCategory.calls.allArgs()).toEqual([['food']]);
+      });
+
+      it('recalculates nothing for an income-only import', async () => {
+        await service.confirmImport(
+          [selected({ id: 'a', type: 'income' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(budgetService.recalculateBudgetsForCategory).not.toHaveBeenCalled();
+      });
+
+      it('completes the import even when a recalculation fails', async () => {
+        // The rows are saved; a lagging spent counter is recovered by the
+        // next recalculation, so it must not stamp the import as failed.
+        spyOn(console, 'warn');
+        budgetService.recalculateBudgetsForCategory.and.rejectWith(new Error('offline'));
+
+        const history = await service.confirmImport(
+          [selected()], 'r.png', 10, 'image', 'receipt_image'
+        );
+
+        expect(history).toEqual(completedHistory);
+        expect(importHistoryService.failImport).not.toHaveBeenCalled();
+      });
     });
 
     it('should skip unselected transactions and count skipped duplicates', async () => {

@@ -1147,7 +1147,7 @@ describe('RecurringService', () => {
       expect(mockFirestoreService.subscribeToCollection).not.toHaveBeenCalled();
     });
 
-    it('should load rates, budgets and fresh recurring rules before processing', async () => {
+    it('should load rates and fresh recurring rules before processing, without warming budgets', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       const rule = createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) });
       mockFirestoreService.subscribeToCollection.and.returnValue(of([rule]));
@@ -1156,7 +1156,9 @@ describe('RecurringService', () => {
       await service.catchUpRecurringTransactions();
 
       expect(mockCurrencyService.ensureRatesLoaded).toHaveBeenCalled();
-      expect(mockBudgetService.getBudgets).toHaveBeenCalled();
+      // The recalculation enumerates the budgets collection itself, so the
+      // catch-up no longer subscribes just to populate the signal for it.
+      expect(mockBudgetService.getBudgets).not.toHaveBeenCalled();
       expect(mockFirestoreService.subscribeToCollection).toHaveBeenCalledWith(
         'users/user123/recurring',
         { orderBy: [{ field: 'nextOccurrence', direction: 'asc' }] }

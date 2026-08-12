@@ -18,6 +18,7 @@ import {
   startAt,
   endBefore,
   getCountFromServer,
+  getDocsFromServer,
   QueryConstraint,
   QueryDocumentSnapshot,
   DocumentData,
@@ -91,6 +92,23 @@ export class FirestoreService {
     const constraints = this.buildQueryConstraints(options);
     const q = query(collectionRef, ...constraints);
     const querySnap = await getDocs(q);
+
+    return querySnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as T[];
+  }
+
+  // Like getCollection, but answered by the server or not at all: with the
+  // persistent cache enabled, getDocs falls back to whatever the cache holds
+  // when the server is unreachable, which silently shrinks reads that must
+  // see the whole collection. This variant rejects ('unavailable') instead —
+  // for reads whose caller has to fail loudly rather than accept a subset.
+  async getCollectionFromServer<T>(collectionPath: string, options?: QueryOptions): Promise<T[]> {
+    const collectionRef = collection(this.firestore, collectionPath);
+    const constraints = this.buildQueryConstraints(options);
+    const q = query(collectionRef, ...constraints);
+    const querySnap = await getDocsFromServer(q);
 
     return querySnap.docs.map(doc => ({
       id: doc.id,

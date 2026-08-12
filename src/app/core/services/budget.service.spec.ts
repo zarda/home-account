@@ -95,7 +95,8 @@ describe('BudgetService', () => {
 
     mockTransactionService = jasmine.createSpyObj('TransactionService', [
       'getTransactions',
-      'getExpensesInRange'
+      'getExpensesInRange',
+      'getExpensesInRangeOnce'
     ]);
 
     // Default mock returns
@@ -496,16 +497,16 @@ describe('BudgetService', () => {
       spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(mockBudgets[0]));
       mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
-      mockTransactionService.getExpensesInRange.and.returnValue(of([
+      mockTransactionService.getExpensesInRangeOnce.and.resolveTo([
         { amount: 100, currency: 'USD' } as Transaction,
         { amount: 50, currency: 'USD' } as Transaction
-      ]));
+      ]);
     });
 
     it('should sum expenses from the non-mutating query and persist spent', async () => {
       await service.recalculateBudgetSpent('budget1');
 
-      expect(mockTransactionService.getExpensesInRange).toHaveBeenCalledWith(
+      expect(mockTransactionService.getExpensesInRangeOnce).toHaveBeenCalledWith(
         jasmine.any(Date),
         jasmine.any(Date),
         'cat1'
@@ -514,6 +515,15 @@ describe('BudgetService', () => {
         'users/user123/budgets/budget1',
         { spent: 150, spentPeriod: jasmine.any(String) }
       );
+    });
+
+    it('reads the expense rows one-shot, never through the live query', async () => {
+      // The sum this method persists must not come from a live listener's
+      // first emission — a warm cache can be missing another device's rows.
+      await service.recalculateBudgetSpent('budget1');
+
+      expect(mockTransactionService.getExpensesInRangeOnce).toHaveBeenCalledTimes(1);
+      expect(mockTransactionService.getExpensesInRange).not.toHaveBeenCalled();
     });
 
     it('should never run the signal-mutating getTransactions query', async () => {
@@ -534,7 +544,7 @@ describe('BudgetService', () => {
 
       await service.recalculateBudgetSpent('missing');
 
-      expect(mockTransactionService.getExpensesInRange).not.toHaveBeenCalled();
+      expect(mockTransactionService.getExpensesInRangeOnce).not.toHaveBeenCalled();
       expect(mockFirestoreService.updateDocument).not.toHaveBeenCalled();
     });
 
@@ -549,7 +559,7 @@ describe('BudgetService', () => {
       } as Transaction;
 
       beforeEach(() => {
-        mockTransactionService.getExpensesInRange.and.returnValue(of([yen, euro]));
+        mockTransactionService.getExpensesInRangeOnce.and.resolveTo([yen, euro]);
       });
 
       it('sums the write-time snapshots when the budget is in the base currency', async () => {
@@ -596,10 +606,10 @@ describe('BudgetService', () => {
       });
 
       it('rounds the persisted spend to cents', async () => {
-        mockTransactionService.getExpensesInRange.and.returnValue(of([
+        mockTransactionService.getExpensesInRangeOnce.and.resolveTo([
           { ...yen, amountInBaseCurrency: 10.111 } as Transaction,
           { ...yen, amountInBaseCurrency: 10.112 } as Transaction
-        ]));
+        ]);
 
         await service.recalculateBudgetSpent('budget1');
 
@@ -623,12 +633,12 @@ describe('BudgetService', () => {
       const currencyService = TestBed.inject(CurrencyService);
       spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
       mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
-      mockTransactionService.getExpensesInRange.and.returnValue(of([
+      mockTransactionService.getExpensesInRangeOnce.and.resolveTo([
         {
           amount: 25, currency: 'USD',
           amountInBaseCurrency: 25, exchangeRate: 1, baseCurrency: 'USD'
         } as Transaction
-      ]));
+      ]);
     });
 
     afterEach(() => {
@@ -721,7 +731,7 @@ describe('BudgetService', () => {
       spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(anchor31Budget));
       mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
-      mockTransactionService.getExpensesInRange.and.returnValue(of([]));
+      mockTransactionService.getExpensesInRangeOnce.and.resolveTo([]);
     });
 
     afterEach(() => {
@@ -730,9 +740,9 @@ describe('BudgetService', () => {
 
     async function recalcWindowAt(today: Date): Promise<{ start: Date; end: Date }> {
       jasmine.clock().mockDate(today);
-      mockTransactionService.getExpensesInRange.calls.reset();
+      mockTransactionService.getExpensesInRangeOnce.calls.reset();
       await service.recalculateBudgetSpent('budget31');
-      const [start, end] = mockTransactionService.getExpensesInRange.calls.mostRecent().args;
+      const [start, end] = mockTransactionService.getExpensesInRangeOnce.calls.mostRecent().args;
       return { start: start as Date, end: end as Date };
     }
 
@@ -772,15 +782,57 @@ describe('BudgetService', () => {
       const currencyService = TestBed.inject(CurrencyService);
       spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
       spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
+      mockFirestoreService.getCollection.and.resolveTo([mockBudgets[0]]);
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(mockBudgets[0]));
       mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
-      mockTransactionService.getExpensesInRange.and.returnValue(of([]));
-      service.budgets.set(mockBudgets);
+      mockTransactionService.getExpensesInRangeOnce.and.resolveTo([]);
 
       await service.recalculateBudgetsForCategory('cat1');
 
       expect(mockFirestoreService.getDocument).toHaveBeenCalledWith('users/user123/budgets/budget1');
-      expect(mockTransactionService.getExpensesInRange).toHaveBeenCalledTimes(1);
+      expect(mockTransactionService.getExpensesInRangeOnce).toHaveBeenCalledTimes(1);
+    });
+
+    it('enumerates the collection rather than the signal', async () => {
+      // The signal is only populated by a dashboard or budgets-page
+      // subscription. A session that posts a transaction without mounting
+      // either (share-target import, a reload on /transactions) used to
+      // recalculate against [] and silently skip the spent update.
+      const currencyService = TestBed.inject(CurrencyService);
+      spyOn(currencyService, 'ensureRatesLoaded').and.resolveTo();
+      spyOn(currencyService, 'convert').and.callFake((amount: number) => amount);
+      mockFirestoreService.getCollection.and.resolveTo([mockBudgets[0]]);
+      mockFirestoreService.getDocument.and.returnValue(Promise.resolve(mockBudgets[0]));
+      mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
+      mockTransactionService.getExpensesInRangeOnce.and.resolveTo([
+        { amount: 40, currency: 'USD', amountInBaseCurrency: 40 } as Transaction
+      ]);
+      service.budgets.set([]);
+
+      await service.recalculateBudgetsForCategory('cat1');
+
+      expect(mockFirestoreService.getCollection).toHaveBeenCalledWith(
+        'users/user123/budgets',
+        {
+          where: [
+            { field: 'categoryId', op: '==', value: 'cat1' },
+            { field: 'isActive', op: '==', value: true }
+          ]
+        }
+      );
+      // The spent figure is still written, signal or no signal.
+      expect(mockFirestoreService.updateDocument).toHaveBeenCalledWith(
+        'users/user123/budgets/budget1',
+        { spent: 40, spentPeriod: jasmine.any(String) }
+      );
+    });
+
+    it('returns without reading when signed out', async () => {
+      (mockAuthService.userId as jasmine.Spy).and.returnValue(null);
+
+      await service.recalculateBudgetsForCategory('cat1');
+
+      expect(mockFirestoreService.getCollection).not.toHaveBeenCalled();
     });
   });
 

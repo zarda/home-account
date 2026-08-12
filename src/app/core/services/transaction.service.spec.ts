@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
 import {
   TransactionService,
   RECEIPT_IMAGE_LIMIT_ERROR,
@@ -8,7 +9,6 @@ import {
 import { CreateTransactionDTO, Goal, Transaction } from '../../models';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
-import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
 import { StorageService } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
@@ -602,9 +602,11 @@ describe('TransactionService', () => {
     });
 
     it('recalculates affected budgets after posting an expense', async () => {
-      const budgetService = TestBed.inject(BudgetService);
+      // Seed only the collection: the recalculation enumerates it, so an
+      // empty budgets signal (a session that never mounted the dashboard)
+      // must not stop the spent update.
       const budget = createBudget({ id: 'b1', categoryId: 'food' });
-      budgetService.budgets.set([budget]);
+      mockFirestore.setMockCollection('users/test-user-123/budgets', [budget]);
       mockFirestore.setMockDocument('users/test-user-123/budgets/b1', budget);
 
       await service.addTransaction({
@@ -621,6 +623,29 @@ describe('TransactionService', () => {
       );
       expect(budgetUpdate).toBeDefined();
       expect('spent' in (budgetUpdate?.args[1] as object)).toBeTrue();
+    });
+
+    it('leaves the recalculation to the caller when skipBudgetRecalc is set', async () => {
+      const budget = createBudget({ id: 'b1', categoryId: 'food' });
+      mockFirestore.setMockCollection('users/test-user-123/budgets', [budget]);
+      mockFirestore.setMockDocument('users/test-user-123/budgets/b1', budget);
+
+      await service.addTransaction(
+        {
+          type: 'expense',
+          amount: 100,
+          currency: 'USD',
+          categoryId: 'food',
+          description: 'Groceries',
+          date: new Date()
+        },
+        { skipBudgetRecalc: true }
+      );
+
+      const budgetUpdate = mockFirestore.updateDocumentSpy.calls.find(
+        c => c.args[0] === 'users/test-user-123/budgets/b1'
+      );
+      expect(budgetUpdate).toBeUndefined();
     });
   });
 
@@ -1355,6 +1380,58 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('exportAll', () => {
+    const path = 'users/test-user-123/transactions';
+
+    it('returns every row through the server-only read, newest first', async () => {
+      const transactions = createMixedTransactions();
+      mockFirestore.setMockCollection(path, transactions);
+
+      const result = await service.exportAll();
+
+      expect(result).toEqual(transactions);
+      const call = mockFirestore.getCollectionFromServerSpy.mostRecent();
+      expect(call?.args[0]).toBe(path);
+      expect(call?.args[1]).toEqual({ orderBy: [{ field: 'date', direction: 'desc' }] });
+      // The export used to take a live listener's first emission, which a
+      // warm cache serves as whatever subset the session browsed. It must
+      // never open a listener at all.
+      expect(mockFirestore.subscribeToCollectionSpy.calls.length).toBe(0);
+    });
+
+    it('is immune to a live source that would emit a partial window first', async () => {
+      const all = createMixedTransactions();
+      mockFirestore.setMockCollection(path, all);
+      // A warm cache's listener raises a partial snapshot before the server
+      // one; prove the export never consults any listener.
+      const listener = spyOn(mockFirestore, 'subscribeToCollection')
+        .and.returnValue(of(all.slice(0, 1)));
+
+      const result = await service.exportAll();
+
+      expect(result).toEqual(all);
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('resolves empty signed out without touching the database', async () => {
+      mockAuth.setMockUser(null);
+
+      const result = await service.exportAll();
+
+      expect(result).toEqual([]);
+      expect(mockFirestore.getCollectionFromServerSpy.calls.length).toBe(0);
+    });
+
+    it('propagates a server-read failure instead of resolving a subset', async () => {
+      // Offline, getDocsFromServer rejects; the export must surface that so
+      // the backup reports failure rather than success on partial data.
+      spyOn(mockFirestore, 'getCollectionFromServer')
+        .and.rejectWith(new Error('unavailable'));
+
+      await expectAsync(service.exportAll()).toBeRejected();
+    });
+  });
+
   describe('goal links', () => {
     const TX = 'users/test-user-123/transactions';
     const GOALS = 'users/test-user-123/goals';
@@ -1885,7 +1962,7 @@ describe('TransactionService', () => {
 
     it('should add currency where clause when currency filter is set', (done) => {
       service.getTransactions({ currency: 'USD' }).subscribe(() => {
-        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const callArgs = mockFirestore.subscribeToCollectionSpy.mostRecent()?.args ?? [];
         const options = callArgs[1] as {
           where?: { field: string; op: string; value: unknown }[];
         } | undefined;
@@ -1905,7 +1982,7 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getByDateRange(start, end).subscribe(() => {
-        expect(mockFirestore.getCollectionSpy.calls.length).toBeGreaterThan(0);
+        expect(mockFirestore.subscribeToCollectionSpy.calls.length).toBeGreaterThan(0);
         done();
       });
     });
@@ -1979,7 +2056,7 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getExpensesInRange(new Date(2026, 0, 1), new Date(2026, 5, 30), 'food').subscribe(() => {
-        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const callArgs = mockFirestore.subscribeToCollectionSpy.mostRecent()?.args ?? [];
         const options = callArgs[1] as {
           where?: { field: string; op: string; value: unknown }[];
         } | undefined;
@@ -1998,7 +2075,7 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getByCategory('food').subscribe(() => {
-        expect(mockFirestore.getCollectionSpy.calls.length).toBeGreaterThan(0);
+        expect(mockFirestore.subscribeToCollectionSpy.calls.length).toBeGreaterThan(0);
         done();
       });
     });
@@ -2027,7 +2104,7 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getRecentTransactions(5).subscribe(() => {
-        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const callArgs = mockFirestore.subscribeToCollectionSpy.mostRecent()?.args ?? [];
         const options = callArgs[1] as Record<string, unknown> | undefined;
         expect(options?.['limit']).toBe(5);
         done();
@@ -2038,7 +2115,7 @@ describe('TransactionService', () => {
       mockFirestore.setMockCollection('users/test-user-123/transactions', []);
 
       service.getRecentTransactions().subscribe(() => {
-        const callArgs = mockFirestore.getCollectionSpy.mostRecent()?.args ?? [];
+        const callArgs = mockFirestore.subscribeToCollectionSpy.mostRecent()?.args ?? [];
         const options = callArgs[1] as Record<string, unknown> | undefined;
         expect(options?.['limit']).toBe(10);
         done();

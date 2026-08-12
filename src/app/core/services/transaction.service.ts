@@ -6,7 +6,7 @@ import {
   Transaction as FirestoreTransaction
 } from '@angular/fire/firestore';
 import { Observable, map, of, tap } from 'rxjs';
-import { FirestoreService } from './firestore.service';
+import { FirestoreService, QueryOptions } from './firestore.service';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { StorageService, MAX_RECEIPTS_PER_TRANSACTION } from './storage.service';
@@ -227,6 +227,12 @@ export class TransactionService {
    * `createdAt` has to come from the file for the same reason the rate does:
    * stamping now would restamp every pre-existing row and make a second
    * restore of the same file produce different documents.
+   *
+   * `options.skipBudgetRecalc` is for batch importers posting many rows in a
+   * loop: recalculating per row reads and rewrites the same budgets over and
+   * over. A caller that sets it owns the recalculation — one
+   * recalculateBudgetsForCategory per distinct expense category, after the
+   * loop.
    */
   async addTransaction(
     data: CreateTransactionDTO,
@@ -236,6 +242,7 @@ export class TransactionService {
       createdAt?: Timestamp;
       snapshot?: { exchangeRate: number; baseCurrency: string; amountInBaseCurrency: number };
       goalSnapshot?: { goalId: string; goalAmount: number };
+      skipBudgetRecalc?: boolean;
     }
   ): Promise<string> {
     this.isLoading.set(true);
@@ -375,7 +382,7 @@ export class TransactionService {
       }
 
       // Update affected budgets if this is an expense
-      if (data.type === 'expense') {
+      if (data.type === 'expense' && !options?.skipBudgetRecalc) {
         await this.updateAffectedBudgets(data.categoryId);
       }
 
@@ -1321,7 +1328,35 @@ export class TransactionService {
     const userId = this.authService.userId();
     if (!userId) return of([]);
 
-    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      this.expensesInRangeOptions(start, end, categoryId)
+    ).pipe(
+      map(transactions => transactions.filter(t => t.type === 'expense'))
+    );
+  }
+
+  /**
+   * One-shot variant of getExpensesInRange, for figures that get persisted.
+   * The budget-spent recalculation stores what this returns; taking a live
+   * listener's first emission there meant a warm cache could hand back a
+   * subset (rows written on another device sync in later) and the short sum
+   * would be written as the budget's spent.
+   */
+  async getExpensesInRangeOnce(start: Date, end: Date, categoryId?: string): Promise<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+
+    const transactions = await this.firestoreService.getCollection<Transaction>(
+      this.userTransactionsPath,
+      this.expensesInRangeOptions(start, end, categoryId)
+    );
+    return transactions.filter(t => t.type === 'expense');
+  }
+
+  // Shared by the live and one-shot variants so the two queries cannot drift.
+  private expensesInRangeOptions(start: Date, end: Date, categoryId?: string): QueryOptions {
+    const options: QueryOptions = {
       orderBy: [{ field: 'date', direction: 'desc' }],
       where: [
         { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
@@ -1333,12 +1368,7 @@ export class TransactionService {
       options.where!.push({ field: 'categoryId', op: '==', value: categoryId });
     }
 
-    return this.firestoreService.subscribeToCollection<Transaction>(
-      this.userTransactionsPath,
-      options
-    ).pipe(
-      map(transactions => transactions.filter(t => t.type === 'expense'))
-    );
+    return options;
   }
 
   /**
@@ -1383,16 +1413,21 @@ export class TransactionService {
     }));
   }
 
-  // Get all transactions (for full export - no filters)
-  getAllTransactions(): Observable<Transaction[]> {
+  /**
+   * One-shot read of every transaction, for the backup and CSV exports.
+   *
+   * Answered by the server, not the cache: this read gates account deletion,
+   * and with the persistent cache enabled a warm session's first listener
+   * emission is whatever narrow windows it happened to browse. Offline it
+   * rejects, so the export reports failure instead of writing a subset and
+   * calling it a backup.
+   */
+  async exportAll(): Promise<Transaction[]> {
     const userId = this.authService.userId();
-    if (!userId) return of([]);
-
-    return this.firestoreService.subscribeToCollection<Transaction>(
+    if (!userId) return [];
+    return this.firestoreService.getCollectionFromServer<Transaction>(
       this.userTransactionsPath,
-      {
-        orderBy: [{ field: 'date', direction: 'desc' }]
-      }
+      { orderBy: [{ field: 'date', direction: 'desc' }] }
     );
   }
 
