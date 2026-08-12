@@ -373,6 +373,10 @@ export class TransactionWindowService {
         );
       } catch (error) {
         lastError = error;
+        // A missing composite index is a deploy defect, not a transient
+        // fault: every retry returns the same failed-precondition, and the
+        // backoff only delays the banner that names the real problem.
+        if ((error as { code?: string }).code === 'failed-precondition') break;
         if (attempt < MAX_FETCH_ATTEMPTS - 1) {
           await this.delay(this.retryBaseDelayMs * 2 ** attempt);
         }

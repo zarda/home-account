@@ -203,6 +203,23 @@ describe('TransactionWindowService', () => {
       expect(service.loadError()).toBeNull();
     });
 
+    it('surfaces a missing-index error immediately, with no retries', async () => {
+      seedTransactions(300);
+      await service.reset();
+
+      let attempts = 0;
+      spyOn(mockFirestore, 'getPage').and.callFake((() => {
+        attempts++;
+        return Promise.reject(
+          Object.assign(new Error('The query requires an index.'), { code: 'failed-precondition' })
+        );
+      }) as never);
+
+      expect(await service.fetchNext()).toBe(0);
+      expect(attempts).toBe(1);
+      expect(service.loadError()).toBe('next');
+    });
+
     it('sets loadError without touching the window when all attempts fail, and retry() recovers', async () => {
       seedTransactions(300);
       await service.reset();
