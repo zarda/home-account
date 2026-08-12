@@ -455,6 +455,15 @@ service cloud.firestore {
             || ('computedAt' in d && d.computedAt is timestamp))
         && (!touched('lastUsedAt')
             || ('lastUsedAt' in d && d.lastUsedAt is timestamp))
+        // The create rule's pairing, re-checked over the merged result: an
+        // update must not be able to grow figures onto a filter record and
+        // render an answer nobody computed (#275). Records that predate the
+        // kind field are exempt — kind is frozen above, so they can never
+        // gain one, and they must stay touchable and pinnable. No hasOnly
+        // here, by the same decision as before: the closed set is the create
+        // door's.
+        && (!('kind' in d)
+            || (d.kind == 'aggregate' ? answerFiguresValid(d) : filterFiguresAbsent(d)))
         && answerOptionalsValid(d);
     }
 
