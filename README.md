@@ -205,7 +205,7 @@ The web app is a fully-featured Progressive Web App:
 
 ## Continuous Integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translation-key check, the analytics-registry check, headless unit tests with coverage, the emulator smoke tests, and a production build — on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
+GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, and a production build — on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 
@@ -234,6 +234,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the translatio
 | [docs/money-snapshots.md](docs/money-snapshots.md) | Money that is stored already converted: what each figure is denominated in, when it is re-taken, and what repairs it |
 | [docs/one-shot-reads.md](docs/one-shot-reads.md) | Reads that must see the whole collection: which values may never come from a listener's first emission, and which must be answered by the server |
 | [docs/data.md](docs/data.md) | The stored-data hub: every kind of record, where each is managed, and what the counts do and do not mean |
+| [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, and the checks that stand in |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 
