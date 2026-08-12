@@ -137,7 +137,10 @@ export class CurrencyService {
     return stampMismatch || corrupt ? liveConvert() : snapshot;
   }
 
-  // Refresh exchange rates from ExchangeRate-API (free, no key required)
+  // Refresh exchange rates from ExchangeRate-API (free, no key required).
+  // Rejects on any failure — transport, HTTP status, or an in-band error
+  // body — leaving the signals and the device cache untouched, so a caller's
+  // fallback runs against clean state.
   async refreshRates(): Promise<void> {
     this.isLoading.set(true);
 
@@ -150,14 +153,27 @@ export class CurrencyService {
 
       const data = await response.json();
 
-      // ExchangeRate-API returns { result: "success", rates: { USD: 1, EUR: 0.92, ... } }
-      if (data.result === 'success' && data.rates) {
-        const rates = new Map<string, number>(Object.entries(data.rates));
-        this.exchangeRates.set(rates);
-        this.lastUpdated.set(new Date());
-
-        this.cacheRates(data.rates);
+      // ExchangeRate-API returns { result: "success", rates: { USD: 1, ... } }
+      // and reports failures in band: a rate-limited request comes back
+      // HTTP 200 carrying { result: "error", "error-type": "..." }. A body
+      // without a usable multi-entry table is a failure, not a no-op —
+      // resolving here is what left every currency converting 1:1.
+      if (
+        data?.result !== 'success' ||
+        typeof data.rates !== 'object' ||
+        !data.rates ||
+        Object.keys(data.rates).length < 2
+      ) {
+        throw new Error(
+          `API returned an unusable body: ${data?.['error-type'] ?? data?.result ?? 'malformed'}`
+        );
       }
+
+      const rates = new Map<string, number>(Object.entries(data.rates));
+      this.exchangeRates.set(rates);
+      this.lastUpdated.set(new Date());
+
+      this.cacheRates(data.rates);
     } catch (error) {
       console.error('Failed to refresh exchange rates:', error);
       throw error;
