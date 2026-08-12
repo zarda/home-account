@@ -194,7 +194,7 @@ try {
   await dp.waitForTimeout(2500);
   const bd2 = dp.locator('.sidebar-backdrop');
   if (await bd2.count() > 0) { await bd2.click({ position: { x: 1300, y: 500 }, force: true }); await dp.waitForTimeout(600); }
-  await dp.locator('app-header button[aria-label="User menu"]').click();
+  await dp.locator('app-header button.user-menu-button').click();
   await dp.waitForTimeout(800);
   await dp.screenshot({ path: `${OUT}usermenu-open-desktop-light.png` });
   console.log('shot usermenu-open');

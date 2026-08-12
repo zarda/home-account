@@ -10,6 +10,7 @@ import { MatIconModule } from '@angular/material/icon';
 
 import { Category } from '../../../../models';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
+import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
 interface DialogData {
   category?: Category;
@@ -42,6 +43,7 @@ const CATEGORY_COLORS = [
     MatInputModule,
     MatButtonModule,
     MatIconModule,
+    TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './category-form-dialog.component.html',
