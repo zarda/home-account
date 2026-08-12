@@ -352,14 +352,20 @@ service cloud.firestore {
     // Dates are day keys, not timestamps: the client revives them at local
     // midnight, and a timestamp here would smuggle a timezone into a record
     // that is defined by calendar days.
-    function answerScopeValid(s) {
+    //
+    // Bounds are required only when the caller says so. An aggregate's
+    // figures are meaningless without the window they were computed over,
+    // but a filter record stores exactly what the question named — which may
+    // be one date or none at all (#250). A bound that is present must still
+    // be a day key either way.
+    function answerScopeValid(s, requireBounds) {
       return s is map
         && s.keys().hasOnly(['type', 'categoryId', 'startDate', 'endDate',
                              'minAmount', 'maxAmount', 'currency', 'searchQuery',
                              'goalId'])
-        && s.keys().hasAll(['startDate', 'endDate'])
-        && isDayKey(s.startDate)
-        && isDayKey(s.endDate)
+        && (!requireBounds || s.keys().hasAll(['startDate', 'endDate']))
+        && (!('startDate' in s) || isDayKey(s.startDate))
+        && (!('endDate' in s) || isDayKey(s.endDate))
         && (!('type' in s) || s.type in ['income', 'expense'])
         && (!('categoryId' in s) || s.categoryId is string)
         && (!('minAmount' in s) || s.minAmount is number)
@@ -423,7 +429,7 @@ service cloud.firestore {
         && d.schemaVersion is int && d.schemaVersion > 0
         && d.kind in ['aggregate', 'filter']
         && d.query is string && d.query.size() > 0
-        && answerScopeValid(d.scope)
+        && answerScopeValid(d.scope, d.kind == 'aggregate')
         && d.computedAt is timestamp
         && d.lastUsedAt is timestamp
         // The required set is the kind's: an aggregate must carry its figures,
