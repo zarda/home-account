@@ -332,4 +332,32 @@ describe('SearchAnswerHistoryService (emulator smoke test)', () => {
 
     expect(service.answers()[0].pinned).toBeTrue();
   });
+
+  // #250 shipped because nothing drove the service's own write against the
+  // real rules: the rules suite hand-builds its filter documents, so the one
+  // recordFilter actually issues — dateless scope included — was rejected in
+  // production only. This is the real call site.
+  it('records a dateless filter interpretation through the real rules', async () => {
+    await freshUser();
+
+    await service.recordFilter('show all coffee purchases', { categoryId: 'food_coffee' });
+    await reload();
+
+    expect(service.answers().length).toBe(1);
+    const record = service.answers()[0];
+    expect(record.kind).toBe('filter');
+    expect(record.query).toBe('show all coffee purchases');
+    expect(record.scope).toEqual({ categoryId: 'food_coffee' });
+
+    // Re-asking the same question refreshes recency on the same record —
+    // the touch update must also clear the live rules.
+    const before = record.lastUsedAt.toMillis();
+    await settle();
+    await service.recordFilter('show all coffee purchases', { categoryId: 'food_coffee' });
+    await reload();
+
+    expect(service.answers().length).toBe(1);
+    expect(service.answers()[0].id).toBe(record.id);
+    expect(service.answers()[0].lastUsedAt.toMillis()).toBeGreaterThan(before);
+  });
 });

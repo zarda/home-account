@@ -1072,6 +1072,59 @@ describe('firestore.rules (emulator smoke test)', () => {
         'touch a filter'
       );
     });
+
+    // #250: a filter question that names no dates stores a scope with none.
+    // The bounds requirement is the aggregate's; a present bound must still
+    // be a day key for either kind.
+    it('accepts a dateless filter scope', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('searchAnswers')),
+          validFilter({ scope: { categoryId: 'food_coffee' } })),
+        'dateless filter scope'
+      );
+    });
+
+    it('accepts a filter scope with only a start date', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('searchAnswers')),
+          validFilter({ scope: { startDate: '2026-08-01' } })),
+        'half-bounded filter scope'
+      );
+    });
+
+    it('still rejects a malformed bound on a filter scope', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('searchAnswers')),
+          validFilter({ scope: { startDate: '2026-08-01T00:00:00Z' } })),
+        'timestamp-shaped filter scope date'
+      );
+    });
+
+    // #275: the update rule re-checks the pairing the create rule enforces,
+    // so a filter record cannot grow figures after the fact.
+    it('rejects an update that adds figures to a filter record', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validFilter());
+      await expectDenied(
+        updateDoc(doc(firestore, p), { value: 421.5, transactionCount: 17, baseCurrency: 'USD' }),
+        'figures onto a filter'
+      );
+    });
+
+    it('rejects an update that adds a lone currency to a filter record', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validFilter());
+      await expectDenied(updateDoc(doc(firestore, p), { currency: 'USD' }), 'currency onto a filter');
+    });
+
+    it('rejects an update that adds an extreme-row id to a filter record', async () => {
+      const p = path('searchAnswers');
+      await setDoc(doc(firestore, p), validFilter());
+      await expectDenied(
+        updateDoc(doc(firestore, p), { extremeTransactionId: 'tx-1' }),
+        'extreme row onto a filter'
+      );
+    });
   });
 
   describe('categoryMemory', () => {

@@ -61,6 +61,7 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
       note: string;
       tags: string[];
       goalId: string;
+      currency: string;
     }>
   ) => ({
     id,
@@ -68,7 +69,7 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     categoryId: overrides.categoryId ?? 'cat-transport',
     type: overrides.type ?? 'expense',
     amount: 10,
-    currency: 'USD',
+    currency: overrides.currency ?? 'USD',
     amountInBaseCurrency: 10,
     exchangeRate: 1,
     date: Timestamp.fromMillis(BASE - (overrides.hoursAgo ?? 0) * HOUR),
@@ -98,6 +99,7 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
     txn('txn-market', {
       description: 'Fruit',
       hoursAgo: 2,
+      currency: 'EUR',
       // Coordinates on the map: searchableFields reads only location.name,
       // so a widened location must not disturb the name match below.
       location: { name: 'Aoyama Market', lat: 35.66, lng: 139.71 }
@@ -301,6 +303,38 @@ describe('TransactionWindowService search (emulator smoke test)', () => {
       });
 
       // txn-old carries the goal but falls outside the range.
+      expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
+    });
+  });
+
+  describe('multi-equality filters', () => {
+    // NOTE: the emulator does not enforce composite indexes, so these pass
+    // whether or not firestore.indexes.json carries the matching entries.
+    // scripts/check-firestore-indexes.mjs proves the file from the source;
+    // production still needs the deploy (docs/emulator-blind-spots.md).
+
+    it('serves a type and currency filter together', async () => {
+      // The exact pair from #249's reproduction: two dropdowns, no index,
+      // error banner. Server-side, so the window and the count both narrow.
+      await service.reset({ type: 'expense', currency: 'EUR' });
+      expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-market']);
+
+      const deadline = Date.now() + 5000;
+      while (service.totalCount() === null && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      expect(service.totalCount()).toBe(1);
+    });
+
+    it('serves the full four-equality composition', async () => {
+      // The widest shape the filter panel can emit: all four equalities at
+      // once, which needs the four-field index in production.
+      await service.reset({
+        type: 'expense',
+        categoryId: 'cat-coffee',
+        currency: 'USD',
+        goalId: 'goal-alpha'
+      });
       expect(service.visibleWindow().map(t => t.id)).toEqual(['txn-espresso']);
     });
   });
