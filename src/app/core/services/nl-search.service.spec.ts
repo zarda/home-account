@@ -239,6 +239,24 @@ describe('NlSearchService', () => {
       expect(answerHistory.recordFilter).toHaveBeenCalledWith('coffee last month', {});
     });
 
+    it('still returns the filters when recording them fails, and logs instead of toasting', async () => {
+      const consoleError = spyOn(console, 'error');
+      const filters = { categoryId: 'food' };
+      mockIntent({ kind: 'filter', filters });
+      answerHistory.recordFilter.and.rejectWith(new Error('permission-denied'));
+
+      const result = await service.search('coffee, whenever');
+      expect(result).toEqual({ kind: 'filter', filters });
+
+      // The write is deliberately floating; give its catch a macrotask to
+      // run before asserting nothing escaped to the global handler.
+      await new Promise(resolve => setTimeout(resolve));
+      expect(consoleError).toHaveBeenCalledWith(
+        '[NlSearch] Recording the filter interpretation failed:',
+        jasmine.any(Error)
+      );
+    });
+
     it('"groceries over $50 this month" keeps the amount bound', async () => {
       mockIntent({ kind: 'filter', filters: { categoryId: 'food_groceries', minAmount: 50 } });
       const result = await service.search('groceries over $50 this month');

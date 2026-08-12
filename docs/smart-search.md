@@ -32,10 +32,11 @@ invalid fields are dropped rather than guessed, dates outside 1970–2100 are
 discarded, and an unrecognized category falls back to a keyword so the term
 is not lost.
 
-A question with no dates defaults to the current month; an open-ended range
-is clamped to today at the far end and 1970 at the near end. The answer card
-always displays the resolved range, so the default is visible rather than
-implied. Amount bounds ("over $100") compare in your base currency, matching
+An aggregate question with no dates defaults to the current month; an
+open-ended range is clamped to today at the far end and 1970 at the near end.
+The answer card always displays the resolved range, so the default is visible
+rather than implied. A filter question resolves nothing: it keeps exactly the
+dates it named, possibly none. Amount bounds ("over $100") compare in your base currency, matching
 how every figure in the answer is computed.
 
 ## Goals and budgets in a question
@@ -84,10 +85,12 @@ which is why both are kept:
   resolved scope as day keys, the figures as computed, the currency they were
   computed in, and `computedAt`. Reopening shows exactly those figures,
   labeled "Computed {date}"; an old answer never passes for a fresh one.
-- a **filter** record is the scope alone. There are no figures to snapshot, so
-  it shows a *Filters* label instead of a value, and opening it re-applies the
-  scope to the transactions list rather than expanding in place. Nothing
-  refreshes, because nothing was frozen.
+- a **filter** record is the scope alone — and only what the question named,
+  so it may carry no dates at all; the resolved bounds are required of
+  aggregates only. There are no figures to snapshot, so it shows a *Filters*
+  label instead of a value, and opening it re-applies the scope to the
+  transactions list rather than expanding in place. Nothing refreshes, because
+  nothing was frozen.
 
 **Refresh is local and free.** An aggregate's stored scope replays through the
 same local path (`NlSearchService.replayAggregate`) — never the model — and

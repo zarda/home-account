@@ -70,8 +70,14 @@ export class NlSearchService {
       if (intent.kind === 'filter') {
         // Recorded for the same reason an aggregate is: the model call has
         // already been paid for, and reopening the record replays the scope
-        // without paying it again. Fire-and-forget, as below.
-        void this.answerHistory.recordFilter(trimmed, intent.filters);
+        // without paying it again. Fire-and-forget, as below — but caught:
+        // a rejected history write would otherwise reach the global handler
+        // and toast over a result that already rendered.
+        void this.answerHistory
+          .recordFilter(trimmed, intent.filters)
+          .catch(error =>
+            console.error('[NlSearch] Recording the filter interpretation failed:', error)
+          );
         return { kind: 'filter', filters: intent.filters };
       }
       const answer = await this.computeAggregate(intent);

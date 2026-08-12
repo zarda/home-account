@@ -83,6 +83,12 @@ jobs:
       - name: Check prompt registry
         run: npm run prompts:check
 
+      # The emulator does not enforce composite indexes, so only this check
+      # notices firestore.indexes.json falling behind the filter combinations
+      # buildTransactionWhere can emit.
+      - name: Check Firestore composite indexes
+        run: npm run indexes:check
+
       - name: Unit tests
         run: npm run test:ci
 

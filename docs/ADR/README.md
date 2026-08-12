@@ -34,11 +34,12 @@ reverse — why a thing is the way it is, not how to use it.
 | [0027](0027-a-linked-transaction-carries-its-converted-amount.md) | A linked transaction carries its converted amount, and the goal keeps the sum | Accepted | 2026-08-08 |
 | [0028](0028-a-search-scope-only-names-what-a-transaction-carries.md) | A search scope only names what a transaction carries | Accepted | 2026-08-08 |
 | [0029](0029-every-stored-kind-has-one-door.md) | Every stored kind has one door, checked against the deletion cascade | Accepted | 2026-08-08 |
-| [0030](0030-a-stored-search-holds-either-figures-or-a-scope.md) | A stored search holds either figures or a scope; a pinned one does not expire | Accepted; amends 0016 | 2026-08-08 |
+| [0030](0030-a-stored-search-holds-either-figures-or-a-scope.md) | A stored search holds either figures or a scope; a pinned one does not expire | Accepted; amends 0016; amended by 0035 | 2026-08-08 |
 | [0031](0031-a-restore-merges-into-the-row-it-finds.md) | A restore merges into the row it finds; the backup's flags outrank the create defaults | Accepted; amends 0021 | 2026-08-09 |
 | [0032](0032-a-sweep-is-only-as-wide-as-its-greps.md) | A sweep is only as wide as its greps | Accepted; extends 0026 | 2026-08-10 |
 | [0033](0033-a-stored-figure-is-re-taken-only-when-its-input-moved.md) | A stored figure is re-taken only when its input moved, and its unit never moves under it | Accepted; amends 0027 | 2026-08-11 |
 | [0034](0034-a-correctness-read-enumerates-the-collection.md) | A correctness-bearing read enumerates the collection, never a listener's first emission | Accepted | 2026-08-11 |
+| [0035](0035-what-the-emulator-cannot-see-is-checked-from-the-files.md) | What the emulator cannot see is checked from the files | Accepted | 2026-08-12 |
 
 ## What belongs here
 

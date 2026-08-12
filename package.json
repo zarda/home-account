@@ -1,6 +1,6 @@
 {
   "name": "home-account",
-  "version": "1.23.120",
+  "version": "1.23.121",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -15,6 +15,7 @@
     "i18n:check": "node scripts/check-i18n.mjs",
     "analytics:check": "node scripts/check-analytics-registry.mjs",
     "prompts:check": "node scripts/check-prompts.mjs --self-test && node scripts/check-prompts.mjs",
+    "indexes:check": "node scripts/check-firestore-indexes.mjs",
     "truncation:check": "node scripts/check-truncation.mjs",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
