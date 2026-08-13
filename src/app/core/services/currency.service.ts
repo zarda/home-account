@@ -43,25 +43,29 @@ export class CurrencyService {
     this.initPromise = this.initializeRates();
   }
 
-  // Initialize exchange rates from cache or API
+  // Initialize the rate table: a fresh cache is used as-is, otherwise a live
+  // fetch, and on any failure the ladder — the cache even when expired (real
+  // market data beats approximations), the compiled-in constants only when
+  // this device has never seen a successful fetch. The cache is read once,
+  // up front, so the catch can reuse it.
   private async initializeRates(): Promise<void> {
-    try {
-      // Try to load from the device cache first
-      const cached = this.getCachedRates();
+    const cached = this.getCachedRates();
 
+    try {
       if (cached && !this.isExpired(cached.lastUpdated)) {
         this.setRatesFromCache(cached);
-        this.ratesInitialized.set(true);
         return;
       }
 
-      // Fetch fresh rates if cache is expired or doesn't exist
       await this.refreshRates();
-      this.ratesInitialized.set(true);
     } catch (error) {
       console.error('Failed to initialize exchange rates:', error);
-      // Use default rates (1:1 with USD)
-      this.setDefaultRates();
+      if (cached) {
+        this.setRatesFromCache(cached);
+      } else {
+        this.setDefaultRates();
+      }
+    } finally {
       this.ratesInitialized.set(true);
     }
   }
@@ -137,7 +141,10 @@ export class CurrencyService {
     return stampMismatch || corrupt ? liveConvert() : snapshot;
   }
 
-  // Refresh exchange rates from ExchangeRate-API (free, no key required)
+  // Refresh exchange rates from ExchangeRate-API (free, no key required).
+  // Rejects on any failure — transport, HTTP status, or an in-band error
+  // body — leaving the signals and the device cache untouched, so a caller's
+  // fallback runs against clean state.
   async refreshRates(): Promise<void> {
     this.isLoading.set(true);
 
@@ -150,14 +157,27 @@ export class CurrencyService {
 
       const data = await response.json();
 
-      // ExchangeRate-API returns { result: "success", rates: { USD: 1, EUR: 0.92, ... } }
-      if (data.result === 'success' && data.rates) {
-        const rates = new Map<string, number>(Object.entries(data.rates));
-        this.exchangeRates.set(rates);
-        this.lastUpdated.set(new Date());
-
-        this.cacheRates(data.rates);
+      // ExchangeRate-API returns { result: "success", rates: { USD: 1, ... } }
+      // and reports failures in band: a rate-limited request comes back
+      // HTTP 200 carrying { result: "error", "error-type": "..." }. A body
+      // without a usable multi-entry table is a failure, not a no-op —
+      // resolving here is what left every currency converting 1:1.
+      if (
+        data?.result !== 'success' ||
+        typeof data.rates !== 'object' ||
+        !data.rates ||
+        Object.keys(data.rates).length < 2
+      ) {
+        throw new Error(
+          `API returned an unusable body: ${data?.['error-type'] ?? data?.result ?? 'malformed'}`
+        );
       }
+
+      const rates = new Map<string, number>(Object.entries(data.rates));
+      this.exchangeRates.set(rates);
+      this.lastUpdated.set(new Date());
+
+      this.cacheRates(data.rates);
     } catch (error) {
       console.error('Failed to refresh exchange rates:', error);
       throw error;
@@ -254,6 +274,13 @@ export class CurrencyService {
         }
       }
 
+      // A table with fewer than two entries cannot express any cross-rate —
+      // it is indistinguishable from the constructor's USD-only placeholder.
+      // Refuse it so initialization falls through to a real source instead.
+      if (Object.keys(rates).length < 2) {
+        return null;
+      }
+
       return { rates, lastUpdated: Timestamp.fromMillis(parsed.lastUpdatedMs) };
     } catch (error) {
       console.error('Failed to get cached rates:', error);
@@ -301,11 +328,13 @@ export class CurrencyService {
     };
   }
 
-  // Set default rates (all 1:1 with USD for development)
+  // Install the compiled-in approximations — the last rung of the fallback
+  // ladder, reached only when this device has never cached a real table.
+  // lastUpdated stays null on purpose: it reports when real market data
+  // arrived, and these numbers are not that.
   private setDefaultRates(): void {
     const approximateRates = this.getDefaultRatesObject();
     const defaultRates = new Map<string, number>(Object.entries(approximateRates));
     this.exchangeRates.set(defaultRates);
-    this.lastUpdated.set(new Date());
   }
 }
