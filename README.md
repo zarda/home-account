@@ -202,6 +202,7 @@ The web app is a fully-featured Progressive Web App:
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
+| `npm run truncation:check` | Verify nothing under src/ declares text-overflow — G3, nothing truncates |
 | `firebase deploy` | Deploy web to Firebase Hosting |
 
 ## Continuous Integration

@@ -96,6 +96,13 @@ jobs:
       - name: Check Firestore composite indexes
         run: npm run indexes:check
 
+      # G3 in docs/ui-overflow.md: nothing in the app truncates. The script's
+      # header always said it ran in CI; now it does. It reads the source, so
+      # it catches the text-overflow added next month as well as the sites
+      # already swept.
+      - name: Check truncation
+        run: npm run truncation:check
+
       - name: Unit tests
         run: npm run test:ci
 
