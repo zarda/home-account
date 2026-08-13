@@ -12,6 +12,7 @@
     "test:dates": "ng test --watch=false --browsers=ChromeHeadless --include='**/transaction-date.utils.spec.ts' --include='**/export.service.spec.ts' --include='**/receipt-text-parser.spec.ts' --include='**/nl-search.utils.spec.ts' --include='**/search-answer.utils.spec.ts' --include='**/insight-card.component.spec.ts' --include='**/recurring.service.spec.ts' --include='**/recurring-conversion.utils.spec.ts' --include='**/forecast-series.utils.spec.ts' --include='**/cloud-llm-provider.base.spec.ts' --include='**/native-receipt.service.spec.ts' --include='**/rag-context.service.spec.ts' --include='**/recent-transactions.component.spec.ts'",
     "smoke": "firebase emulators:exec --only auth,storage,firestore --project demo-home-account \"npm run test:smoke\"",
     "lint": "ng lint",
+    "lint-guards:check": "node scripts/check-lint-guards.mjs --self-test && node scripts/check-lint-guards.mjs",
     "i18n:check": "node scripts/check-i18n.mjs --self-test && node scripts/check-i18n.mjs",
     "analytics:check": "node scripts/check-analytics-registry.mjs",
     "prompts:check": "node scripts/check-prompts.mjs --self-test && node scripts/check-prompts.mjs",

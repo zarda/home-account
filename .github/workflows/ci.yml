@@ -65,6 +65,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Lint just ran, but a flat-config collision can leave an import ban
+      # written in eslint.config.js and applied to nothing — the config still
+      # reads as enforced and lint stays green. This resolves the config for
+      # representative files of each population and fails when a ban is gone.
+      - name: Check lint guards
+        run: npm run lint-guards:check
+
       # Catches translation keys the source references but no locale defines.
       # Key-set parity between locales is covered by the unit suite.
       - name: Check translation keys
