@@ -42,6 +42,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0035](0035-what-the-emulator-cannot-see-is-checked-from-the-files.md) | What the emulator cannot see is checked from the files | Accepted | 2026-08-12 |
 | [0036](0036-a-user-facing-string-lives-in-the-catalog.md) | A user-facing string lives in the catalog, and only English declines | Accepted | 2026-08-12 |
 | [0037](0037-an-error-body-is-a-failed-fetch.md) | An error body is a failed fetch, and an expired cache beats the constants | Accepted | 2026-08-12 |
+| [0038](0038-a-dead-guard-reads-exactly-like-a-live-one.md) | A dead guard reads exactly like a live one | Accepted | 2026-08-13 |
 
 ## What belongs here
 

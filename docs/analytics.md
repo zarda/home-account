@@ -182,7 +182,9 @@ Notes:
 
 - `AnalyticsService` (`src/app/core/services/analytics.service.ts`) is the only
   place events are sent from. Feature code never touches the SDK; an ESLint
-  rule enforces that.
+  rule enforces that, and `npm run lint-guards:check` fails the build if that
+  rule ever stops resolving for the files it governs — it did once, silently
+  (ADR 0038).
 - The SDK is created on first use, and first use only happens after consent —
   see the privacy section above.
 - Web uses `@angular/fire/analytics`. Capacitor uses
@@ -261,6 +263,25 @@ payload is an object literal spanning lines with values computed from signals;
 a regex over it would produce false failures more often than true ones. The
 compiler covers that (the parameter types are derived from the taxonomy), and
 `AnalyticsService` drops anything outside the allowlist at runtime.
+
+## The lint-guard check
+
+`npm run lint-guards:check` (`scripts/check-lint-guards.mjs`, in CI immediately
+after lint) resolves the real ESLint config for representative files of each
+population — ordinary app code, the analytics owners, the model providers —
+and verifies the import bans that should apply there actually do, in both
+directions: a ban missing where it belongs fails as loudly as a ban present
+where it must not be. It exists because flat config resolves a rule key to the
+last matching block's options, replaced wholesale, and two overlapping blocks
+once switched the analytics ban off without changing a visible line — lint
+stayed green while a direct `logEvent()` in a component would have shipped
+(ADR 0038).
+
+It deliberately does **not** probe every file (representative files only — a
+new exemption block needs a row in the script's population table), does not
+see a dynamic `import('firebase/analytics')` (the rule flags static imports
+only), and does not prove ESLint would fire on a banned import — only that the
+ban resolves for the file.
 
 ## Console setup (one-time, by hand)
 
