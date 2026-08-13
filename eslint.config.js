@@ -4,6 +4,51 @@ const { defineConfig } = require("eslint/config");
 const tseslint = require("typescript-eslint");
 const angular = require("angular-eslint");
 
+// Two SDK families are confined to the files that own them: the analytics
+// SDKs to AnalyticsService and its wiring (ADR 0003), the model SDKs to the
+// three provider services (ADR 0005). Flat config resolves a rule key to the
+// LAST matching config object's options, replaced wholesale — two blocks that
+// overlap on `files` and both set no-restricted-imports silently disable each
+// other, which is how the analytics ban died once (#262, ADR 0038). So each
+// ban is declared once here, and every block below restates the full set that
+// applies to its files. scripts/check-lint-guards.mjs resolves the real
+// config per file population and fails the build when a ban stops applying.
+const ANALYTICS_IMPORT_PATHS = [
+  {
+    name: "@angular/fire/analytics",
+    message:
+      "Use AnalyticsService. It owns the consent gate, the no-op paths and the parameter allowlist.",
+  },
+  {
+    name: "@capacitor-firebase/analytics",
+    message: "Use AnalyticsService. The native transport is selected inside it.",
+  },
+];
+const ANALYTICS_IMPORT_PATTERNS = [
+  {
+    group: ["firebase/analytics", "firebase/analytics/*", "@firebase/analytics"],
+    message:
+      "Use AnalyticsService. It owns the consent gate, the no-op paths and the parameter allowlist.",
+  },
+];
+const MODEL_IMPORT_PATHS = [
+  {
+    name: "@google/generative-ai",
+    message:
+      "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
+  },
+  {
+    name: "openai",
+    message:
+      "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
+  },
+  {
+    name: "@anthropic-ai/sdk",
+    message:
+      "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
+  },
+];
+
 module.exports = defineConfig([
   {
     files: ["**/*.ts"],
@@ -41,15 +86,31 @@ module.exports = defineConfig([
     },
   },
   {
-    // Analytics SDK access is funnelled through AnalyticsService: the consent
-    // gate, the no-op paths and the parameter allowlist all live in one place,
-    // and the registry check can only see call sites that go through it. A
-    // direct logEvent() in a component would bypass all three at once, and
-    // nothing else would notice.
+    // Both bans, for everything in the app. A direct logEvent() in a
+    // component would bypass the consent gate, the no-op paths and the
+    // parameter allowlist at once, and nothing else would notice; a fourth
+    // file issuing its own model call would be invisible to the prompt
+    // registry check and free to carry its own unregistered prompt. The two
+    // narrower blocks below win over this one for the files that own an SDK.
     files: ["src/app/**/*.ts"],
-    // The globs cover the matching *.spec.ts too: the service's own specs and
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          paths: [...ANALYTICS_IMPORT_PATHS, ...MODEL_IMPORT_PATHS],
+          patterns: [...ANALYTICS_IMPORT_PATTERNS],
+        },
+      ],
+    },
+  },
+  {
+    // The analytics owners may import the analytics SDKs and must still not
+    // import a model SDK. This block matches them instead of ignoring them,
+    // so it resolves last — and because a later block's options replace the
+    // earlier ones wholesale, it restates the model ban in full. The globs
+    // cover the matching *.spec.ts too: the service's own specs and
     // app.config.spec.ts legitimately import the SDK to assert the wiring.
-    ignores: [
+    files: [
       "src/app/core/services/analytics*.ts",
       "src/app/core/config/analytics*.ts",
       "src/app/app.config*.ts",
@@ -57,40 +118,16 @@ module.exports = defineConfig([
     rules: {
       "@typescript-eslint/no-restricted-imports": [
         "error",
-        {
-          paths: [
-            {
-              name: "@angular/fire/analytics",
-              message:
-                "Use AnalyticsService. It owns the consent gate, the no-op paths and the parameter allowlist.",
-            },
-            {
-              name: "@capacitor-firebase/analytics",
-              message: "Use AnalyticsService. The native transport is selected inside it.",
-            },
-          ],
-          patterns: [
-            {
-              group: ["firebase/analytics", "firebase/analytics/*", "@firebase/analytics"],
-              message:
-                "Use AnalyticsService. It owns the consent gate, the no-op paths and the parameter allowlist.",
-            },
-          ],
-        },
+        { paths: [...MODEL_IMPORT_PATHS] },
       ],
     },
   },
   {
-    // Model SDK access is confined to the three provider services. The prompt
-    // registry check can only prove parity over the call sites it can see, and
-    // it looks at exactly these three files — a fourth file issuing its own
-    // model call would be invisible to it, and would be free to carry its own
-    // unregistered prompt. Same argument as the analytics block above, applied
-    // to a second SDK family.
-    files: ["src/app/**/*.ts"],
+    // The three provider services may import their model SDKs and must still
+    // not import an analytics SDK — restated in full for the same reason.
     // The globs cover the matching *.spec.ts too: each provider's own spec
     // legitimately imports its SDK to type the fake client.
-    ignores: [
+    files: [
       "src/app/core/services/gemini.service*.ts",
       "src/app/core/services/openai.service*.ts",
       "src/app/core/services/claude.service*.ts",
@@ -99,23 +136,8 @@ module.exports = defineConfig([
       "@typescript-eslint/no-restricted-imports": [
         "error",
         {
-          paths: [
-            {
-              name: "@google/generative-ai",
-              message:
-                "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
-            },
-            {
-              name: "openai",
-              message:
-                "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
-            },
-            {
-              name: "@anthropic-ai/sdk",
-              message:
-                "Use CloudLLMProviderService. Prompts live in src/app/core/prompts and are parity-checked across providers.",
-            },
-          ],
+          paths: [...ANALYTICS_IMPORT_PATHS],
+          patterns: [...ANALYTICS_IMPORT_PATTERNS],
         },
       ],
     },

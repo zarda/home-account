@@ -24,7 +24,8 @@
  *   - A tracking call whose method name is computed rather than written out.
  *     There are none today; the typed API makes them awkward to write.
  *   - Direct SDK use that bypasses AnalyticsService — the no-restricted-imports
- *     rule in eslint.config.js covers that.
+ *     rule in eslint.config.js covers that, and scripts/check-lint-guards.mjs
+ *     fails the build if that rule ever stops resolving (#262).
  */
 
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';

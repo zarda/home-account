@@ -138,7 +138,8 @@ to run by hand, masked for comments so the notes explaining a deleted rule do
 not trip it. It reads the source rather than the rendered page, so it catches
 the site added next month as well as the ones found so far — which no fixed set
 of component tests can. What it cannot see is whether the replacement works;
-`shared/truncation-guard.spec.ts` measures that.
+`shared/truncation-guard.spec.ts` measures that. CI runs it on every push and
+pull request, between the composite-index check and the unit tests.
 
 ---
 
@@ -300,8 +301,11 @@ swipe keeps a non-gesture route — the pinned menu.
 | `scripts/check-truncation.mjs` | G3 across the whole source, `npm run truncation:check` |
 | `docs/ui-audit/tools/capture-overflow.mjs` | five pages × seven widths × (en, ja, faked insets), run before/after a layout change |
 
-The first four run in CI. The harness needs a dev server and the emulators, so
-it is a before/after instrument for UI pull requests, like `capture-dialogs.mjs`.
+Every row but the harness runs in CI: the unit specs through `test:ci`, the
+smoke spec through `npm run smoke`, and the source check through
+`npm run truncation:check`. The harness needs a dev server and the emulators,
+so it is a before/after instrument for UI pull requests, like
+`capture-dialogs.mjs`.
 
 ## Using `appFitText`
 
