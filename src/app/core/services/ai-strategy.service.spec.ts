@@ -12,6 +12,7 @@ import { NativeReceiptService } from './native-receipt.service';
 import { ProcessingResult } from './ai-types';
 import { ParsedReceipt, MultiImageExtractedTransaction } from './gemini.service';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import { AI_PREFERENCES_SCHEMA_VERSION } from '../config/ai-model-migrations';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
@@ -652,6 +653,55 @@ describe('AIStrategyService', () => {
 
       expect(service.preferences().autoSync).toBeFalse();
       expect(service.preferences().textModel).toBe(DEFAULT_TEXT_MODEL);
+    });
+
+    /**
+     * A stored blob outranks the catalog by design, so moving the defaults on
+     * does nothing for anyone who has ever opened this settings page. These
+     * two are the load path either side of the schema stamp.
+     */
+    describe('a stored blob naming a superseded model', () => {
+      /** Default for both text and vision until it was shut down upstream. */
+      const RETIRED_DEFAULT = 'gemini-3.1-flash-lite-preview';
+
+      it('should move it onto the current default and rewrite storage', () => {
+        localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+          autoSync: true,
+          textModel: RETIRED_DEFAULT,
+          visionModel: RETIRED_DEFAULT,
+        }));
+
+        const service = createService('web');
+
+        expect(service.preferences().textModel).toBe(DEFAULT_TEXT_MODEL);
+        expect(service.preferences().visionModel).toBe(DEFAULT_VISION_MODEL);
+
+        // The rewrite is what makes this a one-time pass. Without the stamp
+        // reaching storage, the migration below could never decline to run.
+        const stored = JSON.parse(localStorage.getItem(PREFERENCES_STORAGE_KEY)!);
+        expect(stored.textModel).toBe(DEFAULT_TEXT_MODEL);
+        expect(stored.schemaVersion).toBe(AI_PREFERENCES_SCHEMA_VERSION);
+      });
+
+      it('should leave it alone once the blob carries the current stamp', () => {
+        // The catalog still offers 3.1 Flash-Lite, so a stamped blob naming it
+        // is a deliberate choice. This is the assertion that fails if the
+        // merge with DEFAULT_PREFERENCES happens before the migration: the
+        // defaults carry the stamp, so a legacy blob would look migrated and
+        // the case above would silently stop rewriting anything.
+        localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify({
+          autoSync: true,
+          textModel: RETIRED_DEFAULT,
+          visionModel: DEFAULT_VISION_MODEL,
+          schemaVersion: AI_PREFERENCES_SCHEMA_VERSION,
+        }));
+
+        const service = createService('web');
+
+        expect(service.preferences().textModel).toBe(RETIRED_DEFAULT);
+        expect(JSON.parse(localStorage.getItem(PREFERENCES_STORAGE_KEY)!).textModel)
+          .toBe(RETIRED_DEFAULT);
+      });
     });
   });
 

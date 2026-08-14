@@ -7,6 +7,7 @@ import { TranslationService, SupportedLocale } from './translation.service';
 import { Category, Transaction, MonthlyTotal, Budget, currencyDecimalPlaces } from '../../models';
 import { createTransaction, createCategory } from './testing/test-data';
 import { environment } from '../../../environments/environment';
+import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 
 /**
  * A fake generative model that records the request it was called with and
@@ -27,6 +28,21 @@ function makeResult(text: string, finishReason?: string) {
     },
   };
 }
+
+/**
+ * The two sides of the `includes('gemma')` branch this service filters its
+ * responses on. Several suites below only need "a model on this side of that
+ * branch", and naming them says so — a bare model id reads as though the
+ * version mattered, and left every retirement to be chased through eight call
+ * sites.
+ *
+ * The Gemma id stays a literal because the branch matches that substring. The
+ * other side only has to avoid it, so it tracks the catalog; ai-models.spec.ts
+ * asserts no default is ever a Gemma model, which is what keeps that true.
+ */
+const GEMMA_MODEL = 'gemma-4-26b-a4b-it';
+const GEMMA_VISION_MODEL = 'gemma-4-31b-it';
+const NON_GEMMA_MODEL = DEFAULT_TEXT_MODEL;
 
 describe('GeminiService', () => {
   let service: GeminiService;
@@ -202,17 +218,17 @@ describe('GeminiService', () => {
       await service.reinitialize('same-key');
       const internal = service as unknown as { textModel: { model?: unknown } };
       const firstModel = internal.textModel;
-      await service.reinitialize('same-key', 'gemma-4-26b-a4b-it', 'gemma-4-31b-it');
+      await service.reinitialize('same-key', GEMMA_MODEL, GEMMA_VISION_MODEL);
       expect(service.isAvailable()).toBeTrue();
       // A model switch replaces the underlying model instance.
       expect(internal.textModel).not.toBe(firstModel);
     });
 
     it('keeps the same models when the same key and model ids are reused', async () => {
-      await service.reinitialize('same-key-2', 'gemini-3.1-flash-lite-preview', 'gemini-3.1-flash-lite-preview');
+      await service.reinitialize('same-key-2', DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL);
       const internal = service as unknown as { textModel: unknown };
       const firstModel = internal.textModel;
-      await service.reinitialize('same-key-2', 'gemini-3.1-flash-lite-preview', 'gemini-3.1-flash-lite-preview');
+      await service.reinitialize('same-key-2', DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL);
       expect(internal.textModel).toBe(firstModel);
     });
 
@@ -221,7 +237,7 @@ describe('GeminiService', () => {
       const internal = service as unknown as { genAI: unknown };
       const client = internal.genAI;
       // Re-running with the same key keeps the same client instance.
-      await service.reinitialize('key-stable', 'gemma-4-26b-a4b-it');
+      await service.reinitialize('key-stable', GEMMA_MODEL);
       expect(internal.genAI).toBe(client);
     });
   });
@@ -612,7 +628,7 @@ describe('GeminiService', () => {
     });
 
     it('applies Gemma 4 reasoning filtering for gemma models', async () => {
-      (service as unknown as { currentTextModelId: string }).currentTextModelId = 'gemma-4-26b-a4b-it';
+      (service as unknown as { currentTextModelId: string }).currentTextModelId = GEMMA_MODEL;
       textModel.generateContent.and.resolveTo(makeResult(
         'Reasoning: let me think about this draft.\n## Spending Pattern\nFinal text.'
       ));
@@ -687,7 +703,7 @@ describe('GeminiService', () => {
     });
 
     it('applies Gemma 4 advice filtering for gemma models', async () => {
-      (service as unknown as { currentTextModelId: string }).currentTextModelId = 'gemma-4-26b-a4b-it';
+      (service as unknown as { currentTextModelId: string }).currentTextModelId = GEMMA_MODEL;
       textModel.generateContent.and.resolveTo(makeResult(
         'Draft 1: blah blah. Prioritize building an emergency fund now. Keep going steadily.'
       ));
@@ -1073,13 +1089,13 @@ describe('GeminiService', () => {
       });
 
       it('applies aggressive Gemma 4 filtering when selected', () => {
-        api.currentTextModelId = 'gemma-4-26b-a4b-it';
+        api.currentTextModelId = GEMMA_MODEL;
         const input = '<thought>thinking</thought>{"a":1}';
         expect(api.extractJson(input)).toBe('{"a":1}');
       });
 
       it('strips thinking tokens for non-gemma models', () => {
-        api.currentTextModelId = 'gemini-3.1-flash-lite-preview';
+        api.currentTextModelId = NON_GEMMA_MODEL;
         const input = '<|think|>secret<|/think|>{"a":1}';
         expect(api.extractJson(input)).toBe('{"a":1}');
       });
@@ -1138,21 +1154,21 @@ describe('GeminiService', () => {
 
     describe('filterReasoningContextForAdvice', () => {
       it('light-filters Gemini output', () => {
-        api.currentTextModelId = 'gemini-3.1-flash-lite-preview';
+        api.currentTextModelId = NON_GEMMA_MODEL;
         const input = 'Save more money now. Build an emergency fund.';
         const out = api.filterReasoningContextForAdvice(input);
         expect(out).toContain('Save more money');
       });
 
       it('extracts advice from the last marker for Gemma 4', () => {
-        api.currentTextModelId = 'gemma-4-26b-a4b-it';
+        api.currentTextModelId = GEMMA_MODEL;
         const input = 'Draft 1: something. Prioritize cutting subscriptions. Then save the rest.';
         const out = api.filterReasoningContextForAdvice(input);
         expect(out).toContain('Prioritize');
       });
 
       it('deduplicates near-identical repeated sentences', () => {
-        api.currentTextModelId = 'gemini-3.1-flash-lite-preview';
+        api.currentTextModelId = NON_GEMMA_MODEL;
         const input = 'You should save more money. You should save more money. Build a fund.';
         const out = api.filterReasoningContextForAdvice(input);
         const occurrences = out.split('save more money').length - 1;
@@ -1160,21 +1176,21 @@ describe('GeminiService', () => {
       });
 
       it('caps the result at three sentences', () => {
-        api.currentTextModelId = 'gemini-3.1-flash-lite-preview';
+        api.currentTextModelId = NON_GEMMA_MODEL;
         const input = 'One sentence here. Two sentence here. Three sentence here. Four sentence here.';
         const out = api.filterReasoningContextForAdvice(input);
         expect(out).not.toContain('Four sentence');
       });
 
       it('protects decimal points so amounts are not split', () => {
-        api.currentTextModelId = 'gemini-3.1-flash-lite-preview';
+        api.currentTextModelId = NON_GEMMA_MODEL;
         const input = 'Your balance is 16,875.00 TWD this month and growing nicely overall here.';
         const out = api.filterReasoningContextForAdvice(input);
         expect(out).toContain('16,875.00');
       });
 
       it('falls back to original text when no full sentences remain', () => {
-        api.currentTextModelId = 'gemini-3.1-flash-lite-preview';
+        api.currentTextModelId = NON_GEMMA_MODEL;
         const input = 'no terminator just a short fragment';
         const out = api.filterReasoningContextForAdvice(input);
         expect(out).toBe('no terminator just a short fragment');

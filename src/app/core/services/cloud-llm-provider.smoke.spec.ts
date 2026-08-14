@@ -14,7 +14,9 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { GeminiService } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
+import { ProviderKeyService } from './provider-key.service';
 import { environment } from '../../../environments/environment';
+import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 
 /**
  * The three provider services, built by a real injector over the real graph.
@@ -184,5 +186,32 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     // methods call it, so nothing else would fail to compile if it went.
     expect(() => facade.setOpenAIModel('gpt-smoke-test')).not.toThrow();
     expect(() => facade.setClaudeModel('claude-smoke-test')).not.toThrow();
+  });
+
+  it('arms Gemini on the catalog defaults the app actually boots with', async () => {
+    // Every unit spec passes model ids in as fixtures, so all of them would
+    // keep passing if the shipped defaults were a pair the real construction
+    // path rejects. This is the one place the catalog's own values go through
+    // getGenerativeModel() on the real SDK.
+    //
+    // Still no request to a model: building a handle is local, and the ids are
+    // only resolved server-side at the first generateContent call.
+    //
+    // The key goes through ProviderKeyService rather than
+    // updateProviderApiKey, which hands its argument straight to reinitialize
+    // and stores nothing. reinitializeGemini — the method AIStrategyService
+    // calls on a model switch — reads the key back from Firestore, so this is
+    // the path the app actually takes.
+    await TestBed.inject(ProviderKeyService).setKey('gemini', 'fake-key-for-the-smoke');
+
+    await expectAsync(
+      facade.reinitializeGemini(DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL),
+    ).toBeResolved();
+
+    expect(gemini.isAvailable()).toBeTrue();
+    // Gemini is the only provider with a separate vision handle, so a vision
+    // default that failed to build would leave it text-only rather than down.
+    expect(gemini.capabilities.vision).toBeTrue();
+    expect(gemini.lastError()).toBeNull();
   });
 });

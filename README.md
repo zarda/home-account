@@ -13,7 +13,7 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Standalone Components** - No NgModules - all 40+ components use the modern standalone pattern
 - **Multi-Currency Engine** - Transaction-level exchange rate tracking with 12-hour cached rates
 - **Multi-Platform** - Single codebase deploys to web (Firebase), iOS (App Store), and macOS (Apple Silicon) via Capacitor
-- **AI Integration** - Apple's on-device foundation model (Apple Intelligence) on macOS 26 / iOS 26, cloud AI (Gemini 3.1 / Gemma 4) for web, native Vision OCR everywhere as fallback
+- **AI Integration** - Apple's on-device foundation model (Apple Intelligence) on macOS 26 / iOS 26, cloud AI (Gemini 3.5 / Gemma 4) for web, native Vision OCR everywhere as fallback
 - **Type-Safe Throughout** - Full TypeScript with strict mode, DTOs, and well-defined interfaces
 
 ## Features
@@ -41,7 +41,7 @@ This project demonstrates modern Angular development practices with a focus on:
 | **Donate Link** | Visible | Hidden (App Store guidelines) | Hidden (App Store guidelines) |
 | **Installation** | Add to Home Screen | App Store | App Store / runs the iOS app ("Designed for iPad") |
 
-On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence is available (macOS 26+ / iOS 26+ with the Foundation Models framework), receipts are processed fully on device: Vision OCR recognizes the text and Apple's foundation model structures it into transactions — no API key or network needed. Browsers cannot access Apple's model, so the Mac app is the way to use it; without Apple Intelligence, Macs fall back to the configured cloud models (Gemini 3.1 / Gemma 4) and then to the basic Vision OCR parser. Building the Apple Intelligence plugin requires Xcode 26 (it compiles to an unavailable stub on older SDKs).
+On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence is available (macOS 26+ / iOS 26+ with the Foundation Models framework), receipts are processed fully on device: Vision OCR recognizes the text and Apple's foundation model structures it into transactions — no API key or network needed. Browsers cannot access Apple's model, so the Mac app is the way to use it; without Apple Intelligence, Macs fall back to the configured cloud models (Gemini 3.5 / Gemma 4) and then to the basic Vision OCR parser. Building the Apple Intelligence plugin requires Xcode 26 (it compiles to an unavailable stub on older SDKs).
 
 ## Tech Stack
 
@@ -51,7 +51,7 @@ On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence i
 | UI | Angular Material 22, Tailwind CSS 3.4 |
 | State | Angular Signals |
 | Backend | Firebase (Auth, Firestore) |
-| AI (Web) | Google Generative AI (Gemini 3.1 / Gemma 4); OpenAI and Anthropic as alternative providers |
+| AI (Web) | Google Generative AI (Gemini 3.5 / Gemma 4); OpenAI and Anthropic as alternative providers |
 | AI (On-Device) | Apple Foundation Models (Apple Intelligence) + Vision Framework |
 | Multi-Platform | Capacitor 8 |
 | Charts | Chart.js + ng2-charts |
@@ -218,6 +218,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard
 |-----|----------|
 | [docs/analytics.md](docs/analytics.md) | GA4 event taxonomy, tagging registry, consent, privacy boundary, console setup |
 | [docs/prompts.md](docs/prompts.md) | The prompt registry, how prompts are written, and what the consistency check can and cannot see |
+| [docs/ai-models.md](docs/ai-models.md) | The model catalog and its defaults, how a stored choice outranks them, and the procedure for retiring a model |
 | [docs/insights.md](docs/insights.md) | Spending-pattern detectors, monthly snapshots, card contract, privacy boundary |
 | [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
 | [docs/receipt-import.md](docs/receipt-import.md) | What bounds receipt scanning, which engine runs, where the amount comes from, and the offline queue |

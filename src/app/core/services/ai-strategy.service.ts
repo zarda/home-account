@@ -11,6 +11,7 @@ import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
+import { AI_PREFERENCES_SCHEMA_VERSION, migrateModelPreferences } from '../config/ai-model-migrations';
 import { Category, LLMProvider, baseCurrencyOf} from '../../models';
 import { parseDateInput } from '../utils/transaction-date.utils';
 
@@ -22,6 +23,7 @@ export interface AIPreferences {
   visionModel?: string;    // Gemini model ID for vision tasks
   openaiModel?: string;    // OpenAI model ID (multimodal)
   claudeModel?: string;    // Claude model ID (multimodal)
+  schemaVersion?: number;  // Shape of the stored blob; absent means pre-migration
 }
 
 const DEFAULT_PREFERENCES: AIPreferences = {
@@ -30,6 +32,8 @@ const DEFAULT_PREFERENCES: AIPreferences = {
   visionModel: DEFAULT_VISION_MODEL,
   openaiModel: DEFAULT_OPENAI_MODEL,
   claudeModel: DEFAULT_CLAUDE_MODEL,
+  // A fresh install is born current, so it never runs the migration pass.
+  schemaVersion: AI_PREFERENCES_SCHEMA_VERSION,
 };
 
 const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
@@ -489,13 +493,25 @@ export class AIStrategyService {
   }
 
   /**
-   * Load preferences from localStorage.
+   * Load preferences from localStorage, moving a superseded model id forward
+   * on the way through.
+   *
+   * The order is load-bearing: migrate the parsed blob, then merge it over the
+   * defaults. DEFAULT_PREFERENCES carries the current schema version, so
+   * merging first would hand a legacy blob a stamp it never had, the migration
+   * would decline to run, and the retired id would survive with nothing
+   * anywhere reporting a problem.
    */
   private loadPreferences(): AIPreferences {
     try {
       const stored = localStorage.getItem(PREFERENCES_STORAGE_KEY);
       if (stored) {
-        return { ...DEFAULT_PREFERENCES, ...JSON.parse(stored) };
+        const { prefs, changed } = migrateModelPreferences(JSON.parse(stored) as AIPreferences);
+        const merged = { ...DEFAULT_PREFERENCES, ...prefs };
+        if (changed) {
+          this.savePreferences(merged);
+        }
+        return merged;
       }
     } catch {
       console.warn('[AIStrategy] Failed to load preferences');

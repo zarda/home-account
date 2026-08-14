@@ -45,6 +45,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0038](0038-a-dead-guard-reads-exactly-like-a-live-one.md) | A dead guard reads exactly like a live one | Accepted | 2026-08-13 |
 | [0039](0039-a-share-arrives-typed-and-the-stash-answers-to-its-owner.md) | A share arrives typed, and the stash answers only to its owner | Accepted; amends 0019 | 2026-08-14 |
 | [0040](0040-the-native-seams-answer-to-xctest.md) | The native seams answer to XCTest, and the plugins stay shells | Accepted | 2026-08-14 |
+| [0041](0041-a-retired-model-id-migrates-once.md) | A retired model id migrates once, and the catalog keeps the choice | Accepted | 2026-08-14 |
 
 ## What belongs here
 
