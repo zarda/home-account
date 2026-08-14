@@ -113,7 +113,11 @@ export class ClaudeService extends CloudLLMProviderBase {
       source: {
         type: 'base64',
         media_type: this.getMediaType(imageBase64),
-        data: imageBase64.replace(/^data:image\/\w+;base64,/, ''),
+        // Any mediatype, not just data:image/ — a shared photo can arrive
+        // labelled application/octet-stream, and an unstripped prefix turns
+        // the payload into invalid base64. getMediaType declares jpeg for
+        // the unknown prefixes, which is what the bytes are.
+        data: imageBase64.replace(/^data:[^;,]+;base64,/, ''),
       },
     }));
     content.push({ type: 'text', text: this.renderedText(rendered) });

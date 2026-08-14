@@ -181,7 +181,10 @@ export class GeminiService extends CloudLLMProviderBase {
       rendered,
       imagesBase64.map(image => ({
         mimeType: 'image/jpeg',
-        data: image.replace(/^data:image\/\w+;base64,/, ''),
+        // Any mediatype, not just data:image/ — a shared photo can arrive
+        // labelled application/octet-stream, and an unstripped prefix turns
+        // the payload into invalid base64.
+        data: image.replace(/^data:[^;,]+;base64,/, ''),
       })),
       options
     );
@@ -272,7 +275,7 @@ export class GeminiService extends CloudLLMProviderBase {
       const response = await this.generateWithMedia(
         [this.visionModel],
         rendered,
-        [{ mimeType: 'image/jpeg', data: imageBase64.replace(/^data:image\/\w+;base64,/, '') }],
+        [{ mimeType: 'image/jpeg', data: imageBase64.replace(/^data:[^;,]+;base64,/, '') }],
         options
       );
 
@@ -313,7 +316,7 @@ export class GeminiService extends CloudLLMProviderBase {
         rendered,
         [{
           mimeType: 'application/pdf',
-          data: pdfBase64.replace(/^data:application\/pdf;base64,/, ''),
+          data: pdfBase64.replace(/^data:[^;,]+;base64,/, ''),
         }]
       );
       const extracted: ExtractedTransaction[] = JSON.parse(this.extractJson(response.text));
@@ -358,7 +361,7 @@ export class GeminiService extends CloudLLMProviderBase {
       const response = await this.generateWithMedia(
         [this.visionModel],
         rendered,
-        [{ mimeType: 'image/jpeg', data: imageBase64.replace(/^data:image\/\w+;base64,/, '') }],
+        [{ mimeType: 'image/jpeg', data: imageBase64.replace(/^data:[^;,]+;base64,/, '') }],
         options
       );
       const extracted = JSON.parse(this.extractJson(response.text));

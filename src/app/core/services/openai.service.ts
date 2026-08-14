@@ -127,11 +127,13 @@ export class OpenAIService extends CloudLLMProviderBase {
     };
   }
 
-  /** The Responses API takes a data URL; a bare base64 payload gets one. */
+  /** The Responses API takes a data URL; anything not declared image/* gets re-declared. */
   private imageUrl(imageBase64: string): string {
-    return imageBase64.startsWith('data:')
-      ? imageBase64
-      : `data:image/jpeg;base64,${imageBase64}`;
+    if (!imageBase64.startsWith('data:')) return `data:image/jpeg;base64,${imageBase64}`;
+    if (imageBase64.startsWith('data:image/')) return imageBase64;
+    // A generic mediatype (a shared photo read through a mislabelled Blob)
+    // would be rejected as a non-image; the payload is an image, so say so.
+    return `data:image/jpeg;base64,${imageBase64.replace(/^data:[^;,]+;base64,/, '')}`;
   }
 
   /** One client serves text and images alike, so it is the same check. */
