@@ -1,7 +1,11 @@
 /**
  * Single source of truth for the cloud AI model catalog and defaults.
  * Model ids verified from https://ai.google.dev/gemini-api/docs/models
- * and https://ai.google.dev/gemma/docs/core
+ * and https://ai.google.dev/gemma/docs/core, last checked 2026-08-14.
+ *
+ * A model retired upstream keeps working for nobody, so the check is not
+ * optional maintenance — see docs/ai-models.md for the retirement procedure
+ * and ai-model-migrations.ts for what happens to a preference left behind.
  */
 export interface AIModelOption {
   id: string;
@@ -9,20 +13,22 @@ export interface AIModelOption {
 }
 
 export const TEXT_MODELS: AIModelOption[] = [
-  { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite (Recommended)' },
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Recommended)' },
+  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash' },
+  { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite' },
   { id: 'gemma-4-26b-a4b-it', name: 'Gemma 4 26B MoE' },
 ];
 
 export const VISION_MODELS: AIModelOption[] = [
-  { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite (Recommended)' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash-Lite (Recommended)' },
+  { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite' },
   { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite' },
   { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
   { id: 'gemma-4-31b-it', name: 'Gemma 4 31B' },
 ];
 
-export const DEFAULT_TEXT_MODEL = 'gemini-3.1-flash-lite-preview';
-export const DEFAULT_VISION_MODEL = 'gemini-3.1-flash-lite-preview';
+export const DEFAULT_TEXT_MODEL = 'gemini-3.5-flash-lite';
+export const DEFAULT_VISION_MODEL = 'gemini-3.5-flash-lite';
 
 // OpenAI models (multimodal — one model serves text and vision)
 // Ids verified from https://developers.openai.com/api/docs/models
