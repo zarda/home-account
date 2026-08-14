@@ -148,6 +148,13 @@ describe('FileDropzoneComponent', () => {
       expect(component.isImageFile(imageFile)).toBeTrue();
       expect(component.isImageFile(nonImageFile)).toBeFalse();
     });
+
+    it('treats an octet-stream jpg as an image', () => {
+      // A photo shared from another iOS app arrives with a generic MIME
+      // type; the extension is what says it is an image.
+      const shared = new File([''], 'photo.jpg', { type: 'application/octet-stream' });
+      expect(component.isImageFile(shared)).toBeTrue();
+    });
   });
 
   describe('file size formatting', () => {
