@@ -24,10 +24,10 @@ describe('ShareIntakeService', () => {
   }
 
   beforeEach(() => {
-    stash = jasmine.createSpyObj('ShareStashStore', ['readAll', 'count', 'clear']);
-    stash.readAll.and.resolveTo([]);
+    stash = jasmine.createSpyObj('ShareStashStore', ['count', 'consume', 'clearAll']);
     stash.count.and.resolveTo(0);
-    stash.clear.and.resolveTo(undefined);
+    stash.consume.and.resolveTo([]);
+    stash.clearAll.and.resolveTo(undefined);
 
     router = jasmine.createSpyObj('Router', ['navigate']);
     router.navigate.and.resolveTo(true);
@@ -81,8 +81,8 @@ describe('ShareIntakeService', () => {
     expect(router.navigate).not.toHaveBeenCalled();
   });
 
-  it('consumes the stash into files and clears it', async () => {
-    stash.readAll.and.resolveTo([
+  it('consumes the visible stash rows into files', async () => {
+    stash.consume.and.resolveTo([
       stashedRow(),
       stashedRow({ id: 's2', name: 'doc.pdf', type: 'application/pdf' })
     ]);
@@ -91,7 +91,7 @@ describe('ShareIntakeService', () => {
 
     expect(files.map(f => f.name)).toEqual(['receipt.png', 'doc.pdf']);
     expect(files[0].type).toBe('image/png');
-    expect(stash.clear).toHaveBeenCalled();
+    expect(stash.consume).toHaveBeenCalled();
   });
 
   it('drops oversized and unsupported files', async () => {
@@ -106,12 +106,11 @@ describe('ShareIntakeService', () => {
       type: 'application/octet-stream',
       blob: new Blob(['MZ'], { type: 'application/octet-stream' })
     });
-    stash.readAll.and.resolveTo([stashedRow(), oversized, executable]);
+    stash.consume.and.resolveTo([stashedRow(), oversized, executable]);
 
     const files = await service.consumeAll();
 
     expect(files.map(f => f.name)).toEqual(['receipt.png']);
-    expect(stash.clear).toHaveBeenCalled();
   });
 
   it('accepts a csv by extension when the mime type is blank', () => {

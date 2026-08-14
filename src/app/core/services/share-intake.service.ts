@@ -107,8 +107,9 @@ export class ShareIntakeService {
   }
 
   private async consumeWeb(): Promise<File[]> {
-    const rows = await this.stash.readAll();
-    await this.stash.clear();
+    // One transaction reads and deletes: only rows the store deems visible
+    // to this session come back, and foreign rows stay put for their owner.
+    const rows = await this.stash.consume();
     return rows.map((row: StashedShare) => new File([row.blob], row.name, { type: row.type }));
   }
 
