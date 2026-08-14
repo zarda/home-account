@@ -10,16 +10,12 @@ import { RecurringService } from '../../../../core/services/recurring.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import {
   CreateRecurringDTO,
-  RecurringTransaction,
   StorableRecurringGroup,
   StorableRecurringSummary,
   Transaction,
 } from '../../../../models';
 import { cadenceKey } from '../../../../core/utils/insight-card.utils';
-import {
-  isGroupCovered,
-  prefillFromGroup,
-} from '../../../../core/utils/recurring-conversion.utils';
+import { prefillFromGroup } from '../../../../core/utils/recurring-conversion.utils';
 import {
   RecurringFormDialogComponent,
   RecurringFormDialogData,
@@ -33,8 +29,12 @@ import { InsightTransactionListComponent } from '../insight-card/insight-transac
  *
  * Declared and detected groups are shown in separate sections. The user already
  * configured the declared ones, so presenting them as a discovery would be
- * wrong; keeping them apart is also what stops the portfolio total from
- * double-counting a rule whose occurrences also look like a pattern.
+ * wrong.
+ *
+ * This component filters nothing. Detected groups an active rule already covers
+ * are dropped by the detector, before the portfolio figures are taken, so the
+ * rows here and the card above them count the same set (ADR 0042). Suppressing
+ * here as well would be a guard that can never fire.
  *
  * Each row drills down in place, because a fuzzy cluster's members have
  * different descriptions by construction and no filter set can select exactly
@@ -70,13 +70,6 @@ export class RecurringListComponent {
   lookup = input<Map<string, Transaction>>(new Map());
   /** Frozen snapshots keep no transaction ids, so rows cannot be expanded. */
   archived = input(false);
-  /**
-   * The live rules, for suppression. Conversion never relabels past
-   * transactions, so a converted group would be rediscovered forever;
-   * hiding detected groups an active rule already covers is what makes
-   * conversion stick. Archive usage passes nothing — snapshots stay whole.
-   */
-  activeRules = input<RecurringTransaction[]>([]);
 
   private expanded = signal<string | null>(null);
   private converting = signal<string | null>(null);
@@ -85,12 +78,14 @@ export class RecurringListComponent {
     () => this.summary().groups.filter(group => group.source === 'declared'));
   readonly detected = computed(
     () => this.summary().groups.filter(group => group.source === 'detected'));
-  readonly visibleDetected = computed(
-    () => this.detected().filter(group => !isGroupCovered(group, this.activeRules())));
 
   readonly hasHiddenGroups = computed(
     () => this.summary().groupCount > this.summary().groups.length);
 
+  /**
+   * Groups found but beyond the display cap. Both sides of the subtraction are
+   * now over the same suppressed set, so this counts only what the cap dropped.
+   */
   readonly hiddenCount = computed(
     () => this.summary().groupCount - this.summary().groups.length);
 

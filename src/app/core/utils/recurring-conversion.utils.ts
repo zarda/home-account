@@ -10,6 +10,7 @@ import {
   bigramSimilarity,
   normalizeMerchant
 } from './recurring-pattern.utils';
+import { compareIds, fnv1a32 } from './transaction-aggregation.utils';
 import { parseDayKey } from './transaction-date.utils';
 
 /**
@@ -19,9 +20,14 @@ import { parseDayKey } from './transaction-date.utils';
  * owns rules. These helpers bridge the two: a cadence maps onto the
  * frequency shape the rules engine validates (ADR 0014), a group prefills
  * the create dialog, and a group already covered by an active rule is
- * suppressed from the detected list — conversion never back-writes
- * `recurringId` onto past transactions, so without suppression the detector
- * would rediscover every converted group forever.
+ * dropped by the detector — conversion never back-writes `recurringId` onto
+ * past transactions, so without suppression the detector would rediscover
+ * every converted group forever.
+ *
+ * Suppression is applied inside `computeRecurringGroups`, not at the list, so
+ * the portfolio figures and the rows beneath them count the same set (ADR 0042).
+ * `recurringCoverageFingerprint` is what lets the cache in front of that
+ * computation notice a rule change.
  */
 
 /** What the recurring form dialog accepts as initial values. */
@@ -114,6 +120,27 @@ export function isGroupCovered(
     if (rule.frequency.interval !== equivalent.interval) return false;
     return merchantNamesMatch(groupKey, normalizeMerchant(rule.name));
   });
+}
+
+/**
+ * Content fingerprint of a rule set, over exactly the fields coverage reads.
+ *
+ * `InsightsService` caches its computation by content and has no TTL, so every
+ * input to that computation has to be in the key or a stale answer is served
+ * forever. Deliberately not the whole rule: `nextOccurrence` advances every time
+ * the engine posts a catch-up occurrence, and folding it in would evict the
+ * cached facts daily for a change that cannot move a single figure.
+ *
+ * Change this and `isGroupCovered` together. A field one reads and the other
+ * ignores is a coverage decision the cache cannot see changing.
+ */
+export function recurringCoverageFingerprint(rules: RecurringTransaction[]): string {
+  const parts = rules
+    .filter(rule => rule.isActive)
+    .map(rule =>
+      `${normalizeMerchant(rule.name)}:${rule.frequency.type}:${rule.frequency.interval}`)
+    .sort(compareIds);
+  return `${fnv1a32(parts.join(';'))}:${parts.length}`;
 }
 
 function merchantNamesMatch(a: string, b: string): boolean {

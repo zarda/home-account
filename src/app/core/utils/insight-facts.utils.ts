@@ -1,11 +1,13 @@
 import {
   INSIGHT_DETECTOR_VERSION,
   InsightFacts,
+  RecurringTransaction,
   Transaction,
 } from '../../models';
 import { DetectorWindow } from './spending-pattern.types';
 import { CategoryTrendOptions, computeCategoryTrends } from './category-trend.utils';
 import { HabitRhythmOptions, computeHabitRhythms } from './habit-rhythm.utils';
+import { isGroupCovered } from './recurring-conversion.utils';
 import { RecurringOptions, computeRecurringGroups } from './recurring-pattern.utils';
 import { SmallDripOptions, computeSmallAmountDrip } from './small-drip.utils';
 import { dateOf, dayKey } from './transaction-date.utils';
@@ -50,6 +52,14 @@ export interface InsightComputeInput {
   baseCurrency: string;
   /** IANA zone the day-of-week and month-end maths runs in. */
   timeZone: string;
+  /**
+   * Rules in force, for suppressing detected groups one already covers.
+   *
+   * Optional so a caller with nothing to suppress against still gets a result,
+   * but both production callers pass it — omitting it silently double-counts
+   * every converted subscription (ADR 0042).
+   */
+  recurringRules?: RecurringTransaction[];
   options?: InsightDetectorOptions;
 }
 
@@ -127,7 +137,9 @@ export function computeInsightFacts(input: InsightComputeInput): InsightComputat
   const expenses = inWindow.filter(transaction => transaction.type === 'expense');
   const incomes = inWindow.filter(transaction => transaction.type === 'income');
 
-  const recurring = computeRecurringGroups(expenses, toBase, window, options.recurring);
+  const rules = input.recurringRules ?? [];
+  const recurring = computeRecurringGroups(
+    expenses, toBase, window, options.recurring, group => isGroupCovered(group, rules));
   const trends = computeCategoryTrends(
     bucketByMonthAndCategory(expenses, toBase, months), options.trends);
   const rhythms = computeHabitRhythms(expenses, incomes, toBase, window, options.rhythms);

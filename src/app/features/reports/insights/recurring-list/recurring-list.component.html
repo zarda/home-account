@@ -11,13 +11,13 @@
       </section>
     }
 
-    @if (visibleDetected().length > 0) {
+    @if (detected().length > 0) {
       <section class="recurring-section">
         <h4 class="section-label">{{ 'insights.recurringDetected' | translate }}</h4>
         <p class="section-note">{{ 'insights.recurringDetectedNote' | translate }}</p>
         <ng-container
           [ngTemplateOutlet]="rows"
-          [ngTemplateOutletContext]="{ groups: visibleDetected(), convertible: true }"
+          [ngTemplateOutletContext]="{ groups: detected(), convertible: true }"
         />
       </section>
     }
