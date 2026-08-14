@@ -196,6 +196,7 @@ The web app is a fully-featured Progressive Web App:
 | `npm test` | Run unit tests |
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
+| `npm run test:ios` | Run the Swift share-seam tests in the iOS Simulator (local only — CI never builds iOS; edit the destination if iPhone 17 is not installed) |
 | `npm run lint` | ESLint |
 | `npm run lint-guards:check` | Verify the ESLint import bans still resolve for the files they were written for |
 | `npm run i18n:check` | Verify every literal translation key resolves in all locales and no template hard-codes an aria-label |
