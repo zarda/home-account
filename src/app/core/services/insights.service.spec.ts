@@ -5,9 +5,15 @@ import { INSIGHT_WINDOW_MONTHS, InsightsService, insightWindow } from './insight
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { PwaService } from './pwa.service';
+import { RecurringService } from './recurring.service';
 import { TransactionService } from './transaction.service';
-import { Transaction, User } from '../../models';
-import { createTimestamp, createTransaction, createUser } from './testing/test-data';
+import { RecurringTransaction, Transaction, User } from '../../models';
+import {
+  createRecurring,
+  createTimestamp,
+  createTransaction,
+  createUser,
+} from './testing/test-data';
 import {
   PeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
@@ -18,6 +24,7 @@ describe('InsightsService', () => {
   let currencyService: jasmine.SpyObj<CurrencyService>;
   let isOnline: ReturnType<typeof signal<boolean>>;
   let currentUser: ReturnType<typeof signal<User | null>>;
+  let recurringTransactions: ReturnType<typeof signal<RecurringTransaction[]>>;
 
   function selection(start: Date, end: Date, option: PeriodSelection['option'] = 'custom'): PeriodSelection {
     return { option, start, end, label: 'test' };
@@ -50,6 +57,7 @@ describe('InsightsService', () => {
     sessionStorage.clear();
     isOnline = signal(true);
     currentUser = signal<User | null>(createUser());
+    recurringTransactions = signal<RecurringTransaction[]>([]);
 
     transactionService = jasmine.createSpyObj<TransactionService>(
       'TransactionService',
@@ -68,6 +76,7 @@ describe('InsightsService', () => {
         { provide: CurrencyService, useValue: currencyService },
         { provide: AuthService, useValue: { currentUser } },
         { provide: PwaService, useValue: { isOnline } },
+        { provide: RecurringService, useValue: { recurringTransactions } },
       ],
     });
     service = TestBed.inject(InsightsService);
@@ -226,6 +235,47 @@ describe('InsightsService', () => {
         of([...base, expense(new Date(2026, 5, 9), 900)]));
       service.load(period, now);
       expect(service.fingerprint()).not.toBe(first);
+    });
+
+    it('keys the cached computation on the active rule set', () => {
+      // The cache has no TTL, so a rule change outside the key would be served
+      // the pre-conversion figures for the rest of the session.
+      const period = selection(new Date(2026, 5, 1), new Date(2026, 5, 30, 23, 59, 59, 999));
+      const now = new Date(2026, 6, 15);
+      transactionService.getTransactionsInRange.and.returnValue(of(history()));
+
+      service.load(period, now);
+      const keysBefore = Object.keys(sessionStorage).filter(key => key.startsWith('insights-facts'));
+
+      recurringTransactions.set([createRecurring({
+        name: 'Netflix', categoryId: 'subscriptions_streaming_services',
+      })]);
+      service.load(period, now);
+
+      const keysAfter = Object.keys(sessionStorage).filter(key => key.startsWith('insights-facts'));
+      expect(keysBefore.length).toBe(1);
+      expect(keysAfter.length).toBe(2);
+    });
+
+    it('recomputes when a rule is saved while the tab is open', () => {
+      const period = selection(new Date(2026, 5, 1), new Date(2026, 5, 30, 23, 59, 59, 999));
+      const now = new Date(2026, 6, 15);
+      transactionService.getTransactionsInRange.and.returnValue(of(history()));
+
+      service.load(period, now);
+      const before = service.facts()?.recurring.totalMonthlyEquivalent ?? 0;
+      expect(before).toBeGreaterThan(0);
+      transactionService.getTransactionsInRange.calls.reset();
+
+      recurringTransactions.set([createRecurring({
+        name: 'Netflix', categoryId: 'subscriptions_streaming_services',
+      })]);
+      TestBed.tick();
+
+      expect(service.facts()?.recurring.totalMonthlyEquivalent).toBeLessThan(before);
+      // Recomputed from the rows already in memory, not by re-opening the
+      // six-month listener.
+      expect(transactionService.getTransactionsInRange).not.toHaveBeenCalled();
     });
 
     it('recomputes when the base currency changes', () => {

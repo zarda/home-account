@@ -6,7 +6,8 @@ import {
   TransactionType,
   Category,
   CategoryType,
-  Budget
+  Budget,
+  RecurringTransaction
 } from '../../../models';
 
 /**
@@ -83,6 +84,37 @@ export function createTransactions(count: number, overrides: Partial<Transaction
       ...overrides
     })
   );
+}
+
+/**
+ * Create a mock RecurringTransaction.
+ *
+ * Complete rather than a partial cast: coverage matching (`isGroupCovered`)
+ * reads `isActive`, `frequency.type` and `frequency.interval`, and a fixture
+ * missing any of them silently reports "not covered" instead of failing.
+ */
+export function createRecurring(
+  overrides: Partial<RecurringTransaction> = {}
+): RecurringTransaction {
+  const amount = overrides.amount ?? 15.99;
+
+  return {
+    id: generateId('rec'),
+    userId: 'test-user-123',
+    name: 'Netflix',
+    type: 'expense',
+    amount,
+    currency: 'USD',
+    categoryId: 'entertainment_streaming',
+    description: 'Netflix subscription',
+    frequency: { type: 'monthly', interval: 1 },
+    startDate: createTimestamp(),
+    nextOccurrence: createTimestamp(),
+    isActive: true,
+    createdAt: createTimestamp(),
+    updatedAt: createTimestamp(),
+    ...overrides
+  };
 }
 
 /**

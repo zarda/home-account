@@ -1,10 +1,12 @@
 import {
   frequencyFromCadence,
   isGroupCovered,
-  prefillFromGroup
+  prefillFromGroup,
+  recurringCoverageFingerprint
 } from './recurring-conversion.utils';
 import { StorableRecurringGroup } from '../../models';
 import { RecurringFrequency, RecurringTransaction } from '../../models';
+import { createRecurring, createTimestamp } from '../services/testing/test-data';
 
 describe('recurring-conversion.utils', () => {
   function group(overrides: Partial<StorableRecurringGroup> = {}): StorableRecurringGroup {
@@ -150,6 +152,58 @@ describe('recurring-conversion.utils', () => {
     it('does not cover an unrelated name', () => {
       expect(isGroupCovered(group(), [rule('Gym Membership', { type: 'monthly', interval: 1 })]))
         .toBeFalse();
+    });
+  });
+
+  // The fingerprint decides whether InsightsService's content-keyed cache
+  // notices a rule change. It has to move for everything isGroupCovered reads,
+  // and for nothing else.
+  describe('recurringCoverageFingerprint', () => {
+    const netflix = () => createRecurring({ name: 'Netflix' });
+
+    it('moves when a rule is renamed', () => {
+      expect(recurringCoverageFingerprint([createRecurring({ name: 'Spotify' })]))
+        .not.toBe(recurringCoverageFingerprint([netflix()]));
+    });
+
+    it('moves when a cadence changes', () => {
+      const weekly = createRecurring({
+        name: 'Netflix', frequency: { type: 'weekly', interval: 1 }
+      });
+      expect(recurringCoverageFingerprint([weekly]))
+        .not.toBe(recurringCoverageFingerprint([netflix()]));
+    });
+
+    it('moves when a rule is paused', () => {
+      expect(recurringCoverageFingerprint([createRecurring({ isActive: false })]))
+        .not.toBe(recurringCoverageFingerprint([netflix()]));
+    });
+
+    it('holds when only the next occurrence advances', () => {
+      // The engine advances nextOccurrence every time it posts a catch-up
+      // occurrence. Folding it in would evict the cached facts daily for a
+      // change that cannot move a single figure.
+      const rule = netflix();
+      const posted = {
+        ...rule,
+        nextOccurrence: createTimestamp(new Date(2026, 9, 1)),
+        lastProcessed: createTimestamp(new Date(2026, 8, 1)),
+      };
+      expect(recurringCoverageFingerprint([posted]))
+        .toBe(recurringCoverageFingerprint([rule]));
+    });
+
+    it('holds when an amount or category changes', () => {
+      const repriced = { ...netflix(), amount: 19.99, categoryId: 'other_expense' };
+      expect(recurringCoverageFingerprint([repriced]))
+        .toBe(recurringCoverageFingerprint([netflix()]));
+    });
+
+    it('does not depend on the order rules arrive in', () => {
+      const a = createRecurring({ name: 'Netflix' });
+      const b = createRecurring({ name: 'Spotify' });
+      expect(recurringCoverageFingerprint([a, b]))
+        .toBe(recurringCoverageFingerprint([b, a]));
     });
   });
 });
