@@ -26,6 +26,12 @@ export type PromptResponseKind = 'json' | 'markdown' | 'plainText';
  * because they are properties of the task, not of the provider. They used to be
  * written per call site per provider, which is how Gemini ended up categorizing
  * at `temperature: 0.05` while OpenAI and Claude passed nothing at all.
+ *
+ * `maxOutputTokens` reaches every transport. `temperature` reaches the models
+ * that accept one: Gemini always, Claude only before Opus 4.6, OpenAI never
+ * while the catalog is GPT-5. That is a limit of the transports, not a gap in
+ * the registry — the declared value stays required, and `acceptsSampling` in
+ * `config/ai-models.ts` is where a model's answer is recorded. ADR 0043.
  */
 export interface RenderedPrompt {
   system?: string;
