@@ -15,6 +15,7 @@ import { ImportHistoryService } from './import-history.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
 import { ProviderKeyService } from './provider-key.service';
 import { SecurityLogService } from './security-log.service';
+import { ShareIntakeService } from './share-intake.service';
 import { FirestoreService } from './firestore.service';
 
 describe('AccountDeletionService', () => {
@@ -35,6 +36,7 @@ describe('AccountDeletionService', () => {
   let mockSnapshots: jasmine.SpyObj<InsightSnapshotService>;
   let mockProviderKeys: jasmine.SpyObj<ProviderKeyService>;
   let mockSecurityLog: jasmine.SpyObj<SecurityLogService>;
+  let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
   let mockFirestore: jasmine.SpyObj<FirestoreService>;
 
   /** Step names in the order the cascade actually invoked them. */
@@ -67,12 +69,14 @@ describe('AccountDeletionService', () => {
     mockSnapshots = jasmine.createSpyObj('InsightSnapshotService', ['deleteAll']);
     mockProviderKeys = jasmine.createSpyObj('ProviderKeyService', ['deleteAll']);
     mockSecurityLog = jasmine.createSpyObj('SecurityLogService', ['deleteAll']);
+    mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['clearAll']);
     mockFirestore = jasmine.createSpyObj('FirestoreService', ['deleteDocument']);
 
     track(mockAuth.reauthenticate, 'reauth');
     track(mockAuth.deleteFirebaseUser, 'authUser');
     track(mockAppLock.clearCredential, 'appLock');
     track(mockQueue.clearAll, 'offlineQueue');
+    track(mockShareIntake.clearAll, 'shareStash');
     track(mockTransactions.deleteAllTransactions, 'transactions', 3);
     track(mockCategories.deleteAll, 'categories', 2);
     track(mockBudgets.deleteAll, 'budgets', 1);
@@ -105,6 +109,7 @@ describe('AccountDeletionService', () => {
         { provide: InsightSnapshotService, useValue: mockSnapshots },
         { provide: ProviderKeyService, useValue: mockProviderKeys },
         { provide: SecurityLogService, useValue: mockSecurityLog },
+        { provide: ShareIntakeService, useValue: mockShareIntake },
         { provide: FirestoreService, useValue: mockFirestore }
       ]
     });
