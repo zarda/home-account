@@ -262,6 +262,45 @@ describe('DashboardComponent', () => {
       expect(fixture.componentInstance.showInitialSpinner()).toBeTrue();
     });
 
+    // #259: the AI summary keys its request on this label and describes the rows
+    // it is handed, so the two must flip together or it summarises one period
+    // using another's data — and caches the answer under the wrong key.
+    it('publishes the period only when the rows for it arrive', () => {
+      const window$ = new Subject<unknown[]>();
+      transactionService.getByDateRange.and.returnValue(window$);
+      const fixture = build();
+      fixture.detectChanges();
+      window$.next([]);
+
+      const component = fixture.componentInstance;
+      expect(component.publishedPeriodOption()).toBe(defaultPeriodSelection().option);
+
+      const next$ = new Subject<unknown[]>();
+      transactionService.getByDateRange.and.returnValue(next$);
+      component.onPeriodSelection(selection(
+        'lastMonth', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+
+      // The selector has moved; the rows have not.
+      expect(component.publishedPeriodOption()).toBe(defaultPeriodSelection().option);
+
+      next$.next([]);
+      expect(component.publishedPeriodOption()).toBe('lastMonth');
+    });
+
+    it('leaves the published period alone when the load fails', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      const component = fixture.componentInstance;
+
+      transactionService.getByDateRange.and.returnValue(throwError(() => new Error('offline')));
+      component.onPeriodSelection(selection(
+        'lastMonth', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
+
+      // The previous period's rows are still on screen, so the summary should
+      // keep describing them rather than relabelling them.
+      expect(component.publishedPeriodOption()).toBe(defaultPeriodSelection().option);
+    });
+
     it('reloads with the emitted range on a period selection', () => {
       const component = build().componentInstance;
       component.onPeriodSelection(selection('custom', new Date(2025, 3, 1), new Date(2025, 3, 30, 23, 59, 59)));
