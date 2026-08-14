@@ -22,6 +22,8 @@
 		BB20000000000000000000C1 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B2 /* ShareViewController.swift */; };
 		BB20000000000000000000C2 /* ShareIntakePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B6 /* ShareIntakePlugin.swift */; };
 		BB20000000000000000000C3 /* ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B1 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CC30000000000000000000A2 /* ShareIntakeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A1 /* ShareIntakeStore.swift */; };
+		CC30000000000000000000A4 /* DataURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A3 /* DataURL.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -91,6 +93,8 @@
 		BB20000000000000000000B4 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		BB20000000000000000000B5 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		BB20000000000000000000B6 /* ShareIntakePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareIntakePlugin.swift; sourceTree = "<group>"; };
+		CC30000000000000000000A1 /* ShareIntakeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareIntakeStore.swift; sourceTree = "<group>"; };
+		CC30000000000000000000A3 /* DataURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataURL.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -164,7 +168,9 @@
 			isa = PBXGroup;
 			children = (
 				AA10000000000000000000A4 /* AppleIntelligencePlugin.swift */,
+				CC30000000000000000000A3 /* DataURL.swift */,
 				BB20000000000000000000B6 /* ShareIntakePlugin.swift */,
+				CC30000000000000000000A1 /* ShareIntakeStore.swift */,
 				AA10000000000000000000A2 /* VisionOCRPlugin.swift */,
 			);
 			path = Plugins;
@@ -289,6 +295,8 @@
 				AA10000000000000000000A3 /* VisionOCRPlugin.swift in Sources */,
 				AA10000000000000000000A5 /* AppleIntelligencePlugin.swift in Sources */,
 				BB20000000000000000000C2 /* ShareIntakePlugin.swift in Sources */,
+				CC30000000000000000000A2 /* ShareIntakeStore.swift in Sources */,
+				CC30000000000000000000A4 /* DataURL.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

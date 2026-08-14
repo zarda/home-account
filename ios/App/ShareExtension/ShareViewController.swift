@@ -20,7 +20,8 @@ final class ShareViewController: UIViewController {
     /// leads so loadFileRepresentation asks the provider to transcode what
     /// it can — an iPhone camera HEIC arrives as JPEG; `.image` stays right
     /// behind it for images with no JPEG representation.
-    private static let acceptedTypes: [UTType] = [.jpeg, .image, .pdf, .commaSeparatedText]
+    /// Internal, not private: AppTests compiles this file and pins the order.
+    static let acceptedTypes: [UTType] = [.jpeg, .image, .pdf, .commaSeparatedText]
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -80,7 +81,9 @@ final class ShareViewController: UIViewController {
 
     /// Copies the payload and writes a JSON sidecar the plugin reads:
     /// `<uuid>.payload` + `<uuid>.json` `{ name, mimeType, payload, receivedAt }`.
-    private static func stash(fileAt url: URL, as type: UTType, into container: URL) -> Bool {
+    /// Internal, not private: AppTests compiles this file and drives it
+    /// against a temp directory.
+    static func stash(fileAt url: URL, as type: UTType, into container: URL) -> Bool {
         let id = UUID().uuidString
         let payloadURL = container.appendingPathComponent("\(id).payload")
         let sidecarURL = container.appendingPathComponent("\(id).json")
