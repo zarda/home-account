@@ -202,6 +202,10 @@ you the scan needs a connection. The queue is one store per device rather than
 per account, so that stamp is what keeps it honest — an item is only ever drained
 into the ledger of the account that took the photo, and a drain that fires while
 someone else is signed in leaves it alone rather than filing it in their ledger.
+The share stash carries the same stamp for the same reason: a shared file is
+surfaced only to the account that was signed in when it arrived, with a bounded
+claim window for shares made signed out (see
+[share-import.md](share-import.md)).
 
 The queue drains when the browser reports the connection back, when the service
 worker's background sync fires, and when you press **Sync Now** on the AI

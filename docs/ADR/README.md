@@ -43,6 +43,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0036](0036-a-user-facing-string-lives-in-the-catalog.md) | A user-facing string lives in the catalog, and only English declines | Accepted | 2026-08-12 |
 | [0037](0037-an-error-body-is-a-failed-fetch.md) | An error body is a failed fetch, and an expired cache beats the constants | Accepted | 2026-08-12 |
 | [0038](0038-a-dead-guard-reads-exactly-like-a-live-one.md) | A dead guard reads exactly like a live one | Accepted | 2026-08-13 |
+| [0039](0039-a-share-arrives-typed-and-the-stash-answers-to-its-owner.md) | A share arrives typed, and the stash answers only to its owner | Accepted; amends 0019 | 2026-08-14 |
 
 ## What belongs here
 
