@@ -2,12 +2,14 @@
 /**
  * Keeps the three provider services honest about the prompt registry.
  *
- * Four things have to agree:
+ * Five things have to agree:
  *   1. the ids in src/app/core/prompts/prompt-registry.ts,
  *   2. the renderPrompt() call sites in the shared provider base and the three
  *      provider services,
  *   3. the table in docs/prompts.md,
- *   4. the rendering assertions in prompt-registry.spec.ts.
+ *   4. the rendering assertions in prompt-registry.spec.ts,
+ *   5. every provider either reading the declared sampling settings or naming
+ *      an exemption for why its models cannot take them.
  *
  * Most operations are now rendered once, in cloud-llm-provider.base.ts, and
  * only the transport differs per provider. A call site there reaches all three
@@ -38,6 +40,10 @@
  *   - Whether a provider adapter drops `system` or ignores `expects`. That is
  *     behavioural and belongs in provider-prompt-parity.spec.ts, which asserts
  *     the text each SDK actually receives.
+ *   - Whether the sampling parameters an adapter mentions actually reach the
+ *     wire. The check below proves a provider file either reads
+ *     `rendered.temperature` or carries a named exemption; only the parity spec
+ *     proves the value arrives, and on which models.
  *   - A prompt assembled by concatenating short fragments to slip under the
  *     long-literal heuristic. This is a tripwire, not a proof.
  *   - Prompt text reaching a model from outside the three provider files. The
@@ -85,6 +91,27 @@ const SINGLE_PROVIDER = {
     reason: 'position-aware single-image itemization has no OpenAI/Claude counterpart yet',
   },
 };
+
+/**
+ * Providers whose models cannot take the declared sampling settings, and why.
+ *
+ * Same convention as SINGLE_PROVIDER above: an entry names the reason, so
+ * closing a gap means deleting a line rather than widening one. The registry
+ * makes `temperature` a required property of every prompt, and Gemini has
+ * honoured it since ADR 0005 — but a seam can only carry what the transport
+ * accepts, and two vendors have since withdrawn the parameter.
+ *
+ * An exempted provider must still be *reachable*: `acceptsSampling` in
+ * config/ai-models.ts is per model, so a provider is listed here only when no
+ * model in its catalog takes one. Claude is deliberately absent — it gates per
+ * model and reads the declared value, which is what this check requires.
+ */
+const SAMPLING_EXEMPT = {
+  openai: 'the Responses API rejects an explicit temperature for the GPT-5 family, and every id in OPENAI_MODELS is GPT-5',
+};
+
+/** What a provider file must mention to count as honouring the declared value. */
+const SAMPLING_READ = /rendered\.temperature/;
 
 /** Literals in the provider files that are not prompts. */
 const LITERAL_ALLOWLIST = [
@@ -139,6 +166,9 @@ const HINTS = {
   vocabulary: () =>
     'Derive the set instead: ask the engine what it supports, or validate the answer ' +
     'against the runtime tables. A list written here is a ceiling on what can be read.',
+  sampling: () =>
+    'Either read rendered.temperature in the adapter — gated on acceptsSampling() when ' +
+    'only some of its models take one — or add a SAMPLING_EXEMPT entry naming why none can.',
 };
 
 const fail = (message, sites = [], hint = 'parity') => failures.push({ message, sites, hint });
@@ -215,6 +245,36 @@ export function findCallSites(files) {
     }
   }
   return sites;
+}
+
+/**
+ * Providers that neither read the declared sampling settings nor claim an
+ * exemption, and exemptions no longer earning their place.
+ *
+ * Comments are blanked first, so the prose above `samplingParams` explaining
+ * why a value is withheld does not count as reading it — the check has to see
+ * the code, not the apology for its absence.
+ *
+ * Reported both ways round, like the prompt parity check: a silent omission is
+ * how #263 shipped, and a stale exemption is how the next one would.
+ */
+export function findSamplingGaps(files, exemptions) {
+  const gaps = [];
+  for (const [key, source] of Object.entries(files)) {
+    if (key === SHARED_KEY) {
+      continue;
+    }
+    const reads = SAMPLING_READ.test(blankComments(source));
+    const exempt = Object.prototype.hasOwnProperty.call(exemptions, key);
+
+    if (!reads && !exempt) {
+      gaps.push({ provider: key, kind: 'dropped' });
+    }
+    if (reads && exempt) {
+      gaps.push({ provider: key, kind: 'staleExemption' });
+    }
+  }
+  return gaps.sort((a, b) => a.provider.localeCompare(b.provider));
 }
 
 /**
@@ -365,6 +425,30 @@ function run() {
         [`${path}:${line}`],
         'vocabulary'
       );
+    }
+  }
+
+  // Per file rather than per prompt: every prompt declares a temperature, so
+  // what varies is which adapter carries it.
+  for (const { provider, kind } of findSamplingGaps(sources, SAMPLING_EXEMPT)) {
+    if (kind === 'dropped') {
+      fail(
+        `${provider} never reads rendered.temperature — the declared sampling is dropped on the wire`,
+        [PROVIDERS[provider]],
+        'sampling'
+      );
+    } else {
+      fail(
+        `${provider} reads rendered.temperature but is still listed in SAMPLING_EXEMPT — delete the entry`,
+        [PROVIDERS[provider]],
+        'sampling'
+      );
+    }
+  }
+
+  for (const key of Object.keys(SAMPLING_EXEMPT)) {
+    if (!Object.prototype.hasOwnProperty.call(PROVIDERS, key)) {
+      fail(`SAMPLING_EXEMPT names "${key}", which is not a provider`, [], 'sampling');
     }
   }
 
@@ -586,6 +670,46 @@ export const PROMPTS = {
     'ignores an allowlisted data URL literal',
     findInlineLiterals('const u = `data:image/jpeg;base64,${b}`;').length,
     0
+  );
+
+  const carries = 'return { temperature: rendered.temperature };';
+  const gated = 'return accepts(this.model) ? { temperature: rendered.temperature } : {};';
+  const silent = 'return { max_tokens: rendered.maxOutputTokens };';
+
+  check(
+    'accepts a provider that reads the declared temperature',
+    findSamplingGaps({ gemini: carries }, {}),
+    []
+  );
+  check(
+    'accepts a model-gated read',
+    findSamplingGaps({ claude: gated }, {}),
+    []
+  );
+  check(
+    'flags a provider that silently drops it',
+    findSamplingGaps({ claude: silent }, {}),
+    [{ provider: 'claude', kind: 'dropped' }]
+  );
+  check(
+    'accepts a silent provider that names an exemption',
+    findSamplingGaps({ openai: silent }, { openai: 'reason' }),
+    []
+  );
+  check(
+    'flags an exemption the code has outgrown',
+    findSamplingGaps({ openai: carries }, { openai: 'reason' }),
+    [{ provider: 'openai', kind: 'staleExemption' }]
+  );
+  check(
+    'does not accept a comment as a read',
+    findSamplingGaps({ claude: `// we would send rendered.temperature but cannot\n${silent}` }, {}),
+    [{ provider: 'claude', kind: 'dropped' }]
+  );
+  check(
+    'ignores the shared base, which owns no transport',
+    findSamplingGaps({ [SHARED_KEY]: silent }, {}),
+    []
   );
 
   check(

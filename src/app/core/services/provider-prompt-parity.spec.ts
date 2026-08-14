@@ -128,6 +128,16 @@ describe('provider prompt parity', () => {
     return content.find((c: { type: string }) => c.type === 'text').text as string;
   }
 
+  // The request body itself, for asserting envelope fields rather than text.
+  // Nothing else in src/ looks at these, which is how a declared generation
+  // setting went missing on two of the three transports without a test noticing.
+  const geminiEnvelope = (): Record<string, unknown> =>
+    geminiTextModel.generateContent.calls.mostRecent().args[0].generationConfig;
+  const openaiEnvelope = (): Record<string, unknown> =>
+    openaiClient.responses.create.calls.mostRecent().args[0];
+  const claudeEnvelope = (): Record<string, unknown> =>
+    claudeClient.messages.create.calls.mostRecent().args[0];
+
   describe('categorizeTransactions', () => {
     const rows = [{ description: 'STARBUCKS', amount: 4.5, date: new Date('2026-07-01') }];
 
@@ -351,6 +361,106 @@ describe('provider prompt parity', () => {
       expect(geminiRaw.startsWith(JSON_ONLY_PREAMBLE)).toBeTrue();
       expect(openaiPrompt()).not.toContain(JSON_ONLY_PREAMBLE);
       expect(claudePrompt()).not.toContain(JSON_ONLY_PREAMBLE);
+    });
+  });
+
+  // #263. The registry declares a temperature for all thirteen prompts, but a
+  // seam can only carry what the transport accepts, and the three differ.
+  describe('the declared temperature', () => {
+    const rows = [{ description: 'X', amount: 1, date: new Date('2026-07-01') }];
+
+    /** Every provider run through one task, so the envelopes are comparable. */
+    async function categorizeEverywhere(): Promise<void> {
+      geminiTextModel.generateContent.and.resolveTo({
+        response: { text: () => '[]', candidates: [{ finishReason: 'STOP' }] },
+      });
+      openaiClient.responses.create.and.resolveTo({ output_text: '[]' });
+      claudeClient.messages.create.and.resolveTo({ content: [{ type: 'text', text: '[]' }] });
+
+      await gemini.categorizeTransactions(rows);
+      await openai.categorizeTransactions(rows);
+      await claude.categorizeTransactions(rows);
+    }
+
+    /** categorizeTransactions declares the registry's lowest value. */
+    const declared = () => renderPrompt('categorizeTransactions', {
+      categoryCatalog: 'food: Food\ntransport: Transport',
+      rows: [{ index: 0, description: 'X', amount: 1 }],
+    }).temperature;
+
+    it('reaches Gemini, which accepts it on every model in the catalog', async () => {
+      await categorizeEverywhere();
+      expect(geminiEnvelope()['temperature']).toBe(declared());
+    });
+
+    it('reaches Claude on a model that still accepts sampling', async () => {
+      claude.setModel('claude-haiku-4-5');
+      await categorizeEverywhere();
+      expect(claudeEnvelope()['temperature']).toBe(declared());
+    });
+
+    it('is omitted for a Claude model released after Opus 4.6, which rejects any value but 1.0', async () => {
+      // Sending it would be a 400, not a sharper answer. Both post-4.6 ids are
+      // covered because the default is one of them.
+      claude.setModel('claude-sonnet-5');
+      await categorizeEverywhere();
+      expect('temperature' in claudeEnvelope()).toBeFalse();
+
+      claude.setModel('claude-opus-4-8');
+      await categorizeEverywhere();
+      expect('temperature' in claudeEnvelope()).toBeFalse();
+    });
+
+    it('is omitted for OpenAI, because the GPT-5 Responses API rejects it', async () => {
+      await categorizeEverywhere();
+      expect('temperature' in openaiEnvelope()).toBeFalse();
+    });
+
+    it('is carried by the vision transport too, so one cannot regress alone', async () => {
+      claude.setModel('claude-haiku-4-5');
+      claudeClient.messages.create.and.resolveTo({
+        content: [{ type: 'text', text: '{}' }],
+      });
+      await claude.parseReceipt('data:image/jpeg;base64,AAAA');
+
+      expect(claudeEnvelope()['temperature']).toBe(renderPrompt('receiptParse').temperature);
+      expect(claudeEnvelope()['messages']).toBeDefined();
+    });
+
+    it('is omitted by the vision transport on a model that rejects it', async () => {
+      claude.setModel('claude-sonnet-5');
+      claudeClient.messages.create.and.resolveTo({
+        content: [{ type: 'text', text: '{}' }],
+      });
+      await claude.parseReceipt('data:image/jpeg;base64,AAAA');
+
+      expect('temperature' in claudeEnvelope()).toBeFalse();
+    });
+  });
+
+  // Pinned while the envelopes are in reach: unlike temperature, the token
+  // budget is accepted everywhere, so a provider dropping it is always a bug.
+  describe('the declared token budget', () => {
+    it('reaches every transport', async () => {
+      const rows = [{ description: 'X', amount: 1, date: new Date('2026-07-01') }];
+      geminiTextModel.generateContent.and.resolveTo({
+        response: { text: () => '[]', candidates: [{ finishReason: 'STOP' }] },
+      });
+      openaiClient.responses.create.and.resolveTo({ output_text: '[]' });
+      claudeClient.messages.create.and.resolveTo({ content: [{ type: 'text', text: '[]' }] });
+
+      await gemini.categorizeTransactions(rows);
+      await openai.categorizeTransactions(rows);
+      await claude.categorizeTransactions(rows);
+
+      const expected = renderPrompt('categorizeTransactions', {
+        categoryCatalog: 'food: Food\ntransport: Transport',
+        rows: [{ index: 0, description: 'X', amount: 1 }],
+      }).maxOutputTokens;
+
+      expect(geminiEnvelope()['maxOutputTokens']).toBe(expected);
+      expect(openaiEnvelope()['max_output_tokens']).toBe(expected);
+      expect(claudeEnvelope()['max_tokens']).toBe(expected);
     });
   });
 });
