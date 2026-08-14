@@ -28,6 +28,7 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
+import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
 @Component({
   selector: 'app-import-wizard',
@@ -83,7 +84,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    */
   imageKind = signal<'receipt' | 'statement'>('receipt');
   readonly hasImageFiles = computed(() =>
-    this.selectedFiles().some(f => f.type.startsWith('image/'))
+    // MIME or extension: a shared photo can arrive typed
+    // application/octet-stream and must still count as an image.
+    this.selectedFiles().some(f => looksLikeImageFile(f))
   );
   extractedTransactions = signal<CategorizedImportTransaction[]>([]);
   selectedTransactionIds = signal<Set<string>>(new Set());
@@ -270,7 +273,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.revokePreviews();
     this.imagePreviewUrls.set(
       files
-        .filter(f => f.type.startsWith('image/'))
+        .filter(f => looksLikeImageFile(f))
         .map(f => ({ name: f.name, url: URL.createObjectURL(f) }))
     );
     // Reset processing state
@@ -290,8 +293,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     try {
       const files = this.selectedFiles();
 
-      const imageFiles = files.filter(f => f.type.startsWith('image/'));
-      const nonImageFiles = files.filter(f => !f.type.startsWith('image/'));
+      const imageFiles = files.filter(f => looksLikeImageFile(f));
+      const nonImageFiles = files.filter(f => !looksLikeImageFile(f));
 
       if (imageFiles.length >= 1) {
         // Receipt and statement images need opposite treatment and look alike
@@ -355,7 +358,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.processingErrorType.set(parsed.type);
       this.processingErrorRetryable.set(parsed.retryable);
 
-      if (this.selectedFiles().some(f => f.type.startsWith('image/'))) {
+      if (this.selectedFiles().some(f => looksLikeImageFile(f))) {
         // A later non-image file can throw after the images already produced
         // transactions; the user still has a usable review step, so that is a
         // success with a broken tail, not a failed import.
