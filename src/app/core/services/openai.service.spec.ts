@@ -251,6 +251,20 @@ describe('OpenAIService', () => {
       expect(sentImage.image_url).toBe('data:image/jpeg;base64,rawbase64');
     });
 
+    it('re-declares a non-image data URL as jpeg', async () => {
+      const fake = makeFakeClient();
+      fake.responses.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+
+      // A shared photo can arrive typed application/octet-stream; forwarded
+      // verbatim the API rejects it as a non-image, so the payload is
+      // re-declared as the image it is.
+      await service.parseReceipt('data:application/octet-stream;base64,abc');
+
+      const sentImage = fake.responses.create.calls.mostRecent().args[0].input[0].content[1];
+      expect(sentImage.image_url).toBe('data:image/jpeg;base64,abc');
+    });
+
     it('handles an empty model response by treating it as empty json', async () => {
       const fake = makeFakeClient();
       // output_text falsy -> '' -> extractJson returns '' -> JSON.parse throws.

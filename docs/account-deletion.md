@@ -34,6 +34,7 @@ rules grant only the owner and the project deploys no Cloud Functions
 |------|------|---------------|
 | appLock | Device PIN record + attempt state | `AppLockService.clearCredential()` |
 | offlineQueue | Queued receipt images + sync log (IndexedDB) | `OfflineQueueService.clearAll()` |
+| shareStash | Files shared into the app, still awaiting import (IndexedDB on web, the App Group container on iOS) | `ShareIntakeService.clearAll()` |
 | transactions | `users/{uid}/transactions` **and every receipt object in Storage** (swept per row) | `TransactionService.deleteAllTransactions()` |
 | categories | `users/{uid}/categories` | `CategoryService.deleteAll()` |
 | budgets | `users/{uid}/budgets` | `BudgetService.deleteAll()` |

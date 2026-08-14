@@ -10,6 +10,7 @@ import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService, AI_CLOUD_UNAVAILABLE, ProcessingResult } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
+import { IMAGE_FILE_EXTENSIONS } from '../utils/file.utils';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
@@ -962,7 +963,7 @@ export class AIImportService {
     const extension = file.name.split('.').pop()?.toLowerCase();
     const mimeType = file.type.toLowerCase();
 
-    if (mimeType.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp'].includes(extension || '')) {
+    if (mimeType.startsWith('image/') || IMAGE_FILE_EXTENSIONS.includes(extension || '')) {
       return 'receipt_image';
     }
 

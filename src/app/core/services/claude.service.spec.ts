@@ -237,6 +237,21 @@ describe('ClaudeService', () => {
       expect(imageBlock.source.data).toBe('rawbase64');
     });
 
+    it('strips an octet-stream data URL and declares jpeg', async () => {
+      const fake = makeFakeClient();
+      fake.messages.create.and.resolveTo(responseWith('{"suggestedCategory":"Other"}'));
+      setClient(fake);
+
+      // A shared photo can arrive typed application/octet-stream. The bytes
+      // are an image, so the payload is stripped and declared jpeg rather
+      // than the whole data URL being sent as base64.
+      await service.parseReceipt('data:application/octet-stream;base64,abc');
+
+      const imageBlock = fake.messages.create.calls.mostRecent().args[0].messages[0].content[0];
+      expect(imageBlock.source.media_type).toBe('image/jpeg');
+      expect(imageBlock.source.data).toBe('abc');
+    });
+
     it('records the error and rethrows on API failure', async () => {
       const errorSpy = spyOn(console, 'error');
       const fake = makeFakeClient();

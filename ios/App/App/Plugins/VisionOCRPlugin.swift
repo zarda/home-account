@@ -84,9 +84,11 @@ public class VisionOCRPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        // Remove data URL prefix if present
+        // Remove any data URL prefix — a shared photo can arrive labelled
+        // application/octet-stream, and a strip anchored on data:image/
+        // would leave the prefix in place and fail the decode below.
         let base64String = imageBase64.replacingOccurrences(
-            of: "data:image/[^;]+;base64,",
+            of: "data:[^;,]+;base64,",
             with: "",
             options: .regularExpression
         )

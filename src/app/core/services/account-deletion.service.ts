@@ -14,6 +14,7 @@ import { ImportHistoryService } from './import-history.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
 import { ProviderKeyService } from './provider-key.service';
 import { SecurityLogService } from './security-log.service';
+import { ShareIntakeService } from './share-intake.service';
 import { FirestoreService } from './firestore.service';
 
 /**
@@ -27,6 +28,7 @@ export const DELETION_STEPS = [
   'reauth',
   'appLock',
   'offlineQueue',
+  'shareStash',
   'transactions',
   'categories',
   'budgets',
@@ -69,6 +71,7 @@ export class AccountDeletionService {
   private authService = inject(AuthService);
   private appLock = inject(AppLockService);
   private offlineQueue = inject(OfflineQueueService);
+  private shareIntake = inject(ShareIntakeService);
   private transactionService = inject(TransactionService);
   private categoryService = inject(CategoryService);
   private budgetService = inject(BudgetService);
@@ -104,6 +107,7 @@ export class AccountDeletionService {
     // data in the cloud.
     await this.attempt('appLock', () => this.appLock.clearCredential(), failed);
     await this.attempt('offlineQueue', () => this.offlineQueue.clearAll(), failed);
+    await this.attempt('shareStash', () => this.shareIntake.clearAll(), failed);
 
     // The cloud cascade runs every step even after one fails, so a retry has
     // less left to do. securityEvents goes last of the subcollections — while

@@ -16,8 +16,11 @@ final class ShareViewController: UIViewController {
     private static let appGroupId = "group.com.homeaccount.app"
     private static let folderName = "SharedImports"
 
-    /// Same order the manifest's share_target accepts on the web.
-    private static let acceptedTypes: [UTType] = [.image, .pdf, .commaSeparatedText]
+    /// Same set the manifest's share_target accepts on the web. `.jpeg`
+    /// leads so loadFileRepresentation asks the provider to transcode what
+    /// it can — an iPhone camera HEIC arrives as JPEG; `.image` stays right
+    /// behind it for images with no JPEG representation.
+    private static let acceptedTypes: [UTType] = [.jpeg, .image, .pdf, .commaSeparatedText]
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -76,16 +79,28 @@ final class ShareViewController: UIViewController {
     }
 
     /// Copies the payload and writes a JSON sidecar the plugin reads:
-    /// `<uuid>.payload` + `<uuid>.json` `{ name, mimeType, payload }`.
+    /// `<uuid>.payload` + `<uuid>.json` `{ name, mimeType, payload, receivedAt }`.
     private static func stash(fileAt url: URL, as type: UTType, into container: URL) -> Bool {
         let id = UUID().uuidString
         let payloadURL = container.appendingPathComponent("\(id).payload")
         let sidecarURL = container.appendingPathComponent("\(id).json")
 
+        // The matched type is abstract — `.image` is `public.image`, which
+        // declares no MIME tag — so ask the delivered file what it concretely
+        // is. The abstract type's own MIME is the fallback, octet-stream last.
+        let concreteType = (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType
+            ?? UTType(filenameExtension: url.pathExtension)
+        let mimeType = concreteType?.preferredMIMEType
+            ?? type.preferredMIMEType
+            ?? "application/octet-stream"
+
         let sidecar: [String: String] = [
             "name": url.lastPathComponent,
-            "mimeType": type.preferredMIMEType ?? "application/octet-stream",
-            "payload": payloadURL.lastPathComponent
+            "mimeType": mimeType,
+            "payload": payloadURL.lastPathComponent,
+            // Epoch milliseconds as a string: the sidecar is string-typed
+            // throughout, and the consumer's claim window needs an age.
+            "receivedAt": String(Int64(Date().timeIntervalSince1970 * 1000))
         ]
 
         do {

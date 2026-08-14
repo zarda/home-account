@@ -3,8 +3,9 @@ import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 
 import { AuthService } from './auth.service';
-import { ShareStashStore, StashedShare } from './share-stash.store';
-import ShareIntake, { SharedIntakeFile } from '../plugins/share-intake.plugin';
+import { NativeShareService } from './native-share.service';
+import { SHARE_CLAIM_WINDOW_MS, ShareStashStore, StashedShare } from './share-stash.store';
+import { SharedIntakeFile } from '../plugins/share-intake.plugin';
 
 /**
  * What a share may hand the import wizard — the dropzone's accepted set
@@ -48,6 +49,7 @@ export class ShareIntakeService {
   private authService = inject(AuthService);
   private router = inject(Router);
   private stash = inject(ShareStashStore);
+  private nativeShare = inject(NativeShareService);
 
   constructor() {
     // The wizard route is auth-guarded and a share can arrive signed out,
@@ -65,7 +67,7 @@ export class ShareIntakeService {
       // WKWebView has no service workers — the Share Extension is the iOS
       // pipeline. Activation is when a share made in another app can first
       // be noticed.
-      void ShareIntake.addListener('pendingSharesChanged', () => {
+      void this.nativeShare.addListener('pendingSharesChanged', () => {
         void this.navigateIfPending();
       });
       return;
@@ -92,7 +94,7 @@ export class ShareIntakeService {
 
   private async pendingCount(): Promise<number> {
     if (Capacitor.isNativePlatform()) {
-      return (await ShareIntake.checkPendingShares()).count;
+      return (await this.nativeShare.checkPendingShares()).count;
     }
     return this.stash.count();
   }
@@ -107,16 +109,41 @@ export class ShareIntakeService {
   }
 
   private async consumeWeb(): Promise<File[]> {
-    const rows = await this.stash.readAll();
-    await this.stash.clear();
+    // One transaction reads and deletes: only rows the store deems visible
+    // to this session come back, and foreign rows stay put for their owner.
+    const rows = await this.stash.consume();
     return rows.map((row: StashedShare) => new File([row.blob], row.name, { type: row.type }));
   }
 
   private async consumeNative(): Promise<File[]> {
-    const { files } = await ShareIntake.consumePendingShares();
-    return files.map((file: SharedIntakeFile) => {
+    const { files } = await this.nativeShare.consumePendingShares();
+    const now = Date.now();
+    // Native rows are ownerless by construction — the extension cannot see
+    // the Firebase session — so the claim window is the whole policy here.
+    // A pre-update sidecar has no receivedAt and parses NaN: treated as
+    // expired, mirroring the web stash's v1 drop.
+    const claimed = files.filter((file: SharedIntakeFile) => {
+      const receivedAt = Number(file.receivedAt);
+      return Number.isFinite(receivedAt) && receivedAt > 0
+        && now - receivedAt <= SHARE_CLAIM_WINDOW_MS;
+    });
+    if (files.length > 0) {
+      // Claimed and expired alike: a claimed share is consumed right now,
+      // and an expired one is deleted unconsumed — the documented policy.
+      await this.nativeShare.completePendingShares({ ids: files.map(f => f.id) });
+    }
+    return claimed.map((file: SharedIntakeFile) => {
       const bytes = Uint8Array.from(atob(file.base64), char => char.charCodeAt(0));
       return new File([bytes], file.name, { type: file.mimeType });
     });
+  }
+
+  /** Everything, both pipelines — the account-deletion cascade's door. */
+  async clearAll(): Promise<void> {
+    if (Capacitor.isNativePlatform()) {
+      await this.nativeShare.clearPendingShares();
+      return;
+    }
+    await this.stash.clearAll();
   }
 }

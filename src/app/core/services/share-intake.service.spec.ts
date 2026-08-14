@@ -1,14 +1,18 @@
 import { TestBed } from '@angular/core/testing';
 import { ApplicationRef, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { Capacitor } from '@capacitor/core';
 
 import { ShareIntakeService, isAcceptedShare } from './share-intake.service';
 import { ShareStashStore, StashedShare } from './share-stash.store';
 import { AuthService } from './auth.service';
+import { NativeShareService } from './native-share.service';
+import { SharedIntakeFile } from '../plugins/share-intake.plugin';
 
 describe('ShareIntakeService', () => {
   let service: ShareIntakeService;
   let stash: jasmine.SpyObj<ShareStashStore>;
+  let nativeShare: jasmine.SpyObj<NativeShareService>;
   let router: jasmine.SpyObj<Router>;
   let userId: ReturnType<typeof signal<string | null>>;
 
@@ -24,10 +28,22 @@ describe('ShareIntakeService', () => {
   }
 
   beforeEach(() => {
-    stash = jasmine.createSpyObj('ShareStashStore', ['readAll', 'count', 'clear']);
-    stash.readAll.and.resolveTo([]);
+    stash = jasmine.createSpyObj('ShareStashStore', ['count', 'consume', 'clearAll']);
     stash.count.and.resolveTo(0);
-    stash.clear.and.resolveTo(undefined);
+    stash.consume.and.resolveTo([]);
+    stash.clearAll.and.resolveTo(undefined);
+
+    nativeShare = jasmine.createSpyObj('NativeShareService', [
+      'checkPendingShares',
+      'consumePendingShares',
+      'completePendingShares',
+      'clearPendingShares',
+      'addListener'
+    ]);
+    nativeShare.checkPendingShares.and.resolveTo({ count: 0 });
+    nativeShare.consumePendingShares.and.resolveTo({ files: [] });
+    nativeShare.completePendingShares.and.resolveTo(undefined);
+    nativeShare.clearPendingShares.and.resolveTo(undefined);
 
     router = jasmine.createSpyObj('Router', ['navigate']);
     router.navigate.and.resolveTo(true);
@@ -38,6 +54,7 @@ describe('ShareIntakeService', () => {
       providers: [
         ShareIntakeService,
         { provide: ShareStashStore, useValue: stash },
+        { provide: NativeShareService, useValue: nativeShare },
         { provide: Router, useValue: router },
         { provide: AuthService, useValue: { userId } }
       ]
@@ -81,8 +98,8 @@ describe('ShareIntakeService', () => {
     expect(router.navigate).not.toHaveBeenCalled();
   });
 
-  it('consumes the stash into files and clears it', async () => {
-    stash.readAll.and.resolveTo([
+  it('consumes the visible stash rows into files', async () => {
+    stash.consume.and.resolveTo([
       stashedRow(),
       stashedRow({ id: 's2', name: 'doc.pdf', type: 'application/pdf' })
     ]);
@@ -91,7 +108,7 @@ describe('ShareIntakeService', () => {
 
     expect(files.map(f => f.name)).toEqual(['receipt.png', 'doc.pdf']);
     expect(files[0].type).toBe('image/png');
-    expect(stash.clear).toHaveBeenCalled();
+    expect(stash.consume).toHaveBeenCalled();
   });
 
   it('drops oversized and unsupported files', async () => {
@@ -106,12 +123,11 @@ describe('ShareIntakeService', () => {
       type: 'application/octet-stream',
       blob: new Blob(['MZ'], { type: 'application/octet-stream' })
     });
-    stash.readAll.and.resolveTo([stashedRow(), oversized, executable]);
+    stash.consume.and.resolveTo([stashedRow(), oversized, executable]);
 
     const files = await service.consumeAll();
 
     expect(files.map(f => f.name)).toEqual(['receipt.png']);
-    expect(stash.clear).toHaveBeenCalled();
   });
 
   it('accepts a csv by extension when the mime type is blank', () => {
@@ -120,5 +136,85 @@ describe('ShareIntakeService', () => {
 
   it('rejects an unknown type with an unknown extension', () => {
     expect(isAcceptedShare(new File(['x'], 'movie.mkv', { type: 'video/x-matroska' }))).toBeFalse();
+  });
+
+  describe('consumeNative', () => {
+    function sidecarFile(overrides: Partial<SharedIntakeFile> = {}): SharedIntakeFile {
+      return {
+        id: 'e1',
+        name: 'receipt.jpg',
+        mimeType: 'image/jpeg',
+        receivedAt: String(Date.now()),
+        base64: btoa('hi'),
+        ...overrides
+      };
+    }
+
+    beforeEach(() => {
+      spyOn(Capacitor, 'isNativePlatform').and.returnValue(true);
+    });
+
+    it('builds a File carrying the mime type the sidecar recorded', async () => {
+      nativeShare.consumePendingShares.and.resolveTo({ files: [sidecarFile()] });
+
+      const files = await service.consumeAll();
+
+      expect(files.length).toBe(1);
+      expect(files[0].name).toBe('receipt.jpg');
+      expect(files[0].type).toBe('image/jpeg');
+    });
+
+    it('claims only shares inside the freshness window', async () => {
+      const stale = sidecarFile({
+        id: 'stale',
+        name: 'old.jpg',
+        receivedAt: String(Date.now() - 31 * 60 * 1000)
+      });
+      nativeShare.consumePendingShares.and.resolveTo({ files: [sidecarFile(), stale] });
+
+      const files = await service.consumeAll();
+
+      expect(files.map(f => f.name)).toEqual(['receipt.jpg']);
+    });
+
+    it('completes every fetched share, claimed and expired alike', async () => {
+      const stale = sidecarFile({
+        id: 'stale',
+        receivedAt: String(Date.now() - 31 * 60 * 1000)
+      });
+      nativeShare.consumePendingShares.and.resolveTo({ files: [sidecarFile(), stale] });
+
+      await service.consumeAll();
+
+      // A claimed share is consumed now; an expired one is deleted
+      // unconsumed — either way the container must not re-offer it.
+      expect(nativeShare.completePendingShares).toHaveBeenCalledWith({ ids: ['e1', 'stale'] });
+    });
+
+    it('treats a share with no receivedAt as expired', async () => {
+      // A sidecar written before the field existed, mirroring the web
+      // stash's drop of pre-ownership rows.
+      nativeShare.consumePendingShares.and.resolveTo({
+        files: [sidecarFile({ receivedAt: '' })]
+      });
+
+      const files = await service.consumeAll();
+
+      expect(files).toEqual([]);
+      expect(nativeShare.completePendingShares).toHaveBeenCalledWith({ ids: ['e1'] });
+    });
+
+    it('clears the native container on native', async () => {
+      await service.clearAll();
+
+      expect(nativeShare.clearPendingShares).toHaveBeenCalled();
+      expect(stash.clearAll).not.toHaveBeenCalled();
+    });
+  });
+
+  it('clears the web stash on web', async () => {
+    await service.clearAll();
+
+    expect(stash.clearAll).toHaveBeenCalled();
   });
 });

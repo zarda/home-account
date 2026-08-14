@@ -264,6 +264,20 @@ describe('GeminiService', () => {
       expect(sent.contents[0].parts[1].inlineData.data).toBe('abc123');
     });
 
+    it('strips an octet-stream data URL prefix before sending', async () => {
+      textModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        suggestedCategory: 'Groceries',
+      })));
+
+      // A shared photo can arrive typed application/octet-stream; the strip
+      // must not be anchored on data:image/ or the whole URL travels as the
+      // base64 payload.
+      await service.parseReceipt('data:application/octet-stream;base64,abc123');
+
+      const sent = textModel.generateContent.calls.mostRecent().args[0];
+      expect(sent.contents[0].parts[1].inlineData.data).toBe('abc123');
+    });
+
     it('applies defaults for missing fields and lower confidence', async () => {
       textModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
         suggestedCategory: 'Groceries',

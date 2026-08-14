@@ -14,6 +14,7 @@ import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { Category, CategorizedImportTransaction, ImportResult } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
+import { AnalyticsService } from '../../../../core/services/analytics.service';
 
 describe('ImportWizardComponent', () => {
   let component: ImportWizardComponent;
@@ -27,6 +28,7 @@ describe('ImportWizardComponent', () => {
   let mockRouter: jasmine.SpyObj<Router>;
   let mockDuplicateService: jasmine.SpyObj<DuplicateDetectionService>;
   let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
+  let mockAnalytics: jasmine.SpyObj<AnalyticsService>;
   let routeStub: { snapshot: { queryParamMap: ReturnType<typeof convertToParamMap> } };
 
   const mockCategories: Category[] = [
@@ -131,6 +133,7 @@ describe('ImportWizardComponent', () => {
 
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
     mockShareIntake.consumeAll.and.resolveTo([]);
+    mockAnalytics = jasmine.createSpyObj('AnalyticsService', ['trackReceiptImport']);
     routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
 
     await TestBed.configureTestingModule({
@@ -145,6 +148,7 @@ describe('ImportWizardComponent', () => {
         { provide: Router, useValue: mockRouter },
         { provide: DuplicateDetectionService, useValue: mockDuplicateService },
         { provide: ShareIntakeService, useValue: mockShareIntake },
+        { provide: AnalyticsService, useValue: mockAnalytics },
         { provide: ActivatedRoute, useValue: routeStub }
       ],
       schemas: [NO_ERRORS_SCHEMA]
@@ -199,6 +203,43 @@ describe('ImportWizardComponent', () => {
 
     it('leaves the stash alone on a plain visit', () => {
       expect(mockShareIntake.consumeAll).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('shared images with a generic mime type', () => {
+    // The shape the iOS share pipeline used to deliver: real image bytes,
+    // application/octet-stream label. The extension is what says image.
+    const octetImage = (name = 'photo.jpg') =>
+      new File(['x'], name, { type: 'application/octet-stream' });
+
+    it('treats an octet-stream jpg as an image', () => {
+      component.onFilesSelected([octetImage()]);
+
+      expect(component.hasImageFiles()).toBeTrue();
+      expect(component.imagePreviewUrls().length).toBe(1);
+    });
+
+    it('routes octet-stream images through the multi-image import', async () => {
+      component.onFilesSelected([octetImage('a.jpg'), octetImage('b.jpg')]);
+
+      await component.processFiles();
+
+      expect(mockImportService.importFromMultipleImages).toHaveBeenCalled();
+      expect(mockImportService.importFromFile).not.toHaveBeenCalled();
+    });
+
+    it('reports a receipt import for shared images on success and on failure', async () => {
+      component.onFilesSelected([octetImage()]);
+      await component.processFiles();
+
+      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith({ outcome: 'ok' });
+
+      mockAnalytics.trackReceiptImport.calls.reset();
+      mockImportService.importFromMultipleImages.and.rejectWith(new Error('extraction failed'));
+      component.onFilesSelected([octetImage()]);
+      await component.processFiles();
+
+      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith({ outcome: 'failed' });
     });
   });
 

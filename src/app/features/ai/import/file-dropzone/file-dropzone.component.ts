@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
 @Component({
   selector: 'app-file-dropzone',
@@ -228,7 +229,9 @@ export class FileDropzoneComponent implements OnDestroy {
   }
 
   isImageFile(file: File): boolean {
-    return file.type.startsWith('image/');
+    // MIME or extension: a shared photo can arrive typed
+    // application/octet-stream and still needs its thumbnail.
+    return looksLikeImageFile(file);
   }
 
   getFilePreview(file: File): string {
