@@ -192,6 +192,24 @@ describe('AccountDeletionService', () => {
     expect(mockAuth.deleteFirebaseUser).toHaveBeenCalledTimes(1);
   });
 
+  it('clears the share stash between the offline queue and the cloud steps', async () => {
+    await service.deleteAccount();
+
+    const shareIndex = order.indexOf('shareStash');
+    expect(order.indexOf('offlineQueue')).toBeLessThan(shareIndex);
+    expect(shareIndex).toBeLessThan(order.indexOf('transactions'));
+  });
+
+  it('still deletes the auth user when only the share stash cleanup failed', async () => {
+    mockShareIntake.clearAll.and.rejectWith(new Error('idb unavailable'));
+
+    const report = await service.deleteAccount();
+
+    expect(report.ok).toBeFalse();
+    expect(report.failed.map(f => f.step)).toEqual(['shareStash']);
+    expect(mockAuth.deleteFirebaseUser).toHaveBeenCalledTimes(1);
+  });
+
   it('can be re-run after a partial failure', async () => {
     mockBudgets.deleteAll.and.rejectWith(new Error('offline'));
     const first = await service.deleteAccount();

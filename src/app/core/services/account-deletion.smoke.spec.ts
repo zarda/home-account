@@ -21,11 +21,13 @@ import {
   Timestamp
 } from '@angular/fire/firestore';
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
+import { openDB } from 'idb';
 
 import { AccountDeletionService } from './account-deletion.service';
 import { AuthService } from './auth.service';
 import { FirestoreService } from './firestore.service';
 import { StorageService } from './storage.service';
+import { SHARE_STASH_DB, SHARE_STASH_STORE, ShareStashStore } from './share-stash.store';
 
 /**
  * End-to-end smoke test for the account-deletion cascade against the
@@ -273,6 +275,30 @@ describe('AccountDeletionService (emulator smoke test)', () => {
   it('erases every subcollection, the receipt, the user document, and the auth user', async () => {
     await seedEverything();
 
+    // The share stash is the one device-local store the cascade used to
+    // skip. Seed it the way the service worker writes — raw rows, one owned
+    // and one ownerless — and let the shareStash step erase both. The
+    // store's session effect never fires here (nothing ticks), so the rows
+    // are stamped explicitly.
+    await TestBed.inject(ShareStashStore).clearAll(); // creates the schema
+    const stashDb = await openDB(SHARE_STASH_DB);
+    await stashDb.put(SHARE_STASH_STORE, {
+      id: 'smoke-owned',
+      name: 'mine.png',
+      type: 'image/png',
+      blob: new Blob(['x'], { type: 'image/png' }),
+      receivedAt: Date.now(),
+      userId: uid
+    });
+    await stashDb.put(SHARE_STASH_STORE, {
+      id: 'smoke-ownerless',
+      name: 'nobody.png',
+      type: 'image/png',
+      blob: new Blob(['x'], { type: 'image/png' }),
+      receivedAt: Date.now()
+    });
+    stashDb.close();
+
     const report = await service.deleteAccount();
 
     expect(report.failed).toEqual([]);
@@ -300,6 +326,11 @@ describe('AccountDeletionService (emulator smoke test)', () => {
 
     expect(await firestoreService.getDocument(`users/${uid}`)).toBeNull();
     await expectAsync(storageService.downloadReceipt(uid, RECEIPT_TX_ID)).toBeRejected();
+
+    // Erasure is device-scoped: no rows survive, owned or ownerless.
+    const stashAfter = await openDB(SHARE_STASH_DB);
+    expect(await stashAfter.count(SHARE_STASH_STORE)).toBe(0);
+    stashAfter.close();
 
     // The step the cascade invoked above, run for real now that the
     // owner-only reads are done: the emulator accepts deleting this
