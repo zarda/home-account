@@ -96,6 +96,10 @@ together.
 
 The stash store, the intake service, and the wizard handoff are unit-tested
 (`share-stash.store.spec.ts` runs against the browser's real IndexedDB).
+The Swift half — the extension's sidecar writer, the App Group store behind
+the plugin, and the OCR data-URL strip — is covered by
+`npm run test:ios` (`ios/App/AppTests/ShareSeamsTests.swift`, run in the
+iOS Simulator; local only, CI never builds iOS — see ADR 0040).
 **The service worker's POST path itself has no automated test** — Karma
 cannot install a share target — so after touching it, verify by hand:
 
@@ -114,7 +118,10 @@ gitignored Google client id into it.
 ## Known gaps
 
 - No automated coverage for the worker's POST handling (kept minimal for
-  exactly that reason) or for the extension (CI never builds iOS).
+  exactly that reason). The extension's sidecar writer and the plugin's
+  store are XCTested (`npm run test:ios`), but nothing enforces that suite —
+  CI never builds iOS — and the provider loop ahead of the writer is still
+  manual-only.
 - Android native share intents are out of scope; the installed PWA's
   `share_target` covers Android Chrome.
 - The extension accepts what the share sheet offers as images/files; the

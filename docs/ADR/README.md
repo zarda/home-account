@@ -44,6 +44,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0037](0037-an-error-body-is-a-failed-fetch.md) | An error body is a failed fetch, and an expired cache beats the constants | Accepted | 2026-08-12 |
 | [0038](0038-a-dead-guard-reads-exactly-like-a-live-one.md) | A dead guard reads exactly like a live one | Accepted | 2026-08-13 |
 | [0039](0039-a-share-arrives-typed-and-the-stash-answers-to-its-owner.md) | A share arrives typed, and the stash answers only to its owner | Accepted; amends 0019 | 2026-08-14 |
+| [0040](0040-the-native-seams-answer-to-xctest.md) | The native seams answer to XCTest, and the plugins stay shells | Accepted | 2026-08-14 |
 
 ## What belongs here
 

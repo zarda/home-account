@@ -22,6 +22,12 @@
 		BB20000000000000000000C1 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B2 /* ShareViewController.swift */; };
 		BB20000000000000000000C2 /* ShareIntakePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B6 /* ShareIntakePlugin.swift */; };
 		BB20000000000000000000C3 /* ShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B1 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CC30000000000000000000A2 /* ShareIntakeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A1 /* ShareIntakeStore.swift */; };
+		CC30000000000000000000A4 /* DataURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A3 /* DataURL.swift */; };
+		CC30000000000000000000C1 /* ShareSeamsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000B2 /* ShareSeamsTests.swift */; };
+		CC30000000000000000000C2 /* ShareIntakeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A1 /* ShareIntakeStore.swift */; };
+		CC30000000000000000000C3 /* DataURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC30000000000000000000A3 /* DataURL.swift */; };
+		CC30000000000000000000C4 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB20000000000000000000B2 /* ShareViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -91,9 +97,20 @@
 		BB20000000000000000000B4 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		BB20000000000000000000B5 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		BB20000000000000000000B6 /* ShareIntakePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareIntakePlugin.swift; sourceTree = "<group>"; };
+		CC30000000000000000000A1 /* ShareIntakeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareIntakeStore.swift; sourceTree = "<group>"; };
+		CC30000000000000000000A3 /* DataURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataURL.swift; sourceTree = "<group>"; };
+		CC30000000000000000000B1 /* AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC30000000000000000000B2 /* ShareSeamsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSeamsTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		CC30000000000000000000E3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3011FED79650016851F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -118,6 +135,7 @@
 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
 				504EC3061FED79650016851F /* App */,
 				BB20000000000000000000D1 /* ShareExtension */,
+				CC30000000000000000000D1 /* AppTests */,
 				504EC3051FED79650016851F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -127,8 +145,17 @@
 			children = (
 				504EC3041FED79650016851F /* App.app */,
 				BB20000000000000000000B1 /* ShareExtension.appex */,
+				CC30000000000000000000B1 /* AppTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		CC30000000000000000000D1 /* AppTests */ = {
+			isa = PBXGroup;
+			children = (
+				CC30000000000000000000B2 /* ShareSeamsTests.swift */,
+			);
+			path = AppTests;
 			sourceTree = "<group>";
 		};
 		BB20000000000000000000D1 /* ShareExtension */ = {
@@ -164,7 +191,9 @@
 			isa = PBXGroup;
 			children = (
 				AA10000000000000000000A4 /* AppleIntelligencePlugin.swift */,
+				CC30000000000000000000A3 /* DataURL.swift */,
 				BB20000000000000000000B6 /* ShareIntakePlugin.swift */,
+				CC30000000000000000000A1 /* ShareIntakeStore.swift */,
 				AA10000000000000000000A2 /* VisionOCRPlugin.swift */,
 			);
 			path = Plugins;
@@ -213,6 +242,22 @@
 			productReference = BB20000000000000000000B1 /* ShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		CC30000000000000000000E1 /* AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC30000000000000000000F1 /* Build configuration list for PBXNativeTarget "AppTests" */;
+			buildPhases = (
+				CC30000000000000000000E2 /* Sources */,
+				CC30000000000000000000E3 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AppTests;
+			productName = AppTests;
+			productReference = CC30000000000000000000B1 /* AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -228,6 +273,10 @@
 						ProvisioningStyle = Automatic;
 					};
 					BB20000000000000000000E1 = {
+						CreatedOnToolsVersion = 15.0;
+						ProvisioningStyle = Automatic;
+					};
+					CC30000000000000000000E1 = {
 						CreatedOnToolsVersion = 15.0;
 						ProvisioningStyle = Automatic;
 					};
@@ -251,6 +300,7 @@
 			targets = (
 				504EC3031FED79650016851F /* App */,
 				BB20000000000000000000E1 /* ShareExtension */,
+				CC30000000000000000000E1 /* AppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -289,6 +339,19 @@
 				AA10000000000000000000A3 /* VisionOCRPlugin.swift in Sources */,
 				AA10000000000000000000A5 /* AppleIntelligencePlugin.swift in Sources */,
 				BB20000000000000000000C2 /* ShareIntakePlugin.swift in Sources */,
+				CC30000000000000000000A2 /* ShareIntakeStore.swift in Sources */,
+				CC30000000000000000000A4 /* DataURL.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC30000000000000000000E2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC30000000000000000000C1 /* ShareSeamsTests.swift in Sources */,
+				CC30000000000000000000C2 /* ShareIntakeStore.swift in Sources */,
+				CC30000000000000000000C3 /* DataURL.swift in Sources */,
+				CC30000000000000000000C4 /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -539,6 +602,40 @@
 			};
 			name = Release;
 		};
+		CC30000000000000000000F2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Q2C43G5K74;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeaccount.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CC30000000000000000000F3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = Q2C43G5K74;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.homeaccount.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -556,6 +653,15 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC30000000000000000000F1 /* Build configuration list for PBXNativeTarget "AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC30000000000000000000F2 /* Debug */,
+				CC30000000000000000000F3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
