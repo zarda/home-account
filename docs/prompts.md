@@ -17,6 +17,8 @@ The app talks to three providers — Gemini, OpenAI and Claude — through `Clou
 
 Temperature, token budget and the expected response kind are now properties of the prompt, because that is what they are — properties of the task, not of the provider.
 
+Where they *land* is a separate question, and only a transport can answer it. The token budget and the response kind reach all three providers. Temperature reaches the models that accept one: Gemini always; Claude only on models released before Opus 4.6, because Anthropic rejects any other value with a 400 on the rest; OpenAI never, because the Responses API rejects it for the GPT-5 family and every id in the catalog is GPT-5. The declared value stays required — `acceptsSampling` in `core/config/ai-models.ts` records each model's answer, and `check-prompts.mjs` holds every provider to reading the field or naming an exemption. [ADR 0043](ADR/0043-a-declared-setting-reaches-every-transport-that-accepts-it.md) records why that is a limit of the transports rather than a gap in the registry.
+
 ## Writing a prompt
 
 Prompts take **pre-rendered strings and nothing else** — never a `Category[]`, a `Transaction[]`, or an injected service. Callers run the formatting helpers they already own (`buildCategoryPromptCatalog`, `CurrencyService.formatAmount`, `RagContextService`) and pass the result in. That keeps `src/app/core/prompts/` free of Angular DI, lets the registry spec run without TestBed, and means no raw user record reaches the prompt layer.
@@ -30,7 +32,7 @@ const rendered = renderPrompt('categorizeTransactions', {
 });
 ```
 
-Most prompts are rendered once, in `CloudLLMProviderBase` (`core/services/cloud-llm-provider.base.ts`), which every provider service extends. What each provider still owns is its transport: `sendText` and `sendVision`, and the `renderedText` strategy behind them. Gemini prepends the JSON-only preamble when `expects === 'json'` and doubles the token budget for Gemma's verbose drafting; OpenAI flattens `system` into the input; Claude hoists `system` to its top-level parameter. Nobody writes "return ONLY valid JSON" for Gemini's benefit again — they set `expects: 'json'`. ADR 0025 records why the variation lives there and nowhere else.
+Most prompts are rendered once, in `CloudLLMProviderBase` (`core/services/cloud-llm-provider.base.ts`), which every provider service extends. What each provider still owns is its transport: `sendText` and `sendVision`, and the `renderedText` strategy behind them. Gemini prepends the JSON-only preamble when `expects === 'json'`, doubles the token budget for Gemma's verbose drafting, and carries the declared temperature in `generationConfig`; OpenAI flattens `system` into the input and sends no sampling parameter at all; Claude hoists `system` to its top-level parameter and sends the temperature only on models that still accept one. Nobody writes "return ONLY valid JSON" for Gemini's benefit again — they set `expects: 'json'`. ADR 0025 records why the variation lives there and nowhere else.
 
 A call site in the base reaches all three providers by construction, so `npm run prompts:check` counts it as all three. It also fails on the two ways that can go wrong: a prompt rendered in the base *and* in a provider file, where one of the two must be drift, and a single-provider exemption claimed by a prompt the base renders.
 
@@ -98,6 +100,7 @@ Stated plainly, because a check that looks stronger than it is does more harm th
 
 - **Whether the wording is any good**, or whether a placeholder got the right value. The compiler proves the declared inputs were passed; only a human knows the English says what it should.
 - **Whether an adapter drops `system` or ignores `expects`.** That is behavioural — `provider-prompt-parity.spec.ts` asserts the text each SDK actually receives, including that the JSON preamble reaches Gemini and only Gemini.
+- **Whether the sampling settings an adapter mentions actually reach the wire.** The check proves a provider file either reads `rendered.temperature` or carries a named `SAMPLING_EXEMPT` entry — enough to catch a new adapter that drops it silently, which is how #263 shipped. Only the parity spec proves the value arrives, and on which models.
 - **A prompt assembled from concatenated short fragments** to slip under the long-literal heuristic. The inline-literal rule is a tripwire, not a proof.
 - **Prompt text reaching a model from outside the provider files.** The `no-restricted-imports` rule in `eslint.config.js` covers that by keeping each SDK importable only from the service that owns it. The shared base is covered by the same rule from the other side: it imports no SDK and cannot, so nothing in it reaches a model except through a seam a provider implements. `npm run lint-guards:check` asserts that rule is actually in force per file population — a flat-config collision once switched the analytics half of it off without changing a visible line (ADR 0038).
 - **Whether a shared call site and a provider call site render the same prompt for the same reason.** The check fails when both exist, because one of them must be drift — but it cannot tell you which one.

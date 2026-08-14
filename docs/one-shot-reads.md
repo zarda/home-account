@@ -71,6 +71,32 @@ first emission can be missing rows another device wrote; writing that short
 sum down makes the miss durable. The two variants share one private
 options-builder so their queries cannot drift apart.
 
+## The snapshot generator's rule set (#255)
+
+A monthly insight snapshot's recurring figures depend on which rules exist:
+detected groups an active rule already covers are dropped before the totals are
+taken (see [ADR 0042](ADR/0042-a-derived-figure-agrees-with-the-set-that-produced-it.md)).
+The result is written to Firestore and frozen, so it is acted on once, not
+rendered and corrected.
+
+`RecurringService.listAll()` enumerates the collection, and
+`InsightSnapshotService` calls it before writing. Reading
+`recurringTransactions` instead would have been wrong twice over. It is a
+listener signal, so it holds whatever a subscription happened to have delivered
+— and `generateClosedMonths` is fired-and-forgotten at dashboard open, with no
+ordering against the catch-up that fills it. An empty signal is
+indistinguishable from an account with no rules, and the month would freeze with
+a double-counted total nothing would ever report as stale.
+
+Read once per generation run rather than per month: a backfill writes up to
+twelve documents, each already issuing two range queries, and the rule set
+cannot change between them. `exportAll()` is the same enumeration and now
+delegates to `listAll()`, so the backup and the generator cannot drift apart.
+
+The **live** Insights tab is the other question, and it takes the other answer:
+it reads the signal, recomputes when the signal changes, and persists nothing.
+A rule saved with the tab open has to move the total immediately.
+
 ## The deliberate live readers
 
 These are not exceptions to the rule — they are the other question. The
@@ -89,6 +115,7 @@ above.
 | sibling `exportAll()`s | the backup's other five sections | `getCollection` | cache fallback — safe only because transactions read first |
 | `recalculateBudgetsForCategory` | the recalculation work list | `getCollection` | cache, incl. latency-compensated writes |
 | `getExpensesInRangeOnce` | the persisted `spent` sum | `getCollection` | cache, incl. latency-compensated writes |
+| `listAll` (recurring) | a frozen month's recurring figures | `getCollection` | cache, incl. latency-compensated writes |
 
 ## When you add another one
 

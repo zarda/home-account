@@ -45,9 +45,21 @@ them.
 `recurringId` were materialised from a rule the user configured, so the detector
 only *measures* their cadence; everything else is clustered by merchant
 similarity. Merging the two would present the user's own configuration back to
-them as a discovery, and would double-count the portfolio total. `isRecurring` is
-not the discriminator — it is a plain boolean a user can tick on a one-off, so it
-only contributes `userFlaggedCount`.
+them as a discovery. `isRecurring` is not the discriminator — it is a plain
+boolean a user can tick on a one-off, so it only contributes
+`userFlaggedCount`.
+
+That split stops one *transaction* being counted twice, which is necessary but
+not sufficient. Converting a detected group into a rule never relabels the
+charges behind it, so one *subscription* can surface as two groups — a declared
+one built by the new rule and a detected one built by its own history. The
+active rules are therefore an input to the computation: a covered detected group
+is dropped inside `computeRecurringGroups`, before any figure is taken, so the
+portfolio card, the notable-item cards, the snapshot comparison, the narrative
+and the list all read one filtered set
+([ADR 0042](ADR/0042-a-derived-figure-agrees-with-the-set-that-produced-it.md)).
+The rule set is part of the computation's cache key for the same reason — over
+only the fields coverage reads, so a catch-up posting does not evict it.
 
 **Merchant normalisation keeps every letter and digit in any script.** The
 `[^a-z0-9]` strip in `duplicate-detection.service.ts` reduces a Japanese
