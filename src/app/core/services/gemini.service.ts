@@ -291,9 +291,7 @@ export class GeminiService extends CloudLLMProviderBase {
         type: 'expense' as const,
         currency: readCurrencyCode(receiptData.currency),
         merchant: receiptData.merchant,
-        category: receiptData.suggestedCategory
-          ? this.mapCategoryNameToId(receiptData.suggestedCategory)
-          : undefined,
+        category: this.matchedCategoryId(receiptData.suggestedCategory),
         details: receiptData.receiptDetails || receiptData.itemsSummary ||
           receiptData.items || receiptData.description || '',
       }];
@@ -372,7 +370,7 @@ export class GeminiService extends CloudLLMProviderBase {
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
         currency: readCurrencyCode(t.currency),
-        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+        category: this.matchedCategoryId(t.category),
         merchant: t.merchant,
         details: t.details,
         imageIndex: imageIndex,

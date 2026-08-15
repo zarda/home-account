@@ -717,10 +717,13 @@ describe('OpenAIService', () => {
       expect(result[0].amount).toBe(45.99);
       expect(result[0].description).toBe('AMAZON');
       // The category a row names is resolved against the catalog, and 'shop'
-      // matches nothing in it. It used to be passed through as written, and
-      // the import flow reads this field as a category id — so a name the
-      // catalog has never heard of arrived as a category that does not exist.
-      expect(result[0].category).toBe('other_expense');
+      // matches nothing in it. It used to be passed through as written (a
+      // category id that does not exist), then coerced to other_expense — a
+      // real id that made an unrecognized answer indistinguishable from a
+      // deliberate "Other" and let it wear the extraction-named grade. An
+      // unmatched name now arrives as undefined, and the import mapper does
+      // the defaulting at the review grade. (ADR 0046)
+      expect(result[0].category).toBeUndefined();
     });
 
     it('applies defaults for sparse rows', async () => {

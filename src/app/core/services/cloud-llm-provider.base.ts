@@ -26,6 +26,7 @@ import {
   applyCategorizations,
   buildCategoryPromptCatalog,
   mapCategoryNameToId,
+  matchCategoryName,
 } from '../utils/categorization.utils';
 import { goalProgressAmount } from '../utils/goal-progress.utils';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
@@ -289,7 +290,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
         currency: readCurrencyCode(t.currency),
-        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+        category: this.matchedCategoryId(t.category),
         merchant: t.merchant,
         details: t.details,
         amountConfidence: t.amountConfidence,
@@ -347,7 +348,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         amount: Math.abs(t.amount || 0),
         type: t.type || 'expense',
         currency: readCurrencyCode(t.currency),
-        category: t.category ? this.mapCategoryNameToId(t.category) : undefined,
+        category: this.matchedCategoryId(t.category),
         merchant: t.merchant,
         details: t.details,
         imageIndex: t.imageIndex ?? 0,
@@ -736,5 +737,23 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       this.categoryService.categories(),
       name => this.translateCategoryName(name)
     );
+  }
+
+  /**
+   * The catalog id when the model's answer resolves — by id, by a shipped
+   * locale's display name, or by keyword — and undefined when it does not.
+   * The extraction rows use this rather than mapCategoryNameToId because an
+   * unrecognized answer must stay distinguishable from a deliberate "Other":
+   * a truthy other_expense wears the extraction-named confidence grade
+   * downstream and overrides the categorization ladder's real answer on the
+   * multi-image path. (ADR 0046)
+   */
+  protected matchedCategoryId(categoryName: unknown): string | undefined {
+    const match = matchCategoryName(
+      categoryName,
+      this.categoryService.categories(),
+      name => this.translateCategoryName(name)
+    );
+    return match.matched ? match.id : undefined;
   }
 }
