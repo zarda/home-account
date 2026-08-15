@@ -822,6 +822,86 @@ describe('AIImportService', () => {
       const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
       expect(result.transactions.length).toBe(1);
     });
+
+    // The CSV path climbs the same ladder the image paths do: memory, then
+    // the model, then the review-flagged floor. A CSV row never carries an
+    // extraction category, so every suggestion below is the ladder's.
+    const csvRows = () => Promise.resolve([
+      { description: 'Coffee', amount: -5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
+      { description: 'Refund', amount: 20, date: new Date(2024, 5, 2), type: 'income', currency: 'USD' }
+    ] as never);
+
+    it('sends csv rows through the model with signed amounts and grounding', async () => {
+      authService.currentUser.and.returnValue({
+        preferences: { baseCurrency: 'USD', ragInsightsLevel: 'standard' },
+      } as never);
+      ragContext.buildCategorizationGrounding.and.returnValue(
+        'How this user usually categorizes these merchants:\n- Coffee → Coffee (food_coffee)'
+      );
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const [asked, grounding] = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args;
+      expect(asked.map(r => r.description)).toEqual(['Coffee', 'Refund']);
+      // Signed the way the multi-image ladder signs: expenses negative.
+      expect(asked.map(r => r.amount)).toEqual([-5, 20]);
+      expect(grounding).toContain('food_coffee');
+      // The model's answers land on the rows with their real confidences.
+      expect(result.transactions.map(t => t.suggestedCategoryId)).toEqual(['food', 'food']);
+      expect(result.transactions.map(t => t.categoryConfidence)).toEqual([0.8, 0.8]);
+    });
+
+    it('keeps the floor and warns when no provider is configured', async () => {
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(false);
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(cloudLLMProvider.categorizeTransactions).not.toHaveBeenCalled();
+      expect(result.transactions.every(t => t.suggestedCategoryId === 'other_expense')).toBeTrue();
+      expect(result.transactions.every(t => t.categoryConfidence === 0.1)).toBeTrue();
+      expect(result.warnings.some(w => w.type === 'low_confidence')).toBeTrue();
+      expect(result.confidence).toBeLessThan(0.5);
+    });
+
+    it('defaults to the floor and warns when the model fails', async () => {
+      spyOn(console, 'warn');
+      cloudLLMProvider.categorizeTransactions.and.rejectWith(new Error('cat failed'));
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(result.transactions.every(t => t.categoryConfidence === 0.1)).toBeTrue();
+      expect(result.warnings.some(w => w.type === 'low_confidence')).toBeTrue();
+    });
+
+    it('answers a remembered merchant from memory without asking the model about it', async () => {
+      categoryMemory.lookup.and.callFake((d: string) => (d === 'Coffee' ? 'food_coffee' : null));
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const asked = cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[0];
+      expect(asked.map(r => r.description)).toEqual(['Refund']);
+      const coffee = result.transactions.find(t => t.description === 'Coffee');
+      expect(coffee?.suggestedCategoryId).toBe('food_coffee');
+      expect(coffee?.categoryConfidence).toBe(0.95);
+    });
+
+    it('names the categorization step for what it does', async () => {
+      const setSpy = spyOn(service.processingStatus, 'set').and.callThrough();
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const statuses = setSpy.calls.allArgs().map(([status]) => status);
+      // Whichever rung answers — memory, model or the flagged floor — the
+      // step is categorization; the old string claimed an AI call the path
+      // never made.
+      expect(statuses).toContain('Categorizing transactions...');
+      expect(statuses).not.toContain('Categorizing with AI...');
+    });
   });
 
   describe('importFromJSON', () => {
@@ -865,6 +945,20 @@ describe('AIImportService', () => {
       expect(result[0].categoryConfidence).toBe(0.8);
     });
 
+    it('grades a category-bearing row above a category-less one', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Taxi', amount: 15, type: 'expense', currency: 'USD', category: 'transport' },
+        { date: '2024-06-01', description: 'Mystery', amount: 4, type: 'expense', currency: 'USD' }
+      ]);
+
+      // The grade follows the evidence: 0.8 is reserved for a row whose
+      // extraction actually named a category; a defaulted row sits under the
+      // 0.5 review band instead of wearing a high chip it never earned.
+      expect(result[0].categoryConfidence).toBe(0.8);
+      expect(result[1].suggestedCategoryId).toBe('other_expense');
+      expect(result[1].categoryConfidence).toBe(0.3);
+    });
+
     it('should default category, currency, type and date when missing', async () => {
       (authService.currentUser as jasmine.Spy).and.returnValue(null);
 
@@ -873,6 +967,7 @@ describe('AIImportService', () => {
       ]);
 
       expect(result[0].suggestedCategoryId).toBe('other_expense');
+      expect(result[0].categoryConfidence).toBe(0.3);
       expect(result[0].currency).toBe('USD'); // fallback base currency
       expect(result[0].type).toBe('expense');
       expect(result[0].date instanceof Date).toBeTrue();
