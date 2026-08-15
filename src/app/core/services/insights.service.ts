@@ -1,9 +1,18 @@
-import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { PwaService } from './pwa.service';
+import { RecurringService } from './recurring.service';
 import { TransactionService } from './transaction.service';
 import {
   INSIGHT_DETECTOR_VERSION,
@@ -30,6 +39,7 @@ import {
   monthKeysBetween,
   startOfMonth,
 } from '../utils/transaction-date.utils';
+import { recurringCoverageFingerprint } from '../utils/recurring-conversion.utils';
 import { fnv1a32 } from '../utils/transaction-aggregation.utils';
 
 /**
@@ -92,8 +102,27 @@ export class InsightsService {
   private transactionService = inject(TransactionService);
   private currencyService = inject(CurrencyService);
   private authService = inject(AuthService);
+  private recurringService = inject(RecurringService);
   private pwa = inject(PwaService);
   private destroyRef = inject(DestroyRef);
+
+  constructor() {
+    // Saving, pausing or renaming a rule changes which detected groups it
+    // covers, and therefore every recurring figure the tab shows. Recompute from
+    // the rows already in memory rather than re-opening the six-month listener;
+    // the cache is content-keyed, so an edit that cannot move coverage is a
+    // no-op read rather than a recomputation.
+    effect(() => {
+      this.recurringService.recurringTransactions();
+      untracked(() => {
+        const window = this.windowState();
+        if (!window || this.loading() || this.failed()) {
+          return;
+        }
+        this.state.set(this.computeOrRestore(this.windowTransactions(), window));
+      });
+    });
+  }
 
   private state = signal<CachedComputation | null>(null);
   private loading = signal<boolean>(false);
@@ -216,6 +245,7 @@ export class InsightsService {
       months: window.months,
       baseCurrency,
       timeZone: this.timeZone(),
+      recurringRules: this.recurringService.recurringTransactions(),
     });
 
     const entry: CachedComputation = { ...computation, savedAt: Date.now() };
@@ -226,13 +256,17 @@ export class InsightsService {
   /**
    * Content-keyed, so there is no TTL to get wrong — a key can only match when
    * the inputs match. Base currency and time zone are part of the key because
-   * either one changes every number without changing a single transaction.
+   * either one changes every number without changing a single transaction, and
+   * the rule set is there for the same reason: it decides which detected groups
+   * are suppressed. Its fingerprint covers only the fields coverage reads, so a
+   * catch-up posting advancing `nextOccurrence` does not evict the entry.
    */
   private cacheKey(transactions: Transaction[], window: InsightWindow): string {
     const inputs = [
       transactionFingerprint(transactions),
       this.timeZone(),
       this.baseCurrency(),
+      recurringCoverageFingerprint(this.recurringService.recurringTransactions()),
     ].join('|');
     const windowKey = `${dayKey(window.start)}_${dayKey(window.end)}_${window.months.length}`;
     return `${CACHE_PREFIX}:${windowKey}:${INSIGHT_DETECTOR_VERSION}:${fnv1a32(inputs)}`;

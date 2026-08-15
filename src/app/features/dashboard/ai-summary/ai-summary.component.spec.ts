@@ -8,6 +8,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { RagContextService } from '../../../core/services/rag-context.service';
+import { AnalyticsService } from '../../../core/services/analytics.service';
 import { Category, Goal, RAG_TIER_CONFIGS, Transaction, User } from '../../../models';
 import { createCategory, createTransaction, createUser } from '../../../core/services/testing';
 
@@ -15,6 +16,7 @@ describe('AiSummaryComponent', () => {
   let cloudLLM: jasmine.SpyObj<CloudLLMProviderService>;
   let ragContext: jasmine.SpyObj<RagContextService>;
   let currency: jasmine.SpyObj<CurrencyService>;
+  let analytics: jasmine.SpyObj<AnalyticsService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
   let categories: ReturnType<typeof signal<Category[]>>;
 
@@ -22,6 +24,22 @@ describe('AiSummaryComponent', () => {
     const fixture = TestBed.createComponent(AiSummaryComponent);
     return fixture;
   }
+
+  /**
+   * Typed view of the private surface these tests drive.
+   *
+   * Declared rather than cast inline per call site: an inline `as unknown as`
+   * compiles against any shape, so when loadInsights gained its key parameter
+   * every one of them would have gone on passing undefined silently.
+   */
+  interface Internals {
+    cacheKey(): string;
+    loadInsights(transactions: Transaction[], period: string, key: string): Promise<void>;
+    generation: number;
+  }
+
+  const internals = (component: AiSummaryComponent): Internals =>
+    component as unknown as Internals;
 
   beforeEach(async () => {
     sessionStorage.clear();
@@ -42,6 +60,7 @@ describe('AiSummaryComponent', () => {
     translation.currentLocale.and.returnValue('en');
     ragContext = jasmine.createSpyObj('RagContextService', ['buildSummaryGrounding']);
     ragContext.buildSummaryGrounding.and.returnValue('GROUNDING');
+    analytics = jasmine.createSpyObj('AnalyticsService', ['trackAiAssistUsed']);
     currentUser = signal<User | null>(createUser());
     categories = signal<Category[]>([createCategory()]);
     const sanitizer = jasmine.createSpyObj('DomSanitizer', ['sanitize', 'bypassSecurityTrustHtml']);
@@ -58,11 +77,16 @@ describe('AiSummaryComponent', () => {
         { provide: CategoryService, useValue: { categories } },
         { provide: RagContextService, useValue: ragContext },
         { provide: DomSanitizer, useValue: sanitizer },
+        { provide: AnalyticsService, useValue: analytics },
       ],
     })
       .overrideComponent(AiSummaryComponent, { set: { imports: [], template: '' } })
       .compileComponents();
   });
+
+  // beforeEach clears; without this the last test's keys survive into whatever
+  // spec file Karma runs next.
+  afterEach(() => sessionStorage.clear());
 
   it('should create', () => {
     expect(build().componentInstance).toBeTruthy();
@@ -135,10 +159,10 @@ describe('AiSummaryComponent', () => {
   describe('insight generation', () => {
     const txns = [createTransaction(), createTransaction(), createTransaction()];
 
+    /** One full load, keyed the way the effect keys it. */
     async function generate(component: AiSummaryComponent) {
-      await (component as unknown as {
-        generateInsights: (t: Transaction[], p: string) => Promise<void>;
-      }).generateInsights(txns, 'thisMonth');
+      const it = internals(component);
+      await it.loadInsights(txns, 'thisMonth', it.cacheKey());
     }
 
     it('populates summary and advice and caches successful results', async () => {
@@ -149,9 +173,7 @@ describe('AiSummaryComponent', () => {
       expect(component.isLoading()).toBeFalse();
       // Second run should hit the session cache instead of regenerating.
       cloudLLM.generateSpendingSummary.calls.reset();
-      await (component as unknown as {
-        loadInsights: (t: Transaction[], p: string) => Promise<void>;
-      }).loadInsights(txns, 'thisMonth');
+      await generate(component);
       expect(cloudLLM.generateSpendingSummary).not.toHaveBeenCalled();
     });
 
@@ -192,9 +214,7 @@ describe('AiSummaryComponent', () => {
       expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(1);
 
       currentUser.set(createUser({ preferences: { ragInsightsLevel: 'deep' } as User['preferences'] }));
-      await (component as unknown as {
-        loadInsights: (t: Transaction[], p: string) => Promise<void>;
-      }).loadInsights(txns, 'thisMonth');
+      await generate(component);
       expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(2);
     });
 
@@ -209,9 +229,7 @@ describe('AiSummaryComponent', () => {
       fixture.componentRef.setInput('goals', [
         { id: 'g1', contributedAmount: 500, targetAmount: 2000 } as Goal
       ]);
-      await (component as unknown as {
-        loadInsights: (t: Transaction[], p: string) => Promise<void>;
-      }).loadInsights(txns, 'thisMonth');
+      await generate(component);
       expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(2);
     });
 
@@ -245,6 +263,22 @@ describe('AiSummaryComponent', () => {
       expect(cloudLLM.generateSpendingSummary).not.toHaveBeenCalled();
     });
 
+    it('emits one usage event per load, after the rates are in', async () => {
+      await generate(build().componentInstance);
+      expect(analytics.trackAiAssistUsed).toHaveBeenCalledTimes(1);
+      expect(analytics.trackAiAssistUsed)
+        .toHaveBeenCalledWith({ feature: 'summary' });
+    });
+
+    it('does not count a cache hit as a request', async () => {
+      const component = build().componentInstance;
+      await generate(component);
+      analytics.trackAiAssistUsed.calls.reset();
+
+      await generate(component);
+      expect(analytics.trackAiAssistUsed).not.toHaveBeenCalled();
+    });
+
     it('generates once categories arrive after the transactions', async () => {
       categories.set([]);
       const fixture = build();
@@ -257,6 +291,130 @@ describe('AiSummaryComponent', () => {
       fixture.detectChanges();
       await fixture.whenStable();
       expect(cloudLLM.generateSpendingSummary).toHaveBeenCalled();
+    });
+  });
+
+  // #259: two provider round trips separate a request from its result, and the
+  // period selector can move inside that gap.
+  describe('superseding an in-flight generation', () => {
+    const txns = [createTransaction(), createTransaction(), createTransaction()];
+
+    /** Holds a generation open until the returned resolver is called. */
+    function heldSummary(): (text: string) => void {
+      let release!: (text: string) => void;
+      cloudLLM.generateSpendingSummary.and.returnValue(
+        new Promise<string>(resolve => { release = resolve; }));
+      return release;
+    }
+
+    it('keys the cached summary on the period the request was built with', async () => {
+      const fixture = build();
+      fixture.componentRef.setInput('transactions', txns);
+      fixture.componentRef.setInput('period', 'thisMonth');
+      const it = internals(fixture.componentInstance);
+
+      await it.loadInsights(txns, 'thisMonth', it.cacheKey());
+
+      const keys = Object.keys(sessionStorage).filter(key => key.startsWith('ai-summary-'));
+      expect(keys.length).toBe(1);
+      expect(keys[0]).toContain('thisMonth');
+      expect(keys[0]).not.toContain('lastMonth');
+    });
+
+    it('drops a superseded run instead of overwriting the newer summary', async () => {
+      const fixture = build();
+      fixture.componentRef.setInput('transactions', txns);
+      const component = fixture.componentInstance;
+      const it = internals(component);
+
+      const releaseA = heldSummary();
+      const keyA = it.cacheKey();
+      const runA = it.loadInsights(txns, 'lastMonth', keyA);
+
+      // The selector moves, and the new period's rows land.
+      cloudLLM.generateSpendingSummary.and.resolveTo('August summary');
+      fixture.componentRef.setInput('period', 'thisMonth');
+      await it.loadInsights(txns, 'thisMonth', it.cacheKey());
+      expect(component.summary()).toBe('August summary');
+
+      releaseA('July summary');
+      await runA;
+
+      expect(component.summary()).toBe('August summary');
+      expect(sessionStorage.getItem(keyA)).toBeNull();
+    });
+
+    it('leaves the loading flag up while a newer run is still in flight', async () => {
+      const fixture = build();
+      fixture.componentRef.setInput('transactions', txns);
+      const component = fixture.componentInstance;
+      const it = internals(component);
+
+      const releaseA = heldSummary();
+      const runA = it.loadInsights(txns, 'lastMonth', it.cacheKey());
+
+      const releaseB = heldSummary();
+      fixture.componentRef.setInput('period', 'thisMonth');
+      const runB = it.loadInsights(txns, 'thisMonth', it.cacheKey());
+
+      releaseA('July summary');
+      await runA;
+      // A finished to completion, but B is still waiting on its providers.
+      expect(component.isLoading()).toBeTrue();
+
+      releaseB('August summary');
+      await runB;
+      expect(component.isLoading()).toBeFalse();
+    });
+
+    it('lets a cache hit supersede an in-flight generation', async () => {
+      const fixture = build();
+      fixture.componentRef.setInput('transactions', txns);
+      const component = fixture.componentInstance;
+      const it = internals(component);
+
+      fixture.componentRef.setInput('period', 'thisMonth');
+      const keyB = it.cacheKey();
+      sessionStorage.setItem(keyB, JSON.stringify({
+        summary: 'Cached August', advice: 'Cached advice', timestamp: Date.now(),
+      }));
+
+      fixture.componentRef.setInput('period', 'lastMonth');
+      const releaseA = heldSummary();
+      const runA = it.loadInsights(txns, 'lastMonth', it.cacheKey());
+
+      fixture.componentRef.setInput('period', 'thisMonth');
+      await it.loadInsights(txns, 'thisMonth', keyB);
+      expect(component.summary()).toBe('Cached August');
+
+      // The cache hit bumped the generation, so A's late answer is stale even
+      // though it never raced another live request.
+      releaseA('July summary');
+      await runA;
+      expect(component.summary()).toBe('Cached August');
+    });
+
+    it('counts no usage event for a run that is superseded before its providers', async () => {
+      const fixture = build();
+      fixture.componentRef.setInput('transactions', txns);
+      const component = fixture.componentInstance;
+      const it = internals(component);
+
+      let releaseRates!: () => void;
+      currency.ensureRatesLoaded.and.returnValue(
+        new Promise<void>(resolve => { releaseRates = resolve; }));
+      const runA = it.loadInsights(txns, 'lastMonth', it.cacheKey());
+
+      currency.ensureRatesLoaded.and.resolveTo(undefined);
+      fixture.componentRef.setInput('period', 'thisMonth');
+      await it.loadInsights(txns, 'thisMonth', it.cacheKey());
+      analytics.trackAiAssistUsed.calls.reset();
+
+      releaseRates();
+      await runA;
+
+      expect(analytics.trackAiAssistUsed).not.toHaveBeenCalled();
+      expect(cloudLLM.generateSpendingSummary).toHaveBeenCalledTimes(1);
     });
   });
 });

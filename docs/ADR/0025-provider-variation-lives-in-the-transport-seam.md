@@ -1,6 +1,8 @@
 # 25. Provider variation lives in the transport seam
 
-**Status:** Accepted, implemented · **Date:** 2026-08-08 · **Issues:** #200
+**Status:** Accepted, implemented; amended by
+[0043](0043-a-declared-setting-reaches-every-transport-that-accepts-it.md) ·
+**Date:** 2026-08-08 · **Issues:** #200
 
 Reference documentation lives in [../prompts.md](../prompts.md).
 

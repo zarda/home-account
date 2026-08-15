@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import type Anthropic from '@anthropic-ai/sdk';
-import { DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
+import { DEFAULT_CLAUDE_MODEL, acceptsSampling } from '../config/ai-models';
 import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { PromptId, RenderedPrompt } from '../prompts';
 import { AIRequestOptions, ProviderCapabilities } from './llm-provider.interface';
@@ -126,6 +126,7 @@ export class ClaudeService extends CloudLLMProviderBase {
       model: this.model,
       max_tokens: rendered.maxOutputTokens,
       ...this.systemParam(rendered),
+      ...this.samplingParams(rendered),
       messages: [{ role: 'user', content }],
     }, this.requestOptions(options));
 
@@ -161,6 +162,7 @@ export class ClaudeService extends CloudLLMProviderBase {
       model: this.model,
       max_tokens: rendered.maxOutputTokens,
       ...this.systemParam(rendered),
+      ...this.samplingParams(rendered),
       messages: [{ role: 'user', content: this.renderedText(rendered) }],
     });
 
@@ -200,6 +202,24 @@ export class ClaudeService extends CloudLLMProviderBase {
   /** Spread into `messages.create` so `system` is only sent when a prompt sets one. */
   private systemParam(rendered: RenderedPrompt): { system?: string } {
     return rendered.system ? { system: rendered.system } : {};
+  }
+
+  /**
+   * The prompt's declared temperature, on the models that still take one.
+   *
+   * Anthropic removed sampling for models released after Claude Opus 4.6 — the
+   * SDK types `temperature` `@deprecated` and the API rejects any value but 1.0
+   * with a 400. Two of the three ids in `CLAUDE_MODELS` are past that line,
+   * including the default, so sending the registry's 0.05–0.3 unconditionally
+   * would fail every request rather than sharpen it.
+   *
+   * One helper for both transports rather than a literal in each: the vision
+   * and text envelopes are edited independently, and an inline spread in only
+   * one of them is exactly how the parameter went missing in the first place.
+   * `topP` stays out — prompt-inputs.ts marks it Gemini-only. ADR 0043.
+   */
+  private samplingParams(rendered: RenderedPrompt): { temperature?: number } {
+    return acceptsSampling(this.model) ? { temperature: rendered.temperature } : {};
   }
 
   /**

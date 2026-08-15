@@ -10,15 +10,22 @@ import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { FirestoreService } from './firestore.service';
 import { PwaService } from './pwa.service';
+import { RecurringService } from './recurring.service';
 import { TransactionService } from './transaction.service';
-import { InsightSnapshot, Transaction, User } from '../../models';
-import { createTimestamp, createTransaction, createUser } from './testing/test-data';
+import { InsightFacts, InsightSnapshot, Transaction, User } from '../../models';
+import {
+  createRecurring,
+  createTimestamp,
+  createTransaction,
+  createUser,
+} from './testing/test-data';
 import { findSerializationIssues } from '../utils/firestore-value.utils';
 
 describe('InsightSnapshotService', () => {
   let service: InsightSnapshotService;
   let firestoreService: jasmine.SpyObj<FirestoreService>;
   let transactionService: jasmine.SpyObj<TransactionService>;
+  let recurringService: jasmine.SpyObj<RecurringService>;
   let userId: ReturnType<typeof signal<string | null>>;
   let currentUser: ReturnType<typeof signal<User | null>>;
   let isOnline: ReturnType<typeof signal<boolean>>;
@@ -84,11 +91,19 @@ describe('InsightSnapshotService', () => {
       'TransactionService', ['getTransactionsInRange']);
     transactionService.getTransactionsInRange.and.returnValue(of([]));
 
+    // The signal deliberately stays empty in every test: the writer must read
+    // the collection, because generateClosedMonths runs with no ordering
+    // against whatever fills it.
+    recurringService = jasmine.createSpyObj<RecurringService>(
+      'RecurringService', ['listAll'], { recurringTransactions: signal([]) });
+    recurringService.listAll.and.resolveTo([]);
+
     TestBed.configureTestingModule({
       providers: [
         InsightSnapshotService,
         { provide: FirestoreService, useValue: firestoreService },
         { provide: TransactionService, useValue: transactionService },
+        { provide: RecurringService, useValue: recurringService },
         { provide: PwaService, useValue: { isOnline } },
         { provide: AuthService, useValue: { userId, currentUser } },
         {
@@ -286,6 +301,55 @@ describe('InsightSnapshotService', () => {
         generatedAt: undefined,
       }).filter(issue => !issue.path.endsWith('At'));
       expect(issues).toEqual([]);
+    });
+  });
+
+  describe('the rules a frozen month is built with', () => {
+    /** Six months of one subscription, so the detector finds a group. */
+    function subscription(): Transaction[] {
+      return Array.from({ length: 6 }, (_, month) =>
+        expense(new Date(2026, month, 5), 15.99, {
+          description: 'Netflix', categoryId: 'subscriptions_streaming_services',
+        }));
+    }
+
+    async function factsFor(rules: ReturnType<typeof createRecurring>[]): Promise<InsightFacts> {
+      recurringService.listAll.and.resolveTo(rules);
+      serveHistory(subscription());
+      await service.generateClosedMonths(now);
+      const written = firestoreService.setDocument.calls.mostRecent().args[1] as
+        Record<string, unknown>;
+      return written['facts'] as InsightFacts;
+    }
+
+    it('reads the rules from the collection, not the signal', async () => {
+      // The signal stays empty throughout. If the writer read it, the covering
+      // rule would be invisible and the group would be counted.
+      const uncovered = await factsFor([]);
+      expect(uncovered.recurring.detectedGroupCount).toBe(1);
+
+      firestoreService.setDocument.calls.reset();
+      const covered = await factsFor([createRecurring({
+        name: 'Netflix', categoryId: 'subscriptions_streaming_services',
+      })]);
+      expect(covered.recurring.detectedGroupCount).toBe(0);
+      expect(covered.recurring.totalMonthlyEquivalent).toBe(0);
+    });
+
+    it('reads the rule collection once per generation run', async () => {
+      // A backfill writes up to SNAPSHOT_BACKFILL_MONTHS documents, and the
+      // rule set cannot change between them.
+      serveHistory([...monthOf(3), ...monthOf(4), ...monthOf(5)]);
+      await service.generateClosedMonths(now);
+
+      expect(firestoreService.setDocument.calls.count()).toBeGreaterThan(1);
+      expect(recurringService.listAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads them again for an explicit regeneration', async () => {
+      serveHistory(monthOf(5));
+      await service.regenerate('2026-05');
+      expect(recurringService.listAll).toHaveBeenCalledTimes(1);
     });
   });
 

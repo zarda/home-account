@@ -12,7 +12,6 @@ import { NotificationService } from '../../../../core/services/notification.serv
 import {
   CreateRecurringDTO,
   RecurringFrequency,
-  RecurringTransaction,
   StorableRecurringGroup,
   StorableRecurringSummary
 } from '../../../../models';
@@ -57,10 +56,6 @@ describe('RecurringListComponent', () => {
     };
   }
 
-  function rule(name: string, frequency: RecurringFrequency): RecurringTransaction {
-    return { name, frequency, isActive: true } as RecurringTransaction;
-  }
-
   beforeEach(async () => {
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
     mockRecurringService = jasmine.createSpyObj('RecurringService', ['createRecurring']);
@@ -94,32 +89,39 @@ describe('RecurringListComponent', () => {
     fixture.detectChanges();
   });
 
-  describe('suppression', () => {
-    it('hides detected groups covered by an active rule', () => {
-      fixture.componentRef.setInput('activeRules', [
-        rule('Netflix', { type: 'monthly', interval: 1 })
-      ]);
+  // Suppression moved into the detector (ADR 0042), so what is asserted here is
+  // that the list filters nothing: the rows have to be exactly the groups the
+  // summary carries, or they stop agreeing with the figures taken from it.
+  describe('rendering the summary it was given', () => {
+    it('renders every detected group the summary carries, live or archived', () => {
+      const groups = [
+        group(),
+        group({ key: 'rec:detected:entertainment:spotify', label: 'SPOTIFY' }),
+        group({ key: 'rec:declared:utilities:rent', source: 'declared', label: 'Rent' })
+      ];
+      fixture.componentRef.setInput('summary', summaryOf(groups));
       fixture.detectChanges();
 
-      expect(component.visibleDetected()).toEqual([]);
-    });
+      const detectedKeys = [
+        'rec:detected:entertainment:netflix',
+        'rec:detected:entertainment:spotify'
+      ];
+      expect(component.detected().map(item => item.key)).toEqual(detectedKeys);
+      expect(component.declared().map(item => item.key)).toEqual(['rec:declared:utilities:rent']);
 
-    it('keeps uncovered groups visible', () => {
-      fixture.componentRef.setInput('activeRules', [
-        rule('Gym Membership', { type: 'monthly', interval: 1 })
-      ]);
-      fixture.detectChanges();
-
-      expect(component.visibleDetected().map(g => g.key)).toEqual([
-        'rec:detected:entertainment:netflix'
-      ]);
-    });
-
-    it('never suppresses archived snapshots, which receive no rules', () => {
       fixture.componentRef.setInput('archived', true);
       fixture.detectChanges();
 
-      expect(component.visibleDetected().length).toBe(1);
+      expect(component.detected().map(item => item.key)).toEqual(detectedKeys);
+    });
+
+    it('counts only what the cap dropped as hidden', () => {
+      const summary = summaryOf([group()]);
+      fixture.componentRef.setInput('summary', { ...summary, groupCount: 3 });
+      fixture.detectChanges();
+
+      expect(component.hasHiddenGroups()).toBeTrue();
+      expect(component.hiddenCount()).toBe(2);
     });
   });
 

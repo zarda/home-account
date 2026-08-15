@@ -263,7 +263,9 @@ describe('recurring-pattern.utils', () => {
       expect(result.declaredGroupCount).toBe(1);
       expect(result.detectedGroupCount).toBe(1);
       expect(result.groupCount).toBe(2);
-      // Both counted once each — the portfolio does not double-count.
+      // Two groups, two transaction sets, so 31.98 is right here. Whether these
+      // are one subscription is a question only the rule set can answer, and no
+      // predicate was passed — see the coverage block below for that case.
       expect(result.totalMonthlyEquivalent).toBe(31.98);
     });
 
@@ -274,6 +276,56 @@ describe('recurring-pattern.utils', () => {
       expect(result.declaredGroupCount).toBe(0);
       expect(result.detectedGroupCount).toBe(1);
       expect(result.groups[0].userFlaggedCount).toBe(4);
+    });
+  });
+
+  // The shape #255 describes: a subscription converted into a rule. The history
+  // keeps no recurringId, so it clusters as a detected group forever, while the
+  // new rule builds a declared one alongside it.
+  describe('computeRecurringGroups — coverage', () => {
+    const converted = () => [
+      ...series(new Date(2026, 0, 5), 3, 30, 15.99, 'Netflix', { recurringId: 'rule-n' }),
+      ...series(new Date(2026, 0, 9), 3, 30, 15.99, 'Netflix'),
+    ];
+    const coversDetected = (group: { source: string }) => group.source === 'detected';
+
+    it('drops a covered detected group from the total, not just the list', () => {
+      const result = computeRecurringGroups(converted(), toBase, window, {}, coversDetected);
+
+      expect(result.totalMonthlyEquivalent).toBe(15.99);
+      expect(result.detectedMonthlyEquivalent).toBe(0);
+      expect(result.groupCount).toBe(1);
+      expect(result.detectedGroupCount).toBe(0);
+      expect(result.declaredGroupCount).toBe(1);
+      // The figures and the rows have to describe the same set.
+      expect(result.groups.length).toBe(1);
+    });
+
+    it('never applies coverage to a declared group', () => {
+      const result = computeRecurringGroups(converted(), toBase, window, {}, () => true);
+
+      expect(result.declaredGroupCount).toBe(1);
+      expect(result.groups.map(g => g.source)).toEqual(['declared']);
+    });
+
+    it('applies coverage before the cap, so a suppressed group frees a slot', () => {
+      const charges = Array.from({ length: 4 }, (_, i) =>
+        series(new Date(2026, 0, 5), 4, 30, 10, `Service ${String.fromCharCode(97 + i)}`,
+          { categoryId: `cat-${i}` })).flat();
+      const result = computeRecurringGroups(
+        charges, toBase, window, { cap: 2 }, group => group.categoryId === 'cat-0');
+
+      expect(result.groupCount).toBe(3);
+      expect(result.totalMonthlyEquivalent).toBe(30);
+      expect(result.groups.length).toBe(2);
+      expect(result.groups.some(g => g.categoryId === 'cat-0')).toBeFalse();
+    });
+
+    it('counts everything when no predicate is supplied', () => {
+      const result = computeRecurringGroups(converted(), toBase, window);
+
+      expect(result.groupCount).toBe(2);
+      expect(result.totalMonthlyEquivalent).toBe(31.98);
     });
   });
 

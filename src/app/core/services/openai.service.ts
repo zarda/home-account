@@ -171,6 +171,19 @@ export class OpenAIService extends CloudLLMProviderBase {
     };
   }
 
+  // Why neither envelope above carries the prompt's declared `temperature`.
+  //
+  // The Responses API rejects an explicit temperature for the GPT-5 family, and
+  // every id in OPENAI_MODELS is GPT-5 — there is no model here to send it to.
+  // Sampling is steered by prompt wording on this provider instead. Unlike
+  // Claude, which gates per model, the whole catalog is exempt, so there is no
+  // conditional worth writing: acceptsSampling() returns false for every id,
+  // which is what keeps this checkable rather than merely asserted.
+  //
+  // Closing this means an OpenAI model that takes a temperature entering the
+  // catalog with acceptsSampling: true, at which point this comment goes and the
+  // transport spreads it the way ClaudeService.samplingParams does. ADR 0043.
+
   /**
    * Flatten a registry prompt for the Responses API, which has no separate
    * system field — unlike Claude, which takes one at the top level.

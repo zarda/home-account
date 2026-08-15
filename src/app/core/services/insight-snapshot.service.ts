@@ -5,11 +5,13 @@ import { AuthService } from './auth.service';
 import { CurrencyService } from './currency.service';
 import { FirestoreService } from './firestore.service';
 import { PwaService } from './pwa.service';
+import { RecurringService } from './recurring.service';
 import { TransactionService } from './transaction.service';
 import {
   INSIGHT_DETECTOR_VERSION,
   INSIGHT_SNAPSHOT_SCHEMA_VERSION,
   InsightSnapshot,
+  RecurringTransaction,
   Transaction,
   baseCurrencyOf
 } from '../../models';
@@ -67,6 +69,7 @@ export class InsightSnapshotService {
   private authService = inject(AuthService);
   private transactionService = inject(TransactionService);
   private currencyService = inject(CurrencyService);
+  private recurringService = inject(RecurringService);
   private pwa = inject(PwaService);
 
   private snapshotState = signal<InsightSnapshot[]>([]);
@@ -176,7 +179,11 @@ export class InsightSnapshotService {
       this.generating.set(true);
       try {
         await firstValueFrom(this.watch());
-        return await this.writeMissingMonths(now);
+        // Read once for the whole run rather than per month: a backfill writes
+        // up to SNAPSHOT_BACKFILL_MONTHS documents and each already issues two
+        // range queries of its own.
+        const rules = await this.recurringService.listAll();
+        return await this.writeMissingMonths(now, rules);
       } catch (error) {
         // History accumulating is never a precondition for using the app.
         console.error('[InsightSnapshot] Generation failed:', error);
@@ -190,7 +197,10 @@ export class InsightSnapshotService {
     return this.generateInFlight;
   }
 
-  private async writeMissingMonths(now: Date): Promise<InsightSnapshot[]> {
+  private async writeMissingMonths(
+    now: Date,
+    rules: RecurringTransaction[],
+  ): Promise<InsightSnapshot[]> {
     const lastClosed = startOfMonth(addMonths(now, -1));
     const earliest = startOfMonth(addMonths(lastClosed, -(SNAPSHOT_BACKFILL_MONTHS - 1)));
     const existing = new Set(this.snapshotState().map(snapshot => snapshot.monthKey));
@@ -200,7 +210,7 @@ export class InsightSnapshotService {
       if (existing.has(month)) {
         continue;
       }
-      const snapshot = await this.buildAndWrite(month, 1, null);
+      const snapshot = await this.buildAndWrite(month, 1, null, rules);
       if (snapshot) {
         written.push(snapshot);
       }
@@ -220,6 +230,7 @@ export class InsightSnapshotService {
       month,
       (previous?.revision ?? 0) + 1,
       previous?.createdAt ?? null,
+      await this.recurringService.listAll(),
     );
   }
 
@@ -227,6 +238,7 @@ export class InsightSnapshotService {
     month: string,
     revision: number,
     createdAt: InsightSnapshot['createdAt'] | null,
+    rules: RecurringTransaction[],
   ): Promise<InsightSnapshot | null> {
     const userId = this.authService.userId();
     const parsed = parseMonthKey(month);
@@ -261,6 +273,11 @@ export class InsightSnapshotService {
       months: monthKeysBetween(windowStart, monthEnd),
       baseCurrency,
       timeZone,
+      // The rules in force when the month was frozen, so the stored figures
+      // match what the live tab showed at close. A rule saved later moves
+      // coverage without moving the fingerprint, which is why regenerating an
+      // old month can legitimately produce different numbers (ADR 0042).
+      recurringRules: rules,
     });
 
     const expenses = monthTransactions.filter(t => t.type === 'expense');

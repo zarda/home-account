@@ -20,11 +20,17 @@ import {
  *   the figure stays honest if occurrences were edited.
  * - **detected** — everything else, clustered by merchant similarity.
  *
- * Keeping them apart matters twice over: clustering declared occurrences would
- * "discover" what the user already configured, and the portfolio total would
- * double-count. `isRecurring` is deliberately *not* the discriminator — it is a
- * plain boolean a user can tick on a one-off, so it only contributes
- * `userFlaggedCount`.
+ * Keeping them apart stops a single *transaction* being counted twice: clustering
+ * declared occurrences would "discover" what the user already configured.
+ * `isRecurring` is deliberately *not* the discriminator — it is a plain boolean a
+ * user can tick on a one-off, so it only contributes `userFlaggedCount`.
+ *
+ * Separating the populations is necessary but not sufficient, which is what
+ * `isCovered` is for. Converting a detected group into a rule never relabels the
+ * history behind it, so those charges keep clustering as a detected group while
+ * the new rule builds a declared one — one subscription, two groups. The caller
+ * passes a predicate saying which detected groups a rule already accounts for,
+ * and it is applied before any figure is taken.
  *
  * Determinism: no clock reads, a total-order sort before the greedy clustering
  * pass, and every money figure rounded at the boundary.
@@ -122,6 +128,15 @@ export interface RecurringOptions {
   priceIncreaseThreshold: number;
   cap: number;
 }
+
+/**
+ * Says whether an active rule already accounts for a detected group.
+ *
+ * Injected rather than computed here: coverage is a rules concept and lives in
+ * `recurring-conversion.utils.ts`, which already imports this module for the
+ * thresholds it matches merchants at. Importing it back would close the cycle.
+ */
+export type CoveragePredicate = (group: RecurringGroup) => boolean;
 
 export const DEFAULT_RECURRING_OPTIONS: RecurringOptions = {
   minOccurrences: 3,
@@ -305,12 +320,17 @@ function buildGroup(
  * cannot see a yearly cadence and only just reaches quarterly with two
  * occurrences. User-declared rules cover the long cadences, and widening the
  * window would double the read cost of opening the tab for a rare finding.
+ *
+ * `isCovered` drops detected groups an active rule already accounts for. It
+ * defaults to covering nothing, so a caller with no rules to hand — a spec, or a
+ * snapshot regenerated from stored facts — gets the raw populations.
  */
 export function computeRecurringGroups(
   expenses: Transaction[],
   toBase: ToBase,
   window: DetectorWindow,
   options: Partial<RecurringOptions> = {},
+  isCovered: CoveragePredicate = () => false,
 ): RecurringSummary {
   const settings = { ...DEFAULT_RECURRING_OPTIONS, ...options };
 
@@ -398,26 +418,38 @@ export function computeRecurringGroups(
     }
   }
 
-  const declared = groups.filter(group => group.source === 'declared');
-  const detected = groups.filter(group => group.source === 'detected');
+  // Coverage is applied here — before ranking, before the cap, and before every
+  // count and total — so the portfolio figures describe exactly the rows the
+  // list renders. Filtering further downstream is what let one subscription be
+  // counted twice: once as its rule's declared occurrences, once as the
+  // unlabelled history the conversion left behind.
+  //
+  // Declared groups are never covered. `isGroupCovered` matches on cadence and
+  // merchant name, which a rule matches against its own occurrences, so passing
+  // one here would suppress the very group it created.
+  const kept = groups.filter(
+    group => group.source !== 'detected' || !isCovered(group));
+
+  const declared = kept.filter(group => group.source === 'declared');
+  const detected = kept.filter(group => group.source === 'detected');
   const newSince = dayKey(addMonths(window.end, -settings.newWithinMonths));
   const sumMonthly = (list: RecurringGroup[]): number =>
     roundMoney(list.reduce((total, group) => total + group.monthlyEquivalent, 0));
 
-  const ranked = [...groups].sort(
+  const ranked = [...kept].sort(
     (a, b) => b.monthlyEquivalent - a.monthlyEquivalent
       || compareIds(a.categoryId, b.categoryId)
       || compareIds(a.key, b.key));
 
   return {
     groups: ranked.slice(0, settings.cap),
-    groupCount: groups.length,
+    groupCount: kept.length,
     declaredGroupCount: declared.length,
     detectedGroupCount: detected.length,
-    totalMonthlyEquivalent: sumMonthly(groups),
+    totalMonthlyEquivalent: sumMonthly(kept),
     declaredMonthlyEquivalent: sumMonthly(declared),
     detectedMonthlyEquivalent: sumMonthly(detected),
-    newGroupCount: groups.filter(group => group.firstSeen >= newSince).length,
-    increasedGroupCount: groups.filter(group => group.priceIncreased).length,
+    newGroupCount: kept.filter(group => group.firstSeen >= newSince).length,
+    increasedGroupCount: kept.filter(group => group.priceIncreased).length,
   };
 }

@@ -13,7 +13,7 @@ import {
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
-import { InsightCard, InsightFacts, Transaction } from '../../models';
+import { InsightCard, InsightFacts, RecurringTransaction, Transaction } from '../../models';
 import { buildInsightCards, toStorableCards } from '../utils/insight-card.utils';
 import { computeInsightFacts, transactionFingerprint } from '../utils/insight-facts.utils';
 import { findSerializationIssues, stableStringify } from '../utils/firestore-value.utils';
@@ -22,7 +22,7 @@ import {
   sumByType,
 } from '../utils/transaction-aggregation.utils';
 import { monthKeysBetween } from '../utils/transaction-date.utils';
-import { createTimestamp, createTransaction } from './testing/test-data';
+import { createRecurring, createTimestamp, createTransaction } from './testing/test-data';
 
 /**
  * Round-trip test for a real insight-snapshot document against the emulator.
@@ -97,7 +97,10 @@ describe('insight snapshots (emulator smoke test)', () => {
     return transactions;
   }
 
-  function computeFor(transactions: Transaction[]): {
+  function computeFor(
+    transactions: Transaction[],
+    recurringRules: RecurringTransaction[] = [],
+  ): {
     facts: InsightFacts;
     cards: InsightCard[];
   } {
@@ -108,6 +111,7 @@ describe('insight snapshots (emulator smoke test)', () => {
       months: monthKeysBetween(windowStart, monthEnd),
       baseCurrency: 'USD',
       timeZone: 'Asia/Taipei',
+      recurringRules,
     });
     return {
       facts,
@@ -120,12 +124,13 @@ describe('insight snapshots (emulator smoke test)', () => {
     monthKey: string,
     transactions: Transaction[],
     revision = 1,
+    recurringRules: RecurringTransaction[] = [],
   ): Record<string, unknown> {
     const monthTransactions = transactions.filter(t => {
       const date = t.date.toDate();
       return date >= monthStart && date <= monthEnd;
     });
-    const { facts, cards } = computeFor(transactions);
+    const { facts, cards } = computeFor(transactions, recurringRules);
     const toBase = (t: Transaction) => t.amountInBaseCurrency ?? t.amount;
 
     return {
@@ -201,6 +206,42 @@ describe('insight snapshots (emulator smoke test)', () => {
       () => setDoc(doc(firestore, snapshotPath('2026-06')), payload),
       'real detector output'
     );
+  });
+
+  it('accepts a document built with a covering rule, unchanged in shape', async () => {
+    // Suppressing a covered group moves numbers, not fields (ADR 0042). The
+    // rules validator pins the fingerprint to four keys and the facts to a
+    // schema version, so "no schema change" is a claim only the emulator can
+    // settle — the unit specs mock Firestore away.
+    //
+    // What this cannot see: the emulator does not enforce composite indexes, so
+    // this proves rules acceptance and nothing about query planning.
+    const transactions = history();
+    const rule = createRecurring({
+      name: 'Netflix', categoryId: 'subscriptions_streaming_services',
+    });
+
+    const uncovered = payloadFor('2026-02', transactions)['facts'] as InsightFacts;
+    const payload = payloadFor('2026-02', transactions, 1, [rule]);
+    const covered = payload['facts'] as InsightFacts;
+
+    expect(uncovered.recurring.detectedGroupCount)
+      .toBeGreaterThan(covered.recurring.detectedGroupCount);
+    expect(Object.keys(covered.recurring).sort())
+      .toEqual(Object.keys(uncovered.recurring).sort());
+    expect(findSerializationIssues({
+      ...payload, generatedAt: null, createdAt: null,
+    })).toEqual([]);
+
+    await expectAllowed(
+      () => setDoc(doc(firestore, snapshotPath('2026-02')), payload),
+      'detector output with a covering rule'
+    );
+
+    const read = await getDoc(doc(firestore, snapshotPath('2026-02')));
+    const stored = (read.data() as Record<string, unknown>)['facts'] as InsightFacts;
+    expect(stored.recurring.totalMonthlyEquivalent)
+      .toBe(covered.recurring.totalMonthlyEquivalent);
   });
 
   it('round-trips facts and cards unchanged', async () => {

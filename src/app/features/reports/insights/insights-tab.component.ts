@@ -87,13 +87,6 @@ export class InsightsTabComponent implements OnInit {
   readonly storedSnapshots = this.snapshots.snapshots;
   readonly isRegenerating = signal(false);
 
-  /**
-   * The live rules, for suppressing detected groups an active rule already
-   * covers. The subscription is held here (ADR 0009) and only opens when the
-   * tab does — the parent wraps this component in matTabContent.
-   */
-  readonly activeRules = this.recurringService.recurringTransactions;
-
   /** Which stored month is open, or null for the live computation. */
   readonly viewedMonth = signal<string | null>(null);
   readonly staleness = signal<SnapshotStaleness | null>(null);
@@ -144,9 +137,10 @@ export class InsightsTabComponent implements OnInit {
     // bound; loading here as well opened a second six-month listener on every
     // first render.
     this.snapshots.watch().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-    // Live rules for the detected-group suppression; a conversion (or a rule
-    // added anywhere else) makes its group vanish from the detected list
-    // immediately. Never completes, so its lifetime is the tab's.
+    // Keeps InsightsService's coverage input fresh: a conversion (or a rule
+    // added anywhere else) recomputes the facts, so the covered group leaves
+    // the figures and the list together. Never completes, so its lifetime is
+    // the tab's.
     this.recurringService.getRecurring().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     // Also triggered from the dashboard; the service shares one in-flight run,
     // so this only matters for someone deep-linking straight to Reports, who

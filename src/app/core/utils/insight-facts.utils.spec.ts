@@ -7,8 +7,12 @@ import {
 } from './insight-facts.utils';
 import { DetectorWindow } from './spending-pattern.types';
 import { findSerializationIssues } from './firestore-value.utils';
-import { InsightFacts, Transaction } from '../../models';
-import { createTimestamp, createTransaction } from '../services/testing/test-data';
+import { InsightFacts, RecurringTransaction, Transaction } from '../../models';
+import {
+  createRecurring,
+  createTimestamp,
+  createTransaction,
+} from '../services/testing/test-data';
 
 describe('insight-facts.utils', () => {
   const toBase = (t: Transaction) => t.amount;
@@ -151,6 +155,56 @@ describe('insight-facts.utils', () => {
       expect(facts.trends).toEqual([]);
       expect(facts.rhythms.hasEnoughData).toBeFalse();
       expect(facts.drip.isNotable).toBeFalse();
+    });
+  });
+
+  // The end-to-end shape of #255: the rules reach the detector through here, so
+  // every figure the facts carry — and every card built from them — describes
+  // the suppressed set.
+  describe('recurring coverage', () => {
+    /** The richHistory Netflix charges, plus a rule that covers them. */
+    const netflixRule = () => createRecurring({
+      name: 'Netflix',
+      categoryId: 'subscriptions_streaming_services',
+      frequency: { type: 'monthly', interval: 1 },
+    });
+
+    function computeWithRules(
+      transactions: Transaction[],
+      recurringRules: RecurringTransaction[],
+    ): ReturnType<typeof computeInsightFacts> {
+      return computeInsightFacts({
+        transactions, toBase, window, months,
+        baseCurrency: 'USD', timeZone: 'Asia/Taipei', recurringRules,
+      });
+    }
+
+    it('suppresses a covered group in every figure the facts carry', () => {
+      const transactions = richHistory();
+      const before = compute(transactions).facts.recurring;
+      const after = computeWithRules(transactions, [netflixRule()]).facts.recurring;
+
+      expect(before.groups.some(group => group.label === 'Netflix')).toBeTrue();
+      expect(after.groups.some(group => group.label === 'Netflix')).toBeFalse();
+      expect(after.groupCount).toBe(before.groupCount - 1);
+      expect(after.detectedGroupCount).toBe(before.detectedGroupCount - 1);
+      expect(after.totalMonthlyEquivalent).toBeLessThan(before.totalMonthlyEquivalent);
+    });
+
+    it('drops the covered group from the drill-down map', () => {
+      const transactions = richHistory();
+      const { drillDownIds } = computeWithRules(transactions, [netflixRule()]);
+      const { facts } = computeWithRules(transactions, [netflixRule()]);
+
+      const recurringSlots = Object.keys(drillDownIds).filter(key => key.startsWith('recurring'));
+      expect(recurringSlots.length).toBe(facts.recurring.groups.length);
+      expect(recurringSlots.some(key => key.includes('netflix'))).toBeFalse();
+    });
+
+    it('counts everything when no rules are passed', () => {
+      const transactions = richHistory();
+      expect(computeWithRules(transactions, []).facts.recurring)
+        .toEqual(compute(transactions).facts.recurring);
     });
   });
 

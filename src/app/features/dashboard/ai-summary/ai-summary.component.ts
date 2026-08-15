@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -73,6 +82,20 @@ export class AiSummaryComponent {
   isLoading = signal(false);
   hasError = signal(false);
 
+  /**
+   * Bumped by every load. A generation captures it before its first await and
+   * drops everything it produces — the rendered text, the cache write, the
+   * spinner — once the counter has moved past it.
+   *
+   * Two provider round trips separate the request from its result, and the
+   * period selector, the locale, the RAG tier and the goal list can all change
+   * inside that gap. The house pattern is transaction-window.service.ts.
+   */
+  private generation = 0;
+
+  /** Beyond this a stored summary describes a window the user has moved on from. */
+  private static readonly CACHE_TTL_MS = 60 * 60 * 1000;
+
   // The user's RAG grounding depth (persisted in Firestore; legacy boolean migrated)
   private ragLevel = computed(() =>
     effectiveRagLevel(this.authService.currentUser()?.preferences)
@@ -80,9 +103,11 @@ export class AiSummaryComponent {
 
   // Cache key for sessionStorage (includes locale for language-specific
   // caching, and the RAG level so changing tiers regenerates instead of
-  // serving a stale cached summary). This computed is read synchronously
-  // inside the constructor effect's call stack, which is what makes the
-  // effect re-run when the level or provider preference changes.
+  // serving a stale cached summary).
+  //
+  // Read once per request, in the effect below, and then passed down. Never
+  // re-read after an await: it tracks live signals, so re-reading it at write
+  // time filed a finished summary under whatever the selector had moved to.
   private cacheKey = computed(() => {
     const txIds = this.transactions().map(t => t.id).sort().join(',');
     const locale = this.translationService.currentLocale();
@@ -111,56 +136,62 @@ export class AiSummaryComponent {
   private categoriesReady = computed(() => this.categoryService.categories().length > 0);
 
   constructor() {
-    // React to transaction, period, and locale changes
     effect(() => {
       const txns = this.transactions();
       const period = this.period();
-      // Track locale changes - when locale changes, cache key changes, triggering regeneration
-      this.translationService.currentLocale();
+      // Read here, in the tracked body, deliberately. The key folds in the
+      // locale, the RAG tier, the provider preference and the goal fingerprint,
+      // and reading it is what makes any of them re-run this effect. It used to
+      // be reached only through getCachedInsights' call stack, which made those
+      // dependencies real but invisible.
+      const key = this.cacheKey();
+      const ready = this.isAvailable() && this.categoriesReady();
 
-      console.log('[AiSummary] Effect triggered:', {
-        transactionCount: txns.length,
-        period,
-        isAvailable: this.isAvailable(),
-        hasEnoughData: txns.length >= 3,
-        categoriesReady: this.categoriesReady()
+      untracked(() => {
+        if (txns.length >= 3 && ready) {
+          void this.loadInsights(txns, period, key);
+        }
       });
-
-      if (txns.length >= 3 && this.isAvailable() && this.categoriesReady()) {
-        console.log('[AiSummary] Loading insights...');
-        this.loadInsights(txns, period);
-      } else {
-        console.log('[AiSummary] Skipping - not enough data, AI unavailable, or categories not loaded');
-      }
     });
   }
 
-  private async loadInsights(transactions: Transaction[], period: string): Promise<void> {
-    // Check cache first
-    const cached = this.getCachedInsights();
+  private async loadInsights(
+    transactions: Transaction[],
+    period: string,
+    key: string,
+  ): Promise<void> {
+    // Bumped before the cache read, not after: a hit supersedes whatever is
+    // still in flight. Without this, an older generation would still pass its
+    // own guard on return and overwrite the text this one just rendered.
+    const gen = ++this.generation;
+
+    const cached = this.getCachedInsights(key);
     if (cached) {
       this.summary.set(cached.summary);
       this.advice.set(cached.advice);
+      this.hasError.set(false);
       return;
     }
 
-    await this.generateInsights(transactions, period);
+    await this.generateInsights(transactions, period, key, gen);
   }
 
   async refresh(): Promise<void> {
-    // Clear cache and regenerate
-    this.clearCache();
-    await this.generateInsights(this.transactions(), this.period());
+    const key = this.cacheKey();
+    const gen = ++this.generation;
+    this.clearCache(key);
+    await this.generateInsights(this.transactions(), this.period(), key, gen);
   }
 
-  private async generateInsights(transactions: Transaction[], period: string): Promise<void> {
+  private async generateInsights(
+    transactions: Transaction[],
+    period: string,
+    key: string,
+    gen: number,
+  ): Promise<void> {
     if (!this.cloudLLMProvider.hasAnyCloudProvider() || transactions.length < 3 || !this.categoriesReady()) {
       return;
     }
-
-    // The caller has already returned on a cache hit, so this is a real
-    // request rather than a render of a stored summary.
-    this.analytics.trackAiAssistUsed({ feature: 'summary' });
 
     this.isLoading.set(true);
     this.hasError.set(false);
@@ -169,6 +200,14 @@ export class AiSummaryComponent {
       // Rates must be loaded before any live conversion; otherwise foreign
       // amounts fall back 1:1 and wrong numbers get cached for an hour.
       await this.currencyService.ensureRatesLoaded();
+      if (gen !== this.generation) {
+        return;
+      }
+
+      // Counted here rather than at entry: past the cache hit and past the
+      // first await, so this is one event per pair of provider calls actually
+      // issued, not per effect firing.
+      this.analytics.trackAiAssistUsed({ feature: 'summary' });
 
       const currency = this.baseCurrency();
       const periodTotal = this.calculatePeriodTotal(transactions);
@@ -219,19 +258,33 @@ export class AiSummaryComponent {
         adviceResult = this.describeFailure(error, 'ai.adviceFallback');
       }
 
+      // Superseded while the providers were answering: this text describes a
+      // period, locale or tier the user has already left. Rendering it would
+      // put the wrong months on screen, and caching it would serve them back
+      // under the new key for the rest of the TTL.
+      if (gen !== this.generation) {
+        return;
+      }
+
       this.summary.set(summaryResult);
       this.advice.set(adviceResult);
 
       // Cache only real results — caching a failure message would pin it
       // for an hour even after a temporary rate limit clears
       if (!summaryFailed && !adviceFailed) {
-        this.cacheInsights(summaryResult, adviceResult);
+        this.cacheInsights(key, summaryResult, adviceResult);
       }
     } catch (error) {
       console.error('Failed to generate AI insights:', error);
-      this.hasError.set(true);
+      if (gen === this.generation) {
+        this.hasError.set(true);
+      }
     } finally {
-      this.isLoading.set(false);
+      // A superseded run must not clear the spinner: the newest generation is
+      // still working, and the card would flash its old text in the meantime.
+      if (gen === this.generation) {
+        this.isLoading.set(false);
+      }
     }
   }
 
@@ -281,13 +334,12 @@ export class AiSummaryComponent {
     };
   }
 
-  private getCachedInsights(): { summary: string; advice: string } | null {
+  private getCachedInsights(key: string): { summary: string; advice: string } | null {
     try {
-      const cached = sessionStorage.getItem(this.cacheKey());
+      const cached = sessionStorage.getItem(key);
       if (cached) {
         const parsed = JSON.parse(cached);
-        // Check if cache is less than 1 hour old
-        if (Date.now() - parsed.timestamp < 60 * 60 * 1000) {
+        if (Date.now() - parsed.timestamp < AiSummaryComponent.CACHE_TTL_MS) {
           return { summary: parsed.summary, advice: parsed.advice };
         }
       }
@@ -297,9 +349,9 @@ export class AiSummaryComponent {
     return null;
   }
 
-  private cacheInsights(summary: string, advice: string): void {
+  private cacheInsights(key: string, summary: string, advice: string): void {
     try {
-      sessionStorage.setItem(this.cacheKey(), JSON.stringify({
+      sessionStorage.setItem(key, JSON.stringify({
         summary,
         advice,
         timestamp: Date.now()
@@ -309,9 +361,9 @@ export class AiSummaryComponent {
     }
   }
 
-  private clearCache(): void {
+  private clearCache(key: string): void {
     try {
-      sessionStorage.removeItem(this.cacheKey());
+      sessionStorage.removeItem(key);
     } catch {
       // Ignore errors
     }

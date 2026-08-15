@@ -93,8 +93,14 @@ export class DashboardComponent implements OnInit {
   private prevPeriodSub?: Subscription;
   private baselineSub?: Subscription;
 
-  // The option string feeds the AI summary's cache key / prompt context.
-  selectedPeriodOption = computed(() => this.currentPeriod().option);
+  // The period the loaded rows actually belong to — not the one the selector is
+  // on. It feeds the AI summary's cache key and prompt context, and the two have
+  // to name the same window: currentPeriod flips synchronously on click while
+  // `transactions` only flips when getByDateRange's snapshot lands, so binding
+  // the selection paired a new label with the previous period's rows for one
+  // change-detection pass. Long enough for the summary to describe last month
+  // using this month's data, and to cache the answer under the new key.
+  publishedPeriodOption = signal<string>(defaultPeriodSelection().option);
 
   // User info
   userName = computed(() => {
@@ -258,10 +264,16 @@ export class DashboardComponent implements OnInit {
         next: () => {
           this.isLoading.set(false);
           this.hasLoadedOnce.set(true);
+          // Published with the rows, in the same synchronous emission that
+          // getByDateRange's tap writes the shared signal in, so the AI summary
+          // sees a matching pair and runs once per period change.
+          this.publishedPeriodOption.set(this.currentPeriod().option);
         },
         error: () => {
           this.isLoading.set(false);
           this.hasLoadedOnce.set(true);
+          // Deliberately not published: the previous period's rows are still on
+          // screen, so the summary should keep describing them.
         }
       });
 

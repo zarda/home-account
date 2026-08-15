@@ -29,7 +29,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0022](0022-the-forecast-baselines-at-zero-today.md) | The forecast baselines at zero today | Accepted | 2026-08-07 |
 | [0023](0023-the-initial-bundle-carries-only-the-entry-route.md) | The initial bundle carries only the entry route | Accepted | 2026-08-08 |
 | [0024](0024-every-component-checks-with-onpush.md) | Every component checks with OnPush | Accepted | 2026-08-08 |
-| [0025](0025-provider-variation-lives-in-the-transport-seam.md) | Provider variation lives in the transport seam | Accepted | 2026-08-08 |
+| [0025](0025-provider-variation-lives-in-the-transport-seam.md) | Provider variation lives in the transport seam | Accepted; amended by 0043 | 2026-08-08 |
 | [0026](0026-every-period-window-comes-from-one-helper.md) | Every period window comes from one helper | Accepted | 2026-08-08 |
 | [0027](0027-a-linked-transaction-carries-its-converted-amount.md) | A linked transaction carries its converted amount, and the goal keeps the sum | Accepted | 2026-08-08 |
 | [0028](0028-a-search-scope-only-names-what-a-transaction-carries.md) | A search scope only names what a transaction carries | Accepted | 2026-08-08 |
@@ -46,6 +46,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0039](0039-a-share-arrives-typed-and-the-stash-answers-to-its-owner.md) | A share arrives typed, and the stash answers only to its owner | Accepted; amends 0019 | 2026-08-14 |
 | [0040](0040-the-native-seams-answer-to-xctest.md) | The native seams answer to XCTest, and the plugins stay shells | Accepted | 2026-08-14 |
 | [0041](0041-a-retired-model-id-migrates-once.md) | A retired model id migrates once, and the catalog keeps the choice | Accepted | 2026-08-14 |
+| [0042](0042-a-derived-figure-agrees-with-the-set-that-produced-it.md) | A derived figure agrees with the set that produced it, and a cached one keys on all of it | Accepted | 2026-08-14 |
+| [0043](0043-a-declared-setting-reaches-every-transport-that-accepts-it.md) | A declared generation setting reaches every transport that accepts it | Accepted; amends 0025 | 2026-08-14 |
 
 ## What belongs here
 

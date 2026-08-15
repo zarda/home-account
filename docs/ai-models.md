@@ -10,7 +10,8 @@ The reasoning behind the one-time migration is in
 
 Everything lives in `src/app/core/config/ai-models.ts`. Each list is an
 `AIModelOption[]` of `{ id, name }`, where `id` is the string sent to the
-provider and `name` is what the settings dropdown shows.
+provider and `name` is what the settings dropdown shows. An entry may also carry
+`acceptsSampling` — see below.
 
 | List | Feeds | Read by |
 |---|---|---|
@@ -29,6 +30,32 @@ Each list has a matching `DEFAULT_*` constant. The recommended entry carries
 Every list feeds `getGenerativeModel()` and ends at `generateContent`. An
 embedding model answers `embedContent` instead, so it cannot be added here — it
 would fail at the first call rather than behave differently.
+
+## Whether a model accepts sampling
+
+Every prompt in the registry declares a `temperature`, and `acceptsSampling` on
+the catalog entry records whether the model will take it. `acceptsSampling(id)`
+is what the Claude transport consults before putting the value on the wire.
+
+Today: every Gemini and Gemma model, yes. Every OpenAI model, no — the Responses
+API rejects an explicit temperature for the GPT-5 family, which is the whole
+catalog. Claude, split — Anthropic removed the parameter for models released
+after Opus 4.6 and rejects any value but 1.0 on them with a 400, so
+`claude-haiku-4-5` accepts it and `claude-sonnet-5` and `claude-opus-4-8` do
+not. [ADR 0043](ADR/0043-a-declared-setting-reaches-every-transport-that-accepts-it.md)
+records why this is per model rather than per provider, and what it costs.
+
+**An id with no flag answers `false`**, which is the safe direction: a model the
+catalog has not been told about omits the parameter and falls back to the
+provider default, rather than failing every request against it. That makes the
+flag one more hand-maintained fact with the same problem as the ids themselves —
+nothing here can check it, and the vendors move the line. Verify it in the same
+pass, from the same page.
+
+The flag covers `temperature`, `top_p` and `top_k` as a family, because vendors
+have been withdrawing them together. The app only ever sends `temperature`
+(`topP` is Gemini-only and set in `generationConfig`), so one flag is enough
+until a vendor splits them.
 
 ## Where the ids come from
 
@@ -104,7 +131,9 @@ retired id survives with nothing anywhere reporting a problem.
 2. **Edit the catalog.** Add the replacement, move `(Recommended)` and the
    `DEFAULT_*` constant if it was a default, and refresh the verification date
    in the header comment. Decide whether the old entry stays selectable; it can,
-   and by default it should.
+   and by default it should. Set `acceptsSampling` on the new entry only if the
+   vendor's page says the model takes a temperature — omitting it is the safe
+   answer, and a wrong `true` fails every request against that model.
 3. **Add a replacement entry** in `MODEL_ID_REPLACEMENTS`, keyed by the id
    stored blobs may still hold. Comment *why* — shut down upstream, or dropped
    from the catalog — because the two cases read identically in code.
@@ -127,7 +156,8 @@ default.
 
 | File | Covers |
 |---|---|
-| `config/ai-models.spec.ts` | catalog invariants — defaults present in their own list, no duplicates, one recommendation each, the two map invariants, no Gemma default |
+| `config/ai-models.spec.ts` | catalog invariants — defaults present in their own list, no duplicates, one recommendation each, the two map invariants, no Gemma default, and which models `acceptsSampling` answers for |
+| `services/provider-prompt-parity.spec.ts` | that the flag reaches the wire: the declared temperature present on Gemini and on a sampling-capable Claude model, absent on the rest |
 | `config/ai-model-migrations.spec.ts` | the pure function — legacy blobs, the stamp-only write, the deliberate-pick case, non-Gemini fields untouched |
 | `services/ai-strategy.service.spec.ts` | the storage round trip, including the merge-order trap |
 | `services/cloud-llm-provider.smoke.spec.ts` | the real provider graph arming Gemini on the catalog's own defaults, under the emulators (`npm run smoke`) |

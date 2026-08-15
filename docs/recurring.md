@@ -156,11 +156,32 @@ converted rule posts next on schedule instead of backfilling.
 
 Conversion never relabels history — the past transactions keep no
 `recurringId` — so the detector would rediscover every converted group
-forever. Instead, the live list **suppresses** detected groups an active rule
+forever. Instead, the **detector suppresses** detected groups an active rule
 already covers: same cadence in the engine's terms, and a merchant-matched
 name (normalized equality, containment, then bigram similarity at the
-detector's own threshold). Archived snapshots are frozen history and are
-neither suppressed nor convertible.
+detector's own threshold).
+
+Suppression happens inside `computeRecurringGroups`, before the groups are
+ranked, before the display cap, and before every count and total. That is what
+makes the portfolio card and the rows beneath it describe the same set — the
+list itself filters nothing. Filtering only at the list is what let one
+subscription be counted twice, once as its rule's declared occurrences and once
+as the history the conversion left behind ([ADR 0042](ADR/0042-a-derived-figure-agrees-with-the-set-that-produced-it.md)).
+
+Two consequences worth knowing:
+
+- **The "N more" note counts only what the cap dropped.** Both sides of that
+  subtraction are over the suppressed set, so a covered group never inflates it.
+- **There is a short dip after converting.** The detected group disappears at
+  once, but the new rule needs two posted occurrences before it forms a declared
+  group, so the portfolio total is one group light in between. The list has
+  always behaved this way; the figures now match it.
+
+Archived snapshots are frozen history and are neither suppressed nor
+convertible. New snapshots are written with the rules in force when the month
+was frozen, read from the collection rather than a listener
+([docs/one-shot-reads.md](one-shot-reads.md)); months written before this keep
+whatever they recorded, and regenerating one is what re-takes it.
 
 ## Pausing and resuming
 

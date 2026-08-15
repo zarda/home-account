@@ -8,6 +8,7 @@ import {
   DEFAULT_OPENAI_MODEL,
   DEFAULT_CLAUDE_MODEL,
   AIModelOption,
+  acceptsSampling,
 } from './ai-models';
 import { modelIdReplacements } from './ai-model-migrations';
 
@@ -70,6 +71,45 @@ describe('AI model catalog', () => {
       for (const replacement of Object.values(modelIdReplacements())) {
         expect(everyCatalogId).toContain(replacement);
       }
+    });
+  });
+
+  describe('acceptsSampling', () => {
+    it('answers false for an id the catalog does not carry', () => {
+      // The safe direction: a brand-new model, or one a stored preference kept
+      // alive past a catalog refresh, omits the parameter rather than risking a
+      // 400 on every request.
+      expect(acceptsSampling('claude-opus-9')).toBeFalse();
+      expect(acceptsSampling('')).toBeFalse();
+    });
+
+    it('answers true for every Gemini and Gemma model', () => {
+      for (const { id } of [...TEXT_MODELS, ...VISION_MODELS]) {
+        expect(acceptsSampling(id)).withContext(id).toBeTrue();
+      }
+    });
+
+    it('answers false for every OpenAI model while the catalog is GPT-5', () => {
+      // The Responses API rejects an explicit temperature for that family, so
+      // openai.service.ts sends none — and check-prompts.mjs holds it to a
+      // named exemption for exactly this reason.
+      for (const { id } of OPENAI_MODELS) {
+        expect(acceptsSampling(id)).withContext(id).toBeFalse();
+      }
+    });
+
+    it('splits the Claude catalog at Opus 4.6', () => {
+      // Anthropic rejects any value but 1.0 on models released after it, which
+      // is why this is per model rather than per provider.
+      expect(acceptsSampling('claude-haiku-4-5')).toBeTrue();
+      expect(acceptsSampling('claude-sonnet-5')).toBeFalse();
+      expect(acceptsSampling('claude-opus-4-8')).toBeFalse();
+    });
+
+    it('leaves the Claude default on the rejecting side, which the transport must handle', () => {
+      // Stated rather than assumed: if this ever flips, the gate in
+      // ClaudeService.samplingParams stops being exercised by default.
+      expect(acceptsSampling(DEFAULT_CLAUDE_MODEL)).toBeFalse();
     });
   });
 
