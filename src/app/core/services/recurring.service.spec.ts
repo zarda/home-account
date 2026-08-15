@@ -1211,6 +1211,70 @@ describe('RecurringService', () => {
       expect(txSet).not.toHaveBeenCalled();
       expect(txUpdate).not.toHaveBeenCalled();
     });
+
+    // Prove the source, not just the result (docs/one-shot-reads.md): the
+    // work list comes from the collection enumeration, and the signal —
+    // which a listener's first emission used to feed — plays no part.
+    it('posts a due rule from the enumeration with the signal left empty', async () => {
+      const due = new Date(Date.now() - 3 * DAY);
+      const rule = createRecurring({ id: 'cold1', nextOccurrence: Timestamp.fromDate(due) });
+      mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([rule]));
+      seedServerRule(rule);
+
+      const result = await service.catchUpRecurringTransactions();
+
+      // The signal was empty before the run — the cold-start shape that
+      // used to make the engine decide there was nothing to do.
+      expect(service.recurringTransactions()).toEqual([]);
+      expect(txSetPaths()).toEqual([
+        `users/user123/transactions/rec-cold1-${due.getTime()}`
+      ]);
+      expect(result.length).toBe(0); // getDocument default resolves null
+    });
+
+    it('never opens a listener and leaves the signal alone', async () => {
+      const marker = [createRecurring({
+        id: 'page-owned',
+        nextOccurrence: Timestamp.fromDate(new Date(Date.now() + 5 * DAY))
+      })];
+      service.recurringTransactions.set(marker);
+
+      const due = new Date(Date.now() - 3 * DAY);
+      const rule = createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) });
+      mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([rule]));
+      seedServerRule(rule);
+
+      await service.catchUpRecurringTransactions();
+
+      // The engine neither reads the signal (the due rule posted anyway)
+      // nor writes it (the page-owned value survives by reference).
+      expect(mockFirestoreService.subscribeToCollection).not.toHaveBeenCalled();
+      expect(service.recurringTransactions()).toBe(marker);
+      expect(txSet).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates the server-read rejection and clears the in-flight run', async () => {
+      mockFirestoreService.getCollectionFromServer.and.rejectWith(
+        new Error('unavailable')
+      );
+
+      // Offline the read is answered by the server or not at all: the run
+      // rejects instead of resolving as an empty success.
+      await expectAsync(service.catchUpRecurringTransactions())
+        .toBeRejectedWithError('unavailable');
+      expect(mockFirestoreService.runTransaction).not.toHaveBeenCalled();
+
+      // The failed run is not cached as the shared in-flight promise: the
+      // next trigger runs the engine again.
+      const due = new Date(Date.now() - 3 * DAY);
+      const rule = createRecurring({ id: 'retry1', nextOccurrence: Timestamp.fromDate(due) });
+      mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([rule]));
+      seedServerRule(rule);
+
+      await service.catchUpRecurringTransactions();
+
+      expect(txSet).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('getNextOccurrences', () => {
