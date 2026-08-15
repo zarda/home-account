@@ -168,7 +168,10 @@ Extraction resolves to a catalog id rather than a display name wherever it can,
 so the result does not depend on which language the model happened to answer in.
 Where a display name still has to be matched, every shipped locale's names are
 considered rather than only the active one, and a name that matched nothing is
-distinguishable from a deliberate "Other" instead of silently becoming it.
+distinguishable from a deliberate "Other" instead of silently becoming it: an
+unrecognized answer leaves the row's category unset, so the import grades it
+for review instead of trusting it
+([ADR 0046](ADR/0046-an-unrecognized-category-name-is-not-a-category.md)).
 
 ## Failure surfacing
 
