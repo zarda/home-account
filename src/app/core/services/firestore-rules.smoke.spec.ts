@@ -1412,6 +1412,126 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('feedback (immutable, owner-erasable)', () => {
+    const validFeedback = (overrides: Record<string, unknown> = {}) => ({
+      userId: uid,
+      category: 'bug',
+      message: 'rules smoke',
+      appVersion: '1.23.129',
+      platform: 'web',
+      locale: 'en',
+      ...overrides
+    });
+
+    it('accepts a well-formed entry', async () => {
+      await expectAllowed(setDoc(doc(firestore, path('feedback')), validFeedback()), 'valid create');
+    });
+
+    it('accepts the createdAt/updatedAt stamps addDocument adds', async () => {
+      await expectAllowed(
+        setDoc(
+          doc(firestore, path('feedback')),
+          validFeedback({ createdAt: Timestamp.now(), updatedAt: Timestamp.now() })
+        ),
+        'create with service stamps'
+      );
+    });
+
+    it('accepts every declared category', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('feedback')), validFeedback({ category: 'idea' })),
+        'idea category'
+      );
+      await expectAllowed(
+        setDoc(doc(firestore, path('feedback')), validFeedback({ category: 'other' })),
+        'other category'
+      );
+    });
+
+    it('rejects a category outside the enum', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('feedback')), validFeedback({ category: 'rant' })),
+        'unknown category'
+      );
+    });
+
+    it('rejects an empty message', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('feedback')), validFeedback({ message: '' })),
+        'empty message'
+      );
+    });
+
+    it('rejects a message over the cap', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('feedback')), validFeedback({ message: 'x'.repeat(2001) })),
+        'oversized message'
+      );
+    });
+
+    it('rejects an entry missing its message', async () => {
+      const withoutMessage: Record<string, unknown> = { ...validFeedback() };
+      delete withoutMessage['message'];
+      await expectDenied(
+        setDoc(doc(firestore, path('feedback')), withoutMessage),
+        'missing message'
+      );
+    });
+
+    // The account email rides in the mail the function composes, never in
+    // the stored record; anything outside the closed set could smuggle it.
+    it('rejects extra fields outside the closed set', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('feedback')), validFeedback({ email: 'x@example.com' })),
+        'extra field'
+      );
+    });
+
+    it('rejects an entry attributed to another user', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('feedback')), validFeedback({ userId: otherUid })),
+        'foreign userId'
+      );
+    });
+
+    // The operator is mailed a copy on create, so a rewrite would make the
+    // stored record diverge from the mail already sent.
+    it('denies updating an existing entry', async () => {
+      const p = path('feedback');
+      await setDoc(doc(firestore, p), validFeedback());
+      await expectDenied(updateDoc(doc(firestore, p), { message: 'edited' }), 'entry update');
+    });
+
+    it('denies overwriting an existing entry', async () => {
+      const p = path('feedback');
+      await setDoc(doc(firestore, p), validFeedback());
+      await expectDenied(
+        setDoc(doc(firestore, p), validFeedback({ message: 'rewritten' })),
+        'entry overwrite'
+      );
+    });
+
+    it('allows the owner to delete an entry', async () => {
+      const p = path('feedback');
+      await setDoc(doc(firestore, p), validFeedback());
+      await expectAllowed(deleteDoc(doc(firestore, p)), 'owner delete');
+    });
+
+    it("denies writing into another user's list", async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('feedback', otherUid)), validFeedback({ userId: otherUid })),
+        "write to stranger's list"
+      );
+    });
+
+    it("denies deleting an entry in another user's list", async () => {
+      await expectDenied(
+        deleteDoc(doc(firestore, path('feedback', otherUid))),
+        "delete in stranger's list"
+      );
+    });
+  });
+
   describe('insightSnapshots', () => {
     /**
      * Snapshots are keyed by `yyyy-MM`, so they need their own path helper —
@@ -1615,7 +1735,7 @@ describe('firestore.rules (emulator smoke test)', () => {
     const validated = [
       'transactions', 'budgets', 'categories', 'goals',
       'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-      'insightSnapshots', 'categoryMemory', 'searchAnswers'
+      'insightSnapshots', 'categoryMemory', 'searchAnswers', 'feedback'
     ];
 
     for (const collection of validated) {

@@ -2,12 +2,15 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Capacitor } from '@capacitor/core';
 import { MatDialog } from '@angular/material/dialog';
+import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
 import { AboutComponent } from './about.component';
+import { FeedbackDialogComponent } from './feedback-dialog/feedback-dialog.component';
 import { AuthService } from '../../core/services/auth.service';
 import { DateFormatService } from '../../core/services/date-format.service';
 import { FeedbackService } from '../../core/services/feedback.service';
 import { TranslationService } from '../../core/services/translation.service';
+import { FeedbackEntry } from '../../models';
 import packageJson from '../../../../package.json';
 
 describe('AboutComponent', () => {
@@ -87,5 +90,50 @@ describe('AboutComponent', () => {
     component.donationUrl = '';
     component.openDonateLink();
     expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('renders the feedback card with its open button', () => {
+    fixture.detectChanges();
+    const card = fixture.nativeElement.querySelector('.feedback-card');
+    expect(card).toBeTruthy();
+    expect(card.querySelector('.feedback-button')).toBeTruthy();
+  });
+
+  it('opens the feedback dialog from the card button', () => {
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.feedback-button') as HTMLButtonElement).click();
+    expect(mockDialog.open).toHaveBeenCalledWith(FeedbackDialogComponent);
+  });
+
+  it('shows the empty note when nothing was sent', () => {
+    fixture.detectChanges();
+    const note = fixture.nativeElement.querySelector('.feedback-note');
+    expect(note?.textContent).toContain('about.feedback.historyEmpty');
+  });
+
+  it('lists sent entries with their category and message', () => {
+    const entry: FeedbackEntry = {
+      id: 'f1',
+      userId: 'user-1',
+      category: 'idea',
+      message: 'a widget would be nice',
+      appVersion: packageJson.version,
+      platform: 'web',
+      locale: 'en',
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
+    mockFeedback.watchOwn.and.returnValue(of([entry]));
+
+    fixture = TestBed.createComponent(AboutComponent);
+    fixture.detectChanges();
+
+    const item = fixture.nativeElement.querySelector('.feedback-item');
+    expect(item).toBeTruthy();
+    expect(item.querySelector('.feedback-item-category')?.textContent)
+      .toContain('about.feedback.categoryIdea');
+    expect(item.querySelector('.feedback-item-message')?.textContent)
+      .toContain('a widget would be nice');
+    expect(item.querySelector('.feedback-item-date')?.textContent).toContain('2026-08-15');
   });
 });

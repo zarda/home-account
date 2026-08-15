@@ -226,6 +226,15 @@ describe('AccountDeletionService (emulator smoke test)', () => {
 
     await setDoc(doc(firestore, `users/${uid}/secrets/providers`), { gemini: 'g-key' });
 
+    await setDoc(doc(firestore, `users/${uid}/feedback/smoke-del-feedback`), {
+      userId: uid,
+      category: 'idea',
+      message: 'smoke feedback',
+      appVersion: '1.23.129',
+      platform: 'web',
+      locale: 'en'
+    });
+
     await setDoc(doc(firestore, `users/${uid}/securityEvents/smoke-del-event`), {
       userId: uid,
       type: 'signIn',
@@ -317,6 +326,7 @@ describe('AccountDeletionService (emulator smoke test)', () => {
       'imports',
       'insightSnapshots',
       'secrets',
+      'feedback',
       'securityEvents'
     ];
     for (const name of subcollections) {
