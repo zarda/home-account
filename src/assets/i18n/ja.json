@@ -608,6 +608,10 @@
       "securityEvents": {
         "label": "セキュリティ履歴",
         "description": "サインインとアカウントのセキュリティ変更"
+      },
+      "feedback": {
+        "label": "フィードバック",
+        "description": "「について」ページから開発者に送信したフィードバック"
       }
     }
   },
@@ -1088,7 +1092,26 @@
     "donateTitle": "家計簿をサポート",
     "donateDescription": "このアプリが役に立つと思われる場合は、寄付で開発をサポートすることをご検討ください。ご寄付は、アプリケーションの維持と改善に役立ちます。",
     "donateButton": "寄付する",
-    "techStack": "使用技術"
+    "techStack": "使用技術",
+    "feedback": {
+      "cardTitle": "フィードバックを送る",
+      "cardDescription": "不具合やアイデアなど、開発者に伝えたいことをお送りください。メッセージはアカウントに保存され、開発者にメールで届きます。",
+      "openButton": "フィードバックを送る",
+      "dialogTitle": "フィードバックを送る",
+      "categoryLabel": "種類",
+      "categoryBug": "不具合",
+      "categoryIdea": "アイデア",
+      "categoryOther": "その他",
+      "messageLabel": "メッセージ",
+      "messagePlaceholder": "お伝えになりたいことをご記入ください",
+      "contextNote": "アプリのバージョン、プラットフォーム、言語は自動的に含まれます。",
+      "send": "送信",
+      "sent": "フィードバックを送信しました。ありがとうございます。",
+      "sendFailed": "送信に失敗しました。接続を確認してもう一度お試しください。",
+      "historyTitle": "送信済みのフィードバック",
+      "historyEmpty": "まだ送信していません。",
+      "loadFailed": "送信済みのフィードバックを読み込めませんでした。"
+    }
   },
   "receiptImages": {
     "title": "レシート画像",

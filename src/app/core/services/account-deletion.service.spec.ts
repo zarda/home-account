@@ -14,6 +14,7 @@ import { GoalService } from './goal.service';
 import { ImportHistoryService } from './import-history.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
 import { ProviderKeyService } from './provider-key.service';
+import { FeedbackService } from './feedback.service';
 import { SecurityLogService } from './security-log.service';
 import { ShareIntakeService } from './share-intake.service';
 import { FirestoreService } from './firestore.service';
@@ -35,6 +36,7 @@ describe('AccountDeletionService', () => {
   let mockImports: jasmine.SpyObj<ImportHistoryService>;
   let mockSnapshots: jasmine.SpyObj<InsightSnapshotService>;
   let mockProviderKeys: jasmine.SpyObj<ProviderKeyService>;
+  let mockFeedback: jasmine.SpyObj<FeedbackService>;
   let mockSecurityLog: jasmine.SpyObj<SecurityLogService>;
   let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
   let mockFirestore: jasmine.SpyObj<FirestoreService>;
@@ -68,6 +70,7 @@ describe('AccountDeletionService', () => {
     mockImports = jasmine.createSpyObj('ImportHistoryService', ['clearImportHistory']);
     mockSnapshots = jasmine.createSpyObj('InsightSnapshotService', ['deleteAll']);
     mockProviderKeys = jasmine.createSpyObj('ProviderKeyService', ['deleteAll']);
+    mockFeedback = jasmine.createSpyObj('FeedbackService', ['deleteAll']);
     mockSecurityLog = jasmine.createSpyObj('SecurityLogService', ['deleteAll']);
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['clearAll']);
     mockFirestore = jasmine.createSpyObj('FirestoreService', ['deleteDocument']);
@@ -88,6 +91,7 @@ describe('AccountDeletionService', () => {
     track(mockImports.clearImportHistory, 'imports');
     track(mockSnapshots.deleteAll, 'insightSnapshots');
     track(mockProviderKeys.deleteAll, 'secrets');
+    track(mockFeedback.deleteAll, 'feedback', 1);
     track(mockSecurityLog.deleteAll, 'securityEvents', 4);
     track(mockFirestore.deleteDocument, 'userDoc');
 
@@ -108,6 +112,7 @@ describe('AccountDeletionService', () => {
         { provide: ImportHistoryService, useValue: mockImports },
         { provide: InsightSnapshotService, useValue: mockSnapshots },
         { provide: ProviderKeyService, useValue: mockProviderKeys },
+        { provide: FeedbackService, useValue: mockFeedback },
         { provide: SecurityLogService, useValue: mockSecurityLog },
         { provide: ShareIntakeService, useValue: mockShareIntake },
         { provide: FirestoreService, useValue: mockFirestore }
@@ -170,7 +175,7 @@ describe('AccountDeletionService', () => {
 
     const collectionSteps: DeletionStep[] = [
       'transactions', 'categories', 'budgets', 'recurring', 'goals', 'savedSearches',
-      'searchAnswers', 'categoryMemory', 'imports', 'insightSnapshots', 'secrets'
+      'searchAnswers', 'categoryMemory', 'imports', 'insightSnapshots', 'secrets', 'feedback'
     ];
     const securityIndex = order.indexOf('securityEvents');
     const userDocIndex = order.indexOf('userDoc');

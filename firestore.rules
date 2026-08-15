@@ -610,6 +610,30 @@ service cloud.firestore {
         && userOptionalsValid(d);
     }
 
+    // The closed field set is safe to require, as with securityEvents: the
+    // collection cannot predate its own rule and so has no legacy rows.
+    // createdAt/updatedAt are the service stamps addDocument adds.
+    function feedbackCreateValid(userId) {
+      let d = request.resource.data;
+      return d.userId == userId
+        && d.keys().hasOnly([
+             'userId', 'category', 'message', 'appVersion',
+             'platform', 'locale', 'createdAt', 'updatedAt'
+           ])
+        && d.keys().hasAll([
+             'userId', 'category', 'message', 'appVersion', 'platform', 'locale'
+           ])
+        && d.category in ['bug', 'idea', 'other']
+        && d.message is string
+        && d.message.size() > 0
+        && d.message.size() <= 2000
+        && d.appVersion is string
+        && d.platform is string
+        && d.locale is string
+        && (!('createdAt' in d) || d.createdAt is timestamp)
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
     // Retired shared exchange-rate cache. It was readable and writable by
     // every authenticated user, so one account could rewrite the rates that
     // convert every other account's stored amounts — and a poisoned rate is
@@ -768,6 +792,19 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      // In-app feedback to the developer. Unrewritable for the
+      // securityEvents reason plus one of its own: the operator is mailed a
+      // copy of each entry on create, so a rewrite would make the stored
+      // record diverge from the mail already sent. Owner delete stays
+      // allowed — account deletion has to empty the list, and a rule cannot
+      // tell "delete my account" apart from "delete one entry".
+      match /feedback/{feedbackId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && feedbackCreateValid(userId);
+        allow update: if false;
+        allow delete: if isOwner(userId);
+      }
+
       // Any other subcollections under user, including ones added later.
       // Rules are additive — an allow here cannot be narrowed by the blocks
       // above — so every validated collection must be carved out, or its
@@ -777,7 +814,7 @@ service cloud.firestore {
         allow write: if isOwner(userId) && !(subcollection in [
           'transactions', 'budgets', 'categories', 'goals',
           'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-          'insightSnapshots', 'categoryMemory', 'searchAnswers'
+          'insightSnapshots', 'categoryMemory', 'searchAnswers', 'feedback'
         ]);
       }
     }
