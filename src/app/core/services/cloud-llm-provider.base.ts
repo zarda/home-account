@@ -49,6 +49,19 @@ import {
   RawTransaction,
 } from './llm-provider.interface';
 
+/**
+ * Rows per categorizeTransactions request. The binding constraint is the
+ * answer, not the question: the prompt declares maxOutputTokens 800
+ * (categorization.prompts.ts), and one answer entry —
+ * {"index": 24, "categoryId": "entertainment_streaming", "confidence": 0.85}
+ * — costs roughly 25-30 tokens with a long catalog id. 25 rows is ~750
+ * tokens at the pessimistic end, inside the cap with headroom for fences
+ * and whitespace. Past the cap the array truncates, the parse throws, and
+ * every row in the request lands on the 0.1 fallback at once — which is
+ * exactly what a whole-batch request did to a long CSV import.
+ */
+export const CATEGORIZE_CHUNK_SIZE = 25;
+
 /** One model answer, as much of it as the shared operations need. */
 export interface ProviderResponse {
   /** The answer text; empty when the provider returned none. */
@@ -383,36 +396,49 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
   ): Promise<CategorizedTransaction[]> {
     this.assertTextTransport();
 
-    return this.runOrDefault(
-      'batch categorization',
-      async () => {
-        const categories = this.categoryService.categories();
-        const rendered = renderPrompt('categorizeTransactions', {
-          categoryCatalog: buildCategoryPromptCatalog(categories, name =>
-            this.translateCategoryName(name)
-          ),
-          grounding,
-          rows: transactions.map((t, i) => ({
-            index: i,
-            description: t.description,
-            amount: t.amount,
-          })),
-        });
-
-        const response = await this.sendText('categorizeTransactions', rendered);
-        const categorizations = JSON.parse(this.extractJson(response.text));
-
-        return applyCategorizations(transactions, categorizations, categories);
-      },
-      // Every row lands on the fallback category at a confidence low enough
-      // that the review step flags all of them.
-      () =>
-        transactions.map(t => ({
-          ...t,
-          suggestedCategoryId: 'other_expense',
-          confidence: 0.1,
-        }))
+    const categories = this.categoryService.categories();
+    const categoryCatalog = buildCategoryPromptCatalog(categories, name =>
+      this.translateCategoryName(name)
     );
+
+    // One request per chunk, sequentially: applyCategorizations matches
+    // answers by position within its chunk, so each request re-bases its
+    // indices from zero, and a failed chunk degrades only its own rows.
+    const results: CategorizedTransaction[] = [];
+    for (let start = 0; start < transactions.length; start += CATEGORIZE_CHUNK_SIZE) {
+      const chunk = transactions.slice(start, start + CATEGORIZE_CHUNK_SIZE);
+      const answered = await this.runOrDefault(
+        'batch categorization',
+        async () => {
+          const rendered = renderPrompt('categorizeTransactions', {
+            categoryCatalog,
+            grounding,
+            rows: chunk.map((t, i) => ({
+              index: i,
+              description: t.description,
+              amount: t.amount,
+            })),
+          });
+
+          const response = await this.sendText('categorizeTransactions', rendered);
+          const categorizations = JSON.parse(this.extractJson(response.text));
+
+          return applyCategorizations(chunk, categorizations, categories);
+        },
+        // Every row of the failed chunk lands on the fallback category at a
+        // confidence low enough that the review step flags all of them; the
+        // other chunks keep their real answers.
+        () =>
+          chunk.map(t => ({
+            ...t,
+            suggestedCategoryId: 'other_expense',
+            confidence: 0.1,
+          }))
+      );
+      results.push(...answered);
+    }
+
+    return results;
   }
 
   async detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping> {
