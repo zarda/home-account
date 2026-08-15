@@ -89,7 +89,11 @@ in the device's own time zone.
 ## The catch-up engine
 
 The engine runs when the dashboard loads — the landing screen — and posts every
-occurrence that came due since the app was last open. Running it again is free:
+occurrence that came due since the app was last open. Its work list is
+enumerated from the server, never taken from a listener's cached first emission
+([ADR 0044](ADR/0044-the-catch-up-work-list-comes-from-the-server.md),
+[one-shot-reads](one-shot-reads.md)) — a warm cache's short answer used to make
+an offline open post nothing and call it success. Running it again is free:
 concurrent triggers share one run, and a repeat finds nothing due because the
 pointer has already moved past today.
 
@@ -110,9 +114,12 @@ next one resumes exactly there. Without the cap, a daily rule dormant for more
 than about 500 days built a transaction that could never commit, and failed the
 same way forever.
 
-**Offline, claims are skipped rather than failed.** A Firestore transaction needs
-the network, so the claim rejects while offline and the rule is simply left for
-the next online run. Nothing is reported, because there is nothing wrong.
+**Offline, the run defers rather than pretending.** The work-list read is
+answered by the server or not at all, so with no network the whole run rejects —
+the dashboard treats that as non-fatal — and the next online open posts
+everything still due. Nothing is lost, because the pointer never advanced. A
+claim that individually loses the network mid-run is still skipped silently and
+picked up by the next run.
 
 Each posted occurrence is an ordinary transaction — it appears in the ledger, in
 reports, and against budgets — flagged as recurring and carrying the id of the

@@ -72,7 +72,7 @@ The same rule applies to examples. Demonstrate the *shape* with placeholders (`"
 | `statementTransactions` | receiptScanning | claude, gemini, openai | 1.17.93 | A statement or multi-row document image → one row per line item |
 | `pdfStatement` | receiptScanning | gemini | 1.17.93 | A PDF bank statement → one row per transaction |
 | `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges, one printed total per group |
-| `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row |
+| `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row; sent in chunks of 25 rows so every answer fits the declared 800-token budget |
 | `categorySuggestion` | categorization | claude, gemini, openai | 1.17.93 | Single-description category lookup outside the import flow |
 | `csvMapping` | categorization | claude, gemini, openai | 1.17.93 | Map a bank export's columns onto the transaction fields |
 | `spendingSummary` | insights | claude, gemini, openai | 1.17.93 | The dashboard's period insights, in fixed `## ` sections |

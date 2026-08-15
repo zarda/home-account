@@ -97,8 +97,14 @@ Rows are written `\n`-terminated. The importer accepts `\n`, `\r\n` and a lone
 
 ## Importing someone else's CSV
 
-**Settings → Import CSV** accepts a bank or another app's export. Columns are
-matched by name, case-insensitively, on a substring:
+**Settings → Import CSV** accepts a bank or another app's export. It is one of
+two doors: the AI import wizard also accepts a CSV, and its rows climb the same
+categorization ladder as image imports (#258) — a merchant the user already
+corrected is answered from category memory, the rest go to the configured
+provider in grounded batch calls, and whatever no one can answer keeps a
+low-confidence floor the review step flags. Settings → Import CSV stays
+model-free. Either way, columns are matched by name, case-insensitively, on a
+substring:
 
 | Column | Header names accepted |
 |---|---|
@@ -143,7 +149,10 @@ column, `debit` and `credit` are used instead.
   everywhere, but whether it is displayed varies by application and version. The
   importer strips it back off; a file edited and re-saved by a spreadsheet that
   displays it will keep it as literal text.
-- **Category is not imported at all**, from this app's exports or anyone else's.
-  There is no `category` probe, so every imported row takes the catch-all
-  category. Exported names are translated into whichever locale exported, which
-  is part of why matching on them was never attempted.
+- **The Category column is not imported at all**, from this app's exports or
+  anyone else's. There is no `category` probe, so nothing a file says about
+  categories survives the trip. Exported names are translated into whichever
+  locale exported, which is part of why matching on them was never attempted.
+  On the wizard path the suggestion now comes from the categorization ladder
+  rather than the file (#258); Settings → Import CSV still files every row
+  under the catch-all.
