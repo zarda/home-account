@@ -626,6 +626,28 @@ describe('AIImportService', () => {
       expect(result.warnings.some(w => w.type === 'low_confidence')).toBeTrue();
     });
 
+    it('lets a resolved extraction category override the ladder', async () => {
+      // Providers emit `category` only when the model's name resolved to a
+      // catalog id; that id wins over the ladder's answer (the documented
+      // precedence), while an unresolved name arrives as undefined and the
+      // ladder's answer stands.
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, category: 'transport' },
+        { date: '2024-06-01', description: 'Y', amount: 6, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 9 },
+      ]);
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      const resolved = result.transactions.find(t => t.description === 'X');
+      const unresolved = result.transactions.find(t => t.description === 'Y');
+      expect(resolved?.suggestedCategoryId).toBe('transport');
+      expect(unresolved?.suggestedCategoryId).toBe('food');
+    });
+
     it('should add a duplicate warning when duplicates are detected', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'X', amount: 5, type: 'expense', currency: 'JPY',
