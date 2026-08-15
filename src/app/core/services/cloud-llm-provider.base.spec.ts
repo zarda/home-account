@@ -102,6 +102,7 @@ describe('CloudLLMProviderBase', () => {
   const categories: Category[] = [
     createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense' }),
     createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
+    createCategory({ id: 'other_expense', name: 'Other', type: 'expense' }),
   ];
 
   beforeEach(() => {
@@ -274,6 +275,57 @@ describe('CloudLLMProviderBase', () => {
       expect(firstChunk.every(r => r.confidence === 0.1)).toBeTrue();
       expect(result[CATEGORIZE_CHUNK_SIZE].suggestedCategoryId).toBe('transport');
       expect(result[CATEGORIZE_CHUNK_SIZE].confidence).toBe(0.7);
+    });
+  });
+
+  describe('extraction category resolution', () => {
+    const statementJson = (category: string) =>
+      JSON.stringify([
+        { date: '2024-06-01', description: 'Row', amount: 5, type: 'expense', currency: 'USD', category },
+      ]);
+
+    it('keeps the catalog id when the answered name resolves', async () => {
+      provider.response = { text: statementJson('Groceries'), truncated: false };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].category).toBe('food_groceries');
+    });
+
+    it('keeps a deliberate Other as the catch-all id', async () => {
+      provider.response = { text: statementJson('Other'), truncated: false };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].category).toBe('other_expense');
+    });
+
+    it('leaves the category undefined when nothing matches', async () => {
+      // An unrecognized answer must stay distinguishable from a deliberate
+      // "Other": a truthy other_expense would wear the extraction-named grade
+      // downstream and override the categorization ladder's answer.
+      provider.response = { text: statementJson('Zeugs'), truncated: false };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].category).toBeUndefined();
+    });
+
+    it('resolves multi-image rows the same way', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2024-06-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
+            category: 'Zeugs', imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+          { date: '2024-06-01', description: 'B', amount: 6, type: 'expense', currency: 'USD',
+            category: 'Transport', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1 },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+
+      expect(rows[0].category).toBeUndefined();
+      expect(rows[1].category).toBe('transport');
     });
   });
 
