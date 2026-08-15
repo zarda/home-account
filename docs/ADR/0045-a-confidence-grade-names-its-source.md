@@ -103,10 +103,13 @@ below instead.
   warning exists on the result object and in specs, and nothing renders it.
 - The multi-image precedence mismatch stands: an extraction-carried category
   overrides the ladder's id while the ladder's confidence is reported.
-- On the mapper path an extraction-carried `category` is a free-text name
-  assigned to `suggestedCategoryId` without catalog resolution, so an
-  unresolvable name can still wear 0.8. Adjacent to this issue, not part of
-  it; it wants its own issue.
+- An extraction category the catalog could not resolve arrives as a truthy
+  catch-all — `mapCategoryNameToId` drops `matchCategoryName`'s matched flag —
+  so it wears the extraction-named 0.8, and on the multi-image path it
+  overrides the ladder's answer. This bullet first described the mechanism as
+  a name "assigned without catalog resolution"; reading the sites for the fix
+  showed every one of them resolves, and the flag is what was lost. Closed by
+  [ADR 0046](0046-an-unrecognized-category-name-is-not-a-category.md), #300.
 - Settings → Import CSV (the data-management door) still files every row
   under the catch-all per ADR 0011 — the ladder runs only on the wizard path.
 - The wizard's status strings remain raw English signal values throughout the
