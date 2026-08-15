@@ -110,6 +110,7 @@ describe('RecurringService', () => {
       'deleteDocument',
       'getDocument',
       'getCollection',
+      'getCollectionFromServer',
       'getDocRef',
       'runTransaction',
       'dateToTimestamp',
@@ -137,6 +138,7 @@ describe('RecurringService', () => {
     mockCurrencyService.ensureRatesLoaded.and.returnValue(Promise.resolve());
     mockCurrencyService.getExchangeRate.and.returnValue(1);
     mockFirestoreService.subscribeToCollection.and.returnValue(of([]));
+    mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([]));
     mockFirestoreService.subscribeToDocument.and.returnValue(of(null));
     mockFirestoreService.addDocument.and.returnValue(Promise.resolve('new-rec-id'));
     mockFirestoreService.updateDocument.and.returnValue(Promise.resolve());
@@ -630,17 +632,17 @@ describe('RecurringService', () => {
     it('should return empty array when not authenticated', async () => {
       (mockAuthService.userId as jasmine.Spy).and.returnValue(null);
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions([]);
       expect(result).toEqual([]);
     });
 
     it('should not process recurring transactions that are not yet due', async () => {
       const future = new Date(Date.now() + 10 * DAY);
-      service.recurringTransactions.set([
+      const rules = [
         createRecurring({ nextOccurrence: Timestamp.fromDate(future) })
-      ]);
+      ];
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions(rules);
 
       expect(result).toEqual([]);
       expect(mockFirestoreService.runTransaction).not.toHaveBeenCalled();
@@ -654,10 +656,9 @@ describe('RecurringService', () => {
         nextOccurrence: Timestamp.fromDate(due),
         endDate: Timestamp.fromDate(ended)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       // The occurrence at `due` came due BEFORE the end date: it must post.
       expect(txSetPaths()).toEqual([
@@ -690,10 +691,9 @@ describe('RecurringService', () => {
         nextOccurrence: Timestamp.fromDate(first),
         endDate: Timestamp.fromDate(endDate)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       expect(txSetPaths()).toEqual([
         `users/user123/transactions/rec-weekly1-${first.getTime()}`,
@@ -747,10 +747,9 @@ describe('RecurringService', () => {
         frequency: { type: 'daily', interval: 1 },
         nextOccurrence: Timestamp.fromDate(start)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       // No single transaction exceeded the write cap, and the backlog fully
       // drained in one catch-up run across successive claims.
@@ -779,10 +778,9 @@ describe('RecurringService', () => {
         nextOccurrence: Timestamp.fromDate(start),
         endDate: Timestamp.fromDate(ended)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       // Deactivating on a capped batch would strand the rest of the backlog,
       // because catch-up only claims active rules: only the final, draining
@@ -804,10 +802,9 @@ describe('RecurringService', () => {
         nextOccurrence: Timestamp.fromDate(due),
         endDate: Timestamp.fromDate(ended)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions([rule]);
 
       expect(result).toEqual([]);
       expect(txSet).not.toHaveBeenCalled();
@@ -821,11 +818,10 @@ describe('RecurringService', () => {
       const due = new Date(Date.now() - 3 * DAY);
       const createdTxn = { id: 'txn-id', amount: 5000 } as unknown as Transaction;
       const rule = createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(createdTxn));
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions([rule]);
 
       expect(txSet).toHaveBeenCalledTimes(1);
       const doc = txSet.calls.mostRecent().args[1] as Record<string, unknown>;
@@ -855,11 +851,10 @@ describe('RecurringService', () => {
         description: 'Rent',
         nextOccurrence: Timestamp.fromDate(due)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
       mockCurrencyService.getExchangeRate.and.returnValue(1.1);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       const doc = txSet.calls.mostRecent().args[1] as Record<string, unknown>;
       expect(doc['userId']).toBe('user123');
@@ -886,10 +881,9 @@ describe('RecurringService', () => {
         categoryId: 'food_groceries',
         nextOccurrence: Timestamp.fromDate(due)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       expect(mockBudgetService.recalculateBudgetsForCategory)
         .toHaveBeenCalledWith('food_groceries');
@@ -898,10 +892,9 @@ describe('RecurringService', () => {
     it('should not recalculate budgets for income rules', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       const rule = createRecurring({ id: 'inc1', nextOccurrence: Timestamp.fromDate(due) });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       expect(txSet).toHaveBeenCalled();
       expect(mockBudgetService.recalculateBudgetsForCategory).not.toHaveBeenCalled();
@@ -910,11 +903,10 @@ describe('RecurringService', () => {
     it('should skip pushing a created transaction that cannot be fetched back', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       const rule = createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(null));
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions([rule]);
 
       expect(txSet).toHaveBeenCalled();
       expect(result).toEqual([]);
@@ -922,11 +914,11 @@ describe('RecurringService', () => {
 
     it('should not touch the recurring document when nothing is due', async () => {
       const future = new Date(Date.now() + 10 * DAY);
-      service.recurringTransactions.set([
+      const rules = [
         createRecurring({ nextOccurrence: Timestamp.fromDate(future) })
-      ]);
+      ];
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions(rules);
 
       expect(result).toEqual([]);
       expect(txSet).not.toHaveBeenCalled();
@@ -936,10 +928,9 @@ describe('RecurringService', () => {
     it('should post exactly one occurrence with a deterministic id for one missed period', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       const rule = createRecurring({ id: 'rec1', nextOccurrence: Timestamp.fromDate(due) });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       expect(txSet).toHaveBeenCalledTimes(1);
       expect(txSetPaths()).toEqual([
@@ -968,11 +959,10 @@ describe('RecurringService', () => {
         frequency: { type: 'daily', interval: 1 },
         nextOccurrence: Timestamp.fromDate(due)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
       mockFirestoreService.getDocument.and.returnValue(Promise.resolve(createdTxn));
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions([rule]);
 
       // 2.5 days late on a daily rule => the 3 occurrences at due, due+1d, due+2d
       expect(txSetPaths()).toEqual([
@@ -1008,10 +998,9 @@ describe('RecurringService', () => {
           startDate: Timestamp.fromDate(new Date(2026, 0, 31, 9)),
           nextOccurrence: Timestamp.fromDate(february)
         });
-        service.recurringTransactions.set([rule]);
         seedServerRule(rule);
 
-        await service.processRecurringTransactions();
+        await service.processRecurringTransactions([rule]);
 
         expect(txSetPaths()).toEqual([
           `users/user123/transactions/rec-anchored-${february.getTime()}`,
@@ -1029,10 +1018,9 @@ describe('RecurringService', () => {
         frequency: { type: 'daily', interval: 0 },
         nextOccurrence: Timestamp.fromDate(due)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions([rule]);
 
       expect(txSet).toHaveBeenCalledTimes(1);
       expect(result).toEqual([]);
@@ -1049,10 +1037,9 @@ describe('RecurringService', () => {
         frequency: { type: 'daily', interval: NaN },
         nextOccurrence: Timestamp.fromDate(due)
       });
-      service.recurringTransactions.set([rule]);
       seedServerRule(rule);
 
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([rule]);
 
       expect(txSet).toHaveBeenCalledTimes(1);
       expect(txUpdate).toHaveBeenCalledTimes(1);
@@ -1065,15 +1052,15 @@ describe('RecurringService', () => {
       const due = new Date(Date.now() - 3 * DAY);
       // The locally cached rule looks due, but the fresh server read inside
       // the claim transaction shows another device already processed it.
-      service.recurringTransactions.set([
+      const rules = [
         createRecurring({ id: 'raced', nextOccurrence: Timestamp.fromDate(due) })
-      ]);
+      ];
       seedServerRule(createRecurring({
         id: 'raced',
         nextOccurrence: Timestamp.fromDate(new Date(Date.now() + 27 * DAY))
       }));
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions(rules);
 
       expect(result).toEqual([]);
       expect(txSet).not.toHaveBeenCalled();
@@ -1083,16 +1070,16 @@ describe('RecurringService', () => {
 
     it('should no-op when the rule was paused on the server', async () => {
       const due = new Date(Date.now() - 3 * DAY);
-      service.recurringTransactions.set([
+      const rules = [
         createRecurring({ id: 'paused', nextOccurrence: Timestamp.fromDate(due) })
-      ]);
+      ];
       seedServerRule(createRecurring({
         id: 'paused',
         nextOccurrence: Timestamp.fromDate(due),
         isActive: false
       }));
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions(rules);
 
       expect(result).toEqual([]);
       expect(txSet).not.toHaveBeenCalled();
@@ -1101,12 +1088,12 @@ describe('RecurringService', () => {
 
     it('should no-op when the rule was deleted on the server', async () => {
       const due = new Date(Date.now() - 3 * DAY);
-      service.recurringTransactions.set([
+      const rules = [
         createRecurring({ id: 'gone', nextOccurrence: Timestamp.fromDate(due) })
-      ]);
+      ];
       // Nothing seeded: the server copy no longer exists.
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions(rules);
 
       expect(result).toEqual([]);
       expect(txSet).not.toHaveBeenCalled();
@@ -1115,14 +1102,14 @@ describe('RecurringService', () => {
 
     it('should skip silently when the claim transaction rejects (offline)', async () => {
       const due = new Date(Date.now() - 3 * DAY);
-      service.recurringTransactions.set([
+      const rules = [
         createRecurring({ id: 'offline1', nextOccurrence: Timestamp.fromDate(due) })
-      ]);
+      ];
       mockFirestoreService.runTransaction.and.callFake(() =>
         Promise.reject(new Error('unavailable: failed to get documents from server'))
       );
 
-      const result = await service.processRecurringTransactions();
+      const result = await service.processRecurringTransactions(rules);
 
       expect(result).toEqual([]);
       expect(mockBudgetService.recalculateBudgetsForCategory).not.toHaveBeenCalled();
@@ -1130,7 +1117,7 @@ describe('RecurringService', () => {
     });
 
     it('should reset isLoading after completion', async () => {
-      await service.processRecurringTransactions();
+      await service.processRecurringTransactions([]);
       expect(service.isLoading()).toBeFalse();
     });
   });
@@ -1144,13 +1131,14 @@ describe('RecurringService', () => {
       expect(result).toEqual([]);
       expect(mockCurrencyService.ensureRatesLoaded).not.toHaveBeenCalled();
       expect(mockBudgetService.getBudgets).not.toHaveBeenCalled();
+      expect(mockFirestoreService.getCollectionFromServer).not.toHaveBeenCalled();
       expect(mockFirestoreService.subscribeToCollection).not.toHaveBeenCalled();
     });
 
     it('should load rates and fresh recurring rules before processing, without warming budgets', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       const rule = createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) });
-      mockFirestoreService.subscribeToCollection.and.returnValue(of([rule]));
+      mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([rule]));
       seedServerRule(rule);
 
       await service.catchUpRecurringTransactions();
@@ -1159,7 +1147,7 @@ describe('RecurringService', () => {
       // The recalculation enumerates the budgets collection itself, so the
       // catch-up no longer subscribes just to populate the signal for it.
       expect(mockBudgetService.getBudgets).not.toHaveBeenCalled();
-      expect(mockFirestoreService.subscribeToCollection).toHaveBeenCalledWith(
+      expect(mockFirestoreService.getCollectionFromServer).toHaveBeenCalledWith(
         'users/user123/recurring',
         { orderBy: [{ field: 'nextOccurrence', direction: 'asc' }] }
       );
@@ -1169,7 +1157,7 @@ describe('RecurringService', () => {
     it('should share a single run between concurrent triggers', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       const rule = createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) });
-      mockFirestoreService.subscribeToCollection.and.returnValue(of([rule]));
+      mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([rule]));
       seedServerRule(rule);
 
       const first = service.catchUpRecurringTransactions();
@@ -1184,19 +1172,19 @@ describe('RecurringService', () => {
     it('should post nothing on a repeated load once nextOccurrence has advanced', async () => {
       const due = new Date(Date.now() - 3 * DAY);
       const rule = createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) });
-      mockFirestoreService.subscribeToCollection.and.returnValue(of([rule]));
+      mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([rule]));
       seedServerRule(rule);
 
       await service.catchUpRecurringTransactions();
       expect(txSet).toHaveBeenCalledTimes(1);
 
-      // A fresh load now returns the advanced (future) nextOccurrence,
+      // A fresh enumeration now returns the advanced (future) nextOccurrence,
       // exactly as Firestore would after the first run persisted it.
       const advanced = createRecurring({
         id: 'due1',
         nextOccurrence: Timestamp.fromDate(new Date(Date.now() + 27 * DAY))
       });
-      mockFirestoreService.subscribeToCollection.and.returnValue(of([advanced]));
+      mockFirestoreService.getCollectionFromServer.and.returnValue(Promise.resolve([advanced]));
       seedServerRule(advanced);
 
       const result = await service.catchUpRecurringTransactions();
@@ -1205,12 +1193,12 @@ describe('RecurringService', () => {
       expect(txSet).toHaveBeenCalledTimes(1);
     });
 
-    it('should not post from a stale snapshot when the server copy has advanced', async () => {
-      // Device B cold-starts on a stale persistent cache that still lists the
-      // rule as due, but device A already claimed it on the server.
+    it('should not post from a stale work list when the server copy has advanced', async () => {
+      // Another device claims the rule between this device's enumeration and
+      // its claim: the claim's own fresh server read is still the guard.
       const due = new Date(Date.now() - 3 * DAY);
-      mockFirestoreService.subscribeToCollection.and.returnValue(
-        of([createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) })])
+      mockFirestoreService.getCollectionFromServer.and.returnValue(
+        Promise.resolve([createRecurring({ id: 'due1', nextOccurrence: Timestamp.fromDate(due) })])
       );
       seedServerRule(createRecurring({
         id: 'due1',
