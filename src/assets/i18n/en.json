@@ -1163,6 +1163,7 @@
       "messagePlaceholder": "What would you like to say?",
       "contextNote": "Your app version, platform and language are included automatically.",
       "send": "Send",
+      "sending": "Sending...",
       "sent": "Thanks — your feedback was sent.",
       "sendFailed": "Sending failed. Check your connection and try again.",
       "historyTitle": "Your sent feedback",

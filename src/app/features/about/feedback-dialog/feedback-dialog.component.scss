@@ -1,0 +1,43 @@
+.feedback-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 8px;
+}
+
+.category-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.category-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.message-field {
+  width: 100%;
+
+  textarea {
+    resize: vertical;
+  }
+}
+
+.context-note {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.btn-spinner {
+  display: inline-block;
+  margin-right: 8px;
+}

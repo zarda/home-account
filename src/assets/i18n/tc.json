@@ -1106,6 +1106,7 @@
       "messagePlaceholder": "想對開發者說什麼呢？",
       "contextNote": "應用程式版本、平台與語言會自動附上。",
       "send": "傳送",
+      "sending": "傳送中...",
       "sent": "已傳送您的意見回饋，謝謝！",
       "sendFailed": "傳送失敗。請檢查網路連線後再試一次。",
       "historyTitle": "已傳送的意見回饋",
