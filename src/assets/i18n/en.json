@@ -641,6 +641,10 @@
       "securityEvents": {
         "label": "Security activity",
         "description": "Sign-ins and security-relevant changes to your account"
+      },
+      "feedback": {
+        "label": "Feedback",
+        "description": "Feedback you sent to the developer from the About page"
       }
     }
   },
@@ -1145,7 +1149,27 @@
     "donateTitle": "Support Home Account",
     "donateDescription": "If you find this app helpful, consider supporting its development with a donation. Your contribution helps maintain and improve the application.",
     "donateButton": "Donate",
-    "techStack": "Built With"
+    "techStack": "Built With",
+    "feedback": {
+      "cardTitle": "Send feedback",
+      "cardDescription": "Found a bug, have an idea, or just want to say something? Your message is stored with your account and mailed to the developer.",
+      "openButton": "Send feedback",
+      "dialogTitle": "Send feedback",
+      "categoryLabel": "Category",
+      "categoryBug": "Bug",
+      "categoryIdea": "Idea",
+      "categoryOther": "Other",
+      "messageLabel": "Message",
+      "messagePlaceholder": "What would you like to say?",
+      "contextNote": "Your app version, platform and language are included automatically.",
+      "send": "Send",
+      "sending": "Sending...",
+      "sent": "Thanks — your feedback was sent.",
+      "sendFailed": "Sending failed. Check your connection and try again.",
+      "historyTitle": "Your sent feedback",
+      "historyEmpty": "Nothing sent yet.",
+      "loadFailed": "Your sent feedback could not be loaded."
+    }
   },
   "receiptImages": {
     "title": "Receipt images",

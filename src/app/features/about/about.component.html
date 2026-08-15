@@ -43,6 +43,57 @@
     </mat-card-content>
   </mat-card>
 
+  <!-- Feedback Card: the door for the stored feedback kind -->
+  <mat-card class="feedback-card">
+    <mat-card-content>
+      <div class="feedback-content">
+        <mat-icon class="feedback-icon">feedback</mat-icon>
+        <div class="feedback-text">
+          <p class="feedback-title">{{ 'about.feedback.cardTitle' | translate }}</p>
+          <p class="feedback-body">{{ 'about.feedback.cardDescription' | translate }}</p>
+        </div>
+        <button
+          mat-raised-button
+          color="primary"
+          class="feedback-button"
+          (click)="openFeedbackDialog()"
+        >
+          <mat-icon>feedback</mat-icon>
+          {{ 'about.feedback.openButton' | translate }}
+        </button>
+      </div>
+
+      <div class="feedback-history">
+        <span class="feedback-history-title" id="feedback-history-label">
+          {{ 'about.feedback.historyTitle' | translate }}
+        </span>
+        @if (feedbackLoading()) {
+          <app-loading-spinner size="sm" />
+        } @else if (feedbackError()) {
+          <p class="feedback-note">{{ 'about.feedback.loadFailed' | translate }}</p>
+        } @else if (feedbackEntries().length === 0) {
+          <p class="feedback-note">{{ 'about.feedback.historyEmpty' | translate }}</p>
+        } @else {
+          <ul class="feedback-list" aria-labelledby="feedback-history-label">
+            @for (entry of feedbackEntries(); track entry.id) {
+              <li class="feedback-item">
+                <div class="feedback-item-meta">
+                  <span class="feedback-item-category">
+                    {{ feedbackCategoryKey(entry.category) | translate }}
+                  </span>
+                  @if (feedbackSentOn(entry)) {
+                    <span class="feedback-item-date">{{ feedbackSentOn(entry) }}</span>
+                  }
+                </div>
+                <p class="feedback-item-message">{{ entry.message }}</p>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </mat-card-content>
+  </mat-card>
+
   <!-- Donate Card (web only - hidden in native apps per App Store guidelines) -->
   @if (showDonateSection()) {
     <mat-card class="donate-card">

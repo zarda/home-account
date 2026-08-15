@@ -126,3 +126,8 @@ own. It holds your full ledger in clear text — descriptions, notes, amounts an
 category names — so it deserves the same handling as a bank statement. It does
 not contain receipt images, credentials, or any authentication token, and
 restoring it into another account rewrites every `userId` to that account's.
+
+Feedback entries (`users/{uid}/feedback`) are deliberately absent as well:
+they are messages already delivered to the developer, not account data worth
+migrating, and restoring them would re-fire the mail trigger
+([feedback.md](feedback.md)) and send every one again.

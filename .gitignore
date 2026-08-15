@@ -53,3 +53,10 @@ firebase-debug.log
 # Firebase emulator logs
 firestore-debug.log
 ui-debug.log
+
+# Cloud Functions workspace (source is committed; artifacts and local secrets are not)
+functions/node_modules/
+functions/lib/
+functions/.env*
+functions/*.local
+functions/*.log

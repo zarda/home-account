@@ -1,0 +1,59 @@
+<app-dialog-header titleKey="about.feedback.dialogTitle" icon="feedback" (closed)="cancel()" />
+
+<mat-dialog-content>
+  <div class="feedback-dialog-content">
+    <div class="category-selection">
+      <span class="section-label" id="feedback-category-label">
+        {{ 'about.feedback.categoryLabel' | translate }}
+      </span>
+      <mat-radio-group
+        [(ngModel)]="category"
+        class="category-radio-group"
+        aria-labelledby="feedback-category-label"
+      >
+        @for (option of categories; track option) {
+          <mat-radio-button [value]="option" [disabled]="isSubmitting()">
+            {{ categoryLabelKey(option) | translate }}
+          </mat-radio-button>
+        }
+      </mat-radio-group>
+    </div>
+
+    <mat-form-field appearance="outline" class="message-field">
+      <mat-label>{{ 'about.feedback.messageLabel' | translate }}</mat-label>
+      <textarea
+        matInput
+        [(ngModel)]="message"
+        [maxlength]="maxLength"
+        [disabled]="isSubmitting()"
+        rows="5"
+        [placeholder]="'about.feedback.messagePlaceholder' | translate"
+      ></textarea>
+      <mat-hint align="end">{{ message.length }}/{{ maxLength }}</mat-hint>
+    </mat-form-field>
+
+    <p class="context-note">{{ 'about.feedback.contextNote' | translate }}</p>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()" [disabled]="isSubmitting()">
+    {{ 'common.cancel' | translate }}
+  </button>
+  <button
+    mat-flat-button
+    color="primary"
+    (click)="submit()"
+    [disabled]="!message.trim() || isSubmitting()"
+  >
+    @if (isSubmitting()) {
+      <mat-spinner diameter="20" class="btn-spinner"></mat-spinner>
+      {{ 'about.feedback.sending' | translate }}
+    } @else {
+      <ng-container>
+        <mat-icon>send</mat-icon>
+        {{ 'about.feedback.send' | translate }}
+      </ng-container>
+    }
+  </button>
+</mat-dialog-actions>

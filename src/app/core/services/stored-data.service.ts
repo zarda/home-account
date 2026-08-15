@@ -132,6 +132,14 @@ export const STORED_DATA_KINDS: readonly StoredDataKind[] = [
     icon: 'security',
     route: '/settings',
     subcollection: 'securityEvents'
+  },
+  {
+    id: 'feedback',
+    labelKey: 'data.kinds.feedback.label',
+    descriptionKey: 'data.kinds.feedback.description',
+    icon: 'feedback',
+    route: '/about',
+    subcollection: 'feedback'
   }
 ];
 
@@ -157,7 +165,7 @@ export type StoredDataCounts = Partial<Record<DeletionStep, number | null>>;
  * What the app has stored, and how much of it.
  *
  * Counts come from `getCountFromServer`, which aggregates server-side and
- * downloads no documents — the difference between a page that costs twelve
+ * downloads no documents — the difference between a page that costs thirteen
  * reads and one that costs the whole account. It is also server-only: it does
  * not fall back to the offline cache, so a count that cannot be fetched
  * resolves to null and the row shows a dash. A wrong number on a page whose

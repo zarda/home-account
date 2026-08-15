@@ -13,6 +13,7 @@ import { GoalService } from './goal.service';
 import { ImportHistoryService } from './import-history.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
 import { ProviderKeyService } from './provider-key.service';
+import { FeedbackService } from './feedback.service';
 import { SecurityLogService } from './security-log.service';
 import { ShareIntakeService } from './share-intake.service';
 import { FirestoreService } from './firestore.service';
@@ -40,6 +41,7 @@ export const DELETION_STEPS = [
   'imports',
   'insightSnapshots',
   'secrets',
+  'feedback',
   'securityEvents',
   'userDoc',
   'authUser'
@@ -83,6 +85,7 @@ export class AccountDeletionService {
   private importHistory = inject(ImportHistoryService);
   private insightSnapshots = inject(InsightSnapshotService);
   private providerKeys = inject(ProviderKeyService);
+  private feedbackService = inject(FeedbackService);
   private securityLog = inject(SecurityLogService);
   private firestoreService = inject(FirestoreService);
 
@@ -125,6 +128,7 @@ export class AccountDeletionService {
       ['imports', () => this.importHistory.clearImportHistory()],
       ['insightSnapshots', () => this.insightSnapshots.deleteAll()],
       ['secrets', () => this.providerKeys.deleteAll()],
+      ['feedback', () => this.feedbackService.deleteAll()],
       ['securityEvents', () => this.securityLog.deleteAll(userId)],
       ['userDoc', () => this.firestoreService.deleteDocument(`users/${userId}`)]
     ];

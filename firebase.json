@@ -8,6 +8,19 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "functions": {
+    "source": "functions",
+    "codebase": "default",
+    "predeploy": [
+      "npm --prefix functions ci",
+      "npm --prefix functions run build"
+    ],
+    "ignore": [
+      "node_modules",
+      ".git",
+      "*.log"
+    ]
+  },
   "hosting": {
     "public": "dist/home-account/browser",
     "ignore": [
@@ -28,6 +41,9 @@
     },
     "firestore": {
       "port": 8080
+    },
+    "functions": {
+      "port": 5001
     },
     "storage": {
       "port": 9199

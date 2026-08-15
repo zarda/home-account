@@ -32,6 +32,7 @@ about its door. Adding a step to the cascade and nothing else breaks the suite.
 | Monthly snapshots | `insightSnapshots` | Reports → Insights |
 | API keys | `secrets/providers` (a document) | the AI page |
 | Security activity | `securityEvents` | Settings → Preferences |
+| Feedback | `feedback` | the About page |
 
 Deliberately absent, and why: the app lock credential and the offline receipt
 queue are device-local rather than account data; the user document is the
@@ -44,7 +45,7 @@ below the index.
 
 Counts come from `FirestoreService.countDocuments`, which is
 `getCountFromServer` — a server-side aggregate that downloads no documents.
-Twelve are issued when the page opens and each lands on its own row as it
+Thirteen are issued when the page opens and each lands on its own row as it
 arrives, so a slow collection delays only itself.
 
 A row shows one of three things:

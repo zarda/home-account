@@ -20,9 +20,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      # The functions workspace compiles and tests in seconds and needs no
+      # environment stubs, so it fails fast ahead of the Angular pipeline.
+      - name: Functions build & test
+        run: |
+          npm --prefix functions ci
+          npm --prefix functions test
 
       # src/environments/environment.ts re-exports from .vscode/environment
       # (gitignored, holds local Firebase keys), so lint/test type-checking needs

@@ -46,6 +46,7 @@ rules grant only the owner and the project deploys no Cloud Functions
 | imports | `users/{uid}/imports` | `ImportHistoryService.clearImportHistory()` |
 | insightSnapshots | `users/{uid}/insightSnapshots` | `InsightSnapshotService.deleteAll()` |
 | secrets | `users/{uid}/secrets/providers` (AI keys) | `ProviderKeyService.deleteAll()` |
+| feedback | `users/{uid}/feedback` (sent feedback) | `FeedbackService.deleteAll()` |
 | securityEvents | `users/{uid}/securityEvents` (sign-in log) | `SecurityLogService.deleteAll(uid)` |
 | userDoc | The `users/{uid}` document itself | `FirestoreService.deleteDocument` |
 | authUser | The Firebase Auth account and session | `AuthService.deleteFirebaseUser()` |

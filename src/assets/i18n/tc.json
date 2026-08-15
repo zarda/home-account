@@ -608,6 +608,10 @@
       "securityEvents": {
         "label": "安全活動",
         "description": "登入紀錄與帳戶安全相關變更"
+      },
+      "feedback": {
+        "label": "意見回饋",
+        "description": "您從「關於」頁面傳送給開發者的意見回饋"
       }
     }
   },
@@ -1088,7 +1092,27 @@
     "donateTitle": "支持家庭記帳",
     "donateDescription": "如果您覺得這個應用程式很有幫助，請考慮透過捐款支持其開發。您的貢獻有助於維護和改進應用程式。",
     "donateButton": "捐款",
-    "techStack": "技術架構"
+    "techStack": "技術架構",
+    "feedback": {
+      "cardTitle": "傳送意見回饋",
+      "cardDescription": "無論是錯誤、想法或任何建議，都歡迎告訴開發者。訊息會儲存在您的帳號中，並以電子郵件寄給開發者。",
+      "openButton": "傳送意見回饋",
+      "dialogTitle": "傳送意見回饋",
+      "categoryLabel": "類別",
+      "categoryBug": "錯誤回報",
+      "categoryIdea": "想法建議",
+      "categoryOther": "其他",
+      "messageLabel": "訊息",
+      "messagePlaceholder": "想對開發者說什麼呢？",
+      "contextNote": "應用程式版本、平台與語言會自動附上。",
+      "send": "傳送",
+      "sending": "傳送中...",
+      "sent": "已傳送您的意見回饋，謝謝！",
+      "sendFailed": "傳送失敗。請檢查網路連線後再試一次。",
+      "historyTitle": "已傳送的意見回饋",
+      "historyEmpty": "尚未傳送任何意見回饋。",
+      "loadFailed": "無法載入已傳送的意見回饋。"
+    }
   },
   "receiptImages": {
     "title": "收據圖片",
