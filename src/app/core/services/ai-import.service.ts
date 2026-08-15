@@ -783,7 +783,12 @@ export class AIImportService {
         date: parsedDate ?? new Date(),
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
-        categoryConfidence: 0.8, // AI extracted categories are fairly confident
+        // The grade follows the evidence, on the applyCategorizations scale
+        // (categorization.utils.ts): 0.8 when extraction actually named a
+        // category, 0.3 when nothing usable answered — under the 0.5 review
+        // band, so a defaulted row is flagged instead of wearing the high
+        // chip it never earned. (ADR 0045)
+        categoryConfidence: t.category ? 0.8 : 0.3,
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         notes: this.formatItemNotes(t.details),
         fieldConfidence: (t.amountConfidence !== undefined || dateConfidence !== undefined)
