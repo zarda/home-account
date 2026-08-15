@@ -292,6 +292,24 @@ describe('RecurringService catch-up (emulator smoke test)', () => {
     expect(await postedDayKeys()).toEqual(first);
   }, 60000);
 
+  /**
+   * The contract from ADR 0044: the work list is enumerated through a server
+   * read, with the signal playing no part. The emulator has no persistent
+   * cache, so the trigger itself — a warm cache serving a short first
+   * emission — cannot be reproduced here; what a real commit can prove is
+   * the fix's shape: the catch-up posts with `recurringTransactions`
+   * deliberately never populated, and leaves it that way afterwards (the
+   * pages' own subscriptions fill it, never the engine).
+   */
+  it('enumerates the work list with the signal deliberately never populated', async () => {
+    expect(service.recurringTransactions()).toEqual([]);
+
+    await service.catchUpRecurringTransactions();
+
+    expect((await postedDayKeys()).length).toBeGreaterThan(0);
+    expect(service.recurringTransactions()).toEqual([]);
+  }, 60000);
+
   // A rule born from a detected group must round-trip the full validation
   // stack — the DTO shape, the service's frequency guards (ADR 0014), and
   // firestore.rules — none of which the pure mapping spec exercises.

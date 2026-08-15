@@ -1,7 +1,7 @@
 import { Injectable, effect, inject, signal, computed } from '@angular/core';
 import { Timestamp, FieldValue, deleteField } from '@angular/fire/firestore';
-import { Observable, map, of, firstValueFrom } from 'rxjs';
-import { FirestoreService } from './firestore.service';
+import { Observable, map, of } from 'rxjs';
+import { FirestoreService, QueryOptions } from './firestore.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { CurrencyService } from './currency.service';
@@ -92,6 +92,12 @@ export class RecurringService {
     return `users/${userId}/recurring`;
   }
 
+  // Shared by the live listener, the export enumeration and the catch-up
+  // work list, so the three queries cannot drift.
+  private recurringQueryOptions(): QueryOptions {
+    return { orderBy: [{ field: 'nextOccurrence', direction: 'asc' }] };
+  }
+
   // Get all recurring transactions
   getRecurring(): Observable<RecurringTransaction[]> {
     const userId = this.authService.userId();
@@ -99,7 +105,7 @@ export class RecurringService {
 
     return this.firestoreService.subscribeToCollection<RecurringTransaction>(
       this.userRecurringPath,
-      { orderBy: [{ field: 'nextOccurrence', direction: 'asc' }] }
+      this.recurringQueryOptions()
     ).pipe(
       map(recurring => {
         this.recurringTransactions.set(recurring);
@@ -128,7 +134,7 @@ export class RecurringService {
     const userId = this.authService.userId();
     if (!userId) return [];
     return this.firestoreService.getCollection<RecurringTransaction>(
-      this.userRecurringPath, { orderBy: [{ field: 'nextOccurrence', direction: 'asc' }] });
+      this.userRecurringPath, this.recurringQueryOptions());
   }
 
   /** One-shot read for the backup export. */
@@ -340,8 +346,8 @@ export class RecurringService {
     );
   }
 
-  // In-app catch-up: load fresh recurring rules, then post every occurrence
-  // due since the app was last open. Safe to call repeatedly; concurrent
+  // In-app catch-up: enumerate the rules, then post every occurrence due
+  // since the app was last open. Safe to call repeatedly; concurrent
   // callers share one run, and repeated runs find nothing due because
   // nextOccurrence has already advanced past now.
   catchUpRecurringTransactions(): Promise<Transaction[]> {
@@ -354,8 +360,19 @@ export class RecurringService {
         // Budgets need no pre-warming: recalculateBudgetsForCategory
         // enumerates the collection after the claims commit.
         await this.currencyService.ensureRatesLoaded();
-        await firstValueFrom(this.getRecurring());
-        return await this.processRecurringTransactions();
+        // The work list is answered by the server or not at all (ADR 0044,
+        // docs/one-shot-reads.md). Posting is acted on once, not rendered
+        // and corrected, and the per-rule claims need the network anyway —
+        // so a plain getCollection would buy nothing except the failure
+        // this read replaces: a warm cache serving a subset, or nothing,
+        // and the run reporting success over it. Offline the read rejects
+        // instead; the dashboard's catch treats that as non-fatal and the
+        // next online open posts everything still due.
+        const rules = await this.firestoreService.getCollectionFromServer<RecurringTransaction>(
+          this.userRecurringPath,
+          this.recurringQueryOptions()
+        );
+        return await this.processRecurringTransactions(rules);
       } finally {
         this.catchUpInFlight = null;
       }
@@ -365,12 +382,18 @@ export class RecurringService {
   }
 
   // Process due recurring transactions and create actual transactions.
-  // Each due rule is claimed on the SERVER inside a Firestore transaction:
-  // the rule doc is re-read fresh, every due occurrence is written and the
-  // rule's nextOccurrence is advanced in the same atomic commit. A racing
-  // device's transaction sees the advanced pointer and no-ops, so a stale
-  // local cache can never double-post or overwrite user-edited occurrences.
-  async processRecurringTransactions(): Promise<Transaction[]> {
+  // The rule set arrives as an argument so every caller names its source —
+  // the engine reads neither the recurringTransactions signal nor a
+  // listener, and it never writes the signal; the pages' own subscriptions
+  // maintain it. Each due rule is claimed on the SERVER inside a Firestore
+  // transaction: the rule doc is re-read fresh, every due occurrence is
+  // written and the rule's nextOccurrence is advanced in the same atomic
+  // commit. A racing device's transaction sees the advanced pointer and
+  // no-ops, so a stale entry in the work list can never double-post or
+  // overwrite user-edited occurrences — only a missing entry costs
+  // anything, which is why the catch-up enumerates rather than trusting
+  // shared state (ADR 0044).
+  async processRecurringTransactions(rules: RecurringTransaction[]): Promise<Transaction[]> {
     this.isLoading.set(true);
 
     try {
@@ -381,11 +404,10 @@ export class RecurringService {
       const createdTransactions: Transaction[] = [];
       const affectedExpenseCategories = new Set<string>();
 
-      // Get all active recurring transactions that are due
-      const dueRecurring = this.activeRecurring().filter(r => {
-        const nextDate = r.nextOccurrence.toDate();
-        return nextDate <= now;
-      });
+      // Active rules that are due, from the caller's enumerated set
+      const dueRecurring = rules.filter(r =>
+        r.isActive && r.nextOccurrence.toDate() <= now
+      );
 
       for (const recurring of dueRecurring) {
         // A backlog past the per-claim cap drains here, one full batch per

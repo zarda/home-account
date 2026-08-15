@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { filter, firstValueFrom, timeout } from 'rxjs';
-import { RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
+import { CategorizedTransaction, RawTransaction, ExtractedTransaction, MultiImageExtractedTransaction } from './gemini.service';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -398,29 +398,22 @@ export class AIImportService {
   }
 
   /**
-   * Categorize multi-image extracted transactions, preserving image metadata.
+   * The categorization ladder shared by the multi-image and CSV paths:
+   * anything the user already corrected is answered from category memory
+   * (CATEGORY_MEMORY_CONFIDENCE), the rest goes to the provider in one
+   * grounded batch call when one is configured, and whatever no one could
+   * answer keeps the seeded floor — other_expense at 0.1, low enough that
+   * the review step flags it. One entry per input row, in input order.
    */
-  private async categorizeMultiImageTransactions(
-    transactions: MultiImageExtractedTransaction[]
-  ): Promise<CategorizedImportTransaction[]> {
-    if (transactions.length === 0) return [];
-
-    // Get user's base currency from settings
-    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
-
-    // Convert to RawTransaction format for categorization
-    const rawTransactions: RawTransaction[] = transactions.map(t => ({
-      description: t.description,
-      amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-      date: parseDateInput(t.date) ?? new Date()
-    }));
-
+  private async categorizeWithLadder(
+    rawTransactions: RawTransaction[]
+  ): Promise<CategorizedTransaction[]> {
     // Anything the user has already corrected is settled — only the rest is
     // worth a model call.
     await this.categoryMemory.ensureLoaded();
     const remembered = rawTransactions.map(t => this.categoryMemory.lookup(t.description));
 
-    let categorizedByAI = rawTransactions.map((t) => ({
+    const categorized: CategorizedTransaction[] = rawTransactions.map((t) => ({
       ...t,
       suggestedCategoryId: 'other_expense',
       confidence: 0.1
@@ -439,18 +432,39 @@ export class AIImportService {
         // The provider indexes its answers against what it was sent, so map
         // them back onto the original positions.
         asked.forEach((result, position) => {
-          categorizedByAI[unknownIndexes[position]] = result;
+          categorized[unknownIndexes[position]] = result;
         });
       } catch (error) {
         console.warn('AI categorization failed, using defaults:', error);
       }
     }
 
-    categorizedByAI = categorizedByAI.map((t, index) =>
+    return categorized.map((t, index) =>
       remembered[index]
         ? { ...t, suggestedCategoryId: remembered[index], confidence: CATEGORY_MEMORY_CONFIDENCE }
         : t
     );
+  }
+
+  /**
+   * Categorize multi-image extracted transactions, preserving image metadata.
+   */
+  private async categorizeMultiImageTransactions(
+    transactions: MultiImageExtractedTransaction[]
+  ): Promise<CategorizedImportTransaction[]> {
+    if (transactions.length === 0) return [];
+
+    // Get user's base currency from settings
+    const baseCurrency = baseCurrencyOf(this.authService.currentUser());
+
+    // Convert to RawTransaction format for categorization
+    const rawTransactions: RawTransaction[] = transactions.map(t => ({
+      description: t.description,
+      amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
+      date: parseDateInput(t.date) ?? new Date()
+    }));
+
+    const categorizedByAI = await this.categorizeWithLadder(rawTransactions);
 
     // Convert to CategorizedImportTransaction with image metadata
     return categorizedByAI.map((t, index) => {
@@ -669,7 +683,7 @@ export class AIImportService {
       this.processingStatus.set('Converting transactions...');
       this.processingProgress.set(30);
 
-      this.processingStatus.set('Categorizing with AI...');
+      this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(50);
 
       // Convert to ExtractedTransaction format. Mapped straight off the parsed
@@ -686,6 +700,22 @@ export class AIImportService {
       }));
 
       const categorized = await this.categorizeTransactions(extractedTransactions);
+
+      // The same ladder the image paths climb: category memory first, then a
+      // grounded model call when a provider is configured, then the
+      // review-flagged floor. A CSV row never carries an extraction category
+      // — the Category column deliberately does not round-trip (ADR 0011) —
+      // so the overlay cannot fight the mapper's suggestion.
+      const rawRows: RawTransaction[] = extractedTransactions.map(t => ({
+        description: t.description,
+        amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
+        date: parseDateInput(t.date) ?? new Date()
+      }));
+      const laddered = await this.categorizeWithLadder(rawRows);
+      laddered.forEach((row, index) => {
+        categorized[index].suggestedCategoryId = row.suggestedCategoryId;
+        categorized[index].categoryConfidence = row.confidence;
+      });
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
@@ -783,7 +813,12 @@ export class AIImportService {
         date: parsedDate ?? new Date(),
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
-        categoryConfidence: 0.8, // AI extracted categories are fairly confident
+        // The grade follows the evidence, on the applyCategorizations scale
+        // (categorization.utils.ts): 0.8 when extraction actually named a
+        // category, 0.3 when nothing usable answered — under the 0.5 review
+        // band, so a defaulted row is flagged instead of wearing the high
+        // chip it never earned. (ADR 0045)
+        categoryConfidence: t.category ? 0.8 : 0.3,
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         notes: this.formatItemNotes(t.details),
         fieldConfidence: (t.amountConfidence !== undefined || dateConfidence !== undefined)

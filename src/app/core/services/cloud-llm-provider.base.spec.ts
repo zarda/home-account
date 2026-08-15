@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { EnvironmentInjector, runInInjectionContext } from '@angular/core';
-import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
+import { CATEGORIZE_CHUNK_SIZE, CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
@@ -26,10 +26,14 @@ class StubProvider extends CloudLLMProviderBase {
   /** Every prompt id the transports were asked for, in order. */
   readonly sent: PromptId[] = [];
   readonly imagesSent: string[][] = [];
+  /** Every rendered prompt sendText was handed, in order. */
+  readonly renderedSent: RenderedPrompt[] = [];
 
   clientPresent = true;
   response: ProviderResponse = { text: '', truncated: false };
   failWith: unknown = null;
+  /** FIFO answers for multi-request operations; an Error entry throws. */
+  responseQueue: (ProviderResponse | Error)[] = [];
 
   override get capabilities(): ProviderCapabilities {
     return { vision: true, nativePdf: false };
@@ -53,8 +57,16 @@ class StubProvider extends CloudLLMProviderBase {
     this.assertTextTransport();
   }
 
-  protected async sendText(promptId: PromptId): Promise<ProviderResponse> {
+  protected async sendText(promptId: PromptId, rendered: RenderedPrompt): Promise<ProviderResponse> {
     this.sent.push(promptId);
+    this.renderedSent.push(rendered);
+    if (this.responseQueue.length > 0) {
+      const next = this.responseQueue.shift()!;
+      if (next instanceof Error) {
+        throw next;
+      }
+      return next;
+    }
     if (this.failWith) {
       throw this.failWith;
     }
@@ -90,6 +102,7 @@ describe('CloudLLMProviderBase', () => {
   const categories: Category[] = [
     createCategory({ id: 'food_groceries', name: 'Groceries', type: 'expense' }),
     createCategory({ id: 'transport', name: 'Transport', type: 'expense' }),
+    createCategory({ id: 'other_expense', name: 'Other', type: 'expense' }),
   ];
 
   beforeEach(() => {
@@ -193,6 +206,126 @@ describe('CloudLLMProviderBase', () => {
       // to be reported later against an unrelated request.
       expect(provider.lastError()).toBeNull();
       expect(provider.isProcessing()).toBeFalse();
+    });
+  });
+
+  describe('categorizeTransactions chunking', () => {
+    const row = (i: number) => ({ description: `Row ${i}`, amount: -5, date: new Date() });
+    const answer = (
+      entries: { index: number; categoryId: string; confidence: number }[]
+    ): ProviderResponse => ({ text: JSON.stringify(entries), truncated: false });
+
+    it('sends one request for a batch at the chunk size', async () => {
+      const rows = Array.from({ length: CATEGORIZE_CHUNK_SIZE }, (_, i) => row(i));
+      provider.response = answer(
+        rows.map((_, i) => ({ index: i, categoryId: 'food_groceries', confidence: 0.9 }))
+      );
+
+      const result = await provider.categorizeTransactions(rows);
+
+      expect(provider.sent).toEqual(['categorizeTransactions']);
+      expect(provider.renderedSent[0].user).toContain(
+        `${CATEGORIZE_CHUNK_SIZE - 1}: "Row ${CATEGORIZE_CHUNK_SIZE - 1}"`
+      );
+      expect(result.length).toBe(CATEGORIZE_CHUNK_SIZE);
+      expect(result.every(r => r.suggestedCategoryId === 'food_groceries')).toBeTrue();
+    });
+
+    it('splits past the chunk size and re-bases the second request from zero', async () => {
+      const rows = Array.from({ length: CATEGORIZE_CHUNK_SIZE + 1 }, (_, i) => row(i));
+      provider.responseQueue = [
+        answer(
+          Array.from({ length: CATEGORIZE_CHUNK_SIZE }, (_, i) => ({
+            index: i,
+            categoryId: 'food_groceries',
+            confidence: 0.9,
+          }))
+        ),
+        answer([{ index: 0, categoryId: 'transport', confidence: 0.7 }]),
+      ];
+
+      const result = await provider.categorizeTransactions(rows);
+
+      expect(provider.sent).toEqual(['categorizeTransactions', 'categorizeTransactions']);
+      // The overflow row is the second request's index 0, not 25:
+      // applyCategorizations matches answers by position within its chunk.
+      expect(provider.renderedSent[1].user).toContain(`0: "Row ${CATEGORIZE_CHUNK_SIZE}"`);
+      expect(provider.renderedSent[1].user).not.toContain(
+        `${CATEGORIZE_CHUNK_SIZE}: "Row ${CATEGORIZE_CHUNK_SIZE}"`
+      );
+      // Merge-by-position preserves input order across the chunks.
+      expect(result.length).toBe(CATEGORIZE_CHUNK_SIZE + 1);
+      expect(result[0].suggestedCategoryId).toBe('food_groceries');
+      expect(result[CATEGORIZE_CHUNK_SIZE].suggestedCategoryId).toBe('transport');
+      expect(result[CATEGORIZE_CHUNK_SIZE].confidence).toBe(0.7);
+    });
+
+    it('defaults only the failed chunk rows and keeps the other answers', async () => {
+      spyOn(console, 'error');
+      const rows = Array.from({ length: CATEGORIZE_CHUNK_SIZE + 1 }, (_, i) => row(i));
+      provider.responseQueue = [
+        new Error('first chunk truncated'),
+        answer([{ index: 0, categoryId: 'transport', confidence: 0.7 }]),
+      ];
+
+      const result = await provider.categorizeTransactions(rows);
+
+      const firstChunk = result.slice(0, CATEGORIZE_CHUNK_SIZE);
+      expect(firstChunk.every(r => r.suggestedCategoryId === FALLBACK_CATEGORY_ID)).toBeTrue();
+      expect(firstChunk.every(r => r.confidence === 0.1)).toBeTrue();
+      expect(result[CATEGORIZE_CHUNK_SIZE].suggestedCategoryId).toBe('transport');
+      expect(result[CATEGORIZE_CHUNK_SIZE].confidence).toBe(0.7);
+    });
+  });
+
+  describe('extraction category resolution', () => {
+    const statementJson = (category: string) =>
+      JSON.stringify([
+        { date: '2024-06-01', description: 'Row', amount: 5, type: 'expense', currency: 'USD', category },
+      ]);
+
+    it('keeps the catalog id when the answered name resolves', async () => {
+      provider.response = { text: statementJson('Groceries'), truncated: false };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].category).toBe('food_groceries');
+    });
+
+    it('keeps a deliberate Other as the catch-all id', async () => {
+      provider.response = { text: statementJson('Other'), truncated: false };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].category).toBe('other_expense');
+    });
+
+    it('leaves the category undefined when nothing matches', async () => {
+      // An unrecognized answer must stay distinguishable from a deliberate
+      // "Other": a truthy other_expense would wear the extraction-named grade
+      // downstream and override the categorization ladder's answer.
+      provider.response = { text: statementJson('Zeugs'), truncated: false };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].category).toBeUndefined();
+    });
+
+    it('resolves multi-image rows the same way', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2024-06-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
+            category: 'Zeugs', imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+          { date: '2024-06-01', description: 'B', amount: 6, type: 'expense', currency: 'USD',
+            category: 'Transport', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1 },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+
+      expect(rows[0].category).toBeUndefined();
+      expect(rows[1].category).toBe('transport');
     });
   });
 

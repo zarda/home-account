@@ -760,6 +760,20 @@ describe('GeminiService', () => {
       expect(result[0].category).toBeUndefined();
     });
 
+    it('leaves an unrecognized suggested category undefined', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        date: '2024-05-10',
+        merchant: 'Cafe',
+        totalAmount: -25.5,
+        currency: 'JPY',
+        suggestedCategory: 'Zeugs',
+      })));
+
+      const result = await service.extractTransactionsFromImage('abc');
+
+      expect(result[0].category).toBeUndefined();
+    });
+
     it('rethrows on error and records lastError', async () => {
       visionModel.generateContent.and.rejectWith(new Error('vision boom'));
       await expectAsync(service.extractTransactionsFromImage('abc'))
@@ -849,6 +863,17 @@ describe('GeminiService', () => {
       expect(result[1].confidence).toBe(0.7);
       expect(result[1].wasMerged).toBeFalse();
       expect(result[1].receiptTotal).toBeUndefined();
+    });
+
+    it('leaves an unrecognized category name undefined', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY',
+          positionInImage: 'middle', confidence: 0.95, category: 'Zeugs' },
+      ])));
+
+      const result = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
+
+      expect(result[0].category).toBeUndefined();
     });
 
     it('extracts and normalizes items from multiple images', async () => {
