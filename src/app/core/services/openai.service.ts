@@ -87,11 +87,10 @@ export class OpenAIService extends CloudLLMProviderBase {
 
   /**
    * Every model in the OpenAI catalog is multimodal, so one selectable model
-   * serves both text and vision. PDFs are not accepted directly — the pages
-   * have to be rasterized first.
+   * serves both text and vision.
    */
   override get capabilities(): ProviderCapabilities {
-    return { vision: true, nativePdf: false };
+    return { vision: true };
   }
 
   /**

@@ -12,6 +12,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
+import { GoalService } from '../../../core/services/goal.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
@@ -23,6 +24,7 @@ import {
   recordToIntent,
 } from '../../../core/utils/search-answer.utils';
 import {
+  Goal,
   NlSearchResult,
   SearchRecord,
   TransactionFilters,
@@ -64,6 +66,7 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
   private matDialog = inject(MatDialog);
   private analytics = inject(AnalyticsService);
   private categoryService = inject(CategoryService);
+  private goalService = inject(GoalService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private dateFormatService = inject(DateFormatService);
@@ -75,6 +78,9 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
   private result = signal<NlSearchResult | null>(null);
   private openedRecordId = signal<string | null>(null);
   private historySubscription?: Subscription;
+  /** One-shot fallback for goal names when no page has published the signal. */
+  private fallbackGoals = signal<Goal[]>([]);
+  private goalNamesRequested = false;
 
   filterResult = computed(() => {
     const r = this.result();
@@ -121,7 +127,11 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     this.result.set(null);
     this.openedRecordId.set(null);
     try {
-      this.result.set(await this.nlSearch.search(query));
+      const result = await this.nlSearch.search(query);
+      this.result.set(result);
+      if (result.kind === 'filter' && result.filters.goalId) {
+        this.warmUpGoalNames();
+      }
     } finally {
       this.isLoading.set(false);
     }
@@ -230,6 +240,9 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     if (filters.categoryId) {
       parts.push(this.categoryName(filters.categoryId));
     }
+    if (filters.goalId) {
+      parts.push(this.goalName(filters.goalId));
+    }
     if (filters.startDate || filters.endDate) {
       parts.push(this.periodLabel(filters));
     }
@@ -257,6 +270,30 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
   categoryName(categoryId: string): string {
     const category = this.categoryService.categories().find(c => c.id === categoryId);
     return category?.name ? this.translationService.t(category.name) : 'Other';
+  }
+
+  goalName(goalId: string): string {
+    const goal = this.goalService.goals().find(g => g.id === goalId)
+      ?? this.fallbackGoals().find(g => g.id === goalId);
+    // Unlike categoryName: no t() (goal names are the user's own text, not
+    // i18n keys) and no 'Other' (a missing goal reads better as its id).
+    return goal?.name ?? goalId;
+  }
+
+  /**
+   * The goals signal is only published by getGoals() subscriptions (ADR
+   * 0009), and this dialog opens from pages that never subscribe — after a
+   * goal search there, goals() is still empty and the chip would show a
+   * bare id. One uncached read fills a local fallback instead; the template
+   * reads both signals through goalName, so the chip re-renders when the
+   * names land.
+   */
+  private warmUpGoalNames(): void {
+    if (this.goalService.goals().length > 0 || this.goalNamesRequested) return;
+    this.goalNamesRequested = true;
+    void this.goalService.exportAll()
+      .then(goals => this.fallbackGoals.set(goals))
+      .catch(error => console.error('[AiSearchDialog] Loading goal names failed:', error));
   }
 
   fallbackNoticeKey(reason: 'offline' | 'noProvider' | 'error'): string {

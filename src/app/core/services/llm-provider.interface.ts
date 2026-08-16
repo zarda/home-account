@@ -118,8 +118,6 @@ export function isRateLimitMessage(message: string): boolean {
 export interface ProviderCapabilities {
   /** Can accept images as input. */
   vision: boolean;
-  /** Can accept a PDF directly, without the pages being rasterized first. */
-  nativePdf: boolean;
 }
 
 /**
@@ -181,8 +179,6 @@ export interface CloudLLMProviderAdapter {
     imageBase64: string,
     options?: AIRequestOptions
   ): Promise<ExtractedTransaction[]>;
-  /** Present only where `capabilities.nativePdf` is true. */
-  extractTransactionsFromPDF?(pdfBase64: string): Promise<RawTransaction[]>;
 
   // Categorization
   suggestCategory(description: string, categories: Category[]): Promise<string>;

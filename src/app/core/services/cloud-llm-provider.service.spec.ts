@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { CloudLLMProviderService, AIFeatureType } from './cloud-llm-provider.service';
-import { GeminiService, ParsedReceipt, RawTransaction, CategorizedTransaction, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
+import { GeminiService, ParsedReceipt, CategorizedTransaction, MultiImageExtractedTransaction, CSVColumnMapping } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
@@ -22,7 +22,6 @@ function makeProviderSpy(name: string): jasmine.SpyObj<GeminiService> {
     'reinitialize',
     'parseReceipt',
     'extractTransactionsFromMultipleImages',
-    'extractTransactionsFromPDF',
     'suggestCategory',
     'categorizeTransactions',
     'detectCSVMapping',
@@ -35,11 +34,8 @@ function makeProviderSpy(name: string): jasmine.SpyObj<GeminiService> {
   spy.isProcessing.and.returnValue(false);
   spy.lastError.and.returnValue(null);
   spy.reinitialize.and.resolveTo(undefined);
-  // Only Gemini accepts a PDF directly; the façade picks a PDF provider by
-  // capability rather than by preference.
   (spy as unknown as { capabilities: ProviderCapabilities }).capabilities = {
     vision: true,
-    nativePdf: name === 'GeminiService',
   };
   return spy;
 }
@@ -421,7 +417,6 @@ describe('CloudLLMProviderService', () => {
       gemini.isAvailableSignal.and.returnValue(true);
       gemini.parseReceipt.and.resolveTo(sampleReceipt);
       gemini.extractTransactionsFromMultipleImages.and.resolveTo([]);
-      gemini.extractTransactionsFromPDF.and.resolveTo([]);
     });
 
     it('parseReceipt delegates to gemini', async () => {
@@ -486,52 +481,6 @@ describe('CloudLLMProviderService', () => {
       (claude as unknown as jasmine.SpyObj<GeminiService>).extractTransactionsFromMultipleImages.and.resolveTo([]);
       await service.extractTransactionsFromMultipleImages(['a']);
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).extractTransactionsFromMultipleImages).toHaveBeenCalled();
-    });
-  });
-
-  // ----------------------------------------------------------------
-  // PDF extraction (gemini-only with fallbacks)
-  // ----------------------------------------------------------------
-  describe('extractTransactionsFromPDF', () => {
-    const rows: RawTransaction[] = [];
-
-    it('uses gemini directly when gemini is the chosen provider', async () => {
-      gemini.isAvailableSignal.and.returnValue(true);
-      gemini.extractTransactionsFromPDF.and.resolveTo(rows);
-      const r = await service.extractTransactionsFromPDF('pdf');
-      expect(r).toBe(rows);
-      expect(gemini.extractTransactionsFromPDF).toHaveBeenCalledWith('pdf');
-    });
-
-    it('falls back to gemini when another provider is chosen but gemini is available', async () => {
-      // openai chosen/available, gemini also available -> PDF still uses gemini.
-      gemini.isAvailableSignal.and.returnValue(true);
-      (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
-      auth.currentUser.and.returnValue(createMockUser('u', {
-        preferences: {
-          ...createMockUser().preferences,
-          llmProviderPreferences: { receiptScanning: 'openai', categorization: 'gemini', insights: 'gemini', search: 'gemini' },
-        },
-      }));
-      gemini.extractTransactionsFromPDF.and.resolveTo(rows);
-
-      await service.extractTransactionsFromPDF('pdf');
-      expect(gemini.extractTransactionsFromPDF).toHaveBeenCalled();
-    });
-
-    it('throws when the only available provider cannot take a PDF', async () => {
-      // Selection is by capability, so this is refused up front rather than
-      // reaching an SDK that would fail on the payload.
-      gemini.isAvailableSignal.and.returnValue(false);
-      (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
-      await expectAsync(service.extractTransactionsFromPDF('pdf'))
-        .toBeRejectedWithError(/needs a provider that accepts PDFs directly/);
-    });
-
-    it('throws when no provider is available at all', async () => {
-      gemini.isAvailableSignal.and.returnValue(false);
-      await expectAsync(service.extractTransactionsFromPDF('pdf'))
-        .toBeRejectedWithError(/needs a provider that accepts PDFs directly/);
     });
   });
 

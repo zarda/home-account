@@ -29,7 +29,6 @@ const SAMPLE_INPUT: { [K in PromptId]: Parameters<(typeof PROMPTS)[K]['render']>
   receiptSummary: undefined,
   receiptItems: undefined,
   statementTransactions: undefined,
-  pdfStatement: undefined,
   multiImageReceipts: { imageCount: 3 },
   categorizeTransactions: {
     categoryCatalog: 'food: Food\nfood_groceries: Food / Groceries',
@@ -406,14 +405,6 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"receiptTotal"');
       expect(prompt).toContain('do NOT compute it by summing items');
       expect(prompt).toContain('do NOT use the cash tendered or change lines');
-    });
-  });
-
-  describe('pdfStatement', () => {
-    it('asks for every transaction as a JSON array', () => {
-      const prompt = render('pdfStatement');
-      expect(prompt).toContain('Extract ALL transactions from this PDF bank statement.');
-      expect(prompt).toContain('Only posted/confirmed transactions.');
     });
   });
 

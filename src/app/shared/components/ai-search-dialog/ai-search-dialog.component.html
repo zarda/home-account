@@ -38,7 +38,7 @@
     <div class="result-block">
       <p class="result-label">{{ 'aiSearch.interpretedAs' | translate }}</p>
       <div class="summary-chips">
-        @for (part of describeFilters(filter.filters); track part) {
+        @for (part of describeFilters(filter.filters); track $index) {
           <span class="summary-chip">{{ part }}</span>
         }
       </div>

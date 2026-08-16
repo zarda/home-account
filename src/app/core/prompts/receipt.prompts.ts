@@ -152,39 +152,6 @@ Only include confirmed transactions, not pending ones.`,
   };
 }
 
-/** Same task as `statementTransactions`, against a PDF rather than an image. */
-export function renderPdfStatement(): RenderedPrompt {
-  return {
-    user: `Extract ALL transactions from this PDF bank statement.
-
-For each transaction: date (YYYY-MM-DD), description, amount (positive number), type (income/expense), currency.
-
-Return ONLY valid JSON array (no markdown, no explanation, no thinking):
-[
-  {
-    "date": "2024-01-15",
-    "description": "DIRECT DEPOSIT - EMPLOYER",
-    "amount": 3500.00,
-    "type": "income",
-    "currency": "<ISO 4217 code>"
-  },
-  {
-    "date": "2024-01-16",
-    "description": "WALMART",
-    "amount": 125.43,
-    "type": "expense",
-    "currency": "<ISO 4217 code>"
-  }
-]
-
-Empty array [] if no transactions found. Only posted/confirmed transactions.`,
-    expects: 'json',
-    maxOutputTokens: 1000,
-    temperature: 0.05,
-    topP: 0.65,
-  };
-}
-
 export interface MultiImageInputs {
   imageCount: number;
 }
