@@ -196,6 +196,7 @@ The web app is a fully-featured Progressive Web App:
 | `npm test` | Run unit tests |
 | `npm run test:ci` | Run unit tests once (headless, with coverage) |
 | `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
+| `npm run smoke:dates` | Run the zone-sensitive smoke specs under two shifted timezones, with one emulator boot |
 | `npm run test:ios` | Run the Swift share-seam tests in the iOS Simulator (local only — CI never builds iOS; edit the destination if iPhone 17 is not installed) |
 | `npm run lint` | ESLint |
 | `npm run lint-guards:check` | Verify the ESLint import bans still resolve for the files they were written for |
@@ -208,7 +209,7 @@ The web app is a fully-featured Progressive Web App:
 
 ## Continuous Integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the truncation check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, and a production build — on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
+GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the truncation check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 

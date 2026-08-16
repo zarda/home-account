@@ -134,9 +134,13 @@ consecutive periods cannot overlap or leave a gap.
   millisecond past the end.
 - `recurring.service.smoke.spec.ts` — the forecast horizon against a stored
   `Timestamp`, seeded late on the last day the chart draws.
-- The `test:dates` include list is the enumeration of specs whose assertions
-  depend on the zone. Anything asserting a calendar day or a window bound
-  belongs in it; a spec left out of it is only ever run at one offset.
+- The `test:dates` include list is the enumeration of unit specs whose
+  assertions depend on the zone, and `test:smoke:dates` is the same statement
+  for the emulator suite — `period-window`, `transaction.service` and
+  `recurring.service`, run under `TZ=America/New_York` and `TZ=Asia/Tokyo`
+  inside one `emulators:exec` by `npm run smoke:dates` (ADR 0050). Anything
+  asserting a calendar day or a window bound belongs in one of the two lists;
+  a spec left out of both is only ever run at one offset.
 
 ### The audit greps
 
@@ -180,10 +184,6 @@ Anything else is the #174 shape and should go through `parseDateInput`.
   has no date rule, so a new instance of any shape above ships green and is
   found by reading. Two sweeps' worth of stragglers (#248, #266, #267) is what
   that costs; see ADR 0032.
-- **The smoke suite runs at one offset.** `npm run smoke` is invoked with no
-  `TZ` in CI, although comments in `transaction.service.smoke.spec.ts` and
-  `period-window.smoke.spec.ts` describe it as running under a shifted zone. The
-  bounds those files assert are the ones a zone would move.
 - **Weekly budgets label with an ISO week but window on their own weekday.**
   `budgetPeriodWindow('weekly', …)` runs from the anchor's day of the week,
   while `budgetPeriodKey(…, 'weekly')` is an ISO week number, which always

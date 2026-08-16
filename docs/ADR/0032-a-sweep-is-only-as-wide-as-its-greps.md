@@ -150,7 +150,8 @@ been through Firestore and back through `.toDate()` lands inside the bound.
   `TZ`, although comments in two smoke specs describe it as running under a
   shifted zone. That is the shape #276 is about — a guard that documents itself
   as enforced and is not — and it wants its own issue rather than a drive-by fix
-  here.
+  here. Closed by [ADR 0050](0050-a-spec-that-claims-a-zone-runs-under-it.md),
+  #280.
 - **`parseDateInput` still leaves ambiguous non-ISO shapes to the platform.**
   `06/15/2024` reads the way the browser has always read it. Deliberate: this
   branch does not touch DD/MM disambiguation, which is a separate decision about
