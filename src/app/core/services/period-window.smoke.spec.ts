@@ -52,8 +52,10 @@ import { Transaction } from '../../models';
  *   npm run test:smoke
  * (CI wraps it with `firebase emulators:exec --only auth,storage,firestore`.)
  *
- * Every bound is computed from local date parts, so this file is also run
- * under TZ=Asia/Tokyo.
+ * Every bound is computed from local date parts, so CI runs this file again
+ * under TZ=America/New_York and TZ=Asia/Tokyo (`npm run smoke:dates`) — at
+ * offset 0 a local bound and a UTC bound are the same instant, and none of
+ * the assertions below can tell them apart.
  */
 describe('period windows (emulator smoke test)', () => {
   const FIRESTORE_HOST = '127.0.0.1';

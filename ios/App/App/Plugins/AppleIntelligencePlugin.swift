@@ -20,7 +20,7 @@ struct ReceiptExtraction {
     @Guide(description: "ISO 4217 alphabetic currency code for that total, taken from the currency sign or wording the receipt uses, or an empty string if the receipt does not say")
     var currency: String
 
-    @Guide(description: "The single best matching category name from the provided list, or an empty string if none fits")
+    @Guide(description: "The id of the single best matching category from the provided list — the part of its line before the colon — or an empty string if none fits")
     var category: String
 
     @Guide(description: "Short summary of the purchased items, one item per line")
@@ -86,7 +86,10 @@ public class AppleIntelligencePlugin: CAPPlugin, CAPBridgedPlugin {
             were printed in — never translate or transliterate them.
             """
             if !categories.isEmpty {
-                instructions += " Choose the category only from this list: \(categories.joined(separator: ", "))."
+                // One entry per line — display names may contain commas — and
+                // each line is `id: name`. The id is the one language-neutral
+                // token, so that is what the model is told to answer with.
+                instructions += " Pick the category only from this list and answer with its id, the part before the colon:\n\(categories.joined(separator: "\n"))"
             }
 
             Task {

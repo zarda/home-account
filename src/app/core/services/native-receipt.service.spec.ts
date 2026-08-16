@@ -5,6 +5,7 @@ import { NativeReceiptService } from './native-receipt.service';
 import { VisionOcrService } from './vision-ocr.service';
 import { AppleIntelligenceService } from './apple-intelligence.service';
 import { CategoryService } from './category.service';
+import { TranslationService } from './translation.service';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
 import { Category, VERIFY_FIELD_THRESHOLD } from '../../models';
 
@@ -13,10 +14,27 @@ describe('NativeReceiptService', () => {
   let visionMock: jasmine.SpyObj<VisionOcrService>;
   let appleMock: jasmine.SpyObj<AppleIntelligenceService>;
 
+  // Exactly the shapes CategoryService builds (#270): a default entry stores
+  // the i18n key as its name, its id keeps the key's camelCase tail, and a
+  // category the user deleted stays in the merged list with isActive false.
+  // A display-name fixture here is a catalog the app never produces, and it
+  // is how the raw-key payload stayed green.
   const categories = [
-    { id: 'food_coffee_&_drinks', name: 'Coffee & Drinks' },
-    { id: 'food_groceries', name: 'Groceries' },
+    { id: 'food', name: 'categoryNames.food', isActive: true },
+    { id: 'food_groceries', name: 'categoryNames.groceries', parentId: 'food', isActive: true },
+    { id: 'food_coffeeAndDrinks', name: 'categoryNames.coffeeAndDrinks', parentId: 'food', isActive: true },
+    { id: 'food_restaurants', name: 'categoryNames.restaurants', parentId: 'food', isActive: false },
   ] as Category[];
+
+  // The active locale's bundle, as TranslationService would serve it. The
+  // real service needs HttpClient for its bundle, so the spec stubs t() the
+  // way production behaves: known key -> display name, unknown -> the key.
+  const displayNames: Record<string, string> = {
+    'categoryNames.food': 'Food & Drinks',
+    'categoryNames.groceries': 'Groceries',
+    'categoryNames.coffeeAndDrinks': 'Coffee & Drinks',
+    'categoryNames.restaurants': 'Restaurants',
+  };
 
   const ocrResult: VisionOCRResult = {
     text: 'Starbucks\n01/15/2026\nTotal: $12.50',
@@ -54,6 +72,10 @@ describe('NativeReceiptService', () => {
           useValue: jasmine.createSpyObj('CategoryService', ['loadCategories'], {
             categories: signal(categories),
           }),
+        },
+        {
+          provide: TranslationService,
+          useValue: { t: (key: string) => displayNames[key] ?? key },
         },
       ],
     });
@@ -144,9 +166,15 @@ describe('NativeReceiptService', () => {
     it('should structure OCR text with the on-device model', async () => {
       const result = await service.processImage(imageFile());
 
+      // The model's vocabulary is the shared catalog rendering — translated
+      // `id: Name` lines, one entry per line — never the stored i18n keys.
       expect(appleMock.parseReceiptText).toHaveBeenCalledWith({
         text: ocrResult.text,
-        categories: ['Coffee & Drinks', 'Groceries'],
+        categories: [
+          'food: Food & Drinks',
+          'food_groceries: Food & Drinks / Groceries',
+          'food_coffeeAndDrinks: Food & Drinks / Coffee & Drinks',
+        ],
       });
 
       const transaction = result.transactions[0];
@@ -154,19 +182,57 @@ describe('NativeReceiptService', () => {
       expect(transaction.amount).toBe(1200);
       expect(transaction.currency).toBe('JPY');
       expect(transaction.notes).toBe('Latte\nCroissant');
-      expect(transaction.suggestedCategoryId).toBe('food_coffee_&_drinks');
+      expect(transaction.suggestedCategoryId).toBe('food_coffeeAndDrinks');
       // Local parts, not `new Date('2026-01-15')` — that is the parse under
       // test, so comparing against it holds in every zone and proves nothing.
       expect(transaction.date.getTime()).toBe(new Date(2026, 0, 15).getTime());
     });
 
-    it('should leave the category unset when the model picks an unknown name', async () => {
-      appleMock.parseReceiptText.and.resolveTo({
-        merchant: 'Cafe', date: '', amount: 5, currency: 'USD', category: 'Nonexistent', details: '',
+    it('sends no raw i18n key and no deactivated category to the model', async () => {
+      await service.processImage(imageFile());
+
+      const sent = appleMock.parseReceiptText.calls.mostRecent().args[0].categories!;
+      expect(sent.length).toBeGreaterThan(0);
+      expect(sent.filter(line => line.includes('categoryNames.'))).toEqual([]);
+      // The user deleted Restaurants; offering it would resurrect the category.
+      expect(sent.filter(line => line.includes('Restaurants'))).toEqual([]);
+    });
+
+    /**
+     * The resolver decides what a scan lands on. The prompt offers ids, but a
+     * small on-device model may answer with a display name, and it answers in
+     * the receipt's language however the catalog was rendered — so the id and
+     * every shipped locale's name must all resolve (matchCategoryName's
+     * contract, ADR 0046), and an answer we failed to understand must stay
+     * distinguishable from a deliberate "Other".
+     */
+    describe('category resolution', () => {
+      const suggestedFor = async (category: string) => {
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Shop', date: '2026-01-15', amount: 10, currency: 'USD', category, details: '',
+        });
+        return (await service.processImage(imageFile())).transactions[0].suggestedCategoryId;
+      };
+
+      it('resolves the catalog id the prompt offered', async () => {
+        expect(await suggestedFor('food_groceries')).toBe('food_groceries');
       });
 
-      const result = await service.processImage(imageFile());
-      expect(result.transactions[0].suggestedCategoryId).toBeUndefined();
+      it('resolves the English display name', async () => {
+        expect(await suggestedFor('Groceries')).toBe('food_groceries');
+      });
+
+      it('resolves the Traditional Chinese display name', async () => {
+        expect(await suggestedFor('雜貨')).toBe('food_groceries');
+      });
+
+      it('resolves the Japanese display name', async () => {
+        expect(await suggestedFor('食料品')).toBe('food_groceries');
+      });
+
+      it('leaves an answer that matches nothing unset rather than picking a category', async () => {
+        expect(await suggestedFor('Nonexistent')).toBeUndefined();
+      });
     });
 
     it('should default missing fields safely', async () => {
