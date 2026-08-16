@@ -162,6 +162,82 @@ describe('AiSearchDialogComponent', () => {
       expect(router.navigate).toHaveBeenCalledWith(['/transactions']);
       expect(dialogRef.close).toHaveBeenCalled();
     });
+
+    describe('goal chips', () => {
+      const trip = { id: 'goal-japan', name: 'Japan Trip' } as Goal;
+
+      it('names a matched goal from the warm goals signal', async () => {
+        goalService.goals.and.returnValue([trip]);
+
+        await searchWith({ kind: 'filter', filters: { goalId: 'goal-japan' } });
+
+        const chips = Array.from(
+          fixture.nativeElement.querySelectorAll('.summary-chip'),
+          (el) => (el as HTMLElement).textContent?.trim());
+        expect(chips).toEqual(['Japan Trip']);
+      });
+
+      it('shows the goal chip beside the other interpreted parts', async () => {
+        goalService.goals.and.returnValue([trip]);
+
+        await searchWith({
+          kind: 'filter',
+          filters: {
+            type: 'expense',
+            categoryId: 'food',
+            goalId: 'goal-japan',
+            startDate: new Date(2026, 5, 1),
+            endDate: new Date(2026, 5, 30),
+          },
+        });
+
+        const chips = Array.from(
+          fixture.nativeElement.querySelectorAll('.summary-chip'),
+          (el) => (el as HTMLElement).textContent?.trim());
+        expect(chips).toContain('Japan Trip');
+        expect(chips).toContain('Expense');
+        expect(chips).toContain('Food & Drinks');
+      });
+
+      it('fetches the goals once when the signal is cold, then names the goal', async () => {
+        goalService.exportAll.and.resolveTo([trip]);
+
+        await searchWith({ kind: 'filter', filters: { goalId: 'goal-japan' } });
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const chips = Array.from(
+          fixture.nativeElement.querySelectorAll('.summary-chip'),
+          (el) => (el as HTMLElement).textContent?.trim());
+        expect(chips).toEqual(['Japan Trip']);
+        expect(goalService.exportAll).toHaveBeenCalledTimes(1);
+
+        // A second interpretation does not pay for a second read.
+        await searchWith({ kind: 'filter', filters: { goalId: 'goal-japan' } });
+        expect(goalService.exportAll).toHaveBeenCalledTimes(1);
+      });
+
+      it('leaves the one-shot read alone while the signal is warm', async () => {
+        goalService.goals.and.returnValue([trip]);
+
+        await searchWith({ kind: 'filter', filters: { goalId: 'goal-japan' } });
+
+        expect(goalService.exportAll).not.toHaveBeenCalled();
+      });
+
+      it('falls back to the raw id when no loaded goal matches', async () => {
+        goalService.goals.and.returnValue([
+          { id: 'goal-other', name: 'Emergency Fund' } as Goal,
+        ]);
+
+        await searchWith({ kind: 'filter', filters: { goalId: 'goal-gone' } });
+
+        const chips = Array.from(
+          fixture.nativeElement.querySelectorAll('.summary-chip'),
+          (el) => (el as HTMLElement).textContent?.trim());
+        expect(chips).toEqual(['goal-gone']);
+      });
+    });
   });
 
   describe('answer results', () => {
