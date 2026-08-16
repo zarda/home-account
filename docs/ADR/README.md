@@ -52,6 +52,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0045](0045-a-confidence-grade-names-its-source.md) | A confidence grade names its source, and the CSV import asks the real categorizer | Accepted | 2026-08-15 |
 | [0046](0046-an-unrecognized-category-name-is-not-a-category.md) | An unrecognized category name is not a category | Accepted | 2026-08-15 |
 | [0047](0047-feedback-is-a-stored-record-first-and-a-mail-second.md) | Feedback is a stored record first and a mail second | Accepted | 2026-08-15 |
+| [0048](0048-a-dead-capability-is-removed-not-guarded.md) | A dead capability is removed, not guarded | Accepted | 2026-08-16 |
 
 ## What belongs here
 

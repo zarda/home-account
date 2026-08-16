@@ -16,7 +16,7 @@ provider and `name` is what the settings dropdown shows. An entry may also carry
 | List | Feeds | Read by |
 |---|---|---|
 | `TEXT_MODELS` | Gemini's **text model** dropdown | `GeminiService` — categorization, insights, advice, text receipt parsing |
-| `VISION_MODELS` | Gemini's **vision model** dropdown | `GeminiService` — images and PDFs |
+| `VISION_MODELS` | Gemini's **vision model** dropdown | `GeminiService` — images, including rasterized PDF pages |
 | `OPENAI_MODELS` | OpenAI's single dropdown | `OpenAIService` — multimodal, one model does both |
 | `CLAUDE_MODELS` | Anthropic's single dropdown | `ClaudeService` — multimodal, one model does both |
 
