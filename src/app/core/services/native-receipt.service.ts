@@ -2,8 +2,10 @@ import { Injectable, inject } from '@angular/core';
 import { VisionOcrService } from './vision-ocr.service';
 import { AppleIntelligenceService } from './apple-intelligence.service';
 import { CategoryService } from './category.service';
+import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { parseReceiptOcrText } from './receipt-text-parser';
+import { buildCategoryPromptCatalog, matchCategoryName } from '../utils/categorization.utils';
 import { readCurrencyCode } from '../utils/receipt-extraction.utils';
 import { parseDateInput } from '../utils/transaction-date.utils';
 import { fileToBase64 } from '../utils/file.utils';
@@ -21,6 +23,7 @@ export class NativeReceiptService {
   private visionOcr = inject(VisionOcrService);
   private appleIntelligence = inject(AppleIntelligenceService);
   private categoryService = inject(CategoryService);
+  private translationService = inject(TranslationService);
 
   /**
    * Process a single receipt image on device.
@@ -98,13 +101,24 @@ export class NativeReceiptService {
    */
   private async parseWithAppleIntelligence(ocrResult: VisionOCRResult): Promise<ProcessedTransaction> {
     const categories = this.categoryService.categories();
+    const translate = (name: string) => this.translationService.t(name);
+    // The same two chokepoints as the cloud providers (ADR 0046): the stored
+    // name of every default category is an i18n key, so the model's vocabulary
+    // is the shared catalog rendering — active entries only, translated
+    // `id: Name` lines — and never the keys themselves.
+    const catalog = buildCategoryPromptCatalog(categories, translate);
     const extraction = await this.appleIntelligence.parseReceiptText({
       text: ocrResult.text,
-      categories: categories.map(c => c.name),
+      // An empty catalog splits to [''], which the plugin would render as a
+      // one-empty-entry list instead of omitting the instruction.
+      categories: catalog ? catalog.split('\n') : [],
     });
 
-    const matchedCategory = extraction.category
-      ? categories.find(c => c.name.toLowerCase() === extraction.category.toLowerCase())
+    // Ids resolve first, then display names in every shipped locale, then
+    // keywords; `matched` keeps an answer we failed to understand
+    // distinguishable from a deliberate "Other".
+    const match = extraction.category
+      ? matchCategoryName(extraction.category, categories, translate)
       : undefined;
 
     return {
@@ -122,7 +136,7 @@ export class NativeReceiptService {
       confidence: ocrResult.confidence,
       source: 'native',
       notes: extraction.details || undefined,
-      suggestedCategoryId: matchedCategory?.id,
+      suggestedCategoryId: match?.matched ? match.id : undefined,
     };
   }
 
