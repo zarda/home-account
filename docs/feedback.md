@@ -119,6 +119,54 @@ Where to read feedback: the mail inbox, or Firestore console →
 `users/{uid}/feedback` (a collection-group query on `feedback` lists every
 user's entries).
 
+### Troubleshooting, from the first deploy
+
+Everything below was hit in sequence on the first production deploy
+(2026-08-16); none of it is hypothetical.
+
+- **The first 2nd-gen deploy trips over its own provisioning.** Expect
+  "Permission denied while using the Eventarc Service Agent" — the deploy
+  itself creates the service agents, and their IAM grants take a few minutes
+  to propagate; wait five minutes and retry. The same first run asks for an
+  Artifact Registry cleanup policy (one day is right: every deploy builds a
+  fresh image, and a single retained image stays inside the free tier) and
+  needs the Secret Manager API enabled, whose console link is in the 403 it
+  fails with.
+- **`firebase functions:log` cannot read this function's logs.** A v2
+  function logs under Cloud Run; read them in the Cloud console (Functions →
+  `onFeedbackCreated` → Logs). Because the trigger swallows mail failures by
+  design, the inbox and that log page are the only delivery signals — a
+  stored record proves nothing about the mail.
+- **Secret values reach nodemailer verbatim.** A Gmail app password is 16
+  characters entered without the display spaces, and one stray character in
+  any value fails as DNS (`ENOTFOUND`) or auth (535 BadCredentials).
+  Length-check a stored value without printing it:
+  `firebase functions:secrets:access FEEDBACK_SMTP_PASS | wc -c` — 17 is
+  healthy (16 plus the newline the printer appends).
+- **Verify SMTP credentials locally before storing them.** A throwaway
+  script in `functions/` that requires nodemailer, prompts for
+  host/port/user/password, strips spaces and calls `transport.verify()`
+  turns the deploy-per-guess loop into seconds per attempt; store only a
+  pair that has printed its AUTH OK.
+- **Set, then deploy — and decline the convenience redeploy.** The function
+  reads the secret versions pinned at its last full deploy, so a new version
+  does nothing until `firebase deploy --only functions` runs after it. The
+  `secrets:set` prompt offering to "re-deploy the functions and destroy the
+  stale version" patches only that one secret's binding: on the first deploy
+  it left the service pinned to a destroyed `FEEDBACK_SMTP_USER` version and
+  new revisions refused to start. The repair — and the habit — is the full
+  `firebase deploy --only functions`, which re-pins every secret to its
+  latest live version.
+- **A self-addressed mail skips the Inbox.** With `FEEDBACK_EMAIL_TO` equal
+  to `FEEDBACK_SMTP_USER`, Gmail files the delivered mail under Sent and All
+  Mail; search `[home-account] feedback:` before diagnosing a delivery
+  failure. Pointing `FEEDBACK_EMAIL_TO` at a different mailbox, or a Gmail
+  filter on that subject prefix, puts entries in an Inbox.
+- **None of this belongs to app releases.** Only a change under `functions/`
+  or a rotated secret needs a functions deploy; releases ship without one.
+  Always scope deploys with `--only` — a bare `firebase deploy` drags the
+  functions step into every release.
+
 ## Testing, and the known gap
 
 - `npm --prefix functions test` — the compose seam, via `node --test` (runs
