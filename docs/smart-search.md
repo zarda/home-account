@@ -49,9 +49,9 @@ transaction carries (see
 
 - **A goal becomes a scope field.** A transaction can be linked to a goal
   (see [goals.md](goals.md)), so a matched `goalId` stays on the filters, is
-  stored with the answer, and narrows the transactions page when you open the
-  answer's rows. An unlisted goal is dropped into the keyword like an
-  unrecognized category.
+  named in the confirmation chips, is stored with the answer, and narrows the
+  transactions page when you open the answer's rows. An unlisted goal is
+  dropped into the keyword like an unrecognized category.
 - **A budget is resolved and discarded.** A budget is a category plus a
   recurring window, not a field on a transaction, so a matched `budgetId`
   contributes its category and — only when the question gave no dates of its
@@ -60,7 +60,12 @@ transaction carries (see
   to this period, and a category the model named itself is never overwritten.
 
 Both catalogs list only active goals and budgets, and are fetched on demand
-when no open page has already loaded them.
+when no open page has already loaded them. The confirmation chips resolve a
+goal's display name the same way — the published signal when a page has
+warmed it, otherwise one uncached read the first time an interpretation
+carries a `goalId`. A live `getGoals()` subscription in the dialog was
+rejected: a name label has no use for a listener's lifecycle, and the
+one-shot read is the same route the catalog itself took to reach the model.
 
 ## When it falls back to keyword search
 
