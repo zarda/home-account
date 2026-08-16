@@ -27,11 +27,10 @@ import {
   ExtractedTransaction,
   MultiImageExtractedTransaction,
   ProviderCapabilities,
-  RawTransaction,
   isRateLimitMessage,
 } from './llm-provider.interface';
 import { environment } from '../../../environments/environment';
-import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
+import { dayKey } from '../utils/transaction-date.utils';
 
 /**
  * The extraction result types now live with the provider contract. They are
@@ -151,11 +150,9 @@ export class GeminiService extends CloudLLMProviderBase {
    * the only one that can be available for text while unable to see an image —
    * every vision method here used to fail at the point of use with 'Gemini
    * Vision model not available' rather than being routed around.
-   *
-   * It is also the only provider that accepts a PDF directly.
    */
   override get capabilities(): ProviderCapabilities {
-    return { vision: this.visionModel !== null, nativePdf: this.visionModel !== null };
+    return { vision: this.visionModel !== null };
   }
 
   /**
@@ -295,37 +292,6 @@ export class GeminiService extends CloudLLMProviderBase {
         details: receiptData.receiptDetails || receiptData.itemsSummary ||
           receiptData.items || receiptData.description || '',
       }];
-    });
-  }
-
-  /**
-   * Read a PDF bank statement directly, without rasterizing the pages.
-   *
-   * Gemini alone accepts a PDF, so this operation exists on this provider
-   * only; the façade picks by capability rather than by preference for it.
-   */
-  async extractTransactionsFromPDF(pdfBase64: string): Promise<RawTransaction[]> {
-    this.assertVisionModel();
-
-    return this.run('PDF extraction', async () => {
-      const rendered = renderPrompt('pdfStatement');
-      const response = await this.generateWithMedia(
-        [this.visionModel],
-        rendered,
-        [{
-          mimeType: 'application/pdf',
-          data: pdfBase64.replace(/^data:[^;,]+;base64,/, ''),
-        }]
-      );
-      const extracted: ExtractedTransaction[] = JSON.parse(this.extractJson(response.text));
-
-      // Signed amounts: this is the one extraction whose rows go straight to
-      // the transaction list rather than through the import review.
-      return extracted.map(t => ({
-        description: t.description || 'Unknown',
-        amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-        date: parseDateInput(t.date) ?? new Date(),
-      }));
     });
   }
 

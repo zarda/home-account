@@ -70,7 +70,6 @@ The same rule applies to examples. Demonstrate the *shape* with placeholders (`"
 | `receiptSummary` | receiptScanning | gemini | 1.17.93 | One receipt photo → one summary row carrying the full receipt body as notes |
 | `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, plus the receipt's printed total, with position metadata for overlap detection |
 | `statementTransactions` | receiptScanning | claude, gemini, openai | 1.17.93 | A statement or multi-row document image → one row per line item |
-| `pdfStatement` | receiptScanning | gemini | 1.17.93 | A PDF bank statement → one row per transaction |
 | `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges, one printed total per group |
 | `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row; sent in chunks of 25 rows so every answer fits the declared 800-token budget |
 | `categorySuggestion` | categorization | claude, gemini, openai | 1.17.93 | Single-description category lookup outside the import flow |
@@ -84,13 +83,12 @@ The same rule applies to examples. Demonstrate the *shape* with placeholders (`"
 
 ### Single-provider prompts
 
-Three prompts reach only some providers. Each is a capability gap rather than a design choice, and `SINGLE_PROVIDER` in `scripts/check-prompts.mjs` names the issue that closes it — the check fails if a prompt reaches a provider the exemption does not list, so closing a gap means deleting an entry rather than widening one. An empty table is the goal.
+Two prompts reach only some providers. Each is a capability gap rather than a design choice, and `SINGLE_PROVIDER` in `scripts/check-prompts.mjs` names the issue that closes it — the check fails if a prompt reaches a provider the exemption does not list, so closing a gap means deleting an entry rather than widening one. An empty table is the goal.
 
 An exemption names concrete provider files, so an exempted prompt has to be rendered from one. Rendering it from the shared base fails the check: the base is the one file all three providers inherit, which is the opposite of single-provider. That is why Gemini's own `extractTransactionsFromImage` — the only operation where it answers a different prompt from the other two — stays in `gemini.service.ts`.
 
 | Prompt | Sent by | Gap |
 |---|---|---|
-| `pdfStatement` | gemini | Gemini is the only provider that accepts a PDF natively. Everyone else reads rasterized pages through `statementTransactions`, so PDF import itself is no longer provider-gated |
 | `receiptSummary` | gemini | The other two go straight to statement extraction |
 | `receiptItems` | gemini | Position-aware single-image itemization has no OpenAI/Claude counterpart yet |
 

@@ -87,12 +87,9 @@ export class ClaudeService extends CloudLLMProviderBase {
     return this.client !== null;
   }
 
-  /**
-   * Every entry in the Claude catalog is vision-capable. PDFs are not accepted
-   * directly — the pages have to be rasterized first.
-   */
+  /** Every entry in the Claude catalog is vision-capable. */
   override get capabilities(): ProviderCapabilities {
-    return { vision: true, nativePdf: false };
+    return { vision: true };
   }
 
   /**

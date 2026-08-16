@@ -11,7 +11,6 @@ import {
 } from './insights.prompts';
 import {
   renderMultiImageReceipts,
-  renderPdfStatement,
   renderReceiptItems,
   renderReceiptParse,
   renderReceiptSummary,
@@ -71,11 +70,6 @@ export const PROMPTS = {
     since: '1.17.93',
     feature: 'receiptScanning',
     render: renderStatementTransactions,
-  },
-  pdfStatement: {
-    since: '1.17.93',
-    feature: 'receiptScanning',
-    render: renderPdfStatement,
   },
   multiImageReceipts: {
     since: '1.17.93',

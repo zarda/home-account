@@ -78,10 +78,6 @@ const ALL_PROVIDERS = Object.keys(PROVIDERS).sort();
  * reason names the issue that closes it. An empty table is the goal.
  */
 const SINGLE_PROVIDER = {
-  pdfStatement: {
-    providers: ['gemini'],
-    reason: 'Gemini is the only provider that accepts a PDF natively; the others read rasterized pages via statementTransactions',
-  },
   receiptSummary: {
     providers: ['gemini'],
     reason: 'Gemini reduces one photo to a summary row; the others go straight to statement extraction',

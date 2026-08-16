@@ -789,45 +789,6 @@ describe('GeminiService', () => {
   });
 
   // ----------------------------------------------------------------
-  // extractTransactionsFromPDF
-  // ----------------------------------------------------------------
-  describe('extractTransactionsFromPDF', () => {
-    it('throws when the vision model is not available', async () => {
-      (service as unknown as { visionModel: unknown }).visionModel = null;
-      await expectAsync(service.extractTransactionsFromPDF('abc'))
-        .toBeRejectedWithError('Gemini Vision model not available');
-    });
-
-    it('converts extracted rows to signed RawTransactions', async () => {
-      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
-        { date: '2024-01-15', description: 'Salary', amount: 3500, type: 'income', currency: 'USD' },
-        { date: '2024-01-16', description: 'Walmart', amount: 125, type: 'expense', currency: 'USD' },
-        { description: 'No date', amount: 10, type: 'expense', currency: 'USD' },
-      ])));
-
-      const result = await service.extractTransactionsFromPDF('data:application/pdf;base64,zzz');
-      expect(result.length).toBe(3);
-      expect(result[0].amount).toBe(3500);
-      expect(result[1].amount).toBe(-125);
-      expect(result[2].description).toBe('No date');
-      expect(result[2].date instanceof Date).toBeTrue();
-    });
-
-    it('rethrows on error and records lastError', async () => {
-      visionModel.generateContent.and.rejectWith(new Error('pdf boom'));
-      await expectAsync(service.extractTransactionsFromPDF('abc'))
-        .toBeRejectedWithError('pdf boom');
-      expect(service.lastError()).toBe('pdf boom');
-    });
-
-    it('records an Unknown error for non-Error rejections', async () => {
-      visionModel.generateContent.and.callFake(() => Promise.reject(42));
-      await expectAsync(service.extractTransactionsFromPDF('abc')).toBeRejected();
-      expect(service.lastError()).toBe('Unknown error');
-    });
-  });
-
-  // ----------------------------------------------------------------
   // extractTransactionsFromMultipleImages (+ extractWithPositionMetadata)
   // ----------------------------------------------------------------
   describe('extractTransactionsFromMultipleImages', () => {

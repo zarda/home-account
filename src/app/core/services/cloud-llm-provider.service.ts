@@ -294,29 +294,6 @@ export class CloudLLMProviderService {
     );
   }
 
-  /**
-   * Extract transactions from a PDF.
-   *
-   * Only Gemini accepts a PDF directly, so a provider is chosen by capability
-   * rather than by preference here. Until the pages can be rasterized client
-   * side (#55), a user with only OpenAI or Claude configured gets a clear
-   * refusal instead of an SDK error.
-   */
-  async extractTransactionsFromPDF(pdfBase64: string): Promise<RawTransaction[]> {
-    const adapters = this.adapters();
-    const status = this.providerStatus();
-    const capable = (Object.keys(adapters) as LLMProvider[]).find(
-      name => status[name] && adapters[name].capabilities.nativePdf
-    );
-
-    if (!capable) {
-      throw new Error('PDF extraction needs a provider that accepts PDFs directly');
-    }
-
-    // Guaranteed present: nativePdf is only true where the method exists.
-    return adapters[capable].extractTransactionsFromPDF!(pdfBase64);
-  }
-
   // ---------------------------------------------- categorization
 
   /** Suggest a category for a transaction description. */

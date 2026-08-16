@@ -36,7 +36,7 @@ class StubProvider extends CloudLLMProviderBase {
   responseQueue: (ProviderResponse | Error)[] = [];
 
   override get capabilities(): ProviderCapabilities {
-    return { vision: true, nativePdf: false };
+    return { vision: true };
   }
 
   isAvailable(): boolean {
