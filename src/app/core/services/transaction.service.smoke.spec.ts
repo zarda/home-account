@@ -208,9 +208,9 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
    * stops at the literal handed to a mocked FirestoreService.
    *
    * This is zone-sensitive on purpose. At UTC it passes either way, which is
-   * why the smoke suite is also run under TZ=America/New_York — where the old
-   * UTC parse put a 1 August receipt in July, in July's budget and July's
-   * monthly comparison.
+   * why CI runs this file again under TZ=America/New_York and TZ=Asia/Tokyo
+   * (`npm run smoke:dates`) — west of UTC is where the old UTC parse put a
+   * 1 August receipt in July, in July's budget and July's monthly comparison.
    */
   describe('a date-only receipt date', () => {
     const AUGUST_START = new Date(2026, 7, 1);

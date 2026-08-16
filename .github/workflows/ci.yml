@@ -145,5 +145,12 @@ jobs:
       - name: Smoke test (Firebase emulators)
         run: npm run smoke
 
+      # The same offset-0 blindness as the date specs, against the emulators:
+      # the smoke specs that assert period bounds and horizon edges cannot
+      # fail at UTC. The alias names the zone-sensitive files and wraps both
+      # zone runs in one emulators:exec, so the emulators boot once.
+      - name: Smoke date specs (non-UTC zones)
+        run: npm run smoke:dates
+
       - name: Build (production)
         run: npm run build
