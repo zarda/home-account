@@ -9,12 +9,13 @@ import { AiSearchDialogComponent } from './ai-search-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
+import { GoalService } from '../../../core/services/goal.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { NlSearchResult, SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
+import { Goal, NlSearchResult, SEARCH_ANSWER_SCHEMA_VERSION, SearchAnswerRecord } from '../../../models';
 import { createCategory, createTransaction } from '../../../core/services/testing/test-data';
 
 describe('AiSearchDialogComponent', () => {
@@ -34,6 +35,7 @@ describe('AiSearchDialogComponent', () => {
     refreshAnswer: jasmine.Spy;
     deleteAnswer: jasmine.Spy;
   };
+  let goalService: { goals: jasmine.Spy; exportAll: jasmine.Spy };
 
   async function searchWith(result: NlSearchResult): Promise<void> {
     nlSearch.search.and.resolveTo(result);
@@ -60,6 +62,12 @@ describe('AiSearchDialogComponent', () => {
       touch: jasmine.createSpy('touch').and.resolveTo(),
       refreshAnswer: jasmine.createSpy('refreshAnswer').and.resolveTo(),
       deleteAnswer: jasmine.createSpy('deleteAnswer').and.resolveTo(),
+    };
+    // Cold by default, as on a page that never subscribed to goals; the
+    // goal-chip suite warms the signal or resolves the fallback per test.
+    goalService = {
+      goals: jasmine.createSpy('goals').and.returnValue([]),
+      exportAll: jasmine.createSpy('exportAll').and.resolveTo([]),
     };
 
     const categoryService = jasmine.createSpyObj('CategoryService', ['categories']);
@@ -93,6 +101,7 @@ describe('AiSearchDialogComponent', () => {
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: SearchAnswerHistoryService, useValue: answerHistory },
         { provide: CategoryService, useValue: categoryService },
+        { provide: GoalService, useValue: goalService },
         { provide: CurrencyService, useValue: currencyService },
         { provide: TranslationService, useValue: translationService },
         { provide: DateFormatService, useValue: dateFormatService },
