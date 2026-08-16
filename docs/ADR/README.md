@@ -53,6 +53,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0046](0046-an-unrecognized-category-name-is-not-a-category.md) | An unrecognized category name is not a category | Accepted | 2026-08-15 |
 | [0047](0047-feedback-is-a-stored-record-first-and-a-mail-second.md) | Feedback is a stored record first and a mail second | Accepted | 2026-08-15 |
 | [0048](0048-a-dead-capability-is-removed-not-guarded.md) | A dead capability is removed, not guarded | Accepted | 2026-08-16 |
+| [0049](0049-the-model-never-sees-an-i18n-key.md) | The model never sees an i18n key | Accepted | 2026-08-16 |
 
 ## What belongs here
 

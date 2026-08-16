@@ -173,6 +173,12 @@ unrecognized answer leaves the row's category unset, so the import grades it
 for review instead of trusting it
 ([ADR 0046](ADR/0046-an-unrecognized-category-name-is-not-a-category.md)).
 
+The on-device path is no exception. The vocabulary Apple's foundation model
+receives is the same catalog rendering the cloud providers use — active
+entries only, translated `id: Name` lines, never the stored i18n keys — and
+its answer resolves through the same matcher, ids first, in every shipped
+locale ([ADR 0049](ADR/0049-the-model-never-sees-an-i18n-key.md)).
+
 ## Failure surfacing
 
 A provider failure is thrown, never flattened into an empty result: all three
