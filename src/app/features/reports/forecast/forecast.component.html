@@ -31,6 +31,12 @@
         ></canvas>
       </div>
 
+      @if (bucketDays() > 1) {
+        <p class="forecast-bucket-note">
+          {{ 'reports.forecastBucketNote' | translate: { count: bucketDays() } }}
+        </p>
+      }
+
       <p class="forecast-summary">
         {{ 'reports.forecastProjectedNet' | translate: { amount: projectedNetLabel() } }}
       </p>

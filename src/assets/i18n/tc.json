@@ -346,6 +346,7 @@
     "forecastActualSeries": "至今實績",
     "forecastProjectedSeries": "預測變化",
     "forecastProjectedNet": "此期間排定項目合計為 {{amount}}",
+    "forecastBucketNote": "每個點涵蓋 {{count}} 天，結束於顯示的日期。",
     "forecastNoRulesTitle": "沒有可預測的排程",
     "forecastNoRulesBody": "預測會將您的定期規則向前推算。請在預算 → 定期建立規則，或在模式分頁將偵測到的訂閱設為定期交易。",
     "recurringVsOneOff": "定期與一次性支出明細",

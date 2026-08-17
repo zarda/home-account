@@ -352,6 +352,10 @@
     "forecastActualSeries": "Actuals to date",
     "forecastProjectedSeries": "Projected change",
     "forecastProjectedNet": "Scheduled items add up to {{amount}} over this horizon",
+    "forecastBucketNote": {
+      "one": "Each point covers one day, ending on the date shown.",
+      "other": "Each point covers {{count}} days, ending on the date shown."
+    },
     "forecastNoRulesTitle": "Nothing scheduled to project",
     "forecastNoRulesBody": "The forecast projects your recurring rules forward. Create one under Budget → Recurring, or track a detected subscription from the Patterns tab.",
     "recurringVsOneOff": "Recurring vs One-off Spending",

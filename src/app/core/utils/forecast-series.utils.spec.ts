@@ -22,12 +22,12 @@ describe('forecast-series.utils', () => {
       occurrences: [income(new Date(2026, 7, 10), 1000), expense(new Date(2026, 7, 12), 300)]
     });
 
-    expect(series.days[series.todayIndex]).toBe('2026-08-07');
+    expect(series.bucketEnds[series.todayIndex]).toBe('2026-08-07');
     expect(series.projectedCumulative[series.todayIndex]).toBe(0);
     // 10th: +1000; 12th: -300 on top.
-    expect(series.projectedCumulative[series.days.indexOf('2026-08-10')]).toBe(1000);
-    expect(series.projectedCumulative[series.days.indexOf('2026-08-12')]).toBe(700);
-    expect(series.projectedCumulative[series.days.indexOf('2026-08-14')]).toBe(700);
+    expect(series.projectedCumulative[series.bucketEnds.indexOf('2026-08-10')]).toBe(1000);
+    expect(series.projectedCumulative[series.bucketEnds.indexOf('2026-08-12')]).toBe(700);
+    expect(series.projectedCumulative[series.bucketEnds.indexOf('2026-08-14')]).toBe(700);
   });
 
   it('runs actuals cumulatively from the period start up to today, null after', () => {
@@ -39,10 +39,10 @@ describe('forecast-series.utils', () => {
       occurrences: []
     });
 
-    expect(series.days[0]).toBe('2026-08-01');
+    expect(series.bucketEnds[0]).toBe('2026-08-01');
     expect(series.actualCumulative[0]).toBe(0);
-    expect(series.actualCumulative[series.days.indexOf('2026-08-02')]).toBe(500);
-    expect(series.actualCumulative[series.days.indexOf('2026-08-05')]).toBe(300);
+    expect(series.actualCumulative[series.bucketEnds.indexOf('2026-08-02')]).toBe(500);
+    expect(series.actualCumulative[series.bucketEnds.indexOf('2026-08-05')]).toBe(300);
     expect(series.actualCumulative[series.todayIndex]).toBe(300);
     expect(series.actualCumulative[series.todayIndex + 1]).toBeNull();
     // And the projection is null before today.
@@ -62,7 +62,7 @@ describe('forecast-series.utils', () => {
       ]
     });
 
-    expect(series.projectedCumulative[series.days.indexOf('2026-08-09')]).toBe(-130);
+    expect(series.projectedCumulative[series.bucketEnds.indexOf('2026-08-09')]).toBe(-130);
   });
 
   it('drops occurrences on or before today — the catch-up engine posts those', () => {
@@ -86,8 +86,8 @@ describe('forecast-series.utils', () => {
       occurrences: [expense(new Date(2026, 7, 20), 999)]
     });
 
-    expect(series.days[series.days.length - 1]).toBe('2026-08-10');
-    expect(series.projectedCumulative[series.days.length - 1]).toBe(0);
+    expect(series.bucketEnds[series.bucketEnds.length - 1]).toBe('2026-08-10');
+    expect(series.projectedCumulative[series.bucketEnds.length - 1]).toBe(0);
   });
 
   it('is flat at zero with no rules at all', () => {
@@ -99,7 +99,7 @@ describe('forecast-series.utils', () => {
       occurrences: []
     });
 
-    expect(series.projectedCumulative[series.days.length - 1]).toBe(0);
+    expect(series.projectedCumulative[series.bucketEnds.length - 1]).toBe(0);
   });
 
   it('spans DST transitions without duplicating or skipping a day', () => {
@@ -111,7 +111,7 @@ describe('forecast-series.utils', () => {
       actuals: [],
       occurrences: []
     });
-    expect(march.days).toEqual([
+    expect(march.bucketEnds).toEqual([
       '2026-03-01', '2026-03-02', '2026-03-03', '2026-03-04', '2026-03-05',
       '2026-03-06', '2026-03-07', '2026-03-08', '2026-03-09', '2026-03-10',
       '2026-03-11'
@@ -125,7 +125,7 @@ describe('forecast-series.utils', () => {
       actuals: [],
       occurrences: []
     });
-    expect(november.days).toEqual([
+    expect(november.bucketEnds).toEqual([
       '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31',
       '2026-11-01', '2026-11-02', '2026-11-03'
     ]);
@@ -140,7 +140,7 @@ describe('forecast-series.utils', () => {
       occurrences: []
     });
 
-    expect(series.days[0]).toBe(dayKey(TODAY));
+    expect(series.bucketEnds[0]).toBe(dayKey(TODAY));
     expect(series.todayIndex).toBe(0);
   });
 });
