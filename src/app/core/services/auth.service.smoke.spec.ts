@@ -7,6 +7,8 @@ import {
   getFirestore,
   connectFirestoreEmulator,
   terminate,
+  disableNetwork,
+  enableNetwork,
   doc,
   getDoc,
   setDoc,
@@ -321,7 +323,191 @@ describe('AuthService (emulator smoke test)', () => {
 
       expect(service.currentUser()).toBeNull();
       expect(service.isAuthenticated()).toBeFalse();
+      // The SDK's own state is already null here, before the listener has
+      // observed anything. That ordering is what the session-identity guard
+      // rests on: auth.currentUser leads the firebaseUser signal, which is
+      // written from the listener a beat later, so only the SDK can answer
+      // "is this still the session that started the read" in time.
+      expect(auth.currentUser).toBeNull();
       await waitFor(() => service.firebaseUser() === null, 'the listener to observe the sign-out');
+    });
+  });
+
+  /**
+   * The retry effect's SUCCESS path, which nothing else reaches: the
+   * profile-load failure block above terminates its Firestore, so every read
+   * there rejects and its retry can only ever land in .catch — the one branch
+   * the session-identity guard does not sit on.
+   *
+   * The degraded state is armed through the public signal rather than induced
+   * by a real failure. Inducing one is not reliable here: with the network
+   * disabled and a cold cache the profile read does not fail, it falls
+   * through to the create path and succeeds. What matters is that everything
+   * after the arming is real — a real Firestore read, a real effect, and the
+   * real guard deciding whether its answer may be written.
+   */
+  describe('degraded recovery', () => {
+    let app: FirebaseApp;
+    let auth: Auth;
+    let firestore: ReturnType<typeof getFirestore>;
+
+    beforeAll(async () => {
+      app = initializeApp(
+        { apiKey: 'fake-api-key', projectId: 'demo-home-account' },
+        `auth-smoke-recovery-${Date.now()}`
+      );
+      auth = getAuth(app);
+      connectAuthEmulator(auth, AUTH_URL, { disableWarnings: true });
+      firestore = getFirestore(app);
+      connectFirestoreEmulator(firestore, FIRESTORE_HOST, FIRESTORE_PORT);
+      await signInAnonymously(auth);
+    });
+
+    afterAll(async () => {
+      await deleteApp(app).catch(() => undefined);
+    });
+
+    beforeEach(() => {
+      TestBed.configureTestingModule({
+        providers: [
+          AuthService,
+          { provide: Auth, useValue: auth },
+          { provide: Firestore, useValue: firestore },
+          ...stubProviders()
+        ]
+      });
+    });
+
+    it('a reconnect retry swaps the real profile in for the session that is still live', async () => {
+      const service = TestBed.inject(AuthService);
+      await waitFor(() => service.isAuthenticated(), 'the profile load');
+      const uid = auth.currentUser!.uid;
+      await setDoc(doc(firestore, 'users', uid), { displayName: 'Recovered' }, { merge: true });
+
+      service.currentUser.set({ id: uid, displayName: 'Fallback' } as never);
+      service.profileDegraded.set(true);
+      (TestBed.inject(PwaService) as unknown as {
+        isOnline: ReturnType<typeof signal<boolean>>;
+      }).isOnline.set(true);
+      // Out of the current turn: Firestore's callbacks run inside the Angular
+      // zone, so a tick issued here can land inside one already in progress.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      TestBed.tick();
+
+      await waitFor(() => !service.profileDegraded(), 'the retry to swap in the real profile');
+      // The stored document, not the in-memory fallback it replaced.
+      expect(service.currentUser()!.displayName).toBe('Recovered');
+      expect(service.currentUser()!.id).toBe(uid);
+      expect(service.isAuthenticated()).toBeTrue();
+    });
+
+    it('signing back in leaves no stale degraded flag behind', async () => {
+      const service = TestBed.inject(AuthService);
+      await waitFor(() => service.isAuthenticated(), 'the profile load');
+
+      await service.signOut();
+      await waitFor(() => service.firebaseUser() === null, 'the listener to observe the sign-out');
+
+      await signInAnonymously(auth);
+      await waitFor(() => service.isAuthenticated(), 'the new session to load its profile');
+
+      expect(service.profileDegraded()).toBeFalse();
+      expect(service.currentUser()!.id).toBe(auth.currentUser!.uid);
+    });
+  });
+
+  /**
+   * The ghost session: a profile read that resolves after the session that
+   * asked for it has ended. On the unfixed build the retry's .then writes the
+   * profile back and the app holds a signed-in identity with no Firebase
+   * session behind it.
+   *
+   * Two things are arranged rather than waited for, and both are deliberate.
+   *
+   * The network is disabled so the read RESOLVES: offline, a cached document
+   * is served from the local cache, while an uncached one rejects. The guard
+   * only exists on the resolving branch — with the network up, a read issued
+   * after sign-out is denied by the rules and lands in .catch, the one branch
+   * that cannot install a ghost. The spec proves the cache serves the read
+   * rather than assuming it.
+   *
+   * And the stale signal is written back by hand. The natural race cannot be
+   * won reliably: firebaseSignOut nulls auth.currentUser and runs the
+   * listener's synchronous null branch before its promise resolves, so by the
+   * time a spec regains control the effect can no longer start. What is
+   * reconstructed is only the signal value that window leaves behind; the
+   * emulator, the auth SDK, the Firestore read and the effect are all real.
+   * The exact interleavings live in auth.service.spec.ts, which drives them.
+   *
+   * What this case actually holds is the pair of retry guards together — it
+   * fails with both removed, and the start gate alone is enough to satisfy
+   * it, because a gate that refuses to read never reaches the write. Do not
+   * read a green here as cover for the guard inside .then; that one is pinned
+   * case by case in the unit spec, where the read is already in flight before
+   * the session ends.
+   */
+  describe('sign-out during a profile retry', () => {
+    let app: FirebaseApp;
+    let auth: Auth;
+    let firestore: ReturnType<typeof getFirestore>;
+    let uid: string;
+
+    beforeAll(async () => {
+      app = initializeApp(
+        { apiKey: 'fake-api-key', projectId: 'demo-home-account' },
+        `auth-smoke-ghost-${Date.now()}`
+      );
+      auth = getAuth(app);
+      connectAuthEmulator(auth, AUTH_URL, { disableWarnings: true });
+      firestore = getFirestore(app);
+      connectFirestoreEmulator(firestore, FIRESTORE_HOST, FIRESTORE_PORT);
+      uid = (await signInAnonymously(auth)).user.uid;
+    });
+
+    afterAll(async () => {
+      await enableNetwork(firestore).catch(() => undefined);
+      await deleteApp(app).catch(() => undefined);
+    });
+
+    beforeEach(() => {
+      TestBed.configureTestingModule({
+        providers: [
+          AuthService,
+          { provide: Auth, useValue: auth },
+          { provide: Firestore, useValue: firestore },
+          ...stubProviders()
+        ]
+      });
+    });
+
+    it('a retry that resolves after sign-out does not resurrect the session', async () => {
+      const service = TestBed.inject(AuthService);
+      await waitFor(() => service.isAuthenticated(), 'the profile load');
+      const endedSession = service.firebaseUser()!;
+
+      await disableNetwork(firestore);
+      // Offline, this document is answered from the local cache — which is
+      // what makes the retry below resolve instead of rejecting.
+      expect((await getDoc(doc(firestore, 'users', uid))).exists()).toBeTrue();
+
+      await service.signOut();
+      await waitFor(() => service.firebaseUser() === null, 'the listener to observe the sign-out');
+
+      // The state the race leaves behind: an ended session still named by the
+      // signal the effect reads, with the retry armed.
+      service.firebaseUser.set(endedSession);
+      service.profileDegraded.set(true);
+      (TestBed.inject(PwaService) as unknown as {
+        isOnline: ReturnType<typeof signal<boolean>>;
+      }).isOnline.set(true);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      TestBed.tick();
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      expect(auth.currentUser).toBeNull();
+      expect(service.currentUser()).toBeNull();
+      expect(service.isAuthenticated()).toBeFalse();
+      expect(service.profileDegraded()).toBeTrue();
     });
   });
 });

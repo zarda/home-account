@@ -208,4 +208,188 @@ describe('AuthService', () => {
       ).toBeRejectedWithError('No authenticated user');
     });
   });
+
+  /**
+   * A profile read crosses an await, and the session can end underneath it.
+   * Served from the local cache the read resolves happily after a sign-out,
+   * and writing the answer back left the app holding a signed-in identity
+   * with no Firebase session behind it.
+   *
+   * These drive the interleaving by hand rather than racing for it: the
+   * profile read is replaced with a promise this spec resolves itself, so
+   * where the sign-out lands relative to the answer is decided here and not
+   * by timing. The emulator-backed spec covers the same invariant with a real
+   * Firestore read; the exact orderings only exist here.
+   */
+  describe('session identity across a profile read', () => {
+    const UID = 'user-1';
+    const OTHER_UID = 'user-2';
+
+    let liveSession: jasmine.Spy;
+    let notifications: jasmine.SpyObj<NotificationService>;
+    let pwa: { isOnline: ReturnType<typeof signal<boolean>> };
+    let resolveRead: (user: unknown) => void;
+    let rejectRead: (error: unknown) => void;
+    let readStarted: jasmine.Spy;
+
+    /** The uid the SDK reports as signed in right now; null once signed out. */
+    const signedInAs = (uid: string | null) =>
+      liveSession.and.returnValue(uid ? ({ uid } as FirebaseUser) : null);
+
+    /** The auth-state callback the listener registered, whatever slot it took. */
+    const listenerCallback = () =>
+      mockAuth.onAuthStateChanged.calls.mostRecent().args
+        .find(arg => typeof arg === 'function') as (user: FirebaseUser | null) => Promise<void>;
+
+    /** Let every .then/.catch/.finally in the chain run. */
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    const storedProfile = (uid: string) => ({ id: uid, displayName: 'Stored Name' });
+
+    beforeEach(() => {
+      spyOn(console, 'error');
+      liveSession = Object.getOwnPropertyDescriptor(mockAuth, 'currentUser')!.get as jasmine.Spy;
+      notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+      pwa = TestBed.inject(PwaService) as unknown as {
+        isOnline: ReturnType<typeof signal<boolean>>;
+      };
+
+      readStarted = spyOn(
+        service as unknown as { getOrCreateUser: (u: FirebaseUser) => Promise<unknown> },
+        'getOrCreateUser'
+      ).and.returnValue(new Promise((resolve, reject) => {
+        resolveRead = resolve;
+        rejectRead = reject;
+      }));
+    });
+
+    /** Put the session on the fallback profile with a retry armed and running. */
+    const startRetryFor = (uid: string) => {
+      signedInAs(uid);
+      service.firebaseUser.set({ uid } as FirebaseUser);
+      service.currentUser.set({ id: uid } as never);
+      service.profileDegraded.set(true);
+      pwa.isOnline.set(true);
+      TestBed.tick();
+      // Anti-vacuity: the mock reports nobody signed in by default, so a
+      // misplaced guard would keep every retry from starting and leave the
+      // negative cases below passing for the wrong reason.
+      expect(readStarted).toHaveBeenCalled();
+    };
+
+    it('does not install a profile read for a session that has ended', async () => {
+      startRetryFor(UID);
+
+      signedInAs(null);
+      service.currentUser.set(null);
+      resolveRead(storedProfile(UID));
+      await settle();
+
+      expect(service.currentUser()).toBeNull();
+      expect(service.isAuthenticated()).toBeFalse();
+    });
+
+    it('leaves the degraded flag alone when it abandons a stale read', async () => {
+      startRetryFor(UID);
+
+      signedInAs(null);
+      service.currentUser.set(null);
+      resolveRead(storedProfile(UID));
+      await settle();
+
+      // Clearing it here would hand the next sign-in to this account a
+      // not-degraded flag over a fallback profile, with nothing left to
+      // trigger a re-read.
+      expect(service.profileDegraded()).toBeTrue();
+    });
+
+    it('does not install a profile read for the account that has just been replaced', async () => {
+      startRetryFor(UID);
+
+      signedInAs(OTHER_UID);
+      resolveRead(storedProfile(UID));
+      await settle();
+
+      // The answer belonged to the previous account and is discarded; what
+      // the new session sees is installed by its own listener callback, not
+      // by a read the departed session started.
+      expect(service.currentUser()?.displayName).toBeUndefined();
+      expect(service.profileDegraded()).toBeTrue();
+    });
+
+    it('still swaps in the real profile when the session has not changed', async () => {
+      startRetryFor(UID);
+
+      resolveRead(storedProfile(UID));
+      await settle();
+
+      expect(service.currentUser()?.displayName).toBe('Stored Name');
+      expect(service.profileDegraded()).toBeFalse();
+    });
+
+    it('treats a refreshed token for the same account as the same session', async () => {
+      startRetryFor(UID);
+
+      // A refresh hands over a different object for the same person; keying
+      // the check on identity rather than uid would abandon a good read.
+      signedInAs(UID);
+      resolveRead(storedProfile(UID));
+      await settle();
+
+      expect(service.currentUser()?.displayName).toBe('Stored Name');
+      expect(service.profileDegraded()).toBeFalse();
+    });
+
+    it('signs back in to the same account without a reload after a sign-out mid-retry', async () => {
+      startRetryFor(UID);
+
+      signedInAs(null);
+      service.currentUser.set(null);
+      resolveRead(storedProfile(UID));
+      await settle();
+      expect(service.isAuthenticated()).toBeFalse();
+
+      // Signing back in: the listener fires for the same account and its own
+      // read succeeds. Nothing inherited from the abandoned session may make
+      // this one degraded or leave it on a fallback profile.
+      signedInAs(UID);
+      readStarted.and.resolveTo(storedProfile(UID));
+      await listenerCallback()({ uid: UID } as FirebaseUser);
+
+      expect(service.currentUser()?.displayName).toBe('Stored Name');
+      expect(service.profileDegraded()).toBeFalse();
+      expect(service.isLoading()).toBeFalse();
+    });
+
+    it('does not write a listener read that resolved after the session ended', async () => {
+      const pending = listenerCallback()({ uid: UID } as FirebaseUser);
+      expect(readStarted).toHaveBeenCalled();
+
+      signedInAs(null);
+      resolveRead(storedProfile(UID));
+      await pending;
+
+      expect(service.currentUser()).toBeNull();
+      expect(service.isAuthenticated()).toBeFalse();
+      // The early-return shape would have stranded this, and publicGuard
+      // waits on it for ten seconds before deciding anything.
+      expect(service.isLoading()).toBeFalse();
+    });
+
+    it('raises no degraded profile for a session that has already ended', async () => {
+      const pending = listenerCallback()({ uid: UID } as FirebaseUser);
+      expect(readStarted).toHaveBeenCalled();
+
+      signedInAs(null);
+      rejectRead(new Error('offline'));
+      await pending;
+
+      expect(service.currentUser()).toBeNull();
+      expect(service.profileDegraded()).toBeFalse();
+      // Telling someone who has just signed out that their profile could not
+      // be loaded is the second, smaller defect on this path.
+      expect(notifications.error).not.toHaveBeenCalled();
+      expect(service.isLoading()).toBeFalse();
+    });
+  });
 });
