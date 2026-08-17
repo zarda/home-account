@@ -31,7 +31,8 @@ replies to is resolved server-side at mail time and is never stored.
 `securityEvents` reason plus one of their own: the operator is mailed a copy
 on create, and a rewrite would make the stored record diverge from the mail
 already sent. Owner delete stays allowed — account deletion has to empty the
-list, and a rule cannot tell the two deletes apart.
+list, and a rule cannot tell the two deletes apart. That permission now has
+a door in the UI as well; see [Removing an entry](#removing-an-entry).
 
 ## The door
 
@@ -44,6 +45,29 @@ capped at 20 displayed). The data hub counts the collection through the
 Deliberately not in the backup file: feedback entries are messages already
 delivered, not account data worth migrating, and restoring them would re-fire
 the mail trigger and re-send every one.
+
+## Removing an entry
+
+Each row in the list carries a delete, behind the shared confirm dialog
+(`FeedbackService.delete(id)`). The list is live, so the row leaves on its
+own once the document does — no local list surgery.
+
+**The confirm says the mailed copy is not recalled**, and that wording is
+load-bearing rather than boilerplate. The operator was sent the message on
+create, the trigger is `onDocumentCreated` only, and a user reaching for
+delete may well be trying to unsend. What the action removes is the stored
+record and nothing else. A spec asserts the confirm carries that message, so
+a later edit that softens it fails.
+
+There is no typed-token speed bump (`requireText`): the record is small and
+the mail has already gone, so the bump would protect nothing.
+
+**This needed no rules change and no deploy** — the delete permission was
+always there, and only the affordance was missing
+(see [ADR 0056](ADR/0056-a-permission-the-rules-grant-has-a-door-in-the-ui.md)).
+Because that is a claim about the rules already in production,
+`feedback.service.smoke.spec.ts` checks it against the real `firestore.rules`
+under the emulator rather than against a mock.
 
 ## The mail pipeline
 
