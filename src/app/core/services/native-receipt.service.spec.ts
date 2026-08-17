@@ -111,6 +111,22 @@ describe('NativeReceiptService', () => {
       expect(transaction.notes).toBe(ocrResult.text);
     });
 
+    /**
+     * This parser reads figures and evidence tiers and never looks at what
+     * was bought, so its rows reach the import with no category — but for a
+     * different reason than a model answer the catalog could not place. The
+     * seam grades the two apart, and this flag is how it tells them apart.
+     * It matters at scale: on any iOS device without Apple Intelligence this
+     * is the engine for every scan.
+     */
+    it('reports that nothing attempted to categorize the row', async () => {
+      const result = await service.processImage(imageFile());
+
+      const transaction = result.transactions[0];
+      expect(transaction.suggestedCategoryId).toBeUndefined();
+      expect(transaction.categoryAttempted).toBeFalse();
+    });
+
     it('should pass the recognized image to Vision OCR as base64', async () => {
       await service.processImage(imageFile());
 
@@ -232,6 +248,30 @@ describe('NativeReceiptService', () => {
 
       it('leaves an answer that matches nothing unset rather than picking a category', async () => {
         expect(await suggestedFor('Nonexistent')).toBeUndefined();
+      });
+
+      /**
+       * The grade the import chip shows is derived at the seam from whether
+       * the id resolved; the row's own confidence stays what Vision reported.
+       * That separation is load-bearing: this number averages into the
+       * envelope AIStrategyService compares against 0.4 when deciding whether
+       * to hand the scan to a cloud provider, so lowering it here would
+       * reroute a perfectly-read receipt whose category merely went
+       * unrecognized.
+       */
+      it('leaves the row confidence at what Vision reported when the category matched nothing', async () => {
+        appleMock.parseReceiptText.and.resolveTo({
+          merchant: 'Shop', date: '2026-01-15', amount: 10, currency: 'USD',
+          category: 'Nonexistent', details: '',
+        });
+
+        const transaction = (await service.processImage(imageFile())).transactions[0];
+
+        expect(transaction.suggestedCategoryId).toBeUndefined();
+        expect(transaction.confidence).toBe(ocrResult.confidence);
+        // Absent, not false: the model was asked and answered — the catalog
+        // is what failed to place it.
+        expect(transaction.categoryAttempted).toBeUndefined();
       });
     });
 

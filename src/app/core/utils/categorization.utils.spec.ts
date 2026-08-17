@@ -3,9 +3,12 @@ import {
   resolveCategoryId,
   buildCategoryPromptCatalog,
   applyCategorizations,
+  gradeCategorySuggestion,
   mapCategoryNameToId,
   matchCategoryName,
   FALLBACK_CATEGORY_ID,
+  UNCATEGORIZED_CATEGORY_CONFIDENCE,
+  UNRESOLVED_CATEGORY_CONFIDENCE,
 } from './categorization.utils';
 import { Category } from '../../models';
 import { createCategory } from '../services/testing/test-data';
@@ -173,6 +176,62 @@ describe('categorization.utils', () => {
       expect(result[0].suggestedCategoryId).toBe(FALLBACK_CATEGORY_ID);
       expect(result[1].suggestedCategoryId).toBe('transport');
       expect(result[1].confidence).toBe(0.7);
+    });
+  });
+
+  /**
+   * The same grading ladder as applyCategorizations, entered from the other
+   * door: the import seams, where an extracted row's category is coerced to
+   * the catch-all for display. The distinction this exists to keep is between
+   * an answer that resolved to nothing and a row nobody ever categorized —
+   * the regex reader produces the second on every scan it handles, and
+   * grading it as the first would flag every one of those rows for review.
+   */
+  describe('gradeCategorySuggestion', () => {
+    it('keeps the extraction confidence when a category resolved', () => {
+      expect(gradeCategorySuggestion({
+        suggestedCategoryId: 'food_groceries',
+        confidence: 0.92,
+      })).toEqual({ suggestedCategoryId: 'food_groceries', categoryConfidence: 0.92 });
+    });
+
+    it('grades an answer that resolved to nothing for review', () => {
+      const graded = gradeCategorySuggestion({ suggestedCategoryId: undefined, confidence: 0.9 });
+
+      expect(graded.suggestedCategoryId).toBe(FALLBACK_CATEGORY_ID);
+      expect(graded.categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+      // The band the review table reads; Vision's ~0.9 would have shown green.
+      expect(graded.categoryConfidence).toBeLessThan(0.5);
+    });
+
+    it('grades a row nothing attempted to categorize at the floor', () => {
+      const graded = gradeCategorySuggestion({
+        suggestedCategoryId: undefined,
+        confidence: 0.9,
+        categoryAttempted: false,
+      });
+
+      expect(graded.suggestedCategoryId).toBe(FALLBACK_CATEGORY_ID);
+      expect(graded.categoryConfidence).toBe(UNCATEGORIZED_CATEGORY_CONFIDENCE);
+      expect(graded.categoryConfidence).toBeLessThan(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('treats an empty id as unresolved, exactly as the coercion it replaced did', () => {
+      expect(gradeCategorySuggestion({ suggestedCategoryId: '', confidence: 0.9 }))
+        .toEqual({
+          suggestedCategoryId: FALLBACK_CATEGORY_ID,
+          categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE,
+        });
+    });
+
+    it('grades a resolved category on a never-attempted row by the id it carries', () => {
+      // categoryAttempted only decides how an ABSENT id is read; an id that is
+      // present was resolved by someone and keeps its own number.
+      expect(gradeCategorySuggestion({
+        suggestedCategoryId: 'transport',
+        confidence: 0.64,
+        categoryAttempted: false,
+      })).toEqual({ suggestedCategoryId: 'transport', categoryConfidence: 0.64 });
     });
   });
 

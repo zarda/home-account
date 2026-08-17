@@ -10,6 +10,10 @@ import { OfflineQueueService } from '../../../core/services/offline-queue.servic
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ImportResult } from '../../../models';
+import {
+  UNCATEGORIZED_CATEGORY_CONFIDENCE,
+  UNRESOLVED_CATEGORY_CONFIDENCE,
+} from '../../../core/utils/categorization.utils';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 
@@ -292,6 +296,53 @@ describe('CameraCaptureComponent', () => {
       const transaction = navState.importResult.transactions[0];
       expect(transaction.notes).toBe('Latte — JPY 500\nMocha — JPY 700');
       expect(transaction.suggestedCategoryId).toBe('food_coffee_&_drinks');
+      expect(transaction.categoryConfidence).toBe(0.9);
+    });
+
+    it('grades a category that resolved to nothing for review instead of confidently', async () => {
+      strategyService.processMultipleImages.and.resolveTo({
+        transactions: [{
+          description: 'Cafe', amount: 1200, currency: 'JPY', date: new Date(), type: 'expense',
+          // What an on-device scan reports when the model answered and the
+          // catalog could not place it: Vision's character confidence, and no
+          // category. The chip used to render this green.
+          confidence: 0.9, receiptId: 1,
+        }],
+        confidence: 0.9,
+      } as never);
+      const component = build().componentInstance;
+      withImages(component, 1);
+      await component.processImage();
+
+      const navState = (router.navigate.calls.mostRecent().args[1] as {
+        state: { importResult: ImportResult };
+      }).state;
+      const transaction = navState.importResult.transactions[0];
+      expect(transaction.suggestedCategoryId).toBe('other_expense');
+      expect(transaction.categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+      // A different question, a different number: the duplicate detector picks
+      // which of two overlapping rows survives by comparing these.
+      expect(transaction.imageMetadata?.confidenceScore).toBe(0.9);
+    });
+
+    it('grades a row nothing attempted to categorize at the floor', async () => {
+      strategyService.processMultipleImages.and.resolveTo({
+        transactions: [{
+          description: 'Diner', amount: 15, currency: 'USD', date: new Date(), type: 'expense',
+          confidence: 0.77, categoryAttempted: false,
+        }],
+        confidence: 0.77,
+      } as never);
+      const component = build().componentInstance;
+      withImages(component, 1);
+      await component.processImage();
+
+      const navState = (router.navigate.calls.mostRecent().args[1] as {
+        state: { importResult: ImportResult };
+      }).state;
+      const transaction = navState.importResult.transactions[0];
+      expect(transaction.suggestedCategoryId).toBe('other_expense');
+      expect(transaction.categoryConfidence).toBe(UNCATEGORIZED_CATEGORY_CONFIDENCE);
     });
 
     it('carries the review flag for an item-sum fallback amount', async () => {
