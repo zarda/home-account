@@ -243,6 +243,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard
 | [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, and the checks that stand in |
 | [docs/i18n.md](docs/i18n.md) | The translation catalog: three locales, plural entries that only English carries, the checker's three scans, and what still escapes them |
 | [docs/exchange-rates.md](docs/exchange-rates.md) | Where the exchange-rate table comes from: the fallback ladder from live fetch to device cache to constants, and what each rung stamps |
+| [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the degraded fallback profile and its retry, and the identity check every write across an await makes |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 

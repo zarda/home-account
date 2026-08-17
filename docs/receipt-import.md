@@ -64,9 +64,12 @@ reviewer should see the disagreement either way.
 
 The row's own `confidence` is untouched on purpose. That number averages into
 the score the strategy layer compares against 0.4 when deciding whether the
-other engine should be tried, and it becomes the `categoryConfidence` the
-wizard's category suggestion is coloured by. Neither of those questions is "was
-the amount read correctly".
+other engine should be tried, and the duplicate detector compares it to decide
+which of two overlapping rows survives. It is also what colours the wizard's
+category chip — but only where the row resolved a category at all; where
+nothing resolved one, the chip is graded on what was actually attempted
+instead ([ADR 0051](ADR/0051-an-uncategorized-row-is-graded-where-it-is-coerced.md)).
+None of those questions is "was the amount read correctly".
 
 **The regex parser**, the last resort when no model can be reached, has no field
 to ask for. It takes the largest figure in the strongest evidence tier it found,
@@ -173,11 +176,36 @@ unrecognized answer leaves the row's category unset, so the import grades it
 for review instead of trusting it
 ([ADR 0046](ADR/0046-an-unrecognized-category-name-is-not-a-category.md)).
 
+**Recognized means recognized here, now.** Every pass of the resolver — the
+id, the display names, the English keyword fallback — answers with an entry
+that is in this account's catalog and still active, or does not answer. That
+is not the same as the prompt only offering active entries, and the difference
+is where a bug lived: the model can name a category from its own knowledge
+rather than from the list it was given, and a category the user deleted stays
+in the merged catalog as an inactive entry so the management screen can offer
+to restore it. An answer naming one used to resolve onto it and file the
+receipt there, rendering under its real name as though nothing were wrong
+([ADR 0053](ADR/0053-a-resolver-answers-with-a-category-that-still-exists.md)).
+
+Where that grading happens is the point. The catch-all the row is filed under
+and the number the chip is coloured by are one decision, taken at the import
+seam by one shared helper, because they used to be taken on adjacent lines
+from different inputs — and the second of them borrowed a number that
+described something else. There are three answers, not two: a category that
+resolved keeps the extraction's own confidence, an answer nothing could place
+is graded for review, and a row **no categorizer ever looked at** is graded
+lower still, at the floor the categorization ladder already uses for rows
+nobody could answer. The last case is not rare — the fallback parser reads
+figures and never looks at what was bought, so every scan it handles lands
+there ([ADR 0051](ADR/0051-an-uncategorized-row-is-graded-where-it-is-coerced.md)).
+
 The on-device path is no exception. The vocabulary Apple's foundation model
 receives is the same catalog rendering the cloud providers use — active
 entries only, translated `id: Name` lines, never the stored i18n keys — and
 its answer resolves through the same matcher, ids first, in every shipped
-locale ([ADR 0049](ADR/0049-the-model-never-sees-an-i18n-key.md)).
+locale ([ADR 0049](ADR/0049-the-model-never-sees-an-i18n-key.md)) — and an
+answer that matcher could not place earns the same review grade a cloud
+extraction earns for it, rather than the score Vision gave the characters.
 
 ## Failure surfacing
 

@@ -3,11 +3,14 @@ import {
   resolveCategoryId,
   buildCategoryPromptCatalog,
   applyCategorizations,
+  gradeCategorySuggestion,
   mapCategoryNameToId,
   matchCategoryName,
   FALLBACK_CATEGORY_ID,
+  UNCATEGORIZED_CATEGORY_CONFIDENCE,
+  UNRESOLVED_CATEGORY_CONFIDENCE,
 } from './categorization.utils';
-import { Category } from '../../models';
+import { Category, DEFAULT_EXPENSE_GROUPS, DEFAULT_INCOME_GROUPS } from '../../models';
 import { createCategory } from '../services/testing/test-data';
 import type { RawTransaction } from '../services/gemini.service';
 
@@ -33,6 +36,25 @@ describe('categorization.utils', () => {
   ];
   // The active locale is not loaded, so t() echoes the key back.
   const untranslated = (name: string) => name;
+
+  /**
+   * The built-in catalog with the ids CategoryService actually generates:
+   * a parent under the group id, a child under `${group}_${key tail}`. Built
+   * from the shipped groups rather than written out, so a renamed or dropped
+   * default is visible here instead of being asserted against a fixture that
+   * agrees with the test rather than with the app.
+   */
+  const defaultCatalog = (): Category[] =>
+    [...DEFAULT_EXPENSE_GROUPS, ...DEFAULT_INCOME_GROUPS].flatMap(group => [
+      createCategory({ id: group.id, name: group.nameKey }),
+      ...group.categories.map(item =>
+        createCategory({
+          id: `${group.id}_${item.nameKey.split('.').pop()}`,
+          name: item.nameKey,
+          parentId: group.id,
+        })
+      ),
+    ]);
 
   describe('normalizeConfidence', () => {
     it('clamps values into [0, 1]', () => {
@@ -176,6 +198,62 @@ describe('categorization.utils', () => {
     });
   });
 
+  /**
+   * The same grading ladder as applyCategorizations, entered from the other
+   * door: the import seams, where an extracted row's category is coerced to
+   * the catch-all for display. The distinction this exists to keep is between
+   * an answer that resolved to nothing and a row nobody ever categorized —
+   * the regex reader produces the second on every scan it handles, and
+   * grading it as the first would flag every one of those rows for review.
+   */
+  describe('gradeCategorySuggestion', () => {
+    it('keeps the extraction confidence when a category resolved', () => {
+      expect(gradeCategorySuggestion({
+        suggestedCategoryId: 'food_groceries',
+        confidence: 0.92,
+      })).toEqual({ suggestedCategoryId: 'food_groceries', categoryConfidence: 0.92 });
+    });
+
+    it('grades an answer that resolved to nothing for review', () => {
+      const graded = gradeCategorySuggestion({ suggestedCategoryId: undefined, confidence: 0.9 });
+
+      expect(graded.suggestedCategoryId).toBe(FALLBACK_CATEGORY_ID);
+      expect(graded.categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+      // The band the review table reads; Vision's ~0.9 would have shown green.
+      expect(graded.categoryConfidence).toBeLessThan(0.5);
+    });
+
+    it('grades a row nothing attempted to categorize at the floor', () => {
+      const graded = gradeCategorySuggestion({
+        suggestedCategoryId: undefined,
+        confidence: 0.9,
+        categoryAttempted: false,
+      });
+
+      expect(graded.suggestedCategoryId).toBe(FALLBACK_CATEGORY_ID);
+      expect(graded.categoryConfidence).toBe(UNCATEGORIZED_CATEGORY_CONFIDENCE);
+      expect(graded.categoryConfidence).toBeLessThan(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('treats an empty id as unresolved, exactly as the coercion it replaced did', () => {
+      expect(gradeCategorySuggestion({ suggestedCategoryId: '', confidence: 0.9 }))
+        .toEqual({
+          suggestedCategoryId: FALLBACK_CATEGORY_ID,
+          categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE,
+        });
+    });
+
+    it('grades a resolved category on a never-attempted row by the id it carries', () => {
+      // categoryAttempted only decides how an ABSENT id is read; an id that is
+      // present was resolved by someone and keeps its own number.
+      expect(gradeCategorySuggestion({
+        suggestedCategoryId: 'transport',
+        confidence: 0.64,
+        categoryAttempted: false,
+      })).toEqual({ suggestedCategoryId: 'transport', categoryConfidence: 0.64 });
+    });
+  });
+
   describe('mapCategoryNameToId', () => {
     it('takes a catalog ID as-is, whatever language the rest of the answer is in', () => {
       expect(mapCategoryNameToId('food_groceries', defaultCategories, untranslated))
@@ -220,10 +298,21 @@ describe('categorization.utils', () => {
     });
 
     it('maps keywords to catalog IDs that actually exist by default', () => {
-      expect(mapCategoryNameToId('some coffee shop', [], identity)).toBe('food_coffeeAndDrinks');
-      expect(mapCategoryNameToId('gas station', [], identity)).toBe('transport_fuelAndGas');
-      expect(mapCategoryNameToId('pharmacy run', [], identity)).toBe('health_pharmacyAndMedicine');
-      expect(mapCategoryNameToId('grocery store', [], identity)).toBe('food_groceries');
+      // The map is compiled in and names ids by hand, so the guard is that
+      // each one is a real default. Asserted against ids built the way
+      // CategoryService builds them rather than against an empty catalog,
+      // which could only ever restate the map back to itself.
+      const catalog = defaultCatalog();
+      const has = (id: string) => catalog.some(c => c.id === id);
+      expect(has('food_coffeeAndDrinks')).toBeTrue();
+      expect(has('transport_fuelAndGas')).toBeTrue();
+      expect(has('health_pharmacyAndMedicine')).toBeTrue();
+      expect(has('food_groceries')).toBeTrue();
+
+      expect(mapCategoryNameToId('some coffee shop', catalog, identity)).toBe('food_coffeeAndDrinks');
+      expect(mapCategoryNameToId('gas station', catalog, identity)).toBe('transport_fuelAndGas');
+      expect(mapCategoryNameToId('pharmacy run', catalog, identity)).toBe('health_pharmacyAndMedicine');
+      expect(mapCategoryNameToId('grocery store', catalog, identity)).toBe('food_groceries');
     });
 
     it('falls back to other_expense when nothing matches', () => {
@@ -261,8 +350,59 @@ describe('categorization.utils', () => {
     it('counts an ID, a name and a keyword all as matched', () => {
       expect(matchCategoryName('transport', defaultCategories, untranslated).matched).toBeTrue();
       expect(matchCategoryName('Groceries', categories, identity).matched).toBeTrue();
-      expect(matchCategoryName('gas station', [], identity))
-        .toEqual({ id: 'transport_fuelAndGas', matched: true });
+      expect(matchCategoryName('gas station', [
+        createCategory({ id: 'transport_fuelAndGas', name: 'Fuel & Gas' }),
+      ], identity)).toEqual({ id: 'transport_fuelAndGas', matched: true });
+    });
+
+    /**
+     * A deleted built-in stays in the merged catalog as a stored override with
+     * isActive false, and the prompt never offers it — so a name that reaches
+     * the resolver matching one came from the model's own knowledge. Filing a
+     * receipt under it would resurrect a category the user removed, and the
+     * review chip reads the unfiltered catalog, so it would render under its
+     * real name and look like an ordinary suggestion.
+     */
+    describe('a category the user deleted', () => {
+      const withDeletedRestaurants = [
+        createCategory({ id: 'food_groceries', name: 'categoryNames.groceries' }),
+        createCategory({ id: 'food_restaurants', name: 'categoryNames.restaurants', isActive: false }),
+      ];
+
+      it('does not resolve by its display name', () => {
+        expect(matchCategoryName('Restaurants', withDeletedRestaurants, untranslated))
+          .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+      });
+
+      it('does not resolve by a display name in another shipped locale', () => {
+        // The locale pass is the reason the id check alone was not enough: it
+        // exists to catch an answer given in the receipt's language.
+        expect(matchCategoryName('レストラン', withDeletedRestaurants, untranslated).matched)
+          .toBeFalse();
+      });
+
+      it('does not resolve through a partial name match', () => {
+        expect(matchCategoryName('Restaurants and bars', withDeletedRestaurants, untranslated))
+          .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+      });
+
+      it('does not resolve through the keyword map', () => {
+        expect(matchCategoryName('a restaurant', withDeletedRestaurants, untranslated))
+          .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
+      });
+
+      it('still resolves the entries the account kept', () => {
+        expect(matchCategoryName('Groceries', withDeletedRestaurants, untranslated))
+          .toEqual({ id: 'food_groceries', matched: true });
+      });
+    });
+
+    it('does not answer with a keyword id the catalog does not carry', () => {
+      // The map is compiled in and names defaults an account need not have.
+      // An id nothing can render is not a resolution; the chip shows
+      // "Unknown" for it, and the row is not flagged for review.
+      expect(matchCategoryName('gas station', defaultCategories, untranslated))
+        .toEqual({ id: FALLBACK_CATEGORY_ID, matched: false });
     });
   });
 });

@@ -9,6 +9,10 @@ import {
   IMPORT_READBACK_FAILED,
   IMPORT_READBACK_TIMEOUT_MS,
 } from './ai-import.service';
+import {
+  UNCATEGORIZED_CATEGORY_CONFIDENCE,
+  UNRESOLVED_CATEGORY_CONFIDENCE,
+} from '../utils/categorization.utils';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -272,7 +276,57 @@ describe('AIImportService', () => {
 
       expect(result.transactions[0].currency).toBe('EUR');
       expect(result.transactions[0].suggestedCategoryId).toBe('other_expense');
+      // Coerced to the catch-all for display, but graded for review rather
+      // than wearing the 0.4 the extraction reported about something else.
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
       expect(result.processingSource).toBe('native');
+    });
+
+    it('keeps the extraction confidence on a row whose category resolved', async () => {
+      strategyService.processReceipt.and.returnValue(Promise.resolve({
+        source: 'native',
+        confidence: 0.88,
+        processingTimeMs: 5,
+        transactions: [{
+          date: new Date(2024, 5, 1),
+          description: 'Item',
+          amount: 3,
+          type: 'expense',
+          currency: 'EUR',
+          confidence: 0.88,
+          source: 'native',
+          suggestedCategoryId: 'food_groceries'
+        }]
+      }));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('food_groceries');
+      expect(result.transactions[0].categoryConfidence).toBe(0.88);
+    });
+
+    it('grades a row nothing attempted to categorize at the floor, not the review grade', async () => {
+      // The regex reader's shape: no category, and it says so of itself.
+      strategyService.processReceipt.and.returnValue(Promise.resolve({
+        source: 'native',
+        confidence: 0.77,
+        processingTimeMs: 5,
+        transactions: [{
+          date: new Date(2024, 5, 1),
+          description: 'Item',
+          amount: 3,
+          type: 'expense',
+          currency: 'EUR',
+          confidence: 0.77,
+          source: 'native',
+          categoryAttempted: false
+        }]
+      }));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('other_expense');
+      expect(result.transactions[0].categoryConfidence).toBe(UNCATEGORIZED_CATEGORY_CONFIDENCE);
     });
 
     it('should re-throw non-retryable strategy errors without falling back', async () => {

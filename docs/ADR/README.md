@@ -55,6 +55,9 @@ reverse — why a thing is the way it is, not how to use it.
 | [0048](0048-a-dead-capability-is-removed-not-guarded.md) | A dead capability is removed, not guarded | Accepted | 2026-08-16 |
 | [0049](0049-the-model-never-sees-an-i18n-key.md) | The model never sees an i18n key | Accepted | 2026-08-16 |
 | [0050](0050-a-spec-that-claims-a-zone-runs-under-it.md) | A spec that claims a zone runs under it | Accepted | 2026-08-16 |
+| [0051](0051-an-uncategorized-row-is-graded-where-it-is-coerced.md) | An uncategorized row is graded where it is coerced | Accepted | 2026-08-17 |
+| [0052](0052-a-profile-read-may-only-write-to-the-session-that-started-it.md) | A profile read may only write to the session that started it | Accepted | 2026-08-17 |
+| [0053](0053-a-resolver-answers-with-a-category-that-still-exists.md) | A resolver answers with a category that still exists | Accepted | 2026-08-17 |
 
 ## What belongs here
 

@@ -88,7 +88,8 @@ constraint buys nothing the matcher does not guarantee.
   matched nothing renders as a high-confidence "Other" rather than the 0.3
   review grade the cloud extraction paths earn (0045/0046). Untouched here
   because `isUsableResult` keys native→cloud fallback routing on the same
-  number; #307 tracks it.
+  number; #307 tracks it. Closed by
+  [ADR 0051](0051-an-uncategorized-row-is-graded-where-it-is-coerced.md), #307.
 - **Income categories are offered for receipts.** `buildCategoryPromptCatalog`
   filters activity, not type — the same list the cloud categorizer sends. A
   type filter would be a shared-helper decision, not a native-path one.

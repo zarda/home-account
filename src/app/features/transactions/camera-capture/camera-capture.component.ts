@@ -1,4 +1,5 @@
 import { nextImportRowId } from '../../../core/utils/import-row-id.utils';
+import { gradeCategorySuggestion } from '../../../core/utils/categorization.utils';
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
@@ -421,8 +422,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       currency: tx.currency,
       date: tx.date,
       type: tx.type,
-      suggestedCategoryId: tx.suggestedCategoryId || 'other_expense',
-      categoryConfidence: tx.confidence,
+      ...gradeCategorySuggestion(tx),
       notes: tx.notes,
       fieldConfidence: tx.fieldConfidence,
       isDuplicate: false,

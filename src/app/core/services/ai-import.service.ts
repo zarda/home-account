@@ -16,6 +16,12 @@ import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
 import { readCurrencyCode } from '../utils/receipt-extraction.utils';
 import { nextImportRowId } from '../utils/import-row-id.utils';
+import {
+  FALLBACK_CATEGORY_ID,
+  gradeCategorySuggestion,
+  UNCATEGORIZED_CATEGORY_CONFIDENCE,
+  UNRESOLVED_CATEGORY_CONFIDENCE,
+} from '../utils/categorization.utils';
 import { RasterizedPdf, rasterizePdf } from '../utils/pdf-raster.utils';
 import { CategoryMemoryService } from './category-memory.service';
 import { RagContextService } from './rag-context.service';
@@ -305,8 +311,7 @@ export class AIImportService {
       currency: tx.currency || baseCurrency,
       date: tx.date,
       type: tx.type,
-      suggestedCategoryId: tx.suggestedCategoryId || 'other_expense',
-      categoryConfidence: tx.confidence,
+      ...gradeCategorySuggestion(tx),
       isDuplicate: false,
       selected: true,
       processingSource: tx.source,
@@ -415,8 +420,8 @@ export class AIImportService {
 
     const categorized: CategorizedTransaction[] = rawTransactions.map((t) => ({
       ...t,
-      suggestedCategoryId: 'other_expense',
-      confidence: 0.1
+      suggestedCategoryId: FALLBACK_CATEGORY_ID,
+      confidence: UNCATEGORIZED_CATEGORY_CONFIDENCE
     }));
 
     const unknownIndexes = remembered
@@ -815,10 +820,10 @@ export class AIImportService {
         suggestedCategoryId: suggestedCategoryId,
         // The grade follows the evidence, on the applyCategorizations scale
         // (categorization.utils.ts): 0.8 when extraction actually named a
-        // category, 0.3 when nothing usable answered — under the 0.5 review
-        // band, so a defaulted row is flagged instead of wearing the high
-        // chip it never earned. (ADR 0045)
-        categoryConfidence: t.category ? 0.8 : 0.3,
+        // category, the review grade when nothing usable answered — under the
+        // 0.5 review band, so a defaulted row is flagged instead of wearing
+        // the high chip it never earned. (ADR 0045)
+        categoryConfidence: t.category ? 0.8 : UNRESOLVED_CATEGORY_CONFIDENCE,
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
         notes: this.formatItemNotes(t.details),
         fieldConfidence: (t.amountConfidence !== undefined || dateConfidence !== undefined)

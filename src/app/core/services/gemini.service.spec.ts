@@ -1214,11 +1214,19 @@ describe('GeminiService', () => {
         expect(api.mapCategoryNameToId('Fuel')).toBe('transport_fuelAndGas');
       });
 
-      it('maps known keywords when no category matches', () => {
-        categoryService.categories.and.returnValue([]);
+      it('maps known keywords when no category name matches', () => {
+        // The catalog carries the ids the table names but under names none of
+        // these answers contain, so the keyword rung is what resolves them —
+        // and a keyword whose id the account does not have resolves to
+        // nothing, because the table is a compiled-in guess rather than a
+        // second catalog.
+        categoryService.categories.and.returnValue([
+          createCategory({ id: 'food_coffeeAndDrinks', name: 'Hot Beverages' }),
+          createCategory({ id: 'transport_fuelAndGas', name: 'Petrol' }),
+        ]);
         expect(api.mapCategoryNameToId('some coffee shop')).toBe('food_coffeeAndDrinks');
         expect(api.mapCategoryNameToId('gas station')).toBe('transport_fuelAndGas');
-        expect(api.mapCategoryNameToId('pharmacy run')).toBe('health_pharmacyAndMedicine');
+        expect(api.mapCategoryNameToId('pharmacy run')).toBe('other_expense');
       });
 
       it('returns other_expense when nothing matches', () => {
