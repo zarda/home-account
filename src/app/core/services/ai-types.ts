@@ -32,6 +32,17 @@ export interface ProcessedTransaction {
    * a currency the model actually read.
    */
   currencyFellBack?: boolean;
+  /**
+   * False on the paths that never ask anything to categorize the row, so an
+   * unset `suggestedCategoryId` there means "nobody looked" rather than "the
+   * answer resolved to nothing". The import seams grade those two apart.
+   *
+   * Absent means a categorizer ran — whether it named a category, named one
+   * the catalog could not place, or returned nothing at all. Only the reader
+   * that does no categorization work of its own sets this, which is why the
+   * flag names the exception rather than the rule.
+   */
+  categoryAttempted?: boolean;
 }
 
 export interface ProcessingResult {

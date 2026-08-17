@@ -163,6 +163,10 @@ export class NativeReceiptService {
       // the transaction note
       notes: ocrResult.text?.trim() || undefined,
       fieldConfidence: { amount: parsed.amountConfidence },
+      // This parser reads figures and evidence tiers; it never looks at what
+      // was bought. Saying so keeps the import from grading a row nobody
+      // categorized as one whose category answer we failed to understand.
+      categoryAttempted: false,
     };
   }
 }

@@ -1,5 +1,7 @@
 import { Category } from '../../models';
+import type { CategorizedImportTransaction } from '../../models';
 import type { RawTransaction, CategorizedTransaction } from '../services/gemini.service';
+import type { ProcessedTransaction } from '../services/ai-types';
 import type { SupportedLocale } from '../services/translation.service';
 import { categoryNames as enCategoryNames } from '../../../assets/i18n/en.json';
 import { categoryNames as tcCategoryNames } from '../../../assets/i18n/tc.json';
@@ -7,6 +9,20 @@ import { categoryNames as jaCategoryNames } from '../../../assets/i18n/ja.json';
 
 /** Catalog entry every unresolvable suggestion falls back to. */
 export const FALLBACK_CATEGORY_ID = 'other_expense';
+
+/**
+ * Tried and failed: something was asked to categorize the row and the catalog
+ * did not understand the answer. Under the 0.5 review band, so the chip asks
+ * for a second look.
+ */
+export const UNRESOLVED_CATEGORY_CONFIDENCE = 0.3;
+
+/**
+ * Never attempted: no categorizer ran on this row at all. Below the
+ * tried-and-failed grade because less is known, not more — this is the floor
+ * the categorization ladder already seeds for rows nobody could answer.
+ */
+export const UNCATEGORIZED_CATEGORY_CONFIDENCE = 0.1;
 
 /**
  * Category names in every locale we ship, not just the one on screen. A model
@@ -108,16 +124,63 @@ export function applyCategorizations(
   return transactions.map((t, i) => {
     const match = entries.find(e => e.index === i);
     if (!match) {
-      return { ...t, suggestedCategoryId: FALLBACK_CATEGORY_ID, confidence: 0.3 };
+      return {
+        ...t,
+        suggestedCategoryId: FALLBACK_CATEGORY_ID,
+        confidence: UNRESOLVED_CATEGORY_CONFIDENCE,
+      };
     }
     const categoryId = resolveCategoryId(match.categoryId, categories);
     const isValidId = categoryId === match.categoryId;
     return {
       ...t,
       suggestedCategoryId: categoryId,
-      confidence: isValidId ? normalizeConfidence(match.confidence, 0.8) : 0.3,
+      confidence: isValidId
+        ? normalizeConfidence(match.confidence, 0.8)
+        : UNRESOLVED_CATEGORY_CONFIDENCE,
     };
   });
+}
+
+/**
+ * The category an extracted row is filed under for review, and what that
+ * suggestion is worth.
+ *
+ * Both halves come from here because they answer one question and used to be
+ * decided a line apart, from different inputs, in two near-duplicate import
+ * seams. An unset `suggestedCategoryId` is the {@link matchCategoryName}
+ * signal that nothing resolved the answer, so the row is coerced to the
+ * catch-all for display — but grading it by the row's own `confidence` handed
+ * the chip a number that describes something else entirely. On the on-device
+ * path that number is how clearly Vision read the characters, so an answer
+ * nobody understood rendered as a high-confidence "Other".
+ *
+ * Three cases, because "nobody answered" and "the answer meant nothing" are
+ * not the same claim: a resolved category keeps the extraction's own
+ * confidence, an answer that resolved to nothing earns the review grade, and
+ * a row no categorizer ever looked at earns the floor.
+ *
+ * Deliberately total: both call sites sit inside a `try` whose `catch` falls
+ * back to a fresh cloud extraction, so a throw here would silently cost a
+ * second billable request. It therefore takes no catalog and performs no
+ * lookup — resolution already happened upstream.
+ */
+export function gradeCategorySuggestion(
+  row: Pick<ProcessedTransaction, 'suggestedCategoryId' | 'confidence' | 'categoryAttempted'>
+): Pick<CategorizedImportTransaction, 'suggestedCategoryId' | 'categoryConfidence'> {
+  if (row.suggestedCategoryId) {
+    return {
+      suggestedCategoryId: row.suggestedCategoryId,
+      categoryConfidence: row.confidence,
+    };
+  }
+
+  return {
+    suggestedCategoryId: FALLBACK_CATEGORY_ID,
+    categoryConfidence: row.categoryAttempted === false
+      ? UNCATEGORIZED_CATEGORY_CONFIDENCE
+      : UNRESOLVED_CATEGORY_CONFIDENCE,
+  };
 }
 
 /** Every shipped rendering of a catalog entry's name; empty for custom names, which have no translations. */

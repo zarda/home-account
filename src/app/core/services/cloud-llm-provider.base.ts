@@ -25,8 +25,10 @@ import {
 import {
   applyCategorizations,
   buildCategoryPromptCatalog,
+  FALLBACK_CATEGORY_ID,
   mapCategoryNameToId,
   matchCategoryName,
+  UNCATEGORIZED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
 import { goalProgressAmount } from '../utils/goal-progress.utils';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
@@ -432,8 +434,8 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         () =>
           chunk.map(t => ({
             ...t,
-            suggestedCategoryId: 'other_expense',
-            confidence: 0.1,
+            suggestedCategoryId: FALLBACK_CATEGORY_ID,
+            confidence: UNCATEGORIZED_CATEGORY_CONFIDENCE,
           }))
       );
       results.push(...answered);
