@@ -24,8 +24,12 @@ describe('AboutComponent', () => {
     translation.t.and.callFake((key: string) => key);
 
     mockDialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
-    mockFeedback = jasmine.createSpyObj<FeedbackService>('FeedbackService', ['watchOwn']);
+    mockFeedback = jasmine.createSpyObj<FeedbackService>('FeedbackService', [
+      'watchOwn',
+      'delete',
+    ]);
     mockFeedback.watchOwn.and.returnValue(of([]));
+    mockFeedback.delete.and.resolveTo();
     const dateFormat = jasmine.createSpyObj<DateFormatService>('DateFormatService', ['formatDate']);
     dateFormat.formatDate.and.returnValue('2026-08-15');
 
@@ -135,5 +139,74 @@ describe('AboutComponent', () => {
     expect(item.querySelector('.feedback-item-message')?.textContent)
       .toContain('a widget would be nice');
     expect(item.querySelector('.feedback-item-date')?.textContent).toContain('2026-08-15');
+  });
+
+  /**
+   * The rules always permitted an owner delete; the list never offered one
+   * (#306, ADR 0056).
+   */
+  describe('deleting an entry', () => {
+    const entry: FeedbackEntry = {
+      id: 'f1',
+      userId: 'user-1',
+      category: 'bug',
+      message: 'the chart is upside down',
+      appVersion: packageJson.version,
+      platform: 'web',
+      locale: 'en',
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    };
+
+    function renderWithEntry(): void {
+      mockFeedback.watchOwn.and.returnValue(of([entry]));
+      fixture = TestBed.createComponent(AboutComponent);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+    }
+
+    function answerConfirm(confirmed: boolean): void {
+      mockDialog.open.and.returnValue({
+        afterClosed: () => of(confirmed),
+      } as ReturnType<MatDialog['open']>);
+    }
+
+    it('offers a delete control on every row', () => {
+      renderWithEntry();
+
+      const button = fixture.nativeElement.querySelector('.feedback-item-delete');
+      expect(button).toBeTruthy();
+      expect(button.getAttribute('aria-label')).toBe('about.feedback.deleteLabel');
+    });
+
+    it('deletes the entry once the confirm is accepted', () => {
+      renderWithEntry();
+      answerConfirm(true);
+
+      (fixture.nativeElement.querySelector('.feedback-item-delete') as HTMLElement).click();
+
+      expect(mockFeedback.delete).toHaveBeenCalledWith('f1');
+    });
+
+    it('leaves the entry alone when the confirm is cancelled', () => {
+      renderWithEntry();
+      answerConfirm(false);
+
+      (fixture.nativeElement.querySelector('.feedback-item-delete') as HTMLElement).click();
+
+      expect(mockFeedback.delete).not.toHaveBeenCalled();
+    });
+
+    // The operator was mailed a copy on create and it is not recalled, so
+    // the confirm has to say so rather than read like an unsend.
+    it('tells the user the sent mail is not recalled', () => {
+      renderWithEntry();
+      answerConfirm(false);
+
+      (fixture.nativeElement.querySelector('.feedback-item-delete') as HTMLElement).click();
+
+      const data = mockDialog.open.calls.mostRecent().args[1]?.data as { message: string };
+      expect(data.message).toBe('about.feedback.deleteMessage');
+    });
   });
 });

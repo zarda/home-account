@@ -156,6 +156,31 @@ describe('FeedbackService', () => {
     });
   });
 
+  describe('delete', () => {
+    it('deletes the one entry, under the signed-in user', async () => {
+      await service.delete('f1');
+
+      expect(mockFirestore.deleteDocumentSpy.calls.map(c => c.args[0])).toEqual([
+        'users/user-1/feedback/f1'
+      ]);
+    });
+
+    // Unlike deleteAll, which resolves to zero for the cascade's benefit,
+    // this is a user action: a signed-out delete is a bug, not a no-op.
+    it('rejects when nobody is signed in, without writing', async () => {
+      userIdSpy.and.returnValue(null);
+
+      await expectAsync(service.delete('f1')).toBeRejected();
+      expect(mockFirestore.deleteDocumentSpy.calls.length).toBe(0);
+    });
+
+    it('propagates a rejection so the page can report it', async () => {
+      spyOn(mockFirestore, 'deleteDocument').and.rejectWith(new Error('permission-denied'));
+
+      await expectAsync(service.delete('f1')).toBeRejected();
+    });
+  });
+
   describe('deleteAll', () => {
     it('deletes every entry', async () => {
       mockFirestore.setMockCollection('users/user-1/feedback', [{ id: 'f1' }, { id: 'f2' }]);
