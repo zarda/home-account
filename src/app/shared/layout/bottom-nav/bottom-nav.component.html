@@ -23,9 +23,15 @@
         </button>
       </mat-menu>
     } @else {
+      <!--
+        aria-current carries the active state, not the aria-label: folding it
+        into the name would stop the accessible name matching the visible
+        text (ADR 0055).
+      -->
       <a
         [routerLink]="item.route"
         routerLinkActive="active"
+        ariaCurrentWhenActive="page"
         [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
         class="nav-item"
         [attr.aria-label]="item.label"
