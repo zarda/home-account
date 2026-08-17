@@ -59,9 +59,10 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
   const CUSTOM_ID = 'custom_boat_maintenance';
   const CUSTOM_NAME = 'Boat Maintenance';
   // A built-in the user deleted. Stored as an override of the default id, so
-  // it stays in the merged list with isActive false — offering it back would
-  // resurrect a category the user removed.
+  // it stays in the merged list with isActive false — offering it back, or
+  // resolving an answer onto it, would resurrect a category the user removed.
   const DELETED_ID = 'food_restaurants';
+  const DELETED_NAME = 'Restaurants';
 
   let app: FirebaseApp;
   let auth: Auth;
@@ -171,6 +172,33 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
       suggestedCategoryId: CUSTOM_ID,
       categoryConfidence: ocrResult.confidence,
     });
+  });
+
+  /**
+   * The catalog is where this has to be checked. A deleted built-in is not
+   * absent from it — it is a stored override with isActive false, a shape only
+   * the Firestore merge produces — and the model can name it without ever
+   * having been offered it, which is exactly what the locale and keyword
+   * passes exist to catch.
+   */
+  it('does not file a receipt under a category this account deleted', async () => {
+    const transaction = await scanAnswering(DELETED_NAME);
+
+    expect(transaction.suggestedCategoryId).toBeUndefined();
+    expect(gradeCategorySuggestion(transaction)).toEqual({
+      suggestedCategoryId: FALLBACK_CATEGORY_ID,
+      categoryConfidence: UNRESOLVED_CATEGORY_CONFIDENCE,
+    });
+  });
+
+  it('does not reach a deleted category through the keyword map either', async () => {
+    // "restaurant" is one of the compiled-in keywords, and it maps to the id
+    // this account removed.
+    const transaction = await scanAnswering('a restaurant downtown');
+
+    expect(transaction.suggestedCategoryId).toBeUndefined();
+    expect(gradeCategorySuggestion(transaction).categoryConfidence)
+      .toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
   });
 
   it('offers this account own category to the model and never the deleted one', async () => {

@@ -236,6 +236,13 @@ export function matchCategoryName(
     return { id: byId, matched: true };
   }
 
+  // Deleted entries stay in the merged catalog as stored overrides with
+  // isActive false (CategoryService.mergeCategories), and the prompt does not
+  // offer them — so a name that reaches here matching one came from the
+  // model's own knowledge, not from anything we asked. Resolving it would
+  // refile a receipt under a category the user removed.
+  const activeCategories = categories.filter(c => c.isActive);
+
   // An empty name would swallow every input through the substring pass below.
   const namesOf = (c: Category) => [
     c.name.toLowerCase(),
@@ -243,10 +250,10 @@ export function matchCategoryName(
     ...shippedNamesFor(c.name).map(n => n.toLowerCase()),
   ].filter(n => n !== '');
 
-  const exactMatch = categories.find(c => namesOf(c).includes(normalizedName));
+  const exactMatch = activeCategories.find(c => namesOf(c).includes(normalizedName));
   if (exactMatch) return { id: exactMatch.id, matched: true };
 
-  const partialMatch = categories.find(
+  const partialMatch = activeCategories.find(
     c => namesOf(c).some(n => n.includes(normalizedName) || normalizedName.includes(n))
   );
   if (partialMatch) return { id: partialMatch.id, matched: true };
@@ -264,7 +271,10 @@ export function matchCategoryName(
   };
 
   for (const [keyword, categoryId] of Object.entries(keywordMap)) {
-    if (normalizedName.includes(keyword)) {
+    // The map is a compiled-in guess at what a free-text answer meant, so its
+    // ids are checked against this account like any other: one may have been
+    // deleted, and a catalog need not carry every default this list names.
+    if (normalizedName.includes(keyword) && activeCategories.some(c => c.id === categoryId)) {
       return { id: categoryId, matched: true };
     }
   }

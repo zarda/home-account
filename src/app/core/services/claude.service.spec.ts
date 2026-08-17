@@ -917,8 +917,13 @@ describe('ClaudeService', () => {
     });
 
     it('maps a category via the keyword fallback table', async () => {
+      // The catalog has to carry the id the keyword names — the table is a
+      // compiled-in guess, and an account need not have every default it
+      // mentions. "coffee time" matches none of these by name, so the
+      // keyword rung is still what resolves it.
       mockCategoryService.categories.and.returnValue([
         createCategory({ id: 'misc', name: 'Totally Unrelated', isActive: true }),
+        createCategory({ id: 'food_coffeeAndDrinks', name: 'Hot Beverages', isActive: true }),
       ]);
       const fake = makeFakeClient();
       fake.messages.create.and.resolveTo(
