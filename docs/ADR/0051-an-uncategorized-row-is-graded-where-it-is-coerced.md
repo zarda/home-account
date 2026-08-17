@@ -149,6 +149,11 @@ confusion this ADR exists to remove.
   confidence, since the id is set. Found while writing the smoke spec for
   this change and filed separately; the prompt catalog never offers the
   deleted entry, so it takes an answer from the model's own knowledge to
-  reach.
+  reach. Closed by
+  [ADR 0053](0053-a-resolver-answers-with-a-category-that-still-exists.md),
+  #310.
 - The keyword map returns hardcoded ids that need not exist in the live
   catalog, so a "resolved" row can still render as Unknown in the chip.
+  Closed by
+  [ADR 0053](0053-a-resolver-answers-with-a-category-that-still-exists.md),
+  #310.
