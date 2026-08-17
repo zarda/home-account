@@ -101,6 +101,39 @@ describe('App routes (emulator smoke test)', () => {
       await waitForDom(`${url} data "${data}"`, () => pageText().includes(data));
     }
     expectScreenName(url, screenClass);
+    expectCurrentRouteMarked(url);
+  }
+
+  /**
+   * The navigation link for the page just opened claims it, and no other
+   * link does (ADR 0055).
+   *
+   * Asserted inside expectPage rather than as its own case, so every route
+   * this spec visits checks it. What it adds over the component specs is
+   * real navigation through the real route configuration: the attribute has
+   * to keep up with the router, and a stubbed router cannot show that.
+   *
+   * Gated on a link for the route actually being on screen. The surfaces
+   * this harness renders do not carry all eight destinations — /settings,
+   * /data and /about have no link here — and a route with no link is not a
+   * failure. The gate tests for the anchor, not the attribute, so a
+   * regression that drops aria-current still fails on every route that does
+   * have one. Where both surfaces render they mark the same route, so the
+   * assertion is on the distinct set of destinations rather than a count.
+   */
+  function expectCurrentRouteMarked(url: string): void {
+    const doc = harness.routeNativeElement?.ownerDocument;
+    if (!doc?.querySelector(`a.nav-item[href="${url}"]`)) return;
+
+    const marked = new Set(
+      Array.from(
+        doc.querySelectorAll<HTMLAnchorElement>('a.nav-item[aria-current="page"]')
+      ).map(link => link.getAttribute('href'))
+    );
+
+    expect(Array.from(marked))
+      .withContext(`links marking themselves current on ${url}`)
+      .toEqual([url]);
   }
 
   /**
