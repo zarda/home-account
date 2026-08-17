@@ -176,6 +176,17 @@ unrecognized answer leaves the row's category unset, so the import grades it
 for review instead of trusting it
 ([ADR 0046](ADR/0046-an-unrecognized-category-name-is-not-a-category.md)).
 
+**Recognized means recognized here, now.** Every pass of the resolver — the
+id, the display names, the English keyword fallback — answers with an entry
+that is in this account's catalog and still active, or does not answer. That
+is not the same as the prompt only offering active entries, and the difference
+is where a bug lived: the model can name a category from its own knowledge
+rather than from the list it was given, and a category the user deleted stays
+in the merged catalog as an inactive entry so the management screen can offer
+to restore it. An answer naming one used to resolve onto it and file the
+receipt there, rendering under its real name as though nothing were wrong
+([ADR 0053](ADR/0053-a-resolver-answers-with-a-category-that-still-exists.md)).
+
 Where that grading happens is the point. The catch-all the row is filed under
 and the number the chip is coloured by are one decision, taken at the import
 seam by one shared helper, because they used to be taken on adjacent lines
