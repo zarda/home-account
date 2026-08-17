@@ -1112,6 +1112,9 @@
       "sendFailed": "傳送失敗。請檢查網路連線後再試一次。",
       "historyTitle": "已傳送的意見回饋",
       "historyEmpty": "尚未傳送任何意見回饋。",
+      "deleteLabel": "刪除這則意見回饋",
+      "deleteTitle": "要刪除這則意見回饋嗎？",
+      "deleteMessage": "這會移除你儲存的副本。訊息已經以電子郵件寄給開發者，無法收回。",
       "loadFailed": "無法載入已傳送的意見回饋。"
     }
   },

@@ -1172,6 +1172,9 @@
       "sendFailed": "Sending failed. Check your connection and try again.",
       "historyTitle": "Your sent feedback",
       "historyEmpty": "Nothing sent yet.",
+      "deleteLabel": "Delete this feedback",
+      "deleteTitle": "Delete this feedback?",
+      "deleteMessage": "This removes your stored copy. The message was already emailed to the developer and cannot be unsent.",
       "loadFailed": "Your sent feedback could not be loaded."
     }
   },

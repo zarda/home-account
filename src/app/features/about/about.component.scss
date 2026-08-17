@@ -258,6 +258,21 @@
   gap: 8px;
 }
 
+// Pushed to the trailing edge so the category and date stay grouped, and
+// scaled down: it sits beside 12px metadata, not on its own row.
+.feedback-item-delete {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
 .feedback-item-category {
   font-size: var(--text-xs);
   font-weight: 600;
