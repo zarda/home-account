@@ -1,5 +1,10 @@
-import { buildForecastSeries } from './forecast-series.utils';
-import { dayKey } from './transaction-date.utils';
+import {
+  BucketDays,
+  ForecastEntry,
+  MAX_FORECAST_POINTS,
+  buildForecastSeries
+} from './forecast-series.utils';
+import { addDays, dayKey, parseDayKey } from './transaction-date.utils';
 
 describe('forecast-series.utils', () => {
   const TODAY = new Date(2026, 7, 7); // 2026-08-07
@@ -142,5 +147,102 @@ describe('forecast-series.utils', () => {
 
     expect(series.bucketEnds[0]).toBe(dayKey(TODAY));
     expect(series.todayIndex).toBe(0);
+  });
+
+  /**
+   * The fold that keeps a period which opened years ago from drawing one
+   * point per day all the way to today (ADR 0054, issue #268).
+   */
+  describe('bucketing', () => {
+    function series(periodStart: Date, horizonDays = 90, actuals: ForecastEntry[] = []) {
+      return buildForecastSeries({
+        today: TODAY,
+        horizonDays,
+        periodStart,
+        actuals,
+        occurrences: []
+      });
+    }
+
+    it('plots one point per day while the span fits under the ceiling', () => {
+      const built = series(PERIOD_START, 30);
+
+      // Seven days of period plus a 30-day horizon: well inside the ceiling,
+      // so the fold selects every index and the output is what it was before
+      // bucketing existed.
+      expect(built.bucketDays).toBe(1);
+      expect(built.bucketEnds.length).toBe(37);
+    });
+
+    it('steps the ladder as the span grows, and never past the ceiling', () => {
+      const rungs: { start: Date; expected: BucketDays }[] = [
+        { start: PERIOD_START, expected: 1 },
+        { start: new Date(2026, 0, 1), expected: 7 },
+        { start: new Date(2015, 0, 1), expected: 30 },
+        { start: new Date(1990, 0, 1), expected: 365 }
+      ];
+
+      for (const { start, expected } of rungs) {
+        const built = series(start);
+        expect(built.bucketDays).withContext(`rung for ${dayKey(start)}`).toBe(expected);
+        expect(built.bucketEnds.length)
+          .withContext(`points for ${dayKey(start)}`)
+          .toBeLessThanOrEqual(MAX_FORECAST_POINTS);
+      }
+    });
+
+    it('caps the period the issue was filed about', () => {
+      // Picking 2015 with a 90-day horizon used to draw ~4,300 points.
+      const built = series(new Date(2015, 0, 1));
+
+      expect(built.bucketDays).toBe(30);
+      expect(built.bucketEnds.length).toBeLessThanOrEqual(MAX_FORECAST_POINTS);
+    });
+
+    it('still opens at the period start and closes at today plus the horizon', () => {
+      const built = series(new Date(2015, 0, 1));
+
+      // The oldest and newest buckets may be short, but neither end moves:
+      // the chart shows the whole span it was asked for, and the last tick
+      // is still the seam the occurrence query closes on (ADR 0026).
+      expect(built.bucketEnds[0]).toBe('2015-01-01');
+      expect(built.bucketEnds[built.bucketEnds.length - 1]).toBe(dayKey(addDays(TODAY, 90)));
+    });
+
+    it('lands a boundary exactly on today, so the two datasets still meet', () => {
+      const built = series(new Date(2015, 0, 1));
+
+      // ADR 0022's seam: the solid line ends where the dashed one begins.
+      // Bucketing walks outward from today precisely to keep this true.
+      expect(built.bucketEnds[built.todayIndex]).toBe(dayKey(TODAY));
+      expect(built.actualCumulative[built.todayIndex]).not.toBeNull();
+      expect(built.projectedCumulative[built.todayIndex]).toBe(0);
+      expect(built.actualCumulative[built.todayIndex + 1]).toBeNull();
+      expect(built.projectedCumulative[built.todayIndex - 1]).toBeNull();
+    });
+
+    it('takes each bucket from its last day rather than averaging it', () => {
+      const start = new Date(2026, 0, 1);
+
+      // A 1 January start puts the ladder on the 7-day rung. Read where the
+      // boundaries actually fall off an empty series rather than repeating
+      // the walk's modular arithmetic here — they are anchored on today, so
+      // hand-computing them only duplicates what is under test.
+      const empty = series(start, 30);
+      expect(empty.bucketDays).toBe(7);
+
+      const closesOn = parseDayKey(empty.bucketEnds[3])!;
+      const opensOn = addDays(parseDayKey(empty.bucketEnds[2])!, 1);
+
+      const built = series(start, 30, [income(opensOn, 1000), expense(closesOn, 400)]);
+      const closing = built.bucketEnds.indexOf(dayKey(closesOn));
+
+      // 600 is the running total ON the closing day. A mean across the
+      // bucket would be ~943, since the +1000 stands for six of its seven
+      // days — a number in no day's ledger, which is the whole reason the
+      // fold selects rather than aggregates.
+      expect(built.actualCumulative[closing]).toBe(600);
+      expect(built.actualCumulative[closing - 1]).toBe(0);
+    });
   });
 });

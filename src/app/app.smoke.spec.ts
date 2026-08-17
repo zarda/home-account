@@ -42,6 +42,7 @@ import {
 } from '@angular/fire/firestore';
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
 import { routes } from './app.routes';
+import { addDays } from './core/utils/transaction-date.utils';
 import { currentScreenView } from './core/services/analytics-screen-view';
 import { AuthService } from './core/services/auth.service';
 import { CurrencyService } from './core/services/currency.service';
@@ -317,6 +318,39 @@ describe('App routes (emulator smoke test)', () => {
         'forecast empty state',
         () => pageText().includes('reports.forecastNoRulesTitle')
       );
+
+      // Seeded live, after the empty state is proven rather than instead of
+      // it: the tab's listener is already open, so a new rule has to reach
+      // it without a reload. This is the only place the forecast chart is
+      // actually built — the empty state above never constructs a series, so
+      // nothing else here exercises the bucketing (issue #268).
+      const inThreeDays = Timestamp.fromDate(addDays(new Date(), 3));
+      await addDoc(collection(firestore, `users/${uid}/recurring`), {
+        userId: uid,
+        name: 'Gym',
+        type: 'expense',
+        amount: 30,
+        currency: 'USD',
+        categoryId: 'other',
+        description: 'Gym membership',
+        frequency: { type: 'monthly', interval: 1 },
+        startDate: inThreeDays,
+        nextOccurrence: inThreeDays,
+        isActive: true,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+      await waitForDom(
+        'forecast chart once a rule arrives',
+        () => pageText().includes('reports.forecastProjectedNet')
+      );
+      // The report period is the current month, comfortably inside the point
+      // ceiling, so the chart stays at one point per day and says nothing
+      // about bucket width.
+      expect(pageText())
+        .withContext('bucket caption at one point per day')
+        .not.toContain('reports.forecastBucketNote');
+
       await expectPage('/settings', 'settings.title', 'Test User');
       // The hub counts each stored kind through a server-side aggregate. The
       // seeded categories prove the counts land as numbers rather than as the

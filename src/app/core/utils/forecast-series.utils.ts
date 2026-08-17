@@ -105,7 +105,7 @@ function bucketIndices(
   return { indices, todayIndex: foldedTodayIndex };
 }
 
-interface ForecastEntry {
+export interface ForecastEntry {
   date: Date;
   /** Always positive; `type` carries the sign. */
   amount: number;
