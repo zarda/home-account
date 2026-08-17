@@ -129,9 +129,27 @@ export class AuthService {
       const firebaseUser = this.firebaseUser();
       if (!online || !degraded || !firebaseUser || this.profileRetryInFlight) return;
 
+      // The signal that armed this effect is written from the listener, so it
+      // can still name a session the SDK has already ended. Reading it is
+      // worth a denied round trip and a lastLoginAt bump aimed at an account
+      // nobody is signed into; the guard below would only discard the answer
+      // afterwards.
+      const startedFor = firebaseUser.uid;
+      if (!this.stillSignedInAs(startedFor)) return;
+
       this.profileRetryInFlight = true;
       void runInInjectionContext(this.injector, () => this.getOrCreateUser(firebaseUser))
         .then(user => {
+          // A profile read outlives the session that asked for it — served
+          // from the local cache it resolves happily after a sign-out.
+          // Writing it back left the app believing someone was signed in with
+          // no Firebase session behind it: the shell rendered the previous
+          // user's name, publicGuard refused to let them reach /login, and
+          // every Firestore call was denied by the rules. profileDegraded is
+          // deliberately left as it stands — clearing it on behalf of a
+          // session that has ended hands the next one a not-degraded flag
+          // over a fallback profile, with nothing left to trigger a re-read.
+          if (!this.stillSignedInAs(startedFor)) return;
           this.currentUser.set(user);
           this.profileDegraded.set(false);
         })
@@ -155,8 +173,14 @@ export class AuthService {
             const user = await runInInjectionContext(this.injector, () =>
               this.getOrCreateUser(firebaseUser)
             );
-            this.currentUser.set(user);
-            this.profileDegraded.set(false);
+            // This callback can be overtaken: the session may have ended, or
+            // moved to another account, while its own read was in flight.
+            // Guarded with an `if` rather than an early return so the loading
+            // flag below still settles for whoever is here now.
+            if (this.stillSignedInAs(firebaseUser.uid)) {
+              this.currentUser.set(user);
+              this.profileDegraded.set(false);
+            }
           } catch (error) {
             // A transient read failure is not "not signed in": nulling the
             // user here bounced a valid Firebase session to the login page
@@ -165,9 +189,19 @@ export class AuthService {
             // successful read says the document is absent) and let the retry
             // effect swap the real profile in.
             console.error('[Auth] Profile load failed; continuing with a fallback profile:', error);
-            this.currentUser.set({ id: firebaseUser.uid, ...buildNewUserProfile(firebaseUser) });
-            this.profileDegraded.set(true);
-            this.notifications.error(this.translationService.t('auth.profileLoadDegraded'));
+            // The failure is worth logging whatever happened to the session,
+            // but nothing may be written on behalf of one that has ended: a
+            // fallback profile would be the same ghost the success path was
+            // guarded against, and the toast would tell someone who has just
+            // signed out that their profile could not be loaded. Degraded is
+            // only ever raised together with a fallback profile for the live
+            // session, because a null firebaseUser is an absorbing state for
+            // the retry effect — nothing would clear the flag again.
+            if (this.stillSignedInAs(firebaseUser.uid)) {
+              this.currentUser.set({ id: firebaseUser.uid, ...buildNewUserProfile(firebaseUser) });
+              this.profileDegraded.set(true);
+              this.notifications.error(this.translationService.t('auth.profileLoadDegraded'));
+            }
           }
         } else {
           this.currentUser.set(null);
@@ -177,6 +211,24 @@ export class AuthService {
         this.isLoading.set(false);
       });
     });
+  }
+
+  /**
+   * Is the Firebase session still the one `uid` names?
+   *
+   * Asked of the SDK rather than of the `firebaseUser` signal. That signal is
+   * written from the auth-state listener, which runs after the session has
+   * already changed, so in the window this exists to catch it still names the
+   * user who has just left — it would agree with exactly the case that must
+   * be refused. `firebaseSignOut` clears `auth.currentUser` before its own
+   * promise resolves, so the SDK is the only thing that knows in time.
+   *
+   * Compared by uid rather than by object identity, because a token refresh
+   * hands the listener a fresh FirebaseUser for the same person, and that is
+   * the session continuing rather than a switch away from it.
+   */
+  private stillSignedInAs(uid: string): boolean {
+    return this.auth.currentUser?.uid === uid;
   }
 
   private async getOrCreateUser(firebaseUser: FirebaseUser): Promise<User> {
@@ -193,8 +245,17 @@ export class AuthService {
       return { id: firebaseUser.uid, ...userSnap.data() } as User;
     }
 
-    // Create new user document
+    // Create new user document. Guarded because the read above crossed an
+    // await: account deletion removes users/{uid} first and deletes the
+    // Firebase user second, so a retry landing between the two finds nothing
+    // here and would recreate the profile it was in the middle of erasing.
+    // The signal guards upstream would then hide it — an orphan document
+    // surviving account deletion is worse than the ghost session they catch,
+    // because nothing on screen says it happened.
     const newUser = buildNewUserProfile(firebaseUser);
+    if (!this.stillSignedInAs(firebaseUser.uid)) {
+      return { id: firebaseUser.uid, ...newUser };
+    }
 
     await setDoc(userRef, newUser);
     return { id: firebaseUser.uid, ...newUser };
