@@ -1,3 +1,4 @@
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -15,6 +16,10 @@ const LABELS: Record<string, string> = {
   'nav.reports': 'Reports',
 };
 
+/** Somewhere for the test router to land; the nav is what is under test. */
+@Component({ standalone: true, template: '' })
+class StubPage {}
+
 describe('BottomNavComponent', () => {
   let component: BottomNavComponent;
   let fixture: ComponentFixture<BottomNavComponent>;
@@ -28,7 +33,14 @@ describe('BottomNavComponent', () => {
     await TestBed.configureTestingModule({
       imports: [BottomNavComponent, NoopAnimationsModule],
       providers: [
-        provideRouter([]),
+        provideRouter([
+          { path: 'dashboard', component: StubPage },
+          { path: 'dashboard/detail', component: StubPage },
+          { path: 'transactions', component: StubPage },
+          { path: 'transactions/:id', component: StubPage },
+          { path: 'budgets', component: StubPage },
+          { path: 'reports', component: StubPage },
+        ]),
         { provide: MatDialog, useValue: mockDialog },
         { provide: TranslationService, useValue: mockTranslationService },
       ],
@@ -61,6 +73,62 @@ describe('BottomNavComponent', () => {
       fixture.nativeElement.querySelectorAll('a.nav-item, button.action-button'),
     ).filter((el) => !(el as HTMLElement).getAttribute('aria-label'));
     expect(unlabeled).toEqual([]);
+  });
+
+  /**
+   * The active route reached assistive tech as a CSS class and nothing else,
+   * so every link announced identically (#274, ADR 0055).
+   */
+  describe('the current route', () => {
+    async function goTo(url: string): Promise<void> {
+      await TestBed.inject(Router).navigateByUrl(url);
+      fixture.detectChanges();
+    }
+
+    function marked(): string[] {
+      return Array.from(
+        fixture.nativeElement.querySelectorAll('a.nav-item[aria-current="page"]'),
+        (el) => (el as HTMLElement).getAttribute('aria-label') ?? '',
+      );
+    }
+
+    it('marks the current link, and only it', async () => {
+      await goTo('/budgets');
+      expect(marked()).toEqual(['Budgets']);
+
+      // Moving the mark is the part a static attribute would fail.
+      await goTo('/reports');
+      expect(marked()).toEqual(['Reports']);
+    });
+
+    it('marks nothing on a route no link owns', async () => {
+      await goTo('/dashboard/detail');
+      expect(marked()).toEqual([]);
+    });
+
+    it('still marks a parent link on its own child route', async () => {
+      // Only /dashboard matches exactly; the rest mark their subtrees.
+      await goTo('/transactions/abc');
+      expect(marked()).toEqual(['Transactions']);
+    });
+
+    it('leaves the centre Add button unmarked', async () => {
+      await goTo('/dashboard');
+      expect(marked()).toEqual(['Dashboard']);
+      expect(
+        fixture.nativeElement.querySelector('button.action-button[aria-current]'),
+      ).toBeNull();
+    });
+
+    it('keeps the accessible name to the label alone', async () => {
+      // The state belongs in aria-current, not folded into the name — the
+      // accessible name has to keep matching the visible text.
+      await goTo('/budgets');
+      const active = fixture.nativeElement.querySelector(
+        'a.nav-item[aria-current="page"]',
+      ) as HTMLElement;
+      expect(active.getAttribute('aria-label')).toBe('Budgets');
+    });
   });
 
   it('opens the transaction form in add mode', () => {

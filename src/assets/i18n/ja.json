@@ -346,6 +346,7 @@
     "forecastActualSeries": "これまでの実績",
     "forecastProjectedSeries": "予測される増減",
     "forecastProjectedNet": "この期間の予定項目の合計は {{amount}} です",
+    "forecastBucketNote": "各点は {{count}} 日分をまとめ、表示された日付で終わります。",
     "forecastNoRulesTitle": "予測できる予定がありません",
     "forecastNoRulesBody": "予測は定期ルールを先へ延ばして描きます。予算 → 定期でルールを作成するか、パターンタブで検出されたサブスクリプションを登録してください。",
     "recurringVsOneOff": "定期支出と単発支出の内訳",
@@ -1111,6 +1112,9 @@
       "sendFailed": "送信に失敗しました。接続を確認してもう一度お試しください。",
       "historyTitle": "送信済みのフィードバック",
       "historyEmpty": "まだ送信していません。",
+      "deleteLabel": "このフィードバックを削除",
+      "deleteTitle": "このフィードバックを削除しますか？",
+      "deleteMessage": "保存されている控えを削除します。メッセージは開発者にすでにメールで送信されており、取り消すことはできません。",
       "loadFailed": "送信済みのフィードバックを読み込めませんでした。"
     }
   },

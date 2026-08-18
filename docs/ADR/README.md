@@ -58,6 +58,9 @@ reverse — why a thing is the way it is, not how to use it.
 | [0051](0051-an-uncategorized-row-is-graded-where-it-is-coerced.md) | An uncategorized row is graded where it is coerced | Accepted | 2026-08-17 |
 | [0052](0052-a-profile-read-may-only-write-to-the-session-that-started-it.md) | A profile read may only write to the session that started it | Accepted | 2026-08-17 |
 | [0053](0053-a-resolver-answers-with-a-category-that-still-exists.md) | A resolver answers with a category that still exists | Accepted | 2026-08-17 |
+| [0054](0054-a-forecast-tick-spans-a-fixed-duration.md) | A forecast tick spans a fixed duration | Accepted | 2026-08-17 |
+| [0055](0055-the-active-route-is-announced-not-only-coloured.md) | The active route is announced, not only coloured | Accepted | 2026-08-17 |
+| [0056](0056-a-permission-the-rules-grant-has-a-door-in-the-ui.md) | A permission the rules grant has a door in the UI | Accepted | 2026-08-17 |
 
 ## What belongs here
 

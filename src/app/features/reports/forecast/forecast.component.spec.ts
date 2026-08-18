@@ -9,6 +9,7 @@ import { RecurringService } from '../../../core/services/recurring.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { RecurringOccurrence, RecurringTransaction } from '../../../models';
+import { MAX_FORECAST_POINTS } from '../../../core/utils/forecast-series.utils';
 
 describe('ForecastComponent', () => {
   let fixture: ComponentFixture<ForecastComponent>;
@@ -132,6 +133,31 @@ describe('ForecastComponent', () => {
     fixture.detectChanges();
 
     expect(component.hasRules()).toBeFalse();
+  });
+
+  it('bounds the chart and carries the year once the period opened years ago', () => {
+    // The case issue #268 was filed about: a past year used to draw one
+    // label per day from 1 January 2015 to today plus the horizon.
+    component.dateRange = { start: new Date(2015, 0, 1), end: new Date(2015, 11, 31) };
+    fixture.detectChanges();
+
+    const labels = component.chartData().labels as string[];
+
+    expect(component.bucketDays()).toBe(30);
+    expect(labels.length).toBeLessThanOrEqual(MAX_FORECAST_POINTS);
+    // A span this wide repeats months, so the label has to say which year.
+    expect(labels[0]).toContain('2015');
+  });
+
+  it('leaves a period inside the ceiling at one point per day', () => {
+    const now = new Date();
+    component.dateRange = {
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: now
+    };
+    fixture.detectChanges();
+
+    expect(component.bucketDays()).toBe(1);
   });
 
   it('sums the projected net at the horizon', () => {

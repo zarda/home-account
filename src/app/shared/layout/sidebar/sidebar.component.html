@@ -1,10 +1,18 @@
 <nav>
   <mat-nav-list>
     @for (item of navItems(); track item.route) {
+      <!--
+        [activated] rather than ariaCurrentWhenActive or [attr.aria-current]:
+        MatListItem host-binds aria-current off its own activated input, and
+        that host binding wins over anything the template sets on the same
+        element (ADR 0055).
+      -->
       <a
         mat-list-item
         [routerLink]="item.route"
         routerLinkActive="active"
+        #rla="routerLinkActive"
+        [activated]="rla.isActive"
         [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
         class="nav-item"
         (click)="onNavClick()"

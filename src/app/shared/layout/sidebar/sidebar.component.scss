@@ -9,6 +9,13 @@
   // and the row reads as misaligned. Sizing the icon token in rem keeps
   // icon and label proportional at any root font size.
   --mat-list-list-item-leading-icon-size: var(--text-2xl);
+
+  // [activated] is what emits aria-current on these rows (ADR 0055), and it
+  // brings Material's own active background with it. Pointing Material's
+  // token at the same surface .nav-item.active already paints keeps one
+  // source of truth for the colour, instead of two rules that agree only
+  // because ours happens to be the more specific selector.
+  --mat-list-active-indicator-color: var(--surface-active);
 }
 
 nav {
@@ -38,4 +45,17 @@ nav {
 .nav-item.active span {
   color: var(--color-accent);
   font-weight: 500;
+}
+
+// Forced colors discards every author colour, so the active row's background
+// and accent text both go and only the 500 weight is left to tell it apart.
+// Material already draws a trailing dash for a.mdc-list-item--activated in
+// this mode, which is a second reason [activated] is the right input here —
+// the marker arrives with the attribute. Kept as an explicit outline as well,
+// so the row is distinguishable even where that dash is clipped.
+@media (forced-colors: active) {
+  .nav-item.active {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
 }

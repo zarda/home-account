@@ -84,6 +84,14 @@
                   @if (feedbackSentOn(entry)) {
                     <span class="feedback-item-date">{{ feedbackSentOn(entry) }}</span>
                   }
+                  <button
+                    mat-icon-button
+                    class="feedback-item-delete"
+                    [attr.aria-label]="'about.feedback.deleteLabel' | translate"
+                    (click)="deleteFeedback(entry)"
+                  >
+                    <mat-icon>delete_outline</mat-icon>
+                  </button>
                 </div>
                 <p class="feedback-item-message">{{ entry.message }}</p>
               </li>

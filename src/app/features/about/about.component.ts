@@ -19,9 +19,14 @@ import { MatDialog } from '@angular/material/dialog';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { AuthService } from '../../core/services/auth.service';
 import { DateFormatService } from '../../core/services/date-format.service';
 import { FeedbackService } from '../../core/services/feedback.service';
+import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackCategory, FeedbackEntry } from '../../models';
 import { environment } from '../../../environments/environment';
 import packageJson from '../../../../package.json';
@@ -51,6 +56,7 @@ export class AboutComponent implements OnInit, OnDestroy {
   private feedbackService = inject(FeedbackService);
   private authService = inject(AuthService);
   private dateFormat = inject(DateFormatService);
+  private translationService = inject(TranslationService);
 
   currentYear = new Date().getFullYear();
   appVersion = packageJson.version;
@@ -93,6 +99,34 @@ export class AboutComponent implements OnInit, OnDestroy {
 
   openFeedbackDialog(): void {
     this.dialog.open(FeedbackDialogComponent);
+  }
+
+  /**
+   * Remove one sent entry, behind the shared confirm (ADR 0056).
+   *
+   * The copy has to say the mailed copy is not recalled: the operator was
+   * sent it on create, so this removes the stored record and nothing else,
+   * and a user reaching for delete may well be trying to unsend.
+   *
+   * No local list surgery — `watchOwn` is live, so the row leaves on its own
+   * once the document does.
+   */
+  deleteFeedback(entry: FeedbackEntry): void {
+    const data: ConfirmDialogData = {
+      title: this.translationService.t('about.feedback.deleteTitle'),
+      message: this.translationService.t('about.feedback.deleteMessage'),
+      confirmLabel: this.translationService.t('common.delete'),
+      cancelLabel: this.translationService.t('common.cancel'),
+      confirmColor: 'warn',
+      icon: 'delete'
+    };
+
+    this.dialog
+      .open(ConfirmDialogComponent, { data })
+      .afterClosed()
+      .subscribe(confirmed => {
+        if (confirmed) void this.feedbackService.delete(entry.id);
+      });
   }
 
   feedbackCategoryKey(category: FeedbackCategory): string {

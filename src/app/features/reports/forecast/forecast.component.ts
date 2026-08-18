@@ -142,15 +142,29 @@ export class ForecastComponent implements OnInit, OnDestroy {
     this.currencyService.formatCurrency(this.projectedNet(), this._currency())
   );
 
-  private readonly dayLabels = computed(() => {
+  /** Days each plotted point spans; 1 while the period fits the ceiling. */
+  readonly bucketDays = computed(() => this.series().bucketDays);
+
+  /**
+   * One formatter over at most MAX_FORECAST_POINTS entries — the bucketing is
+   * what bounds this. A period opening in 2015 used to format a few thousand
+   * labels on every recompute.
+   *
+   * The year is carried only when the span needs it: a chart that opens and
+   * closes in the same calendar year reads better without it repeated on
+   * every tick.
+   */
+  private readonly bucketLabels = computed(() => {
+    const ends = this.series().bucketEnds;
+    const dates = ends.map(key => parseDayKey(key));
+    const years = new Set(dates.map(date => date?.getFullYear()).filter(year => year != null));
+
     const format = new Intl.DateTimeFormat(this.translationService.getIntlLocale(), {
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      ...(years.size > 1 ? { year: 'numeric' as const } : {})
     });
-    return this.series().days.map(key => {
-      const date = parseDayKey(key);
-      return date ? format.format(date) : key;
-    });
+    return dates.map((date, i) => (date ? format.format(date) : ends[i]));
   });
 
   chartOptions = computed((): ChartConfiguration<'line'>['options'] => {
@@ -187,7 +201,7 @@ export class ForecastComponent implements OnInit, OnDestroy {
   chartData = computed((): ChartData<'line'> => {
     const series = this.series();
     return {
-      labels: this.dayLabels(),
+      labels: this.bucketLabels(),
       datasets: [
         {
           label: this.translationService.t('reports.forecastActualSeries'),

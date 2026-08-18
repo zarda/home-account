@@ -65,6 +65,25 @@ export class FeedbackService {
   }
 
   /**
+   * Remove one entry the user picked off the About list.
+   *
+   * The rules have always permitted an owner delete — the cascade below
+   * cannot be told apart from a one-off — so this needs no rules change and
+   * no deploy; it is the door that permission never had (ADR 0056). Failure
+   * propagates for the same reason `add` does: the delete is the whole point
+   * of the user's action, so a rejection belongs in front of them.
+   *
+   * The mailed copy is already delivered and is not recalled. The trigger is
+   * onDocumentCreated only, so nothing here reaches it.
+   */
+  async delete(id: string): Promise<void> {
+    const userId = this.authService.userId();
+    if (!userId) throw new Error('User not authenticated');
+
+    await this.firestoreService.deleteDocument(`${this.path(userId)}/${id}`);
+  }
+
+  /**
    * Remove every entry, for account deletion. Enumerates the collection
    * rather than any cached view — a cache only holds what a subscription
    * happened to deliver.

@@ -75,6 +75,18 @@
   }
 }
 
+// Both cues above are colour, and forced colors replaces author colours with
+// system ones — so the tonal pill and the primary text collapse into the rest
+// of the bar, leaving only the label weight. An outline survives the mode,
+// so the active item stays findable without relying on weight alone
+// (ADR 0055).
+@media (forced-colors: active) {
+  .nav-item.active .icon-pill {
+    outline: 2px solid CanvasText;
+    outline-offset: 1px;
+  }
+}
+
 .action-button {
   display: flex;
   align-items: center;
