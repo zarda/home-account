@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, throwError } from 'rxjs';
+import { of } from 'rxjs';
 import { NlSearchService } from './nl-search.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
