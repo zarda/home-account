@@ -130,7 +130,17 @@ describe('ProfileSettingsComponent', () => {
     });
 
     it('should have date format options', () => {
-      expect(component.dateFormats.length).toBe(3);
+      // Automatic plus the three fixed patterns.
+      expect(component.dateFormats.length).toBe(4);
+      expect(component.dateFormats[0].value).toBe('auto');
+    });
+
+    // Automatic has no pattern to print, so the helper text shows the
+    // language's own rendering of the same worked date.
+    it('shows a locale-rendered example for the automatic option', () => {
+      component.dateFormat = 'auto';
+
+      expect(component.dateFormatExample).toBe('12/31/2024');
     });
 
     it('should have language options', () => {

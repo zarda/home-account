@@ -68,6 +68,61 @@ describe('DateFormatService', () => {
       expect(result).toBeTruthy();
       expect(typeof result).toBe('string');
     });
+
+    // The three fixed patterns are a deliberate choice and must survive; only
+    // 'auto' — the default for new accounts — follows the language (#84).
+    describe('against the stored preference', () => {
+      const day = new Date(2024, 0, 15);
+
+      function withDateFormat(dateFormat: string): DateFormatService {
+        TestBed.resetTestingModule();
+        TestBed.configureTestingModule({
+          providers: [
+            DateFormatService,
+            {
+              provide: AuthService,
+              useValue: { currentUser: signal({ preferences: { dateFormat } }) },
+            },
+            { provide: TranslationService, useValue: mockTranslationService },
+          ],
+        });
+        return TestBed.inject(DateFormatService);
+      }
+
+      it('keeps an explicitly stored pattern', () => {
+        expect(withDateFormat('MM/DD/YYYY').formatDate(day)).toBe('01/15/2024');
+        expect(withDateFormat('DD/MM/YYYY').formatDate(day)).toBe('15/01/2024');
+        expect(withDateFormat('YYYY-MM-DD').formatDate(day)).toBe('2024-01-15');
+      });
+
+      it('follows the active language on auto', () => {
+        mockTranslationService.getIntlLocale.and.returnValue('ja-JP');
+
+        expect(withDateFormat('auto').formatDate(day)).toBe(
+          new Intl.DateTimeFormat('ja-JP', {
+            year: 'numeric', month: 'numeric', day: 'numeric',
+          }).format(day));
+      });
+
+      // An account with nothing stored is a new one, and new accounts default
+      // to auto rather than to the old en-US pattern.
+      it('treats an unset preference as auto', () => {
+        mockTranslationService.getIntlLocale.and.returnValue('ja-JP');
+        TestBed.resetTestingModule();
+        TestBed.configureTestingModule({
+          providers: [
+            DateFormatService,
+            { provide: AuthService, useValue: { currentUser: signal({ preferences: {} }) } },
+            { provide: TranslationService, useValue: mockTranslationService },
+          ],
+        });
+
+        expect(TestBed.inject(DateFormatService).formatDate(day)).toBe(
+          new Intl.DateTimeFormat('ja-JP', {
+            year: 'numeric', month: 'numeric', day: 'numeric',
+          }).format(day));
+      });
+    });
   });
 
   describe('formatRelativeDate', () => {
