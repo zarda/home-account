@@ -120,6 +120,35 @@ touches the `recurringTransactions` signal at all — the page subscriptions
 own it. The decision and its rejected alternatives are in
 [ADR 0044](ADR/0044-the-catch-up-work-list-comes-from-the-server.md).
 
+## The smart-search aggregate's rows (#84 sweep)
+
+`NlSearchService.computeAggregate` does the arithmetic behind every smart-
+search answer, and the figure it produces is **persisted**: `recordAnswer`
+stores it on a live search, `refreshAnswer` rewrites it on every Refresh of a
+stored one. It read `firstValueFrom(getTransactionsInRange(...))` — the trap
+in its plainest form, surviving the #244/#247 sweep because the function looks
+like a calculation rather than a read.
+
+The Refresh button was where it showed. The Search history page is reachable
+by deep link and the dialog opens from anywhere, so the session frequently has
+no rows cached for the record's window; the listener's first emission was
+empty, and Refresh recomputed a zeroed answer and wrote it over a good one.
+The figures did not move, and nothing said why.
+
+`getTransactionsInRangeOnce`, sharing one options builder with the live
+variant. Plain `getCollection`, not the server-only read: nothing here gates
+an irreversible action — a stored answer is a snapshot the user can refresh
+again — so offline may legitimately answer from the cache. The decision and
+its rejected alternatives are in
+[ADR 0057](ADR/0057-a-replayed-answer-enumerates-and-reports.md).
+
+Note what could not have caught this. The end-to-end smoke test for the
+history page exercises exactly this refresh and passed throughout: the
+emulator has no persistent cache, so a listener's first emission there is
+already complete. The proof that the source changed lives in the unit spec,
+seeded the way the defect presents — rows in the collection, nothing in the
+listener's first emission.
+
 ## The deliberate live readers
 
 These are not exceptions to the rule — they are the other question. The
@@ -140,6 +169,7 @@ above.
 | `getExpensesInRangeOnce` | the persisted `spent` sum | `getCollection` | cache, incl. latency-compensated writes |
 | `listAll` (recurring) | a frozen month's recurring figures | `getCollection` | cache, incl. latency-compensated writes |
 | catch-up work list (recurring) | posted occurrences + budget recalcs | `getCollectionFromServer` | **rejects; deferred to the next online open** |
+| `getTransactionsInRangeOnce` | a stored smart-search answer's figures | `getCollection` | cache, incl. latency-compensated writes |
 
 ## When you add another one
 
