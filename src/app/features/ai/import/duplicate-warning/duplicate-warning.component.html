@@ -31,7 +31,7 @@
                   {{ dup.transaction.type === 'income' ? '+' : '-' }}
                   {{ dup.transaction.amount | currency:dup.transaction.currency }}
                 </span>
-                <span class="date">{{ dup.transaction.date | date:'shortDate' }}</span>
+                <span class="date">{{ dup.transaction.date | localeDate:'short' }}</span>
               </div>
             </div>
           }

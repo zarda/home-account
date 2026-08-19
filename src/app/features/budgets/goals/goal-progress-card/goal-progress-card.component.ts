@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -9,6 +8,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { goalPercentage, goalProgressAmount } from '../../../../core/utils/goal-progress.utils';
 import { Goal } from '../../../../models';
+import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
 /**
@@ -20,12 +20,12 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
   selector: 'app-goal-progress-card',
   standalone: true,
   imports: [
-    DatePipe,
     MatButtonModule,
     MatCardModule,
     MatCheckboxModule,
     MatIconModule,
     MatProgressBarModule,
+    LocaleDatePipe,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

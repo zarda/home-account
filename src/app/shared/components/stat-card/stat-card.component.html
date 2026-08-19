@@ -22,7 +22,7 @@
     <div class="stat-delta">
       <span class="delta-chip" [class.positive]="deltaIsPositive()" [class.negative]="!deltaIsPositive()">
         <mat-icon>{{ delta()! >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
-        {{ delta()! | number: '1.1-1' }}%
+        {{ delta()! | localeNumber:'1.1-1' }}%
       </span>
       @if (deltaCaption()) {
         <span class="delta-caption">{{ deltaCaption() }}</span>

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import { MatIconModule } from '@angular/material/icon';
-import { DecimalPipe } from '@angular/common';
+import { LocaleNumberPipe } from '../../pipes/locale-number.pipe';
 
 export type StatTone = 'neutral' | 'income' | 'expense' | 'positive' | 'negative';
 
@@ -14,7 +14,7 @@ export type StatTone = 'neutral' | 'income' | 'expense' | 'positive' | 'negative
 @Component({
   selector: 'app-stat-card',
   standalone: true,
-  imports: [MatIconModule, DecimalPipe],
+  imports: [MatIconModule, LocaleNumberPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './stat-card.component.html',
   styleUrl: './stat-card.component.scss',

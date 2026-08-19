@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { CurrencyPipe, DatePipe } from '@angular/common';
+import { CurrencyPipe } from '@angular/common';
 import { Transaction } from '../../../../models';
+import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 
@@ -16,7 +17,7 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
 @Component({
   selector: 'app-insight-transaction-list',
   standalone: true,
-  imports: [CurrencyPipe, DatePipe, TranslatePipe, FitTextDirective],
+  imports: [CurrencyPipe, LocaleDatePipe, TranslatePipe, FitTextDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="insight-transactions">
@@ -24,7 +25,7 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
         <div class="transaction-item">
           <div class="transaction-info">
             <span class="transaction-description">{{ transaction.description }}</span>
-            <span class="transaction-date">{{ transaction.date.toDate() | date:'MMM d, yyyy' }}</span>
+            <span class="transaction-date">{{ transaction.date.toDate() | localeDate }}</span>
           </div>
           <span class="transaction-amount" appFitText>
             {{ transaction.amount | currency:transaction.currency:'symbol':'1.2-2' }}

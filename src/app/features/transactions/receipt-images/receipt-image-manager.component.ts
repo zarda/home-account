@@ -20,6 +20,8 @@ import { NotificationService } from '../../../core/services/notification.service
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
+import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
+import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { Transaction } from '../../../models';
 
@@ -54,6 +56,8 @@ interface ReceiptGroup {
     MatProgressSpinnerModule,
     DialogHeaderComponent,
     LoadingSpinnerComponent,
+    LocaleDatePipe,
+    LocaleNumberPipe,
     TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

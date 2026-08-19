@@ -9,6 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { RecurringService } from '../../../core/services/recurring.service';
 import { ChartThemeService } from '../../../core/services/chart-theme.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ForecastSeries, buildForecastSeries } from '../../../core/utils/forecast-series.utils';
 import { parseDayKey, toDate } from '../../../core/utils/transaction-date.utils';
@@ -50,6 +51,7 @@ export class ForecastComponent implements OnInit, OnDestroy {
   private currencyService = inject(CurrencyService);
   private chartTheme = inject(ChartThemeService);
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
 
   @Input() set transactions(value: Transaction[]) {
     this._transactions.set(value);
@@ -191,7 +193,7 @@ export class ForecastComponent implements OnInit, OnDestroy {
           ...axis,
           ticks: {
             ...axis.ticks,
-            callback: value => `${symbol}${Number(value).toLocaleString()}`
+            callback: value => `${symbol}${this.localeFormat.formatNumber(Number(value))}`
           }
         }
       }

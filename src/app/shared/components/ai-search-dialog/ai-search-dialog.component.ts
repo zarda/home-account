@@ -14,6 +14,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -71,6 +72,7 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
   private translationService = inject(TranslationService);
   private dateFormatService = inject(DateFormatService);
   private answerHistory = inject(SearchAnswerHistoryService);
+  private notifications = inject(NotificationService);
 
   query = '';
   isLoading = signal(false);
@@ -162,7 +164,14 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
     this.openedRecordId.set(null);
   }
 
-  /** Recompute the opened snapshot locally from its stored scope — no model call. */
+  /**
+   * Recompute the opened snapshot locally from its stored scope — no model
+   * call.
+   *
+   * Both outcomes are reported, for the reason spelled out on the history
+   * page's twin: an unchanged figure and a rejected write look identical to a
+   * dead button when nothing is said either way.
+   */
   async refreshOpened(): Promise<void> {
     const record = this.openedRecord();
     if (!record || !isAnswerRecord(record) || this.isRefreshing()) return;
@@ -174,6 +183,10 @@ export class AiSearchDialogComponent implements OnInit, OnDestroy {
       await this.answerHistory.refreshAnswer(record.id, fresh);
       // Past the recomputation, so the event counts what happened.
       this.analytics.trackSearchHistoryUsed({ action: 'refresh' });
+      this.notifications.success(this.translationService.t('aiSearch.historyRefreshed'));
+    } catch (error) {
+      console.error('[AiSearchDialog] Refreshing the stored answer failed:', error);
+      this.notifications.error(this.translationService.t('aiSearch.historyRefreshFailed'));
     } finally {
       this.isRefreshing.set(false);
     }

@@ -27,7 +27,7 @@
         [value]="(netSavings() | currency:currencyCode:'symbol':'1.2-2') ?? ''"
         [icon]="netSavings() >= 0 ? 'savings' : 'money_off'"
         [tone]="netSavings() >= 0 ? 'positive' : 'negative'"
-        [detail]="(savingsRate() >= 0 ? '+' : '') + (savingsRate() | number:'1.1-1') + '%'"
+        [detail]="(savingsRate() >= 0 ? '+' : '') + (savingsRate() | localeNumber:'1.1-1') + '%'"
         [detailTone]="savingsRate() >= 0 ? 'positive' : 'negative'"
       />
     </div>
@@ -90,7 +90,7 @@
                     [style.background-color]="category.color"
                   ></div>
                 </div>
-                <span class="percentage-text">{{ category.percentage | number:'1.1-1' }}%</span>
+                <span class="percentage-text">{{ category.percentage | localeNumber:'1.1-1' }}%</span>
               </div>
             </div>
           }

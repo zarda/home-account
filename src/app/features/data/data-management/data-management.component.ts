@@ -32,6 +32,7 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { baseCurrencyOf } from '../../../models';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -47,6 +48,7 @@ import { NotificationService } from '../../../core/services/notification.service
     MatButtonModule,
     MatProgressBarModule,
     MatDialogModule,
+    LocaleDatePipe,
     TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -22,8 +22,8 @@
             <div class="item-info">
               <span class="item-description">{{ group.transaction.description }}</span>
               <span class="item-meta">
-                {{ dateOf(group) | date: 'mediumDate' }}
-                · {{ group.transaction.currency }} {{ group.transaction.amount | number: '1.0-2' }}
+                {{ dateOf(group) | localeDate }}
+                · {{ group.transaction.currency }} {{ group.transaction.amount | localeNumber:'1.0-2' }}
               </span>
             </div>
             @if (group.images.length > 1) {

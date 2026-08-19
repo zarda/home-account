@@ -7,6 +7,10 @@ rule is the whole of
 confirmed bugs (#167, #171, #173, #174) were each a defect in a private copy of
 arithmetic this module already had.
 
+This page is about computing a date. *Rendering* one for a reader — which
+language's field order and month names it wears — is a separate concern, in
+[locale-formatting.md](locale-formatting.md).
+
 ## Local parts, always
 
 A date is read and written through its **local** parts — `getFullYear()`,

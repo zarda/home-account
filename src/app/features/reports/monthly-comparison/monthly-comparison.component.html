@@ -82,7 +82,7 @@
                 @if (row.incomeChange !== null) {
                   <span class="change-indicator" [class.positive]="row.incomeChange >= 0" [class.negative]="row.incomeChange < 0">
                     <mat-icon>{{ row.incomeChange >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
-                    {{ row.incomeChange | number:'1.1-1' }}%
+                    {{ row.incomeChange | localeNumber:'1.1-1' }}%
                   </span>
                 }
               </td>
@@ -96,7 +96,7 @@
                 @if (row.expenseChange !== null) {
                   <span class="change-indicator" [class.positive]="row.expenseChange < 0" [class.negative]="row.expenseChange >= 0">
                     <mat-icon>{{ row.expenseChange >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
-                    {{ row.expenseChange | number:'1.1-1' }}%
+                    {{ row.expenseChange | localeNumber:'1.1-1' }}%
                   </span>
                 }
               </td>
@@ -135,7 +135,7 @@
                 @if (row.yoyExpenseChange !== null) {
                   <span class="change-indicator" [class.positive]="row.yoyExpenseChange < 0" [class.negative]="row.yoyExpenseChange >= 0">
                     <mat-icon>{{ row.yoyExpenseChange >= 0 ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
-                    {{ row.yoyExpenseChange | number:'1.1-1' }}%
+                    {{ row.yoyExpenseChange | localeNumber:'1.1-1' }}%
                   </span>
                 } @else {
                   <span class="no-data">—</span>

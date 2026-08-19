@@ -103,6 +103,23 @@ the corrected figures overwrite the record in place with a new computed-at.
 "This month" recorded in August stays the August range forever; refreshing it
 recomputes August over today's data.
 
+**The rows it recomputes over are enumerated, not listened for.** The figures
+are persisted, so `computeAggregate` reads through
+`TransactionService.getTransactionsInRangeOnce` rather than taking a live
+listener's first emission — which, with the persistent cache, is whatever
+windows the session happened to browse. Refreshing a record from the history
+page, opened cold, used to recompute an empty answer and write it over a good
+one. This is a registered instance of the class in
+[one-shot-reads.md](one-shot-reads.md); the decision is
+[ADR 0057](ADR/0057-a-replayed-answer-enumerates-and-reports.md).
+
+**A refresh says what happened.** Correct recomputation over unchanged data
+produces the same numbers, so silence cannot distinguish success from failure
+or from a dead button. Both outcomes notify — `aiSearch.historyRefreshed` and
+`aiSearch.historyRefreshFailed` — and the failure is logged. This holds on
+both surfaces: the dialog's opened snapshot and the history page's expanded
+row run the same three steps and report them the same way.
+
 **The same question is one record.** Re-asking a question whose kind and
 resolved scope match an existing record reuses it — refreshing its figures for
 an aggregate, its recency for a filter — instead of duplicating it. The kind is

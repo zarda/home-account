@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { Transaction } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 
 @Component({
@@ -18,6 +19,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
     MatIconModule,
     EmptyStateComponent,
     CurrencyPipe,
+    LocaleNumberPipe,
     TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

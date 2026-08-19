@@ -1437,6 +1437,64 @@ describe('TransactionService', () => {
     });
   });
 
+  describe('getTransactionsInRangeOnce', () => {
+    const path = 'users/test-user-123/transactions';
+    const start = new Date(2026, 7, 1);
+    const end = new Date(2026, 7, 31);
+
+    // The smart-search aggregate is computed from these rows and then
+    // persisted — recordAnswer on a live search, refreshAnswer on a Refresh.
+    // It used to await one emission of the live listener, which a warm cache
+    // serves as whatever window the session browsed; on a page that never
+    // browsed this range that is empty, so Refresh wrote a zeroed answer back
+    // over a good one. See docs/one-shot-reads.md.
+    it('enumerates the collection without opening a listener', async () => {
+      const rows = [
+        createTransaction({ id: 'txn-a', date: Timestamp.fromDate(new Date(2026, 7, 3)) }),
+        createTransaction({ id: 'txn-b', date: Timestamp.fromDate(new Date(2026, 7, 9)) }),
+      ];
+      mockFirestore.setMockCollection(path, rows);
+
+      const result = await service.getTransactionsInRangeOnce(start, end);
+
+      expect(result).toEqual(rows);
+      expect(mockFirestore.getCollectionSpy.mostRecent()?.args[0]).toBe(path);
+      expect(mockFirestore.subscribeToCollectionSpy.calls.length).toBe(0);
+    });
+
+    // Plain getCollection, not the server-only variant: a stored answer is a
+    // snapshot the user can refresh again, so nothing here gates an
+    // irreversible action and an offline replay may answer from the cache.
+    it('reads through getCollection rather than the server-only variant', async () => {
+      mockFirestore.setMockCollection(path, []);
+
+      await service.getTransactionsInRangeOnce(start, end);
+
+      expect(mockFirestore.getCollectionSpy.calls.length).toBe(1);
+      expect(mockFirestore.getCollectionFromServerSpy.calls.length).toBe(0);
+    });
+
+    // One options builder feeds both variants so the queries cannot drift.
+    it('queries the same window as the live variant', async () => {
+      mockFirestore.setMockCollection(path, []);
+
+      await service.getTransactionsInRangeOnce(start, end);
+      service.getTransactionsInRange(start, end).subscribe().unsubscribe();
+
+      expect(mockFirestore.getCollectionSpy.mostRecent()?.args[1])
+        .toEqual(mockFirestore.subscribeToCollectionSpy.mostRecent()?.args[1]);
+    });
+
+    it('resolves empty signed out without touching the database', async () => {
+      mockAuth.setMockUser(null);
+
+      const result = await service.getTransactionsInRangeOnce(start, end);
+
+      expect(result).toEqual([]);
+      expect(mockFirestore.getCollectionSpy.calls.length).toBe(0);
+    });
+  });
+
   describe('goal links', () => {
     const TX = 'users/test-user-123/transactions';
     const GOALS = 'users/test-user-123/goals';

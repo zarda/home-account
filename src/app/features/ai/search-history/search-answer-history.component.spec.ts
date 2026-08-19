@@ -10,6 +10,7 @@ import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -32,6 +33,7 @@ describe('SearchAnswerHistoryComponent', () => {
   let pendingFilters: jasmine.SpyObj<PendingFiltersService>;
   let router: jasmine.SpyObj<Router>;
   let matDialog: jasmine.SpyObj<MatDialog>;
+  let notifications: jasmine.SpyObj<NotificationService>;
 
   const rec = (
     id: string,
@@ -70,6 +72,7 @@ describe('SearchAnswerHistoryComponent', () => {
     router = jasmine.createSpyObj('Router', ['navigate']);
     router.navigate.and.resolveTo(true);
     matDialog = jasmine.createSpyObj('MatDialog', ['open']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'info', 'error']);
     matDialog.open.and.returnValue({
       afterClosed: () => of(true),
     } as MatDialogRef<unknown>);
@@ -99,6 +102,7 @@ describe('SearchAnswerHistoryComponent', () => {
         { provide: CurrencyService, useValue: currencyService },
         { provide: TranslationService, useValue: translationService },
         { provide: DateFormatService, useValue: dateFormatService },
+        { provide: NotificationService, useValue: notifications },
       ],
     }).compileComponents();
 
@@ -161,6 +165,58 @@ describe('SearchAnswerHistoryComponent', () => {
       3,
     );
     expect(answerHistory.refreshAnswer).toHaveBeenCalledWith('a-1', fresh);
+  });
+
+  // A refresh whose figures happen to come back unchanged is otherwise
+  // indistinguishable from a button that did nothing at all.
+  it('confirms a completed refresh', async () => {
+    storedAnswers.set([rec('a-1', 2_000)]);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    nlSearch.replayAggregate.and.resolveTo({
+      operation: 'sum' as const, value: 500, currency: 'USD', transactionCount: 21, scope: {},
+    });
+
+    (fixture.nativeElement.querySelector('.history-refresh') as HTMLButtonElement).click();
+    await fixture.whenStable();
+
+    expect(notifications.success).toHaveBeenCalledWith('aiSearch.historyRefreshed');
+    expect(notifications.error).not.toHaveBeenCalled();
+  });
+
+  // Both legs used to reject into nothing: the spinner cleared and the user
+  // was told neither that it worked nor that it had not.
+  it('reports a failed replay and releases the button', async () => {
+    storedAnswers.set([rec('a-1', 2_000)]);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    nlSearch.replayAggregate.and.rejectWith(new Error('firestore down'));
+
+    (fixture.nativeElement.querySelector('.history-refresh') as HTMLButtonElement).click();
+    await fixture.whenStable();
+
+    expect(notifications.error).toHaveBeenCalledWith('aiSearch.historyRefreshFailed');
+    expect(notifications.success).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.isRefreshing()).toBeFalse();
+  });
+
+  it('reports a rejected write, and does not claim the answer was updated', async () => {
+    storedAnswers.set([rec('a-1', 2_000)]);
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    nlSearch.replayAggregate.and.resolveTo({
+      operation: 'sum' as const, value: 500, currency: 'USD', transactionCount: 21, scope: {},
+    });
+    answerHistory.refreshAnswer.and.rejectWith(new Error('permission-denied'));
+
+    (fixture.nativeElement.querySelector('.history-refresh') as HTMLButtonElement).click();
+    await fixture.whenStable();
+
+    expect(notifications.error).toHaveBeenCalledWith('aiSearch.historyRefreshFailed');
+    expect(notifications.success).not.toHaveBeenCalled();
   });
 
   it('deleting a record asks for confirmation first', async () => {

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, throwError } from 'rxjs';
+import { of } from 'rxjs';
 import { NlSearchService } from './nl-search.service';
 import { AIStrategyService } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
@@ -44,8 +44,12 @@ describe('NlSearchService', () => {
     aiStrategy = { canUseCloud: jasmine.createSpy('canUseCloud').and.returnValue(true) };
     pwaService = { isOnline: jasmine.createSpy('isOnline').and.returnValue(true) };
     cloudLLMProvider = jasmine.createSpyObj('CloudLLMProviderService', ['interpretSearchQuery']);
-    transactionService = jasmine.createSpyObj('TransactionService', ['getTransactionsInRange']);
+    transactionService = jasmine.createSpyObj('TransactionService', [
+      'getTransactionsInRange',
+      'getTransactionsInRangeOnce',
+    ]);
     transactionService.getTransactionsInRange.and.returnValue(of([]));
+    transactionService.getTransactionsInRangeOnce.and.resolveTo([]);
     searchHistory = jasmine.createSpyObj('SearchHistoryService', ['recordRecent']);
     searchHistory.recordRecent.and.resolveTo();
     answerHistory = jasmine.createSpyObj('SearchAnswerHistoryService', [
@@ -174,12 +178,12 @@ describe('NlSearchService', () => {
 
   describe('goal-scoped aggregates', () => {
     it('counts only the rows linked to the goal', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(100, 'food', { id: 't1', goalId: 'g1' }),
         expense(40, 'food', { id: 't2', goalId: 'g1' }),
         expense(999, 'food', { id: 't3', goalId: 'g2' }),
         expense(555, 'food', { id: 't4' }),
-      ]));
+      ]);
       mockIntent({
         kind: 'aggregate',
         operation: 'sum',
@@ -292,13 +296,13 @@ describe('NlSearchService', () => {
 
   describe('aggregate questions', () => {
     it('"how much did I spend on food in June" sums the parent category including child rows', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(50, 'food_groceries'),
         expense(30, 'food_restaurants'),
         expense(20, 'food'),
         expense(40, 'transport'),
         createTransaction({ type: 'income', amount: 1000, categoryId: 'employment', amountInBaseCurrency: 1000 }),
-      ]));
+      ]);
       mockIntent({
         kind: 'aggregate',
         operation: 'sum',
@@ -317,10 +321,10 @@ describe('NlSearchService', () => {
     });
 
     it('sums across currencies in base-currency terms', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(50, 'food'),
         expense(1000, 'food', { currency: 'JPY', amountInBaseCurrency: 7 }),
-      ]));
+      ]);
       mockIntent({ kind: 'aggregate', operation: 'sum', filters: { categoryId: 'food' }, limit: 3 });
 
       const result = await service.search('total food spending');
@@ -334,10 +338,10 @@ describe('NlSearchService', () => {
     // "over $100" and drop a €95 dinner. The answer value discriminates every
     // combination: 33 = JPY kept, 103 = EUR kept, 136 = both.
     it('applies a minimum bound in base currency, like the totals beside it', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(5000, 'food', { currency: 'JPY', amountInBaseCurrency: 33 }),
         expense(95, 'food', { currency: 'EUR', amountInBaseCurrency: 103 }),
-      ]));
+      ]);
       mockIntent({
         kind: 'aggregate',
         operation: 'sum',
@@ -355,10 +359,10 @@ describe('NlSearchService', () => {
     });
 
     it('applies a maximum bound in base currency too', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(5000, 'food', { currency: 'JPY', amountInBaseCurrency: 33 }),
         expense(95, 'food', { currency: 'EUR', amountInBaseCurrency: 103 }),
-      ]));
+      ]);
       mockIntent({
         kind: 'aggregate',
         operation: 'sum',
@@ -376,10 +380,10 @@ describe('NlSearchService', () => {
     });
 
     it('"how many transactions last week" counts without a currency', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(5, 'food'), expense(6, 'transport'), expense(7, 'pets'),
         createTransaction({ type: 'income', amount: 10, categoryId: 'employment' }),
-      ]));
+      ]);
       mockIntent({
         kind: 'aggregate',
         operation: 'count',
@@ -395,11 +399,11 @@ describe('NlSearchService', () => {
     });
 
     it('"average restaurant bill this year" divides sum by count', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(30, 'food_restaurants'),
         expense(50, 'food_restaurants'),
         expense(999, 'transport'),
-      ]));
+      ]);
       mockIntent({
         kind: 'aggregate',
         operation: 'average',
@@ -416,9 +420,9 @@ describe('NlSearchService', () => {
 
     it('"biggest expense in May" returns the actual extreme transaction', async () => {
       const biggest = expense(90, 'transport', { description: 'Flight home' });
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(20, 'food'), biggest, expense(40, 'pets'),
-      ]));
+      ]);
       mockIntent({
         kind: 'aggregate',
         operation: 'max',
@@ -434,12 +438,12 @@ describe('NlSearchService', () => {
     });
 
     it('"top 3 spending categories" rolls children up to their parent', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([
         expense(50, 'food_groceries'),
         expense(30, 'food_restaurants'),
         expense(40, 'transport'),
         expense(10, 'pets'),
-      ]));
+      ]);
       mockIntent({ kind: 'aggregate', operation: 'topCategories', filters: {}, limit: 2 });
 
       const result = await service.search('top 3 spending categories this month');
@@ -463,12 +467,12 @@ describe('NlSearchService', () => {
         expect(result.answer.scope.startDate).toEqual(expectedStart);
         expect(result.answer.scope.endDate?.getMonth()).toBe(now.getMonth());
       }
-      const [fetchStart] = transactionService.getTransactionsInRange.calls.mostRecent().args;
+      const [fetchStart] = transactionService.getTransactionsInRangeOnce.calls.mostRecent().args;
       expect(fetchStart).toEqual(expectedStart);
     });
 
     it('reports zero matches without inventing a value', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(of([]));
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([]);
       mockIntent({ kind: 'aggregate', operation: 'average', filters: {}, limit: 3 });
 
       const result = await service.search('average of nothing');
@@ -520,8 +524,7 @@ describe('NlSearchService', () => {
     });
 
     it('falls back when the aggregate fetch fails', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(
-        throwError(() => new Error('firestore down')));
+      transactionService.getTransactionsInRangeOnce.and.rejectWith(new Error('firestore down'));
       mockIntent({ kind: 'aggregate', operation: 'sum', filters: {}, limit: 3 });
 
       const result = await service.search('total spend');
@@ -532,7 +535,7 @@ describe('NlSearchService', () => {
   describe('answer history', () => {
     it('"how much did I spend on food" records the computed answer over its resolved scope', async () => {
       mockIntent({ kind: 'aggregate', operation: 'sum', filters: { categoryId: 'food' }, limit: 3 });
-      transactionService.getTransactionsInRange.and.returnValue(of([expense(100, 'food')]));
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([expense(100, 'food')]);
 
       const result = await service.search('how much did I spend on food');
 
@@ -569,8 +572,7 @@ describe('NlSearchService', () => {
     });
 
     it('replayAggregate recomputes locally with no model call and no usage event', async () => {
-      transactionService.getTransactionsInRange.and.returnValue(
-        of([expense(80, 'food'), expense(20, 'food')]));
+      transactionService.getTransactionsInRangeOnce.and.resolveTo([expense(80, 'food'), expense(20, 'food')]);
 
       const answer = await service.replayAggregate('sum', {
         startDate: new Date(2026, 7, 1),
@@ -584,6 +586,31 @@ describe('NlSearchService', () => {
       expect(analytics.trackAiAssistUsed).not.toHaveBeenCalled();
       // Recording stays the caller's choice: a refresh updates its own record.
       expect(answerHistory.recordAnswer).not.toHaveBeenCalled();
+    });
+
+    // The figures computed here are written to Firestore — by recordAnswer on
+    // a live search, by refreshAnswer on a Refresh — so per
+    // docs/one-shot-reads.md they must enumerate the collection. The live
+    // listener's first emission is the cache-served one, and on a page that
+    // never browsed this window it is short or empty: the Refresh button then
+    // wrote a stale or zeroed answer back over a good one.
+    //
+    // Seeded the way the defect presents: rows in the collection, nothing in
+    // the listener's first emission.
+    it('replays from the collection, never from the live listener', async () => {
+      transactionService.getTransactionsInRange.and.returnValue(of([]));
+      transactionService.getTransactionsInRangeOnce.and.resolveTo(
+        [expense(80, 'food'), expense(20, 'food')]);
+
+      const answer = await service.replayAggregate('sum', {
+        startDate: new Date(2026, 7, 1),
+        endDate: new Date(2026, 7, 31, 23, 59, 59, 999),
+      }, 3);
+
+      expect(answer.value).toBe(100);
+      expect(answer.transactionCount).toBe(2);
+      expect(transactionService.getTransactionsInRangeOnce).toHaveBeenCalled();
+      expect(transactionService.getTransactionsInRange).not.toHaveBeenCalled();
     });
   });
 });

@@ -71,7 +71,7 @@ export const DEFAULT_LLM_PROVIDER_PREFERENCES: LLMProviderPreferences = {
 export interface UserPreferences {
   baseCurrency: string;          // ISO 4217 code (e.g., 'USD', 'THB')
   language: string;              // 'en', 'zh-Hant', 'ja'
-  dateFormat: string;            // 'MM/DD/YYYY', 'DD/MM/YYYY'
+  dateFormat: string;            // 'auto' (follow the language), 'MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'
   theme: 'light' | 'dark' | 'system';
   defaultCategories: string[];   // Category IDs to show first
   llmProviderPreferences?: LLMProviderPreferences; // Per-feature LLM provider selection
@@ -195,7 +195,9 @@ export function effectiveRagLevel(prefs: UserPreferences | null | undefined): Ra
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   baseCurrency: 'USD',
   language: 'en',
-  dateFormat: 'MM/DD/YYYY',
+  // 'auto' follows the chosen language rather than pinning a pattern; an
+  // account that explicitly picked one keeps it (ADR 0058).
+  dateFormat: 'auto',
   theme: 'system',
   defaultCategories: []
 };

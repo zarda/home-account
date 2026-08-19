@@ -221,6 +221,26 @@ describe('NlSearchService goal and budget scope (emulator smoke test)', () => {
     expect(answer.value).toBe(1694);
   }, 30000);
 
+  // The figures a replay produces are written back to the account's stored
+  // answer, so they have to enumerate rather than take a live listener's
+  // first emission (docs/one-shot-reads.md). The emulator has no persistent
+  // cache, so what this proves is the door — that the rows arrive without a
+  // listener being opened at all; the cached-first emission itself is pinned
+  // in nl-search.service.spec.ts.
+  it('reads the rows without opening a listener', async () => {
+    const listener = spyOn(TestBed.inject(FirestoreService), 'subscribeToCollection')
+      .and.callThrough();
+
+    const answer = await service.replayAggregate(
+      'sum',
+      { startDate: new Date(2026, 7, 1), endDate: new Date(2026, 7, 31, 23, 59, 59, 999) },
+      3
+    );
+
+    expect(answer.value).toBe(1694);
+    expect(listener).not.toHaveBeenCalled();
+  }, 30000);
+
   it('sends the active goal and budget catalogs to the model from cold signals', async () => {
     // Nothing subscribed to GoalService or BudgetService in this TestBed, so
     // both signals are empty and the one-shot reads are the only source.

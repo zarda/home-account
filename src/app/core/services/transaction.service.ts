@@ -1381,18 +1381,44 @@ export class TransactionService {
     const userId = this.authService.userId();
     if (!userId) return of([]);
 
-    const options: Parameters<typeof this.firestoreService.subscribeToCollection>[1] = {
+    return this.firestoreService.subscribeToCollection<Transaction>(
+      this.userTransactionsPath,
+      this.transactionsInRangeOptions(start, end)
+    );
+  }
+
+  /**
+   * One-shot variant of getTransactionsInRange, for figures that get
+   * persisted. A smart-search aggregate is computed here and then written to
+   * the account's searchAnswers — on the live search that records it, and
+   * again on every Refresh of a stored one. Taking the live listener's first
+   * emission meant reading the cache: on a page that never browsed the
+   * record's window it holds no rows for that range, so Refresh recomputed a
+   * short or empty answer and wrote it back over a good one.
+   *
+   * Plain getCollection, not the server-only variant: nothing here gates an
+   * irreversible action — a stored answer is a snapshot the user can refresh
+   * again — so an offline replay may legitimately answer from the cache.
+   */
+  async getTransactionsInRangeOnce(start: Date, end: Date): Promise<Transaction[]> {
+    const userId = this.authService.userId();
+    if (!userId) return [];
+
+    return this.firestoreService.getCollection<Transaction>(
+      this.userTransactionsPath,
+      this.transactionsInRangeOptions(start, end)
+    );
+  }
+
+  // Shared by the live and one-shot variants so the two queries cannot drift.
+  private transactionsInRangeOptions(start: Date, end: Date): QueryOptions {
+    return {
       orderBy: [{ field: 'date', direction: 'desc' }],
       where: [
         { field: 'date', op: '>=', value: Timestamp.fromDate(start) },
         { field: 'date', op: '<=', value: Timestamp.fromDate(endOfDay(end)) }
       ]
     };
-
-    return this.firestoreService.subscribeToCollection<Transaction>(
-      this.userTransactionsPath,
-      options
-    );
   }
 
   private groupByCategory(transactions: Transaction[]): CategoryTotal[] {

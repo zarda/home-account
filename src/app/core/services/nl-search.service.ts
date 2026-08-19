@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
 import { AIStrategyService } from './ai-strategy.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
@@ -184,8 +183,12 @@ export class NlSearchService {
     const baseCurrency = this.baseCurrency();
     const scope = this.resolveScope(intent.filters);
 
-    const fetched = await firstValueFrom(
-      this.transactionService.getTransactionsInRange(scope.startDate!, scope.endDate!)
+    // Enumerated, not taken from the live listener's first emission: this
+    // answer is persisted (recordAnswer on a live search, refreshAnswer on a
+    // Refresh), and a cache-served emission is whatever windows the session
+    // happened to browse. See docs/one-shot-reads.md.
+    const fetched = await this.transactionService.getTransactionsInRangeOnce(
+      scope.startDate!, scope.endDate!
     );
     const toBase = (t: Transaction) => this.currencyService.amountInBase(t, baseCurrency);
     const matches = this.applyScope(fetched, scope, toBase);

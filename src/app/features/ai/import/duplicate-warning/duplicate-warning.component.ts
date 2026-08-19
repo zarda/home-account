@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatListModule } from '@angular/material/list';
 import { CategorizedImportTransaction, DuplicateCheck } from '../../../../models';
+import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
 export interface DuplicateInfo {
@@ -21,6 +22,7 @@ export interface DuplicateInfo {
     MatIconModule,
     MatButtonModule,
     MatListModule,
+    LocaleDatePipe,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

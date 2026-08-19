@@ -12,6 +12,7 @@ import { DateFormatService } from '../../../core/services/date-format.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -27,6 +28,7 @@ describe('AiSearchDialogComponent', () => {
   let router: jasmine.SpyObj<Router>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<AiSearchDialogComponent>>;
   let matDialog: jasmine.SpyObj<MatDialog>;
+  let notifications: jasmine.SpyObj<NotificationService>;
   let storedAnswers: WritableSignal<SearchAnswerRecord[]>;
   let answerHistory: {
     answers: WritableSignal<SearchAnswerRecord[]>;
@@ -52,6 +54,7 @@ describe('AiSearchDialogComponent', () => {
     router.navigate.and.resolveTo(true);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
     matDialog = jasmine.createSpyObj('MatDialog', ['open']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'info', 'error']);
     matDialog.open.and.returnValue({
       afterClosed: () => of(true),
     } as MatDialogRef<unknown>);
@@ -96,6 +99,7 @@ describe('AiSearchDialogComponent', () => {
       providers: [
         { provide: AnalyticsService, useValue: analytics },
         { provide: NlSearchService, useValue: nlSearch },
+        { provide: NotificationService, useValue: notifications },
         { provide: PendingFiltersService, useValue: pendingFilters },
         { provide: Router, useValue: router },
         { provide: MatDialogRef, useValue: dialogRef },
@@ -413,6 +417,25 @@ describe('AiSearchDialogComponent', () => {
       );
       expect(answerHistory.refreshAnswer).toHaveBeenCalledWith('a-1', fresh);
       expect(nlSearch.search).not.toHaveBeenCalled();
+      // Unchanged figures would otherwise look like a button that did nothing.
+      expect(notifications.success).toHaveBeenCalledWith('aiSearch.historyRefreshed');
+    });
+
+    // The rejection used to escape as an unhandled promise while the spinner
+    // cleared, so a failed refresh looked exactly like a dead button.
+    it('reports a failed refresh and releases the button', async () => {
+      storedAnswers.set([rec('a-1', 1_000_000)]);
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('.history-open') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      nlSearch.replayAggregate.and.rejectWith(new Error('firestore down'));
+
+      (fixture.nativeElement.querySelector('.history-refresh') as HTMLButtonElement).click();
+      await fixture.whenStable();
+
+      expect(notifications.error).toHaveBeenCalledWith('aiSearch.historyRefreshFailed');
+      expect(notifications.success).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.isRefreshing()).toBeFalse();
     });
 
     it('deleting a row asks for confirmation first', async () => {

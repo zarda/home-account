@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Input, computed, inject, signal } from '@angular/core';
-import { CommonModule, CurrencyPipe, DecimalPipe } from '@angular/common';
+import { CommonModule, CurrencyPipe } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { map } from 'rxjs/operators';
@@ -18,6 +18,7 @@ import { StatCardComponent } from '../../../shared/components/stat-card/stat-car
 import { CurrencyService } from '../../../core/services/currency.service';
 import { ChartThemeService } from '../../../core/services/chart-theme.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { addMonths, monthKey, parseMonthKey } from '../../../core/utils/transaction-date.utils';
 
@@ -48,7 +49,7 @@ interface MonthlyComparison {
     BaseChartDirective,
     EmptyStateComponent,
     CurrencyPipe,
-    DecimalPipe,
+    LocaleNumberPipe,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

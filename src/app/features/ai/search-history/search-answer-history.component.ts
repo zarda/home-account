@@ -8,6 +8,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { NlSearchService } from '../../../core/services/nl-search.service';
+import { NotificationService } from '../../../core/services/notification.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { SearchAnswerHistoryService } from '../../../core/services/search-answer-history.service';
 import { TranslationService } from '../../../core/services/translation.service';
@@ -57,6 +58,7 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
   private dateFormatService = inject(DateFormatService);
+  private notifications = inject(NotificationService);
   history = inject(SearchAnswerHistoryService);
 
   isRefreshing = signal(false);
@@ -111,7 +113,15 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
     return isAnswerRecord(record);
   }
 
-  /** Recompute the expanded snapshot locally from its stored scope — no model call. */
+  /**
+   * Recompute the expanded snapshot locally from its stored scope — no model
+   * call.
+   *
+   * Both outcomes are reported. A refresh whose figures happen to be
+   * unchanged is indistinguishable from a button that did nothing, and a
+   * rejected replay or write used to become an unhandled rejection while the
+   * spinner cleared — the same silence either way.
+   */
   async refreshExpanded(): Promise<void> {
     const record = this.expandedRecord();
     if (!record || this.isRefreshing()) return;
@@ -125,6 +135,10 @@ export class SearchAnswerHistoryComponent implements OnInit, OnDestroy {
       await this.history.refreshAnswer(record.id, fresh);
       // Past the recomputation, so the event counts what happened.
       this.analytics.trackSearchHistoryUsed({ action: 'refresh' });
+      this.notifications.success(this.translationService.t('aiSearch.historyRefreshed'));
+    } catch (error) {
+      console.error('[SearchAnswerHistory] Refreshing the stored answer failed:', error);
+      this.notifications.error(this.translationService.t('aiSearch.historyRefreshFailed'));
     } finally {
       this.isRefreshing.set(false);
     }

@@ -46,7 +46,7 @@
             {{ result.expenseChange | currency:result.baseCurrency:'symbol':'1.2-2' }}
             @if (result.expenseChangeRatio !== null) {
               <span class="headline-ratio">
-                ({{ result.expenseChangeRatio * 100 | number:'1.0-0' }}%)
+                ({{ result.expenseChangeRatio * 100 | localeNumber:'1.0-0' }}%)
               </span>
             }
           </span>
@@ -77,7 +77,7 @@
                 {{ entry.change | currency:result.baseCurrency:'symbol':'1.2-2' }}
                 @if (entry.changeRatio !== null) {
                   <span class="change-ratio">
-                    ({{ entry.changeRatio * 100 | number:'1.0-0' }}%)
+                    ({{ entry.changeRatio * 100 | localeNumber:'1.0-0' }}%)
                   </span>
                 }
               </span>

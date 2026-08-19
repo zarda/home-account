@@ -10,6 +10,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 
 import { AuthService } from '../../../core/services/auth.service';
+import { DATE_FORMAT_AUTO } from '../../../core/services/date-format.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { TranslationService, SupportedLocale } from '../../../core/services/translation.service';
 import { ThemeService, ThemePreference } from '../../../core/services/theme.service';
 import { TransactionService } from '../../../core/services/transaction.service';
@@ -46,6 +48,7 @@ export class ProfileSettingsComponent {
   private notifications = inject(NotificationService);
   private authService = inject(AuthService);
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
   private themeService = inject(ThemeService);
   private analytics = inject(AnalyticsService);
   private transactionService = inject(TransactionService);
@@ -58,18 +61,26 @@ export class ProfileSettingsComponent {
   // Current preferences
   baseCurrency = baseCurrencyOf(this.authService.currentUser());
   theme: ThemePreference = this.authService.currentUser()?.preferences?.theme || 'system';
-  dateFormat = this.authService.currentUser()?.preferences?.dateFormat || 'MM/DD/YYYY';
+  dateFormat = this.authService.currentUser()?.preferences?.dateFormat || DATE_FORMAT_AUTO;
   language: SupportedLocale = (this.authService.currentUser()?.preferences?.language as SupportedLocale) || this.translationService.currentLocale();
 
   // Pattern-only labels keep the select value from colliding with the arrow;
   // the worked example moves to helper text below the field.
   dateFormats = [
+    { value: DATE_FORMAT_AUTO, label: this.translationService.t('settings.dateFormatAuto'), example: '' },
     { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY', example: '12/31/2024' },
     { value: 'DD/MM/YYYY', label: 'DD/MM/YYYY', example: '31/12/2024' },
     { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD', example: '2024-12-31' },
   ];
 
+  /**
+   * Automatic has no fixed pattern to print, so it shows the language's own
+   * rendering of the same worked date the other options use.
+   */
   get dateFormatExample(): string {
+    if (this.dateFormat === DATE_FORMAT_AUTO) {
+      return this.localeFormat.formatDate(new Date(2024, 11, 31), 'short');
+    }
     return this.dateFormats.find(f => f.value === this.dateFormat)?.example ?? '';
   }
 
