@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
+import { LocaleFormatService } from './locale-format.service';
 import { TranslationService } from './translation.service';
 import { readCurrencyCode } from '../utils/receipt-extraction.utils';
 import {
@@ -117,6 +118,7 @@ export class ExportService {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
 
   // Convert ArrayBuffer to base64 string (handles large binary data)
   private arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -336,7 +338,7 @@ export class ExportService {
       const transactionData = report.transactions.map(t => {
         const category = report.categories.find(c => c.id === t.categoryId);
         return [
-          t.date.toDate().toLocaleDateString(),
+          this.localeFormat.formatDate(t.date, 'short'),
           t.type === 'income' ? '+' : '-',
           this.getCategoryName(category),
           t.description.substring(0, 30),
@@ -360,7 +362,7 @@ export class ExportService {
 
     // Footer
     const pageCount = doc.getNumberOfPages();
-    const generatedDate = new Date().toLocaleDateString();
+    const generatedDate = this.localeFormat.formatDate(new Date(), 'short');
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
       doc.setFontSize(8);

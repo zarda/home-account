@@ -11,6 +11,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { ImportHistory, ImportStatus } from '../../../../models';
@@ -44,6 +45,7 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
   private notifications = inject(NotificationService);
   private importHistoryService = inject(ImportHistoryService);
   private translationService = inject(TranslationService);
+  private localeFormat = inject(LocaleFormatService);
   private dialog = inject(MatDialog);
   private router = inject(Router);
 
@@ -128,10 +130,13 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
 
   formatDate(timestamp: Timestamp): string {
     const date = timestamp.toDate();
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {
+    // The active language, not the browser's: these two used to disagree on
+    // the same screen whenever the UI language was not the device's.
+    const time = date.toLocaleTimeString(this.localeFormat.locale, {
       hour: '2-digit',
       minute: '2-digit'
     });
+    return `${this.localeFormat.formatDate(date, 'short')} ${time}`;
   }
 
   formatFileSize(bytes: number): string {

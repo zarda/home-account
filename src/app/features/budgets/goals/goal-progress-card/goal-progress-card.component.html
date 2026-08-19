@@ -7,7 +7,7 @@
         @if (targetDate(); as date) {
           <span class="goal-date">
             <mat-icon>event</mat-icon>
-            {{ date | date: 'mediumDate' }}
+            {{ date | localeDate }}
           </span>
         }
       </div>

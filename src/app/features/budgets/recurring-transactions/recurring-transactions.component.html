@@ -61,7 +61,7 @@
             </div>
             @if (recurring.nextOccurrence && recurring.isActive) {
               <span class="recurring-next">
-                {{ 'settings.nextOccurrence' | translate:{ date: (recurring.nextOccurrence.toDate() | date:'MMM d, yyyy') ?? '' } }}
+                {{ 'settings.nextOccurrence' | translate:{ date: (recurring.nextOccurrence.toDate() | localeDate) ?? '' } }}
               </span>
             }
           </div>

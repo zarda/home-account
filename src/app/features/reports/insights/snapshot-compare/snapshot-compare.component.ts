@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { CurrencyPipe, DecimalPipe } from '@angular/common';
+import { CurrencyPipe } from '@angular/common';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
@@ -12,6 +12,7 @@ import {
   isComparison,
 } from '../../../../core/utils/insight-snapshot.utils';
 import { parseMonthKey } from '../../../../core/utils/transaction-date.utils';
+import { LocaleNumberPipe } from '../../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 
 /**
@@ -27,10 +28,10 @@ import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
   standalone: true,
   imports: [
     CurrencyPipe,
-    DecimalPipe,
     MatFormFieldModule,
     MatIconModule,
     MatSelectModule,
+    LocaleNumberPipe,
     TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

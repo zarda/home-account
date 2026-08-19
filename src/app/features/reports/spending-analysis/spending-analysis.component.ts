@@ -13,6 +13,7 @@ import { CategoryChipComponent } from '../../../shared/components/category-chip/
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ChartThemeService } from '../../../core/services/chart-theme.service';
+import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { dayKey, monthKey } from '../../../core/utils/transaction-date.utils';
 
@@ -36,6 +37,7 @@ interface MonthlyData {
     BaseChartDirective,
     EmptyStateComponent,
     CurrencyPipe,
+    LocaleNumberPipe,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

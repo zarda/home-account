@@ -10,6 +10,8 @@ import { Transaction, Category } from '../../../models';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
+import { LocaleNumberPipe } from '../../../shared/pipes/locale-number.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
@@ -41,6 +43,8 @@ interface CategoryBreakdown {
     MatExpansionModule,
     EmptyStateComponent,
     CurrencyPipe,
+    LocaleDatePipe,
+    LocaleNumberPipe,
     TranslatePipe,
     FitTextDirective
   ],

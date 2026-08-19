@@ -373,6 +373,7 @@
     "themeDark": "深色",
     "themeSystem": "系統",
     "dateFormat": "日期格式",
+    "dateFormatAuto": "自動（跟隨語言）",
     "example": "範例",
     "savePreferences": "儲存設定",
     "saving": "儲存中...",

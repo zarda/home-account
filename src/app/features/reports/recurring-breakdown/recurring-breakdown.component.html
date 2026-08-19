@@ -18,7 +18,7 @@
             <span class="row-count">({{ recurringCount() }})</span>
           </span>
           <span class="row-amount">{{ recurringTotal() | currency:currencyCode:'symbol':'1.2-2' }}</span>
-          <span class="row-percentage">{{ recurringShare() | number:'1.0-0' }}%</span>
+          <span class="row-percentage">{{ recurringShare() | localeNumber:'1.0-0' }}%</span>
         </div>
       } @else {
         <app-empty-state
@@ -36,7 +36,7 @@
           <span class="row-count">({{ oneOffCount() }})</span>
         </span>
         <span class="row-amount">{{ oneOffTotal() | currency:currencyCode:'symbol':'1.2-2' }}</span>
-        <span class="row-percentage">{{ oneOffShare() | number:'1.0-0' }}%</span>
+        <span class="row-percentage">{{ oneOffShare() | localeNumber:'1.0-0' }}%</span>
       </div>
     </mat-card-content>
   </mat-card>

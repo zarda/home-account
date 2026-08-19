@@ -373,6 +373,7 @@
     "themeDark": "ダーク",
     "themeSystem": "システム",
     "dateFormat": "日付形式",
+    "dateFormatAuto": "自動（言語に合わせる）",
     "example": "例",
     "savePreferences": "設定を保存",
     "saving": "保存中...",

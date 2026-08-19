@@ -178,7 +178,7 @@
         <div class="preview-list">
           @for (transaction of importedTransactions().slice(0, 5); track $index) {
             <div class="preview-item">
-              <span class="preview-date">{{ transaction.date | date:'MMM d, yyyy' }}</span>
+              <span class="preview-date">{{ transaction.date | localeDate }}</span>
               <span class="preview-desc">{{ transaction.description }}</span>
               <span class="preview-amount" [class.income]="transaction.type === 'income'" [class.expense]="transaction.type === 'expense'">
                 {{ transaction.type === 'expense' ? '-' : '+' }}{{ transaction.amount | currency:(transaction.currency || baseCurrency()):'symbol' }}

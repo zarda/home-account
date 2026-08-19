@@ -1,4 +1,7 @@
-import { ApplicationConfig, EnvironmentProviders, ErrorHandler, makeEnvironmentProviders, provideBrowserGlobalErrorListeners, provideZoneChangeDetection, provideAppInitializer, inject } from '@angular/core';
+import { ApplicationConfig, EnvironmentProviders, ErrorHandler, LOCALE_ID, makeEnvironmentProviders, provideBrowserGlobalErrorListeners, provideZoneChangeDetection, provideAppInitializer, inject } from '@angular/core';
+import { registerLocaleData } from '@angular/common';
+import localeJa from '@angular/common/locales/ja';
+import localeZhHant from '@angular/common/locales/zh-Hant';
 import { provideRouter } from '@angular/router';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideNativeDateAdapter } from '@angular/material/core';
@@ -141,6 +144,32 @@ export function provideAppAnalytics(
   return provideAnalytics(() => appAnalyticsFactory());
 }
 
+/**
+ * Locale data for the two non-English languages. Angular ships only `en` in
+ * the bundle; without these, anything reading LOCALE_ID for `ja` or
+ * `zh-Hant` throws "Missing locale data" at runtime rather than degrading.
+ *
+ * Registered at module scope so it has happened before the first injector is
+ * built and before LOCALE_ID's factory can be asked for a value.
+ */
+registerLocaleData(localeJa);
+registerLocaleData(localeZhHant);
+
+/**
+ * The locale Angular's own machinery uses — the Material datepicker through
+ * provideNativeDateAdapter, and any built-in pipe added later. Resolved once
+ * at bootstrap, which is exactly why it cannot be the whole answer: user-
+ * facing dates and numbers go through LocaleDatePipe/LocaleNumberPipe, which
+ * follow the locale signal and so survive a language switch without a
+ * reload. This provider is what keeps everything else correct on first
+ * paint instead of silently en-US. See docs/locale-formatting.md.
+ */
+export function appLocaleIdFactory(
+  translation: TranslationService = inject(TranslationService),
+): string {
+  return translation.getIntlLocale();
+}
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -188,6 +217,7 @@ export const appConfig: ApplicationConfig = {
         restoreFocus: true,
       },
     },
+    { provide: LOCALE_ID, useFactory: appLocaleIdFactory },
     provideAppInitializer(() => inject(TranslationService).init()),
     provideAppInitializer(() => {
       // Initialize theme service (will apply saved theme once user preferences load)

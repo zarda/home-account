@@ -12,6 +12,7 @@ import {
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
+import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 
@@ -27,6 +28,7 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
     FormsModule,
     CategorySuggestionComponent,
     MatTooltipModule,
+    LocaleDatePipe,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

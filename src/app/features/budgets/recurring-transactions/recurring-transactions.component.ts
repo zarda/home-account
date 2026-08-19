@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule, DatePipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -15,6 +15,7 @@ import { RecurringTransaction, Category, CreateRecurringDTO } from '../../../mod
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { RecurringFormDialogComponent } from './recurring-form-dialog/recurring-form-dialog.component';
+import { LocaleDatePipe } from '../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
@@ -33,7 +34,7 @@ import { NotificationService } from '../../../core/services/notification.service
     MatChipsModule,
     MatDialogModule,
     EmptyStateComponent,
-    DatePipe,
+    LocaleDatePipe,
     TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

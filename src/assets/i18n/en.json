@@ -382,6 +382,7 @@
     "themeDark": "Dark",
     "themeSystem": "System",
     "dateFormat": "Date Format",
+    "dateFormatAuto": "Automatic (follow language)",
     "example": "Example",
     "savePreferences": "Save Preferences",
     "saving": "Saving...",
