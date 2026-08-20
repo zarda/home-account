@@ -614,6 +614,22 @@ describe('AIImportService', () => {
       expect(result.transactions[0].fieldConfidence?.amount).toBe(REVIEW_AMOUNT_CONFIDENCE);
     });
 
+    it('carries the merchant onto the reviewed row', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+        { date: '2024-06-01', description: 'Mystery', amount: 4, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 2 }
+      ]));
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      expect(result.transactions[0].merchant).toBe('Shop');
+      expect('merchant' in result.transactions[1]).toBeFalse();
+    });
+
     it('should prefer the reported receipt total for a merged receipt', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
@@ -877,8 +893,11 @@ describe('AIImportService', () => {
 
   describe('importFromCSV', () => {
     it('should parse, categorize and build a csv result', async () => {
+      // Parser-real rows: parseCSV emits absolute amounts with the type
+      // resolved separately. Signed fixtures here hid the mapper re-deriving
+      // the type from a sign that is always positive.
       exportService.importFromCSV.and.returnValue(Promise.resolve([
-        { description: 'Coffee', amount: -5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
+        { description: 'Coffee', amount: 5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
         { description: 'Refund', amount: 20, date: new Date(2024, 5, 2), type: 'income', currency: 'USD' }
       ] as never));
 
@@ -903,9 +922,48 @@ describe('AIImportService', () => {
     // the model, then the review-flagged floor. A CSV row never carries an
     // extraction category, so every suggestion below is the ladder's.
     const csvRows = () => Promise.resolve([
-      { description: 'Coffee', amount: -5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
+      { description: 'Coffee', amount: 5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
       { description: 'Refund', amount: 20, date: new Date(2024, 5, 2), type: 'income', currency: 'USD' }
     ] as never);
+
+    it('keeps a parsed expense an expense', async () => {
+      // parseCSV pushes Math.abs(amount) alongside the resolved type, so a
+      // mapper that re-derives the type from the sign turns every real CSV
+      // row into income.
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(result.transactions.map(t => t.type)).toEqual(['expense', 'income']);
+    });
+
+    it('derives the type from the sign only when the parser resolved none', async () => {
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'Legacy', amount: -8, date: new Date(2024, 5, 1) }
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(result.transactions[0].type).toBe('expense');
+    });
+
+    it('carries period, recurrence, tags, location and note onto the reviewed rows', async () => {
+      // The same file imported through the data hub keeps all five; the
+      // wizard used to drop them at this mapper.
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'Rent', amount: 1200, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD',
+          period: 'monthly', isRecurring: true, tags: ['home'], location: { name: 'Berlin' }, note: 'June' }
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const row = result.transactions[0];
+      expect(row.period).toBe('monthly');
+      expect(row.isRecurring).toBeTrue();
+      expect(row.tags).toEqual(['home']);
+      expect(row.location).toEqual({ name: 'Berlin' });
+      expect(row.notes).toBe('June');
+    });
 
     it('sends csv rows through the model with signed amounts and grounding', async () => {
       authService.currentUser.and.returnValue({
@@ -1005,6 +1063,29 @@ describe('AIImportService', () => {
       expect(result.transactions[1].amount).toBe(1200);
       expect(result.transactions[1].suggestedCategoryId).toBe('other_expense');
     });
+
+    it('carries the optional fields a backup row holds', async () => {
+      const backup = {
+        transactions: [
+          { description: 'Rent', amount: -1200, type: 'expense', categoryId: 'housing',
+            date: { seconds: 1700000000 }, note: 'June', tags: ['home'],
+            location: { name: 'Berlin' }, period: 'monthly', isRecurring: true },
+          { description: 'Bare', amount: -5, type: 'expense', date: { seconds: 1700000000 } }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      const row = result.transactions[0];
+      expect(row.notes).toBe('June');
+      expect(row.tags).toEqual(['home']);
+      expect(row.location).toEqual({ name: 'Berlin' });
+      expect(row.period).toBe('monthly');
+      expect(row.isRecurring).toBeTrue();
+      expect('tags' in result.transactions[1]).toBeFalse();
+      expect('isRecurring' in result.transactions[1]).toBeFalse();
+    });
   });
 
   describe('categorizeTransactions', () => {
@@ -1084,6 +1165,49 @@ describe('AIImportService', () => {
           details: 'line one\nline two' }
       ]);
       expect(result[0].notes).toBe('line one\nline two');
+    });
+
+    it('copies the merchant the extraction named, and only then', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Burger', amount: 9, type: 'expense', currency: 'USD',
+          merchant: 'Diner' },
+        { date: '2024-06-01', description: 'Mystery', amount: 4, type: 'expense', currency: 'USD' }
+      ]);
+
+      // The slot was declared and never assigned; the value reached this
+      // method and died inside originalText, where nothing can query it.
+      expect(result[0].merchant).toBe('Diner');
+      expect('merchant' in result[1]).toBeFalse();
+    });
+
+    it('carries the optional fields the source answered, and invents none', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Rent', amount: 1200, type: 'expense', currency: 'USD',
+          tags: ['home'], location: { name: 'Berlin' }, period: 'monthly', isRecurring: true },
+        { date: '2024-06-01', description: 'Bare', amount: 4, type: 'expense', currency: 'USD' }
+      ]);
+
+      expect(result[0].tags).toEqual(['home']);
+      expect(result[0].location).toEqual({ name: 'Berlin' });
+      expect(result[0].period).toBe('monthly');
+      expect(result[0].isRecurring).toBeTrue();
+      // Absent must keep meaning "nobody looked" — no empty arrays, no
+      // defaulted flags.
+      expect('tags' in result[1]).toBeFalse();
+      expect('location' in result[1]).toBeFalse();
+      expect('period' in result[1]).toBeFalse();
+      expect('isRecurring' in result[1]).toBeFalse();
+    });
+
+    it('prefers a row note over formatted details', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Rent', amount: 1200, type: 'expense', currency: 'USD',
+          note: 'June, paid early', details: 'a, b' }
+      ]);
+
+      // A CSV note is content, not an item list — formatItemNotes would
+      // split its commas into newlines.
+      expect(result[0].notes).toBe('June, paid early');
     });
   });
 
@@ -1330,6 +1454,48 @@ describe('AIImportService', () => {
       expect(dto.categoryId).toBe('other_expense');
       expect(dto.description).toBe('Imported transaction');
       expect(dto.currency).toBe('GBP');
+    });
+
+    it('passes every supported field through to addTransaction', async () => {
+      // The spec #313 demands: a row carrying the optional fields is stored
+      // with all of them. The old hand-written DTO named six fields, so a
+      // field added upstream was dropped here without failing anything.
+      await service.confirmImport(
+        [selected({
+          notes: 'team lunch',
+          tags: ['work', 'reimbursable'],
+          location: { name: 'Berlin Mitte' },
+          period: 'monthly',
+          isRecurring: true
+        })],
+        'r.png', 10, 'image', 'receipt_image'
+      );
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto).toEqual({
+        type: 'expense',
+        amount: 5,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Coffee',
+        date: new Date(2024, 5, 1),
+        note: 'team lunch',
+        tags: ['work', 'reimbursable'],
+        location: { name: 'Berlin Mitte' },
+        period: 'monthly',
+        isRecurring: true
+      });
+    });
+
+    it('sends a bare row as exactly the six required keys', async () => {
+      // No undefined-valued key may ride toward Firestore, and no optional
+      // may be invented for a row nobody answered.
+      await service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image');
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(Object.keys(dto).sort()).toEqual(
+        ['amount', 'categoryId', 'currency', 'date', 'description', 'type'].sort()
+      );
     });
 
     it('should fail the import and rethrow when completion throws', async () => {
