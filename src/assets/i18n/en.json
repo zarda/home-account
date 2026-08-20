@@ -984,6 +984,10 @@
     },
     "importFailed": "Import failed: {{error}}",
     "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
+    "importPhotosSkipped": {
+      "one": "The transactions were saved, but {{count}} receipt photo was not attached — image storage limit reached",
+      "other": "The transactions were saved, but {{count}} receipt photos were not attached — image storage limit reached"
+    },
     "importSavedHistoryUnavailable": "Import finished, but the summary could not be loaded. See Import History for details.",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",

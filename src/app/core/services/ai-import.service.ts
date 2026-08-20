@@ -5,7 +5,7 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
-import { TransactionService } from './transaction.service';
+import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService, AI_CLOUD_UNAVAILABLE, ProcessingResult } from './ai-strategy.service';
@@ -41,6 +41,7 @@ import {
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import { toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
 /**
  * How far back the categorization grounding looks. Habits change, so a recent
@@ -878,13 +879,21 @@ export class AIImportService {
     fileName: string,
     fileSize: number,
     source: ImportSource,
-    fileType: ImportFileType
+    fileType: ImportFileType,
+    sourceFiles?: File[]
   ): Promise<ImportHistory> {
     this.isProcessing.set(true);
     this.processingStatus.set('Saving transactions...');
     this.processingProgress.set(0);
 
     const selectedTransactions = transactions.filter(t => t.selected);
+    // Which of the source photos each row keeps, resolved over the final
+    // selected rows so deduplication's rewrites are already applied and a
+    // deselected first row hands its group's photos to the first selected
+    // one. Rows without image metadata (CSV, PDF, JSON) attach nothing.
+    const attachmentPlans = sourceFiles?.length
+      ? planReceiptAttachments(selectedTransactions, sourceFiles.length)
+      : null;
     const skippedDuplicates = transactions.filter(t => t.isDuplicate && !t.selected).length;
     const userId = this.authService.userId();
 
@@ -900,6 +909,7 @@ export class AIImportService {
 
     let successCount = 0;
     let errorCount = 0;
+    let receiptsSkipped = 0;
     let totalIncome = 0;
     let totalExpenses = 0;
     const errors: ImportHistory['errors'] = [];
@@ -928,14 +938,36 @@ export class AIImportService {
           // row's renames appear here — every optional the row carries
           // travels without this call site knowing its name, which is what
           // keeps a field added upstream from dying at the confirm step.
-          const dto = toCreateTransactionDTO({
+          const attachedFiles = attachmentPlans?.[i]?.length
+            ? attachmentPlans[i].map(index => sourceFiles![index])
+            : [];
+          const bareDto = toCreateTransactionDTO({
             ...txn,
             categoryId: txn.suggestedCategoryId,
             note: txn.notes,
             date: transactionDate
           }, baseCurrency);
+          const dto = attachedFiles.length
+            ? { ...bareDto, receiptFiles: attachedFiles }
+            : bareDto;
 
-          await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
+          try {
+            await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
+          } catch (error) {
+            // A quota refusal is about the images, not the row, and it fires
+            // before any id, upload or write exists — so the transaction is
+            // still worth saving bare, and the skip is reported as its own
+            // figure. An upload failure (RECEIPT_ATTACH_FAILED) stays a
+            // failed row: retrying photo-less there would silently drop
+            // photos on a flaky network.
+            const message = error instanceof Error ? error.message : '';
+            if (attachedFiles.length && message === RECEIPT_IMAGE_LIMIT_ERROR) {
+              await this.transactionService.addTransaction(bareDto, { skipBudgetRecalc: true });
+              receiptsSkipped++;
+            } else {
+              throw error;
+            }
+          }
           successCount++;
 
           if (txn.type === 'income') {
@@ -977,6 +1009,7 @@ export class AIImportService {
         totalExpenses: number;
         duplicatesSkipped: number;
         errors?: ImportHistory['errors'];
+        receiptsSkipped?: number;
       } = {
         transactionCount: selectedTransactions.length,
         successCount,
@@ -989,6 +1022,9 @@ export class AIImportService {
 
       if (errors.length > 0) {
         completeStats.errors = errors;
+      }
+      if (receiptsSkipped > 0) {
+        completeStats.receiptsSkipped = receiptsSkipped;
       }
 
       await this.importHistoryService.completeImport(historyId, completeStats);

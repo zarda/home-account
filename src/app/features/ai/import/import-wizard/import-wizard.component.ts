@@ -414,6 +414,21 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.selectedTransactionIds.set(selectedIds);
   }
 
+  /**
+   * The image files the extraction actually ran over, in that order.
+   *
+   * A row's imageIndex indexes this subset, not selectedFiles — a mixed
+   * batch (CSV plus photos) would otherwise attach the wrong file. The
+   * camera flow holds no selected files at all; its photos ride the result
+   * it handed over.
+   */
+  private sourceImageFiles(): File[] {
+    if (this.fromCamera && this.cameraImportResult?.sourceFiles?.length) {
+      return this.cameraImportResult.sourceFiles;
+    }
+    return this.selectedFiles().filter(f => looksLikeImageFile(f));
+  }
+
   async confirmImport(): Promise<void> {
     this.isImporting.set(true);
     this.importProgress.set(0);
@@ -430,8 +445,18 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         file?.name || 'import',
         file?.size || 0,
         'csv',
-        'generic_csv'
+        'generic_csv',
+        this.sourceImageFiles()
       );
+
+      if (result.receiptsSkipped) {
+        // The rows saved; only their photos hit the image quota. Said
+        // distinctly, because "partial" here would invite re-importing rows
+        // that already landed.
+        this.notifications.info(this.t('import.importPhotosSkipped', {
+          count: result.receiptsSkipped
+        }));
+      }
 
       if (result.errorCount > 0) {
         // Some rows were rejected (a zero-amount summary line, a rules
