@@ -17,6 +17,8 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import {
   CategorizedImportTransaction,
   ImportResult,
+  ImportSource,
+  ImportFileType,
   DuplicateCheck,
   MultiImageMetadata
 } from '../../../../models';
@@ -71,6 +73,19 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   fromCamera = false;
   isMultiImage = false;
   private cameraImportResult: ImportResult | null = null;
+
+  /**
+   * What each processed result actually was, row-counted.
+   *
+   * The confirm step used to pass 'csv'/'generic_csv' constants, so every
+   * wizard import — photos, PDFs, backups — was recorded in Import History
+   * as a generic CSV. This is the evidence the record derives from instead.
+   */
+  private processedBatches: {
+    source: ImportSource;
+    fileType: ImportFileType;
+    rows: number;
+  }[] = [];
 
   // State signals
   selectedFiles = signal<File[]>([]);
@@ -213,6 +228,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.fromCamera = true;
       this.isMultiImage = state.multiImage ?? false;
       this.cameraImportResult = state.importResult;
+      this.processedBatches = [{
+        source: state.importResult.source,
+        fileType: state.importResult.fileType,
+        rows: state.importResult.transactions.length
+      }];
 
       // Set multi-image metadata if available
       if (state.importResult.multiImageMetadata) {
@@ -289,6 +309,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   async processFiles(): Promise<void> {
     this.processingError.set(null);
     this.extractedTransactions.set([]);
+    this.processedBatches = [];
 
     try {
       const files = this.selectedFiles();
@@ -307,6 +328,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           : await this.importService.importFromMultipleImages(imageFiles);
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
+        this.processedBatches.push({
+          source: result.source,
+          fileType: result.fileType,
+          rows: result.transactions.length
+        });
       }
 
       // Process non-image files individually
@@ -314,6 +340,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         const result: ImportResult = await this.importService.importFromFile(file);
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
+        this.processedBatches.push({
+          source: result.source,
+          fileType: result.fileType,
+          rows: result.transactions.length
+        });
       }
 
       // Every file's rows are in one array now, which is the only point a
@@ -415,6 +446,36 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
+   * What this batch was, for the history record.
+   *
+   * A mixed batch takes the dominant kind by row count — the record's own
+   * numbers are row-denominated, so the label follows the same measure, and
+   * a first-file rule would let one stray photo relabel a 200-row CSV. Ties
+   * keep the first kind processed. The size covers every file imported, not
+   * just the first; the camera flow reports what the capture handed over.
+   */
+  private batchDescriptor(): {
+    source: ImportSource; fileType: ImportFileType; fileName: string; fileSize: number;
+  } {
+    const fromCamera = this.fromCamera && this.cameraImportResult;
+    const fileName = fromCamera
+      ? this.cameraImportResult!.fileName
+      : this.selectedFiles()[0]?.name || 'import';
+    const fileSize = fromCamera
+      ? this.cameraImportResult!.fileSize
+      : this.selectedFiles().reduce((sum, f) => sum + f.size, 0);
+
+    const dominant = this.processedBatches.reduce(
+      (best, b) => (best === null || b.rows > best.rows ? b : best),
+      null as { source: ImportSource; fileType: ImportFileType; rows: number } | null
+    );
+
+    return dominant
+      ? { source: dominant.source, fileType: dominant.fileType, fileName, fileSize }
+      : { source: 'csv', fileType: 'generic_csv', fileName, fileSize };
+  }
+
+  /**
    * The image files the extraction actually ran over, in that order.
    *
    * A row's imageIndex indexes this subset, not selectedFiles — a mixed
@@ -434,7 +495,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.importProgress.set(0);
 
     try {
-      const file = this.selectedFiles()[0];
+      const batch = this.batchDescriptor();
       // The service iterates the selected subset and numbers its per-row
       // errors against it (1-based); snapshot the same subset now so those
       // numbers can be mapped back to rows. Safe to take before the await:
@@ -442,10 +503,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       const submitted = this.extractedTransactions().filter(t => t.selected);
       const result = await this.importService.confirmImport(
         this.extractedTransactions(),
-        file?.name || 'import',
-        file?.size || 0,
-        'csv',
-        'generic_csv',
+        batch.fileName,
+        batch.fileSize,
+        batch.source,
+        batch.fileType,
         this.sourceImageFiles()
       );
 

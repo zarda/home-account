@@ -73,7 +73,10 @@
                 <mat-chip [class]="getStatusClass(item.status)">
                   {{ getStatusLabel(item.status) }}
                 </mat-chip>
-                <mat-chip>{{ getSourceLabel(item.source) }}</mat-chip>
+                <mat-chip class="kind-chip">
+                  <mat-icon>{{ getFileTypeIcon(item.fileType) }}</mat-icon>
+                  {{ getFileTypeLabel(item.fileType) }}
+                </mat-chip>
                 <mat-chip>{{ formatFileSize(item.fileSize) }}</mat-chip>
               </mat-chip-set>
             </div>

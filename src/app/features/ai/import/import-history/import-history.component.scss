@@ -112,6 +112,16 @@
   margin: 12px 0;
 }
 
+// Explicit box, not a text-* utility: mat-icon ships a line-height that
+// pushes the glyph low when sized through font utilities.
+.kind-chip mat-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  vertical-align: -4px;
+}
+
 mat-chip {
   &.completed {
     @apply bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 #{!important};

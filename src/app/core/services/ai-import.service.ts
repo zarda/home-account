@@ -290,8 +290,10 @@ export class AIImportService {
       this.processingProgress.set(100);
       this.analytics.trackAiAssistUsed({ feature: 'receipt_scan' });
 
+      // 'screenshot', not 'receipt_image': fileType exists to tell these
+      // apart, and Import History renders it.
       const result = this.buildImportResult(
-        files[0], 'image', 'receipt_image', marked, duplicates
+        files[0], 'image', 'screenshot', marked, duplicates
       );
       result.processingSource = 'cloud';
       return result;
