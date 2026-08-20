@@ -536,6 +536,15 @@ describe('AIImportService', () => {
       await expectAsync(service.importFromStatementImages([]))
         .toBeRejectedWithError(/No image files/);
     });
+
+    it('records a statement batch as a screenshot, not a receipt', async () => {
+      // fileType exists precisely to tell these apart; both used to say
+      // receipt_image, so Import History could not distinguish them.
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+
+      expect(result.source).toBe('image');
+      expect(result.fileType).toBe('screenshot');
+    });
   });
 
   describe('importFromMultipleImages', () => {
