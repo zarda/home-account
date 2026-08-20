@@ -41,6 +41,7 @@ import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-pro
 import { PwaService } from '../../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { MultiImageExtractedTransaction } from '../../../../core/services/gemini.service';
 import { ImportResult } from '../../../../models';
 
@@ -311,6 +312,132 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const landed = snapshot.docs[0].data();
       expect(landed['amount']).toBe(16.2);
       expect(landed['currency']).toBe('USD');
+    },
+    30000
+  );
+
+  it(
+    'stores a confirmed receipt with its photo and its widened fields under the real rules',
+    async () => {
+      // The unit suite mocks addTransaction, so nothing there proves the
+      // Firestore rules accept a transaction carrying tags, a location map
+      // and a period alongside receipt URLs, or that the storage upload
+      // actually runs. This does, against the emulators.
+      const extractedRows: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-07-02',
+          description: 'Beans',
+          amount: 9.4,
+          type: 'expense',
+          currency: 'USD',
+          imageIndex: 0,
+          positionInImage: 'top',
+          confidence: 0.9,
+          receiptId: 1
+        }
+      ];
+
+      const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
+        'CloudLLMProviderService',
+        [
+          'hasAnyCloudProvider',
+          'extractTransactionsFromMultipleImages',
+          'categorizeTransactions',
+          'initializeProviders',
+          'resetProviders',
+          'setOpenAIModel',
+          'setClaudeModel',
+          'availableProviders',
+          'providerStatus',
+          'resolveProvider'
+        ]
+      );
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(extractedRows);
+      cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
+      );
+      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.resetProviders.and.resolveTo(undefined);
+      cloudLLMProvider.availableProviders.and.returnValue([]);
+      cloudLLMProvider.providerStatus.and.returnValue({
+        gemini: false,
+        openai: false,
+        claude: false
+      });
+      cloudLLMProvider.resolveProvider.and.returnValue(null);
+
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
+        'isOnline',
+        'registerBackgroundSync'
+      ]);
+      pwa.isOnline.and.returnValue(true);
+      pwa.registerBackgroundSync.and.resolveTo(true);
+
+      const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
+        'AnalyticsService',
+        ['trackAiAssistUsed']
+      );
+
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
+          { provide: PwaService, useValue: pwa },
+          { provide: AnalyticsService, useValue: analytics },
+          {
+            provide: CurrencyService,
+            useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
+          },
+          // The quota check reads Remote Config, which has no emulator; the
+          // storage upload and the rules are what this case is about.
+          {
+            provide: ReceiptQuotaService,
+            useValue: { canAddImages: async () => true, noteImagesAdded: () => undefined }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      const photo = new File([new Uint8Array([1, 2, 3])], 'beans.jpg', { type: 'image/jpeg' });
+      const result = await importService.importFromMultipleImages([photo]);
+      expect(result.transactions.length).toBe(1);
+      expect(result.sourceFiles?.length).toBe(1);
+
+      // What the review step lets the user leave on the row.
+      const reviewed = {
+        ...result.transactions[0],
+        tags: ['coffee'],
+        location: { name: 'Coffee Corner' },
+        period: 'monthly' as const
+      };
+
+      const importHistory = await importService.confirmImport(
+        [reviewed],
+        'beans.jpg',
+        photo.size,
+        'image',
+        'receipt_image',
+        result.sourceFiles
+      );
+
+      expect(importHistory.successCount).toBe(1);
+      // The read-back is the landed imports document, so this is the record
+      // the history page will render.
+      expect(importHistory.source).toBe('image');
+      expect(importHistory.fileType).toBe('receipt_image');
+      expect(importHistory.receiptsSkipped).toBeUndefined();
+
+      const snapshot = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const doc = snapshot.docs.map(d => d.data()).find(d => d['description'] === 'Beans');
+      expect(doc).toBeDefined();
+      expect(doc!['tags']).toEqual(['coffee']);
+      expect(doc!['location']).toEqual({ name: 'Coffee Corner' });
+      expect(doc!['period']).toBe('monthly');
+      expect(typeof doc!['receiptUrl']).toBe('string');
+      expect(doc!['receiptUrl'] as string).toMatch(/^https?:\/\//);
+      expect((doc!['receiptUrls'] as string[]).length).toBe(1);
+      expect(doc!['receiptCount']).toBe(1);
     },
     30000
   );
