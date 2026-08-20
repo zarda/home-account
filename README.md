@@ -233,6 +233,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard
 | [docs/goals.md](docs/goals.md) | Savings goals and projects: the model, transactional contributions, the checklist rule, and where goals surface |
 | [docs/forecast.md](docs/forecast.md) | The cash-flow forecast: zero-at-today baseline, the catch-up seam, horizons, and what never projects |
 | [docs/csv-format.md](docs/csv-format.md) | The CSV export and import contract: columns, escaping, and what round-trips |
+| [docs/import-fields.md](docs/import-fields.md) | What an import writes: the row shapes, the one mapper every door builds through, photo attachment, and the recorded source |
 | [docs/backup-restore.md](docs/backup-restore.md) | The JSON backup: what the file carries, what a restore merges rather than replaces, and what it will not touch |
 | [docs/performance.md](docs/performance.md) | What loads eagerly, where the heavy dependencies load instead, and the bundle budget |
 | [docs/dates.md](docs/dates.md) | Date and period conventions: local parts, day and month keys, and the window contracts |
@@ -244,6 +245,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard
 | [docs/i18n.md](docs/i18n.md) | The translation catalog: three locales, plural entries that only English carries, the checker's three scans, and what still escapes them |
 | [docs/exchange-rates.md](docs/exchange-rates.md) | Where the exchange-rate table comes from: the fallback ladder from live fetch to device cache to constants, and what each rung stamps |
 | [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the degraded fallback profile and its retry, and the identity check every write across an await makes |
+| [docs/accessibility.md](docs/accessibility.md) | What the app guarantees to assistive technology, where each guarantee is enforced, and the gaps that remain |
+| [docs/locale-formatting.md](docs/locale-formatting.md) | Dates and numbers in the chosen language: the one formatting chokepoint, named styles over patterns, and what deliberately stays raw |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 

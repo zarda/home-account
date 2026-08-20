@@ -15,7 +15,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0008](0008-universal-receipt-language-support.md) | The app never narrows what the model can read | Accepted | 2026-07-31 |
 | [0009](0009-shared-state-publishing-and-lifecycle.md) | One publisher for shared account state; owners reset it, holders release it | Accepted | 2026-08-02 |
 | [0010](0010-nothing-truncates.md) | Nothing truncates: text reflows, values scale | Accepted; amended by 0012 | 2026-08-03 |
-| [0011](0011-the-csv-file-is-a-contract.md) | The CSV file is a contract, and every cell in it is untrusted | Accepted | 2026-08-03 |
+| [0011](0011-the-csv-file-is-a-contract.md) | The CSV file is a contract, and every cell in it is untrusted | Accepted; amended by 0059 | 2026-08-03 |
 | [0012](0012-a-strip-scrolls-rather-than-growing-the-row.md) | A strip of chips scrolls rather than growing the row | Accepted; row anatomy revised by 0017 | 2026-08-03 |
 | [0013](0013-the-printed-total-is-the-amount-not-the-item-sum.md) | The printed total is the amount, not the sum of the items | Accepted | 2026-08-05 |
 | [0014](0014-recurrence-guards-and-anchors.md) | Recurrence validates at the edges, breaks in the loops, and anchors on the start date | Accepted | 2026-08-05 |
@@ -63,6 +63,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0056](0056-a-permission-the-rules-grant-has-a-door-in-the-ui.md) | A permission the rules grant has a door in the UI | Accepted | 2026-08-17 |
 | [0057](0057-a-replayed-answer-enumerates-and-reports.md) | A replayed answer enumerates, and reports | Accepted | 2026-08-19 |
 | [0058](0058-a-formatted-date-follows-the-chosen-language.md) | A formatted date follows the chosen language | Accepted | 2026-08-19 |
+| [0059](0059-one-mapper-builds-every-imported-transaction.md) | One mapper builds every imported transaction | Accepted; amends 0011 | 2026-08-20 |
+| [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) | A confirmed import keeps its photos and names its source | Accepted | 2026-08-20 |
 
 ## What belongs here
 
