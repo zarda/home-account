@@ -1,6 +1,7 @@
 import { Signal, WritableSignal } from '@angular/core';
 import {
   Budget,
+  BudgetPeriod,
   Category,
   FieldConfidence,
   Goal,
@@ -8,6 +9,7 @@ import {
   SearchIntent,
   SearchQueryContext,
   Transaction,
+  TransactionLocation,
 } from '../../models';
 
 /**
@@ -70,6 +72,14 @@ export interface ExtractedTransaction {
   details?: string;                // Additional details (card last 4 digits, reference number, etc.)
   amountConfidence?: number;       // How legible the amount was (0-1); absent when unreported
   dateConfidence?: number;         // How legible the date was (0-1); absent when unreported
+  // The optional fields a transaction can hold and an import source may or
+  // may not answer. Absent means "nobody looked" — no producer defaults any
+  // of them, so a slot only carries a value somebody actually read.
+  note?: string;
+  tags?: string[];
+  location?: TransactionLocation;
+  period?: BudgetPeriod;
+  isRecurring?: boolean;
 }
 
 export interface MultiImageExtractedTransaction extends ExtractedTransaction {

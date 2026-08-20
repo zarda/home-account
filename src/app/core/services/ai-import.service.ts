@@ -32,13 +32,15 @@ import {
   ImportHistory,
   ImportSource,
   ImportFileType,
-  CreateTransactionDTO,
   DuplicateCheck,
+  TransactionLocation,
+  isBudgetPeriod,
   CATEGORY_MEMORY_CONFIDENCE,
   effectiveRagLevel,
   baseCurrencyOf
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
+import { toCreateTransactionDTO } from '../utils/import-dto.utils';
 
 /**
  * How far back the categorization grounding looks. Habits change, so a recent
@@ -317,6 +319,10 @@ export class AIImportService {
       processingSource: tx.source,
       notes: tx.notes,
       fieldConfidence: tx.fieldConfidence,
+      ...(tx.tags?.length ? { tags: tx.tags } : {}),
+      ...(tx.location ? { location: tx.location } : {}),
+      ...(tx.period ? { period: tx.period } : {}),
+      ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {})
     }));
   }
 
@@ -497,7 +503,12 @@ export class AIImportService {
           wasMerged: original.wasMerged,
           mergedFromImages: original.mergedFromImages,
           receiptId: original.receiptId,
-        }
+        },
+        ...(original.merchant ? { merchant: original.merchant } : {}),
+        ...(original.tags?.length ? { tags: original.tags } : {}),
+        ...(original.location ? { location: original.location } : {}),
+        ...(original.period ? { period: original.period } : {}),
+        ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {})
       };
     });
   }
@@ -695,13 +706,20 @@ export class AIImportService {
       // rows rather than through RawTransaction, which has no currency field —
       // routing through it meant the row's own currency was dropped and
       // replaced with a hardcoded one, pre-empting the base-currency fallback
-      // that categorizeTransactions already applies.
+      // that categorizeTransactions already applies. The parser's own type
+      // must win over the sign: parseCSV emits absolute amounts, so a
+      // sign-derived type here read every real CSV row as income.
       const extractedTransactions: ExtractedTransaction[] = importedTransactions.map(t => ({
         date: dayKey(t.date ?? new Date()),
         description: t.description,
         amount: Math.abs(t.amount),
-        type: t.amount >= 0 ? 'income' : 'expense',
-        currency: readCurrencyCode(t.currency)
+        type: t.type ?? (t.amount >= 0 ? 'income' : 'expense'),
+        currency: readCurrencyCode(t.currency),
+        ...(t.note ? { note: t.note } : {}),
+        ...(t.tags?.length ? { tags: t.tags } : {}),
+        ...(t.location ? { location: t.location } : {}),
+        ...(t.period ? { period: t.period } : {}),
+        ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
       }));
 
       const categorized = await this.categorizeTransactions(extractedTransactions);
@@ -769,7 +787,16 @@ export class AIImportService {
           suggestedCategoryId: (t['categoryId'] as string) || 'other_expense',
           categoryConfidence: 1.0, // From backup, category is known
           isDuplicate: false,
-          selected: true
+          selected: true,
+          // A backup row carries what its transaction held; anything absent
+          // or malformed stays absent rather than being defaulted.
+          ...(t['note'] ? { notes: t['note'] as string } : {}),
+          ...(Array.isArray(t['tags']) && t['tags'].length ? { tags: t['tags'] as string[] } : {}),
+          ...((t['location'] as TransactionLocation | undefined)?.name
+            ? { location: t['location'] as TransactionLocation }
+            : {}),
+          ...(isBudgetPeriod(t['period']) ? { period: t['period'] } : {}),
+          ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {})
         })
       );
 
@@ -825,12 +852,20 @@ export class AIImportService {
         // the high chip it never earned. (ADR 0045)
         categoryConfidence: t.category ? 0.8 : UNRESOLVED_CATEGORY_CONFIDENCE,
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
-        notes: this.formatItemNotes(t.details),
+        // A row that carries its own note (a CSV's Note column) keeps it
+        // verbatim; formatItemNotes is for receipt item lists and splits
+        // plain commas into newlines.
+        notes: t.note ?? this.formatItemNotes(t.details),
         fieldConfidence: (t.amountConfidence !== undefined || dateConfidence !== undefined)
           ? { amount: t.amountConfidence, date: dateConfidence }
           : undefined,
         isDuplicate: false,
-        selected: true
+        selected: true,
+        ...(t.merchant ? { merchant: t.merchant } : {}),
+        ...(t.tags?.length ? { tags: t.tags } : {}),
+        ...(t.location ? { location: t.location } : {}),
+        ...(t.period ? { period: t.period } : {}),
+        ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
       };
     });
   }
@@ -889,15 +924,16 @@ export class AIImportService {
           // so the separate NaN guard this used to carry is now the ?? branch.
           const transactionDate = parseDateInput(txn.date) ?? new Date();
 
-          const dto: CreateTransactionDTO = {
-            type: txn.type,
-            amount: txn.amount,
-            currency: txn.currency || baseCurrency,
-            categoryId: txn.suggestedCategoryId || 'other_expense',
-            description: txn.description || 'Imported transaction',
-            date: transactionDate,
-            note: txn.notes
-          };
+          // The same mapper the data hub's CSV path writes through. Only the
+          // row's renames appear here — every optional the row carries
+          // travels without this call site knowing its name, which is what
+          // keeps a field added upstream from dying at the confirm step.
+          const dto = toCreateTransactionDTO({
+            ...txn,
+            categoryId: txn.suggestedCategoryId,
+            note: txn.notes,
+            date: transactionDate
+          }, baseCurrency);
 
           await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
           successCount++;

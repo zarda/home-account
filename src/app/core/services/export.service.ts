@@ -19,6 +19,7 @@ import {
 } from '../../models';
 import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
 import { parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
+import { toCreateTransactionDTO } from '../utils/import-dto.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -419,21 +420,10 @@ export class ExportService {
    * which silently relabelled every foreign row a bank CSV carried.
    */
   parseImportedData(raw: ImportedTransaction[], baseCurrency: string): CreateTransactionDTO[] {
-    return raw.map(r => ({
-      type: r.type ?? (r.amount >= 0 ? 'income' : 'expense'),
-      amount: Math.abs(r.amount),
-      // Rows from a backup carry their own currency and category; rows from a
-      // bank CSV may carry neither and fall back to the account's own.
-      currency: r.currency || baseCurrency,
-      categoryId: r.categoryId ?? 'other_expense',
-      description: r.description,
-      date: r.date,
-      ...(r.note ? { note: r.note } : {}),
-      ...(r.tags?.length ? { tags: r.tags } : {}),
-      ...(r.location ? { location: r.location } : {}),
-      ...(r.isRecurring !== undefined ? { isRecurring: r.isRecurring } : {}),
-      ...(r.period ? { period: r.period } : {})
-    }));
+    // The guards live in the shared mapper, which the AI wizard's confirm
+    // step also writes through — a field carried by one import door but not
+    // the other was the standing defect this shape replaces.
+    return raw.map(r => toCreateTransactionDTO(r, baseCurrency));
   }
 
   // Helper: Filter transactions based on export options
@@ -492,6 +482,16 @@ export class ExportService {
     // too — which is why both values are validated rather than trusted.
     const periodCol = this.findColumn(headers, ['period']);
     const recurringCol = this.findColumn(headers, ['recurring']);
+    // The last three columns the export writes. Same optional contract again:
+    // out of the row-length guard, validated rather than trusted. Tags split
+    // on the export's own '; ' join — a tag containing that separator cannot
+    // survive, which is the join's fault, not the escaper's. A location cell
+    // becomes a name only; the file never carried coordinates, so none may
+    // be invented, and an empty cell must yield no key at all rather than
+    // `{ name: '' }`, which the rules would accept while meaning nothing.
+    const noteCol = this.findColumn(headers, ['note']);
+    const tagsCol = this.findColumn(headers, ['tags']);
+    const locationCol = this.findColumn(headers, ['location']);
 
     for (let i = 1; i < rows.length; i++) {
       const values = rows[i];
@@ -536,6 +536,18 @@ export class ExportService {
         ? this.readFlag(values[recurringCol])
         : undefined;
 
+      const note = noteCol >= 0 && noteCol < values.length
+        ? values[noteCol].trim()
+        : '';
+
+      const tags = tagsCol >= 0 && tagsCol < values.length
+        ? values[tagsCol].split('; ').map(t => t.trim()).filter(Boolean)
+        : [];
+
+      const locationName = locationCol >= 0 && locationCol < values.length
+        ? values[locationCol].trim()
+        : '';
+
       transactions.push({
         date: this.parseDate(values[dateCol] || ''),
         description: values[descCol] || 'Unknown',
@@ -543,7 +555,10 @@ export class ExportService {
         type,
         ...(currency ? { currency } : {}),
         ...(period ? { period } : {}),
-        ...(isRecurring ? { isRecurring } : {})
+        ...(isRecurring ? { isRecurring } : {}),
+        ...(note ? { note } : {}),
+        ...(tags.length ? { tags } : {}),
+        ...(locationName ? { location: { name: locationName } } : {})
       });
     }
 

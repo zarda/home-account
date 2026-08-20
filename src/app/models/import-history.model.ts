@@ -1,4 +1,6 @@
 import { Timestamp } from '@angular/fire/firestore';
+import type { BudgetPeriod } from './budget.model';
+import type { TransactionLocation } from './transaction.model';
 
 export type ImportSource = 'csv' | 'pdf' | 'image' | 'json';
 export type ImportFileType = 'bank_csv' | 'bank_pdf' | 'receipt_image' | 'screenshot' | 'credit_card' | 'spreadsheet' | 'generic_csv' | 'backup_json';
@@ -21,6 +23,13 @@ export interface ImportHistory {
   status: ImportStatus;
   errors?: ImportError[];
   duplicatesSkipped: number;
+  /**
+   * Rows saved without their photo because the image quota refused the
+   * upload. Distinct from `errorCount` on purpose: the transaction landed,
+   * so routing this through the error list would re-offer a saved row for a
+   * second import. Absent when no photo was skipped.
+   */
+  receiptsSkipped?: number;
 }
 
 export interface ImportError {
@@ -84,6 +93,12 @@ export interface CategorizedImportTransaction {
   duplicateOf?: string;            // Existing transaction ID
   selected: boolean;               // For UI checkbox
   imageMetadata?: ImagePositionMetadata;  // Multi-image position data
+  // Optional transaction fields the source answered; absent means nobody
+  // looked. The confirm step forwards whatever is present and invents nothing.
+  tags?: string[];
+  location?: TransactionLocation;
+  period?: BudgetPeriod;
+  isRecurring?: boolean;
 }
 
 export interface DuplicateCheck {
