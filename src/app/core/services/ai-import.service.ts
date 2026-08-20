@@ -5,7 +5,7 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
-import { TransactionService } from './transaction.service';
+import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService, AI_CLOUD_UNAVAILABLE, ProcessingResult } from './ai-strategy.service';
@@ -32,13 +32,16 @@ import {
   ImportHistory,
   ImportSource,
   ImportFileType,
-  CreateTransactionDTO,
   DuplicateCheck,
+  TransactionLocation,
+  isBudgetPeriod,
   CATEGORY_MEMORY_CONFIDENCE,
   effectiveRagLevel,
   baseCurrencyOf
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
+import { toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
 /**
  * How far back the categorization grounding looks. Habits change, so a recent
@@ -287,8 +290,10 @@ export class AIImportService {
       this.processingProgress.set(100);
       this.analytics.trackAiAssistUsed({ feature: 'receipt_scan' });
 
+      // 'screenshot', not 'receipt_image': fileType exists to tell these
+      // apart, and Import History renders it.
       const result = this.buildImportResult(
-        files[0], 'image', 'receipt_image', marked, duplicates
+        files[0], 'image', 'screenshot', marked, duplicates
       );
       result.processingSource = 'cloud';
       return result;
@@ -317,6 +322,10 @@ export class AIImportService {
       processingSource: tx.source,
       notes: tx.notes,
       fieldConfidence: tx.fieldConfidence,
+      ...(tx.tags?.length ? { tags: tx.tags } : {}),
+      ...(tx.location ? { location: tx.location } : {}),
+      ...(tx.period ? { period: tx.period } : {}),
+      ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {})
     }));
   }
 
@@ -497,7 +506,12 @@ export class AIImportService {
           wasMerged: original.wasMerged,
           mergedFromImages: original.mergedFromImages,
           receiptId: original.receiptId,
-        }
+        },
+        ...(original.merchant ? { merchant: original.merchant } : {}),
+        ...(original.tags?.length ? { tags: original.tags } : {}),
+        ...(original.location ? { location: original.location } : {}),
+        ...(original.period ? { period: original.period } : {}),
+        ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {})
       };
     });
   }
@@ -695,13 +709,20 @@ export class AIImportService {
       // rows rather than through RawTransaction, which has no currency field —
       // routing through it meant the row's own currency was dropped and
       // replaced with a hardcoded one, pre-empting the base-currency fallback
-      // that categorizeTransactions already applies.
+      // that categorizeTransactions already applies. The parser's own type
+      // must win over the sign: parseCSV emits absolute amounts, so a
+      // sign-derived type here read every real CSV row as income.
       const extractedTransactions: ExtractedTransaction[] = importedTransactions.map(t => ({
         date: dayKey(t.date ?? new Date()),
         description: t.description,
         amount: Math.abs(t.amount),
-        type: t.amount >= 0 ? 'income' : 'expense',
-        currency: readCurrencyCode(t.currency)
+        type: t.type ?? (t.amount >= 0 ? 'income' : 'expense'),
+        currency: readCurrencyCode(t.currency),
+        ...(t.note ? { note: t.note } : {}),
+        ...(t.tags?.length ? { tags: t.tags } : {}),
+        ...(t.location ? { location: t.location } : {}),
+        ...(t.period ? { period: t.period } : {}),
+        ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
       }));
 
       const categorized = await this.categorizeTransactions(extractedTransactions);
@@ -769,7 +790,16 @@ export class AIImportService {
           suggestedCategoryId: (t['categoryId'] as string) || 'other_expense',
           categoryConfidence: 1.0, // From backup, category is known
           isDuplicate: false,
-          selected: true
+          selected: true,
+          // A backup row carries what its transaction held; anything absent
+          // or malformed stays absent rather than being defaulted.
+          ...(t['note'] ? { notes: t['note'] as string } : {}),
+          ...(Array.isArray(t['tags']) && t['tags'].length ? { tags: t['tags'] as string[] } : {}),
+          ...((t['location'] as TransactionLocation | undefined)?.name
+            ? { location: t['location'] as TransactionLocation }
+            : {}),
+          ...(isBudgetPeriod(t['period']) ? { period: t['period'] } : {}),
+          ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {})
         })
       );
 
@@ -825,12 +855,20 @@ export class AIImportService {
         // the high chip it never earned. (ADR 0045)
         categoryConfidence: t.category ? 0.8 : UNRESOLVED_CATEGORY_CONFIDENCE,
         originalText: `${t.merchant ? t.merchant + ' - ' : ''}${t.description}${t.details ? ' (' + t.details + ')' : ''}`,
-        notes: this.formatItemNotes(t.details),
+        // A row that carries its own note (a CSV's Note column) keeps it
+        // verbatim; formatItemNotes is for receipt item lists and splits
+        // plain commas into newlines.
+        notes: t.note ?? this.formatItemNotes(t.details),
         fieldConfidence: (t.amountConfidence !== undefined || dateConfidence !== undefined)
           ? { amount: t.amountConfidence, date: dateConfidence }
           : undefined,
         isDuplicate: false,
-        selected: true
+        selected: true,
+        ...(t.merchant ? { merchant: t.merchant } : {}),
+        ...(t.tags?.length ? { tags: t.tags } : {}),
+        ...(t.location ? { location: t.location } : {}),
+        ...(t.period ? { period: t.period } : {}),
+        ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
       };
     });
   }
@@ -843,13 +881,21 @@ export class AIImportService {
     fileName: string,
     fileSize: number,
     source: ImportSource,
-    fileType: ImportFileType
+    fileType: ImportFileType,
+    sourceFiles?: File[]
   ): Promise<ImportHistory> {
     this.isProcessing.set(true);
     this.processingStatus.set('Saving transactions...');
     this.processingProgress.set(0);
 
     const selectedTransactions = transactions.filter(t => t.selected);
+    // Which of the source photos each row keeps, resolved over the final
+    // selected rows so deduplication's rewrites are already applied and a
+    // deselected first row hands its group's photos to the first selected
+    // one. Rows without image metadata (CSV, PDF, JSON) attach nothing.
+    const attachmentPlans = sourceFiles?.length
+      ? planReceiptAttachments(selectedTransactions, sourceFiles.length)
+      : null;
     const skippedDuplicates = transactions.filter(t => t.isDuplicate && !t.selected).length;
     const userId = this.authService.userId();
 
@@ -865,6 +911,7 @@ export class AIImportService {
 
     let successCount = 0;
     let errorCount = 0;
+    let receiptsSkipped = 0;
     let totalIncome = 0;
     let totalExpenses = 0;
     const errors: ImportHistory['errors'] = [];
@@ -889,17 +936,40 @@ export class AIImportService {
           // so the separate NaN guard this used to carry is now the ?? branch.
           const transactionDate = parseDateInput(txn.date) ?? new Date();
 
-          const dto: CreateTransactionDTO = {
-            type: txn.type,
-            amount: txn.amount,
-            currency: txn.currency || baseCurrency,
-            categoryId: txn.suggestedCategoryId || 'other_expense',
-            description: txn.description || 'Imported transaction',
-            date: transactionDate,
-            note: txn.notes
-          };
+          // The same mapper the data hub's CSV path writes through. Only the
+          // row's renames appear here — every optional the row carries
+          // travels without this call site knowing its name, which is what
+          // keeps a field added upstream from dying at the confirm step.
+          const attachedFiles = attachmentPlans?.[i]?.length
+            ? attachmentPlans[i].map(index => sourceFiles![index])
+            : [];
+          const bareDto = toCreateTransactionDTO({
+            ...txn,
+            categoryId: txn.suggestedCategoryId,
+            note: txn.notes,
+            date: transactionDate
+          }, baseCurrency);
+          const dto = attachedFiles.length
+            ? { ...bareDto, receiptFiles: attachedFiles }
+            : bareDto;
 
-          await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
+          try {
+            await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
+          } catch (error) {
+            // A quota refusal is about the images, not the row, and it fires
+            // before any id, upload or write exists — so the transaction is
+            // still worth saving bare, and the skip is reported as its own
+            // figure. An upload failure (RECEIPT_ATTACH_FAILED) stays a
+            // failed row: retrying photo-less there would silently drop
+            // photos on a flaky network.
+            const message = error instanceof Error ? error.message : '';
+            if (attachedFiles.length && message === RECEIPT_IMAGE_LIMIT_ERROR) {
+              await this.transactionService.addTransaction(bareDto, { skipBudgetRecalc: true });
+              receiptsSkipped++;
+            } else {
+              throw error;
+            }
+          }
           successCount++;
 
           if (txn.type === 'income') {
@@ -941,6 +1011,7 @@ export class AIImportService {
         totalExpenses: number;
         duplicatesSkipped: number;
         errors?: ImportHistory['errors'];
+        receiptsSkipped?: number;
       } = {
         transactionCount: selectedTransactions.length,
         successCount,
@@ -953,6 +1024,9 @@ export class AIImportService {
 
       if (errors.length > 0) {
         completeStats.errors = errors;
+      }
+      if (receiptsSkipped > 0) {
+        completeStats.receiptsSkipped = receiptsSkipped;
       }
 
       await this.importHistoryService.completeImport(historyId, completeStats);

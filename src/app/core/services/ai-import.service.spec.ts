@@ -17,7 +17,7 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
-import { TransactionService } from './transaction.service';
+import { TransactionService, RECEIPT_ATTACH_FAILED, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
@@ -536,6 +536,15 @@ describe('AIImportService', () => {
       await expectAsync(service.importFromStatementImages([]))
         .toBeRejectedWithError(/No image files/);
     });
+
+    it('records a statement batch as a screenshot, not a receipt', async () => {
+      // fileType exists precisely to tell these apart; both used to say
+      // receipt_image, so Import History could not distinguish them.
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+
+      expect(result.source).toBe('image');
+      expect(result.fileType).toBe('screenshot');
+    });
   });
 
   describe('importFromMultipleImages', () => {
@@ -612,6 +621,22 @@ describe('AIImportService', () => {
       expect(result.transactions.length).toBe(1);
       expect(result.transactions[0].amount).toBe(300);
       expect(result.transactions[0].fieldConfidence?.amount).toBe(REVIEW_AMOUNT_CONFIDENCE);
+    });
+
+    it('carries the merchant onto the reviewed row', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+        { date: '2024-06-01', description: 'Mystery', amount: 4, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 2 }
+      ]));
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      expect(result.transactions[0].merchant).toBe('Shop');
+      expect('merchant' in result.transactions[1]).toBeFalse();
     });
 
     it('should prefer the reported receipt total for a merged receipt', async () => {
@@ -877,8 +902,11 @@ describe('AIImportService', () => {
 
   describe('importFromCSV', () => {
     it('should parse, categorize and build a csv result', async () => {
+      // Parser-real rows: parseCSV emits absolute amounts with the type
+      // resolved separately. Signed fixtures here hid the mapper re-deriving
+      // the type from a sign that is always positive.
       exportService.importFromCSV.and.returnValue(Promise.resolve([
-        { description: 'Coffee', amount: -5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
+        { description: 'Coffee', amount: 5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
         { description: 'Refund', amount: 20, date: new Date(2024, 5, 2), type: 'income', currency: 'USD' }
       ] as never));
 
@@ -903,9 +931,48 @@ describe('AIImportService', () => {
     // the model, then the review-flagged floor. A CSV row never carries an
     // extraction category, so every suggestion below is the ladder's.
     const csvRows = () => Promise.resolve([
-      { description: 'Coffee', amount: -5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
+      { description: 'Coffee', amount: 5, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD' },
       { description: 'Refund', amount: 20, date: new Date(2024, 5, 2), type: 'income', currency: 'USD' }
     ] as never);
+
+    it('keeps a parsed expense an expense', async () => {
+      // parseCSV pushes Math.abs(amount) alongside the resolved type, so a
+      // mapper that re-derives the type from the sign turns every real CSV
+      // row into income.
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(result.transactions.map(t => t.type)).toEqual(['expense', 'income']);
+    });
+
+    it('derives the type from the sign only when the parser resolved none', async () => {
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'Legacy', amount: -8, date: new Date(2024, 5, 1) }
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(result.transactions[0].type).toBe('expense');
+    });
+
+    it('carries period, recurrence, tags, location and note onto the reviewed rows', async () => {
+      // The same file imported through the data hub keeps all five; the
+      // wizard used to drop them at this mapper.
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'Rent', amount: 1200, date: new Date(2024, 5, 1), type: 'expense', currency: 'USD',
+          period: 'monthly', isRecurring: true, tags: ['home'], location: { name: 'Berlin' }, note: 'June' }
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      const row = result.transactions[0];
+      expect(row.period).toBe('monthly');
+      expect(row.isRecurring).toBeTrue();
+      expect(row.tags).toEqual(['home']);
+      expect(row.location).toEqual({ name: 'Berlin' });
+      expect(row.notes).toBe('June');
+    });
 
     it('sends csv rows through the model with signed amounts and grounding', async () => {
       authService.currentUser.and.returnValue({
@@ -1005,6 +1072,29 @@ describe('AIImportService', () => {
       expect(result.transactions[1].amount).toBe(1200);
       expect(result.transactions[1].suggestedCategoryId).toBe('other_expense');
     });
+
+    it('carries the optional fields a backup row holds', async () => {
+      const backup = {
+        transactions: [
+          { description: 'Rent', amount: -1200, type: 'expense', categoryId: 'housing',
+            date: { seconds: 1700000000 }, note: 'June', tags: ['home'],
+            location: { name: 'Berlin' }, period: 'monthly', isRecurring: true },
+          { description: 'Bare', amount: -5, type: 'expense', date: { seconds: 1700000000 } }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      const row = result.transactions[0];
+      expect(row.notes).toBe('June');
+      expect(row.tags).toEqual(['home']);
+      expect(row.location).toEqual({ name: 'Berlin' });
+      expect(row.period).toBe('monthly');
+      expect(row.isRecurring).toBeTrue();
+      expect('tags' in result.transactions[1]).toBeFalse();
+      expect('isRecurring' in result.transactions[1]).toBeFalse();
+    });
   });
 
   describe('categorizeTransactions', () => {
@@ -1084,6 +1174,49 @@ describe('AIImportService', () => {
           details: 'line one\nline two' }
       ]);
       expect(result[0].notes).toBe('line one\nline two');
+    });
+
+    it('copies the merchant the extraction named, and only then', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Burger', amount: 9, type: 'expense', currency: 'USD',
+          merchant: 'Diner' },
+        { date: '2024-06-01', description: 'Mystery', amount: 4, type: 'expense', currency: 'USD' }
+      ]);
+
+      // The slot was declared and never assigned; the value reached this
+      // method and died inside originalText, where nothing can query it.
+      expect(result[0].merchant).toBe('Diner');
+      expect('merchant' in result[1]).toBeFalse();
+    });
+
+    it('carries the optional fields the source answered, and invents none', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Rent', amount: 1200, type: 'expense', currency: 'USD',
+          tags: ['home'], location: { name: 'Berlin' }, period: 'monthly', isRecurring: true },
+        { date: '2024-06-01', description: 'Bare', amount: 4, type: 'expense', currency: 'USD' }
+      ]);
+
+      expect(result[0].tags).toEqual(['home']);
+      expect(result[0].location).toEqual({ name: 'Berlin' });
+      expect(result[0].period).toBe('monthly');
+      expect(result[0].isRecurring).toBeTrue();
+      // Absent must keep meaning "nobody looked" — no empty arrays, no
+      // defaulted flags.
+      expect('tags' in result[1]).toBeFalse();
+      expect('location' in result[1]).toBeFalse();
+      expect('period' in result[1]).toBeFalse();
+      expect('isRecurring' in result[1]).toBeFalse();
+    });
+
+    it('prefers a row note over formatted details', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2024-06-01', description: 'Rent', amount: 1200, type: 'expense', currency: 'USD',
+          note: 'June, paid early', details: 'a, b' }
+      ]);
+
+      // A CSV note is content, not an item list — formatItemNotes would
+      // split its commas into newlines.
+      expect(result[0].notes).toBe('June, paid early');
     });
   });
 
@@ -1330,6 +1463,162 @@ describe('AIImportService', () => {
       expect(dto.categoryId).toBe('other_expense');
       expect(dto.description).toBe('Imported transaction');
       expect(dto.currency).toBe('GBP');
+    });
+
+    it('passes every supported field through to addTransaction', async () => {
+      // The spec #313 demands: a row carrying the optional fields is stored
+      // with all of them. The old hand-written DTO named six fields, so a
+      // field added upstream was dropped here without failing anything.
+      await service.confirmImport(
+        [selected({
+          notes: 'team lunch',
+          tags: ['work', 'reimbursable'],
+          location: { name: 'Berlin Mitte' },
+          period: 'monthly',
+          isRecurring: true
+        })],
+        'r.png', 10, 'image', 'receipt_image'
+      );
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto).toEqual({
+        type: 'expense',
+        amount: 5,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Coffee',
+        date: new Date(2024, 5, 1),
+        note: 'team lunch',
+        tags: ['work', 'reimbursable'],
+        location: { name: 'Berlin Mitte' },
+        period: 'monthly',
+        isRecurring: true
+      });
+    });
+
+    it('sends a bare row as exactly the six required keys', async () => {
+      // No undefined-valued key may ride toward Firestore, and no optional
+      // may be invented for a row nobody answered.
+      await service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image');
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(Object.keys(dto).sort()).toEqual(
+        ['amount', 'categoryId', 'currency', 'date', 'description', 'type'].sort()
+      );
+    });
+
+    const withMeta = (overrides: Partial<CategorizedImportTransaction>, meta: Partial<CategorizedImportTransaction['imageMetadata'] & object>) =>
+      selected({
+        ...overrides,
+        imageMetadata: {
+          imageIndex: 0,
+          imageId: 'image_0',
+          positionInImage: 'middle',
+          confidenceScore: 0.9,
+          ...meta
+        }
+      });
+
+    it('attaches each receipt its own photos, in photo order', async () => {
+      const fileA = new File(['a'], 'a.png', { type: 'image/png' });
+      const fileB = new File(['b'], 'b.png', { type: 'image/png' });
+      const fileC = new File(['c'], 'c.png', { type: 'image/png' });
+
+      await service.confirmImport(
+        [
+          withMeta({ id: 'a' }, { imageIndex: 0, receiptId: 1, mergedFromImages: [1, 0] }),
+          withMeta({ id: 'b' }, { imageIndex: 2, receiptId: 2 })
+        ],
+        'r.png', 10, 'image', 'receipt_image',
+        [fileA, fileB, fileC]
+      );
+
+      const dtos = transactionService.addTransaction.calls.all().map(c => c.args[0]);
+      // The merged receipt keeps every photo it was read from, in photo
+      // order; the second receipt gets its own and nobody else's.
+      expect(dtos[0].receiptFiles).toEqual([fileA, fileB]);
+      expect(dtos[1].receiptFiles).toEqual([fileC]);
+    });
+
+    it('attaches a receipt group on its first row only', async () => {
+      const fileA = new File(['a'], 'a.png', { type: 'image/png' });
+
+      await service.confirmImport(
+        [
+          withMeta({ id: 'a' }, { imageIndex: 0, receiptId: 1 }),
+          withMeta({ id: 'b' }, { imageIndex: 0, receiptId: 1 })
+        ],
+        'r.png', 10, 'image', 'receipt_image',
+        [fileA]
+      );
+
+      const dtos = transactionService.addTransaction.calls.all().map(c => c.args[0]);
+      expect(dtos[0].receiptFiles).toEqual([fileA]);
+      expect('receiptFiles' in dtos[1]).toBeFalse();
+    });
+
+    it('attaches nothing to rows without image metadata even when files ride along', async () => {
+      // A CSV, PDF or JSON row has no idea which photo it came from, because
+      // it came from none.
+      await service.confirmImport(
+        [selected()],
+        'r.png', 10, 'image', 'receipt_image',
+        [new File(['a'], 'a.png', { type: 'image/png' })]
+      );
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect('receiptFiles' in dto).toBeFalse();
+    });
+
+    it('saves the row without its photo when the image quota refuses, and reports that distinctly', async () => {
+      const fileA = new File(['a'], 'a.png', { type: 'image/png' });
+      transactionService.addTransaction.and.callFake(dto =>
+        dto.receiptFiles?.length
+          ? Promise.reject(new Error(RECEIPT_IMAGE_LIMIT_ERROR))
+          : Promise.resolve('txn-id')
+      );
+
+      await service.confirmImport(
+        [withMeta({}, { imageIndex: 0, receiptId: 1 })],
+        'r.png', 10, 'image', 'receipt_image',
+        [fileA]
+      );
+
+      // Retried without the photo: the transaction is still worth saving,
+      // and the quota refusal happens before any upload or write.
+      const dtos = transactionService.addTransaction.calls.all().map(c => c.args[0]);
+      expect(dtos.length).toBe(2);
+      expect(dtos[0].receiptFiles).toEqual([fileA]);
+      expect('receiptFiles' in dtos[1]).toBeFalse();
+
+      // A skipped photo is not a failed row. Routing it through the error
+      // list would re-offer a saved row for a second import.
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+      expect(stats['successCount']).toBe(1);
+      expect(stats['errorCount']).toBe(0);
+      expect(stats['receiptsSkipped']).toBe(1);
+      expect('errors' in stats).toBeFalse();
+    });
+
+    it('keeps an upload failure a failed row, with no skip recorded', async () => {
+      transactionService.addTransaction.and.callFake(dto =>
+        dto.receiptFiles?.length
+          ? Promise.reject(new Error(RECEIPT_ATTACH_FAILED))
+          : Promise.resolve('txn-id')
+      );
+
+      await service.confirmImport(
+        [withMeta({}, { imageIndex: 0, receiptId: 1 })],
+        'r.png', 10, 'image', 'receipt_image',
+        [new File(['a'], 'a.png', { type: 'image/png' })]
+      );
+
+      // A failed upload is not a quota refusal: retrying photo-less here
+      // would silently drop photos on a flaky network.
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+      expect(stats['errorCount']).toBe(1);
+      expect(stats['successCount']).toBe(0);
+      expect('receiptsSkipped' in stats).toBeFalse();
     });
 
     it('should fail the import and rethrow when completion throws', async () => {

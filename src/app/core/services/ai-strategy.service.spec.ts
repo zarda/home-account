@@ -559,6 +559,37 @@ describe('AIStrategyService', () => {
       expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE });
     });
 
+    it('carries which photos each transaction came from', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          confidence: 0.8, receiptId: 1,
+        },
+        {
+          date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
+          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          receiptId: 1,
+        },
+        {
+          date: '2026-01-16', description: 'Solo', amount: 7, type: 'expense',
+          currency: 'USD', imageIndex: 1, positionInImage: 'top', confidence: 0.9,
+          receiptId: 2,
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      // The hop to ProcessedTransaction used to drop both fields, so the
+      // review step stamped every strategy row "image_0" and the confirm
+      // step could not tell whose photo was whose.
+      expect(result.transactions[0].mergedFromImages).toEqual([0, 1]);
+      expect(result.transactions[1].imageIndex).toBe(1);
+      expect('mergedFromImages' in result.transactions[1]).toBeFalse();
+    });
+
     it('should use the reported receipt total as the transaction amount', async () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {

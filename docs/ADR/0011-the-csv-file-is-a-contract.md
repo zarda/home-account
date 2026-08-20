@@ -1,9 +1,11 @@
 # 11. The CSV file is a contract, and every cell in it is untrusted
 
-**Status:** Accepted, implemented · **Date:** 2026-08-03 · **Issues:** #192, #208
+**Status:** Accepted, implemented; amended by [0059](0059-one-mapper-builds-every-imported-transaction.md) · **Date:** 2026-08-03 · **Issues:** #192, #208
 
 Reference documentation lives in [../csv-format.md](../csv-format.md). This
-record keeps the decision and the reasoning.
+record keeps the decision and the reasoning. 0059 closed the writer/importer
+gap this record's "Known gaps" predicted: Note, Tags and Location are read
+back now, and both import doors build their DTO through one mapper.
 
 ## Context
 

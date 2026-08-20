@@ -1,7 +1,7 @@
 /**
  * Shared types for the AI receipt-processing pipeline.
  */
-import type { FieldConfidence } from '../../models';
+import type { BudgetPeriod, FieldConfidence, TransactionLocation } from '../../models';
 
 export interface ProcessedTransaction {
   date: Date;
@@ -43,6 +43,20 @@ export interface ProcessedTransaction {
    * flag names the exception rather than the rule.
    */
   categoryAttempted?: boolean;
+  // Optional transaction fields an extractor may have read; absent means
+  // nobody looked, so no producer defaults any of them.
+  tags?: string[];
+  location?: TransactionLocation;
+  period?: BudgetPeriod;
+  isRecurring?: boolean;
+  /**
+   * Which photo the row came from, and which photos a merged row was built
+   * from. The strategy path used to drop both on this hop, so the review step
+   * stamped every row `image_0` and the confirm step could not tell whose
+   * photo was whose. Absent when the engine has no per-photo mapping.
+   */
+  imageIndex?: number;
+  mergedFromImages?: number[];
 }
 
 export interface ProcessingResult {

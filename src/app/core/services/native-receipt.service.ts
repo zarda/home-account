@@ -52,10 +52,12 @@ export class NativeReceiptService {
     const transactions: ProcessedTransaction[] = [];
     let totalConfidence = 0;
 
-    for (const file of imageFiles) {
-      const ocrResult = await this.recognize(file);
+    for (let i = 0; i < imageFiles.length; i++) {
+      const ocrResult = await this.recognize(imageFiles[i]);
       const transaction = await this.structureOcrResult(ocrResult);
-      transactions.push(transaction);
+      // One receipt per photo, so the photo mapping is the loop index —
+      // it is what lets the confirm step attach the right photo later.
+      transactions.push({ ...transaction, imageIndex: i });
       totalConfidence += transaction.confidence;
     }
 

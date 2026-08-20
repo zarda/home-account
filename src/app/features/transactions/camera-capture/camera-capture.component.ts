@@ -427,14 +427,18 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       fieldConfidence: tx.fieldConfidence,
       isDuplicate: false,
       selected: true,
-      // The cloud strategy path carries the receipt grouping; native results
-      // have none, and the review table renders nothing without it.
-      imageMetadata: tx.receiptId != null ? {
-        imageIndex: 0,
-        imageId: 'image_0',
+      // The receipt badge keys on receiptId, which only the cloud strategy
+      // path reports; the photo mapping comes from either engine. Both ride
+      // the same metadata block, and their real values — this used to stamp
+      // every row image_0, so the confirm step attached the first photo to
+      // whichever row came first.
+      imageMetadata: tx.receiptId != null || tx.imageIndex !== undefined ? {
+        imageIndex: tx.imageIndex ?? 0,
+        imageId: `image_${tx.imageIndex ?? 0}`,
         positionInImage: 'middle' as const,
         confidenceScore: tx.confidence,
-        receiptId: tx.receiptId,
+        ...(tx.mergedFromImages?.length ? { mergedFromImages: tx.mergedFromImages } : {}),
+        ...(tx.receiptId != null ? { receiptId: tx.receiptId } : {}),
       } : undefined,
     }));
 
@@ -452,6 +456,10 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       confidence: strategyResult.confidence,
       warnings: [],
       duplicates,
+      // The wizard's confirm step attaches photos from these; the fallback
+      // path ships them already, and without them the strategy path saved
+      // every camera receipt photo-less.
+      sourceFiles: files,
     };
   }
 

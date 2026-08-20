@@ -194,29 +194,34 @@ describe('ImportHistoryComponent', () => {
     });
   });
 
-  describe('getSourceLabel', () => {
+  describe('getFileTypeLabel', () => {
     beforeEach(() => {
       fixture.detectChanges();
     });
 
-    it('should return CSV for csv source', () => {
-      expect(component.getSourceLabel('csv')).toBe('CSV');
+    it('names each kind after what was actually processed', () => {
+      // fileType is finer than source — receipts and statement screenshots
+      // share source: 'image' and must not share a label.
+      expect(component.getFileTypeLabel('receipt_image')).toBe('import.kindReceipt');
+      expect(component.getFileTypeLabel('screenshot')).toBe('import.kindStatement');
+      expect(component.getFileTypeLabel('bank_pdf')).toBe('import.kindPdf');
+      expect(component.getFileTypeLabel('backup_json')).toBe('import.kindBackup');
+      expect(component.getFileTypeLabel('generic_csv')).toBe('import.kindCsv');
+      expect(component.getFileTypeLabel('bank_csv')).toBe('import.kindCsv');
+    });
+  });
+
+  describe('getFileTypeIcon', () => {
+    beforeEach(() => {
+      fixture.detectChanges();
     });
 
-    it('should return PDF for pdf source', () => {
-      expect(component.getSourceLabel('pdf')).toBe('PDF');
-    });
-
-    it('should return Image for image source', () => {
-      expect(component.getSourceLabel('image')).toBe('Image');
-    });
-
-    it('should return Backup for json source', () => {
-      expect(component.getSourceLabel('json')).toBe('Backup');
-    });
-
-    it('should return source for unknown sources', () => {
-      expect(component.getSourceLabel('unknown')).toBe('unknown');
+    it('pairs each kind with its icon', () => {
+      expect(component.getFileTypeIcon('receipt_image')).toBe('receipt_long');
+      expect(component.getFileTypeIcon('screenshot')).toBe('photo_library');
+      expect(component.getFileTypeIcon('bank_pdf')).toBe('picture_as_pdf');
+      expect(component.getFileTypeIcon('backup_json')).toBe('settings_backup_restore');
+      expect(component.getFileTypeIcon('generic_csv')).toBe('table_view');
     });
   });
 

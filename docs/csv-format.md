@@ -116,10 +116,16 @@ substring:
 | currency | `currency` |
 | period | `period` |
 | recurring | `recurring` |
+| note | `note` |
+| tags | `tags` — the cell splits on `; `, the export's own join |
+| location | `location` — the cell becomes the place name; coordinates are never invented |
 
-Date, description and amount are required; a row missing any of them is skipped.
-Everything else is optional and read defensively, which is what lets a CSV
-exported before `Period` and `Recurring` existed still import.
+Amount is the only truly required value: a row too short to reach the date,
+description or amount column is skipped, and so is a row whose amount cannot
+be read — but a missing date defaults to today and a missing description to
+`Unknown` rather than skipping the row. Everything else is optional and read
+defensively, which is what lets a CSV exported before `Period`, `Recurring`,
+or the read-back of `Note`/`Tags`/`Location` existed still import.
 
 An amount may be `1,234.56`, `$1,234.56`, `-45.00` or `(45.00)` — the last two
 both mean an expense. With no `type` column, the sign decides. With no `amount`
@@ -134,6 +140,9 @@ column, `debit` and `credit` are used instead.
   validation is what keeps that harmless.
 - A **recurring** cell is read as true only for `true`, `yes` or `1`; anything
   else means "not set" rather than false.
+- An empty **note**, **tags** or **location** cell produces no field at all —
+  never an empty string, an empty list, or a `{ name: '' }` the rules would
+  accept while meaning nothing.
 - Unquoted fields are trimmed, so `Date, Description, Amount` works. Quoted
   fields are returned byte-exact, because trimming them would defeat the
   round trip the quoting exists to provide.
@@ -142,9 +151,10 @@ column, `debit` and `credit` are used instead.
 
 ## Known gaps
 
-- **The AI import wizard's CSV path drops period and recurrence.** It maps rows
-  onto the shape the AI providers return, which has no field for either. Use
-  Settings → Import CSV for a round trip.
+- **A tag containing the literal `; ` cannot round-trip.** The export joins
+  tags with `; `, and on the way back a separator inside a tag is
+  indistinguishable from a boundary. The escaper is not the problem — commas,
+  quotes and newlines inside a tag survive — the join is.
 - **A spreadsheet may show the guard.** The apostrophe reliably stops evaluation
   everywhere, but whether it is displayed varies by application and version. The
   importer strips it back off; a file edited and re-saved by a spreadsheet that

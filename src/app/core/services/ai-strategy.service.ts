@@ -407,6 +407,12 @@ export class AIStrategyService {
       receiptId: t.receiptId,
       fieldConfidence:
         t.amountConfidence !== undefined ? { amount: t.amountConfidence } : undefined,
+      // Which photos the row came from. Consolidation hardcodes imageIndex 0
+      // on merged rows, so mergedFromImages is the honest list there; both
+      // used to die on this hop, leaving the confirm step unable to attach
+      // the right photo.
+      imageIndex: t.imageIndex,
+      ...(t.mergedFromImages?.length ? { mergedFromImages: t.mergedFromImages } : {}),
     }));
 
     const avgConfidence = transactions.length > 0

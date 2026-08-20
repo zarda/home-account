@@ -14,7 +14,7 @@ import { ImportHistoryService } from '../../../../core/services/import-history.s
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
-import { ImportHistory, ImportStatus } from '../../../../models';
+import { ImportHistory, ImportFileType, ImportStatus } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
@@ -113,18 +113,36 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
     }
   }
 
-  getSourceLabel(source: string): string {
-    switch (source) {
-      case 'csv':
-        return 'CSV';
-      case 'pdf':
-        return 'PDF';
-      case 'image':
-        return 'Image';
-      case 'json':
-        return 'Backup';
+  // fileType, not source: receipts and statement screenshots share
+  // source 'image' and are exactly the two kinds worth telling apart.
+  getFileTypeLabel(fileType: ImportFileType): string {
+    switch (fileType) {
+      case 'receipt_image':
+        return this.t('import.kindReceipt');
+      case 'screenshot':
+        return this.t('import.kindStatement');
+      case 'bank_pdf':
+        return this.t('import.kindPdf');
+      case 'backup_json':
+        return this.t('import.kindBackup');
       default:
-        return source;
+        // bank_csv, generic_csv, credit_card, spreadsheet — all CSV shapes.
+        return this.t('import.kindCsv');
+    }
+  }
+
+  getFileTypeIcon(fileType: ImportFileType): string {
+    switch (fileType) {
+      case 'receipt_image':
+        return 'receipt_long';
+      case 'screenshot':
+        return 'photo_library';
+      case 'bank_pdf':
+        return 'picture_as_pdf';
+      case 'backup_json':
+        return 'settings_backup_restore';
+      default:
+        return 'table_view';
     }
   }
 

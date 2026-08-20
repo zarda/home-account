@@ -702,6 +702,55 @@ describe('ExportService', () => {
       expect(service.parseImportedData(result, 'USD')[0].period).toBe('monthly');
     });
 
+    it('reads back the Note, Tags and Location columns that exportToCSV writes', async () => {
+      const result = await reimport([createTransaction({
+        note: 'client dinner',
+        tags: ['work', 'tax 2026'],
+        location: { name: 'Berlin Mitte', lat: 52.52, lng: 13.4 }
+      })]);
+
+      expect(result[0].note).toBe('client dinner');
+      expect(result[0].tags).toEqual(['work', 'tax 2026']);
+      // The export writes the name only, so the name is all that may come
+      // back — a coordinate the file never carried must not be invented.
+      expect(result[0].location).toEqual({ name: 'Berlin Mitte' });
+
+      const dto = service.parseImportedData(result, 'USD')[0];
+      expect(dto.note).toBe('client dinner');
+      expect(dto.tags).toEqual(['work', 'tax 2026']);
+      expect(dto.location).toEqual({ name: 'Berlin Mitte' });
+    });
+
+    it('round-trips a tag containing a comma', async () => {
+      // The escaper quotes the joined cell; only the '; ' join separates tags.
+      const result = await reimport([createTransaction({ tags: ['a,b', 'c'] })]);
+
+      expect(result[0].tags).toEqual(['a,b', 'c']);
+    });
+
+    it('leaves note, tags and location unset when the file has no such columns', async () => {
+      const text = 'Date,Description,Amount\n2026-06-01,Coffee,4.50\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect('note' in result[0]).toBeFalse();
+      expect('tags' in result[0]).toBeFalse();
+      expect('location' in result[0]).toBeFalse();
+    });
+
+    it('leaves note, tags and location unset on empty cells', async () => {
+      const text = 'Date,Description,Amount,Note,Tags,Location\n'
+        + '2026-06-01,Coffee,4.50,, ,  \n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      // An empty Location cell must produce no key at all: `{ name: '' }`
+      // would pass the Firestore rules while meaning nothing.
+      expect('note' in result[0]).toBeFalse();
+      expect('tags' in result[0]).toBeFalse();
+      expect('location' in result[0]).toBeFalse();
+    });
+
     it('imports a file written before the Period column existed', async () => {
       const text = 'Date,Type,Category,Description,Amount,Currency,Amount (Base),Note,Tags,Location\n'
         + '2026-06-01,expense,Food,Coffee,4.50,USD,4.50,,,\n';
