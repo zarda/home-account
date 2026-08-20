@@ -384,6 +384,54 @@ describe('CameraCaptureComponent', () => {
       expect(metas).toEqual([1, 2]);
     });
 
+    it('carries the real photo mapping and the files themselves into the review payload', async () => {
+      strategyService.processMultipleImages.and.resolveTo({
+        transactions: [
+          { description: 'Store A', amount: 10, currency: 'USD', date: new Date(), type: 'expense',
+            confidence: 0.9, receiptId: 1, imageIndex: 1 },
+          { description: 'Store B', amount: 20, currency: 'USD', date: new Date(), type: 'expense',
+            confidence: 0.8, receiptId: 2, imageIndex: 0, mergedFromImages: [0, 1] },
+        ],
+        confidence: 0.85,
+      } as never);
+      const component = build().componentInstance;
+      withImages(component, 2);
+      await component.processImage();
+
+      const navState = (router.navigate.calls.mostRecent().args[1] as {
+        state: { importResult: ImportResult };
+      }).state;
+      const [a, b] = navState.importResult.transactions;
+      // The converter used to stamp every row image_0, so the confirm step
+      // attached the first photo to whatever came first.
+      expect(a.imageMetadata?.imageIndex).toBe(1);
+      expect(a.imageMetadata?.imageId).toBe('image_1');
+      expect(b.imageMetadata?.mergedFromImages).toEqual([0, 1]);
+      // And the files themselves must ride along, or there is nothing to
+      // attach when the wizard confirms.
+      expect(navState.importResult.sourceFiles?.length).toBe(2);
+    });
+
+    it('keeps the photo mapping for a native row that has no receipt group', async () => {
+      strategyService.processMultipleImages.and.resolveTo({
+        transactions: [
+          { description: 'Diner', amount: 15, currency: 'USD', date: new Date(), type: 'expense',
+            confidence: 0.9, imageIndex: 0 },
+        ],
+        confidence: 0.9,
+      } as never);
+      const component = build().componentInstance;
+      withImages(component, 1);
+      await component.processImage();
+
+      const navState = (router.navigate.calls.mostRecent().args[1] as {
+        state: { importResult: ImportResult };
+      }).state;
+      const transaction = navState.importResult.transactions[0];
+      expect(transaction.imageMetadata?.imageIndex).toBe(0);
+      expect(transaction.imageMetadata?.receiptId).toBeUndefined();
+    });
+
     it('falls back to the import service when strategy yields nothing', async () => {
       strategyService.processMultipleImages.and.resolveTo({ transactions: [], confidence: 0 } as never);
       const component = build().componentInstance;

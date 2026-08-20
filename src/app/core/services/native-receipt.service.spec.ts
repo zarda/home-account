@@ -381,6 +381,14 @@ describe('NativeReceiptService', () => {
       expect(result.confidence).toBeCloseTo((first.confidence + second.confidence) / 2);
     });
 
+    it('stamps which photo each transaction came from', async () => {
+      // Native OCR reads one receipt per photo, so the mapping is the loop
+      // index — without it the confirm step cannot attach the right photo.
+      const result = await service.processImages([imageFile(), imageFile()]);
+
+      expect(result.transactions.map(t => t.imageIndex)).toEqual([0, 1]);
+    });
+
     it('should reject when Vision OCR is unavailable', async () => {
       visionMock.isAvailable.and.resolveTo({ available: false });
 

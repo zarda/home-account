@@ -497,6 +497,59 @@ describe('ImportWizardComponent', () => {
       });
     }));
 
+    it('hands the batch\'s image files to the service, and only those', fakeAsync(() => {
+      // imageIndex on a row indexes the image subset the extraction ran
+      // over, so a mixed batch must pass exactly that subset, in order.
+      const csv = new File([''], 'test.csv', { type: 'text/csv' });
+      const imgA = new File(['a'], 'a.png', { type: 'image/png' });
+      const imgB = new File(['b'], 'b.png', { type: 'image/png' });
+      component.selectedFiles.set([imgA, csv, imgB]);
+      component.confirmImport();
+      tick();
+
+      expect(mockImportService.confirmImport.calls.mostRecent().args[5]).toEqual([imgA, imgB]);
+    }));
+
+    it('hands the camera batch\'s own files to the service', fakeAsync(() => {
+      const img = new File(['x'], 'shot.jpg', { type: 'image/jpeg' });
+      history.replaceState({
+        importResult: { ...mockImportResult, sourceFiles: [img] },
+        fromCamera: true
+      }, '');
+      try {
+        const cameraFixture = TestBed.createComponent(ImportWizardComponent);
+        cameraFixture.detectChanges();
+        const cameraComponent = cameraFixture.componentInstance;
+        cameraComponent.extractedTransactions.set(mockTransactions);
+
+        cameraComponent.confirmImport();
+        tick();
+
+        // The camera wizard holds no selectedFiles; the photos ride the
+        // handed-over result or the receipts save photo-less.
+        expect(mockImportService.confirmImport.calls.mostRecent().args[5]).toEqual([img]);
+      } finally {
+        history.replaceState({}, '');
+      }
+    }));
+
+    it('says when photos were skipped for the image quota, without failing the import', fakeAsync(() => {
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'image' as const, fileType: 'receipt_image' as const,
+        fileName: 'r.png', fileSize: 10, transactionCount: 2, successCount: 2,
+        skippedCount: 0, errorCount: 0, totalIncome: 0, totalExpenses: 5,
+        duplicatesSkipped: 0, status: 'completed' as const, receiptsSkipped: 2
+      }));
+
+      component.confirmImport();
+      tick();
+
+      expect(notifications.info).toHaveBeenCalledWith('import.importPhotosSkipped');
+      expect(notifications.success).toHaveBeenCalledWith('import.importComplete');
+      expect(mockRouter.navigate).toHaveBeenCalled();
+    }));
+
     it('should set isImporting to false after completion', fakeAsync(() => {
       component.confirmImport();
       tick();

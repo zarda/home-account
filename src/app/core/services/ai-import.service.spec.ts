@@ -17,7 +17,7 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
-import { TransactionService } from './transaction.service';
+import { TransactionService, RECEIPT_ATTACH_FAILED, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService } from './ai-strategy.service';
@@ -1496,6 +1496,120 @@ describe('AIImportService', () => {
       expect(Object.keys(dto).sort()).toEqual(
         ['amount', 'categoryId', 'currency', 'date', 'description', 'type'].sort()
       );
+    });
+
+    const withMeta = (overrides: Partial<CategorizedImportTransaction>, meta: Partial<CategorizedImportTransaction['imageMetadata'] & object>) =>
+      selected({
+        ...overrides,
+        imageMetadata: {
+          imageIndex: 0,
+          imageId: 'image_0',
+          positionInImage: 'middle',
+          confidenceScore: 0.9,
+          ...meta
+        }
+      });
+
+    it('attaches each receipt its own photos, in photo order', async () => {
+      const fileA = new File(['a'], 'a.png', { type: 'image/png' });
+      const fileB = new File(['b'], 'b.png', { type: 'image/png' });
+      const fileC = new File(['c'], 'c.png', { type: 'image/png' });
+
+      await service.confirmImport(
+        [
+          withMeta({ id: 'a' }, { imageIndex: 0, receiptId: 1, mergedFromImages: [1, 0] }),
+          withMeta({ id: 'b' }, { imageIndex: 2, receiptId: 2 })
+        ],
+        'r.png', 10, 'image', 'receipt_image',
+        [fileA, fileB, fileC]
+      );
+
+      const dtos = transactionService.addTransaction.calls.all().map(c => c.args[0]);
+      // The merged receipt keeps every photo it was read from, in photo
+      // order; the second receipt gets its own and nobody else's.
+      expect(dtos[0].receiptFiles).toEqual([fileA, fileB]);
+      expect(dtos[1].receiptFiles).toEqual([fileC]);
+    });
+
+    it('attaches a receipt group on its first row only', async () => {
+      const fileA = new File(['a'], 'a.png', { type: 'image/png' });
+
+      await service.confirmImport(
+        [
+          withMeta({ id: 'a' }, { imageIndex: 0, receiptId: 1 }),
+          withMeta({ id: 'b' }, { imageIndex: 0, receiptId: 1 })
+        ],
+        'r.png', 10, 'image', 'receipt_image',
+        [fileA]
+      );
+
+      const dtos = transactionService.addTransaction.calls.all().map(c => c.args[0]);
+      expect(dtos[0].receiptFiles).toEqual([fileA]);
+      expect('receiptFiles' in dtos[1]).toBeFalse();
+    });
+
+    it('attaches nothing to rows without image metadata even when files ride along', async () => {
+      // A CSV, PDF or JSON row has no idea which photo it came from, because
+      // it came from none.
+      await service.confirmImport(
+        [selected()],
+        'r.png', 10, 'image', 'receipt_image',
+        [new File(['a'], 'a.png', { type: 'image/png' })]
+      );
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect('receiptFiles' in dto).toBeFalse();
+    });
+
+    it('saves the row without its photo when the image quota refuses, and reports that distinctly', async () => {
+      const fileA = new File(['a'], 'a.png', { type: 'image/png' });
+      transactionService.addTransaction.and.callFake(dto =>
+        dto.receiptFiles?.length
+          ? Promise.reject(new Error(RECEIPT_IMAGE_LIMIT_ERROR))
+          : Promise.resolve('txn-id')
+      );
+
+      await service.confirmImport(
+        [withMeta({}, { imageIndex: 0, receiptId: 1 })],
+        'r.png', 10, 'image', 'receipt_image',
+        [fileA]
+      );
+
+      // Retried without the photo: the transaction is still worth saving,
+      // and the quota refusal happens before any upload or write.
+      const dtos = transactionService.addTransaction.calls.all().map(c => c.args[0]);
+      expect(dtos.length).toBe(2);
+      expect(dtos[0].receiptFiles).toEqual([fileA]);
+      expect('receiptFiles' in dtos[1]).toBeFalse();
+
+      // A skipped photo is not a failed row. Routing it through the error
+      // list would re-offer a saved row for a second import.
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+      expect(stats['successCount']).toBe(1);
+      expect(stats['errorCount']).toBe(0);
+      expect(stats['receiptsSkipped']).toBe(1);
+      expect('errors' in stats).toBeFalse();
+    });
+
+    it('keeps an upload failure a failed row, with no skip recorded', async () => {
+      transactionService.addTransaction.and.callFake(dto =>
+        dto.receiptFiles?.length
+          ? Promise.reject(new Error(RECEIPT_ATTACH_FAILED))
+          : Promise.resolve('txn-id')
+      );
+
+      await service.confirmImport(
+        [withMeta({}, { imageIndex: 0, receiptId: 1 })],
+        'r.png', 10, 'image', 'receipt_image',
+        [new File(['a'], 'a.png', { type: 'image/png' })]
+      );
+
+      // A failed upload is not a quota refusal: retrying photo-less here
+      // would silently drop photos on a flaky network.
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+      expect(stats['errorCount']).toBe(1);
+      expect(stats['successCount']).toBe(0);
+      expect('receiptsSkipped' in stats).toBeFalse();
     });
 
     it('should fail the import and rethrow when completion throws', async () => {
