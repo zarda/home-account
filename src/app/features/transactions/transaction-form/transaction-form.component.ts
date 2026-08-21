@@ -56,6 +56,7 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
+import { dayKey, parseDateInput } from '../../../core/utils/transaction-date.utils';
 import {
   MAX_RECEIPT_BYTES,
   MAX_RECEIPTS_PER_TRANSACTION,
@@ -196,6 +197,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * stored amount is the failure this whole area has been working away from.
    */
   suggestedCurrency = signal<{ code: string; country: string } | null>(null);
+
+  /**
+   * The position the scan fetched for its currency guess, offered as the
+   * receipt's coordinate. Only for a receipt dated today: a fix taken at home
+   * says nothing about where last week's receipt was paid. (#314)
+   */
+  suggestedCoordinates = signal<{ lat: number; lng: number } | null>(null);
 
   /**
    * A currency this transaction uses that the picker does not list.
@@ -777,12 +785,21 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         }
       }
 
+      // The address the receipt prints, into an empty Location field only —
+      // a place the user already typed outranks anything read off the paper.
+      const printedLocation = primary.location?.name;
+      const typedLocation = String(this.form.get('locationName')?.value ?? '').trim();
+      if (printedLocation && !typedLocation) {
+        this.form.patchValue({ locationName: printedLocation });
+      }
+
       this.scanFieldConfidence.set(primary.fieldConfidence ?? null);
 
       // The receipt did not say what money this was, so the account's base
       // currency is sitting in the field. Where the user is standing is a
       // better guess than where they live — offer it, but do not apply it.
       this.suggestedCurrency.set(null);
+      this.suggestedCoordinates.set(null);
       if (primary.currencyFellBack) {
         void this.suggestCurrencyFromLocation();
       }
@@ -821,9 +838,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * suggestion nobody asked for is not worth an error about.
    */
   private async suggestCurrencyFromLocation(): Promise<void> {
-    const coords = this.locationCoords() ?? (await this.currentCoordinates());
+    const attached = this.locationCoords();
+    const coords = attached ?? (await this.currentCoordinates());
     if (!coords) {
       return;
+    }
+    // A fix fetched for the currency is also where this receipt was paid —
+    // when it is from today. Offered, never attached: the coordinate is
+    // evidence about the phone, not about the paper.
+    if (!attached && this.isDatedToday()) {
+      this.suggestedCoordinates.set(coords);
     }
 
     const country = countryForCoordinates(coords.lat, coords.lng);
@@ -863,6 +887,23 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   dismissCurrencySuggestion(): void {
     this.suggestedCurrency.set(null);
+  }
+
+  private isDatedToday(): boolean {
+    const value = this.form.get('date')?.value;
+    const date = value instanceof Date ? value : parseDateInput(value);
+    return !!date && dayKey(date) === dayKey(new Date());
+  }
+
+  acceptCoordinateSuggestion(): void {
+    const coords = this.suggestedCoordinates();
+    if (!coords) return;
+    this.locationCoords.set(coords);
+    this.suggestedCoordinates.set(null);
+  }
+
+  dismissCoordinateSuggestion(): void {
+    this.suggestedCoordinates.set(null);
   }
 
   /**

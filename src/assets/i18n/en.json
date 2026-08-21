@@ -184,6 +184,7 @@
     "locationUnavailable": "Your location could not be found. You can still type a place name.",
     "clearCoordinates": "Remove coordinates",
     "currencyFromLocation": "Looks like you are in {{currency}} territory — use it?",
+    "attachScanPosition": "Attach where you are now as this receipt's location",
     "useSuggestedCategory": "Use suggested category {{category}}"
   },
   "budget": {
