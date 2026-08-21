@@ -97,6 +97,14 @@ export const STORED_DATA_KINDS: readonly StoredDataKind[] = [
     subcollection: 'categoryMemory'
   },
   {
+    id: 'tagMemory',
+    labelKey: 'data.kinds.tagMemory.label',
+    descriptionKey: 'data.kinds.tagMemory.description',
+    icon: 'label',
+    route: '/ai',
+    subcollection: 'tagMemory'
+  },
+  {
     id: 'imports',
     labelKey: 'data.kinds.imports.label',
     descriptionKey: 'data.kinds.imports.description',
@@ -165,9 +173,9 @@ export type StoredDataCounts = Partial<Record<DeletionStep, number | null>>;
  * What the app has stored, and how much of it.
  *
  * Counts come from `getCountFromServer`, which aggregates server-side and
- * downloads no documents — the difference between a page that costs thirteen
- * reads and one that costs the whole account. It is also server-only: it does
- * not fall back to the offline cache, so a count that cannot be fetched
+ * downloads no documents — the difference between a page that costs one read
+ * per kind and one that costs the whole account. It is also server-only: it
+ * does not fall back to the offline cache, so a count that cannot be fetched
  * resolves to null and the row shows a dash. A wrong number on a page whose
  * whole job is telling you what you have stored is worse than no number.
  *

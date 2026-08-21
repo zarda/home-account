@@ -43,6 +43,7 @@ rules grant only the owner and the project deploys no Cloud Functions
 | savedSearches | `users/{uid}/savedSearches` | `SearchHistoryService.deleteAll()` |
 | searchAnswers | `users/{uid}/searchAnswers` | `SearchAnswerHistoryService.deleteAll()` |
 | categoryMemory | `users/{uid}/categoryMemory` | `CategoryMemoryService.deleteAll()` |
+| tagMemory | `users/{uid}/tagMemory` | `TagMemoryService.deleteAll()` |
 | imports | `users/{uid}/imports` | `ImportHistoryService.clearImportHistory()` |
 | insightSnapshots | `users/{uid}/insightSnapshots` | `InsightSnapshotService.deleteAll()` |
 | secrets | `users/{uid}/secrets/providers` (AI keys) | `ProviderKeyService.deleteAll()` |

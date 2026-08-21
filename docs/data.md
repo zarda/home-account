@@ -28,6 +28,7 @@ about its door. Adding a step to the cascade and nothing else breaks the suite.
 | Saved searches | `savedSearches` | the Transactions filter panel |
 | Search answers | `searchAnswers` | `/search-history` |
 | Category memory | `categoryMemory` | the AI page |
+| Tag memory | `tagMemory` | the AI page |
 | Import history | `imports` | `/import/history` |
 | Monthly snapshots | `insightSnapshots` | Reports → Insights |
 | API keys | `secrets/providers` (a document) | the AI page |
@@ -45,8 +46,8 @@ below the index.
 
 Counts come from `FirestoreService.countDocuments`, which is
 `getCountFromServer` — a server-side aggregate that downloads no documents.
-Thirteen are issued when the page opens and each lands on its own row as it
-arrives, so a slow collection delays only itself.
+One count is issued per countable kind when the page opens, and each lands on
+its own row as it arrives, so a slow collection delays only itself.
 
 A row shows one of three things:
 

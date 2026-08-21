@@ -56,6 +56,7 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
+import { normalizeTag } from '../../../core/utils/tag.utils';
 import { dayKey, parseDateInput } from '../../../core/utils/transaction-date.utils';
 import {
   MAX_RECEIPT_BYTES,
@@ -166,8 +167,6 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   // is not a value accessor for the array, it emits add/remove events.
   tags = signal<string[]>([]);
   readonly tagSeparatorKeys = [ENTER, COMMA] as const;
-  /** Longest accepted tag; anything past this is silently truncated. */
-  private static readonly MAX_TAG_LENGTH = 30;
 
   // Coordinates captured for the location field; the name is a form control.
   locationCoords = signal<{ lat: number; lng: number } | null>(null);
@@ -352,9 +351,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   addTag(event: MatChipInputEvent): void {
-    // Lowercased so "Coffee" and "coffee" are one tag when filtering.
-    const tag = event.value.trim().toLowerCase()
-      .slice(0, TransactionFormComponent.MAX_TAG_LENGTH);
+    const tag = normalizeTag(event.value);
     if (tag && !this.tags().includes(tag)) {
       this.tags.update(tags => [...tags, tag]);
     }

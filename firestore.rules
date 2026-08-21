@@ -486,6 +486,24 @@ service cloud.firestore {
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }
 
+    // ---- tag memory ----
+
+    // Same contract as category memory: the document id is the merchant key
+    // and the entry repeats it. Two lists, both required and both possibly
+    // empty — what the user keeps for a merchant and what they have refused.
+    function tagMemoryValid(merchantKey) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['merchantKey', 'tags', 'suppressed', 'sampleDescription', 'count', 'updatedAt'])
+        && d.keys().hasAll(['merchantKey', 'tags', 'suppressed', 'sampleDescription', 'count'])
+        && d.merchantKey == merchantKey
+        && d.tags is list
+        && d.suppressed is list
+        && d.sampleDescription is string
+        && d.count is int
+        && d.count > 0
+        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+    }
+
     // ---- import history ----
 
     function importStatuses() {
@@ -707,6 +725,13 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      // Remembered merchant→tags decisions, keyed by merchant
+      match /tagMemory/{merchantKey} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && tagMemoryValid(merchantKey);
+        allow delete: if isOwner(userId);
+      }
+
       // Import history subcollection
       match /imports/{importId} {
         allow read: if isOwner(userId);
@@ -814,7 +839,7 @@ service cloud.firestore {
         allow write: if isOwner(userId) && !(subcollection in [
           'transactions', 'budgets', 'categories', 'goals',
           'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-          'insightSnapshots', 'categoryMemory', 'searchAnswers', 'feedback'
+          'insightSnapshots', 'categoryMemory', 'tagMemory', 'searchAnswers', 'feedback'
         ]);
       }
     }

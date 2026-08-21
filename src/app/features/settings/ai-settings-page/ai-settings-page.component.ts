@@ -29,6 +29,7 @@ import { TEXT_MODELS, VISION_MODELS, OPENAI_MODELS, CLAUDE_MODELS, DEFAULT_TEXT_
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../core/services/notification.service';
 import { CategoryMemoryService } from '../../../core/services/category-memory.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
 
 @Component({
   selector: 'app-ai-settings-page',
@@ -64,12 +65,16 @@ export class AiSettingsPageComponent implements OnInit {
   private providerKeys = inject(ProviderKeyService);
   private location = inject(Location);
   private categoryMemory = inject(CategoryMemoryService);
+  private tagMemory = inject(TagMemoryService);
 
   // Form state
   autoSync = signal<boolean>(true);
   /** Merchants the user has corrected, which imports reuse instead of re-asking the model. */
   readonly rememberedCategoryCount = this.categoryMemory.rememberedCount;
   readonly clearingCategoryMemory = signal<boolean>(false);
+  /** Merchants whose tag decisions imports reuse instead of re-suggesting. */
+  readonly rememberedTagCount = this.tagMemory.rememberedCount;
+  readonly clearingTagMemory = signal<boolean>(false);
   ragInsightsLevel = signal<RagInsightsLevel>('off');
   ragLevels = RAG_INSIGHTS_LEVELS;
   selectedTextModel = signal<string>(DEFAULT_TEXT_MODEL);
@@ -205,6 +210,19 @@ export class AiSettingsPageComponent implements OnInit {
     }
   }
 
+  /** Forget every remembered merchant→tags decision. */
+  async clearTagMemory(): Promise<void> {
+    this.clearingTagMemory.set(true);
+    try {
+      await this.tagMemory.clear();
+      this.notifications.success(this.translationService.t('aiPage.tagMemoryCleared'));
+    } catch {
+      this.notifications.error(this.translationService.t('common.error'));
+    } finally {
+      this.clearingTagMemory.set(false);
+    }
+  }
+
   private async loadApiKeys(): Promise<void> {
     const user = this.authService.currentUser();
     // Merge defaults: stored objects from before a feature existed lack its key.
@@ -214,10 +232,11 @@ export class AiSettingsPageComponent implements OnInit {
     };
     this.ragInsightsLevel.set(effectiveRagLevel(user?.preferences));
 
-    // The remembered-categories count is display-only, so it must not delay
-    // the key fields — an await here would push every following line a
-    // microtask later for no benefit.
+    // The remembered counts are display-only, so they must not delay the key
+    // fields — an await here would push every following line a microtask
+    // later for no benefit.
     void this.categoryMemory.ensureLoaded();
+    void this.tagMemory.ensureLoaded();
 
     // Keys live outside the user document now, so this is the one place that
     // reads them for display.

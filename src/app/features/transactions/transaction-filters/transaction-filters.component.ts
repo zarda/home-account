@@ -20,6 +20,7 @@ import { GoalService } from '../../../core/services/goal.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 import { isImeComposition } from '../../../core/utils/keyboard.utils';
+import { normalizeTag } from '../../../core/utils/tag.utils';
 import {
   DateWindow,
   endOfDay,
@@ -446,9 +447,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   }
 
   addTagFilter(event: MatChipInputEvent): void {
-    // Same normalization as the form's tag input, so a chip typed here
-    // matches a tag typed there.
-    const tag = event.value.trim().toLowerCase();
+    const tag = normalizeTag(event.value);
     if (tag && !(this.filters.tags ?? []).includes(tag)) {
       this.filters.tags = [...(this.filters.tags ?? []), tag];
       this.onFilterChange();

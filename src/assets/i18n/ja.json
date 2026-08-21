@@ -603,6 +603,10 @@
         "label": "カテゴリの記憶",
         "description": "店舗ごとの修正内容。インポート時に再確認しません"
       },
+      "tagMemory": {
+        "label": "タグの記憶",
+        "description": "取り込み時に各店舗で残した・外したタグ"
+      },
       "imports": {
         "label": "インポート履歴",
         "description": "レシートと明細のインポート記録"
@@ -1101,7 +1105,12 @@
     "categoryMemoryHint": "インポート中にカテゴリを修正すると、次回から同じ店舗にはその選択が再利用され、AIに再度問い合わせません。",
     "categoryMemoryCount": "記憶している店舗数",
     "categoryMemoryClear": "すべて削除",
-    "categoryMemoryCleared": "記憶したカテゴリを削除しました"
+    "categoryMemoryCleared": "記憶したカテゴリを削除しました",
+    "tagMemoryTitle": "記憶されたタグ",
+    "tagMemoryHint": "取り込み時に提案されたタグを残す・外すと、次回同じ店舗で再利用されます。",
+    "tagMemoryCount": "記憶された店舗数",
+    "tagMemoryClear": "すべて忘れる",
+    "tagMemoryCleared": "記憶されたタグを消去しました"
   },
   "about": {
     "title": "について",

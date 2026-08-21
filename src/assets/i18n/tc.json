@@ -603,6 +603,10 @@
         "label": "分類記憶",
         "description": "您對商家所做的更正，匯入時不再重複詢問"
       },
+      "tagMemory": {
+        "label": "標籤記憶",
+        "description": "匯入時你為商家保留或移除的標籤"
+      },
       "imports": {
         "label": "匯入紀錄",
         "description": "每次收據與對帳單匯入的紀錄"
@@ -1101,7 +1105,12 @@
     "categoryMemoryHint": "在匯入時修正分類後，下次遇到相同商家會直接沿用該選擇，不再詢問 AI。",
     "categoryMemoryCount": "已記住的商家數量",
     "categoryMemoryClear": "全部忘記",
-    "categoryMemoryCleared": "已清除記住的分類"
+    "categoryMemoryCleared": "已清除記住的分類",
+    "tagMemoryTitle": "已記住的標籤",
+    "tagMemoryHint": "匯入時保留或移除建議的標籤後，下次同一商家會沿用該選擇。",
+    "tagMemoryCount": "已記住的商家",
+    "tagMemoryClear": "全部忘記",
+    "tagMemoryCleared": "已清除記住的標籤"
   },
   "about": {
     "title": "關於",
