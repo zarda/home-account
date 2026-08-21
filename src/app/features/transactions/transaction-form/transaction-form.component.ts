@@ -340,6 +340,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        // The field now holds a real position, so the scan's offer of one is spent.
+        this.suggestedCoordinates.set(null);
         this.isLocating.set(false);
         this.notifications.success(this.translationService.t('transactions.locationCaptured'));
       },
@@ -356,6 +358,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   clearCoordinates(): void {
     this.locationCoords.set(null);
+    // Clearing the coordinates is a refusal, so the offer goes with them.
+    this.suggestedCoordinates.set(null);
   }
 
   addTag(event: MatChipInputEvent): void {
@@ -831,9 +835,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       const message = this.translationService.t('ai.scanError');
       this.scanError.set(message);
       this.notifications.error(message);
-      // A failed scan leaves the user filling the form in by hand.
+      // A failed scan leaves the user filling the form in by hand. An offer
+      // the previous scan made no longer describes anything on the form.
       this.filledByScan = false;
       this.scanFieldConfidence.set(null);
+      this.suggestedCurrency.set(null);
+      this.suggestedCoordinates.set(null);
     } finally {
       this.isScanning.set(false);
     }

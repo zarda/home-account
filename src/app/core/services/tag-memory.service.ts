@@ -80,7 +80,8 @@ export class TagMemoryService {
     const key = normalizeMerchantKey(description);
     if (!key) return null;
     const entry = this.entries().find(e => e.merchantKey === key);
-    return entry ? { tags: entry.tags, suppressed: entry.suppressed } : null;
+    // Copies, so a caller that edits the answer cannot reach the cached entry.
+    return entry ? { tags: [...entry.tags], suppressed: [...entry.suppressed] } : null;
   }
 
   /**

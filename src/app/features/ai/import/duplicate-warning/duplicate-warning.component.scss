@@ -110,6 +110,12 @@ mat-panel-title {
   color: #ffc107;
 }
 
+// Neither is a clash with an existing row, so they read as a note, not an alarm.
+.match-within_batch,
+.match-recurring_occurrence {
+  color: var(--text-muted);
+}
+
 .match-type {
   font-size: var(--text-xs);
   font-weight: 600;

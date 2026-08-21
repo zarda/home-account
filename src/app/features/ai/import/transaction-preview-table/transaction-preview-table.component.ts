@@ -159,6 +159,16 @@ export class TransactionPreviewTableComponent {
     return this.translationService.t('import.currencyFellBack');
   }
 
+  /**
+   * A button's aria-label replaces the name its content would compute, so the
+   * marker icon inside the chip is never announced on its own. The mark rides
+   * on the chip's own name instead.
+   */
+  currencyChipLabel(row: CategorizedImportTransaction): string {
+    const label = this.translationService.t('import.setCurrency', { currency: row.currency });
+    return row.currencyFellBack ? `${this.currencyFellBackTooltip()}. ${label}` : label;
+  }
+
   // The mapper spreads `location` only when truthy and `tags` only when
   // non-empty, so an undefined slot or an emptied list is exactly "not written".
   removeLocation(transaction: CategorizedImportTransaction): void {

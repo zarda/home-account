@@ -142,7 +142,7 @@ For each transaction found, extract:
 - type: "income" for credits/deposits, "expense" for debits/withdrawals
 - currency: ${CURRENCY_FIELD}
 - merchant: store/business name (optional)
-- location (optional): ${LOCATION_FIELD} Omit the key on a row whose document prints no branch or address.
+- location: ${LOCATION_FIELD} Here, instead of "", omit the key entirely on a row whose document prints no branch or address. (optional)
 - details: for receipts, reproduce the FULL receipt content line by line — every item with its price, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the receipt's own language and script exactly as printed. (optional)
 - amountConfidence: how clearly the amount was legible, 0.0 to 1.0
 - dateConfidence: how clearly the date was legible, 0.0 to 1.0

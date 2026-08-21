@@ -101,15 +101,14 @@
                 class="currency-chip"
                 [class.fell-back]="row.currencyFellBack"
                 [matMenuTriggerFor]="currencyMenu"
-                [attr.aria-label]="'import.setCurrency' | translate: { currency: row.currency }"
+                [attr.aria-label]="currencyChipLabel(row)"
               >
                 @if (row.currencyFellBack) {
                   <mat-icon
                     class="verify-flag"
                     [matTooltip]="currencyFellBackTooltip()"
                     matTooltipPosition="above"
-                    role="img"
-                    [attr.aria-label]="currencyFellBackTooltip()"
+                    aria-hidden="true"
                   >error_outline</mat-icon>
                 }
                 {{ row.currency }}
@@ -118,7 +117,13 @@
               <mat-menu #currencyMenu="matMenu">
                 <ng-template matMenuContent>
                   @for (option of currencyOptions(row); track option.code) {
-                    <button mat-menu-item type="button" [class.current]="option.code === row.currency" (click)="updateCurrency(row, option.code)">
+                    <button
+                      mat-menu-item
+                      type="button"
+                      [class.current]="option.code === row.currency"
+                      [attr.aria-current]="option.code === row.currency ? 'true' : null"
+                      (click)="updateCurrency(row, option.code)"
+                    >
                       <span class="option-label">{{ option.code }} · {{ option.nameKey | translate }}</span>
                     </button>
                   }

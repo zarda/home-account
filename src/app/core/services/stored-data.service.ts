@@ -232,7 +232,7 @@ export class StoredDataService {
   }
 
   /**
-   * Drop a result that outlived its session. Twelve counts are in flight at
+   * Drop a result that outlived its session. Every count is in flight at
    * once and a sign-out mid-flight would otherwise land one account's totals
    * in the next account's page.
    */

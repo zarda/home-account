@@ -611,7 +611,14 @@ export class AIImportService {
     return rows.map(row => {
       if (row.recurringId) return row;
       const rule = matchRecurringRule(
-        { description: row.description, merchant: row.merchant, type: row.type, amount: row.amount, currency: row.currency },
+        {
+          description: row.description,
+          merchant: row.merchant,
+          type: row.type,
+          amount: row.amount,
+          currency: row.currency,
+          ...(row.currencyFellBack ? { currencyFellBack: true } : {}),
+        },
         rules
       );
       if (!rule) return row;
