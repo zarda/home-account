@@ -74,6 +74,7 @@ The same rule applies to examples. Demonstrate the *shape* with placeholders (`"
 | `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row; sent in chunks of 25 rows so every answer fits the declared 800-token budget |
 | `categorySuggestion` | categorization | claude, gemini, openai | 1.17.93 | Single-description category lookup outside the import flow |
 | `csvMapping` | categorization | claude, gemini, openai | 1.17.93 | Map a bank export's columns onto the transaction fields |
+| `suggestTags` | categorization | claude, gemini, openai | 1.26.138 | Tag each extracted row from the account's own tag vocabulary, sent in chunks of 25; an answer outside the vocabulary is dropped |
 | `spendingSummary` | insights | claude, gemini, openai | 1.17.93 | The dashboard's period insights, in fixed `## ` sections |
 | `patternNarrative` | insights | claude, gemini, openai | 1.17.93 | Describe already-detected spending patterns in prose, without recalculating |
 | `financialAdvice` | insights | claude, gemini, openai | 1.17.93 | Two or three sentences of advice over the period totals |

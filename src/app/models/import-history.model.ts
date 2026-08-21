@@ -102,6 +102,8 @@ export interface CategorizedImportTransaction {
   // Optional transaction fields the source answered; absent means nobody
   // looked. The confirm step forwards whatever is present and invents nothing.
   tags?: string[];
+  /** What the suggester offered, so the confirm step can record what was removed. Never written. */
+  suggestedTags?: string[];
   location?: TransactionLocation;
   period?: BudgetPeriod;
   isRecurring?: boolean;

@@ -57,6 +57,19 @@ export interface CategorizedTransaction extends RawTransaction {
   confidence: number;
 }
 
+/**
+ * One row offered to the tag suggester.
+ *
+ * The prompt's own `SuggestTagsRow` is this plus the index it answers by; the
+ * index belongs to the request's chunking rather than to the row, and this
+ * file may not import from the prompts directory.
+ */
+export interface TagSuggestionRow {
+  description: string;
+  merchant?: string;
+  details?: string;
+}
+
 export interface PreviousPeriodData {
   income: number;
   expense: number;
@@ -198,6 +211,12 @@ export interface CloudLLMProviderAdapter {
     transactions: RawTransaction[],
     grounding?: string
   ): Promise<CategorizedTransaction[]>;
+  /** Tags drawn only from `vocabulary`; `grounding` as for categorization. */
+  suggestTags(
+    rows: TagSuggestionRow[],
+    vocabulary: string[],
+    grounding?: string
+  ): Promise<string[][]>;
   detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping>;
 
   // Search

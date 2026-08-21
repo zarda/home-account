@@ -38,8 +38,11 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AIStrategyService } from '../../../core/services/ai-strategy.service';
+import { AIStrategyService, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AIImportService } from '../../../core/services/ai-import.service';
+import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
+import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
 import {
   Transaction,
   CreateTransactionDTO,
@@ -56,7 +59,7 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
-import { normalizeTag } from '../../../core/utils/tag.utils';
+import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
 import { dayKey, parseDateInput } from '../../../core/utils/transaction-date.utils';
 import {
   MAX_RECEIPT_BYTES,
@@ -115,6 +118,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private dialog = inject(MatDialog);
   private router = inject(Router);
   private aiImportService = inject(AIImportService);
+  private groundingHistory = inject(GroundingHistoryService);
+  private tagSuggestions = inject(TagSuggestionService);
+  private tagMemory = inject(TagMemoryService);
   private cdr = inject(ChangeDetectorRef);
   private analytics = inject(AnalyticsService);
 
@@ -147,6 +153,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private filledByScan = false;
   // The queued image the scan ran against; discarding it clears filledByScan.
   private scannedReceipt: { file: File; preview: string } | null = null;
+  /** What the last scan offered, so saving can record which offers were refused. */
+  private scanSuggestedTags: string[] = [];
 
   // Images already stored on the item being edited, by storage slot. Kept as
   // local state so per-image removal and conversion update the strip without
@@ -562,6 +570,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           has_location: !!transactionData.location,
           receipt_image_count: receipts.length,
         });
+        // The chips left on and the offers taken off, so the next scan of
+        // this merchant starts from the user's own decision.
+        if (this.filledByScan && this.scanSuggestedTags.length) {
+          const kept = this.tags();
+          await this.tagMemory.remember(
+            transactionData.description,
+            kept,
+            this.scanSuggestedTags.filter(tag => !kept.includes(tag))
+          );
+        }
       } else if (this.data.transaction) {
         await this.transactionService.updateTransaction(
           this.data.transaction.id,
@@ -747,6 +765,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private async scanReceipt(file: File): Promise<void> {
     this.isScanning.set(true);
     this.scanError.set(null);
+    this.scanSuggestedTags = [];
     let receiptCount = 1;
 
     try {
@@ -806,6 +825,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.notifications.success(message);
       this.filledByScan = true;
       receiptCount = result.receiptCount ?? 1;
+      await this.suggestTagsForScan(primary);
     } catch (error) {
       console.error('Receipt scan error:', error);
       const message = this.translationService.t('ai.scanError');
@@ -820,6 +840,26 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
     if (receiptCount > 1) {
       await this.offerMultiReceiptReview(receiptCount);
+    }
+  }
+
+  /**
+   * Tags only from what the account already uses, into the chip input where
+   * each can be removed before saving. Runs after the scan has been reported
+   * as done: a second round-trip, and never a reason to fail the first.
+   */
+  private async suggestTagsForScan(primary: ProcessedTransaction): Promise<void> {
+    try {
+      const [suggestedTags] = await this.tagSuggestions.suggest(
+        [{ description: primary.description, ...(primary.notes ? { details: primary.notes } : {}) }],
+        await this.groundingHistory.recent()
+      );
+      if (suggestedTags?.length) {
+        this.scanSuggestedTags = suggestedTags;
+        this.tags.update(current => normalizeTags([...current, ...suggestedTags]));
+      }
+    } catch (error) {
+      console.warn('[TransactionForm] Tag suggestion failed:', error);
     }
   }
 

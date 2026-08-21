@@ -31,6 +31,7 @@ import {
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
 import { goalProgressAmount } from '../utils/goal-progress.utils';
+import { applyTagSuggestions } from '../utils/tag-suggestion.utils';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
 import {
@@ -52,6 +53,7 @@ import {
   PreviousPeriodData,
   ProviderCapabilities,
   RawTransaction,
+  TagSuggestionRow,
 } from './llm-provider.interface';
 
 /**
@@ -447,6 +449,43 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       results.push(...answered);
     }
 
+    return results;
+  }
+
+  /**
+   * Tags for each row, drawn only from the tags this account already uses.
+   *
+   * Chunked like categorization and for the same reason: the answer is what
+   * the output budget has to hold, and each request re-bases its indices from
+   * zero so `applyTagSuggestions` can match by position within its own chunk.
+   */
+  async suggestTags(
+    rows: TagSuggestionRow[],
+    vocabulary: string[],
+    grounding?: string
+  ): Promise<string[][]> {
+    this.assertTextTransport();
+
+    const vocabularyList = vocabulary.map(tag => `- ${tag}`).join('\n');
+    const results: string[][] = [];
+    for (let start = 0; start < rows.length; start += CATEGORIZE_CHUNK_SIZE) {
+      const chunk = rows.slice(start, start + CATEGORIZE_CHUNK_SIZE);
+      const answered = await this.runOrDefault(
+        'tag suggestion',
+        async () => {
+          const rendered = renderPrompt('suggestTags', {
+            vocabulary: vocabularyList,
+            grounding,
+            rows: chunk.map((row, i) => ({ ...row, index: i })),
+          });
+          const response = await this.sendText('suggestTags', rendered);
+          return applyTagSuggestions(chunk.length, JSON.parse(this.extractJson(response.text)), vocabulary);
+        },
+        // A failed chunk suggests nothing for its rows; the others keep their answers.
+        () => chunk.map(() => [])
+      );
+      results.push(...answered);
+    }
     return results;
   }
 

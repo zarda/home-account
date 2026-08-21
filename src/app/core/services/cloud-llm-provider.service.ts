@@ -5,7 +5,7 @@ import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
 import { ProviderKeyService } from './provider-key.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, Goal, MonthlyTotal, SearchIntent, SearchQueryContext } from '../../models';
-import { AIRequestOptions, CloudLLMProviderAdapter } from './llm-provider.interface';
+import { AIRequestOptions, CloudLLMProviderAdapter, TagSuggestionRow } from './llm-provider.interface';
 
 export type AIFeatureType = 'receiptScanning' | 'categorization' | 'insights' | 'search';
 
@@ -307,6 +307,15 @@ export class CloudLLMProviderService {
     grounding?: string
   ): Promise<CategorizedTransaction[]> {
     return this.resolve('categorization').categorizeTransactions(transactions, grounding);
+  }
+
+  /** Suggest tags for import rows, drawn only from the account's own vocabulary. */
+  async suggestTags(
+    rows: TagSuggestionRow[],
+    vocabulary: string[],
+    grounding?: string
+  ): Promise<string[][]> {
+    return this.resolve('categorization').suggestTags(rows, vocabulary, grounding);
   }
 
   /** Detect CSV column mapping. */
