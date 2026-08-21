@@ -158,6 +158,13 @@
       "one": "{{count}} transaction shown",
       "other": "{{count}} transactions shown"
     },
+    "resultWithTotalsAnnouncement": "{{countText}}. {{totalsText}}",
+    "totalsAnnouncement": "Total expenses {{spent}}, net balance {{net}}.",
+    "totalsAnnouncementSingle": "{{label}} {{value}}.",
+    "totalsOverCapAnnouncement": "Totals not calculated for this many results — use the Calculate totals button.",
+    "totalsUnavailable": "Totals unavailable",
+    "calculateTotals": "Calculate totals",
+    "negativeAmount": "minus {{amount}}",
     "loadMoreError": "Couldn't load transactions",
     "sortNeedsFullList": "Load the complete filtered list to sort by this column",
     "insightChipsLabel": "Notable spending this month",

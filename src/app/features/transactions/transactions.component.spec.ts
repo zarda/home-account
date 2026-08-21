@@ -7,14 +7,19 @@ import { of, Subject } from 'rxjs';
 import { TransactionsComponent } from './transactions.component';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService } from '../../core/services/transaction-window.service';
+import { PeriodTotalsService, PeriodTotalsStatus } from '../../core/services/period-totals.service';
+import { AuthService } from '../../core/services/auth.service';
 import { CategoryService } from '../../core/services/category.service';
+import { CurrencyService } from '../../core/services/currency.service';
 import { DeviceService } from '../../core/services/device.service';
+import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
 import { CameraCaptureComponent } from './camera-capture/camera-capture.component';
-import { Transaction } from '../../models';
+import { Transaction, User } from '../../models';
+import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
 import { createTransaction, createCategory } from '../../core/services/testing';
 
 function createMockWindowSource() {
@@ -34,6 +39,16 @@ function createMockWindowSource() {
   };
 }
 
+function createMockPeriodTotals() {
+  return {
+    status: signal<PeriodTotalsStatus>({ kind: 'idle' }),
+    totals: signal<TypeTotals | null>(null),
+    reset: jasmine.createSpy('reset').and.resolveTo(undefined),
+    refresh: jasmine.createSpy('refresh').and.resolveTo(undefined),
+    calculate: jasmine.createSpy('calculate').and.resolveTo(true),
+  };
+}
+
 describe('TransactionsComponent', () => {
   let transactionService: {
     transactions: ReturnType<typeof signal<Transaction[]>>;
@@ -42,6 +57,8 @@ describe('TransactionsComponent', () => {
     deleteTransaction: jasmine.Spy;
   };
   let windowSource: ReturnType<typeof createMockWindowSource>;
+  let periodTotals: ReturnType<typeof createMockPeriodTotals>;
+  let authUser: ReturnType<typeof signal<User | null>>;
   let categoryService: {
     expenseCategories: ReturnType<typeof signal<unknown[]>>;
     incomeCategories: ReturnType<typeof signal<unknown[]>>;
@@ -72,6 +89,8 @@ describe('TransactionsComponent', () => {
       deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
     };
     windowSource = createMockWindowSource();
+    periodTotals = createMockPeriodTotals();
+    authUser = signal<User | null>({ preferences: { baseCurrency: 'USD' } } as User);
     mutationSeq = 0;
     categoryService = {
       expenseCategories: signal<unknown[]>([]),
@@ -98,6 +117,15 @@ describe('TransactionsComponent', () => {
       providers: [
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },
+        { provide: AuthService, useValue: { currentUser: authUser } },
+        {
+          provide: CurrencyService,
+          useValue: { formatCurrency: (value: number, code: string) => `${code} ${value}` }
+        },
+        {
+          provide: LocaleFormatService,
+          useValue: { formatRange: jasmine.createSpy('formatRange').and.returnValue('RANGE') }
+        },
         { provide: DeviceService, useValue: {} },
         { provide: TranslationService, useValue: translation },
         {
@@ -114,7 +142,12 @@ describe('TransactionsComponent', () => {
         set: {
           imports: [],
           template: '',
-          providers: [{ provide: TransactionWindowService, useValue: windowSource }],
+          // This override replaces the component's own providers array, so
+          // every page-provided service needs its mock listed here.
+          providers: [
+            { provide: TransactionWindowService, useValue: windowSource },
+            { provide: PeriodTotalsService, useValue: periodTotals },
+          ],
         },
       })
       .compileComponents();
@@ -206,10 +239,11 @@ describe('TransactionsComponent', () => {
     }));
   }));
 
-  it('onFiltersChanged resets the window with the new filters', () => {
+  it('onFiltersChanged resets the window and the period totals with the same filters', () => {
     const component = build().componentInstance;
     component.onFiltersChanged({ type: 'expense' });
     expect(windowSource.reset).toHaveBeenCalledWith({ type: 'expense' }, 'desc');
+    expect(periodTotals.reset).toHaveBeenCalledWith({ type: 'expense' });
   });
 
   it('onDateSortChange resets the window only when the direction changes', () => {
@@ -219,6 +253,8 @@ describe('TransactionsComponent', () => {
 
     component.onDateSortChange('asc');
     expect(windowSource.reset).toHaveBeenCalledWith({}, 'asc');
+    // Sums are order-independent: a sort flip must not re-read the totals.
+    expect(periodTotals.reset).not.toHaveBeenCalled();
   });
 
   describe('mutation handling', () => {
@@ -271,10 +307,108 @@ describe('TransactionsComponent', () => {
 
       expect(windowSource.refresh).not.toHaveBeenCalled();
       expect(windowSource.jumpTo).not.toHaveBeenCalled();
+      expect(periodTotals.refresh).not.toHaveBeenCalled();
+    }));
+
+    it('refreshes the period totals for every mutation kind, jumped or not', fakeAsync(() => {
+      const fixture = build();
+      fixture.detectChanges();
+
+      windowSource.isInLoadedRange.and.returnValue(true);
+      emitMutation({ kind: 'add', id: 'tx-1', date: Timestamp.now() });
+      fixture.detectChanges();
+      tick();
+
+      // A row that lands outside the loaded range still changes the totals.
+      windowSource.isInLoadedRange.and.returnValue(false);
+      emitMutation({ kind: 'update', id: 'tx-2', date: Timestamp.now() });
+      fixture.detectChanges();
+      tick();
+
+      emitMutation({ kind: 'delete', id: 'tx-3' });
+      fixture.detectChanges();
+      tick();
+
+      expect(periodTotals.refresh).toHaveBeenCalledTimes(3);
     }));
   });
 
-  it('announces the result count once per completed window reset', fakeAsync(() => {
+  describe('period totals figures', () => {
+    const settledTotals: TypeTotals = { income: 500, expense: 300, balance: 200, count: 8 };
+
+    function settle(totals: TypeTotals = settledTotals): void {
+      periodTotals.totals.set(totals);
+      periodTotals.status.set({ kind: 'ready' });
+    }
+
+    it('shows Spent and Net when no type filter is active', () => {
+      const component = build().componentInstance;
+      settle();
+      expect(component.totalsFigures()).toEqual([
+        { labelKey: 'common.totalExpenses', value: 'USD 300' },
+        { labelKey: 'common.netBalance', value: 'USD 200' },
+      ]);
+    });
+
+    it('shows only Spent under an expense filter', () => {
+      // Net would be identically minus Spent — a redundant figure that
+      // reads like a defect.
+      const component = build().componentInstance;
+      component.onFiltersChanged({ type: 'expense' });
+      settle();
+      expect(component.totalsFigures()).toEqual([
+        { labelKey: 'common.totalExpenses', value: 'USD 300' },
+      ]);
+    });
+
+    it('shows only Income under an income filter', () => {
+      // Spent would print a zero over a list of salary rows.
+      const component = build().componentInstance;
+      component.onFiltersChanged({ type: 'income' });
+      settle();
+      expect(component.totalsFigures()).toEqual([
+        { labelKey: 'common.totalIncome', value: 'USD 500' },
+      ]);
+    });
+
+    it('renders nothing while the sweep has not settled', () => {
+      const component = build().componentInstance;
+      expect(component.totalsState()).toBe('hidden');
+      expect(component.totalsFigures()).toEqual([]);
+
+      periodTotals.status.set({ kind: 'computing' });
+      expect(component.totalsState()).toBe('computing');
+      expect(component.totalsFigures()).toEqual([]);
+    });
+
+    it('snaps a sub-unit negative net to an unsigned zero', () => {
+      // JPY has zero decimals: −0.4 would otherwise format as "−¥0".
+      authUser.set({ preferences: { baseCurrency: 'JPY' } } as User);
+      const component = build().componentInstance;
+      settle({ income: 100, expense: 100.4, balance: -0.4, count: 2 });
+
+      const net = component.totalsFigures()[1];
+      expect(net.value).toBe('JPY 0');
+      expect(net.value).not.toContain('-');
+    });
+
+    it('ignores the sliding window entirely', () => {
+      // The acceptance criterion at unit level: scrolling moves the window,
+      // and the figures must not move with it.
+      const component = build().componentInstance;
+      settle();
+      const before = component.totalsFigures();
+
+      windowSource.visibleWindow.set([createTransaction(), createTransaction()]);
+      windowSource.reachedEnd.set(false);
+      windowSource.reachedStart.set(false);
+
+      expect(component.totalsFigures()).toEqual(before);
+    });
+  });
+
+  it('announces the plain result count when totals were never wired for the reset', fakeAsync(() => {
+    // The idle branch (e.g. signed out): today's behavior, count only.
     const fixture = build();
     fixture.detectChanges();
     expect(announcer.announce).not.toHaveBeenCalled();
@@ -285,6 +419,69 @@ describe('TransactionsComponent', () => {
     expect(announcer.announce).toHaveBeenCalledTimes(1);
     expect(announcer.announce).toHaveBeenCalledWith('transactions.resultCountAnnouncement');
   }));
+
+  it('announces count and totals as one message, once per reset, after the sweep settles', fakeAsync(() => {
+    const fixture = build();
+    fixture.detectChanges();
+
+    // Reset lands first: the sweep is still computing, so nothing announces.
+    periodTotals.status.set({ kind: 'computing' });
+    windowSource.resetSeq.set(1);
+    fixture.detectChanges();
+    tick();
+    expect(announcer.announce).not.toHaveBeenCalled();
+
+    // The sweep settles: exactly one combined message.
+    periodTotals.totals.set({ income: 500, expense: 300, balance: 200, count: 8 });
+    periodTotals.status.set({ kind: 'ready' });
+    fixture.detectChanges();
+    tick();
+    expect(announcer.announce).toHaveBeenCalledTimes(1);
+    expect(announcer.announce).toHaveBeenCalledWith('transactions.resultWithTotalsAnnouncement');
+
+    // A later refold (rates, language) changes the figures silently.
+    periodTotals.totals.set({ income: 500, expense: 300, balance: 150, count: 8 });
+    fixture.detectChanges();
+    tick();
+    expect(announcer.announce).toHaveBeenCalledTimes(1);
+  }));
+
+  it('announces the over-cap state as the reset outcome', fakeAsync(() => {
+    const fixture = build();
+    fixture.detectChanges();
+
+    periodTotals.status.set({ kind: 'over-cap', serverCount: 1200 });
+    windowSource.resetSeq.set(1);
+    fixture.detectChanges();
+    tick();
+
+    expect(announcer.announce).toHaveBeenCalledTimes(1);
+    expect(announcer.announce).toHaveBeenCalledWith('transactions.resultWithTotalsAnnouncement');
+  }));
+
+  it('onCalculateTotals announces the totals once the explicit sweep lands', async () => {
+    const component = build().componentInstance;
+    periodTotals.status.set({ kind: 'over-cap', serverCount: 1200 });
+    periodTotals.calculate.and.callFake(async () => {
+      periodTotals.totals.set({ income: 500, expense: 300, balance: 200, count: 8 });
+      periodTotals.status.set({ kind: 'ready' });
+      return true;
+    });
+
+    await component.onCalculateTotals();
+
+    expect(periodTotals.calculate).toHaveBeenCalled();
+    expect(announcer.announce).toHaveBeenCalledWith('transactions.totalsAnnouncement');
+  });
+
+  it('onCalculateTotals stays silent when the sweep was superseded', async () => {
+    const component = build().componentInstance;
+    periodTotals.calculate.and.resolveTo(false);
+
+    await component.onCalculateTotals();
+
+    expect(announcer.announce).not.toHaveBeenCalled();
+  });
 
   it('openEditDialog opens the form in edit mode', () => {
     const component = build().componentInstance;

@@ -1,1 +1,84 @@
 /* Transactions Component Styles */
+
+// Desktop header figures: label over value, right-aligned beside the add
+// FAB. Values keep nowrap on the host so appFitText owns the shrink path
+// (scale to its floor, then wrap) — see docs/ui-overflow.md G3.
+.period-totals {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  min-width: 0;
+
+  .period-totals-figure {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 0;
+
+    dt {
+      font-size: var(--text-xs);
+      color: var(--text-muted);
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    + .period-totals-figure {
+      border-inline-start: 1px solid var(--border-primary);
+      padding-inline-start: 16px;
+    }
+  }
+}
+
+.period-totals-placeholder {
+  display: inline-block;
+  width: 72px;
+  height: 1.25em;
+  border-radius: 4px;
+  background: var(--surface-muted);
+}
+
+.period-totals-note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+// Mobile subtitle line: caption and figures wrap at the separators, never
+// inside an amount.
+.period-totals-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 4px 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  min-width: 0;
+
+  .period-figure {
+    display: inline-flex;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  .period-figure-value {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .period-totals-calc-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--text-secondary);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+}

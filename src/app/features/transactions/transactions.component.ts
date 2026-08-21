@@ -8,11 +8,17 @@ import { MatDialog } from '@angular/material/dialog';
 import { Subscription } from 'rxjs';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService, WindowSortDirection } from '../../core/services/transaction-window.service';
+import { PeriodTotalsService } from '../../core/services/period-totals.service';
+import { AuthService } from '../../core/services/auth.service';
 import { CategoryService } from '../../core/services/category.service';
+import { CurrencyService } from '../../core/services/currency.service';
 import { DeviceService } from '../../core/services/device.service';
+import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
-import { Transaction, TransactionFilters, Category } from '../../models';
+import { Transaction, TransactionFilters, Category, baseCurrencyOf } from '../../models';
 import { parseDayKey } from '../../core/utils/transaction-date.utils';
+import { pinLeadingMinus, snapDisplayZero } from '../../core/utils/money-display.utils';
+import { FitTextDirective } from '../../shared/directives/fit-text.directive';
 import { TransactionListComponent } from './transaction-list/transaction-list.component';
 import { TransactionFiltersComponent } from './transaction-filters/transaction-filters.component';
 import { InsightChipsComponent } from './insight-chips/insight-chips.component';
@@ -24,6 +30,12 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
+
+/** One header money figure: a catalog label over a formatted amount. */
+export interface HeaderFigure {
+  labelKey: string;
+  value: string;
+}
 
 @Component({
   selector: 'app-transactions',
@@ -37,19 +49,25 @@ import { AnnouncerService } from '../../core/services/announcer.service';
     TransactionFiltersComponent,
     InsightChipsComponent,
     LoadingSpinnerComponent,
+    FitTextDirective,
     TranslatePipe
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './transactions.component.html',
   styleUrl: './transactions.component.scss',
-  // Page-scoped: window state (cursors, loaded range) resets on every visit
-  // and is shared with the child list component through the injector.
-  providers: [TransactionWindowService],
+  // Page-scoped: window state (cursors, loaded range) and the swept totals
+  // reset on every visit; the window is shared with the child list component
+  // through the injector.
+  providers: [TransactionWindowService, PeriodTotalsService],
 })
 export class TransactionsComponent implements OnInit, OnDestroy {
   private transactionService = inject(TransactionService);
   readonly windowSource = inject(TransactionWindowService);
+  readonly periodTotals = inject(PeriodTotalsService);
+  private authService = inject(AuthService);
   private categoryService = inject(CategoryService);
+  private currencyService = inject(CurrencyService);
+  private localeFormat = inject(LocaleFormatService);
   readonly deviceService = inject(DeviceService);
   private dialog = inject(MatDialog);
   private router = inject(Router);
@@ -85,6 +103,54 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     return complete ? `${loaded}` : `${loaded}+`;
   });
 
+  // Header totals render state. 'ready' additionally requires a non-null
+  // fold, so a figure can never render from a sweep that was invalidated
+  // between the status settling and the template reading it.
+  readonly totalsState = computed<'hidden' | 'computing' | 'ready' | 'unavailable' | 'overCap'>(() => {
+    switch (this.periodTotals.status().kind) {
+      case 'idle':
+        return 'hidden';
+      case 'computing':
+        return 'computing';
+      case 'over-cap':
+        return 'overCap';
+      case 'unavailable':
+        return 'unavailable';
+      case 'ready':
+        return this.periodTotals.totals() ? 'ready' : 'computing';
+    }
+  });
+
+  // Under a type filter only the meaningful figure renders: with expenses
+  // only, Net is identically minus Spent; with income only, Spent would
+  // print a zero over a list of salary rows.
+  readonly totalsFigures = computed<HeaderFigure[]>(() => {
+    const totals = this.periodTotals.totals();
+    if (this.totalsState() !== 'ready' || !totals) return [];
+    const base = this.baseCurrency();
+    const figure = (labelKey: string, raw: number): HeaderFigure => ({
+      labelKey,
+      value: pinLeadingMinus(this.currencyService.formatCurrency(snapDisplayZero(raw, base), base))
+    });
+    const type = this.currentFilters().type;
+    if (type === 'expense') return [figure('common.totalExpenses', totals.expense)];
+    if (type === 'income') return [figure('common.totalIncome', totals.income)];
+    return [
+      figure('common.totalExpenses', totals.expense),
+      figure('common.netBalance', totals.balance)
+    ];
+  });
+
+  private baseCurrency = computed(() => baseCurrencyOf(this.authService.currentUser()));
+
+  // Which range the mobile figures describe. Rendered only when the filter
+  // carries both bounds — an open-ended or show-all set has no honest range
+  // caption, and the figures are still correct without one.
+  readonly periodCaption = computed(() => {
+    const { startDate, endDate } = this.currentFilters();
+    return startDate && endDate ? this.localeFormat.formatRange(startDate, endDate, 'medium') : '';
+  });
+
   expenseCategories = this.categoryService.expenseCategories;
   incomeCategories = this.categoryService.incomeCategories;
   categories = this.categoryService.categories;
@@ -100,6 +166,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private currentFilters = signal<TransactionFilters>({});
   sortDirection = signal<WindowSortDirection>('desc');
   private categoriesSub?: Subscription;
+  private lastAnnouncedResetSeq = 0;
 
   initialDate = signal<Date | undefined>(undefined);
   showAll = signal<boolean>(false);
@@ -120,15 +187,30 @@ export class TransactionsComponent implements OnInit, OnDestroy {
       untracked(() => void this.onTransactionMutated(mutation));
     });
 
-    // Announce result counts to assistive technology once per filter/sort
-    // change (resetSeq), not per scrolled page.
+    // Announce the result count and the settled totals to assistive
+    // technology as one combined message, once per filter/sort change
+    // (resetSeq) — not per scrolled page, and not again when a later rates
+    // or language change refolds the same figures. If the reset lands while
+    // the sweep is still computing, the effect waits for the settled state;
+    // if the sweep settles first, the seq bump fires it. Either ordering
+    // announces exactly once, guarded by lastAnnouncedResetSeq.
     effect(() => {
       const seq = this.windowSource.resetSeq();
-      if (seq === 0) return;
+      const state = this.totalsState();
+      if (seq === 0 || state === 'computing') return;
+      if (seq === this.lastAnnouncedResetSeq) return;
+      this.lastAnnouncedResetSeq = seq;
       untracked(() => {
-        const count = this.transactions().length;
+        const countText = this.translationService.t('transactions.resultCountAnnouncement', {
+          count: this.transactions().length
+        });
         this.announcer.announce(
-          this.translationService.t('transactions.resultCountAnnouncement', { count })
+          state === 'hidden'
+            ? countText // totals not wired for this reset (e.g. signed out)
+            : this.translationService.t('transactions.resultWithTotalsAnnouncement', {
+                countText,
+                totalsText: this.totalsAnnouncementText()
+              })
         );
       });
     });
@@ -189,6 +271,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   onFiltersChanged(filters: TransactionFilters): void {
     this.currentFilters.set(filters);
     void this.windowSource.reset(filters, this.sortDirection());
+    void this.periodTotals.reset(filters);
     this.scrollToTop();
   }
 
@@ -199,12 +282,62 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   onDateSortChange(direction: WindowSortDirection): void {
     if (direction === this.sortDirection()) return;
     this.sortDirection.set(direction);
+    // Deliberately no periodTotals reset: sums are order-independent.
     void this.windowSource.reset(this.currentFilters(), direction);
     this.scrollToTop();
   }
 
+  async onCalculateTotals(): Promise<void> {
+    // False means superseded or failed — either way another path owns the
+    // next announcement, so this one stays silent.
+    if (!(await this.periodTotals.calculate())) return;
+    this.announcer.announce(this.totalsAnnouncementText());
+  }
+
+  // The totals as translated prose. Amounts are spoken without the WORD
+  // JOINER, and a negative value becomes a translated word rather than a
+  // '−' glyph, which screen readers drop at default punctuation verbosity.
+  private totalsAnnouncementText(): string {
+    const state = this.totalsState();
+    if (state === 'overCap') {
+      return this.translationService.t('transactions.totalsOverCapAnnouncement');
+    }
+    if (state === 'unavailable') {
+      return this.translationService.t('transactions.totalsUnavailable');
+    }
+    const totals = this.periodTotals.totals();
+    if (state !== 'ready' || !totals) return '';
+
+    const base = this.baseCurrency();
+    const spoken = (raw: number): string => {
+      const snapped = snapDisplayZero(raw, base);
+      const amount = this.currencyService.formatCurrency(Math.abs(snapped), base);
+      return snapped < 0
+        ? this.translationService.t('transactions.negativeAmount', { amount })
+        : amount;
+    };
+
+    const type = this.currentFilters().type;
+    if (type === 'expense' || type === 'income') {
+      return this.translationService.t('transactions.totalsAnnouncementSingle', {
+        label: this.translationService.t(
+          type === 'expense' ? 'common.totalExpenses' : 'common.totalIncome'
+        ),
+        value: spoken(type === 'expense' ? totals.expense : totals.income)
+      });
+    }
+    return this.translationService.t('transactions.totalsAnnouncement', {
+      spent: spoken(totals.expense),
+      net: spoken(totals.balance)
+    });
+  }
+
   private async onTransactionMutated(mutation: TransactionMutation): Promise<void> {
     const { kind, id, date } = mutation;
+
+    // Unconditionally: a row jumped to outside the loaded range still
+    // changes the period's totals.
+    void this.periodTotals.refresh();
 
     if ((kind === 'add' || kind === 'update') && date && !this.windowSource.isInLoadedRange(date)) {
       // The row landed outside the loaded range: jump the window to it.

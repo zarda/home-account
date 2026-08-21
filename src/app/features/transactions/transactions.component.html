@@ -6,6 +6,32 @@
          the same three entries (manual add, camera capture, photo import). -->
     <ng-container ngProjectAs="[header-actions]">
       @if (!deviceService.isMobile()) {
+        <!-- Period totals for the active filter set: exact figures, a
+             computing placeholder, a labeled absent state, or the explicit
+             over-cap ask. Never an approximate sum. -->
+        @switch (totalsState()) {
+          @case ('ready') {
+            <dl class="period-totals">
+              @for (figure of totalsFigures(); track figure.labelKey) {
+                <div class="period-totals-figure">
+                  <dt>{{ figure.labelKey | translate }}</dt>
+                  <dd appFitText>{{ figure.value }}</dd>
+                </div>
+              }
+            </dl>
+          }
+          @case ('computing') {
+            <span class="period-totals-placeholder" aria-hidden="true"></span>
+          }
+          @case ('unavailable') {
+            <p class="period-totals-note">{{ 'transactions.totalsUnavailable' | translate }}</p>
+          }
+          @case ('overCap') {
+            <button mat-stroked-button class="period-totals-calc" (click)="onCalculateTotals()">
+              {{ 'transactions.calculateTotals' | translate }}
+            </button>
+          }
+        }
         <button
           mat-fab
           color="primary"
@@ -29,6 +55,43 @@
             <span>{{ 'import.importFromFile' | translate }}</span>
           </button>
         </mat-menu>
+      }
+    </ng-container>
+
+    <!-- Mobile: no actions row exists (the bottom-nav FAB covers add), so the
+         totals ride the subtitle line, captioned with the range they describe. -->
+    <ng-container ngProjectAs="[header-subtitle]">
+      @if (deviceService.isMobile() && totalsState() !== 'hidden') {
+        <p class="period-totals-line">
+          @if (periodCaption(); as caption) {
+            <span class="period-caption">{{ caption }}</span>
+            <span class="period-sep" aria-hidden="true">·</span>
+          }
+          @switch (totalsState()) {
+            @case ('ready') {
+              @for (figure of totalsFigures(); track figure.labelKey; let last = $last) {
+                <span class="period-figure">
+                  <span class="period-figure-label">{{ figure.labelKey | translate }}</span>
+                  <span class="period-figure-value">{{ figure.value }}</span>
+                </span>
+                @if (!last) {
+                  <span class="period-sep" aria-hidden="true">·</span>
+                }
+              }
+            }
+            @case ('computing') {
+              <span class="period-totals-placeholder" aria-hidden="true"></span>
+            }
+            @case ('unavailable') {
+              <span>{{ 'transactions.totalsUnavailable' | translate }}</span>
+            }
+            @case ('overCap') {
+              <button class="period-totals-calc-link" (click)="onCalculateTotals()">
+                {{ 'transactions.calculateTotals' | translate }}
+              </button>
+            }
+          }
+        </p>
       }
     </ng-container>
   </app-page-header>

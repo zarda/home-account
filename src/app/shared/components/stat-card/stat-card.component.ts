@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 import { MatIconModule } from '@angular/material/icon';
+import { pinLeadingMinus } from '../../../core/utils/money-display.utils';
 import { LocaleNumberPipe } from '../../pipes/locale-number.pipe';
 
 export type StatTone = 'neutral' | 'income' | 'expense' | 'positive' | 'negative';
@@ -51,14 +52,8 @@ export class StatCardComponent {
   });
 
   /**
-   * Value with a WORD JOINER pinned after a leading minus. UAX-14 permits a
-   * line break between a sign and a currency symbol ("-" + "$"), so when a
-   * long negative amount wraps, WebKit can strand the sign on its own line
-   * and the amount below reads as positive. Chromium tailors that break
-   * away; the joiner closes it everywhere.
+   * Value with a WORD JOINER pinned after a leading minus, so a wrapped
+   * negative amount cannot strand its sign on its own line.
    */
-  displayValue = computed(() => {
-    const value = this.value();
-    return /^[-\u2212]/.test(value) ? `${value[0]}\u2060${value.slice(1)}` : value;
-  });
+  displayValue = computed(() => pinLeadingMinus(this.value()));
 }
