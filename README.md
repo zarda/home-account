@@ -238,6 +238,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard
 | [docs/performance.md](docs/performance.md) | What loads eagerly, where the heavy dependencies load instead, and the bundle budget |
 | [docs/dates.md](docs/dates.md) | Date and period conventions: local parts, day and month keys, and the window contracts |
 | [docs/money-snapshots.md](docs/money-snapshots.md) | Money that is stored already converted: what each figure is denominated in, when it is re-taken, and what repairs it |
+| [docs/period-totals.md](docs/period-totals.md) | The transactions header totals: the whole-set sweep, exact-or-absent rendering, the cap, and what refolds versus what re-reads |
 | [docs/one-shot-reads.md](docs/one-shot-reads.md) | Reads that must see the whole collection: which values may never come from a listener's first emission, and which must be answered by the server |
 | [docs/data.md](docs/data.md) | The stored-data hub: every kind of record, where each is managed, and what the counts do and do not mean |
 | [docs/feedback.md](docs/feedback.md) | In-app feedback: the stored record, its About-page door, and the mail that leaves from a Cloud Function |

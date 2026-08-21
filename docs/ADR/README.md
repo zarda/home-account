@@ -65,6 +65,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0058](0058-a-formatted-date-follows-the-chosen-language.md) | A formatted date follows the chosen language | Accepted | 2026-08-19 |
 | [0059](0059-one-mapper-builds-every-imported-transaction.md) | One mapper builds every imported transaction | Accepted; amends 0011 | 2026-08-20 |
 | [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) | A confirmed import keeps its photos and names its source | Accepted | 2026-08-20 |
+| [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted | 2026-08-21 |
 
 ## What belongs here
 
