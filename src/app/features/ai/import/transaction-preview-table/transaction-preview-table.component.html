@@ -10,6 +10,22 @@
       </mat-checkbox>
     </div>
     <div class="header-right">
+      @if (selectedCount() > 0) {
+        <button type="button" class="bulk-currency" [matMenuTriggerFor]="bulkCurrencyMenu">
+          <mat-icon aria-hidden="true">attach_money</mat-icon>
+          <span>{{ 'import.setCurrencyForSelected' | translate }}</span>
+          <mat-icon aria-hidden="true">arrow_drop_down</mat-icon>
+        </button>
+        <mat-menu #bulkCurrencyMenu="matMenu">
+          <ng-template matMenuContent>
+            @for (option of currencies; track option.code) {
+              <button mat-menu-item type="button" (click)="applyCurrencyToSelected(option.code)">
+                <span class="option-label">{{ option.code }} · {{ option.nameKey | translate }}</span>
+              </button>
+            }
+          </ng-template>
+        </mat-menu>
+      }
       <span class="selected-badge" [class.has-selection]="selectedCount() > 0">
         {{ selectedCount() }} / {{ transactions.length }}
       </span>
@@ -59,7 +75,7 @@
                   [attr.aria-label]="verificationTooltip(row, 'amount')"
                 >error_outline</mat-icon>
               }
-              {{ row.type === 'income' ? '+' : '-' }}{{ row.amount | currency:row.currency:'symbol':'1.2-2' }}
+              <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
             </div>
           </div>
 
@@ -81,6 +97,34 @@
                 {{ row.date | localeDate }}
               </span>
               <button
+                type="button"
+                class="currency-chip"
+                [class.fell-back]="row.currencyFellBack"
+                [matMenuTriggerFor]="currencyMenu"
+                [attr.aria-label]="'import.setCurrency' | translate: { currency: row.currency }"
+              >
+                @if (row.currencyFellBack) {
+                  <mat-icon
+                    class="verify-flag"
+                    [matTooltip]="currencyFellBackTooltip()"
+                    matTooltipPosition="above"
+                    role="img"
+                    [attr.aria-label]="currencyFellBackTooltip()"
+                  >error_outline</mat-icon>
+                }
+                {{ row.currency }}
+                <mat-icon class="chip-caret" aria-hidden="true">arrow_drop_down</mat-icon>
+              </button>
+              <mat-menu #currencyMenu="matMenu">
+                <ng-template matMenuContent>
+                  @for (option of currencyOptions(row); track option.code) {
+                    <button mat-menu-item type="button" [class.current]="option.code === row.currency" (click)="updateCurrency(row, option.code)">
+                      <span class="option-label">{{ option.code }} · {{ option.nameKey | translate }}</span>
+                    </button>
+                  }
+                </ng-template>
+              </mat-menu>
+              <button
                 mat-stroked-button
                 class="type-toggle"
                 [class.income]="row.type === 'income'"
@@ -100,6 +144,31 @@
               ></app-category-suggestion>
             </div>
           </div>
+
+          <!-- Anything the source suggested beyond the core fields, each
+               droppable in one tap -->
+          @if (row.location || row.tags?.length) {
+            <div class="card-extras">
+              @if (row.location; as location) {
+                <span class="extra-chip">
+                  <mat-icon aria-hidden="true">place</mat-icon>
+                  <span class="extra-text">{{ location.name }}</span>
+                  <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </span>
+              }
+              @for (tag of row.tags ?? []; track tag) {
+                <span class="extra-chip">
+                  <mat-icon aria-hidden="true">label</mat-icon>
+                  <span class="extra-text">{{ tag }}</span>
+                  <button type="button" class="extra-remove" [attr.aria-label]="'import.removeTag' | translate: { tag }" (click)="removeTag(row, tag)">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </span>
+              }
+            </div>
+          }
 
           <!-- Notes Section - compact inline -->
           @if (row.notes) {

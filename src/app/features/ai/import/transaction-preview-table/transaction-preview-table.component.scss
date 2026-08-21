@@ -9,6 +9,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  // The bulk currency button and the count badge cannot share a phone-width
+  // line with "Select all", so the two groups stack rather than the badge
+  // being pushed off the right edge.
+  flex-wrap: wrap;
+  gap: 8px;
   padding: 14px 20px;
   background: var(--surface-background, #f8f9fa);
   border-bottom: 1px solid var(--border-primary, #e0e0e0);
@@ -23,6 +28,9 @@
 .header-right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -204,6 +212,69 @@
   height: 1em;
 }
 
+// The date chip's look, worn by a control: the currency is the one field the
+// source can get wrong without saying so, so it reads as data and edits as a
+// menu.
+.currency-chip {
+  display: inline-flex;
+  align-items: center;
+  // 40px tap target, the accessible minimum; the chip's weight stays light.
+  min-height: 40px;
+  gap: 2px;
+  font-size: var(--text-xs);
+  font-family: inherit;
+  color: var(--text-muted, #666);
+  padding: 3px 9px;
+  background: var(--surface-hover, #eee);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  &.fell-back {
+    border-color: var(--color-warning);
+  }
+
+  .chip-caret {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+// The code the row is on already, so the menu says what it is changing from.
+// Weighted on our own span: MatMenuItem projects the label into its
+// .mat-mdc-menu-item-text, which sets its own font-weight, so a weight on the
+// button never reaches the text.
+.current .option-label {
+  font-weight: 600;
+}
+
+.bulk-currency {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  // 40px tap target, the accessible minimum.
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: var(--text-xs);
+  font-family: inherit;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  mat-icon {
+    font-size: var(--text-base);
+    width: 1em;
+    height: 1em;
+  }
+}
+
+.bulk-currency:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
 .type-toggle {
   // 40px tap target (was 26px, below the accessible minimum).
   min-height: 40px;
@@ -233,6 +304,79 @@
 
 .category-section {
   flex-shrink: 0;
+}
+
+/* What the source suggested beyond the core fields */
+.card-extras {
+  display: flex;
+  flex-wrap: wrap;
+  // 14px between rows, not 6: the remove button's 40px hit box overhangs a
+  // 26px chip by 7px each way, so a tighter gap would let the row below steal
+  // a tap aimed at the row above. 40 - 26 = 14 makes the hit boxes meet.
+  column-gap: 6px;
+  row-gap: 14px;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+.extra-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted, #666);
+  padding: 3px 4px 3px 9px;
+  background: var(--surface-hover, #eee);
+  border-radius: var(--radius-sm);
+
+  mat-icon {
+    font-size: var(--text-sm);
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
+}
+
+// A place name runs long and a tag can be a single unbroken word, so both wrap
+// mid-word rather than pushing the remove button out of the card.
+.extra-text {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.extra-remove {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+
+  // A 40×32 tap target laid over a 20px glyph: the chip has to stay chip-sized,
+  // so the hit area grows outside the box instead of the button growing.
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -10px -6px;
+  }
+}
+
+.extra-remove:hover {
+  color: var(--text-primary, #222);
 }
 
 /* Notes Section - compact inline style */
@@ -338,6 +482,10 @@
   }
 
   .category-section {
+    width: 100%;
+  }
+
+  .card-extras {
     width: 100%;
   }
 }

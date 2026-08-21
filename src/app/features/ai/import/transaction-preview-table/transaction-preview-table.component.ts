@@ -3,17 +3,21 @@ import { CommonModule } from '@angular/common';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatMenuModule } from '@angular/material/menu';
 import { FormsModule } from '@angular/forms';
 import {
   Category,
   CategorizedImportTransaction,
+  CurrencyInfo,
   VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 
 @Component({
@@ -25,11 +29,13 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
     MatCheckboxModule,
     MatIconModule,
     MatButtonModule,
+    MatMenuModule,
     FormsModule,
     CategorySuggestionComponent,
     MatTooltipModule,
     LocaleDatePipe,
-    TranslatePipe
+    TranslatePipe,
+    FitTextDirective
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './transaction-preview-table.component.html',
@@ -37,11 +43,14 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
 })
 export class TransactionPreviewTableComponent {
   private translationService = inject(TranslationService);
+  private currencyService = inject(CurrencyService);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
   @Input() categories: Category[] = [];
   @Output() transactionsUpdated = new EventEmitter<CategorizedImportTransaction[]>();
   @Output() selectionChanged = new EventEmitter<Set<string>>();
+
+  readonly currencies = this.currencyService.getSupportedCurrencies();
 
   // Plain methods, not computed(): `transactions` is a regular @Input array,
   // not a signal — a computed would evaluate once and
@@ -113,6 +122,51 @@ export class TransactionPreviewTableComponent {
       suggestedCategoryId: categoryId,
       categoryConfidence: 1.0, // User confirmed
     });
+  }
+
+  /**
+   * The curated picker, plus the row's own code when it is not curated.
+   * getCurrencyInfo already answers any ISO code (currencyInfoFor); the
+   * literal covers a code the ISO table does not know.
+   */
+  currencyOptions(row: CategorizedImportTransaction): CurrencyInfo[] {
+    const curated = this.currencies;
+    if (curated.some(c => c.code === row.currency)) return curated;
+    const own = this.currencyService.getCurrencyInfo(row.currency)
+      ?? { code: row.currency, nameKey: row.currency, symbol: row.currency };
+    return [own, ...curated];
+  }
+
+  /** Decimals follow the currency: ¥1,200, not ¥1,200.00. */
+  formatAmount(row: CategorizedImportTransaction): string {
+    return this.currencyService.formatCurrency(row.amount, row.currency);
+  }
+
+  updateCurrency(transaction: CategorizedImportTransaction, code: string): void {
+    // Chosen by the user, so whatever the source failed to read no longer applies.
+    this.replaceRow(transaction, { currency: code, currencyFellBack: false });
+  }
+
+  /** A batch of photos from one trip is nearly always one currency. */
+  applyCurrencyToSelected(code: string): void {
+    this.transactions = this.transactions.map(t =>
+      t.selected ? { ...t, currency: code, currencyFellBack: false } : t
+    );
+    this.emitChanges();
+  }
+
+  currencyFellBackTooltip(): string {
+    return this.translationService.t('import.currencyFellBack');
+  }
+
+  // The mapper spreads `location` only when truthy and `tags` only when
+  // non-empty, so an undefined slot or an emptied list is exactly "not written".
+  removeLocation(transaction: CategorizedImportTransaction): void {
+    this.replaceRow(transaction, { location: undefined });
+  }
+
+  removeTag(transaction: CategorizedImportTransaction, tag: string): void {
+    this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
   }
 
   /**
