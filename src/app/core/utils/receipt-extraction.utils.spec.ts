@@ -1,7 +1,9 @@
 import {
+  printedLocationSlot,
   readConfidence,
   readCurrencyCode,
   readFieldConfidence,
+  readPrintedLocation,
   readReceiptTotal,
 } from './receipt-extraction.utils';
 
@@ -105,5 +107,38 @@ describe('readFieldConfidence', () => {
 
   it('keeps a reported zero rather than dropping the field', () => {
     expect(readFieldConfidence({ amountConfidence: 0 })).toEqual({ amount: 0 });
+  });
+});
+
+describe('readPrintedLocation', () => {
+  it('keeps a printed address, whitespace collapsed', () => {
+    expect(readPrintedLocation(' 渋谷店\n東京都渋谷区 1-2-3 ', 'Tully\'s')).toBe('渋谷店 東京都渋谷区 1-2-3');
+  });
+
+  it('reads nothing from an empty, missing or non-string value', () => {
+    expect(readPrintedLocation('', 'X')).toBeUndefined();
+    expect(readPrintedLocation(undefined, 'X')).toBeUndefined();
+    expect(readPrintedLocation({ name: 'Y' }, 'X')).toBeUndefined();
+  });
+
+  it('drops a value that is only the merchant name — a name is not a place', () => {
+    expect(readPrintedLocation('Starbucks', 'STARBUCKS ')).toBeUndefined();
+  });
+
+  it('recognizes the echo however either side was spaced', () => {
+    // The value is collapsed before the comparison, so the merchant has to be
+    // too — otherwise a name printed with padded spacing slips past the guard.
+    expect(readPrintedLocation('Cafe Tokyo', '  Cafe   Tokyo ')).toBeUndefined();
+  });
+
+  it('drops a value too long to be an address', () => {
+    expect(readPrintedLocation('x'.repeat(121), 'X')).toBeUndefined();
+  });
+});
+
+describe('printedLocationSlot', () => {
+  it('wraps a name into the location slot and is empty otherwise', () => {
+    expect(printedLocationSlot('Shibuya')).toEqual({ location: { name: 'Shibuya' } });
+    expect(printedLocationSlot(undefined)).toEqual({});
   });
 });

@@ -152,6 +152,15 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"amount" is the TOTAL amount paid');
       expect(prompt).toContain('"receiptDetails"');
     });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      // A merchant name is not a place, and a translated address is not the
+      // string the receipt printed — the row is searched by what it says.
+      const prompt = render('receiptParse');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
+    });
   });
 
   describe('categorizeTransactions', () => {
@@ -370,6 +379,13 @@ describe('prompt registry', () => {
       expect(prompt).toContain('do NOT compute it by summing items');
       expect(prompt).toContain('do NOT use the cash tendered or change lines');
     });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      const prompt = render('multiImageReceipts');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
+    });
   });
 
   describe('statementTransactions', () => {
@@ -379,6 +395,13 @@ describe('prompt registry', () => {
       expect(prompt).toContain('Return ONLY a valid JSON array');
       expect(prompt).toContain('return an empty array: []');
     });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      const prompt = render('statementTransactions');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
+    });
   });
 
   describe('receiptSummary', () => {
@@ -386,6 +409,13 @@ describe('prompt registry', () => {
       const prompt = render('receiptSummary');
       expect(prompt).toContain('Return ONLY a JSON object (not an array)');
       expect(prompt).toContain('Capture EVERYTHING on the receipt.');
+    });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      const prompt = render('receiptSummary');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
     });
   });
 
@@ -405,6 +435,13 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"receiptTotal"');
       expect(prompt).toContain('do NOT compute it by summing items');
       expect(prompt).toContain('do NOT use the cash tendered or change lines');
+    });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      const prompt = render('receiptItems');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
     });
   });
 

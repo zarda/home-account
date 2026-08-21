@@ -493,4 +493,86 @@ describe('CloudLLMProviderBase', () => {
       expect(rows[0].category).toBe('food_groceries');
     });
   });
+
+  /**
+   * Where the receipt says it was issued, and only when it says so. An absent
+   * `location` slot means nobody read one, so a row must never carry a place
+   * the receipt did not print — the map pin and the searchable name are both
+   * that string.
+   */
+  describe('printed location', () => {
+    it('carries the address a receipt printed', async () => {
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4,"location":"Shibuya 1-2-3"}',
+        truncated: false,
+      };
+
+      const receipt = await provider.parseReceipt('img');
+
+      expect(receipt.location).toBe('Shibuya 1-2-3');
+    });
+
+    it('reports no location when the receipt printed none', async () => {
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4,"location":""}',
+        truncated: false,
+      };
+
+      const receipt = await provider.parseReceipt('img');
+
+      expect(receipt.location).toBeUndefined();
+    });
+
+    it('wraps a statement row location into the row slot and leaves it out otherwise', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-07-01', description: 'CAFE', amount: 4.5, type: 'expense',
+            currency: 'USD', merchant: 'Cafe', location: 'Shibuya 1-2-3' },
+          { date: '2026-07-01', description: 'SHOP', amount: 9, type: 'expense',
+            currency: 'USD', merchant: 'Shop' },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].location).toEqual({ name: 'Shibuya 1-2-3' });
+      expect('location' in rows[1]).toBeFalse();
+    });
+
+    it('wraps a multi-image row location the same way', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-07-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
+            merchant: 'Cafe', location: '渋谷店 東京都渋谷区 1-2-3', imageIndex: 0,
+            positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+          { date: '2026-07-01', description: 'B', amount: 6, type: 'expense', currency: 'USD',
+            merchant: 'Cafe', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1 },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+
+      expect(rows[0].location).toEqual({ name: '渋谷店 東京都渋谷区 1-2-3' });
+      expect('location' in rows[1]).toBeFalse();
+    });
+
+    it('drops a location that is only the merchant name repeated', async () => {
+      // The prompt forbids inferring a place from the name. A model that did
+      // it anyway has not said where the receipt was issued, and the repeat
+      // would be indistinguishable downstream from a branch actually printed.
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-07-01', description: 'CAFE', amount: 4.5, type: 'expense',
+            currency: 'USD', merchant: 'Cafe Tokyo', location: 'cafe tokyo' },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect('location' in rows[0]).toBeFalse();
+    });
+  });
 });

@@ -311,6 +311,18 @@ describe('AIStrategyService', () => {
       expect((await service.processReceipt(imageFile())).receiptCount).toBe(1);
     });
 
+    it('carries the printed location out as the row slot, and nothing when none was read', async () => {
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, location: 'Shibuya' });
+      const service = createService('web');
+
+      expect((await service.processReceipt(imageFile())).transactions[0].location)
+        .toEqual({ name: 'Shibuya' });
+
+      cloudMock.parseReceipt.and.resolveTo(parsedReceipt);
+      const plain = await service.processReceipt(imageFile());
+      expect('location' in plain.transactions[0]).toBeFalse();
+    });
+
     it('carries the per-field confidences out', async () => {
       cloudMock.parseReceipt.and.resolveTo({
         ...parsedReceipt,
@@ -610,6 +622,33 @@ describe('AIStrategyService', () => {
 
       expect(result.transactions[0].amount).toBe(16.2);
       expect(result.transactions[0].fieldConfidence).toBeUndefined();
+    });
+
+    it('carries a printed location through consolidation onto the row', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          confidence: 0.8, receiptId: 1,
+        },
+        {
+          date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
+          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          receiptId: 1, location: { name: 'Shibuya 1-2-3' },
+        },
+        {
+          date: '2026-01-16', description: 'Solo', amount: 7, type: 'expense',
+          currency: 'USD', imageIndex: 1, positionInImage: 'top', confidence: 0.9,
+          receiptId: 2,
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      expect(result.transactions[0].location).toEqual({ name: 'Shibuya 1-2-3' });
+      expect('location' in result.transactions[1]).toBeFalse();
     });
 
     it('should prefer the full receipt details from the AI for merged notes', async () => {

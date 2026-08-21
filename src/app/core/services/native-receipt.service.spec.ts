@@ -204,6 +204,24 @@ describe('NativeReceiptService', () => {
       expect(transaction.date.getTime()).toBe(new Date(2026, 0, 15).getTime());
     });
 
+    it('carries a printed location as the row slot, and nothing without one', async () => {
+      const extraction = {
+        merchant: 'Cafe Tokyo', date: '2026-01-15', amount: 1200, currency: 'JPY',
+        category: 'Coffee & Drinks', details: '',
+      };
+      appleMock.parseReceiptText.and.resolveTo({ ...extraction, location: '渋谷店' });
+      expect((await service.processImage(imageFile())).transactions[0].location)
+        .toEqual({ name: '渋谷店' });
+
+      appleMock.parseReceiptText.and.resolveTo({ ...extraction, location: '' });
+      expect('location' in (await service.processImage(imageFile())).transactions[0]).toBeFalse();
+
+      // A device still running the previous binary answers without the key at
+      // all, which has to read the same as a receipt that printed no address.
+      appleMock.parseReceiptText.and.resolveTo(extraction);
+      expect('location' in (await service.processImage(imageFile())).transactions[0]).toBeFalse();
+    });
+
     it('sends no raw i18n key and no deactivated category to the model', async () => {
       await service.processImage(imageFile());
 
