@@ -208,6 +208,16 @@ describe('DashboardComponent', () => {
       expect(build().componentInstance.totalIncome()).toBeCloseTo(25.42, 2);
     });
 
+    it('rounds totals at the fold boundary through the shared sumByType', () => {
+      // 0.1 + 0.2 must come out exactly 0.3 — roundMoney at the fold
+      // boundary, not float dust left for Intl to format away.
+      transactionService.transactions.set([
+        createTransaction({ type: 'expense', amount: 0.1, amountInBaseCurrency: 0.1 }),
+        createTransaction({ type: 'expense', amount: 0.2, amountInBaseCurrency: 0.2 }),
+      ]);
+      expect(build().componentInstance.totalExpenses()).toBe(0.3);
+    });
+
     it('groups and sorts category totals by amount descending', () => {
       const totals = build().componentInstance.categoryTotals();
       expect(totals[0]).toEqual(jasmine.objectContaining({ categoryId: 'food', total: 500, count: 2 }));
