@@ -159,7 +159,10 @@ them rides into a transaction document.
   the transaction exists.
 - **Bulk apply is scoped to the selection, and that is the only scope.** A
   twenty-row batch with two foreign rows takes a bulk pass plus two per-row
-  edits, or a deselect-apply-reselect dance.
+  edits, or a deselect-apply-reselect dance. The bulk menu also lists the
+  curated codes only — it has no single row whose own code it could add — so
+  a batch already on an uncurated code such as MXN can be bulk-set away from
+  it and not back to it, and the way back is one per-row menu each.
 - **A removal is only a removal.** Taking a location off a row says nothing to
   the next import of the same merchant; only tags carry a memory of what was
   refused ([0063](0063-an-import-suggests-only-what-the-account-already-knows.md)).

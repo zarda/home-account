@@ -123,8 +123,9 @@ they share, `merchantNamesMatch`, is module-private. A rule is offered when it
 is active, its type agrees, its name matches by the detector's own ladder
 (normalized equality, containment at three characters or more, then bigram
 similarity at the detector's threshold), and its amount is within the
-detector's tolerance — checked only when the currencies agree, since a figure
-in another currency is not comparable without a rate. First match wins.
+detector's tolerance — checked when the currencies agree and also when the row's currency fell
+back, since the printed figure is the only evidence such a row has; a figure
+in a currency a reader did read is not comparable without a rate. First match wins.
 
 **The link is offered unchecked.** Accepting writes `recurringId` and
 `isRecurring: true`; declining restores whatever the source said about
@@ -222,17 +223,20 @@ only thing that reliably identifies it.
 
 ## Known gaps
 
-- **A fallen-back currency is compared against nothing, or against the wrong
-  figure.** The matcher skips the amount check whenever the row's currency and
-  the rule's differ, and a row whose currency fell back carries the account's
-  base currency rather than anything anyone read. So a fallen-back row meets a
-  rule in another currency on name and type alone — a containment hit on the
-  name is enough to offer it, and through the occurrence flag to deselect it —
-  while a fallen-back row meeting a base-currency rule has its amount compared
-  in earnest, against a figure whose real currency nobody read. Carrying
-  `currencyFellBack` on the match candidate and comparing the figures only when
-  a currency was actually read is the tightening; it changes what is compared,
-  so it is a decision rather than a fix.
+- **A fallen-back row's figure is compared as-is, whatever the rule's
+  currency.** A row whose currency fell back carries the account's base
+  currency rather than anything anyone read, so the ordinary rule — skip the
+  amount check when the currencies differ — would have offered it a rule in
+  any other currency on name and type alone. The name ladder's containment
+  rung meets "Gym" with "Gymboree", and an offered rule with a posted
+  occurrence in the window *deselects* the row through the duplicate flag, so
+  a name-only hit is not a cosmetic mistake. The candidate therefore carries
+  `currencyFellBack` and the printed figure is compared against the rule's
+  amount whatever currency the rule keeps. The cost is a row whose unread
+  currency really did differ from the rule's: its figure will not agree and
+  the link is not offered, so the reviewer ticks the box by hand. That was
+  preferred to the alternative, because a wrong offer costs the reviewer a
+  row they meant to import and a missing offer costs a tick.
 - **The same merchant written two ways keys two memories.** "STARBUCKS #4412"
   and "Starbucks Shibuya" normalize to different keys, so a tag kept on one
   teaches the other nothing. That is #296, and it is the same limit category

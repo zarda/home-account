@@ -117,7 +117,7 @@ substring:
 | period | `period` |
 | recurring | `recurring` |
 | note | `note` |
-| tags | `tags` — the cell splits on `; `, the export's own join |
+| tags | `tags` — the cell splits on `; `, the export's own join, and each tag is normalized the way the form normalizes a typed one |
 | location | `location` — the cell becomes the place name; coordinates are never invented |
 
 Amount is the only truly required value: a row too short to reach the date,

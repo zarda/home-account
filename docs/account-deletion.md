@@ -1,7 +1,7 @@
 # Account deletion
 
 Settings → Data Management → Danger Zone → **Delete Account** permanently
-erases the signed-in account: every Firestore subcollection (all twelve),
+erases the signed-in account: every Firestore subcollection without exception,
 the receipt objects in Storage, the device-local state keyed by the
 account, the user document, and finally the Firebase Auth user. There is no backend — the
 whole erasure is a client-side cascade run by `AccountDeletionService`

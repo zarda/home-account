@@ -124,7 +124,7 @@ this is what they do.
 |---|---|---|---|
 | `location` | the branch or address the document itself prints, asked for by the shared prompt fragment and by the on-device schema | a reader that asks — all five receipt prompts and the on-device model | `readPrintedLocation`: a string, non-empty, whitespace collapsed, ≤120 characters, and not the merchant name |
 | `tags` | the account's own vocabulary — the tags on the last six months of transactions plus the tags memory holds | memory answers with the RAG level off; the model rung needs the level on, a non-empty vocabulary and a cloud provider | every tag must be in the vocabulary (in the adapter and again in `TagSuggestionService`), and a tag the merchant has had removed before is dropped |
-| `recurringMatch` | the account's active recurring rules, read once per batch through `listAll()` | at least one active rule | active, same type, the detector's name ladder, and the detector's amount tolerance when the currencies agree |
+| `recurringMatch` | the account's active recurring rules, read once per batch through `listAll()` | at least one active rule | active, same type, the detector's name ladder, and the detector's amount tolerance when the currencies agree or the row's currency fell back |
 
 **Removing one means it is not written.** There is no rejected state anywhere:
 the mapper spreads `location` only when truthy, `tags` only when non-empty and

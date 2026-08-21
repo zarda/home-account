@@ -205,7 +205,7 @@ rule that satisfies all of:
 |---|---|
 | type | the same as the row's |
 | name | matched by the **detector's own ladder** — normalized equality, containment at three characters or more, then bigram similarity at the detector's threshold |
-| amount | within the detector's tolerance of the rule's amount — 15% of the larger figure, floored at 1 — but only when the row's currency and the rule's agree |
+| amount | within the detector's tolerance of the rule's amount — 15% of the larger figure, floored at 1 — when the row's currency and the rule's agree, or when the row's currency fell back, in which case the printed figure is compared as-is |
 
 It is the same ladder coverage suppression uses, deliberately: the import and
 the Insights tab should not disagree about what counts as the same merchant.
@@ -216,6 +216,14 @@ has no gaps to observe, so the only evidence left that this charge is *that*
 charge is how much it is for. A figure in another currency is not comparable
 without a rate, so the check is skipped rather than converted, and the name and
 the type carry the match alone.
+
+**Unless nobody read a currency at all.** A row marked `currencyFellBack`
+wears the account's base currency because the source never said what money it
+was, so "the currencies differ" says nothing about the figure. Skipping the
+check there would leave the name and the type carrying a match on exactly the
+rows the reader was least sure about — and an offered rule with a posted
+occurrence in the window deselects the row. The printed figure is compared
+as-is instead, whatever currency the rule is in.
 
 Accepting the link writes `recurringId` and `isRecurring: true` on the
 transaction; declining restores whatever the source said about `isRecurring`,
