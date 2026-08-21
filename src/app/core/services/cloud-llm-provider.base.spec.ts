@@ -278,6 +278,72 @@ describe('CloudLLMProviderBase', () => {
     });
   });
 
+  describe('suggestTags', () => {
+    const rows = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({ description: `Row ${i}` }));
+    const answer = (entries: { index: number; tags: string[] }[]): ProviderResponse => ({
+      text: JSON.stringify(entries),
+      truncated: false,
+    });
+
+    it('sends one request for a batch at the chunk size and lists the vocabulary', async () => {
+      const batch = rows(CATEGORIZE_CHUNK_SIZE);
+      provider.response = answer(batch.map((_, i) => ({ index: i, tags: ['coffee'] })));
+
+      const result = await provider.suggestTags(batch, ['coffee', 'work']);
+
+      expect(provider.sent).toEqual(['suggestTags']);
+      expect(provider.renderedSent[0].user).toContain('- coffee\n- work');
+      expect(provider.renderedSent[0].user).toContain(
+        `${CATEGORIZE_CHUNK_SIZE - 1}: "Row ${CATEGORIZE_CHUNK_SIZE - 1}"`
+      );
+      expect(result.length).toBe(CATEGORIZE_CHUNK_SIZE);
+      expect(result.every(tags => tags[0] === 'coffee')).toBeTrue();
+    });
+
+    it('splits past the chunk size and re-bases the second request from zero', async () => {
+      const batch = rows(CATEGORIZE_CHUNK_SIZE + 1);
+      provider.responseQueue = [
+        answer(
+          Array.from({ length: CATEGORIZE_CHUNK_SIZE }, (_, i) => ({ index: i, tags: ['coffee'] }))
+        ),
+        answer([{ index: 0, tags: ['work'] }]),
+      ];
+
+      const result = await provider.suggestTags(batch, ['coffee', 'work']);
+
+      expect(provider.sent).toEqual(['suggestTags', 'suggestTags']);
+      expect(provider.renderedSent[1].user).toContain(`0: "Row ${CATEGORIZE_CHUNK_SIZE}"`);
+      expect(result.length).toBe(CATEGORIZE_CHUNK_SIZE + 1);
+      expect(result[0]).toEqual(['coffee']);
+      expect(result[CATEGORIZE_CHUNK_SIZE]).toEqual(['work']);
+    });
+
+    it('drops an answer the account\'s vocabulary does not contain', async () => {
+      provider.response = answer([{ index: 0, tags: ['invented', 'Coffee'] }]);
+
+      const result = await provider.suggestTags(rows(1), ['coffee']);
+
+      expect(result).toEqual([['coffee']]);
+    });
+
+    it('answers empty for the failed chunk only', async () => {
+      spyOn(console, 'error');
+      const batch = rows(CATEGORIZE_CHUNK_SIZE + 1);
+      provider.responseQueue = [
+        new Error('first chunk truncated'),
+        answer([{ index: 0, tags: ['work'] }]),
+      ];
+
+      const result = await provider.suggestTags(batch, ['coffee', 'work']);
+
+      expect(result.slice(0, CATEGORIZE_CHUNK_SIZE).every(tags => tags.length === 0)).toBeTrue();
+      expect(result[CATEGORIZE_CHUNK_SIZE]).toEqual(['work']);
+      // Nothing is shown to the user on this path.
+      expect(provider.lastError()).toBeNull();
+    });
+  });
+
   describe('extraction category resolution', () => {
     const statementJson = (category: string) =>
       JSON.stringify([

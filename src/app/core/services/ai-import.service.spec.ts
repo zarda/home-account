@@ -25,8 +25,11 @@ import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { CategoryMemoryService } from './category-memory.service';
 import { RagContextService } from './rag-context.service';
+import { TagMemoryService } from './tag-memory.service';
+import { TagSuggestionService } from './tag-suggestion.service';
 import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
+import { createTransaction } from './testing/test-data';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 import {
   CategorizedImportTransaction,
@@ -49,6 +52,8 @@ describe('AIImportService', () => {
   let pwaService: jasmine.SpyObj<PwaService>;
   let categoryMemory: jasmine.SpyObj<CategoryMemoryService>;
   let ragContext: jasmine.SpyObj<RagContextService>;
+  let tagSuggestions: jasmine.SpyObj<TagSuggestionService>;
+  let tagMemory: jasmine.SpyObj<TagMemoryService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
   let rasterize: jasmine.Spy;
   let isOnlineSignal: WritableSignal<boolean>;
@@ -99,6 +104,10 @@ describe('AIImportService', () => {
     ragContext = jasmine.createSpyObj<RagContextService>('RagContextService', [
       'buildCategorizationGrounding',
     ]);
+    // GroundingHistoryService is deliberately real here: its two dependencies
+    // are already mocked, so the RAG gate is exercised rather than stubbed.
+    tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
+    tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['rememberAll']);
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', [
       'trackAiAssistUsed',
     ]);
@@ -118,6 +127,8 @@ describe('AIImportService', () => {
     categoryMemory.rememberAll.and.resolveTo(undefined);
     transactionService.getTransactions.and.returnValue(of([]));
     ragContext.buildCategorizationGrounding.and.returnValue('');
+    tagSuggestions.suggest.and.callFake(async (rows: readonly unknown[]) => rows.map(() => []));
+    tagMemory.rememberAll.and.resolveTo(undefined);
 
     TestBed.configureTestingModule({
       providers: [
@@ -134,6 +145,8 @@ describe('AIImportService', () => {
         { provide: PwaService, useValue: pwaService },
         { provide: CategoryMemoryService, useValue: categoryMemory },
         { provide: RagContextService, useValue: ragContext },
+        { provide: TagSuggestionService, useValue: tagSuggestions },
+        { provide: TagMemoryService, useValue: tagMemory },
         { provide: AnalyticsService, useValue: analytics }
       ]
     });
@@ -486,6 +499,8 @@ describe('AIImportService', () => {
       ragContext.buildCategorizationGrounding.and.returnValue(
         'How this user usually categorizes these merchants:\n- STARBUCKS → Coffee (food_coffee)'
       );
+      // An empty history is, by design, nothing to ground in.
+      transactionService.getTransactions.and.returnValue(of([createTransaction()]));
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
 
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
@@ -552,6 +567,139 @@ describe('AIImportService', () => {
 
       expect(result.transactions[0].currency).toBe('USD');
       expect('currencyFellBack' in result.transactions[0]).toBeFalse();
+    });
+  });
+
+  describe('suggested tags', () => {
+    const oneItem = (overrides: Record<string, unknown> = {}) => [{
+      date: '2024-06-01', description: 'STARBUCKS', amount: 5, type: 'expense' as const,
+      currency: 'JPY', imageIndex: 0, positionInImage: 'top' as const, confidence: 0.9, receiptId: 1,
+      ...overrides,
+    }];
+
+    it('stamps the offered tags on the row and keeps a copy of the offer', async () => {
+      // `tags` is what the card shows and the user edits; `suggestedTags` is
+      // what was offered, so the confirm step can tell a removal from a row
+      // that never had any.
+      tagSuggestions.suggest.and.resolveTo([['coffee', 'work']]);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions[0].tags).toEqual(['coffee', 'work']);
+      expect(result.transactions[0].suggestedTags).toEqual(['coffee', 'work']);
+    });
+
+    it('never offers tags for a row the source already tagged', async () => {
+      // The source read them off the document; a suggestion would argue with
+      // what is actually printed there.
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo([
+        ...oneItem({ tags: ['groceries'] }),
+        ...oneItem({ description: 'NEW PLACE', receiptId: 2 }),
+      ]);
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      const asked = tagSuggestions.suggest.calls.mostRecent().args[0];
+      expect(asked.length).toBe(1);
+      expect(asked[0].description).toBe('NEW PLACE');
+      expect(result.transactions[0].tags).toEqual(['groceries']);
+      expect(result.transactions[0].suggestedTags).toBeUndefined();
+    });
+
+    it('reads no history and grounds nothing when RAG is off', async () => {
+      authService.currentUser.and.returnValue({
+        preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'off' },
+      } as never);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(tagSuggestions.suggest.calls.mostRecent().args[1]).toEqual([]);
+      expect(transactionService.getTransactions).not.toHaveBeenCalled();
+      expect(cloudLLMProvider.categorizeTransactions.calls.mostRecent().args[1]).toBeUndefined();
+    });
+
+    it('hands the same recent history to the suggester and the grounding', async () => {
+      authService.currentUser.and.returnValue({
+        preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'standard' },
+      } as never);
+      const history = [createTransaction()];
+      transactionService.getTransactions.and.returnValue(of(history));
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(tagSuggestions.suggest.calls.mostRecent().args[1]).toEqual(history);
+      // One read for both groundings, not one each.
+      expect(transactionService.getTransactions).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers tags on a receipt the strategy service read', async () => {
+      tagSuggestions.suggest.and.resolveTo([['coffee']]);
+      strategyService.processReceipt.and.resolveTo({
+        source: 'cloud',
+        confidence: 0.9,
+        processingTimeMs: 10,
+        transactions: [{
+          date: new Date(2024, 5, 1), description: 'STARBUCKS', amount: 5,
+          type: 'expense', currency: 'JPY', confidence: 0.9, source: 'cloud',
+        }],
+      });
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].tags).toEqual(['coffee']);
+    });
+
+    it('offers tags on the single-shot fallback too', async () => {
+      // The two branches of importFromImage build their rows differently, so
+      // wiring one and not the other is exactly the mistake to pin.
+      tagSuggestions.suggest.and.resolveTo([['coffee']]);
+      strategyService.processReceipt.and.returnValue(Promise.resolve({
+        source: 'cloud', confidence: 0, processingTimeMs: 1, transactions: [],
+      }));
+      cloudLLMProvider.extractTransactionsFromImage.and.resolveTo([
+        { date: '2024-06-01', description: 'STARBUCKS', amount: 5, type: 'expense', currency: 'JPY' },
+      ]);
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(cloudLLMProvider.extractTransactionsFromImage).toHaveBeenCalled();
+      expect(result.transactions[0].tags).toEqual(['coffee']);
+    });
+
+    it('offers tags on a statement, a PDF and a CSV', async () => {
+      tagSuggestions.suggest.and.resolveTo([['coffee']]);
+      cloudLLMProvider.extractStatementTransactions.and.resolveTo([
+        { date: '2024-06-01', description: 'STARBUCKS', amount: 5, type: 'expense', currency: 'JPY' },
+      ]);
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { date: new Date(2024, 5, 1), description: 'STARBUCKS', amount: 5, type: 'expense', currency: 'JPY' },
+      ] as never));
+      rasterize.and.resolveTo({ pages: ['page-1'], totalPages: 1, truncated: false });
+      const pdf = makeFile('s.pdf', 'application/pdf');
+      (pdf as unknown as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer =
+        () => Promise.resolve(new ArrayBuffer(8));
+
+      const statementResult = await service.importFromStatementImages([makeFile('s.png', 'image/png')]);
+      const pdfResult = await service.importFromPDF(pdf);
+      const csvResult = await service.importFromCSV(makeFile('s.csv', 'text/csv'));
+
+      expect(statementResult.transactions[0].tags).toEqual(['coffee']);
+      expect(pdfResult.transactions[0].tags).toEqual(['coffee']);
+      expect(csvResult.transactions[0].tags).toEqual(['coffee']);
+    });
+
+    it('never asks for suggestions on a backup restore', async () => {
+      // A backup row already carries whatever tags its transaction had.
+      const backup = JSON.stringify({
+        transactions: [{ description: 'STARBUCKS', amount: 5, type: 'expense', currency: 'JPY' }],
+      });
+
+      await service.importFromJSON(makeFile('b.json', 'application/json', backup));
+
+      expect(tagSuggestions.suggest).not.toHaveBeenCalled();
     });
   });
 
@@ -1049,6 +1197,8 @@ describe('AIImportService', () => {
       ragContext.buildCategorizationGrounding.and.returnValue(
         'How this user usually categorizes these merchants:\n- Coffee → Coffee (food_coffee)'
       );
+      // An empty history is, by design, nothing to ground in.
+      transactionService.getTransactions.and.returnValue(of([createTransaction()]));
       exportService.importFromCSV.and.returnValue(csvRows());
 
       const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
@@ -1649,6 +1799,31 @@ describe('AIImportService', () => {
       const dtos = transactionService.addTransaction.calls.all().map(c => c.args[0]);
       expect(dtos[0].receiptFiles).toEqual([fileA]);
       expect('receiptFiles' in dtos[1]).toBeFalse();
+    });
+
+    it('records what each merchant kept and what it refused', async () => {
+      // A suggestion the user took off is the stronger signal: it is the one
+      // decision the next import must not argue with.
+      await service.confirmImport(
+        [
+          selected({ description: 'STARBUCKS', tags: ['coffee'], suggestedTags: ['coffee', 'work'] }),
+          selected({ id: 'imp-2', description: 'CINEMA', tags: ['fun'] }),
+          selected({ id: 'imp-3', description: 'REFUSED', suggestedTags: ['travel'] }),
+        ],
+        'r.png', 10, 'image', 'receipt_image'
+      );
+
+      expect(tagMemory.rememberAll).toHaveBeenCalledWith([
+        { description: 'STARBUCKS', kept: ['coffee'], removed: ['work'] },
+        { description: 'CINEMA', kept: ['fun'], removed: [] },
+        { description: 'REFUSED', kept: [], removed: ['travel'] },
+      ]);
+    });
+
+    it('records nothing for rows that never had a tag or an offer', async () => {
+      await service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image');
+
+      expect(tagMemory.rememberAll).toHaveBeenCalledWith([]);
     });
 
     it('attaches nothing to rows without image metadata even when files ride along', async () => {

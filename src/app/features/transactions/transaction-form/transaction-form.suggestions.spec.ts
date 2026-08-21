@@ -19,6 +19,9 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
+import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
+import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { Category, User } from '../../../models';
 import { createCategory, createUser } from '../../../core/services/testing';
@@ -76,6 +79,15 @@ describe('TransactionFormComponent suggestion chips', () => {
     const dialogRef = jasmine.createSpyObj('MatDialogRef', ['close', 'afterClosed']);
     dialogRef.afterClosed.and.returnValue(of(undefined));
 
+    // The scan's tag ladder, kept inert: this suite renders chips, and the
+    // real services would pull the provider chain and Firestore in behind them.
+    const tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
+    tagSuggestions.suggest.and.resolveTo([[]]);
+    const groundingHistory = jasmine.createSpyObj<GroundingHistoryService>('GroundingHistoryService', ['recent']);
+    groundingHistory.recent.and.resolveTo([]);
+    const tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']);
+    tagMemory.remember.and.resolveTo(undefined);
+
     await TestBed.configureTestingModule({
       imports: [TransactionFormComponent, ReactiveFormsModule],
       providers: [
@@ -96,6 +108,9 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: ReceiptQuotaService, useValue: jasmine.createSpyObj('ReceiptQuotaService', ['canAddImages']) },
         { provide: ReceiptToNoteService, useValue: jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']) },
         { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']) },
+        { provide: TagSuggestionService, useValue: tagSuggestions },
+        { provide: GroundingHistoryService, useValue: groundingHistory },
+        { provide: TagMemoryService, useValue: tagMemory },
         { provide: GoalService, useValue: {
           goals: signal([]),
           activeGoals: signal([]),
