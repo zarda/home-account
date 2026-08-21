@@ -75,13 +75,18 @@ describe('DuplicateWarningComponent', () => {
       expect(component.getMatchIcon('possible')).toBe('help');
     });
 
+    it('should return the recurring icon for a posted occurrence', () => {
+      expect(component.getMatchIcon('recurring_occurrence')).toBe('autorenew');
+    });
+
     it('should return info icon for unknown match type', () => {
       expect(component.getMatchIcon('none')).toBe('info');
     });
   });
 
   describe('getMatchLabelKey', () => {
-    const matchTypes: DuplicateCheck['matchType'][] = ['exact', 'likely', 'possible', 'none'];
+    const matchTypes: DuplicateCheck['matchType'][] =
+      ['exact', 'likely', 'possible', 'recurring_occurrence', 'none'];
 
     it('maps each match type to its own key', () => {
       const keys = matchTypes.map(t => component.getMatchLabelKey(t));
@@ -89,6 +94,7 @@ describe('DuplicateWarningComponent', () => {
         'import.matchExact',
         'import.matchLikely',
         'import.matchPossible',
+        'import.matchRecurringOccurrence',
         'import.matchUnknown',
       ]);
     });

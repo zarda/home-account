@@ -285,6 +285,57 @@ describe('DuplicateDetectionService', () => {
         expect(results[0].isDuplicate).toBeTrue();
       });
     });
+
+    describe('an occurrence the scheduler already posted', () => {
+      const posted = (overrides: Partial<Transaction> = {}) =>
+        existing({ id: 'posted-1', amount: 99, description: 'Netflix', recurringId: 'rule-1', ...overrides });
+
+      it('flags a row against the rule it was offered, whatever the amount says', async () => {
+        // The subscription price on the receipt and the figure the rule posts
+        // routinely differ — a price rise, a proration, a partial refund. The
+        // rule is the identity here, so the amount ladder must not get a veto.
+        mockTransactionService.getTransactions.and.returnValue(of([
+          posted({ date: Timestamp.fromDate(new Date(2024, 5, 14)) })
+        ]));
+
+        const [result] = await service.checkDuplicates([
+          importTxn({ id: 'imp', recurringMatch: { id: 'rule-1', name: 'Netflix' } })
+        ]);
+
+        expect(result.matchType).toBe('recurring_occurrence');
+        expect(result.isDuplicate).toBeTrue();
+        expect(result.existingTransactionId).toBe('posted-1');
+        expect(result.confidence).toBe(0.9);
+      });
+
+      it('says nothing about a row that was offered no rule', async () => {
+        // Same pair of rows, minus the offer: the amount ladder answers alone,
+        // and 5 against 99 is not a duplicate by any of its rungs.
+        mockTransactionService.getTransactions.and.returnValue(of([
+          posted({ date: Timestamp.fromDate(new Date(2024, 5, 14)) })
+        ]));
+
+        const [result] = await service.checkDuplicates([importTxn({ id: 'imp' })]);
+
+        expect(result.isDuplicate).toBeFalse();
+        expect(result.matchType).toBe('none');
+      });
+
+      it('does not reach past the window the check already loads', async () => {
+        // Three days out is outside the ±1 day the candidate index covers, so
+        // the rule's occurrence that month is not this row's occurrence.
+        mockTransactionService.getTransactions.and.returnValue(of([
+          posted({ date: Timestamp.fromDate(new Date(2024, 5, 12)) })
+        ]));
+
+        const [result] = await service.checkDuplicates([
+          importTxn({ id: 'imp', recurringMatch: { id: 'rule-1', name: 'Netflix' } })
+        ]);
+
+        expect(result.isDuplicate).toBeFalse();
+        expect(result.matchType).toBe('none');
+      });
+    });
   });
 
   describe('markDuplicates', () => {

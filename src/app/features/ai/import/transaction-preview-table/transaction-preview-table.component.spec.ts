@@ -495,4 +495,70 @@ describe('TransactionPreviewTableComponent', () => {
       expect(emitted[0][0].tags).toEqual(['coffee']);
     });
   });
+
+  describe('the offered recurring link', () => {
+    const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}) => ({
+      ...createMockTransactions()[0],
+      ...overrides,
+    });
+
+    const emissions = (): CategorizedImportTransaction[][] => {
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+      return emitted;
+    };
+
+    it('links the row to the rule it was offered when accepted', () => {
+      const row = makeRow({ recurringMatch: { id: 'rule-1', name: 'Netflix' } });
+      component.transactions = [row];
+      const emitted = emissions();
+
+      component.toggleRecurringLink(row, true);
+
+      expect(emitted[0][0].recurringId).toBe('rule-1');
+      expect(emitted[0][0].isRecurring).toBeTrue();
+      expect(row.recurringId).toBeUndefined(); // the input object is untouched
+    });
+
+    it('restores what the source said about the row when the link is declined', () => {
+      const row = makeRow({
+        recurringMatch: { id: 'rule-1', name: 'Netflix', sourceIsRecurring: false },
+        recurringId: 'rule-1',
+        isRecurring: true,
+      });
+      component.transactions = [row];
+      const emitted = emissions();
+
+      component.toggleRecurringLink(row, false);
+
+      expect(emitted[0][0].recurringId).toBeUndefined();
+      expect(emitted[0][0].isRecurring).toBeFalse();
+    });
+
+    it('leaves isRecurring unanswered when the source never said', () => {
+      // The mapper writes isRecurring only when it is present, so undefined
+      // has to survive the undo or a declined link still writes "recurring".
+      const row = makeRow({
+        recurringMatch: { id: 'rule-1', name: 'Netflix' },
+        recurringId: 'rule-1',
+        isRecurring: true,
+      });
+      component.transactions = [row];
+      const emitted = emissions();
+
+      component.toggleRecurringLink(row, false);
+
+      expect(emitted[0][0].isRecurring).toBeUndefined();
+    });
+
+    it('does nothing for a row that was offered no rule', () => {
+      const row = makeRow();
+      component.transactions = [row];
+      const emitted = emissions();
+
+      component.toggleRecurringLink(row, true);
+
+      expect(emitted.length).toBe(0);
+    });
+  });
 });

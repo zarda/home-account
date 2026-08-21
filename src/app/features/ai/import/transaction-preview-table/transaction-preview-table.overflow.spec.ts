@@ -55,6 +55,7 @@ class PreviewOverflowProbeComponent {
       selected: true,
       location: { name: '東京都渋谷区道玄坂一丁目二番三号 渋谷マークシティ店' },
       tags: ['coffee', 'work', 'reimbursable'],
+      recurringMatch: { id: 'rule-1', name: 'Netflix' },
     },
   ];
 }

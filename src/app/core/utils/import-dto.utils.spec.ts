@@ -32,6 +32,7 @@ describe('toCreateTransactionDTO', () => {
       tags: ['work', 'reimbursable'],
       location: { name: 'Berlin Mitte' },
       isRecurring: true,
+      recurringId: 'rec-1',
       period: 'monthly'
     }, 'USD');
 
@@ -46,6 +47,7 @@ describe('toCreateTransactionDTO', () => {
       tags: ['work', 'reimbursable'],
       location: { name: 'Berlin Mitte' },
       isRecurring: true,
+      recurringId: 'rec-1',
       period: 'monthly'
     });
   });
@@ -83,6 +85,15 @@ describe('toCreateTransactionDTO', () => {
     const dto = toCreateTransactionDTO({ amount: 1, date, isRecurring: false }, 'USD');
 
     expect(dto.isRecurring).toBeFalse();
+  });
+
+  it('drops a recurringId the review step cleared', () => {
+    // Declining the offered link leaves the key present and undefined on the
+    // row. Unlike isRecurring, an id has no "false" to preserve, so the
+    // truthy guard is what makes a declined link mean nothing written.
+    const dto = toCreateTransactionDTO({ amount: 1, date, recurringId: undefined }, 'USD');
+
+    expect('recurringId' in dto).toBeFalse();
   });
 
   it('omits an empty tag list rather than writing an empty array', () => {

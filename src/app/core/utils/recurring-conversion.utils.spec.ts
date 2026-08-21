@@ -1,6 +1,8 @@
 import {
+  RecurringMatchCandidate,
   frequencyFromCadence,
   isGroupCovered,
+  matchRecurringRule,
   prefillFromGroup,
   recurringCoverageFingerprint
 } from './recurring-conversion.utils';
@@ -204,6 +206,51 @@ describe('recurring-conversion.utils', () => {
       const b = createRecurring({ name: 'Spotify' });
       expect(recurringCoverageFingerprint([a, b]))
         .toBe(recurringCoverageFingerprint([b, a]));
+    });
+  });
+
+  // Complete fixtures on purpose: the matcher reads `type`, `amount` and
+  // `currency` as well as the name, and the partial `rule()` cast above would
+  // report "no match" for a missing field instead of failing.
+  describe('matchRecurringRule', () => {
+    const row = (overrides: Partial<RecurringMatchCandidate> = {}): RecurringMatchCandidate => ({
+      description: 'NETFLIX.COM', type: 'expense', amount: 15.99, currency: 'USD', ...overrides,
+    });
+
+    it('offers an active rule whose name matches by the detector\'s ladder', () => {
+      const netflix = createRecurring({ name: 'Netflix' });
+      expect(matchRecurringRule(row(), [netflix])?.id).toBe(netflix.id);
+    });
+
+    it('never offers an inactive rule', () => {
+      expect(matchRecurringRule(row(), [createRecurring({ name: 'Netflix', isActive: false })])).toBeNull();
+    });
+
+    it('prefers the merchant a reader named over the description', () => {
+      const spotify = createRecurring({ name: 'Spotify', amount: 9.99 });
+      expect(matchRecurringRule(row({ description: 'Card payment', merchant: 'Spotify AB', amount: 9.99 }), [spotify])?.id)
+        .toBe(spotify.id);
+    });
+
+    it('requires the same type', () => {
+      expect(matchRecurringRule(row({ type: 'income' }), [createRecurring({ name: 'Netflix' })])).toBeNull();
+    });
+
+    it('requires the amount within the detector\'s tolerance when the currencies agree', () => {
+      const netflix = createRecurring({ name: 'Netflix', amount: 15.99, currency: 'USD' });
+      expect(matchRecurringRule(row({ amount: 17.5 }), [netflix])?.id).toBe(netflix.id);   // +9%
+      expect(matchRecurringRule(row({ amount: 45 }), [netflix])).toBeNull();
+    });
+
+    it('skips the amount check when the currencies differ', () => {
+      // A figure in another currency is not comparable without a rate, and a
+      // rate is not something a match should need.
+      const netflix = createRecurring({ name: 'Netflix', amount: 15.99, currency: 'USD' });
+      expect(matchRecurringRule(row({ amount: 2400, currency: 'JPY' }), [netflix])?.id).toBe(netflix.id);
+    });
+
+    it('offers nothing for a merchant no rule names', () => {
+      expect(matchRecurringRule(row({ description: 'Corner bakery' }), [createRecurring({ name: 'Netflix' })])).toBeNull();
     });
   });
 });

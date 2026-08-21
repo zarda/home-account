@@ -27,9 +27,10 @@ import { CategoryMemoryService } from './category-memory.service';
 import { RagContextService } from './rag-context.service';
 import { TagMemoryService } from './tag-memory.service';
 import { TagSuggestionService } from './tag-suggestion.service';
+import { RecurringService } from './recurring.service';
 import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
-import { createTransaction } from './testing/test-data';
+import { createRecurring, createTransaction } from './testing/test-data';
 import { REVIEW_AMOUNT_CONFIDENCE } from '../utils/receipt-consolidation';
 import {
   CategorizedImportTransaction,
@@ -54,6 +55,7 @@ describe('AIImportService', () => {
   let ragContext: jasmine.SpyObj<RagContextService>;
   let tagSuggestions: jasmine.SpyObj<TagSuggestionService>;
   let tagMemory: jasmine.SpyObj<TagMemoryService>;
+  let recurringService: jasmine.SpyObj<RecurringService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
   let rasterize: jasmine.Spy;
   let isOnlineSignal: WritableSignal<boolean>;
@@ -108,6 +110,7 @@ describe('AIImportService', () => {
     // are already mocked, so the RAG gate is exercised rather than stubbed.
     tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
     tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['rememberAll']);
+    recurringService = jasmine.createSpyObj<RecurringService>('RecurringService', ['listAll']);
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', [
       'trackAiAssistUsed',
     ]);
@@ -129,6 +132,7 @@ describe('AIImportService', () => {
     ragContext.buildCategorizationGrounding.and.returnValue('');
     tagSuggestions.suggest.and.callFake(async (rows: readonly unknown[]) => rows.map(() => []));
     tagMemory.rememberAll.and.resolveTo(undefined);
+    recurringService.listAll.and.resolveTo([]);
 
     TestBed.configureTestingModule({
       providers: [
@@ -147,6 +151,7 @@ describe('AIImportService', () => {
         { provide: RagContextService, useValue: ragContext },
         { provide: TagSuggestionService, useValue: tagSuggestions },
         { provide: TagMemoryService, useValue: tagMemory },
+        { provide: RecurringService, useValue: recurringService },
         { provide: AnalyticsService, useValue: analytics }
       ]
     });
@@ -703,6 +708,126 @@ describe('AIImportService', () => {
     });
   });
 
+  describe('offered recurring rules', () => {
+    const oneItem = (overrides: Record<string, unknown> = {}) => [{
+      date: '2024-06-01', description: 'NETFLIX.COM', amount: 15.99, type: 'expense' as const,
+      currency: 'USD', imageIndex: 0, positionInImage: 'top' as const, confidence: 0.9, receiptId: 1,
+      ...overrides,
+    }];
+
+    it('offers the active rule a row looks like, unchecked', async () => {
+      // The offer is a suggestion, not a link: `recurringMatch` is what the
+      // card shows, and `recurringId` stays absent until somebody accepts.
+      const netflix = createRecurring({ name: 'Netflix', amount: 15.99, currency: 'USD' });
+      recurringService.listAll.and.resolveTo([netflix]);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions[0].recurringMatch).toEqual({ id: netflix.id, name: 'Netflix' });
+      expect(result.transactions[0].recurringId).toBeUndefined();
+    });
+
+    it('never offers a rule the user switched off', async () => {
+      recurringService.listAll.and.resolveTo([
+        createRecurring({ name: 'Netflix', amount: 15.99, currency: 'USD', isActive: false })
+      ]);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions[0].recurringMatch).toBeUndefined();
+    });
+
+    it('offers nothing rather than failing the import when the rules cannot be read', async () => {
+      spyOn(console, 'warn');
+      recurringService.listAll.and.rejectWith(new Error('offline'));
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].recurringMatch).toBeUndefined();
+    });
+
+    it('offers a rule on a statement, a PDF and a CSV too', async () => {
+      // Five doors run this step and the two branches of importFromImage make
+      // six; wiring some and not others is exactly the mistake to pin.
+      const netflix = createRecurring({ name: 'Netflix', amount: 15.99, currency: 'USD' });
+      recurringService.listAll.and.resolveTo([netflix]);
+      cloudLLMProvider.extractStatementTransactions.and.resolveTo([
+        { date: '2024-06-01', description: 'NETFLIX.COM', amount: 15.99, type: 'expense', currency: 'USD' },
+      ]);
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { date: new Date(2024, 5, 1), description: 'NETFLIX.COM', amount: 15.99, type: 'expense', currency: 'USD' },
+      ] as never));
+      rasterize.and.resolveTo({ pages: ['page-1'], totalPages: 1, truncated: false });
+      const pdf = makeFile('s.pdf', 'application/pdf');
+      (pdf as unknown as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer =
+        () => Promise.resolve(new ArrayBuffer(8));
+
+      const statementResult = await service.importFromStatementImages([makeFile('s.png', 'image/png')]);
+      const pdfResult = await service.importFromPDF(pdf);
+      const csvResult = await service.importFromCSV(makeFile('s.csv', 'text/csv'));
+
+      expect(statementResult.transactions[0].recurringMatch?.id).toBe(netflix.id);
+      expect(pdfResult.transactions[0].recurringMatch?.id).toBe(netflix.id);
+      expect(csvResult.transactions[0].recurringMatch?.id).toBe(netflix.id);
+    });
+
+    it('offers a rule on both branches of a single receipt', async () => {
+      const netflix = createRecurring({ name: 'Netflix', amount: 15.99, currency: 'USD' });
+      recurringService.listAll.and.resolveTo([netflix]);
+      strategyService.processReceipt.and.resolveTo({
+        source: 'cloud',
+        confidence: 0.9,
+        processingTimeMs: 10,
+        transactions: [{
+          date: new Date(2024, 5, 1), description: 'NETFLIX.COM', amount: 15.99,
+          type: 'expense', currency: 'USD', confidence: 0.9, source: 'cloud',
+        }],
+      });
+
+      const viaStrategy = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      strategyService.processReceipt.and.resolveTo({
+        source: 'cloud', confidence: 0, processingTimeMs: 1, transactions: [],
+      });
+      cloudLLMProvider.extractTransactionsFromImage.and.resolveTo([
+        { date: '2024-06-01', description: 'NETFLIX.COM', amount: 15.99, type: 'expense', currency: 'USD' },
+      ]);
+
+      const viaFallback = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(viaStrategy.transactions[0].recurringMatch?.id).toBe(netflix.id);
+      expect(viaFallback.transactions[0].recurringMatch?.id).toBe(netflix.id);
+    });
+
+    it('keeps what the source said about isRecurring, so declining can restore it', async () => {
+      const netflix = createRecurring({ name: 'Netflix', amount: 15.99, currency: 'USD' });
+      recurringService.listAll.and.resolveTo([netflix]);
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { date: new Date(2024, 5, 1), description: 'NETFLIX.COM', amount: 15.99, type: 'expense',
+          currency: 'USD', isRecurring: false },
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('s.csv', 'text/csv'));
+
+      expect(result.transactions[0].recurringMatch?.sourceIsRecurring).toBeFalse();
+    });
+
+    it('never offers a rule on a backup restore', async () => {
+      // A backup row already carries whatever link its transaction had.
+      const backup = JSON.stringify({
+        transactions: [{ description: 'NETFLIX.COM', amount: 15.99, type: 'expense', currency: 'USD' }],
+      });
+
+      await service.importFromJSON(makeFile('b.json', 'application/json', backup));
+
+      expect(recurringService.listAll).not.toHaveBeenCalled();
+    });
+  });
+
   describe('importFromStatementImages', () => {
     const statementRows = () => [
       { date: '2024-06-01', description: 'AMAZON', amount: 45.99, type: 'expense' as const, currency: 'USD' },
@@ -1188,6 +1313,23 @@ describe('AIImportService', () => {
       expect(row.tags).toEqual(['home']);
       expect(row.location).toEqual({ name: 'Berlin' });
       expect(row.notes).toBe('June');
+    });
+
+    it('imports a CSV Recurring column as isRecurring through the wizard', async () => {
+      // The export writes a Recurring column and the parser reads it back;
+      // the wizard's own mapper is the hop that used to drop it, so the row
+      // reaching the review step is where the round trip has to be pinned.
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'Rent', amount: 1200, date: new Date(2024, 5, 1), type: 'expense',
+          currency: 'USD', isRecurring: true },
+        { description: 'Coffee', amount: 5, date: new Date(2024, 5, 2), type: 'expense',
+          currency: 'USD', isRecurring: false }
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      // false is an answer the column gave, not a missing one.
+      expect(result.transactions.map(t => t.isRecurring)).toEqual([true, false]);
     });
 
     it('sends csv rows through the model with signed amounts and grounding', async () => {
