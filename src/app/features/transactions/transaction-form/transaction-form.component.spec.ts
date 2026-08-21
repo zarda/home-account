@@ -814,6 +814,72 @@ describe('TransactionFormComponent', () => {
     });
   });
 
+  describe('location read off the receipt', () => {
+    const scan = (component: TransactionFormComponent) =>
+      (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+    it('prefills an empty Location field with the printed address', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店' } }));
+      const component = build().componentInstance;
+      await scan(component);
+      expect(component.form.get('locationName')?.value).toBe('渋谷店');
+    });
+
+    it('never overwrites a location the user typed', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店' } }));
+      const component = build().componentInstance;
+      component.form.patchValue({ locationName: 'My café' });
+      await scan(component);
+      expect(component.form.get('locationName')?.value).toBe('My café');
+    });
+
+    it('leaves Location empty when the receipt printed no address', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult());
+      const component = build().componentInstance;
+      await scan(component);
+      expect(component.form.get('locationName')?.value ?? '').toBe('');
+    });
+  });
+
+  describe('coordinate fetched during the scan', () => {
+    const scan = (component: TransactionFormComponent) =>
+      (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+    const geolocation = (lat: number, lng: number) => ({
+      getCurrentPosition: (ok: (p: { coords: { latitude: number; longitude: number } }) => void) =>
+        ok({ coords: { latitude: lat, longitude: lng } }),
+    });
+
+    it('offers the fix for a receipt dated today, and attaches it only on accept', async () => {
+      spyOnProperty(navigator, 'geolocation', 'get').and.returnValue(geolocation(37.5665, 126.978) as never);
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true, date: new Date() }));
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      expect(component.suggestedCoordinates()).toEqual({ lat: 37.5665, lng: 126.978 });
+      expect(component.locationCoords()).toBeNull();
+      component.acceptCoordinateSuggestion();
+      expect(component.locationCoords()).toEqual({ lat: 37.5665, lng: 126.978 });
+      expect(component.suggestedCoordinates()).toBeNull();
+    });
+
+    it('offers nothing for a receipt from another day', async () => {
+      spyOnProperty(navigator, 'geolocation', 'get').and.returnValue(geolocation(37.5665, 126.978) as never);
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true, date: new Date(2026, 0, 1) }));
+      const component = build().componentInstance;
+      await scan(component);
+      expect(component.suggestedCoordinates()).toBeNull();
+    });
+
+    it('offers nothing when a coordinate is already attached', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true, date: new Date() }));
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 1, lng: 2 });
+      await scan(component);
+      expect(component.suggestedCoordinates()).toBeNull();
+    });
+  });
+
   describe('receipt scanning', () => {
     it('ignores a non-image file', () => {
       const component = build().componentInstance;
