@@ -73,6 +73,61 @@ describe('LocaleFormatService', () => {
     });
   });
 
+  describe('ranges', () => {
+    const from = new Date(2026, 7, 1);
+    const to = new Date(2026, 7, 19);
+
+    // Same contract as the dates block: agree with the runtime's own CLDR
+    // for the active locale rather than pinning glyphs that shift between
+    // ICU versions.
+    const expected = (locale: string, a: Date, b: Date) =>
+      new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'short', day: 'numeric' })
+        .formatRange(a, b);
+
+    it('formats a range in the active locale', () => {
+      useLocale('en-US');
+      expect(service.formatRange(from, to)).toBe(expected('en-US', from, to));
+    });
+
+    it('follows the chosen language, not the browser', () => {
+      useLocale('ja-JP');
+      expect(service.formatRange(from, to)).toBe(expected('ja-JP', from, to));
+    });
+
+    it('renders the same range differently in different languages', () => {
+      useLocale('en-US');
+      const english = service.formatRange(from, to);
+      useLocale('ja-JP');
+      const japanese = service.formatRange(from, to);
+      expect(english).not.toBe(japanese);
+    });
+
+    it('collapses a same-day range to the single date', () => {
+      expect(service.formatRange(from, from)).toBe(service.formatDate(from, 'medium'));
+    });
+
+    it('formats a cross-year range', () => {
+      const a = new Date(2025, 11, 15);
+      const b = new Date(2026, 0, 10);
+      expect(service.formatRange(a, b)).toBe(expected('en-US', a, b));
+    });
+
+    it('orders swapped inputs instead of throwing', () => {
+      expect(service.formatRange(to, from)).toBe(service.formatRange(from, to));
+    });
+
+    it('accepts Firestore Timestamps on both sides', () => {
+      expect(service.formatRange(Timestamp.fromDate(from), Timestamp.fromDate(to)))
+        .toBe(service.formatRange(from, to));
+    });
+
+    it('returns an empty string when either side is absent or unparseable', () => {
+      expect(service.formatRange(null, to)).toBe('');
+      expect(service.formatRange(from, undefined)).toBe('');
+      expect(service.formatRange('not a date', to)).toBe('');
+    });
+  });
+
   describe('numbers', () => {
     it('applies the digitsInfo bounds', () => {
       expect(service.formatNumber(1234.5678, '1.1-1')).toBe('1,234.6');
