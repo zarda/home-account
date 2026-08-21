@@ -93,7 +93,7 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     await deleteApp(app).catch(() => undefined);
   });
 
-  /** One valid document per subcollection (all twelve), shaped to pass firestore.rules. */
+  /** One valid document per subcollection, shaped to pass firestore.rules. */
   async function seedEverything(): Promise<void> {
     const now = Timestamp.now();
 
@@ -195,6 +195,14 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     await setDoc(doc(firestore, `users/${uid}/categoryMemory/starbucks`), {
       merchantKey: 'starbucks',
       categoryId: 'food_coffee',
+      sampleDescription: 'STARBUCKS #123',
+      count: 1
+    });
+
+    await setDoc(doc(firestore, `users/${uid}/tagMemory/starbucks`), {
+      merchantKey: 'starbucks',
+      tags: ['coffee'],
+      suppressed: ['lunch'],
       sampleDescription: 'STARBUCKS #123',
       count: 1
     });
@@ -323,6 +331,7 @@ describe('AccountDeletionService (emulator smoke test)', () => {
       'savedSearches',
       'searchAnswers',
       'categoryMemory',
+      'tagMemory',
       'imports',
       'insightSnapshots',
       'secrets',

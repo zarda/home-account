@@ -1193,6 +1193,103 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('tagMemory', () => {
+    // Same key-as-document-id contract as category memory, so the paths are
+    // built by hand here too rather than through path().
+    const tagPath = (key: string, owner = uid) => `users/${owner}/tagMemory/${key}`;
+    const validTagMemory = (overrides: Record<string, unknown> = {}) => ({
+      merchantKey: 'starbucks',
+      tags: ['coffee'],
+      suppressed: [],
+      sampleDescription: 'STARBUCKS #123',
+      count: 1,
+      ...overrides,
+    });
+
+    it('accepts a well-formed entry', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, tagPath('starbucks')), validTagMemory()),
+        'valid create'
+      );
+    });
+
+    it('accepts an entry that keeps nothing and refuses nothing yet', async () => {
+      // Both lists are allowed to be empty: a merchant can be remembered for
+      // its refusals alone, and a confirm can strip the last kept tag.
+      await expectAllowed(
+        setDoc(doc(firestore, tagPath('costa')), validTagMemory({ merchantKey: 'costa', tags: [] })),
+        'entry with empty lists'
+      );
+    });
+
+    it('rejects an entry filed under a different merchant than it claims', async () => {
+      // Otherwise a row could be written under one key while claiming another,
+      // and the lookup map would answer for a merchant it was never taught.
+      await expectDenied(
+        setDoc(doc(firestore, tagPath('starbucks')), validTagMemory({ merchantKey: 'costa' })),
+        'merchantKey disagreeing with the document id'
+      );
+    });
+
+    it('rejects tags that are not a list', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, tagPath('starbucks')), validTagMemory({ tags: 'coffee' })),
+        'a single string in place of the tag list'
+      );
+    });
+
+    it('rejects refusals that are not a list', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, tagPath('starbucks')), validTagMemory({ suppressed: 'lunch' })),
+        'a single string in place of the refusal list'
+      );
+    });
+
+    it('rejects a missing refusal list', async () => {
+      // Both lists are required, so an entry cannot leave the refusals off
+      // and have them read as "none refused".
+      await expectDenied(
+        setDoc(doc(firestore, tagPath('starbucks')), {
+          merchantKey: 'starbucks',
+          tags: ['coffee'],
+          sampleDescription: 'STARBUCKS #123',
+          count: 1,
+        }),
+        'entry with no suppressed field'
+      );
+    });
+
+    it('rejects a non-positive count', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, tagPath('starbucks')), validTagMemory({ count: 0 })),
+        'zero count'
+      );
+    });
+
+    it('rejects an undeclared field', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, tagPath('starbucks')), validTagMemory({ note: 'extra' })),
+        'field outside the closed set'
+      );
+    });
+
+    it('accepts a repeat confirmation raising the count', async () => {
+      const p = tagPath('starbucks');
+      await setDoc(doc(firestore, p), validTagMemory());
+      await expectAllowed(
+        setDoc(doc(firestore, p), validTagMemory({ count: 2, suppressed: ['lunch'] })),
+        'reinforced entry'
+      );
+    });
+
+    it("denies writing to another user's memory", async () => {
+      await expectDenied(
+        setDoc(doc(firestore, tagPath('starbucks', otherUid)), validTagMemory()),
+        "stranger's tag memory"
+      );
+    });
+  });
+
   describe('imports', () => {
     it('accepts a well-formed import record', async () => {
       await expectAllowed(setDoc(doc(firestore, path('imports')), validImport()), 'valid create');
@@ -1735,7 +1832,7 @@ describe('firestore.rules (emulator smoke test)', () => {
     const validated = [
       'transactions', 'budgets', 'categories', 'goals',
       'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-      'insightSnapshots', 'categoryMemory', 'searchAnswers', 'feedback'
+      'insightSnapshots', 'categoryMemory', 'tagMemory', 'searchAnswers', 'feedback'
     ];
 
     for (const collection of validated) {
