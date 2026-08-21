@@ -207,6 +207,59 @@ locale ([ADR 0049](ADR/0049-the-model-never-sees-an-i18n-key.md)) — and an
 answer that matcher could not place earns the same review grade a cloud
 extraction earns for it, rather than the score Vision gave the characters.
 
+## Location and tags
+
+A scan fills two fields beyond the amount, the date and the category, and they
+get there in opposite ways: the location is **read off the paper**, and the
+tags come from **what the account already uses**. Neither is ever invented. The decision and what it rejected are in
+[ADR 0063](ADR/0063-an-import-suggests-only-what-the-account-already-knows.md).
+
+**The location is the branch name and/or street address the receipt itself
+prints**, asked for exactly as printed and in the receipt's own script — never
+translated, never transliterated, and never inferred from the merchant name,
+because a merchant name is not a place and a model asked to guess one will. One
+shared fragment carries that wording into all five receipt prompts, and the
+on-device model's schema has the same field with the same instruction. The two
+item prompts ask for it once per receipt group, on the group's last item, the
+convention `receiptDetails` and `receiptTotal` already use.
+
+The answer is checked on the way back, the same split the currency uses:
+
+| Question | Helper | Behaviour |
+|---|---|---|
+| Did the model read a real code? | `readCurrencyCode` | must be in the ISO table |
+| Did the model read a printed place? | `readPrintedLocation` | a string, whitespace collapsed, non-empty, at most 120 characters, and not equal to the merchant name |
+
+The length cut is against a model echoing the whole receipt body into the
+field; the merchant-name check is against the one thing the prompt forbids. A
+value that fails either is dropped entirely rather than stored as an empty
+place, so an absent location keeps meaning "nobody looked".
+
+**In the form, a scan fills an empty Location field and never overwrites a
+typed one.** The in-form scan also fetches the device's position when the
+receipt's currency was unreadable, to guess a currency from the country. That
+position is now *offered* as a chip you can attach — but only when the receipt
+is dated today and no coordinate is already on the form, because a fix taken at
+home says nothing about where last week's receipt was paid.
+
+**Tags are suggested only from the tags this account already uses**: the tags
+on the last six months of transactions, plus what tag memory holds. The ladder
+is the category ladder applied to tags — memory first (the user's own past
+decisions, read locally, so it works with the AI detail level Off), then the
+model for the rows memory could not answer, and only when the detail level is
+on, the vocabulary is not empty and a cloud provider is configured. At most
+three tags per row. Every answer is checked against the vocabulary twice, in
+the provider adapter and again in the service, so a tag the model invented,
+translated or respelled is dropped rather than created
+([ADR 0046](ADR/0046-an-unrecognized-category-name-is-not-a-category.md)).
+
+Both land somewhere they can be taken off before anything is written: the
+wizard's review card shows them as removable chips, and the in-form scan puts
+the tags in the chip input and the address in the Location field. Removing a
+suggested tag is remembered per merchant and it is not offered again for that
+merchant until it is kept again; Settings → AI has the count and a **Forget
+all**.
+
 ## Failure surfacing
 
 A provider failure is thrown, never flattened into an empty result: all three
@@ -281,6 +334,12 @@ shown on the AI settings page, which is what **Clear Queue** is for.
 - **Connectivity**, for the cloud path. Images captured offline are queued
   instead — see *Offline capture and the queue* above.
 - **The receipt image quota**, which is a tier limit rather than a technical one.
+- **The on-device reader itself suggests no tags.** It reports a printed
+  location like the cloud readers do and proposes no tags of its own. That
+  bounds coverage only when no cloud provider is configured: the tag ladder
+  runs after whichever engine read the receipt, so memory answers either way
+  and the model rung asks whatever cloud key is set up — a receipt read
+  on-device still gets suggested tags when there is one.
 
 If a receipt fails for any other reason, that is a bug rather than a limitation.
 Be aware that diagnosing one is currently harder than it should be: the app

@@ -54,6 +54,22 @@ chips, so they are unaffected by this setting and always available. Nothing a
 person typed is ever included — no descriptions, notes, merchant strings,
 transaction ids or individual dates — and the prose is never stored.
 
+## The level also gates an import's tag suggestions
+
+An import suggests tags only from the tags the account already uses (see
+[receipt-import.md](receipt-import.md)), and both halves of that are behind
+this setting. The trailing six months of transactions that supply the
+vocabulary are read through one gated helper, `GroundingHistoryService.recent()`
+— shared with the grounding the categorization prompt gets — so at **Off** it
+returns nothing: no tag vocabulary is built from history, the "how this user
+usually tags these merchants" grounding block is empty, and no tag-suggestion
+request is issued at all.
+
+Tag memory is not affected, and deliberately so. What the user kept or removed
+for a merchant during an earlier import is their own decision, stored under
+their own account and read locally, so a row whose merchant is remembered still
+gets its tags with the level Off. Nothing about it is sent anywhere.
+
 ## Preference storage and migration
 
 The level is stored in the user profile as `preferences.ragInsightsLevel`

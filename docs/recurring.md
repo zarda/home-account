@@ -190,6 +190,50 @@ was frozen, read from the collection rather than a listener
 ([docs/one-shot-reads.md](one-shot-reads.md)); months written before this keep
 whatever they recorded, and regenerating one is what re-takes it.
 
+## Linking an import to a rule
+
+An imported row can be offered the active rule it looks like, as an unchecked
+checkbox on the wizard's review card. Every wizard door offers it except the
+JSON backup, whose rows already carry whatever the backup recorded. The
+reasoning is in
+[ADR 0063](ADR/0063-an-import-suggests-only-what-the-account-already-knows.md).
+
+`matchRecurringRule` (`recurring-conversion.utils.ts`) offers the first active
+rule that satisfies all of:
+
+| | |
+|---|---|
+| type | the same as the row's |
+| name | matched by the **detector's own ladder** — normalized equality, containment at three characters or more, then bigram similarity at the detector's threshold |
+| amount | within the detector's tolerance of the rule's amount — 15% of the larger figure, floored at 1 — but only when the row's currency and the rule's agree |
+
+It is the same ladder coverage suppression uses, deliberately: the import and
+the Insights tab should not disagree about what counts as the same merchant.
+
+**The amount stands in for the cadence.** A detected group is a set of charges
+with gaps between them, and the gaps are what make it recurring; one import row
+has no gaps to observe, so the only evidence left that this charge is *that*
+charge is how much it is for. A figure in another currency is not comparable
+without a rate, so the check is skipped rather than converted, and the name and
+the type carry the match alone.
+
+Accepting the link writes `recurringId` and `isRecurring: true` on the
+transaction; declining restores whatever the source said about `isRecurring`,
+including having said nothing. Nothing about the rule itself changes — the link
+does not move its pointer and does not create an occurrence. An import never
+creates a rule.
+
+**A charge the scheduler already posted is flagged as a duplicate.** Duplicate
+detection loads the transactions around the batch's dates anyway; a stored row
+there carrying the offered rule's `recurringId` marks the import row as a
+duplicate of type `recurring_occurrence`, and it arrives deselected like any
+other duplicate. The rule id is the only thing that can catch this reliably: a
+posted occurrence carries the rule's amount and the rule's `description` — not
+its name — so a receipt for the same charge need not match it on either field
+the ordinary detector compares. The flag keys on the *offered* rule, because
+detection runs before the card exists; declining the link afterwards does not
+re-run it.
+
 ## Pausing and resuming
 
 Pause sets the rule inactive. Catch-up only claims active rules, so nothing

@@ -233,7 +233,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard
 | [docs/goals.md](docs/goals.md) | Savings goals and projects: the model, transactional contributions, the checklist rule, and where goals surface |
 | [docs/forecast.md](docs/forecast.md) | The cash-flow forecast: zero-at-today baseline, the catch-up seam, horizons, and what never projects |
 | [docs/csv-format.md](docs/csv-format.md) | The CSV export and import contract: columns, escaping, and what round-trips |
-| [docs/import-fields.md](docs/import-fields.md) | What an import writes: the row shapes, the one mapper every door builds through, photo attachment, and the recorded source |
+| [docs/import-fields.md](docs/import-fields.md) | What an import writes: the row shapes, the one mapper every door builds through, photo attachment, the recorded source, and where a suggestion comes from |
 | [docs/backup-restore.md](docs/backup-restore.md) | The JSON backup: what the file carries, what a restore merges rather than replaces, and what it will not touch |
 | [docs/performance.md](docs/performance.md) | What loads eagerly, where the heavy dependencies load instead, and the bundle budget |
 | [docs/dates.md](docs/dates.md) | Date and period conventions: local parts, day and month keys, and the window contracts |
