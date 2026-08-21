@@ -169,6 +169,18 @@ export class TransactionPreviewTableComponent {
     this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
   }
 
+  /** Link to the offered rule, or undo it — restoring what the source said about isRecurring. */
+  toggleRecurringLink(transaction: CategorizedImportTransaction, linked: boolean): void {
+    const match = transaction.recurringMatch;
+    if (!match) return;
+    this.replaceRow(
+      transaction,
+      linked
+        ? { recurringId: match.id, isRecurring: true }
+        : { recurringId: undefined, isRecurring: match.sourceIsRecurring }
+    );
+  }
+
   /**
    * Whether a field was read confidently enough not to need a second look.
    *

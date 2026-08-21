@@ -28,6 +28,7 @@ import { RagContextService } from './rag-context.service';
 import { GroundingHistoryService } from './grounding-history.service';
 import { TagMemoryService } from './tag-memory.service';
 import { TagSuggestionService } from './tag-suggestion.service';
+import { RecurringService } from './recurring.service';
 import {
   ImportResult,
   ImportWarning,
@@ -36,6 +37,7 @@ import {
   ImportSource,
   ImportFileType,
   DuplicateCheck,
+  RecurringTransaction,
   Transaction,
   TransactionLocation,
   isBudgetPeriod,
@@ -44,6 +46,7 @@ import {
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import { resolveImportCurrency, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
 /**
@@ -91,6 +94,7 @@ export class AIImportService {
   private groundingHistory = inject(GroundingHistoryService);
   private tagSuggestions = inject(TagSuggestionService);
   private tagMemory = inject(TagMemoryService);
+  private recurringService = inject(RecurringService);
   private exportService = inject(ExportService);
   private duplicateService = inject(DuplicateDetectionService);
   private importHistoryService = inject(ImportHistoryService);
@@ -173,12 +177,13 @@ export class AIImportService {
 
           const categorized = this.convertStrategyResultToCategories(strategyResult);
           const suggested = await this.suggestTagsFor(categorized, history);
+          const offered = await this.attachRecurringMatches(suggested);
 
           this.processingStatus.set('Checking for duplicates...');
           this.processingProgress.set(80);
 
-          const duplicates = await this.duplicateService.checkDuplicates(suggested);
-          const markedTransactions = this.duplicateService.markDuplicates(suggested, duplicates);
+          const duplicates = await this.duplicateService.checkDuplicates(offered);
+          const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
           this.processingProgress.set(100);
 
@@ -219,12 +224,13 @@ export class AIImportService {
 
       const categorized = await this.categorizeTransactions(extractedTransactions);
       const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
 
-      const duplicates = await this.duplicateService.checkDuplicates(suggested);
-      const markedTransactions = this.duplicateService.markDuplicates(suggested, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
 
@@ -287,11 +293,12 @@ export class AIImportService {
       this.processingProgress.set(60);
       const categorized = await this.categorizeTransactions(extracted);
       const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
-      const duplicates = await this.duplicateService.checkDuplicates(suggested);
-      const marked = this.duplicateService.markDuplicates(suggested, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const marked = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
       this.analytics.trackAiAssistUsed({ feature: 'receipt_scan' });
@@ -399,12 +406,13 @@ export class AIImportService {
       // Convert to CategorizedImportTransaction format with image metadata
       const categorized = await this.categorizeMultiImageTransactions(consolidated, history);
       const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
 
-      const duplicates = await this.duplicateService.checkDuplicates(suggested);
-      const markedTransactions = this.duplicateService.markDuplicates(suggested, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
 
@@ -582,6 +590,43 @@ export class AIImportService {
   }
 
   /**
+   * Offer each row the active rule it looks like. One enumeration per batch
+   * through listAll(): the rules signal is only warm on pages that subscribed
+   * (ADR 0034), and a link is a write decision. A row already linked by its
+   * source is left alone.
+   */
+  private async attachRecurringMatches(
+    rows: CategorizedImportTransaction[]
+  ): Promise<CategorizedImportTransaction[]> {
+    if (rows.length === 0) return rows;
+    let rules: RecurringTransaction[];
+    try {
+      rules = (await this.recurringService.listAll()).filter(rule => rule.isActive);
+    } catch (error) {
+      console.warn('[AIImport] Could not read recurring rules, offering no links:', error);
+      return rows;
+    }
+    if (rules.length === 0) return rows;
+
+    return rows.map(row => {
+      if (row.recurringId) return row;
+      const rule = matchRecurringRule(
+        { description: row.description, merchant: row.merchant, type: row.type, amount: row.amount, currency: row.currency },
+        rules
+      );
+      if (!rule) return row;
+      return {
+        ...row,
+        recurringMatch: {
+          id: rule.id,
+          name: rule.name,
+          ...(row.isRecurring !== undefined ? { sourceIsRecurring: row.isRecurring } : {}),
+        },
+      };
+    });
+  }
+
+  /**
    * Build import result for multi-image imports with additional metadata.
    */
   private buildMultiImageImportResult(
@@ -698,12 +743,13 @@ export class AIImportService {
       this.processingProgress.set(60);
       const categorized = await this.categorizeTransactions(extracted);
       const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
 
-      const duplicates = await this.duplicateService.checkDuplicates(suggested);
-      const markedTransactions = this.duplicateService.markDuplicates(suggested, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
 
@@ -781,12 +827,13 @@ export class AIImportService {
       });
 
       const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
 
-      const duplicates = await this.duplicateService.checkDuplicates(suggested);
-      const markedTransactions = this.duplicateService.markDuplicates(suggested, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
 

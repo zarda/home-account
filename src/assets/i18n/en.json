@@ -1091,6 +1091,8 @@
     "removeLocation": "Remove suggested location",
     "removeTag": "Remove tag {{tag}}",
     "matchWithinBatch": "Repeated in this import",
+    "linkRecurring": "Looks like your {{rule}} — link it",
+    "matchRecurringOccurrence": "Already posted by your recurring rule",
     "errorNoProvider": "No AI provider is configured. Add an API key in Settings → AI Processing.",
     "errorCloudUnavailable": "Cloud AI could not be reached. Check your connection, or add an API key in Settings → AI Processing.",
     "errorQueuedOffline": "No connection, so this image was queued. It will be processed when you are back online.",

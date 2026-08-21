@@ -101,6 +101,15 @@ export class DuplicateDetectionService {
     let possibleMatch: Transaction | undefined;
 
     for (const existing of candidates) {
+      // The scheduler already posted this rule's occurrence in the window:
+      // that is the row, whatever the receipt's amount says. (#320)
+      if (txn.recurringMatch && existing.recurringId === txn.recurringMatch.id) {
+        return {
+          transactionId: txn.id, isDuplicate: true, matchType: 'recurring_occurrence',
+          existingTransactionId: existing.id, confidence: 0.9
+        };
+      }
+
       if (!this.isSameAmount(txn.amount, existing.amount)) continue;
 
       const d = existing.date instanceof Date ? existing.date : (existing.date as Timestamp).toDate();

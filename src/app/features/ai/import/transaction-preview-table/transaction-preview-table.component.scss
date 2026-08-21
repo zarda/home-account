@@ -319,6 +319,22 @@
   min-width: 0;
 }
 
+// Its own line inside the strip: the label is a sentence, not a chip, and it
+// is the one control here that decides whether a transaction gets written
+// against a rule.
+.recurring-link {
+  width: 100%;
+  min-width: 0;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: text-bottom;
+    margin-right: 4px;
+  }
+}
+
 .extra-chip {
   display: inline-flex;
   align-items: center;

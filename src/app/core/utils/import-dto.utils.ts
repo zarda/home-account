@@ -19,6 +19,7 @@ export interface ImportRowFields {
   tags?: string[];
   location?: TransactionLocation;
   isRecurring?: boolean;
+  recurringId?: string;
   period?: BudgetPeriod;
 }
 
@@ -51,7 +52,10 @@ export function resolveImportCurrency(
  * not undefined, because Firestore rejects undefined values and an empty
  * tags array or `{ name: '' }` location would pass the rules while meaning
  * nothing. `isRecurring` alone guards on presence rather than truth — false
- * is an answer, and the truthy guard would erase it.
+ * is an answer, and the truthy guard would erase it. `recurringId` takes the
+ * truthy guard instead, the same one `addTransaction` uses: an id has no
+ * "false" to preserve, and a link the review step declined arrives here as a
+ * key holding undefined.
  */
 export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: string): CreateTransactionDTO {
   return {
@@ -65,6 +69,7 @@ export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: strin
     ...(row.tags?.length ? { tags: row.tags } : {}),
     ...(row.location ? { location: row.location } : {}),
     ...(row.isRecurring !== undefined ? { isRecurring: row.isRecurring } : {}),
+    ...(row.recurringId ? { recurringId: row.recurringId } : {}),
     ...(row.period ? { period: row.period } : {})
   };
 }

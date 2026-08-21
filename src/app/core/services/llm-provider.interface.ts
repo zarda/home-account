@@ -94,6 +94,7 @@ export interface ExtractedTransaction {
   location?: TransactionLocation;
   period?: BudgetPeriod;
   isRecurring?: boolean;
+  recurringId?: string;
 }
 
 export interface MultiImageExtractedTransaction extends ExtractedTransaction {

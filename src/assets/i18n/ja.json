@@ -1028,6 +1028,8 @@
     "removeLocation": "提案された場所を削除",
     "removeTag": "タグ {{tag}} を削除",
     "matchWithinBatch": "このインポート内で重複",
+    "linkRecurring": "「{{rule}}」の定期取引のようです — 紐付ける",
+    "matchRecurringOccurrence": "定期取引としてすでに記帳済み",
     "errorNoProvider": "AIプロバイダーが設定されていません。設定 → AI処理 でAPIキーを追加してください。",
     "errorCloudUnavailable": "クラウドAIに接続できませんでした。接続を確認するか、設定 → AI処理 でAPIキーを追加してください。",
     "errorQueuedOffline": "接続がないため、この画像をキューに追加しました。オンラインに戻ると処理されます。",

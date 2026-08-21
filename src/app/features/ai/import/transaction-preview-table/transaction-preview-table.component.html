@@ -147,8 +147,18 @@
 
           <!-- Anything the source suggested beyond the core fields, each
                droppable in one tap -->
-          @if (row.location || row.tags?.length) {
+          @if (row.location || row.tags?.length || row.recurringMatch) {
             <div class="card-extras">
+              @if (row.recurringMatch; as match) {
+                <mat-checkbox
+                  class="recurring-link"
+                  [checked]="!!row.recurringId"
+                  (change)="toggleRecurringLink(row, $event.checked)"
+                >
+                  <mat-icon aria-hidden="true">autorenew</mat-icon>
+                  {{ 'import.linkRecurring' | translate: { rule: match.name } }}
+                </mat-checkbox>
+              }
               @if (row.location; as location) {
                 <span class="extra-chip">
                   <mat-icon aria-hidden="true">place</mat-icon>

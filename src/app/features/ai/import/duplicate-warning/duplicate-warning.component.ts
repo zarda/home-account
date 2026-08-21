@@ -44,6 +44,8 @@ export class DuplicateWarningComponent {
         return 'help';
       case 'within_batch':
         return 'content_copy';
+      case 'recurring_occurrence':
+        return 'autorenew';
       default:
         return 'info';
     }
@@ -67,6 +69,8 @@ export class DuplicateWarningComponent {
         return 'import.matchPossible';
       case 'within_batch':
         return 'import.matchWithinBatch';
+      case 'recurring_occurrence':
+        return 'import.matchRecurringOccurrence';
       default:
         return 'import.matchUnknown';
     }

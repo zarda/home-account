@@ -1028,6 +1028,8 @@
     "removeLocation": "移除建議的地點",
     "removeTag": "移除標籤 {{tag}}",
     "matchWithinBatch": "此次匯入中重複",
+    "linkRecurring": "看起來是你的「{{rule}}」— 建立關聯",
+    "matchRecurringOccurrence": "你的定期規則已記錄這筆",
     "errorNoProvider": "尚未設定 AI 供應商。請在「設定 → AI 處理」中新增 API 金鑰。",
     "errorCloudUnavailable": "無法連線至雲端 AI。請檢查網路連線，或在「設定 → AI 處理」中新增 API 金鑰。",
     "errorQueuedOffline": "目前沒有網路連線，此圖片已加入佇列，恢復連線後將自動處理。",
