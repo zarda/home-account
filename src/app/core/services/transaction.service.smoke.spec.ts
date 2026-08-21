@@ -307,4 +307,41 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
       expect('period' in (await stored(id))).toBeFalse();
     }, 20000);
   });
+
+  /**
+   * A receipt names its shop and nothing else, so the import writes a location
+   * with a name and no coordinates — a narrower map than the picker's, and the
+   * one that takes the other branch of the rules' `country` check. The seeded
+   * row above proves the full map reads back; this proves the narrow one
+   * survives the write path the import actually uses.
+   *
+   * Income again, so the write does not pull BudgetService in behind it.
+   */
+  describe('name-only location round-trip', () => {
+    const written: string[] = [];
+
+    afterAll(async () => {
+      await Promise.all(
+        written.map(id =>
+          deleteDoc(doc(firestore, `users/${uid}/transactions/${id}`)).catch(() => undefined)
+        )
+      );
+    });
+
+    it('stores a name-only location the import writes', async () => {
+      const id = await service.addTransaction({
+        type: 'income',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'cat-salary',
+        description: 'Name-only location',
+        date: new Date(2026, 5, 20, 12),
+        location: { name: 'Shibuya' }
+      });
+      written.push(id);
+
+      const stored = (await getDoc(doc(firestore, `users/${uid}/transactions/${id}`))).data() ?? {};
+      expect(stored['location']).toEqual({ name: 'Shibuya' });
+    }, 20000);
+  });
 });
