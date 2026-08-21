@@ -85,6 +85,26 @@ export class LocaleFormatService {
   }
 
   /**
+   * A date range in the active locale's conventions. Shared fields collapse
+   * per CLDR (Aug 1 – 19, 2026 in en; 2026年8月1日～19日 in ja) and a
+   * same-day range collapses to the single date. Sides arrive swapped from
+   * open-ended pickers often enough that they are ordered here rather than
+   * thrown on; either side absent or unparseable formats as the empty
+   * string, matching `formatDate`'s contract.
+   */
+  formatRange(
+    start: Date | Timestamp | string | number | null | undefined,
+    end: Date | Timestamp | string | number | null | undefined,
+    style: LocaleDateStyle = 'medium'
+  ): string {
+    const a = this.toDate(start);
+    const b = this.toDate(end);
+    if (!a || !b) return '';
+    const [from, to] = a.getTime() <= b.getTime() ? [a, b] : [b, a];
+    return this.dateFormatter(style).formatRange(from, to);
+  }
+
+  /**
    * A number in the active locale's grouping and decimal conventions.
    *
    * `digitsInfo` is Angular's, so `'1.0-2'` still means "at least one integer
