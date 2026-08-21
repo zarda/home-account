@@ -15,6 +15,7 @@ import { InsightSnapshotService } from '../../core/services/insight-snapshot.ser
 import { TranslationService } from '../../core/services/translation.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, Category, CategoryTotal, RAG_TIER_CONFIGS, effectiveRagLevel, baseCurrencyOf} from '../../models';
+import { sumByType } from '../../core/utils/transaction-aggregation.utils';
 import {
   DateWindow,
   clampWindowToNow,
@@ -130,22 +131,18 @@ export class DashboardComponent implements OnInit {
   });
 
   // Totals use the write-time base-currency snapshot (deterministic across
-  // loads), falling back to live conversion only for legacy rows.
-  totalIncome = computed(() => {
-    const baseCurrency = this.baseCurrency();
-    return this.transactions()
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
-  });
+  // loads), falling back to live conversion only for legacy rows. One fold —
+  // sumByType through amountInBase — shared with reports and the
+  // transactions header, so the surfaces cannot disagree.
+  private typeTotals = computed(() =>
+    sumByType(this.transactions(), t => this.currencyService.amountInBase(t, this.baseCurrency()))
+  );
 
-  totalExpenses = computed(() => {
-    const baseCurrency = this.baseCurrency();
-    return this.transactions()
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + this.currencyService.amountInBase(t, baseCurrency), 0);
-  });
+  totalIncome = computed(() => this.typeTotals().income);
 
-  balance = computed(() => this.totalIncome() - this.totalExpenses());
+  totalExpenses = computed(() => this.typeTotals().expense);
+
+  balance = computed(() => this.typeTotals().balance);
 
   categoryTotals = computed(() => {
     const baseCurrency = this.baseCurrency();
