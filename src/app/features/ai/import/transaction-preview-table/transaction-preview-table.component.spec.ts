@@ -5,6 +5,7 @@ import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -67,6 +68,21 @@ describe('TransactionPreviewTableComponent', () => {
           useValue: {
             t: (key: string, params?: Record<string, string | number>) =>
               params ? `${key}:${JSON.stringify(params)}` : key,
+          },
+        },
+        {
+          // Two codes are enough to prove the picker curates: one the row
+          // already carries and one to switch to. MXN answers the case the
+          // curated list does not carry but the ISO table does.
+          provide: CurrencyService,
+          useValue: {
+            getSupportedCurrencies: () => [
+              { code: 'USD', nameKey: 'currencies.usd', symbol: '$' },
+              { code: 'JPY', nameKey: 'currencies.jpy', symbol: '¥' },
+            ],
+            getCurrencyInfo: (code: string) =>
+              code === 'MXN' ? { code, nameKey: 'currencies.mxn', symbol: '$' } : undefined,
+            formatCurrency: (amount: number, code: string) => `${code} ${amount}`,
           },
         },
       ],
@@ -403,6 +419,80 @@ describe('TransactionPreviewTableComponent', () => {
 
       expect(emitted.length).toBe(2);
       expect(emitted[0]).not.toBe(emitted[1]);
+    });
+  });
+
+  describe('currency edits', () => {
+    const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}) => ({
+      ...createMockTransactions()[0],
+      ...overrides,
+    });
+
+    it('replaces the row with the chosen currency and clears the fallen-back mark', () => {
+      const row = makeRow({ currency: 'USD', currencyFellBack: true });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.updateCurrency(row, 'JPY');
+
+      expect(emitted[0][0].currency).toBe('JPY');
+      expect(emitted[0][0].currencyFellBack).toBeFalse();
+      expect(emitted[0][0]).not.toBe(row);
+      expect(row.currency).toBe('USD'); // the input object is untouched
+    });
+
+    it('applies a currency to the selected rows only', () => {
+      component.transactions = [
+        makeRow({ id: 'a', currency: 'USD', selected: true }),
+        makeRow({ id: 'b', currency: 'USD', selected: false }),
+        makeRow({ id: 'c', currency: 'USD', selected: true }),
+      ];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(emitted[0].map(t => t.currency)).toEqual(['JPY', 'USD', 'JPY']);
+    });
+
+    it('lists the row\'s own code when the picker does not curate it', () => {
+      expect(component.currencyOptions(makeRow({ currency: 'MXN' })).map(o => o.code)).toContain('MXN');
+      expect(component.currencyOptions(makeRow({ currency: 'USD' })).map(o => o.code)).toEqual(['USD', 'JPY']);
+    });
+
+    it('formats the amount through CurrencyService, so decimals follow the currency', () => {
+      expect(component.formatAmount(makeRow({ amount: 1200, currency: 'JPY' }))).toBe('JPY 1200');
+    });
+  });
+
+  describe('suggested fields', () => {
+    const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}) => ({
+      ...createMockTransactions()[0],
+      ...overrides,
+    });
+
+    it('removes a suggested location without mutating the row', () => {
+      const row = makeRow({ location: { name: 'Shibuya' } });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.removeLocation(row);
+
+      expect(emitted[0][0].location).toBeUndefined();
+      expect(row.location).toEqual({ name: 'Shibuya' });
+    });
+
+    it('removes one tag and leaves the others', () => {
+      const row = makeRow({ tags: ['coffee', 'work'] });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.removeTag(row, 'work');
+
+      expect(emitted[0][0].tags).toEqual(['coffee']);
     });
   });
 });
