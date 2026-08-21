@@ -151,6 +151,23 @@ describe('overflow guard: the import review card', () => {
       .toBeLessThanOrEqual(card.getBoundingClientRect().bottom + 1);
   });
 
+  it('says the currency was not read in the chip\'s own accessible name', () => {
+    // The label on a button replaces the name its content would compute, so
+    // the marker icon cannot carry the news itself — it would never be
+    // announced. The mark leads the chip's name instead, and the icon is
+    // hidden so it adds nothing twice.
+    const chip = el('.currency-chip');
+    expect(chip.getAttribute('aria-label'))
+      .withContext('the marker leads the chip name')
+      .toMatch(/^import\.currencyFellBack\. /);
+    expect(chip.getAttribute('aria-label'))
+      .withContext('and the chip still says what it does')
+      .toContain('import.setCurrency');
+    expect(chip.querySelector('.verify-flag')?.getAttribute('aria-hidden'))
+      .withContext('the marker icon is decorative')
+      .toBe('true');
+  });
+
   it('keeps every suggestion chip, and its remove button, inside the card', () => {
     // A 27-character place name and three tags on a 288px card is the case
     // that would push the remove buttons out of reach — the chips wrap and
@@ -196,9 +213,9 @@ describe('overflow guard: the import review card', () => {
       .withContext('remove button hit area, glyph plus overhang')
       .toBeGreaterThanOrEqual(40);
     // 32 wide, not 40, and that is a decision rather than a lowered bar: the
-    // 6px each side is exactly `.card-extras`'s column gap, so the hit box
-    // reaches the edge of the space between chips and stops. Widening it
-    // further would put it under the neighbouring chip.
+    // button sits 4px inside the chip's own right edge, so the 6px of overhang
+    // reaches only 2px into `.card-extras`'s 6px column gap and stops short of
+    // the neighbouring chip. Widening it further would not.
     expect(box.width - parseFloat(hit.left) - parseFloat(hit.right))
       .withContext('remove button hit area is wider than the glyph')
       .toBeGreaterThanOrEqual(32);

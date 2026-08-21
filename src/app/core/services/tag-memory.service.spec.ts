@@ -314,6 +314,15 @@ describe('TagMemoryService', () => {
 
   describe('deleteAll', () => {
     it('enumerates the collection rather than the loaded entries', async () => {
+      // Loaded first, so the count assertion below is about deleteAll
+      // emptying the cache rather than about a cache that was never filled.
+      firestore.getCollection.and.resolveTo([
+        entry({ merchantKey: 'starbucks' }),
+        entry({ merchantKey: 'costa' }),
+      ]);
+      await service.ensureLoaded();
+      expect(service.rememberedCount()).toBe(2);
+
       firestore.getCollection.and.resolveTo([{ id: 'starbucks' }, { id: 'costa' }]);
 
       const count = await service.deleteAll();

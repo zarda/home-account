@@ -399,6 +399,9 @@ describe('AIImportService', () => {
     });
 
     it('marks a row the strategy service flagged as fallen back', async () => {
+      // The row arrives on EUR against the account's USD base, so the
+      // currency assertion below can tell the base substitution from a
+      // value that was simply passed through.
       strategyService.processReceipt.and.returnValue(Promise.resolve({
         source: 'cloud',
         confidence: 0.9,
@@ -408,7 +411,7 @@ describe('AIImportService', () => {
           description: 'Lunch',
           amount: 12,
           type: 'expense',
-          currency: 'USD',
+          currency: 'EUR',
           currencyFellBack: true,
           confidence: 0.9,
           source: 'cloud'
@@ -726,6 +729,35 @@ describe('AIImportService', () => {
 
       expect(result.transactions[0].recurringMatch).toEqual({ id: netflix.id, name: 'Netflix' });
       expect(result.transactions[0].recurringId).toBeUndefined();
+      // The recurring_occurrence verdict reads `recurringMatch`, so the offer
+      // has to be on the row before duplicate detection ever sees it.
+      expect(duplicateService.checkDuplicates.calls.mostRecent().args[0][0].recurringMatch?.id)
+        .toBe(netflix.id);
+    });
+
+    it('checks the printed figure of a row whose currency nobody read', async () => {
+      // The row has no currency of its own, so it reaches the matcher on the
+      // base with the fallen-back mark, and the figure is compared against
+      // the rule's whatever currency the rule keeps.
+      const netflixJpy = createRecurring({ name: 'Netflix', amount: 1500, currency: 'JPY' });
+      recurringService.listAll.and.resolveTo([netflixJpy]);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(
+        oneItem({ currency: '', amount: 1480 })
+      );
+
+      const near = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(near.transactions[0].currencyFellBack).toBeTrue();
+      expect(near.transactions[0].recurringMatch?.id).toBe(netflixJpy.id);
+
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(
+        oneItem({ currency: '', amount: 15.99 })
+      );
+
+      const far = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(far.transactions[0].currencyFellBack).toBeTrue();
+      expect(far.transactions[0].recurringMatch).toBeUndefined();
     });
 
     it('never offers a rule the user switched off', async () => {

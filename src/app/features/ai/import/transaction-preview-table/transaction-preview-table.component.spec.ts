@@ -464,6 +464,16 @@ describe('TransactionPreviewTableComponent', () => {
     it('formats the amount through CurrencyService, so decimals follow the currency', () => {
       expect(component.formatAmount(makeRow({ amount: 1200, currency: 'JPY' }))).toBe('JPY 1200');
     });
+
+    it('leads the chip\'s name with the mark when nobody read the currency', () => {
+      // The chip's aria-label replaces whatever its contents would have said,
+      // so a marker icon inside it is announced to no one. Only a row that
+      // actually fell back gets the prefix.
+      expect(component.currencyChipLabel(makeRow({ currency: 'USD', currencyFellBack: true })))
+        .toBe('import.currencyFellBack. import.setCurrency:{"currency":"USD"}');
+      expect(component.currencyChipLabel(makeRow({ currency: 'JPY' })))
+        .toBe('import.setCurrency:{"currency":"JPY"}');
+    });
   });
 
   describe('suggested fields', () => {

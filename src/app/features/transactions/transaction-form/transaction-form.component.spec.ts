@@ -854,6 +854,16 @@ describe('TransactionFormComponent', () => {
       await scan(component);
       expect(component.form.get('locationName')?.value ?? '').toBe('');
     });
+
+    it('treats a Location holding only whitespace as empty', async () => {
+      // Nothing the user can see is in the field, so nothing of theirs is
+      // being overwritten — the guard trims before it decides.
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店' } }));
+      const component = build().componentInstance;
+      component.form.patchValue({ locationName: '   ' });
+      await scan(component);
+      expect(component.form.get('locationName')?.value).toBe('渋谷店');
+    });
   });
 
   describe('coordinate fetched during the scan', () => {
@@ -1100,11 +1110,15 @@ describe('TransactionFormComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('transactions.locationUnavailable');
     });
 
-    it('clearCoordinates detaches them', () => {
+    it('clearCoordinates detaches them and drops the scan\'s offer with them', () => {
+      // Clearing is a refusal. Leaving the offer up would re-present the very
+      // coordinate the user just took off the form.
       const component = build().componentInstance;
       component.locationCoords.set({ lat: 1, lng: 2 });
+      component.suggestedCoordinates.set({ lat: 3, lng: 4 });
       component.clearCoordinates();
       expect(component.locationCoords()).toBeNull();
+      expect(component.suggestedCoordinates()).toBeNull();
     });
 
     it('tag input trims, lowercases, dedupes and seeds from the transaction', () => {

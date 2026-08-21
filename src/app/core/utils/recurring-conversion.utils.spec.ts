@@ -249,6 +249,22 @@ describe('recurring-conversion.utils', () => {
       expect(matchRecurringRule(row({ amount: 2400, currency: 'JPY' }), [netflix])?.id).toBe(netflix.id);
     });
 
+    it('compares the printed figure of a fallen-back row against a rule in any currency', () => {
+      // Nobody read a currency for this row, so the base is only standing in
+      // and the figure is the only evidence there is. Comparing it is better
+      // than a name-only hit, which is enough to deselect the row.
+      const netflixJpy = createRecurring({ name: 'Netflix', amount: 1500, currency: 'JPY' });
+      expect(matchRecurringRule(row({ amount: 1480, currency: 'USD', currencyFellBack: true }), [netflixJpy])?.id)
+        .toBe(netflixJpy.id);
+      expect(matchRecurringRule(row({ amount: 15.99, currency: 'USD', currencyFellBack: true }), [netflixJpy]))
+        .toBeNull();
+    });
+
+    it('does not let the fallen-back mark excuse a figure the rule\'s own currency rejects', () => {
+      const netflix = createRecurring({ name: 'Netflix', amount: 15.99, currency: 'USD' });
+      expect(matchRecurringRule(row({ amount: 2400, currency: 'USD', currencyFellBack: true }), [netflix])).toBeNull();
+    });
+
     it('offers nothing for a merchant no rule names', () => {
       expect(matchRecurringRule(row({ description: 'Corner bakery' }), [createRecurring({ name: 'Netflix' })])).toBeNull();
     });
