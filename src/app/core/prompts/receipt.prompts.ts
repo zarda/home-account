@@ -33,6 +33,22 @@ const RECEIPT_TOTAL_FIELD =
   'On that same LAST item, ALSO include a "receiptTotal" field: the grand total the receipt itself prints — the amount actually paid, after tax, service charges and receipt-level discounts. Read it off the receipt; do NOT compute it by summing items, and do NOT use the cash tendered or change lines. Omit "receiptTotal" when no total is printed or legible.';
 
 /**
+ * How every receipt prompt asks where the receipt was issued.
+ *
+ * The printed branch or address and nothing inferred: a merchant name is not
+ * a place, and a model asked to guess one will. Asked for as printed, in the
+ * receipt's own script, for the same reason the body is — a translated address
+ * is a different string from the one on the paper, and `location.name` is
+ * what the user searches by. (#314)
+ */
+const LOCATION_FIELD =
+  'the branch name and/or street address the receipt itself prints, exactly as printed and in the receipt\'s own script — never translated, never transliterated, never inferred from the merchant name. Use "" when no branch or address is printed or legible.';
+
+/** The item prompts carry the location once per receipt group, on the LAST item, like the total. */
+const RECEIPT_LOCATION_FIELD =
+  `On that same LAST item, ALSO include a "location" field: ${LOCATION_FIELD}`;
+
+/**
  * Summarize one receipt photo into a single transaction.
  *
  * Canonical text is Gemini's. It is the only variant that asks for
@@ -48,6 +64,7 @@ export function renderReceiptParse(): RenderedPrompt {
   "amount": total amount as number,
   "currency": "ISO 4217 code, or empty when unreadable",
   "date": "YYYY-MM-DD format",
+  "location": "<branch or address as printed, or empty>",
   "items": [{"name": "item name", "amount": item price as number}],
   "receiptDetails": "full receipt content line by line",
   "suggestedCategory": "one of: ${EXTRACTION_CATEGORY_NAMES}",
@@ -60,6 +77,7 @@ IMPORTANT:
 - "amount" is the TOTAL amount paid (bottom of receipt).
 - If MORE THAN ONE receipt is visible, extract the LARGEST/primary receipt into the fields above and set receiptCount to how many receipts are visible.
 - "currency": ${CURRENCY_FIELD}
+- "location": ${LOCATION_FIELD}
 - "items" array: each purchased item with its individual price.
 - "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the receipt's own language and script exactly as printed — do not translate or transliterate.
 - If fields cannot be extracted, use defaults: merchant="Unknown", currency="", date=today, items=[], amount=0.
@@ -87,6 +105,7 @@ Return ONLY a JSON object (not an array):
   "merchant": "Store/Restaurant Name",
   "totalAmount": 123.45,
   "currency": "ISO 4217 code",
+  "location": "<branch or address as printed, or empty>",
   "receiptDetails": "Full receipt content reproduced line by line",
   "suggestedCategory": "category name"
 }
@@ -96,6 +115,7 @@ Rules:
 - merchant: Store or restaurant name
 - totalAmount: Total amount paid (positive number only)
 - currency: ${CURRENCY_FIELD}
+- location: ${LOCATION_FIELD}
 - receiptDetails: Reproduce the FULL receipt content line by line, preserving all information visible on the receipt: every item with its price, quantity if shown, discounts, subtotals, tax lines, service charges, payment method, change, etc. Use newline to separate each line. Keep the receipt's own language and script exactly as printed — do not translate or transliterate. Shape: "<item> ×1 — 480\\n<item> ×2 — 760\\n<discount line> -100\\n<subtotal line> 1,140\\n<tax line> 104\\n<total line> 1,140\\nVISA ****1234"
 - suggestedCategory: One of: ${EXTRACTION_CATEGORY_NAMES}
 
@@ -122,6 +142,7 @@ For each transaction found, extract:
 - type: "income" for credits/deposits, "expense" for debits/withdrawals
 - currency: ${CURRENCY_FIELD}
 - merchant: store/business name (optional)
+- location (optional): ${LOCATION_FIELD} Omit the key on a row whose document prints no branch or address.
 - details: for receipts, reproduce the FULL receipt content line by line — every item with its price, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the receipt's own language and script exactly as printed. (optional)
 - amountConfidence: how clearly the amount was legible, 0.0 to 1.0
 - dateConfidence: how clearly the date was legible, 0.0 to 1.0
@@ -137,6 +158,7 @@ Return ONLY a valid JSON array with this structure (no markdown, no explanation)
     "type": "expense",
     "currency": "<ISO 4217 code>",
     "merchant": "AMAZON.COM",
+    "location": "<branch or address as printed, or empty>",
     "details": "USB Cable — 12.99\\nBook — 32.00\\nSubtotal 44.99\\nTax 1.00\\nTotal 45.99",
     "amountConfidence": 0.98,
     "dateConfidence": 0.95
@@ -199,6 +221,7 @@ For each UNIQUE transaction/line item found, extract:
 
 For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items with prices, discounts, subtotals, tax, service charges, payment method, change, etc. Keep the receipt's own language and script exactly as printed.
 ${RECEIPT_TOTAL_FIELD}
+${RECEIPT_LOCATION_FIELD}
 
 Return ONLY a valid JSON array (no markdown):
 [
@@ -216,7 +239,8 @@ Return ONLY a valid JSON array (no markdown):
     "details": "×1",
     "wasMerged": false,
     "receiptDetails": "Item name ×1 — 10.99\\nSubtotal 10.99\\nTax 0.88\\nTotal 11.87",
-    "receiptTotal": 11.87
+    "receiptTotal": 11.87,
+    "location": "<branch or address as printed, or empty>"
   }
 ]
 
@@ -256,11 +280,12 @@ FIELDS PER ITEM:
 
 For the LAST item of each receipt (receiptId group), include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep the receipt's own language and script exactly as printed.
 ${RECEIPT_TOTAL_FIELD}
+${RECEIPT_LOCATION_FIELD}
 
 Example:
 [
   {"date":"2024-04-11","description":"<item name as printed>","amount":151,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"middle","confidence":0.95,"merchant":"<store name as printed>"},
-  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19","receiptTotal":481}
+  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19","receiptTotal":481,"location":"<branch or address as printed, or empty>"}
 ]
 
 Output ONLY JSON array. Nothing else.`,

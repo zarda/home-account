@@ -7,7 +7,12 @@ import type {
 } from '@google/generative-ai';
 import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
-import { readCurrencyCode, readReceiptTotal } from '../utils/receipt-extraction.utils';
+import {
+  printedLocationSlot,
+  readCurrencyCode,
+  readPrintedLocation,
+  readReceiptTotal,
+} from '../utils/receipt-extraction.utils';
 import {
   trimToLastCompleteSentence,
   dropIncompleteTrailingLine,
@@ -291,6 +296,7 @@ export class GeminiService extends CloudLLMProviderBase {
         category: this.matchedCategoryId(receiptData.suggestedCategory),
         details: receiptData.receiptDetails || receiptData.itemsSummary ||
           receiptData.items || receiptData.description || '',
+        ...printedLocationSlot(readPrintedLocation(receiptData.location, receiptData.merchant)),
       }];
     });
   }
@@ -346,6 +352,7 @@ export class GeminiService extends CloudLLMProviderBase {
         receiptDetails: t.receiptDetails,
         receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: false,
+        ...printedLocationSlot(readPrintedLocation(t.location, t.merchant)),
       }));
     });
   }

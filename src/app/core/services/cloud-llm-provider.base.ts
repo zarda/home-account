@@ -34,8 +34,10 @@ import { goalProgressAmount } from '../utils/goal-progress.utils';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
 import {
+  printedLocationSlot,
   readCurrencyCode,
   readFieldConfidence,
+  readPrintedLocation,
   readReceiptTotal,
 } from '../utils/receipt-extraction.utils';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
@@ -245,6 +247,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       const rendered = renderPrompt('receiptParse');
       const response = await this.sendVision('receiptParse', rendered, [imageBase64], options);
       const parsed = JSON.parse(this.extractJson(response.text));
+      const printed = readPrintedLocation(parsed.location, parsed.merchant);
 
       return {
         merchant: parsed.merchant || 'Unknown',
@@ -257,6 +260,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
         receiptCount: Number(parsed.receiptCount) || 1,
         fieldConfidence: readFieldConfidence(parsed),
+        ...(printed ? { location: printed } : {}),
       };
     });
   }
@@ -297,6 +301,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         details: t.details,
         amountConfidence: t.amountConfidence,
         dateConfidence: t.dateConfidence,
+        ...printedLocationSlot(readPrintedLocation(t.location, t.merchant)),
       }));
     });
   }
@@ -361,6 +366,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: t.wasMerged || false,
         mergedFromImages: t.mergedFromImages,
+        ...printedLocationSlot(readPrintedLocation(t.location, t.merchant)),
       }));
     });
   }

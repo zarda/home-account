@@ -6,7 +6,11 @@ import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { parseReceiptOcrText } from './receipt-text-parser';
 import { buildCategoryPromptCatalog, matchCategoryName } from '../utils/categorization.utils';
-import { readCurrencyCode } from '../utils/receipt-extraction.utils';
+import {
+  printedLocationSlot,
+  readCurrencyCode,
+  readPrintedLocation,
+} from '../utils/receipt-extraction.utils';
 import { parseDateInput } from '../utils/transaction-date.utils';
 import { fileToBase64 } from '../utils/file.utils';
 import { VisionOCRResult } from '../plugins/vision-ocr.plugin';
@@ -139,6 +143,7 @@ export class NativeReceiptService {
       source: 'native',
       notes: extraction.details || undefined,
       suggestedCategoryId: match?.matched ? match.id : undefined,
+      ...printedLocationSlot(readPrintedLocation(extraction.location, extraction.merchant)),
     };
   }
 

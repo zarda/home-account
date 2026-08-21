@@ -38,6 +38,7 @@ export interface ParsedReceipt {
    * so a blurred total looked exactly like a crisp one.
    */
   fieldConfidence?: FieldConfidence;
+  location?: string;                // branch/address as printed, absent when none
 }
 
 export interface ReceiptItem {
