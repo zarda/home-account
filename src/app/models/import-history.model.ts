@@ -86,6 +86,12 @@ export interface CategorizedImportTransaction {
    * Absent means the source could not report it (CSV, JSON, a manual row).
    */
   fieldConfidence?: FieldConfidence;
+  /**
+   * True when `currency` is the account's base currency because the source
+   * reported none — a fallback, not a reading. The review step marks it the
+   * way it marks a low-confidence amount; the confirm step never writes it.
+   */
+  currencyFellBack?: boolean;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)

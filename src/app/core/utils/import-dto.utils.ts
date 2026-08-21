@@ -23,6 +23,22 @@ export interface ImportRowFields {
 }
 
 /**
+ * The currency an import row is shown in, and whether anyone read it.
+ *
+ * Every door used to write `row.currency || baseCurrency` and lose the
+ * difference. The flag is what lets the review step mark a currency nobody
+ * read — the same distinction `ProcessedTransaction.currencyFellBack` draws
+ * for the form's scan — and it never reaches the mapper below, which names
+ * its fields.
+ */
+export function resolveImportCurrency(
+  read: string | undefined,
+  baseCurrency: string
+): { currency: string; currencyFellBack?: true } {
+  return read ? { currency: read } : { currency: baseCurrency, currencyFellBack: true };
+}
+
+/**
  * Build the create DTO every import door writes through.
  *
  * This is the chokepoint the CSV escaper already proved out: when each door

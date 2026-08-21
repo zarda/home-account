@@ -40,7 +40,7 @@ import {
   baseCurrencyOf
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { resolveImportCurrency, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
 /**
@@ -313,7 +313,7 @@ export class AIImportService {
       id: nextImportRowId('strategy'),
       description: tx.description,
       amount: tx.amount,
-      currency: tx.currency || baseCurrency,
+      ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
       date: tx.date,
       type: tx.type,
       ...gradeCategorySuggestion(tx),
@@ -487,7 +487,7 @@ export class AIImportService {
         id: nextImportRowId('multi_img'),
         description: t.description,
         amount: Math.abs(t.amount),
-        currency: original.currency || baseCurrency,
+        ...resolveImportCurrency(original.currency, baseCurrency),
         date: t.date,
         type: original.type,
         suggestedCategoryId: original.category || t.suggestedCategoryId,
@@ -782,7 +782,7 @@ export class AIImportService {
           id: nextImportRowId('json'),
           description: t['description'] as string || 'Unknown',
           amount: Math.abs(t['amount'] as number || 0),
-          currency: readCurrencyCode(t['currency']) || baseCurrency,
+          ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
           date: t['date']
             ? new Date((t['date'] as { seconds: number }).seconds * 1000)
             : new Date(),
@@ -844,7 +844,7 @@ export class AIImportService {
         id: nextImportRowId('import'),
         description: t.description,
         amount: Math.abs(t.amount),
-        currency: t.currency || baseCurrency,
+        ...resolveImportCurrency(t.currency, baseCurrency),
         date: parsedDate ?? new Date(),
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
