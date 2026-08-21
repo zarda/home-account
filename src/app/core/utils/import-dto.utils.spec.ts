@@ -1,4 +1,4 @@
-import { toCreateTransactionDTO } from './import-dto.utils';
+import { resolveImportCurrency, toCreateTransactionDTO } from './import-dto.utils';
 
 describe('toCreateTransactionDTO', () => {
   const date = new Date(2026, 5, 1);
@@ -95,5 +95,25 @@ describe('toCreateTransactionDTO', () => {
     const dto = toCreateTransactionDTO({ amount: 1, date, note: '' }, 'USD');
 
     expect('note' in dto).toBeFalse();
+  });
+});
+
+describe('resolveImportCurrency', () => {
+  it('keeps a currency somebody read, with no flag', () => {
+    expect(resolveImportCurrency('JPY', 'USD')).toEqual({ currency: 'JPY' });
+  });
+  it('substitutes the base currency and says so when nothing was read', () => {
+    expect(resolveImportCurrency('', 'USD')).toEqual({ currency: 'USD', currencyFellBack: true });
+    expect(resolveImportCurrency(undefined, 'USD')).toEqual({ currency: 'USD', currencyFellBack: true });
+  });
+});
+
+describe('toCreateTransactionDTO and the review flags', () => {
+  it('never forwards currencyFellBack — it is a review-step mark, not a field', () => {
+    const dto = toCreateTransactionDTO(
+      { amount: 5, date: new Date(2026, 0, 1), currency: 'USD', currencyFellBack: true } as never,
+      'USD'
+    );
+    expect('currencyFellBack' in dto).toBeFalse();
   });
 });

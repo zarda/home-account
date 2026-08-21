@@ -379,6 +379,51 @@ describe('AIImportService', () => {
         service.importFromImage(makeFile('r.png', 'image/png'))
       ).toBeRejectedWithError(AI_NO_PROVIDER);
     });
+
+    it('marks a row the strategy service flagged as fallen back', async () => {
+      strategyService.processReceipt.and.returnValue(Promise.resolve({
+        source: 'cloud',
+        confidence: 0.9,
+        processingTimeMs: 10,
+        transactions: [{
+          date: new Date(2024, 5, 1),
+          description: 'Lunch',
+          amount: 12,
+          type: 'expense',
+          currency: 'USD',
+          currencyFellBack: true,
+          confidence: 0.9,
+          source: 'cloud'
+        }]
+      }));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].currency).toBe('USD');
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+    });
+
+    it('does not mark a row whose currency the strategy service read', async () => {
+      strategyService.processReceipt.and.returnValue(Promise.resolve({
+        source: 'cloud',
+        confidence: 0.9,
+        processingTimeMs: 10,
+        transactions: [{
+          date: new Date(2024, 5, 1),
+          description: 'Lunch',
+          amount: 12,
+          type: 'expense',
+          currency: 'EUR',
+          confidence: 0.9,
+          source: 'cloud'
+        }]
+      }));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].currency).toBe('EUR');
+      expect('currencyFellBack' in result.transactions[0]).toBeFalse();
+    });
   });
 
   describe('remembered categories', () => {
@@ -484,6 +529,29 @@ describe('AIImportService', () => {
       await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
 
       expect(cloudLLMProvider.categorizeTransactions).not.toHaveBeenCalled();
+    });
+
+    it('marks a row whose currency nobody read, and leaves a read one unmarked', async () => {
+      authService.currentUser.and.returnValue({ preferences: { baseCurrency: 'JPY' } } as never);
+      const rows = oneItem();
+      rows[0].currency = '';
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(rows);
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions[0].currency).toBe('JPY');
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+    });
+
+    it('does not mark a row whose currency was read', async () => {
+      const rows = oneItem();
+      rows[0].currency = 'USD';
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(rows);
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions[0].currency).toBe('USD');
+      expect('currencyFellBack' in result.transactions[0]).toBeFalse();
     });
   });
 
@@ -1218,6 +1286,24 @@ describe('AIImportService', () => {
       // split its commas into newlines.
       expect(result[0].notes).toBe('June, paid early');
     });
+
+    it('marks a row whose currency nobody read, and leaves a read one unmarked', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2026-01-01', description: 'X', amount: 1, type: 'expense', currency: '' }
+      ]);
+
+      expect(result[0].currency).toBe('USD');
+      expect(result[0].currencyFellBack).toBeTrue();
+    });
+
+    it('does not mark a row whose currency was read', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2026-01-01', description: 'X', amount: 1, type: 'expense', currency: 'EUR' }
+      ]);
+
+      expect(result[0].currency).toBe('EUR');
+      expect('currencyFellBack' in result[0]).toBeFalse();
+    });
   });
 
   describe('confirmImport', () => {
@@ -1276,6 +1362,14 @@ describe('AIImportService', () => {
       expect(importHistoryService.completeImport).toHaveBeenCalled();
       expect(history).toEqual(completedHistory);
       expect(service.isProcessing()).toBeFalse();
+    });
+
+    it('writes the currency the reviewer chose and never the review mark', async () => {
+      await service.confirmImport([selected({ currency: 'JPY', currencyFellBack: true })], 'r.jpg', 1, 'image', 'receipt_image');
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.currency).toBe('JPY');
+      expect('currencyFellBack' in dto).toBeFalse();
     });
 
     describe('history read-back', () => {
