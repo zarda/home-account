@@ -82,11 +82,11 @@ until `ensureRatesLoaded()` settles, and every async step discards itself
 when a newer reset/refresh/calculate has bumped the generation — the
 `refreshTotalCount(gen)` shape from the window service.
 
-**The header shows the figure that means something.** Desktop renders labeled
-figures in the page-header actions area beside the add FAB (both behind the
-same `deviceService.isMobile()` gate, so they cannot disagree with what sits
-next to them); mobile renders a subtitle line under the title, captioned with
-the filter range through the new `LocaleFormatService.formatRange` seam.
+**The header shows the figure that means something.** At 600px and wider,
+labeled figures render in the page-header actions area beside the add FAB (both
+behind the same viewport gate, so they cannot disagree with what sits next to
+them); below it a subtitle line renders under the title, captioned with the
+filter range through the new `LocaleFormatService.formatRange` seam.
 Under a type filter a single figure renders — Spent for expenses, Income for
 income — because Net under an expense filter is identically minus Spent, and
 Spent under an income filter prints a zero over a list of salary rows.
@@ -163,6 +163,14 @@ no '−' or WORD JOINER glyph — a negative value is spoken through the
   returned rows.
 
 ## Known gaps
+
+- **The gate shipped reading the user agent** (`DeviceService.isMobile()`) while
+  the bottom-nav "+" that covers the narrow layout read the viewport, so a phone
+  in landscape — a mobile agent at a tablet width — lost the bottom bar and was
+  given nothing in its place, leaving no way to add a transaction at all.
+  Corrected 2026-08-22 to `injectIsMobileViewport()`; `add-affordance.spec.ts`
+  drives both gates from one fake observer and is what now holds the two ends
+  together.
 
 - **`unavailable` has no inline retry.** Any filter change or mutation
   retries; a dedicated retry button was left out until someone actually hits

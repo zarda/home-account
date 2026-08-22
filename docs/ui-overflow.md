@@ -297,6 +297,7 @@ swipe keeps a non-gesture route — the pinned menu.
 | `features/ai/import/transaction-preview-table/transaction-preview-table.overflow.spec.ts` | the import review card at 288px with everything a receipt can put on it: the amount stays whole beside the currency menu, the fallen-back marker, the suggestion chips and their remove buttons stay reachable, and the bulk currency button wraps rather than shoving the count badge off the header |
 | `shared/directives/swipe-reveal.directive.spec.ts` | the gesture: axis lock, strip exclusion, click suppression, one open row app-wide, snap and fling, pointercancel recovery, and the sticky `+N` staying pinned on a translated surface |
 | `shared/safe-area.spec.ts` | `max()` not sum; one owner per inset |
+| `features/transactions/add-affordance.spec.ts` | the transactions header's add FAB keeps its 48px while the period totals sharing its row yield — and, at every width, exactly one add affordance is on screen |
 | `features/transactions/transaction-overflow.smoke.spec.ts` | the same on a real page, plus the paging root |
 | `shared/truncation-guard.spec.ts` | the two things a deleted truncation is replaced by: text wraps inside its box without shoving its neighbour out, and a label that cannot wrap scales while its control survives |
 | `scripts/check-truncation.mjs` | G3 across the whole source, `npm run truncation:check` |

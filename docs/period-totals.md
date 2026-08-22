@@ -28,16 +28,20 @@ snapped unsigned first (`snapDisplayZero`), so JPY −0.4 renders as ¥0, not
 JOINER after a leading minus so a wrapped negative amount cannot strand its
 sign on its own line.
 
-Desktop places the figures in the page-header actions area, label over value,
-before the add FAB — both behind the same `deviceService.isMobile()` gate.
-Mobile has no header actions row, so the figures ride a subtitle line under
-the title, prefixed with the range they describe via
+At 600px and wider the figures sit in the page-header actions area, label over
+value, before the add FAB — both behind the same viewport gate,
+`injectIsMobileViewport()` over `APP_BREAKPOINTS.mobile`. That is the query the
+bottom nav binds to as well, so the figures and the add affordance are each in
+exactly one place at every width. The user-agent gate this replaced put the FAB
+and the bottom-nav "+" on different questions and left a phone in landscape
+with neither. Below 600px there is no header actions row, so the figures ride a
+subtitle line under the title, prefixed with the range they describe via
 `LocaleFormatService.formatRange` (rendered only when the filter carries both
 date bounds).
 
 ## What each state renders
 
-| State | Meaning | Desktop / mobile rendering |
+| State | Meaning | Rendering (either placement) |
 |---|---|---|
 | `idle` | no reset yet (e.g. signed out) | nothing |
 | `computing` | count or sweep in flight | a neutral placeholder block — never `NT$0` |
