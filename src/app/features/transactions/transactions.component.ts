@@ -12,10 +12,10 @@ import { PeriodTotalsService } from '../../core/services/period-totals.service';
 import { AuthService } from '../../core/services/auth.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
-import { DeviceService } from '../../core/services/device.service';
 import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
 import { Transaction, TransactionFilters, Category, baseCurrencyOf } from '../../models';
+import { injectIsMobileViewport } from '../../core/layout/viewport';
 import { parseDayKey } from '../../core/utils/transaction-date.utils';
 import { pinLeadingMinus, snapDisplayZero } from '../../core/utils/money-display.utils';
 import { FitTextDirective } from '../../shared/directives/fit-text.directive';
@@ -68,7 +68,6 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private categoryService = inject(CategoryService);
   private currencyService = inject(CurrencyService);
   private localeFormat = inject(LocaleFormatService);
-  readonly deviceService = inject(DeviceService);
   private dialog = inject(MatDialog);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -76,6 +75,11 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private notifications = inject(NotificationService);
   private announcer = inject(AnnouncerService);
   private pendingFilters = inject(PendingFiltersService);
+
+  // The layout gate for both the add affordance and the totals. The
+  // bottom-nav "+" that replaces the header FAB binds to this same query,
+  // so exactly one of the two is on screen at every width.
+  readonly isMobileViewport = injectIsMobileViewport();
 
   transactions = this.windowSource.visibleWindow;
   isInitialLoading = this.windowSource.isInitialLoading;

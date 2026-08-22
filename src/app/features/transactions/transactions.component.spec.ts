@@ -11,7 +11,6 @@ import { PeriodTotalsService, PeriodTotalsStatus } from '../../core/services/per
 import { AuthService } from '../../core/services/auth.service';
 import { CategoryService } from '../../core/services/category.service';
 import { CurrencyService } from '../../core/services/currency.service';
-import { DeviceService } from '../../core/services/device.service';
 import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
@@ -126,7 +125,6 @@ describe('TransactionsComponent', () => {
           provide: LocaleFormatService,
           useValue: { formatRange: jasmine.createSpy('formatRange').and.returnValue('RANGE') }
         },
-        { provide: DeviceService, useValue: {} },
         { provide: TranslationService, useValue: translation },
         {
           provide: NotificationService,
