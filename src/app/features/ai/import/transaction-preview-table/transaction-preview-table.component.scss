@@ -326,6 +326,21 @@
   width: 100%;
   min-width: 0;
 
+  // The host shrinks, but Material's own form field is inline-flex and so
+  // shrink-to-fit: it floors at the label's min-content, and the rule name
+  // interpolated into that label can be one unbroken word. Cap the field at
+  // the card and let the label wrap anywhere, rather than have the whole
+  // word carried past the card's edge where the padding hides it.
+  ::ng-deep .mdc-form-field {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  ::ng-deep .mdc-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
   mat-icon {
     font-size: 16px;
     width: 16px;

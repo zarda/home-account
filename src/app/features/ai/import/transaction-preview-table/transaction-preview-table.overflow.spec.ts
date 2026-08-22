@@ -193,6 +193,20 @@ describe('overflow guard: the import review card', () => {
     }
   });
 
+  it('wraps a long rule name rather than carrying it past the card', () => {
+    // Material's form field is inline-flex, so it is shrink-to-fit and floors
+    // at its label's min-content — and the rule name in that label is whatever
+    // the user called the rule. The label here is one unbroken token, the
+    // shape that used to hang over the card's edge and hide in its padding
+    // where only a narrower font could expose it.
+    const field = el('.recurring-link .mdc-form-field');
+    const box = card.getBoundingClientRect();
+    const contentRight = box.right - parseFloat(getComputedStyle(card).paddingRight);
+    expect(field.getBoundingClientRect().right)
+      .withContext('the link label stays inside the card\'s content box')
+      .toBeLessThanOrEqual(contentRight + 1);
+  });
+
   it('gives every new control a 40px tap target without fattening the chips', () => {
     // The repo has been here before: .type-toggle carries a comment recording
     // that it shipped at 26px, below the accessible minimum. The two menu
