@@ -9,7 +9,12 @@
  *
  * Finer-grained cosmetic media queries inside a page (spacing, column
  * counts) may use other widths, but layout/navigation mode decisions in
- * TypeScript must observe these queries only.
+ * TypeScript must observe these queries only — through
+ * `injectIsMobileViewport()` in viewport.ts where the question is just "am I
+ * in the mobile layout?". Never from the user agent: a phone in landscape is
+ * a mobile UA at a tablet width, and gating one half of a layout on the agent
+ * while the other half reads these queries is how the app once ended up with
+ * no add button at all between 600px and the phone's own width.
  */
 export const APP_BREAKPOINTS = {
   mobile: '(max-width: 599.98px)',

@@ -2,10 +2,14 @@
   <app-page-header titleKey="transactions.title">
     <span header-title-suffix class="text-base font-normal text-gray-400 dark:text-gray-500 leading-none">({{ transactionCount() }})</span>
 
-    <!-- Add Menu Button. Hidden on mobile: the bottom-nav center FAB opens
-         the same three entries (manual add, camera capture, photo import). -->
+    <!-- Add Menu Button. Hidden below 600px: the bottom-nav center FAB opens
+         the same three entries (manual add, camera capture, photo import), and
+         it appears on this same viewport query — so the add affordance is in
+         exactly one of the two places at every width. Gate this on the
+         viewport, never the user agent: a phone in landscape is a mobile agent
+         at a width where the bottom nav is already gone. -->
     <ng-container ngProjectAs="[header-actions]">
-      @if (!deviceService.isMobile()) {
+      @if (!isMobileViewport()) {
         <!-- Period totals for the active filter set: exact figures, a
              computing placeholder, a labeled absent state, or the explicit
              over-cap ask. Never an approximate sum. -->
@@ -36,7 +40,7 @@
           mat-fab
           color="primary"
           [matMenuTriggerFor]="addMenu"
-          class="!w-12 !h-12 !min-w-0"
+          class="add-fab !w-12 !h-12 !min-w-0"
           [attr.aria-label]="'transactions.addTransaction' | translate"
         >
           <mat-icon>add</mat-icon>
@@ -58,10 +62,12 @@
       }
     </ng-container>
 
-    <!-- Mobile: no actions row exists (the bottom-nav FAB covers add), so the
-         totals ride the subtitle line, captioned with the range they describe. -->
+    <!-- Below 600px no actions row exists (the bottom-nav FAB covers add), so
+         the totals ride the subtitle line, captioned with the range they
+         describe. Same gate as the actions block above, negated: never both,
+         never neither. -->
     <ng-container ngProjectAs="[header-subtitle]">
-      @if (deviceService.isMobile() && totalsState() !== 'hidden') {
+      @if (isMobileViewport() && totalsState() !== 'hidden') {
         <p class="period-totals-line">
           @if (periodCaption(); as caption) {
             <span class="period-caption">{{ caption }}</span>
