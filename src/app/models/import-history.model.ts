@@ -65,6 +65,14 @@ export interface FieldConfidence {
 /** Below this, a field is worth the reviewer's attention before importing. */
 export const VERIFY_FIELD_THRESHOLD = 0.7;
 
+/** The rule a row looks like, as offered on the review card. Never written. */
+export interface RecurringMatchSuggestion {
+  id: string;
+  name: string;
+  /** What the source said about isRecurring before the link, restored when it is declined. */
+  sourceIsRecurring?: boolean;
+}
+
 export interface CategorizedImportTransaction {
   id: string;                      // Temporary ID for UI selection
   description: string;
@@ -86,6 +94,12 @@ export interface CategorizedImportTransaction {
    * Absent means the source could not report it (CSV, JSON, a manual row).
    */
   fieldConfidence?: FieldConfidence;
+  /**
+   * True when `currency` is the account's base currency because the source
+   * reported none — a fallback, not a reading. The review step marks it the
+   * way it marks a low-confidence amount; the confirm step never writes it.
+   */
+  currencyFellBack?: boolean;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
@@ -96,9 +110,15 @@ export interface CategorizedImportTransaction {
   // Optional transaction fields the source answered; absent means nobody
   // looked. The confirm step forwards whatever is present and invents nothing.
   tags?: string[];
+  /** What the suggester offered, so the confirm step can record what was removed. Never written. */
+  suggestedTags?: string[];
   location?: TransactionLocation;
   period?: BudgetPeriod;
   isRecurring?: boolean;
+  /** The active rule this row looks like, offered unchecked. Never written. */
+  recurringMatch?: RecurringMatchSuggestion;
+  /** Set only when the user accepted the offered link. */
+  recurringId?: string;
 }
 
 export interface DuplicateCheck {
@@ -108,8 +128,14 @@ export interface DuplicateCheck {
    * `within_batch` means the row duplicates another row in the same import,
    * rather than something already stored. Overlapping exports are the usual
    * cause — the same charge appearing in two files, or twice on one statement.
+   *
+   * `recurring_occurrence` means the stored row is an occurrence the scheduler
+   * posted for the rule this row was *offered*. Detection runs before the card
+   * can accept or decline, so the flag keys on the match, not on the link, and
+   * `markDuplicates` deselects the row like any other duplicate; declining the
+   * link afterwards does not re-run detection.
    */
-  matchType: 'exact' | 'likely' | 'possible' | 'within_batch' | 'none';
+  matchType: 'exact' | 'likely' | 'possible' | 'within_batch' | 'recurring_occurrence' | 'none';
   existingTransactionId?: string;
   confidence: number;
 }

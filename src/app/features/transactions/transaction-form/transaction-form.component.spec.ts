@@ -22,6 +22,9 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AIStrategyService, ProcessingResult, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
+import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
+import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
 import { Transaction, Category, Goal, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -45,6 +48,9 @@ describe('TransactionFormComponent', () => {
   let receiptQuota: jasmine.SpyObj<ReceiptQuotaService>;
   let receiptToNote: jasmine.SpyObj<ReceiptToNoteService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
+  let tagSuggestions: jasmine.SpyObj<TagSuggestionService>;
+  let groundingHistory: jasmine.SpyObj<GroundingHistoryService>;
+  let tagMemory: jasmine.SpyObj<TagMemoryService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
   let goalService: {
     goals: ReturnType<typeof signal<Goal[]>>;
@@ -125,6 +131,12 @@ describe('TransactionFormComponent', () => {
     receiptQuota.canAddImages.and.resolveTo(true);
     receiptToNote = jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']);
     analytics = jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']);
+    tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
+    tagSuggestions.suggest.and.resolveTo([[]]);
+    groundingHistory = jasmine.createSpyObj<GroundingHistoryService>('GroundingHistoryService', ['recent']);
+    groundingHistory.recent.and.resolveTo([]);
+    tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']);
+    tagMemory.remember.and.resolveTo(undefined);
     currentUser = signal<User | null>(createUser());
     goalService = {
       goals: signal<Goal[]>([]),
@@ -157,6 +169,9 @@ describe('TransactionFormComponent', () => {
         { provide: ReceiptQuotaService, useValue: receiptQuota },
         { provide: ReceiptToNoteService, useValue: receiptToNote },
         { provide: AnalyticsService, useValue: analytics },
+        { provide: TagSuggestionService, useValue: tagSuggestions },
+        { provide: GroundingHistoryService, useValue: groundingHistory },
+        { provide: TagMemoryService, useValue: tagMemory },
         { provide: GoalService, useValue: goalService },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
@@ -814,6 +829,82 @@ describe('TransactionFormComponent', () => {
     });
   });
 
+  describe('location read off the receipt', () => {
+    const scan = (component: TransactionFormComponent) =>
+      (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+    it('prefills an empty Location field with the printed address', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店' } }));
+      const component = build().componentInstance;
+      await scan(component);
+      expect(component.form.get('locationName')?.value).toBe('渋谷店');
+    });
+
+    it('never overwrites a location the user typed', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店' } }));
+      const component = build().componentInstance;
+      component.form.patchValue({ locationName: 'My café' });
+      await scan(component);
+      expect(component.form.get('locationName')?.value).toBe('My café');
+    });
+
+    it('leaves Location empty when the receipt printed no address', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult());
+      const component = build().componentInstance;
+      await scan(component);
+      expect(component.form.get('locationName')?.value ?? '').toBe('');
+    });
+
+    it('treats a Location holding only whitespace as empty', async () => {
+      // Nothing the user can see is in the field, so nothing of theirs is
+      // being overwritten — the guard trims before it decides.
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店' } }));
+      const component = build().componentInstance;
+      component.form.patchValue({ locationName: '   ' });
+      await scan(component);
+      expect(component.form.get('locationName')?.value).toBe('渋谷店');
+    });
+  });
+
+  describe('coordinate fetched during the scan', () => {
+    const scan = (component: TransactionFormComponent) =>
+      (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+    const geolocation = (lat: number, lng: number) => ({
+      getCurrentPosition: (ok: (p: { coords: { latitude: number; longitude: number } }) => void) =>
+        ok({ coords: { latitude: lat, longitude: lng } }),
+    });
+
+    it('offers the fix for a receipt dated today, and attaches it only on accept', async () => {
+      spyOnProperty(navigator, 'geolocation', 'get').and.returnValue(geolocation(37.5665, 126.978) as never);
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true, date: new Date() }));
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      expect(component.suggestedCoordinates()).toEqual({ lat: 37.5665, lng: 126.978 });
+      expect(component.locationCoords()).toBeNull();
+      component.acceptCoordinateSuggestion();
+      expect(component.locationCoords()).toEqual({ lat: 37.5665, lng: 126.978 });
+      expect(component.suggestedCoordinates()).toBeNull();
+    });
+
+    it('offers nothing for a receipt from another day', async () => {
+      spyOnProperty(navigator, 'geolocation', 'get').and.returnValue(geolocation(37.5665, 126.978) as never);
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true, date: new Date(2026, 0, 1) }));
+      const component = build().componentInstance;
+      await scan(component);
+      expect(component.suggestedCoordinates()).toBeNull();
+    });
+
+    it('offers nothing when a coordinate is already attached', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true, date: new Date() }));
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 1, lng: 2 });
+      await scan(component);
+      expect(component.suggestedCoordinates()).toBeNull();
+    });
+  });
+
   describe('receipt scanning', () => {
     it('ignores a non-image file', () => {
       const component = build().componentInstance;
@@ -1019,11 +1110,15 @@ describe('TransactionFormComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('transactions.locationUnavailable');
     });
 
-    it('clearCoordinates detaches them', () => {
+    it('clearCoordinates detaches them and drops the scan\'s offer with them', () => {
+      // Clearing is a refusal. Leaving the offer up would re-present the very
+      // coordinate the user just took off the form.
       const component = build().componentInstance;
       component.locationCoords.set({ lat: 1, lng: 2 });
+      component.suggestedCoordinates.set({ lat: 3, lng: 4 });
       component.clearCoordinates();
       expect(component.locationCoords()).toBeNull();
+      expect(component.suggestedCoordinates()).toBeNull();
     });
 
     it('tag input trims, lowercases, dedupes and seeds from the transaction', () => {
@@ -1056,6 +1151,85 @@ describe('TransactionFormComponent', () => {
       component.removePendingReceipt(1);
 
       expect(component.pendingReceipts()).toEqual([keep]);
+    });
+  });
+
+  describe('tags offered by the scan', () => {
+    const scan = (component: TransactionFormComponent) =>
+      (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+    it('puts the offered tags in the chip input, beside what was typed', async () => {
+      // Chips, not a silent write: each one can be taken off before saving.
+      tagSuggestions.suggest.and.resolveTo([['coffee', 'work']]);
+      const component = build().componentInstance;
+      component.tags.set(['work', 'lunch']);
+
+      await scan(component);
+
+      expect(component.tags()).toEqual(['work', 'lunch', 'coffee']);
+      expect(tagSuggestions.suggest.calls.mostRecent().args[0]).toEqual([{ description: 'Cafe' }]);
+    });
+
+    it('sends the receipt body as details and the recent history as grounding', async () => {
+      const history = [createTransaction()];
+      groundingHistory.recent.and.resolveTo(history);
+      strategy.processReceipt.and.resolveTo(scanResult({ notes: 'Latte — 5.00' }));
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      const [rows, passed] = tagSuggestions.suggest.calls.mostRecent().args;
+      expect(rows).toEqual([{ description: 'Cafe', details: 'Latte — 5.00' }]);
+      expect(passed).toEqual(history);
+    });
+
+    it('reports the scan as succeeded even when no tag could be offered', async () => {
+      // A second round-trip must not delay or undo the first one's answer.
+      const warn = spyOn(console, 'warn');
+      tagSuggestions.suggest.and.rejectWith(new Error('rate limited'));
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      expect(notifications.success).toHaveBeenCalledWith('ai.scanSuccess');
+      expect(component.scanError()).toBeNull();
+      expect(component.form.get('description')?.value).toBe('Cafe');
+      expect(warn).toHaveBeenCalled();
+    });
+
+    it('asks for nothing when the scan itself failed', async () => {
+      strategy.processReceipt.and.rejectWith(new Error('unreadable'));
+      spyOn(console, 'error');
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      expect(tagSuggestions.suggest).not.toHaveBeenCalled();
+    });
+
+    it('remembers the chips left on and the offers taken off, on save', async () => {
+      tagSuggestions.suggest.and.resolveTo([['coffee', 'work']]);
+      const component = build().componentInstance;
+      await scan(component);
+      component.removeTag('work');
+
+      await component.onSubmit();
+
+      expect(transactionService.addTransaction).toHaveBeenCalled();
+      expect(tagMemory.remember).toHaveBeenCalledWith('Cafe', ['coffee'], ['work']);
+    });
+
+    it('remembers nothing when the row was filled in by hand', async () => {
+      const component = build().componentInstance;
+      component.form.patchValue({
+        type: 'expense', amount: '15.5', currency: 'USD', categoryId: 'food',
+        description: 'Lunch', date: new Date(2026, 0, 1),
+      });
+      component.tags.set(['work']);
+
+      await component.onSubmit();
+
+      expect(tagMemory.remember).not.toHaveBeenCalled();
     });
   });
 

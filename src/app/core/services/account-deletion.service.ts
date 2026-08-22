@@ -9,6 +9,7 @@ import { RecurringService } from './recurring.service';
 import { SearchHistoryService } from './search-history.service';
 import { SearchAnswerHistoryService } from './search-answer-history.service';
 import { CategoryMemoryService } from './category-memory.service';
+import { TagMemoryService } from './tag-memory.service';
 import { GoalService } from './goal.service';
 import { ImportHistoryService } from './import-history.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
@@ -38,6 +39,7 @@ export const DELETION_STEPS = [
   'savedSearches',
   'searchAnswers',
   'categoryMemory',
+  'tagMemory',
   'imports',
   'insightSnapshots',
   'secrets',
@@ -81,6 +83,7 @@ export class AccountDeletionService {
   private searchHistory = inject(SearchHistoryService);
   private searchAnswers = inject(SearchAnswerHistoryService);
   private categoryMemory = inject(CategoryMemoryService);
+  private tagMemory = inject(TagMemoryService);
   private goalService = inject(GoalService);
   private importHistory = inject(ImportHistoryService);
   private insightSnapshots = inject(InsightSnapshotService);
@@ -125,6 +128,7 @@ export class AccountDeletionService {
       ['savedSearches', () => this.searchHistory.deleteAll()],
       ['searchAnswers', () => this.searchAnswers.deleteAll()],
       ['categoryMemory', () => this.categoryMemory.deleteAll()],
+      ['tagMemory', () => this.tagMemory.deleteAll()],
       ['imports', () => this.importHistory.clearImportHistory()],
       ['insightSnapshots', () => this.insightSnapshots.deleteAll()],
       ['secrets', () => this.providerKeys.deleteAll()],

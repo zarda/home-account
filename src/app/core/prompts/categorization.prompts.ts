@@ -69,6 +69,57 @@ Return ONLY the category ID that best matches this transaction. Just the ID, not
   };
 }
 
+/** One row offered to the tag suggester. */
+export interface SuggestTagsRow {
+  index: number;
+  description: string;
+  merchant?: string;
+  details?: string;
+}
+
+export type SuggestTagsInputs = GroundingInput & {
+  rows: SuggestTagsRow[];
+  /** Pre-rendered, one `- tag` per line: the tags this account already uses. */
+  vocabulary: string;
+};
+
+/**
+ * Tag each row from the account's own vocabulary, or not at all.
+ *
+ * The vocabulary is rendered by the caller from the user's history, never
+ * listed here, so the prompt carries no taxonomy of its own. The response is
+ * validated by `applyTagSuggestions`: a tag outside the vocabulary is dropped
+ * the way an unrecognized category name is (ADR 0046).
+ */
+export function renderSuggestTags(i: SuggestTagsInputs): RenderedPrompt {
+  const rowList = i.rows
+    .map(row => {
+      const merchant = row.merchant && row.merchant !== row.description ? ` (${row.merchant})` : '';
+      const details = row.details ? ` — ${row.details}` : '';
+      return `${row.index}: "${row.description}"${merchant}${details}`;
+    })
+    .join('\n');
+
+  return {
+    user: `Suggest tags for these transactions, using ONLY the tags this user already uses.
+
+Tags this user already uses:
+${i.vocabulary}
+${optionalSection(i.grounding)}
+Transactions:
+${rowList}
+
+Pick at most three tags per transaction, only from the list above, and only when one clearly applies. A transaction that fits none gets an empty array. Never invent, translate or respell a tag.
+
+Return ONLY a valid JSON array with objects containing "index" and "tags":
+[{"index": 0, "tags": ["<a tag from the list>"]}, {"index": 1, "tags": []}]`,
+    expects: 'json',
+    maxOutputTokens: 600,
+    temperature: 0.05,
+    topP: 0.6,
+  };
+}
+
 export interface CsvMappingInputs {
   headers: string[];
   sampleRows: string[][];

@@ -1,4 +1,4 @@
-import { toCreateTransactionDTO } from './import-dto.utils';
+import { resolveImportCurrency, toCreateTransactionDTO } from './import-dto.utils';
 
 describe('toCreateTransactionDTO', () => {
   const date = new Date(2026, 5, 1);
@@ -32,6 +32,7 @@ describe('toCreateTransactionDTO', () => {
       tags: ['work', 'reimbursable'],
       location: { name: 'Berlin Mitte' },
       isRecurring: true,
+      recurringId: 'rec-1',
       period: 'monthly'
     }, 'USD');
 
@@ -46,6 +47,7 @@ describe('toCreateTransactionDTO', () => {
       tags: ['work', 'reimbursable'],
       location: { name: 'Berlin Mitte' },
       isRecurring: true,
+      recurringId: 'rec-1',
       period: 'monthly'
     });
   });
@@ -85,6 +87,15 @@ describe('toCreateTransactionDTO', () => {
     expect(dto.isRecurring).toBeFalse();
   });
 
+  it('drops a recurringId the review step cleared', () => {
+    // Declining the offered link leaves the key present and undefined on the
+    // row. Unlike isRecurring, an id has no "false" to preserve, so the
+    // truthy guard is what makes a declined link mean nothing written.
+    const dto = toCreateTransactionDTO({ amount: 1, date, recurringId: undefined }, 'USD');
+
+    expect('recurringId' in dto).toBeFalse();
+  });
+
   it('omits an empty tag list rather than writing an empty array', () => {
     const dto = toCreateTransactionDTO({ amount: 1, date, tags: [] }, 'USD');
 
@@ -95,5 +106,25 @@ describe('toCreateTransactionDTO', () => {
     const dto = toCreateTransactionDTO({ amount: 1, date, note: '' }, 'USD');
 
     expect('note' in dto).toBeFalse();
+  });
+});
+
+describe('resolveImportCurrency', () => {
+  it('keeps a currency somebody read, with no flag', () => {
+    expect(resolveImportCurrency('JPY', 'USD')).toEqual({ currency: 'JPY' });
+  });
+  it('substitutes the base currency and says so when nothing was read', () => {
+    expect(resolveImportCurrency('', 'USD')).toEqual({ currency: 'USD', currencyFellBack: true });
+    expect(resolveImportCurrency(undefined, 'USD')).toEqual({ currency: 'USD', currencyFellBack: true });
+  });
+});
+
+describe('toCreateTransactionDTO and the review flags', () => {
+  it('never forwards currencyFellBack — it is a review-step mark, not a field', () => {
+    const dto = toCreateTransactionDTO(
+      { amount: 5, date: new Date(2026, 0, 1), currency: 'USD', currencyFellBack: true } as never,
+      'USD'
+    );
+    expect('currencyFellBack' in dto).toBeFalse();
   });
 });

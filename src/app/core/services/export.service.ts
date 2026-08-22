@@ -19,6 +19,7 @@ import {
 } from '../../models';
 import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
 import { parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
+import { normalizeTags } from '../utils/tag.utils';
 import { toCreateTransactionDTO } from '../utils/import-dto.utils';
 
 // File System Access API type declarations
@@ -540,8 +541,10 @@ export class ExportService {
         ? values[noteCol].trim()
         : '';
 
+      // A hand-edited file can repeat a tag in a second casing; the card keys
+      // its chips by value and the filter only finds the normalized form.
       const tags = tagsCol >= 0 && tagsCol < values.length
-        ? values[tagsCol].split('; ').map(t => t.trim()).filter(Boolean)
+        ? normalizeTags(values[tagsCol].split('; '))
         : [];
 
       const locationName = locationCol >= 0 && locationCol < values.length

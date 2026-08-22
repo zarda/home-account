@@ -181,6 +181,7 @@
     "locationUnavailable": "無法取得您的位置。您仍可輸入地點名稱。",
     "clearCoordinates": "移除座標",
     "currencyFromLocation": "您目前所在地區使用 {{currency}}，要套用嗎？",
+    "attachScanPosition": "將目前位置附加為這張收據的地點",
     "useSuggestedCategory": "使用建議分類 {{category}}"
   },
   "budget": {
@@ -602,6 +603,10 @@
         "label": "分類記憶",
         "description": "您對商家所做的更正，匯入時不再重複詢問"
       },
+      "tagMemory": {
+        "label": "標籤記憶",
+        "description": "匯入時你為商家保留或移除的標籤"
+      },
       "imports": {
         "label": "匯入紀錄",
         "description": "每次收據與對帳單匯入的紀錄"
@@ -1017,7 +1022,14 @@
     "imageKindStatementHint": "對帳單上的每一行都會成為獨立的交易。",
     "verifyAmount": "請再確認此金額，AI 的辨識信心僅有 {{percent}}%",
     "verifyDate": "請再確認此日期，AI 的辨識信心僅有 {{percent}}%",
+    "currencyFellBack": "未能從來源讀取貨幣 — 顯示你的基礎貨幣",
+    "setCurrency": "變更貨幣（目前 {{currency}}）",
+    "setCurrencyForSelected": "所選項目的貨幣",
+    "removeLocation": "移除建議的地點",
+    "removeTag": "移除標籤 {{tag}}",
     "matchWithinBatch": "此次匯入中重複",
+    "linkRecurring": "看起來是你的「{{rule}}」— 建立關聯",
+    "matchRecurringOccurrence": "你的定期規則已記錄這筆",
     "errorNoProvider": "尚未設定 AI 供應商。請在「設定 → AI 處理」中新增 API 金鑰。",
     "errorCloudUnavailable": "無法連線至雲端 AI。請檢查網路連線，或在「設定 → AI 處理」中新增 API 金鑰。",
     "errorQueuedOffline": "目前沒有網路連線，此圖片已加入佇列，恢復連線後將自動處理。",
@@ -1095,7 +1107,12 @@
     "categoryMemoryHint": "在匯入時修正分類後，下次遇到相同商家會直接沿用該選擇，不再詢問 AI。",
     "categoryMemoryCount": "已記住的商家數量",
     "categoryMemoryClear": "全部忘記",
-    "categoryMemoryCleared": "已清除記住的分類"
+    "categoryMemoryCleared": "已清除記住的分類",
+    "tagMemoryTitle": "已記住的標籤",
+    "tagMemoryHint": "匯入時保留或移除建議的標籤後，下次同一商家會沿用該選擇。",
+    "tagMemoryCount": "已記住的商家",
+    "tagMemoryClear": "全部忘記",
+    "tagMemoryCleared": "已清除記住的標籤"
   },
   "about": {
     "title": "關於",

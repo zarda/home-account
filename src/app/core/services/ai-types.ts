@@ -49,6 +49,7 @@ export interface ProcessedTransaction {
   location?: TransactionLocation;
   period?: BudgetPeriod;
   isRecurring?: boolean;
+  recurringId?: string;
   /**
    * Which photo the row came from, and which photos a merged row was built
    * from. The strategy path used to drop both on this hop, so the review step

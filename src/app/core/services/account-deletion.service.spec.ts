@@ -10,6 +10,7 @@ import { RecurringService } from './recurring.service';
 import { SearchHistoryService } from './search-history.service';
 import { SearchAnswerHistoryService } from './search-answer-history.service';
 import { CategoryMemoryService } from './category-memory.service';
+import { TagMemoryService } from './tag-memory.service';
 import { GoalService } from './goal.service';
 import { ImportHistoryService } from './import-history.service';
 import { InsightSnapshotService } from './insight-snapshot.service';
@@ -32,6 +33,7 @@ describe('AccountDeletionService', () => {
   let mockSearches: jasmine.SpyObj<SearchHistoryService>;
   let mockAnswers: jasmine.SpyObj<SearchAnswerHistoryService>;
   let mockCategoryMemory: jasmine.SpyObj<CategoryMemoryService>;
+  let mockTagMemory: jasmine.SpyObj<TagMemoryService>;
   let mockGoals: jasmine.SpyObj<GoalService>;
   let mockImports: jasmine.SpyObj<ImportHistoryService>;
   let mockSnapshots: jasmine.SpyObj<InsightSnapshotService>;
@@ -66,6 +68,7 @@ describe('AccountDeletionService', () => {
     mockSearches = jasmine.createSpyObj('SearchHistoryService', ['deleteAll']);
     mockAnswers = jasmine.createSpyObj('SearchAnswerHistoryService', ['deleteAll']);
     mockCategoryMemory = jasmine.createSpyObj('CategoryMemoryService', ['deleteAll']);
+    mockTagMemory = jasmine.createSpyObj('TagMemoryService', ['deleteAll']);
     mockGoals = jasmine.createSpyObj('GoalService', ['deleteAll']);
     mockImports = jasmine.createSpyObj('ImportHistoryService', ['clearImportHistory']);
     mockSnapshots = jasmine.createSpyObj('InsightSnapshotService', ['deleteAll']);
@@ -87,6 +90,7 @@ describe('AccountDeletionService', () => {
     track(mockSearches.deleteAll, 'savedSearches', 1);
     track(mockAnswers.deleteAll, 'searchAnswers', 1);
     track(mockCategoryMemory.deleteAll, 'categoryMemory', 1);
+    track(mockTagMemory.deleteAll, 'tagMemory', 1);
     track(mockGoals.deleteAll, 'goals', 1);
     track(mockImports.clearImportHistory, 'imports');
     track(mockSnapshots.deleteAll, 'insightSnapshots');
@@ -108,6 +112,7 @@ describe('AccountDeletionService', () => {
         { provide: SearchHistoryService, useValue: mockSearches },
         { provide: SearchAnswerHistoryService, useValue: mockAnswers },
         { provide: CategoryMemoryService, useValue: mockCategoryMemory },
+        { provide: TagMemoryService, useValue: mockTagMemory },
         { provide: GoalService, useValue: mockGoals },
         { provide: ImportHistoryService, useValue: mockImports },
         { provide: InsightSnapshotService, useValue: mockSnapshots },
@@ -175,7 +180,8 @@ describe('AccountDeletionService', () => {
 
     const collectionSteps: DeletionStep[] = [
       'transactions', 'categories', 'budgets', 'recurring', 'goals', 'savedSearches',
-      'searchAnswers', 'categoryMemory', 'imports', 'insightSnapshots', 'secrets', 'feedback'
+      'searchAnswers', 'categoryMemory', 'tagMemory', 'imports', 'insightSnapshots',
+      'secrets', 'feedback'
     ];
     const securityIndex = order.indexOf('securityEvents');
     const userDocIndex = order.indexOf('userDoc');

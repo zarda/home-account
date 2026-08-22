@@ -278,6 +278,72 @@ describe('CloudLLMProviderBase', () => {
     });
   });
 
+  describe('suggestTags', () => {
+    const rows = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({ description: `Row ${i}` }));
+    const answer = (entries: { index: number; tags: string[] }[]): ProviderResponse => ({
+      text: JSON.stringify(entries),
+      truncated: false,
+    });
+
+    it('sends one request for a batch at the chunk size and lists the vocabulary', async () => {
+      const batch = rows(CATEGORIZE_CHUNK_SIZE);
+      provider.response = answer(batch.map((_, i) => ({ index: i, tags: ['coffee'] })));
+
+      const result = await provider.suggestTags(batch, ['coffee', 'work']);
+
+      expect(provider.sent).toEqual(['suggestTags']);
+      expect(provider.renderedSent[0].user).toContain('- coffee\n- work');
+      expect(provider.renderedSent[0].user).toContain(
+        `${CATEGORIZE_CHUNK_SIZE - 1}: "Row ${CATEGORIZE_CHUNK_SIZE - 1}"`
+      );
+      expect(result.length).toBe(CATEGORIZE_CHUNK_SIZE);
+      expect(result.every(tags => tags[0] === 'coffee')).toBeTrue();
+    });
+
+    it('splits past the chunk size and re-bases the second request from zero', async () => {
+      const batch = rows(CATEGORIZE_CHUNK_SIZE + 1);
+      provider.responseQueue = [
+        answer(
+          Array.from({ length: CATEGORIZE_CHUNK_SIZE }, (_, i) => ({ index: i, tags: ['coffee'] }))
+        ),
+        answer([{ index: 0, tags: ['work'] }]),
+      ];
+
+      const result = await provider.suggestTags(batch, ['coffee', 'work']);
+
+      expect(provider.sent).toEqual(['suggestTags', 'suggestTags']);
+      expect(provider.renderedSent[1].user).toContain(`0: "Row ${CATEGORIZE_CHUNK_SIZE}"`);
+      expect(result.length).toBe(CATEGORIZE_CHUNK_SIZE + 1);
+      expect(result[0]).toEqual(['coffee']);
+      expect(result[CATEGORIZE_CHUNK_SIZE]).toEqual(['work']);
+    });
+
+    it('drops an answer the account\'s vocabulary does not contain', async () => {
+      provider.response = answer([{ index: 0, tags: ['invented', 'Coffee'] }]);
+
+      const result = await provider.suggestTags(rows(1), ['coffee']);
+
+      expect(result).toEqual([['coffee']]);
+    });
+
+    it('answers empty for the failed chunk only', async () => {
+      spyOn(console, 'error');
+      const batch = rows(CATEGORIZE_CHUNK_SIZE + 1);
+      provider.responseQueue = [
+        new Error('first chunk truncated'),
+        answer([{ index: 0, tags: ['work'] }]),
+      ];
+
+      const result = await provider.suggestTags(batch, ['coffee', 'work']);
+
+      expect(result.slice(0, CATEGORIZE_CHUNK_SIZE).every(tags => tags.length === 0)).toBeTrue();
+      expect(result[CATEGORIZE_CHUNK_SIZE]).toEqual(['work']);
+      // Nothing is shown to the user on this path.
+      expect(provider.lastError()).toBeNull();
+    });
+  });
+
   describe('extraction category resolution', () => {
     const statementJson = (category: string) =>
       JSON.stringify([
@@ -491,6 +557,88 @@ describe('CloudLLMProviderBase', () => {
       // The import flow reads this field as a category id, so the model's own
       // wording must not reach it.
       expect(rows[0].category).toBe('food_groceries');
+    });
+  });
+
+  /**
+   * Where the receipt says it was issued, and only when it says so. An absent
+   * `location` slot means nobody read one, so a row must never carry a place
+   * the receipt did not print — the map pin and the searchable name are both
+   * that string.
+   */
+  describe('printed location', () => {
+    it('carries the address a receipt printed', async () => {
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4,"location":"Shibuya 1-2-3"}',
+        truncated: false,
+      };
+
+      const receipt = await provider.parseReceipt('img');
+
+      expect(receipt.location).toBe('Shibuya 1-2-3');
+    });
+
+    it('reports no location when the receipt printed none', async () => {
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4,"location":""}',
+        truncated: false,
+      };
+
+      const receipt = await provider.parseReceipt('img');
+
+      expect(receipt.location).toBeUndefined();
+    });
+
+    it('wraps a statement row location into the row slot and leaves it out otherwise', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-07-01', description: 'CAFE', amount: 4.5, type: 'expense',
+            currency: 'USD', merchant: 'Cafe', location: 'Shibuya 1-2-3' },
+          { date: '2026-07-01', description: 'SHOP', amount: 9, type: 'expense',
+            currency: 'USD', merchant: 'Shop' },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].location).toEqual({ name: 'Shibuya 1-2-3' });
+      expect('location' in rows[1]).toBeFalse();
+    });
+
+    it('wraps a multi-image row location the same way', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-07-01', description: 'A', amount: 5, type: 'expense', currency: 'USD',
+            merchant: 'Cafe', location: '渋谷店 東京都渋谷区 1-2-3', imageIndex: 0,
+            positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+          { date: '2026-07-01', description: 'B', amount: 6, type: 'expense', currency: 'USD',
+            merchant: 'Cafe', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1 },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+
+      expect(rows[0].location).toEqual({ name: '渋谷店 東京都渋谷区 1-2-3' });
+      expect('location' in rows[1]).toBeFalse();
+    });
+
+    it('drops a location that is only the merchant name repeated', async () => {
+      // The prompt forbids inferring a place from the name. A model that did
+      // it anyway has not said where the receipt was issued, and the repeat
+      // would be indistinguishable downstream from a branch actually printed.
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-07-01', description: 'CAFE', amount: 4.5, type: 'expense',
+            currency: 'USD', merchant: 'Cafe Tokyo', location: 'cafe tokyo' },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect('location' in rows[0]).toBeFalse();
     });
   });
 });

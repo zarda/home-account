@@ -10,6 +10,7 @@ import { NativeReceiptService } from './native-receipt.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
+import { printedLocationSlot } from '../utils/receipt-extraction.utils';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_CLAUDE_MODEL } from '../config/ai-models';
 import { AI_PREFERENCES_SCHEMA_VERSION, migrateModelPreferences } from '../config/ai-model-migrations';
 import { Category, LLMProvider, baseCurrencyOf} from '../../models';
@@ -413,6 +414,7 @@ export class AIStrategyService {
       // the right photo.
       imageIndex: t.imageIndex,
       ...(t.mergedFromImages?.length ? { mergedFromImages: t.mergedFromImages } : {}),
+      ...(t.location ? { location: t.location } : {}),
     }));
 
     const avgConfidence = transactions.length > 0
@@ -495,6 +497,7 @@ export class AIStrategyService {
       suggestedCategoryId: receipt.suggestedCategory,
       fieldConfidence: receipt.fieldConfidence,
       currencyFellBack: !receipt.currency,
+      ...printedLocationSlot(receipt.location),
     };
   }
 

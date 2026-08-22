@@ -7,7 +7,7 @@
  * parsing of their answers should be too.
  */
 import { isCurrencyCode } from '../../models';
-import type { FieldConfidence } from '../../models';
+import type { FieldConfidence, TransactionLocation } from '../../models';
 
 /**
  * A confidence the model reported, clamped to 0–1.
@@ -100,4 +100,32 @@ export function readFieldConfidence(parsed: {
     ...(amount !== undefined ? { amount } : {}),
     ...(date !== undefined ? { date } : {}),
   };
+}
+
+/** Longest address kept; a model echoing the whole receipt body here is not reporting an address. */
+const MAX_PRINTED_LOCATION_LENGTH = 120;
+
+/**
+ * The place a model read off the receipt, or undefined when it read none.
+ *
+ * Undefined rather than '' because the row slot means "nobody looked" when
+ * absent (ADR 0059). A value that is just the merchant name is dropped: the
+ * prompt forbids inferring a place from the name, and a model that did has
+ * not said where the receipt was issued.
+ */
+export function readPrintedLocation(value: unknown, merchant?: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const name = value.replace(/\s+/g, ' ').trim();
+  if (!name || name.length > MAX_PRINTED_LOCATION_LENGTH) return undefined;
+  const printedBy =
+    typeof merchant === 'string' ? merchant.replace(/\s+/g, ' ').trim().toLowerCase() : '';
+  if (printedBy && printedBy === name.toLowerCase()) {
+    return undefined;
+  }
+  return name;
+}
+
+/** The row slot for a printed location, or nothing at all when none was read. */
+export function printedLocationSlot(name: string | undefined): { location?: TransactionLocation } {
+  return name ? { location: { name } } : {};
 }

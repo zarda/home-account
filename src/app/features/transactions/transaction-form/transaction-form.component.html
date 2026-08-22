@@ -390,6 +390,24 @@
         }
       </mat-form-field>
 
+      @if (suggestedCoordinates()) {
+        <div class="ai-suggestion-container">
+          <button type="button" class="suggestion-chip" (click)="acceptCoordinateSuggestion()">
+            <mat-icon class="ai-icon" aria-hidden="true">my_location</mat-icon>
+            <span>{{ 'transactions.attachScanPosition' | translate }}</span>
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="suggestion-dismiss"
+            [attr.aria-label]="'common.close' | translate"
+            (click)="dismissCoordinateSuggestion()"
+          >
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+      }
+
       <!-- Note (Optional) -->
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>{{ 'transactions.noteOptional' | translate }}</mat-label>

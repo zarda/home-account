@@ -1,7 +1,7 @@
 # Account deletion
 
 Settings → Data Management → Danger Zone → **Delete Account** permanently
-erases the signed-in account: every Firestore subcollection (all twelve),
+erases the signed-in account: every Firestore subcollection without exception,
 the receipt objects in Storage, the device-local state keyed by the
 account, the user document, and finally the Firebase Auth user. There is no backend — the
 whole erasure is a client-side cascade run by `AccountDeletionService`
@@ -43,6 +43,7 @@ rules grant only the owner and the project deploys no Cloud Functions
 | savedSearches | `users/{uid}/savedSearches` | `SearchHistoryService.deleteAll()` |
 | searchAnswers | `users/{uid}/searchAnswers` | `SearchAnswerHistoryService.deleteAll()` |
 | categoryMemory | `users/{uid}/categoryMemory` | `CategoryMemoryService.deleteAll()` |
+| tagMemory | `users/{uid}/tagMemory` | `TagMemoryService.deleteAll()` |
 | imports | `users/{uid}/imports` | `ImportHistoryService.clearImportHistory()` |
 | insightSnapshots | `users/{uid}/insightSnapshots` | `InsightSnapshotService.deleteAll()` |
 | secrets | `users/{uid}/secrets/providers` (AI keys) | `ProviderKeyService.deleteAll()` |

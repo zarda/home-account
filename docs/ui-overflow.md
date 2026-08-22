@@ -294,6 +294,7 @@ swipe keeps a non-gesture route — the pinned menu.
 |---|---|
 | `shared/directives/fit-text.directive.spec.ts` | the directive: scales, floors at 12px, writes nothing when the value fits, does not oscillate |
 | `shared/overflow-guard.spec.ts` | a hostile row keeps its menu, amount and `+N` inside the clipping card — and an ordinary row still does not reflow at 375px, bounded hard at 88px. Also positional, since containment was not enough: the menu pins to the row's top-right corner, the tile stays on the body's line, the strip stays one line and ends left of the menu, the dashboard shape reclaims the reserved corner, and the insight drill-down row does not truncate |
+| `features/ai/import/transaction-preview-table/transaction-preview-table.overflow.spec.ts` | the import review card at 288px with everything a receipt can put on it: the amount stays whole beside the currency menu, the fallen-back marker, the suggestion chips and their remove buttons stay reachable, and the bulk currency button wraps rather than shoving the count badge off the header |
 | `shared/directives/swipe-reveal.directive.spec.ts` | the gesture: axis lock, strip exclusion, click suppression, one open row app-wide, snap and fling, pointercancel recovery, and the sticky `+N` staying pinned on a translated surface |
 | `shared/safe-area.spec.ts` | `max()` not sum; one owner per inset |
 | `features/transactions/transaction-overflow.smoke.spec.ts` | the same on a real page, plus the paging root |

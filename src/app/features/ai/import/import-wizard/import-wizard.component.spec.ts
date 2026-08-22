@@ -609,6 +609,16 @@ describe('ImportWizardComponent', () => {
       expect(mockImportService.confirmImport.calls.mostRecent().args[5]).toEqual([imgA, imgB]);
     }));
 
+    it('hands the reviewed rows to confirm, currency edits included', fakeAsync(() => {
+      // args[0] was never asserted: the rows the user corrected could have been
+      // replaced by the original extraction without any test noticing.
+      component.onTransactionsUpdated([{ ...mockTransactions[0], currency: 'JPY', selected: true }]);
+      component.confirmImport();
+      tick();
+      const args = mockImportService.confirmImport.calls.mostRecent().args;
+      expect(args[0][0].currency).toBe('JPY');
+    }));
+
     it('hands the camera batch\'s own files to the service', fakeAsync(() => {
       const img = new File(['x'], 'shot.jpg', { type: 'image/jpeg' });
       history.replaceState({

@@ -56,6 +56,8 @@ currency: readCurrencyCode(parsed.currency),   // '' unless the ISO table knows 
 
 The same rule applies to examples. Demonstrate the *shape* with placeholders (`"<item name as printed>"`) rather than a real receipt in one language, and say explicitly that the receipt's own script must be reproduced.
 
+A list the user owns is not a list in source. `suggestTags` asks the model to tag a row using only the tags this account already uses, and that vocabulary is rendered at request time — from the last six months of transactions and from tag memory, one `- tag` per line — so `categorization.prompts.ts` names no tag at all and no build ships an opinion about what people tag things with. The answer is filtered back down to the same list by `applyTagSuggestions`, so an invented, translated or respelled tag is dropped rather than created. An account with no tags gets no request: there is nothing to choose from, and a prompt that had to supply the candidates itself would be exactly the hand-written list this rule forbids.
+
 ### Registered in TypeScript, not JSON
 
 `analytics-events.json` is JSON on purpose, and this went the other way on purpose. That check has to read the taxonomy's *values* — parameter names, allowed values — and diff them against a markdown table, which needs `JSON.parse` from Node. This check needs prompt *ids* and call sites, which a regex finds in `.ts` just as well. Meanwhile a prompt in JSON is a `\n`-escaped single line whose diff is unreadable, and prompt wording is exactly the thing a reviewer most needs to see change.
@@ -74,6 +76,7 @@ The same rule applies to examples. Demonstrate the *shape* with placeholders (`"
 | `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row; sent in chunks of 25 rows so every answer fits the declared 800-token budget |
 | `categorySuggestion` | categorization | claude, gemini, openai | 1.17.93 | Single-description category lookup outside the import flow |
 | `csvMapping` | categorization | claude, gemini, openai | 1.17.93 | Map a bank export's columns onto the transaction fields |
+| `suggestTags` | categorization | claude, gemini, openai | 1.26.138 | Tag each extracted row from the account's own tag vocabulary, sent in chunks of 25; an answer outside the vocabulary is dropped |
 | `spendingSummary` | insights | claude, gemini, openai | 1.17.93 | The dashboard's period insights, in fixed `## ` sections |
 | `patternNarrative` | insights | claude, gemini, openai | 1.17.93 | Describe already-detected spending patterns in prose, without recalculating |
 | `financialAdvice` | insights | claude, gemini, openai | 1.17.93 | Two or three sentences of advice over the period totals |

@@ -38,8 +38,11 @@ import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { AIStrategyService } from '../../../core/services/ai-strategy.service';
+import { AIStrategyService, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AIImportService } from '../../../core/services/ai-import.service';
+import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
+import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
 import {
   Transaction,
   CreateTransactionDTO,
@@ -56,6 +59,8 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
+import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
+import { dayKey, parseDateInput } from '../../../core/utils/transaction-date.utils';
 import {
   MAX_RECEIPT_BYTES,
   MAX_RECEIPTS_PER_TRANSACTION,
@@ -113,6 +118,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private dialog = inject(MatDialog);
   private router = inject(Router);
   private aiImportService = inject(AIImportService);
+  private groundingHistory = inject(GroundingHistoryService);
+  private tagSuggestions = inject(TagSuggestionService);
+  private tagMemory = inject(TagMemoryService);
   private cdr = inject(ChangeDetectorRef);
   private analytics = inject(AnalyticsService);
 
@@ -145,6 +153,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private filledByScan = false;
   // The queued image the scan ran against; discarding it clears filledByScan.
   private scannedReceipt: { file: File; preview: string } | null = null;
+  /** What the last scan offered, so saving can record which offers were refused. */
+  private scanSuggestedTags: string[] = [];
 
   // Images already stored on the item being edited, by storage slot. Kept as
   // local state so per-image removal and conversion update the strip without
@@ -165,8 +175,6 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   // is not a value accessor for the array, it emits add/remove events.
   tags = signal<string[]>([]);
   readonly tagSeparatorKeys = [ENTER, COMMA] as const;
-  /** Longest accepted tag; anything past this is silently truncated. */
-  private static readonly MAX_TAG_LENGTH = 30;
 
   // Coordinates captured for the location field; the name is a form control.
   locationCoords = signal<{ lat: number; lng: number } | null>(null);
@@ -196,6 +204,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * stored amount is the failure this whole area has been working away from.
    */
   suggestedCurrency = signal<{ code: string; country: string } | null>(null);
+
+  /**
+   * The position the scan fetched for its currency guess, offered as the
+   * receipt's coordinate. Only for a receipt dated today: a fix taken at home
+   * says nothing about where last week's receipt was paid. (#314)
+   */
+  suggestedCoordinates = signal<{ lat: number; lng: number } | null>(null);
 
   /**
    * A currency this transaction uses that the picker does not list.
@@ -325,6 +340,8 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        // The field now holds a real position, so the scan's offer of one is spent.
+        this.suggestedCoordinates.set(null);
         this.isLocating.set(false);
         this.notifications.success(this.translationService.t('transactions.locationCaptured'));
       },
@@ -341,12 +358,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   clearCoordinates(): void {
     this.locationCoords.set(null);
+    // Clearing the coordinates is a refusal, so the offer goes with them.
+    this.suggestedCoordinates.set(null);
   }
 
   addTag(event: MatChipInputEvent): void {
-    // Lowercased so "Coffee" and "coffee" are one tag when filtering.
-    const tag = event.value.trim().toLowerCase()
-      .slice(0, TransactionFormComponent.MAX_TAG_LENGTH);
+    const tag = normalizeTag(event.value);
     if (tag && !this.tags().includes(tag)) {
       this.tags.update(tags => [...tags, tag]);
     }
@@ -557,6 +574,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
           has_location: !!transactionData.location,
           receipt_image_count: receipts.length,
         });
+        // The chips left on and the offers taken off, so the next scan of
+        // this merchant starts from the user's own decision.
+        if (this.filledByScan && this.scanSuggestedTags.length) {
+          const kept = this.tags();
+          await this.tagMemory.remember(
+            transactionData.description,
+            kept,
+            this.scanSuggestedTags.filter(tag => !kept.includes(tag))
+          );
+        }
       } else if (this.data.transaction) {
         await this.transactionService.updateTransaction(
           this.data.transaction.id,
@@ -742,6 +769,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private async scanReceipt(file: File): Promise<void> {
     this.isScanning.set(true);
     this.scanError.set(null);
+    this.scanSuggestedTags = [];
     let receiptCount = 1;
 
     try {
@@ -777,12 +805,21 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         }
       }
 
+      // The address the receipt prints, into an empty Location field only —
+      // a place the user already typed outranks anything read off the paper.
+      const printedLocation = primary.location?.name;
+      const typedLocation = String(this.form.get('locationName')?.value ?? '').trim();
+      if (printedLocation && !typedLocation) {
+        this.form.patchValue({ locationName: printedLocation });
+      }
+
       this.scanFieldConfidence.set(primary.fieldConfidence ?? null);
 
       // The receipt did not say what money this was, so the account's base
       // currency is sitting in the field. Where the user is standing is a
       // better guess than where they live — offer it, but do not apply it.
       this.suggestedCurrency.set(null);
+      this.suggestedCoordinates.set(null);
       if (primary.currencyFellBack) {
         void this.suggestCurrencyFromLocation();
       }
@@ -792,20 +829,44 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.notifications.success(message);
       this.filledByScan = true;
       receiptCount = result.receiptCount ?? 1;
+      await this.suggestTagsForScan(primary);
     } catch (error) {
       console.error('Receipt scan error:', error);
       const message = this.translationService.t('ai.scanError');
       this.scanError.set(message);
       this.notifications.error(message);
-      // A failed scan leaves the user filling the form in by hand.
+      // A failed scan leaves the user filling the form in by hand. An offer
+      // the previous scan made no longer describes anything on the form.
       this.filledByScan = false;
       this.scanFieldConfidence.set(null);
+      this.suggestedCurrency.set(null);
+      this.suggestedCoordinates.set(null);
     } finally {
       this.isScanning.set(false);
     }
 
     if (receiptCount > 1) {
       await this.offerMultiReceiptReview(receiptCount);
+    }
+  }
+
+  /**
+   * Tags only from what the account already uses, into the chip input where
+   * each can be removed before saving. Runs after the scan has been reported
+   * as done: a second round-trip, and never a reason to fail the first.
+   */
+  private async suggestTagsForScan(primary: ProcessedTransaction): Promise<void> {
+    try {
+      const [suggestedTags] = await this.tagSuggestions.suggest(
+        [{ description: primary.description, ...(primary.notes ? { details: primary.notes } : {}) }],
+        await this.groundingHistory.recent()
+      );
+      if (suggestedTags?.length) {
+        this.scanSuggestedTags = suggestedTags;
+        this.tags.update(current => normalizeTags([...current, ...suggestedTags]));
+      }
+    } catch (error) {
+      console.warn('[TransactionForm] Tag suggestion failed:', error);
     }
   }
 
@@ -821,9 +882,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * suggestion nobody asked for is not worth an error about.
    */
   private async suggestCurrencyFromLocation(): Promise<void> {
-    const coords = this.locationCoords() ?? (await this.currentCoordinates());
+    const attached = this.locationCoords();
+    const coords = attached ?? (await this.currentCoordinates());
     if (!coords) {
       return;
+    }
+    // A fix fetched for the currency is also where this receipt was paid —
+    // when it is from today. Offered, never attached: the coordinate is
+    // evidence about the phone, not about the paper.
+    if (!attached && this.isDatedToday()) {
+      this.suggestedCoordinates.set(coords);
     }
 
     const country = countryForCoordinates(coords.lat, coords.lng);
@@ -863,6 +931,23 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   dismissCurrencySuggestion(): void {
     this.suggestedCurrency.set(null);
+  }
+
+  private isDatedToday(): boolean {
+    const value = this.form.get('date')?.value;
+    const date = value instanceof Date ? value : parseDateInput(value);
+    return !!date && dayKey(date) === dayKey(new Date());
+  }
+
+  acceptCoordinateSuggestion(): void {
+    const coords = this.suggestedCoordinates();
+    if (!coords) return;
+    this.locationCoords.set(coords);
+    this.suggestedCoordinates.set(null);
+  }
+
+  dismissCoordinateSuggestion(): void {
+    this.suggestedCoordinates.set(null);
   }
 
   /**

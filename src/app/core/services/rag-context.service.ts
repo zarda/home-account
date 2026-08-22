@@ -152,6 +152,30 @@ export class RagContextService {
     return sections.join('\n\n');
   }
 
+  /**
+   * How this user tags the merchants they tag. Empty when nothing in the
+   * window carries a tag, which keeps the prompt byte-identical to its
+   * ungrounded form.
+   */
+  buildTagGrounding(opts: { transactions: Transaction[]; merchantLimit?: number }): string {
+    const merchantLimit = opts.merchantLimit ?? 15;
+    const byMerchant = new Map<string, { description: string; tags: Set<string>; count: number }>();
+    for (const t of opts.transactions) {
+      if (!t.tags?.length) continue;
+      const key = normalizeMerchantKey(t.description);
+      if (!key) continue;
+      const existing = byMerchant.get(key) ?? { description: t.description, tags: new Set<string>(), count: 0 };
+      t.tags.forEach(tag => existing.tags.add(tag));
+      existing.count += 1;
+      byMerchant.set(key, existing);
+    }
+    const lines = [...byMerchant.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, merchantLimit)
+      .map(m => `- ${m.description} → ${[...m.tags].join(', ')}`);
+    return lines.length ? `How this user usually tags these merchants:\n${lines.join('\n')}` : '';
+  }
+
   /** Top expenses by amount: `description — amount (category, date)`. */
   private buildTopExpenses(
     expenses: Transaction[],

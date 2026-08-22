@@ -12,6 +12,12 @@
 // surviving all the way from extraction into the stored transaction, rather
 // than the item sum a naive merge would have written instead.
 //
+// The last case runs the same seam over the fields the review step now
+// suggests — a printed location, tags drawn from the account's own
+// vocabulary, and the recurring rule a row looks like. The unit suites mock
+// addTransaction, so only this one can say the rules accept those fields, or
+// that the tag memory the confirm writes passes tagMemoryValid.
+//
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
 //
@@ -29,7 +35,12 @@ import {
   connectFirestoreEmulator,
   collection,
   addDoc,
+  doc,
+  deleteDoc,
+  getDoc,
   getDocs,
+  setDoc,
+  Timestamp,
   Firestore
 } from '@angular/fire/firestore';
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
@@ -43,7 +54,7 @@ import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { MultiImageExtractedTransaction } from '../../../../core/services/gemini.service';
-import { ImportResult } from '../../../../models';
+import { DEFAULT_USER_PREFERENCES, ImportResult } from '../../../../models';
 
 jasmine.getEnv().configure({ random: false });
 
@@ -438,6 +449,207 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(doc!['receiptUrl'] as string).toMatch(/^https?:\/\//);
       expect((doc!['receiptUrls'] as string[]).length).toBe(1);
       expect(doc!['receiptCount']).toBe(1);
+    },
+    30000
+  );
+
+  it(
+    "stores a row's printed location, vocabulary-checked tags and accepted rule link under the real rules",
+    async () => {
+      // The three fields the review step now suggests, each proved by the
+      // stored document rather than by what the service returned: a location
+      // the receipt printed, tags checked against this account's vocabulary,
+      // and a link to the recurring rule the row was offered and the user
+      // accepted. The unit suites mock addTransaction, so none of them can
+      // tell an accepted field from one the rules reject.
+      const ruleId = 'smoke-suggested-rule';
+
+      // RAG on, so GroundingHistoryService reads the recent window and the
+      // model rung of the tag ladder is reachable at all. Base currency stays
+      // USD, so no conversion sits between the receipt and the document.
+      mockAuth.setMockUser(
+        createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, ragInsightsLevel: 'standard' }
+        })
+      );
+
+      // The vocabulary a suggestion has to come from: one transaction this
+      // account already tagged. Dated well outside the duplicate window, and
+      // at an amount no row here shares, so it can never read as a match.
+      const tagged = new Date();
+      tagged.setDate(tagged.getDate() - 30);
+      await setDoc(doc(firestore, `users/${uid}/transactions/smoke-suggested-history`), {
+        userId: uid,
+        type: 'expense',
+        amount: 3.5,
+        currency: 'USD',
+        amountInBaseCurrency: 3.5,
+        exchangeRate: 1,
+        categoryId: 'other_expense',
+        description: 'Morning cup',
+        date: Timestamp.fromDate(tagged),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        isRecurring: false,
+        tags: ['coffee']
+      });
+
+      // The active rule the row should be offered. listAll() enumerates the
+      // collection, so seeding it with the raw SDK is all RecurringService
+      // needs — no service call, and no scheduler run behind it.
+      await setDoc(doc(firestore, `users/${uid}/recurring/${ruleId}`), {
+        userId: uid,
+        name: 'Beans',
+        type: 'expense',
+        amount: 9.4,
+        currency: 'USD',
+        categoryId: 'food_dining',
+        description: 'Monthly beans',
+        frequency: { type: 'monthly', interval: 1 },
+        startDate: Timestamp.now(),
+        nextOccurrence: Timestamp.now(),
+        isActive: true
+      });
+
+      // The case above confirmed a row for this same merchant, which left its
+      // tags in the memory. Memory answers before the model does, so the rung
+      // under test is only reachable from an empty entry.
+      await deleteDoc(doc(firestore, `users/${uid}/tagMemory/beans`));
+
+      const extractedRows: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-08-05',
+          description: 'Beans',
+          merchant: 'Beans',
+          amount: 9.4,
+          type: 'expense',
+          currency: 'USD',
+          // The post-parse slot: the printed address is read into a location
+          // inside the provider, which is what is stubbed out here.
+          location: { name: '渋谷店 1-2-3' },
+          imageIndex: 0,
+          positionInImage: 'top',
+          confidence: 0.9,
+          receiptId: 1
+        }
+      ];
+
+      const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
+        'CloudLLMProviderService',
+        [
+          'hasAnyCloudProvider',
+          'extractTransactionsFromMultipleImages',
+          'categorizeTransactions',
+          'suggestTags',
+          'initializeProviders',
+          'resetProviders',
+          'setOpenAIModel',
+          'setClaudeModel',
+          'availableProviders',
+          'providerStatus',
+          'resolveProvider'
+        ]
+      );
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(extractedRows);
+      cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
+      );
+      // One tag this account uses and one the model invented. The adapter's
+      // own vocabulary check is stubbed out along with the provider, so the
+      // filter that has to drop 'invented' is the service's own.
+      cloudLLMProvider.suggestTags.and.resolveTo([['coffee', 'invented']]);
+      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.resetProviders.and.resolveTo(undefined);
+      cloudLLMProvider.availableProviders.and.returnValue([]);
+      cloudLLMProvider.providerStatus.and.returnValue({
+        gemini: false,
+        openai: false,
+        claude: false
+      });
+      cloudLLMProvider.resolveProvider.and.returnValue(null);
+
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
+        'isOnline',
+        'registerBackgroundSync'
+      ]);
+      pwa.isOnline.and.returnValue(true);
+      pwa.registerBackgroundSync.and.resolveTo(true);
+
+      const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
+        'AnalyticsService',
+        ['trackAiAssistUsed']
+      );
+
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
+          { provide: PwaService, useValue: pwa },
+          { provide: AnalyticsService, useValue: analytics },
+          {
+            provide: CurrencyService,
+            useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      // The rows already stored — earlier cases wrote some, and one of them
+      // wrote a 'Beans' too — so the confirm's own document can be told apart
+      // from them by id rather than by a field this case is here to check.
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const result = await importService.importFromMultipleImages([
+        new File([new Uint8Array([1, 2, 3])], 'beans.jpg', { type: 'image/jpeg' })
+      ]);
+
+      expect(result.transactions.length).toBe(1);
+      const offered = result.transactions[0];
+      expect(offered.location).toEqual({ name: '渋谷店 1-2-3' });
+      expect(cloudLLMProvider.suggestTags).toHaveBeenCalled();
+      expect(offered.tags).toEqual(['coffee']);
+      expect(offered.recurringMatch?.name).toBe('Beans');
+      // Offered, never assumed: linking a row to a rule is a write, and the
+      // review card leaves that decision to the user.
+      expect(offered.recurringId).toBeUndefined();
+      expect(offered.selected).toBeTrue();
+
+      // The row as the review card hands it back once the link is accepted.
+      const reviewed = {
+        ...offered,
+        recurringId: offered.recurringMatch!.id,
+        isRecurring: true
+      };
+
+      const importHistory = await importService.confirmImport(
+        [reviewed],
+        'beans.jpg',
+        1234,
+        'image',
+        'receipt_image'
+      );
+      expect(importHistory.successCount).toBe(1);
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect(stored['description']).toBe('Beans');
+      expect(stored['location']).toEqual({ name: '渋谷店 1-2-3' });
+      expect(stored['tags']).toEqual(['coffee']);
+      expect(stored['recurringId']).toBe(ruleId);
+      expect(stored['isRecurring']).toBeTrue();
+
+      // What the confirm remembered about the merchant, read back through the
+      // rules that had to accept it: tagMemoryValid pins every key and type.
+      const memory =
+        (await getDoc(doc(firestore, `users/${uid}/tagMemory/beans`))).data() ?? {};
+      expect(memory['tags']).toEqual(['coffee']);
+      expect(memory['suppressed']).toEqual([]);
+      expect(memory['count']).toBe(1);
     },
     30000
   );

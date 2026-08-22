@@ -728,6 +728,17 @@ describe('ExportService', () => {
       expect(result[0].tags).toEqual(['a,b', 'c']);
     });
 
+    it('normalizes the tags a hand-edited file spells twice', async () => {
+      // The card keys its chips by tag value and the filter only ever looks
+      // for the normalized spelling, so two casings of one tag would show as
+      // two chips and store a row the filter cannot find.
+      const text = 'Date,Description,Amount,Tags\n2026-06-01,Coffee,4.50,Coffee; coffee\n';
+
+      const result = await service.importFromCSV(csvFile(text));
+
+      expect(result[0].tags).toEqual(['coffee']);
+    });
+
     it('leaves note, tags and location unset when the file has no such columns', async () => {
       const text = 'Date,Description,Amount\n2026-06-01,Coffee,4.50\n';
 

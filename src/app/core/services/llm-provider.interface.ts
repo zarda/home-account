@@ -38,6 +38,7 @@ export interface ParsedReceipt {
    * so a blurred total looked exactly like a crisp one.
    */
   fieldConfidence?: FieldConfidence;
+  location?: string;                // branch/address as printed, absent when none
 }
 
 export interface ReceiptItem {
@@ -54,6 +55,19 @@ export interface RawTransaction {
 export interface CategorizedTransaction extends RawTransaction {
   suggestedCategoryId: string;
   confidence: number;
+}
+
+/**
+ * One row offered to the tag suggester.
+ *
+ * The prompt's own `SuggestTagsRow` is this plus the index it answers by; the
+ * index belongs to the request's chunking rather than to the row, and this
+ * file may not import from the prompts directory.
+ */
+export interface TagSuggestionRow {
+  description: string;
+  merchant?: string;
+  details?: string;
 }
 
 export interface PreviousPeriodData {
@@ -80,6 +94,7 @@ export interface ExtractedTransaction {
   location?: TransactionLocation;
   period?: BudgetPeriod;
   isRecurring?: boolean;
+  recurringId?: string;
 }
 
 export interface MultiImageExtractedTransaction extends ExtractedTransaction {
@@ -197,6 +212,12 @@ export interface CloudLLMProviderAdapter {
     transactions: RawTransaction[],
     grounding?: string
   ): Promise<CategorizedTransaction[]>;
+  /** Tags drawn only from `vocabulary`; `grounding` as for categorization. */
+  suggestTags(
+    rows: TagSuggestionRow[],
+    vocabulary: string[],
+    grounding?: string
+  ): Promise<string[][]>;
   detectCSVMapping(headers: string[], sampleRows: string[][]): Promise<CSVColumnMapping>;
 
   // Search

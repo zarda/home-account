@@ -25,6 +25,10 @@ import {
 import { RasterizedPdf, rasterizePdf } from '../utils/pdf-raster.utils';
 import { CategoryMemoryService } from './category-memory.service';
 import { RagContextService } from './rag-context.service';
+import { GroundingHistoryService } from './grounding-history.service';
+import { TagMemoryService } from './tag-memory.service';
+import { TagSuggestionService } from './tag-suggestion.service';
+import { RecurringService } from './recurring.service';
 import {
   ImportResult,
   ImportWarning,
@@ -33,21 +37,17 @@ import {
   ImportSource,
   ImportFileType,
   DuplicateCheck,
+  RecurringTransaction,
+  Transaction,
   TransactionLocation,
   isBudgetPeriod,
   CATEGORY_MEMORY_CONFIDENCE,
-  effectiveRagLevel,
   baseCurrencyOf
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { resolveImportCurrency, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
-
-/**
- * How far back the categorization grounding looks. Habits change, so a recent
- * window describes how the user files things now rather than how they once did.
- */
-const CATEGORIZATION_HISTORY_MONTHS = 6;
 
 /**
  * Thrown when every transaction was written but the completed history record
@@ -91,6 +91,10 @@ export class AIImportService {
   private cloudLLMProvider = inject(CloudLLMProviderService);
   private categoryMemory = inject(CategoryMemoryService);
   private ragContext = inject(RagContextService);
+  private groundingHistory = inject(GroundingHistoryService);
+  private tagSuggestions = inject(TagSuggestionService);
+  private tagMemory = inject(TagMemoryService);
+  private recurringService = inject(RecurringService);
   private exportService = inject(ExportService);
   private duplicateService = inject(DuplicateDetectionService);
   private importHistoryService = inject(ImportHistoryService);
@@ -157,6 +161,8 @@ export class AIImportService {
     this.processingSource.set(null);
 
     try {
+      const history = await this.groundingHistory.recent();
+
       // Try using strategy service
       try {
         this.processingStatus.set('Processing with AI...');
@@ -170,12 +176,14 @@ export class AIImportService {
           this.processingProgress.set(60);
 
           const categorized = this.convertStrategyResultToCategories(strategyResult);
+          const suggested = await this.suggestTagsFor(categorized, history);
+          const offered = await this.attachRecurringMatches(suggested);
 
           this.processingStatus.set('Checking for duplicates...');
           this.processingProgress.set(80);
 
-          const duplicates = await this.duplicateService.checkDuplicates(categorized);
-          const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
+          const duplicates = await this.duplicateService.checkDuplicates(offered);
+          const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
           this.processingProgress.set(100);
 
@@ -215,18 +223,20 @@ export class AIImportService {
       this.processingProgress.set(60);
 
       const categorized = await this.categorizeTransactions(extractedTransactions);
+      const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
 
-      const duplicates = await this.duplicateService.checkDuplicates(categorized);
-      const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
 
       const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
       result.processingSource = 'cloud';
-      
+
       return result;
     } finally {
       this.isProcessing.set(false);
@@ -265,6 +275,7 @@ export class AIImportService {
     this.processingSource.set('cloud');
 
     try {
+      const history = await this.groundingHistory.recent();
       const extracted: ExtractedTransaction[] = [];
       for (let i = 0; i < files.length; i++) {
         this.processingProgress.set(10 + Math.round((i / files.length) * 50));
@@ -281,11 +292,13 @@ export class AIImportService {
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
       const categorized = await this.categorizeTransactions(extracted);
+      const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
-      const duplicates = await this.duplicateService.checkDuplicates(categorized);
-      const marked = this.duplicateService.markDuplicates(categorized, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const marked = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
       this.analytics.trackAiAssistUsed({ feature: 'receipt_scan' });
@@ -313,7 +326,7 @@ export class AIImportService {
       id: nextImportRowId('strategy'),
       description: tx.description,
       amount: tx.amount,
-      currency: tx.currency || baseCurrency,
+      ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
       date: tx.date,
       type: tx.type,
       ...gradeCategorySuggestion(tx),
@@ -356,6 +369,8 @@ export class AIImportService {
     this.processingProgress.set(5);
 
     try {
+      const history = await this.groundingHistory.recent();
+
       // Convert all files to base64
       const imageBase64Array: string[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -389,13 +404,15 @@ export class AIImportService {
       );
 
       // Convert to CategorizedImportTransaction format with image metadata
-      const categorized = await this.categorizeMultiImageTransactions(consolidated);
+      const categorized = await this.categorizeMultiImageTransactions(consolidated, history);
+      const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
 
-      const duplicates = await this.duplicateService.checkDuplicates(categorized);
-      const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
 
@@ -420,7 +437,8 @@ export class AIImportService {
    * the review step flags it. One entry per input row, in input order.
    */
   private async categorizeWithLadder(
-    rawTransactions: RawTransaction[]
+    rawTransactions: RawTransaction[],
+    history: Transaction[]
   ): Promise<CategorizedTransaction[]> {
     // Anything the user has already corrected is settled — only the rest is
     // worth a model call.
@@ -441,7 +459,7 @@ export class AIImportService {
       try {
         const asked = await this.cloudLLMProvider.categorizeTransactions(
           unknownIndexes.map(index => rawTransactions[index]),
-          await this.buildCategorizationGrounding()
+          this.buildCategorizationGrounding(history)
         );
         // The provider indexes its answers against what it was sent, so map
         // them back onto the original positions.
@@ -464,7 +482,8 @@ export class AIImportService {
    * Categorize multi-image extracted transactions, preserving image metadata.
    */
   private async categorizeMultiImageTransactions(
-    transactions: MultiImageExtractedTransaction[]
+    transactions: MultiImageExtractedTransaction[],
+    history: Transaction[]
   ): Promise<CategorizedImportTransaction[]> {
     if (transactions.length === 0) return [];
 
@@ -478,7 +497,7 @@ export class AIImportService {
       date: parseDateInput(t.date) ?? new Date()
     }));
 
-    const categorizedByAI = await this.categorizeWithLadder(rawTransactions);
+    const categorizedByAI = await this.categorizeWithLadder(rawTransactions, history);
 
     // Convert to CategorizedImportTransaction with image metadata
     return categorizedByAI.map((t, index) => {
@@ -487,7 +506,7 @@ export class AIImportService {
         id: nextImportRowId('multi_img'),
         description: t.description,
         amount: Math.abs(t.amount),
-        currency: original.currency || baseCurrency,
+        ...resolveImportCurrency(original.currency, baseCurrency),
         date: t.date,
         type: original.type,
         suggestedCategoryId: original.category || t.suggestedCategoryId,
@@ -520,32 +539,98 @@ export class AIImportService {
    * How this user has categorized things before, for grounding the model's
    * suggestions in their habits rather than in what a merchant generally sells.
    *
-   * Gated on the same `ragInsightsLevel` preference as the insights grounding:
-   * off means the prompt is byte-identical to its ungrounded form, and no
-   * transaction history leaves the device. Failing to build it is not worth
-   * failing an import over — the model just answers unaided, as it did before.
+   * The history is read once per import by GroundingHistoryService, which owns
+   * the `ragInsightsLevel` gate: an empty window is either RAG off or an
+   * account with nothing to say, and both mean the prompt renders exactly as
+   * it did before grounding existed. Failing to build the block is not worth
+   * failing an import over — the model just answers unaided.
    */
-  private async buildCategorizationGrounding(): Promise<string | undefined> {
-    const level = effectiveRagLevel(this.authService.currentUser()?.preferences);
-    if (level === 'off') {
+  private buildCategorizationGrounding(history: Transaction[]): string | undefined {
+    if (!history.length) {
       return undefined;
     }
 
     try {
-      // A recent window rather than everything: habits change, and the point
-      // is to describe how this user files things now.
-      const startDate = new Date();
-      startDate.setMonth(startDate.getMonth() - CATEGORIZATION_HISTORY_MONTHS);
-
-      const history = await firstValueFrom(
-        this.transactionService.getTransactions({ startDate })
-      );
-      const grounding = this.ragContext.buildCategorizationGrounding({ transactions: history });
-      return grounding || undefined;
+      return this.ragContext.buildCategorizationGrounding({ transactions: history }) || undefined;
     } catch (error) {
       console.warn('[AIImport] Could not build categorization grounding:', error);
       return undefined;
     }
+  }
+
+  /**
+   * Offer tags for the rows no source tagged. Stamped on `tags` so the card
+   * shows them, and kept on `suggestedTags` so the confirm step can tell a
+   * removal from a row that never had any.
+   */
+  private async suggestTagsFor(
+    rows: CategorizedImportTransaction[],
+    history: Transaction[]
+  ): Promise<CategorizedImportTransaction[]> {
+    const pending = rows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => !row.tags?.length);
+    if (pending.length === 0) return rows;
+
+    const suggested = await this.tagSuggestions.suggest(
+      pending.map(({ row }) => ({
+        description: row.description,
+        ...(row.merchant ? { merchant: row.merchant } : {}),
+        ...(row.notes ? { details: row.notes } : {}),
+      })),
+      history
+    );
+
+    const out = [...rows];
+    pending.forEach(({ index }, position) => {
+      const tags = suggested[position] ?? [];
+      if (tags.length) out[index] = { ...out[index], tags, suggestedTags: tags };
+    });
+    return out;
+  }
+
+  /**
+   * Offer each row the active rule it looks like. One enumeration per batch
+   * through listAll(): the rules signal is only warm on pages that subscribed
+   * (ADR 0034), and a link is a write decision. A row already linked by its
+   * source is left alone.
+   */
+  private async attachRecurringMatches(
+    rows: CategorizedImportTransaction[]
+  ): Promise<CategorizedImportTransaction[]> {
+    if (rows.length === 0) return rows;
+    let rules: RecurringTransaction[];
+    try {
+      rules = (await this.recurringService.listAll()).filter(rule => rule.isActive);
+    } catch (error) {
+      console.warn('[AIImport] Could not read recurring rules, offering no links:', error);
+      return rows;
+    }
+    if (rules.length === 0) return rows;
+
+    return rows.map(row => {
+      if (row.recurringId) return row;
+      const rule = matchRecurringRule(
+        {
+          description: row.description,
+          merchant: row.merchant,
+          type: row.type,
+          amount: row.amount,
+          currency: row.currency,
+          ...(row.currencyFellBack ? { currencyFellBack: true } : {}),
+        },
+        rules
+      );
+      if (!rule) return row;
+      return {
+        ...row,
+        recurringMatch: {
+          id: rule.id,
+          name: rule.name,
+          ...(row.isRecurring !== undefined ? { sourceIsRecurring: row.isRecurring } : {}),
+        },
+      };
+    });
   }
 
   /**
@@ -637,6 +722,7 @@ export class AIImportService {
     this.processingSource.set('cloud');
 
     try {
+      const history = await this.groundingHistory.recent();
       const { pages, totalPages, truncated } = await this.rasterizePdf(await file.arrayBuffer());
 
       if (pages.length === 0) {
@@ -663,12 +749,14 @@ export class AIImportService {
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
       const categorized = await this.categorizeTransactions(extracted);
+      const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
 
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
 
-      const duplicates = await this.duplicateService.checkDuplicates(categorized);
-      const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
 
@@ -696,6 +784,8 @@ export class AIImportService {
     this.processingProgress.set(10);
 
     try {
+      const history = await this.groundingHistory.recent();
+
       // Use existing CSV parser from export service
       const importedTransactions = await this.exportService.importFromCSV(file);
 
@@ -737,17 +827,20 @@ export class AIImportService {
         amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
         date: parseDateInput(t.date) ?? new Date()
       }));
-      const laddered = await this.categorizeWithLadder(rawRows);
+      const laddered = await this.categorizeWithLadder(rawRows, history);
       laddered.forEach((row, index) => {
         categorized[index].suggestedCategoryId = row.suggestedCategoryId;
         categorized[index].categoryConfidence = row.confidence;
       });
 
+      const suggested = await this.suggestTagsFor(categorized, history);
+      const offered = await this.attachRecurringMatches(suggested);
+
       this.processingStatus.set('Checking for duplicates...');
       this.processingProgress.set(80);
 
-      const duplicates = await this.duplicateService.checkDuplicates(categorized);
-      const markedTransactions = this.duplicateService.markDuplicates(categorized, duplicates);
+      const duplicates = await this.duplicateService.checkDuplicates(offered);
+      const markedTransactions = this.duplicateService.markDuplicates(offered, duplicates);
 
       this.processingProgress.set(100);
 
@@ -782,7 +875,7 @@ export class AIImportService {
           id: nextImportRowId('json'),
           description: t['description'] as string || 'Unknown',
           amount: Math.abs(t['amount'] as number || 0),
-          currency: readCurrencyCode(t['currency']) || baseCurrency,
+          ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
           date: t['date']
             ? new Date((t['date'] as { seconds: number }).seconds * 1000)
             : new Date(),
@@ -844,7 +937,7 @@ export class AIImportService {
         id: nextImportRowId('import'),
         description: t.description,
         amount: Math.abs(t.amount),
-        currency: t.currency || baseCurrency,
+        ...resolveImportCurrency(t.currency, baseCurrency),
         date: parsedDate ?? new Date(),
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
@@ -1040,6 +1133,21 @@ export class AIImportService {
           description: t.description,
           categoryId: t.suggestedCategoryId,
         }))
+      );
+
+      // Which tags the user left on each merchant's rows, and which offered
+      // ones they took off — so the next import answers from memory first.
+      await this.tagMemory.rememberAll(
+        selectedTransactions
+          .filter(t => t.tags?.length || t.suggestedTags?.length)
+          .map(t => {
+            const kept = t.tags ?? [];
+            return {
+              description: t.description,
+              kept,
+              removed: (t.suggestedTags ?? []).filter(tag => !kept.includes(tag)),
+            };
+          })
       );
 
     } catch (error) {

@@ -507,4 +507,51 @@ describe('RagContextService', () => {
       expect(grounding).not.toContain('- ---');
     });
   });
+
+  describe('buildTagGrounding', () => {
+    it('is empty when nothing in the window carries a tag', () => {
+      // Which keeps the prompt byte-identical to its ungrounded form.
+      expect(
+        service.buildTagGrounding({ transactions: [expense({ description: 'STARBUCKS' })] })
+      ).toBe('');
+    });
+
+    it('describes how the user tags the merchants they tag', () => {
+      const grounding = service.buildTagGrounding({
+        transactions: [
+          expense({ description: 'STARBUCKS', tags: ['coffee'] }),
+          expense({ description: 'Starbucks', tags: ['work'] }),
+          expense({ description: 'CINEMA' }),
+        ],
+      });
+
+      expect(grounding).toContain('How this user usually tags these merchants:');
+      // The two spellings are one merchant, carrying both of its tags.
+      expect(grounding).toContain('- STARBUCKS → coffee, work');
+      // An untagged merchant says nothing about tagging.
+      expect(grounding).not.toContain('CINEMA');
+    });
+
+    it('caps how many merchants it names, most-tagged first', () => {
+      const many = Array.from({ length: 40 }, (_, i) =>
+        expense({ description: `SHOP ${i}`, tags: ['coffee'] })
+      );
+
+      const grounding = service.buildTagGrounding({ transactions: many, merchantLimit: 3 });
+
+      expect(grounding.split('\n').filter(line => line.startsWith('- SHOP')).length).toBe(3);
+    });
+
+    it('skips a description with no merchant to key on', () => {
+      const grounding = service.buildTagGrounding({
+        transactions: [
+          expense({ description: '---', tags: ['coffee'] }),
+          expense({ description: 'REAL SHOP', tags: ['coffee'] }),
+        ],
+      });
+
+      expect(grounding).toContain('REAL SHOP');
+      expect(grounding).not.toContain('- ---');
+    });
+  });
 });

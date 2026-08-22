@@ -471,6 +471,33 @@
           </mat-card-actions>
         </mat-card>
 
+        <!-- Remembered tag decisions -->
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-icon mat-card-avatar class="storage-icon">label</mat-icon>
+            <mat-card-title>{{ 'aiPage.tagMemoryTitle' | translate }}</mat-card-title>
+            <mat-card-subtitle>{{ 'aiPage.tagMemoryHint' | translate }}</mat-card-subtitle>
+          </mat-card-header>
+
+          <mat-card-content>
+            <div class="info-row">
+              <span class="info-label">{{ 'aiPage.tagMemoryCount' | translate }}</span>
+              <span class="info-value">{{ rememberedTagCount() }}</span>
+            </div>
+          </mat-card-content>
+
+          <mat-card-actions>
+            <button
+              mat-stroked-button
+              [disabled]="rememberedTagCount() === 0 || clearingTagMemory()"
+              (click)="clearTagMemory()"
+            >
+              <mat-icon>delete_sweep</mat-icon>
+              {{ 'aiPage.tagMemoryClear' | translate }}
+            </button>
+          </mat-card-actions>
+        </mat-card>
+
         <!-- Storage Info Card -->
         <mat-card appearance="outlined">
           <mat-card-header>

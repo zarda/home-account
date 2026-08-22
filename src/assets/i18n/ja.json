@@ -181,6 +181,7 @@
     "locationUnavailable": "現在地を取得できませんでした。場所名の入力は引き続き可能です。",
     "clearCoordinates": "座標を削除",
     "currencyFromLocation": "現在地の通貨は {{currency}} のようです。使用しますか？",
+    "attachScanPosition": "現在地をこのレシートの場所として添付",
     "useSuggestedCategory": "提案されたカテゴリ {{category}} を使用"
   },
   "budget": {
@@ -602,6 +603,10 @@
         "label": "カテゴリの記憶",
         "description": "店舗ごとの修正内容。インポート時に再確認しません"
       },
+      "tagMemory": {
+        "label": "タグの記憶",
+        "description": "取り込み時に各店舗で残した・外したタグ"
+      },
       "imports": {
         "label": "インポート履歴",
         "description": "レシートと明細のインポート記録"
@@ -1017,7 +1022,14 @@
     "imageKindStatementHint": "明細の各行がそれぞれ1件の取引になります。",
     "verifyAmount": "この金額を確認してください。AIの読み取り確信度は{{percent}}%です",
     "verifyDate": "この日付を確認してください。AIの読み取り確信度は{{percent}}%です",
+    "currencyFellBack": "通貨は読み取れませんでした — 基本通貨を表示しています",
+    "setCurrency": "通貨を変更（現在 {{currency}}）",
+    "setCurrencyForSelected": "選択した行の通貨",
+    "removeLocation": "提案された場所を削除",
+    "removeTag": "タグ {{tag}} を削除",
     "matchWithinBatch": "このインポート内で重複",
+    "linkRecurring": "「{{rule}}」の定期取引のようです — 紐付ける",
+    "matchRecurringOccurrence": "定期取引としてすでに記帳済み",
     "errorNoProvider": "AIプロバイダーが設定されていません。設定 → AI処理 でAPIキーを追加してください。",
     "errorCloudUnavailable": "クラウドAIに接続できませんでした。接続を確認するか、設定 → AI処理 でAPIキーを追加してください。",
     "errorQueuedOffline": "接続がないため、この画像をキューに追加しました。オンラインに戻ると処理されます。",
@@ -1095,7 +1107,12 @@
     "categoryMemoryHint": "インポート中にカテゴリを修正すると、次回から同じ店舗にはその選択が再利用され、AIに再度問い合わせません。",
     "categoryMemoryCount": "記憶している店舗数",
     "categoryMemoryClear": "すべて削除",
-    "categoryMemoryCleared": "記憶したカテゴリを削除しました"
+    "categoryMemoryCleared": "記憶したカテゴリを削除しました",
+    "tagMemoryTitle": "記憶されたタグ",
+    "tagMemoryHint": "取り込み時に提案されたタグを残す・外すと、次回同じ店舗で再利用されます。",
+    "tagMemoryCount": "記憶された店舗数",
+    "tagMemoryClear": "すべて忘れる",
+    "tagMemoryCleared": "記憶されたタグを消去しました"
   },
   "about": {
     "title": "について",

@@ -247,4 +247,27 @@ describe('consolidateReceiptItems', () => {
       expect(merged.amount).toBe(16.2);
     });
   });
+
+  describe('printed location', () => {
+    it('takes the location from whichever item in the group carried it', () => {
+      // Reported once per receipt, on whichever line the model chose — the
+      // same convention receiptDetails and receiptTotal already use. Reading
+      // only the first item would drop it on every receipt but the shortest.
+      const merged = consolidateReceiptItems([
+        item({ description: 'Lunch', receiptId: 1 }),
+        item({ description: 'Snack', receiptId: 1, location: { name: 'Shibuya 1-2-3' } }),
+      ])[0];
+
+      expect(merged.location).toEqual({ name: 'Shibuya 1-2-3' });
+    });
+
+    it('leaves the merged row without a location when no item carried one', () => {
+      const merged = consolidateReceiptItems([
+        item({ description: 'Lunch', receiptId: 1 }),
+        item({ description: 'Snack', receiptId: 1 }),
+      ])[0];
+
+      expect('location' in merged).toBeFalse();
+    });
+  });
 });

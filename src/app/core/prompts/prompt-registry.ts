@@ -3,6 +3,7 @@ import {
   renderCategorizeTransactions,
   renderCategorySuggestion,
   renderCsvMapping,
+  renderSuggestTags,
 } from './categorization.prompts';
 import {
   renderFinancialAdvice,
@@ -90,6 +91,11 @@ export const PROMPTS = {
     since: '1.17.93',
     feature: 'categorization',
     render: renderCsvMapping,
+  },
+  suggestTags: {
+    since: '1.26.138',
+    feature: 'categorization',
+    render: renderSuggestTags,
   },
   spendingSummary: {
     since: '1.17.93',

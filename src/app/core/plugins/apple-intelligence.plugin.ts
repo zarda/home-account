@@ -11,6 +11,8 @@ export interface AppleReceiptExtraction {
   category: string;
   /** Short per-line summary of purchased items */
   details: string;
+  /** Branch/address as printed, '' when none, absent from a native build older than this field */
+  location?: string;
 }
 
 export interface AppleIntelligencePlugin {

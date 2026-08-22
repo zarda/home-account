@@ -143,6 +143,56 @@ export function recurringCoverageFingerprint(rules: RecurringTransaction[]): str
   return `${fnv1a32(parts.join(';'))}:${parts.length}`;
 }
 
+/** What an import row offers the matcher: the merchant a reader named, else the description. */
+export interface RecurringMatchCandidate {
+  description: string;
+  merchant?: string;
+  type: 'income' | 'expense';
+  amount: number;
+  currency: string;
+  /** True when `currency` is the account's base standing in for one nobody read; the printed figure is then compared as-is. */
+  currencyFellBack?: boolean;
+}
+
+/**
+ * The active rule an import row looks like, or null.
+ *
+ * The name goes through the same ladder `isGroupCovered` uses, so the answer
+ * agrees with the insights surface. A single row has no cadence to check, so
+ * the amount stands in for it — within the detector's own tolerance of the
+ * rule's amount when the currencies agree, unchecked when they differ, since
+ * a figure in another currency is not comparable without a rate. A row whose
+ * currency fell back is the exception: nobody read a currency for it, so the
+ * printed figure is the only evidence it carries and it is compared as-is
+ * whatever currency the rule is in. The type must agree. The first match
+ * wins; the link is offered unchecked, so a wrong candidate costs a glance,
+ * not a write. (#320)
+ */
+export function matchRecurringRule(
+  row: RecurringMatchCandidate,
+  rules: readonly RecurringTransaction[]
+): RecurringTransaction | null {
+  const key = normalizeMerchant(row.merchant || row.description);
+  if (!key) return null;
+  return (
+    rules.find(rule => {
+      const comparable = rule.currency === row.currency || row.currencyFellBack === true;
+      return (
+        rule.isActive &&
+        rule.type === row.type &&
+        merchantNamesMatch(key, normalizeMerchant(rule.name)) &&
+        (!comparable || amountsAgree(row.amount, rule.amount))
+      );
+    }) ?? null
+  );
+}
+
+function amountsAgree(a: number, b: number): boolean {
+  const { amountTolerance, minAmountTolerance } = DEFAULT_RECURRING_OPTIONS;
+  const tolerance = Math.max(minAmountTolerance, amountTolerance * Math.max(Math.abs(a), Math.abs(b)));
+  return Math.abs(Math.abs(a) - Math.abs(b)) <= tolerance;
+}
+
 function merchantNamesMatch(a: string, b: string): boolean {
   if (!a || !b) return false;
   if (a === b) return true;

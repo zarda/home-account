@@ -25,6 +25,9 @@ struct ReceiptExtraction {
 
     @Guide(description: "Short summary of the purchased items, one item per line")
     var details: String
+
+    @Guide(description: "Branch name and/or street address exactly as the receipt prints it, in its own script — never translated or inferred from the merchant name — or an empty string if none is printed")
+    var location: String
 }
 #endif
 
@@ -83,7 +86,8 @@ public class AppleIntelligencePlugin: CAPPlugin, CAPBridgedPlugin {
             The text may contain recognition errors. \
             The amount must be the final total that was paid. \
             Keep the merchant name and the item text exactly as printed, in the script they \
-            were printed in — never translate or transliterate them.
+            were printed in — never translate or transliterate them. \
+            The location is only what the receipt prints; never infer it from the merchant name.
             """
             if !categories.isEmpty {
                 // One entry per line — display names may contain commas — and
@@ -104,7 +108,8 @@ public class AppleIntelligencePlugin: CAPPlugin, CAPBridgedPlugin {
                         "amount": receipt.amount,
                         "currency": receipt.currency,
                         "category": receipt.category,
-                        "details": receipt.details
+                        "details": receipt.details,
+                        "location": receipt.location
                     ])
                 } catch {
                     call.reject("Apple Intelligence generation failed: \(error.localizedDescription)")

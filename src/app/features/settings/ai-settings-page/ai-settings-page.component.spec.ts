@@ -12,6 +12,7 @@ import { GeminiService } from '../../../core/services/gemini.service';
 import { CloudLLMProviderService } from '../../../core/services/cloud-llm-provider.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { CategoryMemoryService } from '../../../core/services/category-memory.service';
+import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -28,6 +29,7 @@ describe('AiSettingsPageComponent', () => {
   let authServiceMock: jasmine.SpyObj<AuthService>;
   let providerKeysMock: jasmine.SpyObj<ProviderKeyService>;
   let categoryMemoryMock: jasmine.SpyObj<CategoryMemoryService>;
+  let tagMemoryMock: jasmine.SpyObj<TagMemoryService>;
   let providerKeysLoadFailed: ReturnType<typeof signal<boolean>>;
   let announcerMock: jasmine.SpyObj<AnnouncerService>;
 
@@ -98,6 +100,14 @@ describe('AiSettingsPageComponent', () => {
     categoryMemoryMock.ensureLoaded.and.resolveTo(undefined);
     categoryMemoryMock.clear.and.resolveTo(undefined);
 
+    tagMemoryMock = jasmine.createSpyObj<TagMemoryService>(
+      'TagMemoryService',
+      ['ensureLoaded', 'clear'],
+      { rememberedCount: signal(0) }
+    );
+    tagMemoryMock.ensureLoaded.and.resolveTo(undefined);
+    tagMemoryMock.clear.and.resolveTo(undefined);
+
     authServiceMock = jasmine.createSpyObj('AuthService', ['currentUser', 'updateUserPreferences']);
     authServiceMock.currentUser.and.returnValue({
       preferences: {
@@ -131,6 +141,7 @@ describe('AiSettingsPageComponent', () => {
         { provide: AnnouncerService, useValue: announcerMock },
         { provide: ProviderKeyService, useValue: providerKeysMock },
         { provide: CategoryMemoryService, useValue: categoryMemoryMock },
+        { provide: TagMemoryService, useValue: tagMemoryMock },
       ],
     }).compileComponents();
 
@@ -364,6 +375,31 @@ describe('AiSettingsPageComponent', () => {
 
       expect(component.keysLoaded()).toBe(false);
       expect(notifications.error).toHaveBeenCalled();
+    });
+  });
+
+  describe('remembered tags', () => {
+    it('loads what is already remembered when the page opens', () => {
+      // The count is display-only, so it is fetched alongside the keys rather
+      // than awaited ahead of them.
+      expect(tagMemoryMock.ensureLoaded).toHaveBeenCalled();
+    });
+
+    it('forgets every remembered merchant and says so', async () => {
+      await component.clearTagMemory();
+
+      expect(tagMemoryMock.clear).toHaveBeenCalled();
+      expect(notifications.success).toHaveBeenCalledWith('aiPage.tagMemoryCleared');
+      expect(component.clearingTagMemory()).toBeFalse();
+    });
+
+    it('reports a failed clear and stops spinning', async () => {
+      tagMemoryMock.clear.and.rejectWith(new Error('offline'));
+
+      await component.clearTagMemory();
+
+      expect(notifications.error).toHaveBeenCalled();
+      expect(component.clearingTagMemory()).toBeFalse();
     });
   });
 });

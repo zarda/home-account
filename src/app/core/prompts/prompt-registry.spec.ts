@@ -42,6 +42,10 @@ const SAMPLE_INPUT: { [K in PromptId]: Parameters<(typeof PROMPTS)[K]['render']>
     headers: ['Date', 'Description', 'Amount'],
     sampleRows: [['2026-01-01', 'COFFEE', '4.50']],
   },
+  suggestTags: {
+    vocabulary: '- coffee\n- work',
+    rows: [{ index: 0, description: 'STARBUCKS' }],
+  },
   spendingSummary: {
     period: 'July 2026',
     baseCurrency: 'JPY',
@@ -152,6 +156,15 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"amount" is the TOTAL amount paid');
       expect(prompt).toContain('"receiptDetails"');
     });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      // A merchant name is not a place, and a translated address is not the
+      // string the receipt printed — the row is searched by what it says.
+      const prompt = render('receiptParse');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
+    });
   });
 
   describe('categorizeTransactions', () => {
@@ -194,6 +207,73 @@ describe('prompt registry', () => {
         prompt.indexOf('This user files')
       );
       expect(prompt.indexOf('This user files')).toBeLessThan(prompt.indexOf('Transactions:'));
+    });
+  });
+
+  describe('suggestTags', () => {
+    const oneRow = { index: 0, description: 'X' };
+
+    it('embeds the account\'s own vocabulary and one line per row', () => {
+      const prompt = render('suggestTags');
+      expect(prompt).toContain('- coffee\n- work');
+      expect(prompt).toContain('0: "STARBUCKS"');
+    });
+
+    it('names the merchant and the details when the row carries them', () => {
+      const prompt = renderPrompt('suggestTags', {
+        vocabulary: '- coffee',
+        rows: [
+          { index: 0, description: 'SQ *BLUE BOTTLE', merchant: 'Blue Bottle', details: '2x latte' },
+          // A merchant that only repeats the description is not worth a
+          // second copy of the same words.
+          { index: 1, description: 'CINEMA', merchant: 'CINEMA' },
+        ],
+      }).user;
+
+      expect(prompt).toContain('0: "SQ *BLUE BOTTLE" (Blue Bottle) — 2x latte');
+      expect(prompt).toContain('1: "CINEMA"');
+      expect(prompt).not.toContain('"CINEMA" (CINEMA)');
+    });
+
+    it('asks for index and tags as JSON', () => {
+      const prompt = render('suggestTags');
+      expect(prompt).toContain('"index" and "tags"');
+      expect(prompt).toContain('Return ONLY a valid JSON array');
+    });
+
+    it('confines the answer to the tags the account already uses', () => {
+      // The whole feature: no taxonomy of the prompt's own, and no tag the
+      // user has never typed.
+      const prompt = render('suggestTags');
+      expect(prompt).toContain('only from the list');
+      expect(prompt).toContain('Never invent');
+    });
+
+    it('renders identically with grounding absent or empty', () => {
+      const base = renderPrompt('suggestTags', {
+        vocabulary: '- coffee',
+        rows: [oneRow],
+      }).user;
+      const withEmpty = renderPrompt('suggestTags', {
+        vocabulary: '- coffee',
+        rows: [oneRow],
+        grounding: '   ',
+      }).user;
+
+      expect(withEmpty).toBe(base);
+      expect(base).toContain('- coffee\n\nTransactions:');
+    });
+
+    it('inserts grounding between the vocabulary and the rows when present', () => {
+      const prompt = renderPrompt('suggestTags', {
+        vocabulary: '- coffee',
+        rows: [oneRow],
+        grounding: 'How this user usually tags these merchants:\n- STARBUCKS → coffee',
+      }).user;
+
+      expect(prompt).toContain('- STARBUCKS → coffee');
+      expect(prompt.indexOf('- coffee\n')).toBeLessThan(prompt.indexOf('How this user usually tags'));
+      expect(prompt.indexOf('How this user usually tags')).toBeLessThan(prompt.indexOf('Transactions:'));
     });
   });
 
@@ -370,6 +450,13 @@ describe('prompt registry', () => {
       expect(prompt).toContain('do NOT compute it by summing items');
       expect(prompt).toContain('do NOT use the cash tendered or change lines');
     });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      const prompt = render('multiImageReceipts');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
+    });
   });
 
   describe('statementTransactions', () => {
@@ -379,6 +466,13 @@ describe('prompt registry', () => {
       expect(prompt).toContain('Return ONLY a valid JSON array');
       expect(prompt).toContain('return an empty array: []');
     });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      const prompt = render('statementTransactions');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
+    });
   });
 
   describe('receiptSummary', () => {
@@ -386,6 +480,13 @@ describe('prompt registry', () => {
       const prompt = render('receiptSummary');
       expect(prompt).toContain('Return ONLY a JSON object (not an array)');
       expect(prompt).toContain('Capture EVERYTHING on the receipt.');
+    });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      const prompt = render('receiptSummary');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
     });
   });
 
@@ -405,6 +506,13 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"receiptTotal"');
       expect(prompt).toContain('do NOT compute it by summing items');
       expect(prompt).toContain('do NOT use the cash tendered or change lines');
+    });
+
+    it('asks for the printed location, as printed and never translated', () => {
+      const prompt = render('receiptItems');
+      expect(prompt).toContain('"location"');
+      expect(prompt).toContain('never translated');
+      expect(prompt).toContain('inferred from the merchant name');
     });
   });
 

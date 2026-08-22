@@ -19,7 +19,24 @@ export interface ImportRowFields {
   tags?: string[];
   location?: TransactionLocation;
   isRecurring?: boolean;
+  recurringId?: string;
   period?: BudgetPeriod;
+}
+
+/**
+ * The currency an import row is shown in, and whether anyone read it.
+ *
+ * Every door used to write `row.currency || baseCurrency` and lose the
+ * difference. The flag is what lets the review step mark a currency nobody
+ * read — the same distinction `ProcessedTransaction.currencyFellBack` draws
+ * for the form's scan — and it never reaches the mapper below, which names
+ * its fields.
+ */
+export function resolveImportCurrency(
+  read: string | undefined,
+  baseCurrency: string
+): { currency: string; currencyFellBack?: true } {
+  return read ? { currency: read } : { currency: baseCurrency, currencyFellBack: true };
 }
 
 /**
@@ -35,7 +52,10 @@ export interface ImportRowFields {
  * not undefined, because Firestore rejects undefined values and an empty
  * tags array or `{ name: '' }` location would pass the rules while meaning
  * nothing. `isRecurring` alone guards on presence rather than truth — false
- * is an answer, and the truthy guard would erase it.
+ * is an answer, and the truthy guard would erase it. `recurringId` takes the
+ * truthy guard instead, the same one `addTransaction` uses: an id has no
+ * "false" to preserve, and a link the review step declined arrives here as a
+ * key holding undefined.
  */
 export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: string): CreateTransactionDTO {
   return {
@@ -49,6 +69,7 @@ export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: strin
     ...(row.tags?.length ? { tags: row.tags } : {}),
     ...(row.location ? { location: row.location } : {}),
     ...(row.isRecurring !== undefined ? { isRecurring: row.isRecurring } : {}),
+    ...(row.recurringId ? { recurringId: row.recurringId } : {}),
     ...(row.period ? { period: row.period } : {})
   };
 }

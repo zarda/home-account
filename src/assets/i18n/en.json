@@ -184,6 +184,7 @@
     "locationUnavailable": "Your location could not be found. You can still type a place name.",
     "clearCoordinates": "Remove coordinates",
     "currencyFromLocation": "Looks like you are in {{currency}} territory — use it?",
+    "attachScanPosition": "Attach where you are now as this receipt's location",
     "useSuggestedCategory": "Use suggested category {{category}}"
   },
   "budget": {
@@ -638,6 +639,10 @@
         "label": "Category memory",
         "description": "What you corrected about a merchant, so imports stop re-asking"
       },
+      "tagMemory": {
+        "label": "Tag memory",
+        "description": "Tags you kept or removed for a merchant during an import"
+      },
       "imports": {
         "label": "Import history",
         "description": "A record of each receipt and statement import"
@@ -1080,7 +1085,14 @@
     "imageKindStatementHint": "Each line on the statement becomes its own transaction.",
     "verifyAmount": "Double-check this amount — the AI was only {{percent}}% sure it read it correctly",
     "verifyDate": "Double-check this date — the AI was only {{percent}}% sure it read it correctly",
+    "currencyFellBack": "Currency not read from the source — showing your base currency",
+    "setCurrency": "Change currency (currently {{currency}})",
+    "setCurrencyForSelected": "Currency for selected",
+    "removeLocation": "Remove suggested location",
+    "removeTag": "Remove tag {{tag}}",
     "matchWithinBatch": "Repeated in this import",
+    "linkRecurring": "Looks like your {{rule}} — link it",
+    "matchRecurringOccurrence": "Already posted by your recurring rule",
     "errorNoProvider": "No AI provider is configured. Add an API key in Settings → AI Processing.",
     "errorCloudUnavailable": "Cloud AI could not be reached. Check your connection, or add an API key in Settings → AI Processing.",
     "errorQueuedOffline": "No connection, so this image was queued. It will be processed when you are back online.",
@@ -1158,7 +1170,12 @@
     "categoryMemoryHint": "When you correct a category during an import, that choice is reused for the same merchant next time instead of asking the AI again.",
     "categoryMemoryCount": "Merchants remembered",
     "categoryMemoryClear": "Forget all",
-    "categoryMemoryCleared": "Remembered categories cleared"
+    "categoryMemoryCleared": "Remembered categories cleared",
+    "tagMemoryTitle": "Remembered tags",
+    "tagMemoryHint": "When you keep or remove a suggested tag during an import, that choice is reused for the same merchant next time.",
+    "tagMemoryCount": "Merchants remembered",
+    "tagMemoryClear": "Forget all",
+    "tagMemoryCleared": "Remembered tags cleared"
   },
   "about": {
     "title": "About",

@@ -66,6 +66,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0059](0059-one-mapper-builds-every-imported-transaction.md) | One mapper builds every imported transaction | Accepted; amends 0011 | 2026-08-20 |
 | [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) | A confirmed import keeps its photos and names its source | Accepted | 2026-08-20 |
 | [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted | 2026-08-21 |
+| [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted | 2026-08-22 |
+| [0063](0063-an-import-suggests-only-what-the-account-already-knows.md) | An import suggests only what the account already knows | Accepted | 2026-08-22 |
 
 ## What belongs here
 
