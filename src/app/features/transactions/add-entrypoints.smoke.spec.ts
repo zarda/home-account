@@ -35,11 +35,58 @@ import {
   Timestamp
 } from '@angular/fire/firestore';
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
+import { MediaMatcher } from '@angular/cdk/layout';
+import { BehaviorSubject } from 'rxjs';
 import { routes } from '../../app.routes';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
 import { MockAuthService, createMockUser } from '../../core/services/testing';
 import { BottomNavComponent } from '../../shared/layout/bottom-nav/bottom-nav.component';
+import { DeviceService } from '../../core/services/device.service';
+
+/**
+ * A viewport width standing in for the device, so a spec can rotate a phone.
+ * Width features are answered from that width — which covers the app's
+ * breakpoint scale and the list's own `(min-width: 768px)` alike — and any
+ * query with no width feature in it (reduced motion, forced colours) is handed
+ * to the real matcher rather than silently answered "no match".
+ */
+class FakeMediaMatcher {
+  constructor(private readonly width$: BehaviorSubject<number>) {}
+
+  private evaluate(query: string, width: number): boolean {
+    const mins = [...query.matchAll(/\(min-width:\s*([\d.]+)px\)/g)];
+    const maxes = [...query.matchAll(/\(max-width:\s*([\d.]+)px\)/g)];
+    if (mins.length === 0 && maxes.length === 0) {
+      return window.matchMedia(query).matches;
+    }
+    return (
+      mins.every(m => width >= parseFloat(m[1])) && maxes.every(m => width <= parseFloat(m[1]))
+    );
+  }
+
+  matchMedia(query: string): MediaQueryList {
+    const listeners = new Set<(e: MediaQueryListEvent) => void>();
+    const evaluate = (width: number) => this.evaluate(query, width);
+    const width$ = this.width$;
+
+    width$.subscribe(width => {
+      const event = { media: query, matches: evaluate(width) } as MediaQueryListEvent;
+      listeners.forEach(fn => fn(event));
+    });
+
+    return {
+      media: query,
+      get matches() {
+        return evaluate(width$.value);
+      },
+      addListener: (fn: (e: MediaQueryListEvent) => void) => listeners.add(fn),
+      removeListener: (fn: (e: MediaQueryListEvent) => void) => listeners.delete(fn),
+      addEventListener: (_: string, fn: (e: MediaQueryListEvent) => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: (e: MediaQueryListEvent) => void) => listeners.delete(fn)
+    } as unknown as MediaQueryList;
+  }
+}
 
 jasmine.getEnv().configure({ random: false });
 
@@ -53,6 +100,7 @@ describe('Add entry points (emulator smoke test)', () => {
   let storage: ReturnType<typeof getStorage>;
   let uid: string;
   let mockAuth: MockAuthService;
+  let width$: BehaviorSubject<number>;
 
   function bodyText(): string {
     return document.body.textContent ?? '';
@@ -129,9 +177,21 @@ describe('Add entry points (emulator smoke test)', () => {
 
   beforeEach(() => {
     mockAuth = new MockAuthService();
+    width$ = new BehaviorSubject<number>(1440);
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
+        // Fake the OS-level matcher, never BreakpointObserver itself: the
+        // observer's own logic is part of what these specs are checking.
+        { provide: MediaMatcher, useValue: new FakeMediaMatcher(width$) },
+        // A phone user agent at every width. Without it the header FAB's old
+        // gate is trivially satisfied under desktop Chrome and the rotation
+        // spec cannot fail. Kept after the fix as a trap: the page must not
+        // consult the agent again.
+        {
+          provide: DeviceService,
+          useValue: { isMobile: () => true, supportsCameraCapture: () => true }
+        },
         provideNoopAnimations(),
         provideHttpClient(),
         provideNativeDateAdapter(),
@@ -180,6 +240,70 @@ describe('Add entry points (emulator smoke test)', () => {
     SPEC_TIMEOUT
   );
 
+  // The reported bug: turning a phone sideways took the bottom bar away and
+  // put nothing back, because the header FAB was gated on the user agent while
+  // the bottom nav was gated on the viewport. Karma cannot supply either input
+  // — it is desktop Chrome at a fixed size — so exactly two environment
+  // sources are faked here and everything else stays real: the router, the
+  // real MainLayoutComponent with its own .visible gate and stylesheet, real
+  // Material overlays, and the emulator behind the page's Firestore reads.
+  it(
+    'keeps an add affordance when a phone rotates into landscape',
+    async () => {
+      mockAuth.setMockUser(createMockUser(uid));
+      const harness = await RouterTestingHarness.create();
+
+      await harness.navigateByUrl('/transactions');
+      await waitFor(
+        'transactions page with seeded data',
+        () => bodyText().includes('transactions.title') && bodyText().includes('Blue Bottle Coffee'),
+        () => harness.detectChanges()
+      );
+
+      const bottomNavShown = (): boolean => {
+        const container = document.querySelector<HTMLElement>('.bottom-nav-container');
+        return container !== null && getComputedStyle(container).display !== 'none';
+      };
+      const headerFab = (): HTMLElement | null =>
+        document.querySelector<HTMLElement>('app-page-header button[mat-fab]');
+
+      // Portrait: the bottom nav carries Add, the header stays out of the way.
+      width$.next(430);
+      harness.detectChanges();
+      await waitFor('portrait bottom nav', bottomNavShown, () => harness.detectChanges());
+      expect(headerFab()).withContext('portrait: no header FAB').toBeNull();
+
+      // Rotate. The bottom bar leaves at this width — something must replace it.
+      width$.next(932);
+      harness.detectChanges();
+      await waitFor('landscape header FAB', () => headerFab() !== null, () =>
+        harness.detectChanges()
+      );
+      expect(bottomNavShown()).withContext('landscape: bottom nav is gone').toBeFalse();
+
+      const fab = headerFab()!;
+      expect(fab.getBoundingClientRect().width)
+        .withContext('a real target, not a sliver')
+        .toBeGreaterThanOrEqual(48);
+
+      // And it still opens the three entries it is supposed to.
+      fab.click();
+      await waitFor(
+        'landscape header add menu',
+        () => menuItems().length === 3,
+        () => harness.detectChanges()
+      );
+      TestBed.inject(MatDialog).closeAll();
+      document.body.click();
+      harness.detectChanges();
+
+      // Leave no live Firestore listeners for the spec that follows.
+      harness.fixture.destroy();
+      width$.next(1440);
+    },
+    SPEC_TIMEOUT
+  );
+
   it(
     'desktop transactions page reaches the capture dialog through the header add menu',
     async () => {
@@ -195,9 +319,15 @@ describe('Add entry points (emulator smoke test)', () => {
         () => harness.detectChanges()
       );
 
-      // Karma runs in desktop Chrome, so the UA-gated header menu renders.
+      // The header menu is gated on the viewport, and this suite's fake
+      // matcher reports a desktop width by default, so it renders. The gate
+      // itself is covered at every width by add-affordance.spec.ts.
       const fab = document.querySelector<HTMLElement>('app-page-header button[mat-fab]');
       expect(fab).withContext('header add button').not.toBeNull();
+      // Presence is not visibility: a squeezed FAB is still in the DOM.
+      expect(fab!.getBoundingClientRect().width)
+        .withContext('a real 48px target, not a sliver')
+        .toBeGreaterThanOrEqual(48);
       fab!.click();
       await waitFor(
         'header add menu',
