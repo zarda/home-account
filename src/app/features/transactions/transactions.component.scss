@@ -1,7 +1,7 @@
 /* Transactions Component Styles */
 
-// Desktop header figures: label over value, right-aligned beside the add
-// FAB. Values keep nowrap on the host so appFitText owns the shrink path
+// Header figures at 600px and up: label over value, right-aligned beside the
+// add FAB. Values keep nowrap on the host so appFitText owns the shrink path
 // (scale to its floor, then wrap) — see docs/ui-overflow.md G3.
 .period-totals {
   display: flex;
@@ -33,6 +33,24 @@
       padding-inline-start: 16px;
     }
   }
+}
+
+// The totals give way, never the button: at these widths the FAB is the only
+// route to Add, and the figures beside it are a readout — the same call
+// .app-title makes in the header ("the wordmark gives way, never the
+// buttons"), docs/ui-overflow.md G1.
+//
+// This pins an invariant, it does not repair a break. Material already sets
+// flex-shrink: 0 on .mat-mdc-fab-base, so the button holds its 48px today.
+// What makes that worth restating locally is `!min-w-0` on the host: it
+// removes the automatic minimum size that would otherwise floor the button, so
+// Material's declaration is the only thing left standing between the FAB and a
+// sliver in a flex row that has a gap and no wrap. That is a Material
+// internal, not our contract — the same reason styles.scss pins flex-shrink on
+// mat-icon. The deficit belongs to the totals, which declare min-width: 0
+// above and let appFitText scale each value to its 12px floor before wrapping.
+.add-fab {
+  flex-shrink: 0;
 }
 
 .period-totals-placeholder {
