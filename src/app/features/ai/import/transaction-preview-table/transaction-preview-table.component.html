@@ -152,7 +152,7 @@
 
           <!-- Anything the source suggested beyond the core fields, each
                droppable in one tap -->
-          @if (row.location || row.tags?.length || row.recurringMatch) {
+          @if (row.location || row.tags?.length || row.recurringMatch || row.currencySuggestion) {
             <div class="card-extras">
               @if (row.recurringMatch; as match) {
                 <mat-checkbox
@@ -169,6 +169,17 @@
                   <mat-icon aria-hidden="true">place</mat-icon>
                   <span class="extra-text">{{ location.name }}</span>
                   <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </span>
+              }
+              @if (row.currencySuggestion) {
+                <span class="extra-chip currency-offer">
+                  <button type="button" class="extra-accept" [attr.aria-label]="currencyOfferLabel(row)" [matTooltip]="currencyOfferReason(row)" matTooltipPosition="above" (click)="acceptCurrencySuggestion(row)">
+                    <mat-icon aria-hidden="true">public</mat-icon>
+                    <span class="extra-text">{{ currencyOfferText(row) }}</span>
+                  </button>
+                  <button type="button" class="extra-remove" [attr.aria-label]="'import.dismissCurrencySuggestion' | translate" (click)="dismissCurrencySuggestion(row)">
                     <mat-icon>close</mat-icon>
                   </button>
                 </span>

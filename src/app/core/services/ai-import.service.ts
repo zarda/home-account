@@ -15,6 +15,8 @@ import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
 import { readCurrencyCode } from '../utils/receipt-extraction.utils';
+import { localeRegion, suggestCurrency } from '../utils/currency-suggestion.utils';
+import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import {
   AIErrorInfo,
   AI_NO_PROVIDER,
@@ -50,7 +52,8 @@ import {
   TransactionLocation,
   isBudgetPeriod,
   CATEGORY_MEMORY_CONFIDENCE,
-  baseCurrencyOf
+  baseCurrencyOf,
+  CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import { resolveImportCurrency, toCreateTransactionDTO } from '../utils/import-dto.utils';
@@ -99,6 +102,7 @@ export class AIImportService {
   private analytics = inject(AnalyticsService);
   private offlineQueue = inject(OfflineQueueService);
   private pwaService = inject(PwaService);
+  private currencySession = inject(CurrencyChoiceSessionService);
 
   // Processing state signals
   isProcessing = signal<boolean>(false);
@@ -317,29 +321,76 @@ export class AIImportService {
   }
 
   /**
-   * Convert strategy service result to categorized import transactions
+   * Convert a strategy result to review rows.
+   *
+   * Public because the camera dialog converts the same result: its own copy
+   * dropped currencyFellBack, location and the photo mapping had to be
+   * rebuilt by hand, so a camera receipt reached the review card unable to
+   * show the mark or the address the wizard path shows for the identical
+   * ProcessingResult. The photo-mapping block below is the one the camera
+   * used to build; the wizard's single-image door (importFromImage) now
+   * stamps it too, which changes nothing there — convertParsedReceipt sets
+   * neither imageIndex nor receiptId, so a single-receipt scan still gets no
+   * block.
    */
-  private convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {
+  convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
-    return result.transactions.map(tx => ({
-      id: nextImportRowId('strategy'),
-      description: tx.description,
-      amount: tx.amount,
-      ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
-      date: tx.date,
-      type: tx.type,
-      ...gradeCategorySuggestion(tx),
-      isDuplicate: false,
-      selected: true,
-      notes: tx.notes,
-      fieldConfidence: tx.fieldConfidence,
-      ...(tx.tags?.length ? { tags: tx.tags } : {}),
-      ...(tx.location ? { location: tx.location } : {}),
-      ...(tx.receiptCountry ? { receiptCountry: tx.receiptCountry } : {}),
-      ...(tx.period ? { period: tx.period } : {}),
-      ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {})
-    }));
+    return result.transactions.map(tx => {
+      const row: CategorizedImportTransaction = {
+        id: nextImportRowId('strategy'),
+        description: tx.description,
+        amount: tx.amount,
+        ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
+        date: tx.date,
+        type: tx.type,
+        ...gradeCategorySuggestion(tx),
+        isDuplicate: false,
+        selected: true,
+        notes: tx.notes,
+        fieldConfidence: tx.fieldConfidence,
+        // The receipt badge keys on receiptId, which only the cloud strategy
+        // path reports; the photo mapping comes from either engine. Both ride
+        // the same metadata block, with their real values.
+        ...(tx.receiptId != null || tx.imageIndex !== undefined ? {
+          imageMetadata: {
+            imageIndex: tx.imageIndex ?? 0,
+            imageId: `image_${tx.imageIndex ?? 0}`,
+            positionInImage: 'middle' as const,
+            confidenceScore: tx.confidence,
+            ...(tx.mergedFromImages?.length ? { mergedFromImages: tx.mergedFromImages } : {}),
+            ...(tx.receiptId != null ? { receiptId: tx.receiptId } : {}),
+          },
+        } : {}),
+        ...(tx.tags?.length ? { tags: tx.tags } : {}),
+        ...(tx.location ? { location: tx.location } : {}),
+        ...(tx.receiptCountry ? { receiptCountry: tx.receiptCountry } : {}),
+        ...(tx.period ? { period: tx.period } : {}),
+        ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {}),
+      };
+      return { ...row, ...this.currencySuggestionSlot(row) };
+    });
+  }
+
+  /**
+   * The ladder's offer for a row whose currency fell back, as a mark on the
+   * row. No position rung here: a batch is reviewed wherever the user happens
+   * to be, and ADR 0062 keeps a position-derived currency off the bulk path.
+   */
+  private currencySuggestionSlot(
+    row: Pick<CategorizedImportTransaction, 'currency' | 'currencyFellBack' | 'receiptCountry'>
+  ): { currencySuggestion?: CurrencySuggestion } {
+    if (!row.currencyFellBack) {
+      return {};
+    }
+    const suggestion = suggestCurrency({
+      receiptCountry: row.receiptCountry,
+      datedToday: false,
+      sessionCurrency: this.currencySession.current() ?? undefined,
+      localeRegion: localeRegion(),
+      currentCurrency: row.currency,
+    });
+    return suggestion ? { currencySuggestion: suggestion } : {};
   }
 
   /**
@@ -532,7 +583,7 @@ export class AIImportService {
     // Convert to CategorizedImportTransaction with image metadata
     return categorizedByAI.map((t, index) => {
       const original = transactions[index];
-      return {
+      const row: CategorizedImportTransaction = {
         id: nextImportRowId('multi_img'),
         description: t.description,
         amount: Math.abs(t.amount),
@@ -563,6 +614,7 @@ export class AIImportService {
         ...(original.period ? { period: original.period } : {}),
         ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {})
       };
+      return { ...row, ...this.currencySuggestionSlot(row) };
     });
   }
 
@@ -963,7 +1015,7 @@ export class AIImportService {
       const parsedDate = parseDateInput(t.date);
       const dateConfidence = parsedDate === null ? 0 : t.dateConfidence;
 
-      return {
+      const row: CategorizedImportTransaction = {
         id: nextImportRowId('import'),
         description: t.description,
         amount: Math.abs(t.amount),
@@ -994,6 +1046,7 @@ export class AIImportService {
         ...(t.period ? { period: t.period } : {}),
         ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
       };
+      return { ...row, ...this.currencySuggestionSlot(row) };
     });
   }
 

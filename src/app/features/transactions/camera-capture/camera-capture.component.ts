@@ -1,5 +1,3 @@
-import { nextImportRowId } from '../../../core/utils/import-row-id.utils';
-import { gradeCategorySuggestion } from '../../../core/utils/categorization.utils';
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
@@ -394,40 +392,19 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
 
   /**
    * Convert strategy service result to import result format.
+   *
+   * The rows come from the same converter the wizard uses, so currencyFellBack,
+   * location, receiptCountry and the currency offer survive into the review
+   * card; this dialog's own copy used to drop every one of them.
    */
   private async convertStrategyResult(
     strategyResult: import('../../../core/services/ai-strategy.service').ProcessingResult,
     files: File[]
   ): Promise<import('../../../models').ImportResult> {
-    const transactions = strategyResult.transactions.map(tx => ({
-      id: nextImportRowId('strategy'),
-      description: tx.description,
-      amount: tx.amount,
-      currency: tx.currency,
-      date: tx.date,
-      type: tx.type,
-      ...gradeCategorySuggestion(tx),
-      notes: tx.notes,
-      fieldConfidence: tx.fieldConfidence,
-      isDuplicate: false,
-      selected: true,
-      // The receipt badge keys on receiptId, which only the cloud strategy
-      // path reports; the photo mapping comes from either engine. Both ride
-      // the same metadata block, and their real values — this used to stamp
-      // every row image_0, so the confirm step attached the first photo to
-      // whichever row came first.
-      imageMetadata: tx.receiptId != null || tx.imageIndex !== undefined ? {
-        imageIndex: tx.imageIndex ?? 0,
-        imageId: `image_${tx.imageIndex ?? 0}`,
-        positionInImage: 'middle' as const,
-        confidenceScore: tx.confidence,
-        ...(tx.mergedFromImages?.length ? { mergedFromImages: tx.mergedFromImages } : {}),
-        ...(tx.receiptId != null ? { receiptId: tx.receiptId } : {}),
-      } : undefined,
-    }));
+    const transactions = this.importService.convertStrategyResultToCategories(strategyResult);
 
-    // The strategy path bypasses AIImportService, so run the same duplicate
-    // check the wizard-upload path applies before review.
+    // The strategy path bypasses the wizard's import doors, so run the same
+    // duplicate check they apply before review.
     const duplicates = await this.duplicateService.checkDuplicates(transactions);
     const marked = this.duplicateService.markDuplicates(transactions, duplicates);
 
@@ -440,9 +417,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       confidence: strategyResult.confidence,
       warnings: [],
       duplicates,
-      // The wizard's confirm step attaches photos from these; the fallback
-      // path ships them already, and without them the strategy path saved
-      // every camera receipt photo-less.
+      // The wizard's confirm step attaches photos from these.
       sourceFiles: files,
       // How the engine ran, for the confirm-time record.
       ...(strategyResult.diagnostics ? { diagnostics: strategyResult.diagnostics } : {}),

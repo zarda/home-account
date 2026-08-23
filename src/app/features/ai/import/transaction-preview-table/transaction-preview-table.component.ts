@@ -9,11 +9,15 @@ import {
   Category,
   CategorizedImportTransaction,
   CurrencyInfo,
+  CurrencySuggestionReason,
   VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
+import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -44,6 +48,8 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
 export class TransactionPreviewTableComponent {
   private translationService = inject(TranslationService);
   private currencyService = inject(CurrencyService);
+  private currencySession = inject(CurrencyChoiceSessionService);
+  private localeFormat = inject(LocaleFormatService);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
   @Input() categories: Category[] = [];
@@ -143,14 +149,20 @@ export class TransactionPreviewTableComponent {
   }
 
   updateCurrency(transaction: CategorizedImportTransaction, code: string): void {
-    // Chosen by the user, so whatever the source failed to read no longer applies.
-    this.replaceRow(transaction, { currency: code, currencyFellBack: false });
+    // Chosen by the user, so whatever the source failed to read no longer
+    // applies — and a choice made for a fallen-back row is worth remembering
+    // for the next one this session.
+    if (transaction.currencyFellBack) {
+      this.currencySession.remember(code);
+    }
+    this.replaceRow(transaction, { currency: code, currencyFellBack: false, currencySuggestion: undefined });
   }
 
-  /** A batch of photos from one trip is nearly always one currency. */
+  /** A batch of photos from one trip is nearly always one currency. Bulk is the user's choice, never the ladder's (ADR 0062). */
   applyCurrencyToSelected(code: string): void {
+    this.currencySession.remember(code);
     this.transactions = this.transactions.map(t =>
-      t.selected ? { ...t, currency: code, currencyFellBack: false } : t
+      t.selected ? { ...t, currency: code, currencyFellBack: false, currencySuggestion: undefined } : t
     );
     this.emitChanges();
   }
@@ -177,6 +189,48 @@ export class TransactionPreviewTableComponent {
 
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
     this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
+  }
+
+  /** Accept = the ordinary currency edit, so one path clears the marks and records the choice. */
+  acceptCurrencySuggestion(transaction: CategorizedImportTransaction): void {
+    const offer = transaction.currencySuggestion;
+    if (!offer) return;
+    this.updateCurrency(transaction, offer.code);
+  }
+
+  /** Dismiss = drop the mark. The row keeps its fallen-back marker; nothing was applied. */
+  dismissCurrencySuggestion(transaction: CategorizedImportTransaction): void {
+    this.replaceRow(transaction, { currencySuggestion: undefined });
+  }
+
+  currencyOfferText(row: CategorizedImportTransaction): string {
+    const offer = row.currencySuggestion;
+    if (!offer) return '';
+    return offer.country
+      ? this.translationService.t('import.currencyFromCountry', {
+          country: countryDisplayName(offer.country, this.localeFormat.locale),
+          currency: offer.code,
+        })
+      : this.translationService.t('import.currencySuggested', { currency: offer.code });
+  }
+
+  currencyOfferReason(row: CategorizedImportTransaction): string {
+    return this.reasonLabel(row.currencySuggestion?.reason ?? 'receipt');
+  }
+
+  /** The accept button's name says what it does and why; the visible text alone says neither fully. */
+  currencyOfferLabel(row: CategorizedImportTransaction): string {
+    const code = row.currencySuggestion?.code ?? '';
+    return `${this.translationService.t('import.acceptCurrencySuggestion', { currency: code })}. ${this.currencyOfferReason(row)}`;
+  }
+
+  private reasonLabel(reason: CurrencySuggestionReason): string {
+    switch (reason) {
+      case 'receipt': return this.translationService.t('import.currencyReasonReceipt');
+      case 'session': return this.translationService.t('import.currencyReasonSession');
+      case 'locale': return this.translationService.t('import.currencyReasonLocale');
+      case 'position': return this.translationService.t('import.currencyReasonPosition');
+    }
   }
 
   /** Link to the offered rule, or undo it — restoring what the source said about isRecurring. */
