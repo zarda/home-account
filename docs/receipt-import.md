@@ -313,10 +313,15 @@ saved but the summary read-back fails, the wizard says so and moves on; the
 full record, including per-row errors, is on the Import History page.
 
 **Every attempt is recorded where it runs.** `AIStrategyService.runProcessing`
-is the one place all four doors pass through, and it is where the engine,
-the cross-engine fallback, the cloud provider, the duration and the error
-class are known. It carries them out as `ProcessingResult.diagnostics`, or
-inside the thrown `ReceiptProcessingError` when nothing answered. Each door
+is where the engine, the cross-engine fallback, the cloud provider, the
+duration and the error class are known, and it carries them out as
+`ProcessingResult.diagnostics` or inside the thrown
+`ReceiptProcessingError` when nothing answered. The camera, the in-form
+scan and the offline drain all route through it. The wizard's own image
+and statement imports call a cloud provider directly instead, so
+`AIImportService` fills the same shape for those from what it knows —
+which is why the provider there is resolved only once a request is
+actually issued, exactly as the strategy layer does it. Each door
 opens one `ReceiptAttempt` handle from `ReceiptAttemptService` before it runs
 and settles it from exactly one branch:
 

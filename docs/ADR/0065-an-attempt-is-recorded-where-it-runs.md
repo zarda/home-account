@@ -46,11 +46,16 @@ draining unattended, emitting nothing and writing no record.
 
 ## Decision
 
-**An attempt is recorded where it runs**: the facts are produced at the one
-chokepoint that knows them, every door reports through one handle that emits
-at most one event, and a failure writes a record at the moment it fails.
+**An attempt is recorded where it runs**: the facts are produced where they
+are known, every door reports through one handle that emits at most one
+event, and a failure writes a record at the moment it fails.
 
-### Diagnostics are produced at the chokepoint
+The engine routing layer is where most of that is known, and three of the
+four doors pass through it. The wizard's image and statement imports call a
+cloud provider directly, so `AIImportService` fills the same diagnostics
+shape for those itself — the shape is the contract, not the call path.
+
+### Diagnostics are produced where the engine ran
 
 `runProcessing` now returns `ReceiptAttemptDiagnostics` —
 `{ engine, fellBackFrom?, provider, durationMs, errorType?, retryable? }` —
