@@ -275,6 +275,40 @@ double-import — and the completion toast carries both counts. When every row
 saved but the summary read-back fails, the wizard says so and moves on; the
 full record, including per-row errors, is on the Import History page.
 
+**Every attempt is recorded where it runs.** `AIStrategyService.runProcessing`
+is the one place all four doors pass through, and it is where the engine,
+the cross-engine fallback, the cloud provider, the duration and the error
+class are known. It carries them out as `ProcessingResult.diagnostics`, or
+inside the thrown `ReceiptProcessingError` when nothing answered. Each door
+opens one `ReceiptAttempt` handle from `ReceiptAttemptService` before it runs
+and settles it from exactly one branch:
+
+| Door | `path` | On success | On failure |
+|---|---|---|---|
+| Camera dialog | `camera` | event | event + failed record |
+| Import wizard (receipt kind only) | `wizard` | event | event + failed record |
+| In-form **Scan Receipt** | `form` | event; the transaction the user saves is the record | event + failed record |
+| Offline queue drain | — | nothing | failed record only |
+
+A handle settles once, so the camera's five terminal branches and a wizard
+batch where a CSV throws after the photos succeeded cannot count an attempt
+twice. The event is `receipt_import` with `outcome`, `path`, `engine`,
+`provider`, `failure` and `duration` — every value enumerated, never the
+provider's wording (see [analytics.md](analytics.md)). The failed record is an
+Import History entry with `status: failed`, the first file's name, the
+batch's size, and the same diagnostics as optional slots (`door`, `engine`,
+`fellBackFrom`, `provider`, `errorType`, `durationMs`); a confirmed import
+writes the same slots on its record at confirm time. Import History renders
+them as chips, with the error class on a failed record, and subscribes to
+the newest 200 records.
+
+The classes a failure is filed under: `parseAIError`'s
+`rate_limit | auth | network | quota | server | timeout | unknown`, plus
+three the pipeline decides itself — `no_provider` (nothing configured;
+filed here even though `parseAIError` calls the sentinel `auth` so the wizard
+can offer the key hint), `nothing_extracted` (an engine answered with no
+row) and `queue_write` (the offline queue could not store the image).
+
 ## Offline capture and the queue
 
 An image captured offline is neither processed nor lost: it is stored in an
@@ -340,8 +374,14 @@ shown on the AI settings page, which is what **Clear Queue** is for.
   runs after whichever engine read the receipt, so memory answers either way
   and the model rung asks whatever cloud key is set up — a receipt read
   on-device still gets suggested tags when there is one.
+- **A queued receipt keeps no photo.** The drain writes the rows through the
+  same mapper as every other door, so the address, tags and period the
+  model read now land; the image bytes themselves are not re-uploaded from
+  the queue. Filed as a follow-up.
 
-If a receipt fails for any other reason, that is a bug rather than a limitation.
-Be aware that diagnosing one is currently harder than it should be: the app
-records that an import succeeded or failed and nothing about which engine ran,
-which provider, how long it took, or what class of error occurred.
+If a receipt fails for any other reason, that is a bug rather than a
+limitation. Diagnosing one starts on the Import History page: the failed
+record says which door, which engine (and whether it fell back), which
+provider, how long it took and what class of error it was. The same facts
+reach GA4 as `receipt_import` dimensions, so a regression in one provider or
+one engine is visible as a rate rather than as a pile of support messages.
