@@ -17,6 +17,14 @@ import {
 import { SearchQueryContext } from '../../models';
 
 /**
+ * A run of three or more bare two-letter codes, joined by a comma, a slash, a
+ * pipe or the word "or" — the same separator set check-prompts.mjs uses for
+ * its currency-code tripwire. check-prompts.mjs cannot see country codes at
+ * all, so this is the only guard against a prompt listing them by hand.
+ */
+const COUNTRY_CODE_RUN = /\b[A-Z]{2}\b(?:\s*(?:,|\/|\||\bor\b)\s*\b[A-Z]{2}\b){2,}/;
+
+/**
  * One rendering per prompt id, so every registered prompt is exercised and the
  * consistency check can require that this file names each of them.
  *
@@ -142,6 +150,17 @@ describe('prompt registry', () => {
     }
   });
 
+  it('never lists a run of country codes, in any prompt', () => {
+    // The five receipt prompts get their own test of this below; this one
+    // covers the rest, since a categorization, search or insights prompt
+    // could grow the same mistake and nothing else here would catch it.
+    for (const id of PROMPT_IDS) {
+      expect(render(id))
+        .withContext(`${id} lists a run of two-letter codes`)
+        .not.toMatch(COUNTRY_CODE_RUN);
+    }
+  });
+
   describe('receiptParse', () => {
     it('asks for receiptCount, which drives the multi-receipt review flow', () => {
       // Only Gemini's copy asked for this before the registry, so the flow
@@ -174,7 +193,6 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"country"');
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
-      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
     });
   });
 
@@ -477,7 +495,6 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"country"');
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
-      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
     });
   });
 
@@ -504,7 +521,6 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"country"');
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
-      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
     });
   });
 
@@ -530,7 +546,6 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"country"');
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
-      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
     });
   });
 
@@ -567,7 +582,6 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"country"');
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
-      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
     });
   });
 

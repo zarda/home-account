@@ -59,6 +59,14 @@ describe('readCountryCode', () => {
     expect(readCountryCode('RW')).toBe('RW');
   });
 
+  it('canonicalizes a CLDR-only spelling to the ISO 3166-1 code it stands for', () => {
+    // UK is common enough on a British receipt that losing it here would
+    // silently cost the GBP suggestion GB carries downstream. SU is one of
+    // several deprecated aliases Intl.Locale folds to a modern replacement.
+    expect(readCountryCode('UK')).toBe('GB');
+    expect(readCountryCode('su')).toBe('RU');
+  });
+
   it('rejects a name, an alpha-3 code or a number the model wrote instead', () => {
     expect(readCountryCode('Japan')).toBe('');
     expect(readCountryCode('JPN')).toBe('');
@@ -67,11 +75,13 @@ describe('readCountryCode', () => {
   });
 
   it('rejects a well-formed code that is not a country', () => {
-    // DisplayNames.of() echoes the input for an unknown-but-well-formed code
-    // under its default fallback; the reader asks for fallback 'none' and
-    // also refuses a name equal to the code, so 'AA' cannot slip through as
-    // a country called "AA".
+    // DisplayNames.of() answers undefined for an unknown-but-well-formed code
+    // under fallback 'none', which the falsy-name branch below rejects — 'AA'
+    // and 'QM' both take that path. The name-equals-code guard beside it is
+    // belt-and-braces for a runtime that ignores the fallback option and
+    // echoes the input back instead.
     expect(readCountryCode('AA')).toBe('');
+    expect(readCountryCode('QM')).toBe('');
     // CLDR does name ZZ — "Unknown Region" — which is exactly not a country.
     expect(readCountryCode('ZZ')).toBe('');
   });
