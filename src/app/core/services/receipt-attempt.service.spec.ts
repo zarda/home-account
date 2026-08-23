@@ -248,6 +248,15 @@ describe('ReceiptAttemptService', () => {
       expect(history.saveImportHistory).not.toHaveBeenCalled();
     });
 
+    it('still writes the record when the analytics call throws', async () => {
+      analytics.trackReceiptImport.and.throwError('boom');
+
+      expect(() => service.begin('camera', 'receipt_image', files).failed(new Error('x'))).not.toThrow();
+      await Promise.resolve();
+
+      expect(history.saveImportHistory).toHaveBeenCalled();
+    });
+
     it('never throws when the record cannot be written', async () => {
       history.saveImportHistory.and.rejectWith(new Error('permission-denied'));
       expect(() => service.begin('form', 'receipt_image', files).failed(new Error('x'))).not.toThrow();

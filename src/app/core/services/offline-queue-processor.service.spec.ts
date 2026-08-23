@@ -348,12 +348,13 @@ describe('OfflineQueueProcessorService', () => {
       expect(attempts.service.begin).not.toHaveBeenCalled();
 
       queue.peekQueuedImage.and.resolveTo(queuedImage({ userId: 'user-b' }));
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       dispatchImage('img_5');
       await waitFor(() => queue.updateImageStatus.calls.count() === 2);
       expect(attempts.service.begin).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_5', 'pending');
     });
   });
-
 
   describe('account ownership', () => {
     // The regression. addTransaction resolves the account at call time, so a
@@ -385,7 +386,5 @@ describe('OfflineQueueProcessorService', () => {
       expect(transactions.addTransaction).toHaveBeenCalled();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
     });
-
-
   });
 });
