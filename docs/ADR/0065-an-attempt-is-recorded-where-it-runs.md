@@ -78,6 +78,19 @@ stays strictly typed and has one call site, the service — the registry's
 source column names one file, and the compiler holds the payload to the
 taxonomy.
 
+A door is a value, not a place: `form` opens twice, once for the single-shot
+scan and again when that scan finds several receipts in one photo and the
+user asks to review them separately. The second extraction runs after the
+first has already settled — a fresh `importFromMultipleImages` call over the
+same image, opened and closed by its own handle — and hands its result to
+the import wizard over router state for review, the same way the camera
+dialog does. That state used to carry only `fromCamera`, which the wizard
+read as the door as well as "skip re-extracting, this result already
+happened"; a second producer needed the second meaning without inheriting
+the first, so the state now names its own `door` explicitly and the wizard
+defaults to `camera` only when a producer leaves it unset — true for the
+camera dialog today, and for nothing else.
+
 ### The event is enumerated, the record is exact
 
 Two channels, two jobs. The event carries six enumerated parameters —

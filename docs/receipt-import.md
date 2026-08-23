@@ -325,7 +325,18 @@ and settles it from exactly one branch:
 | Camera dialog | `camera` | event | event + failed record |
 | Import wizard (receipt kind only) | `wizard` | event | event + failed record |
 | In-form **Scan Receipt** | `form` | event; the transaction the user saves is the record | event + failed record |
+| In-form multi-receipt review | `form` | event | event + failed record |
 | Offline queue drain | — | nothing | failed record only |
+
+The multi-receipt review is a second `form`-door attempt, not a fifth door
+value: **Scan Receipt** offers it when one photo turns out to hold several
+receipts, and accepting re-extracts that same photo through the wizard's own
+pipeline before handing the result to the wizard for review — an extraction
+that starts at the form, from an image the user chose there, so it settles
+its own handle rather than riding on the scan's. The wizard learns which
+door actually ran from the state this hand-off carries, rather than
+assuming the camera: the router state's `door` field names it, defaulting to
+`camera` only for a producer that leaves it unset.
 
 A handle settles once, so the camera's five terminal branches and a wizard
 batch where a CSV throws after the photos succeeded cannot count an attempt
