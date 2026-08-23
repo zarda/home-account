@@ -51,9 +51,21 @@ describe('suggestCurrency', () => {
     expect(suggestCurrency({ ...base, localeRegion: 'US' })).toBeNull();
   });
 
-  it('is silent on a rung whose country the table does not cover, and falls through', () => {
+  it('a rung that answers with the current currency ends the ladder rather than falling through to a rung that would answer differently', () => {
+    // The receipt rung answered USD, which is already in the field: that is
+    // suppression, not silence, so the position rung — which would say JPY —
+    // must never be asked to break the tie.
+    expect(suggestCurrency({ ...base, receiptCountry: 'US', positionCountry: 'JP' })).toBeNull();
+    // Same shape one rung down: the session rung answered the current
+    // currency, so the locale rung's different answer must not surface either.
+    expect(suggestCurrency({ ...base, sessionCurrency: 'USD', localeRegion: 'JP' })).toBeNull();
+  });
+
+  it('is silent on a rung whose country the table does not cover, and falls through — unlike a rung that answered', () => {
     // Greenland is a real country the table has no currency for: that rung
     // says nothing, and the next one is asked rather than the ladder giving up.
+    // This is genuine silence, not suppression: nothing here matches
+    // currentCurrency, so there is no tie for a lower rung to be kept from breaking.
     expect(suggestCurrency({ ...base, receiptCountry: 'GL' })).toBeNull();
     expect(suggestCurrency({ ...base, receiptCountry: 'GL', localeRegion: 'JP' }))
       .toEqual({ code: 'JPY', country: 'JP', reason: 'locale' });

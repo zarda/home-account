@@ -8,6 +8,13 @@
  * then the device locale's region. Every rung is *offered*, never applied
  * (ADR 0062), and a rung whose country the currency table does not cover is
  * silent on that rung rather than ending the ladder.
+ *
+ * "Silent" and "answered" are different states. A rung with no usable
+ * evidence (no country, or one the table does not cover) is silent and the
+ * ladder asks the next rung down. A rung that *answers* ends the ladder
+ * there, even when that answer equals what the field already holds — a
+ * lower rung knows less about this receipt than a higher one that already
+ * spoke, so it must never be asked to break the tie (see #156).
  */
 import type { CurrencySuggestion } from '../../models';
 import { currencyForCountry } from './country-bounds';
@@ -45,6 +52,11 @@ export function suggestCurrency(evidence: CurrencyEvidence): CurrencySuggestion 
     fromCountry(evidence.localeRegion, 'locale'),
   ];
   const first = rungs.find((rung): rung is CurrencySuggestion => rung !== null);
+  // `!first` is silence: no rung had usable evidence, so there is nothing to
+  // offer. `first.code === currentCurrency` is different — a rung answered,
+  // and a lower rung must not be given the chance to contradict it with
+  // weaker evidence, so the ladder stops here and offers nothing rather than
+  // falling through.
   if (!first || first.code === evidence.currentCurrency) {
     return null;
   }

@@ -45,7 +45,7 @@ describe('CurrencyChoiceSessionService', () => {
     expect(service.current()).toBeNull();
   });
 
-  it('does not persist anywhere', () => {
+  it('does not call Storage.setItem', () => {
     // Per trip, not per merchant: a persisted memory would be ADR 0029's
     // whole checklist for a fact that is stale by the next trip.
     spyOn(Storage.prototype, 'setItem');
