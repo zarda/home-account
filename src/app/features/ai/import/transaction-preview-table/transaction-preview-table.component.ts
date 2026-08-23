@@ -66,6 +66,15 @@ export class TransactionPreviewTableComponent {
    * (#156): otherwise a second correction to an already-settled row sees a
    * clean `currencyFellBack` and records nothing, and the session is left
    * holding the user's first guess rather than the answer they landed on.
+   *
+   * This Set's own correctness assumes the review step stays eagerly
+   * instantiated the way it is today (its content sits directly in the
+   * `mat-step`, not behind a lazy `<ng-template matStepContent>`). If that
+   * ever changes, the step's view — and this Set with it — resets each time
+   * the stepper navigates away and back, while the rows themselves persist
+   * on the parent; a row's eligibility would be forgotten and the
+   * first-answer bug this Set exists to prevent would return with no spec
+   * to catch it.
    */
   private fellBackEligible = new Set<string>();
 
@@ -162,11 +171,17 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * True the first time a row falls back, and every time after — clearing
-   * the visible marker on the row does not retire the row's own membership
-   * here. See `fellBackEligible` for why the two have to stay apart.
+   * Records this row as eligible to have a currency choice remembered, and
+   * reports whether it now is. True the first time a row falls back, and
+   * every time after — clearing the visible marker on the row does not
+   * retire the row's own membership here. See `fellBackEligible` for why the
+   * two have to stay apart. Named as an action rather than a plain predicate
+   * because the recording is not incidental: `applyCurrencyToSelected` below
+   * calls this once per selected row specifically so every row's membership
+   * gets recorded, and depends on that call never being skipped by
+   * short-circuiting.
    */
-  private markFellBackEligible(transaction: CategorizedImportTransaction): boolean {
+  private recordFellBackEligibility(transaction: CategorizedImportTransaction): boolean {
     const eligible = !!transaction.currencyFellBack || this.fellBackEligible.has(transaction.id);
     if (eligible) {
       this.fellBackEligible.add(transaction.id);
@@ -179,7 +194,7 @@ export class TransactionPreviewTableComponent {
     // applies — and a choice made for a fallen-back row is worth remembering
     // for the next one this session, including a later hand-correction to
     // this same row after an earlier one already cleared its marker.
-    if (this.markFellBackEligible(transaction)) {
+    if (this.recordFellBackEligibility(transaction)) {
       this.currencySession.remember(code);
     }
     this.replaceRow(transaction, { currency: code, currencyFellBack: false, currencySuggestion: undefined });
@@ -197,8 +212,11 @@ export class TransactionPreviewTableComponent {
   applyCurrencyToSelected(code: string): void {
     const selected = this.transactions.filter(t => t.selected);
     let eligible = false;
+    // Not `selected.some(t => this.recordFellBackEligibility(t))`: `.some`
+    // stops at the first `true`, and every selected row needs its own
+    // membership in `fellBackEligible` recorded, not just the first one.
     for (const t of selected) {
-      if (this.markFellBackEligible(t)) eligible = true;
+      if (this.recordFellBackEligibility(t)) eligible = true;
     }
     if (eligible) {
       this.currencySession.remember(code);

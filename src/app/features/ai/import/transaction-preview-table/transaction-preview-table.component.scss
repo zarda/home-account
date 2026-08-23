@@ -379,13 +379,19 @@
 
 // The offer is the one extra with an action of its own. The accept button is
 // the chip's body, so it borrows the remove button's trick: a 40px-tall hit
-// area laid over the chip-sized glyph, never a fatter chip. The vertical
-// overhang is (40 - rendered height) / 2 — measured at 36px for this row in
-// transaction-preview-table.overflow.spec.ts now that the label wraps to two
-// lines instead of overflowing on one, so 2px each way — which stays clear of
-// the 14px row-gap on both sides without reaching the row above or below. On
-// the right it stops 2px in, where the remove button's own 6px overhang
-// begins.
+// area laid over the chip-sized glyph, never a fatter chip. Unlike the
+// remove button, this glyph's own height is not one fixed number — the
+// country-less offer ("Use {{currency}}?", what the session and locale rungs
+// produce) is one line at any width the wizard renders at, while the
+// with-country sentence wraps to two lines past roughly 288px — so a fixed
+// inset derived from either shape leaves the other short. The top/bottom
+// insets below floor the hit area at 40px regardless of which shape
+// rendered, each clamping to 0 the moment the button alone already clears
+// the floor. Measured in transaction-preview-table.overflow.spec.ts: an
+// 11px overhang each way on an 18px one-line box, 2px each way on a 36px
+// two-line box — both inside the budget the strip's 14px row-gap already
+// pays for. On the right it stops 2px in, where the remove button's own
+// 6px overhang begins.
 .extra-accept {
   display: inline-flex;
   align-items: center;
@@ -415,8 +421,15 @@
   &::after {
     content: '';
     position: absolute;
-    top: -2px;
-    bottom: -2px;
+    // No fixed inset and no transform: transform is a paint-time shift that
+    // getComputedStyle's top/bottom never reflect, and the row-below guard
+    // above reconstructs this box from exactly those two properties (it has
+    // to — a pseudo-element has no rect of its own to measure). top/bottom
+    // insets are what keeps the reconstruction honest. (100% - 40px) is
+    // negative once the button is shorter than 40px, so each side clamps to
+    // 0 the moment the button alone already clears the floor.
+    top: min(0px, calc((100% - 40px) / 2));
+    bottom: min(0px, calc((100% - 40px) / 2));
     left: -9px;
     right: 2px;
   }
