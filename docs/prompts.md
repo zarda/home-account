@@ -38,7 +38,7 @@ A call site in the base reaches all three providers by construction, so `npm run
 
 ### Do not enumerate what the model already knows
 
-A prompt must not carry a hand-written list of currencies, languages or scripts. `npm run prompts:check` fails on one.
+A prompt must not carry a hand-written list of currencies, countries, languages or scripts. `npm run prompts:check` fails on one.
 
 The receipt prompts used to name their own currencies — three shortlists, in three prompts, no two the same and none matching the app's catalog. A model reading a receipt in a currency nobody had typed out was being steered towards one that had been, and the failure was invisible: an amount in the wrong currency looks exactly like an amount in the right one. The worked examples had the same problem in a quieter form, all being in one language.
 

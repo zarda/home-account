@@ -89,6 +89,24 @@ const REGION_NAMES: Intl.DisplayNames | null = (() => {
 })();
 
 /**
+ * Folds a CLDR-only spelling to the ISO 3166-1 code it stands for — UK to GB,
+ * and the deprecated SU/AN/ZR/YU/CS/DD codes to whatever replaced them —
+ * using Intl.Locale's own canonicalization rather than a maintained list, in
+ * keeping with ADR 0008. UK is the one that matters: it is a plausible answer
+ * for a British receipt, and without this it would pass readCountryCode
+ * unchanged while quietly losing the GBP suggestion GB carries downstream.
+ * Falls back to the code unchanged on a runtime without Intl.Locale, or on
+ * any input the constructor refuses.
+ */
+function canonicalizeRegion(code: string): string {
+  try {
+    return new Intl.Locale('und-' + code).region ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
  * The ISO 3166-1 alpha-2 country a model reported, or '' when it reported
  * nothing usable.
  *
@@ -98,13 +116,27 @@ const REGION_NAMES: Intl.DisplayNames | null = (() => {
  * answer is checked against the runtime's own region table on the way back.
  * ZZ is refused by name: CLDR calls it "Unknown Region", which is an honest
  * answer and not a country.
+ *
+ * A handful of CLDR-only macroregions (EU, UN, QO, the pseudo-locales, the
+ * "exceptionally reserved" codes such as AC or IC) pass this check even
+ * though ISO 3166-1 does not name them as countries: the runtime has a table
+ * of what it can name, not a table of which of those names are countries,
+ * and there is no rule to derive that distinction from — only a maintained
+ * list would separate them, which is the thing ADR 0008 asks this file not to
+ * keep. They are harmless left in: none of them is a COUNTRY_CURRENCY key, so
+ * the currency ladder simply finds nothing for them, which is the same
+ * tolerance a code this function cannot place already falls back to.
  */
 export function readCountryCode(value: unknown): string {
   if (typeof value !== 'string') {
     return '';
   }
-  const code = value.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code) || code === 'ZZ') {
+  const shape = value.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(shape)) {
+    return '';
+  }
+  const code = canonicalizeRegion(shape);
+  if (code === 'ZZ') {
     return '';
   }
   if (!REGION_NAMES) {
