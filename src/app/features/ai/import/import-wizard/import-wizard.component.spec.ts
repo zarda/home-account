@@ -775,6 +775,28 @@ describe('ImportWizardComponent', () => {
       });
       expect(component.isImporting()).toBeFalse();
     }));
+
+    it('passes the image batch provenance to the confirm step', async () => {
+      const diagnostics = { engine: 'cloud' as const, provider: 'gemini' as const, durationMs: 2000 };
+      mockImportService.importFromMultipleImages.and.resolveTo({
+        ...mockImportResult, source: 'image', fileType: 'receipt_image', diagnostics,
+      });
+      component.onFilesSelected([new File(['x'], 'r.jpg', { type: 'image/jpeg' })]);
+      await component.processFiles();
+      await component.confirmImport();
+
+      expect(mockImportService.confirmImport.calls.mostRecent().args[6]).toEqual({
+        door: 'wizard', engine: 'cloud', provider: 'gemini', durationMs: 2000,
+      });
+    });
+
+    it('passes no provenance for a CSV-only batch', async () => {
+      component.onFilesSelected([new File(['a,b'], 'rows.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+      await component.confirmImport();
+
+      expect(mockImportService.confirmImport.calls.mostRecent().args[6]).toBeUndefined();
+    });
   });
 
   describe('goBack', () => {

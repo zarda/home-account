@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
-import { ImportHistoryService } from './import-history.service';
+import { ImportHistoryService, IMPORT_HISTORY_LIMIT } from './import-history.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { ImportHistory } from '../../models';
@@ -94,11 +94,11 @@ describe('ImportHistoryService', () => {
       });
     });
 
-    it('should query firestore with correct path and ordering', (done) => {
+    it('should query firestore with correct path, ordering and bound', (done) => {
       service.getImportHistory().subscribe(() => {
         expect(mockFirestoreService.subscribeToCollection).toHaveBeenCalledWith(
           'users/user123/imports',
-          { orderBy: [{ field: 'importedAt', direction: 'desc' }] }
+          { orderBy: [{ field: 'importedAt', direction: 'desc' }], limit: IMPORT_HISTORY_LIMIT }
         );
         done();
       });

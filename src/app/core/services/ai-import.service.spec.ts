@@ -1692,6 +1692,16 @@ describe('AIImportService', () => {
       transactionService.addTransaction.and.returnValue(Promise.resolve('txn-id'));
     });
 
+    it('hands the attempt provenance to the pending record', async () => {
+      await service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image', undefined, {
+        door: 'camera', engine: 'cloud', provider: 'gemini', durationMs: 3100,
+      });
+      expect(importHistoryService.createPendingImport).toHaveBeenCalledWith(
+        'r.png', 10, 'image', 'receipt_image',
+        { door: 'camera', engine: 'cloud', provider: 'gemini', durationMs: 3100 }
+      );
+    });
+
     it('should throw when user is not authenticated', async () => {
       (authService.userId as jasmine.Spy).and.returnValue(null);
 
