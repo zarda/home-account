@@ -42,7 +42,9 @@ is standing in), `suggestedTags` (what was offered, so the confirm step can
 tell a removal from a row that never had any), `recurringMatch` (the rule
 this row looks like), `receiptCountry` (the country the reader concluded the
 receipt was issued in — it reaches the transaction only inside
-`location.country`, and only when an address was printed) and
+`location.country`, and from this mark only when an address was printed;
+an attached coordinate writes that field from its own bundled table
+instead, see [ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md)) and
 `currencySuggestion` (the currency ladder's offer for a fallen-back row —
 `AIImportService.currencySuggestionSlot()` fills it and the review card reads
 it, while `currencyFellBack` keeps standing; see
