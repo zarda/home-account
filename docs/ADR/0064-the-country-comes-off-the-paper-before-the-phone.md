@@ -58,8 +58,10 @@ the countries it expected would steer every other one towards them
 ([0008](0008-universal-receipt-language-support.md)), and `prompts:check`
 would not notice, because a run of two-letter codes matches neither of the
 patterns it hunts for. `prompt-registry.spec.ts` pins a regex against such a
-run in every receipt prompt; that spec and review are the only guards, and
-that is written here so nobody assumes the checker covers it.
+run in every registered prompt, not the five receipt prompts alone — a
+categorization, search or insights prompt growing the same mistake is
+caught too; that spec and review are the only guards, and that is written
+here so nobody assumes the checker covers it.
 
 ### A country is validated, never defaulted
 
@@ -87,6 +89,22 @@ stored home for a country is `location.country`, and it is filled by
 `printedLocationSlot(name, country)` exactly when a printed address gives the
 location a name. `TransactionLocation.name` stays required; a receipt that
 prints a tax number and no address yields a suggestion and no stored country.
+
+### One exception: an attached coordinate outranks the paper
+
+`printedLocationSlot` is not the only writer. In the transaction form,
+`locationField()` builds `location` itself when a coordinate is attached to
+the transaction, and writes `country: countryForCoordinates(coords.lat,
+coords.lng)` — the bundled table's answer, not the receipt's — with no
+printed address required, discarding whatever country the paper suggested.
+This is the one place the phone outranks the paper, backwards from this
+record's own title. It is acceptable for a reason the currency ladder's
+`position` rung does not have: a coordinate only ever lands on the
+transaction through a deliberate user action — attaching the device's
+location, or accepting the position rung's own offer — never a scan's guess.
+It is the user's own answer to "where were you", not the app inferring one,
+so it is trusted over a printed address the user did nothing to confirm
+(#156).
 
 ### One ladder, and the first rung that speaks wins
 
@@ -128,11 +146,12 @@ that is stale by the next trip.
 
 The form's chip reads "Looks like {country} — use {currency}?" with the
 country named by `Intl.DisplayNames` in the active locale, and a second line
-naming the rung that answered. The review card carries the same chip per
-row in its extras area; accepting goes through the existing `updateCurrency`,
-which clears `currencyFellBack` and records the session choice, and
-dismissing drops the mark. The bulk action is untouched: it applies what the
-user chose, never what a rung guessed.
+naming the rung that answered; the session rung carries no country, so the
+same chip reads just "Use {currency}?" for it. The review card carries the
+same chip per row in its extras area; accepting goes through the existing
+`updateCurrency`, which clears `currencyFellBack` and records the session
+choice, and dismissing drops the mark. The bulk action is untouched: it
+applies what the user chose, never what a rung guessed.
 
 ### Every door arrives carrying the same marks
 
@@ -180,8 +199,9 @@ tags, period and the recurring flag travel on that door for the first time.
   a country list, so the rule against one lives in this record, in the spec's
   regex and in review.
 - **A scan of an old receipt no longer asks for location.** The geolocation
-  fetch is gated on `datedToday` before the ladder runs, so a backlog scanned
-  at home prompts for nothing and suggests from the paper.
+  fetch is gated on `datedToday` and on the receipt rung already being
+  silent — a receipt with its own country never triggers it at all — so a
+  backlog scanned at home prompts for nothing and suggests from the paper.
 - **The camera path's review card now shows what the wizard's does** —
   fallen-back mark, printed address, country suggestion — because it stopped
   building rows of its own.
@@ -252,14 +272,19 @@ tags, period and the recurring flag travel on that door for the first time.
   number alone produces a suggestion and nothing in the document. "What did
   the trip cost" is still not answerable from the country field.
 - **There is no timezone rung**, for the reasons above. A phone with location
-  refused, an unreadable receipt, a fresh session and an `en` locale with no
-  region gets no suggestion.
+  refused, an unreadable receipt and a fresh session fall all the way to the
+  locale rung, and `localeRegion()` maximizes the tag before reading it — so
+  even a bare `en` resolves to `US` and answers USD. The combination that
+  gets no suggestion is one where the locale rung also answers the row's
+  current currency, which is a coincidence of the row, not a hole in the
+  ladder.
 - **The session memory does not survive a relaunch.** Scanning a trip across
   two sittings answers the first row of the second sitting from the paper or
   not at all.
 - **The offline queue still drops the photo.** The row now carries every field
   the mapper knows, but the queued image is not attached to the transactions
-  it produced — filed as its own issue.
+  it produced. Not yet filed as its own issue — recorded here as a known gap
+  and worth one.
 - **The on-device `country` field is compile-checked only.** Like `location`
   in 0063: the `@Guide` builds, no device with Apple Intelligence has run it,
   and the iOS test target does not reference `ReceiptExtraction` at all. An

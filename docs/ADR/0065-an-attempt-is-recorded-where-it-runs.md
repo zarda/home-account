@@ -89,22 +89,33 @@ provider's error prose must never leave the device. The record carries the
 exact values: `ImportHistory` gains optional `door`, `engine`, `fellBackFrom`,
 `provider`, `errorType` and `durationMs`, validated by `importOptionalsValid`,
 written by the handle on failure and by the confirm step on success from
-`ImportResult.diagnostics`, which replaces the never-read `processingSource`.
+`ImportResult.diagnostics` — read where `processingSource` never was: that
+field is still written throughout the service, but nothing outside a spec
+has ever read it back.
 
 ### A failed attempt is an `imports` record
 
 The record goes in the existing `users/{uid}/imports` collection with
-`status: 'failed'`, `source: 'image'`, a `fileType` of `receipt_image` or
-`screenshot`, the first file's name and size, the row counters at zero
-(`transactionCount`, `successCount`, `skippedCount`, `errorCount`,
-`totalIncome`, `totalExpenses`, `duplicatesSkipped` are required on every
-record), and the diagnostics. The collection already had a door, a cascade
+`status: 'failed'`, `source: 'image'`, `fileType: 'receipt_image'` (the
+handle only ever opens for the receipt kind, so `screenshot` is a value the
+type allows and no call site produces), the first file's name, the batch's
+size, the row counters at zero except `errorCount`, which is `1`
+(`transactionCount`, `successCount`, `skippedCount`, `totalIncome`,
+`totalExpenses`, `duplicatesSkipped` are the six that stay `0`; all seven
+are required on every record), an `errors` array holding the one message,
+and the diagnostics. The collection already had a door, a cascade
 step, a catalogue row, rules and a UI
 ([0029](0029-every-stored-kind-has-one-door.md)); a sibling collection would
 have needed all of those again for a record that differs from the existing
 one only in having no rows. The real cost of sharing the collection was a
 read nobody had bounded: `getImportHistory` subscribed to the whole
 collection. It is now bounded to the newest two hundred.
+
+A successful in-form scan writes no such record: it produces a transaction
+the user is about to save, and that transaction is the record. #151's
+acceptance criterion — "a record on both entry points" — reads a failed
+extraction, not every extraction, so a second document per successful scan
+would double the collection for nothing a failure does not already capture.
 
 ### The queue records, and sends nothing
 
@@ -162,8 +173,11 @@ the image extraction's own result, not from a row count shared with the CSV.
   rules file accepts the new fields unvalidated rather than refusing them —
   a quieter failure than `tagMemory`'s in 0063, and worth the bold line in
   the pull request.
-- **The camera dialog's own error mapper is gone**; it classifies through
-  the same `parseAIError` every other door uses.
+- **What the user reads and what gets recorded are classified separately.**
+  The camera dialog's own `describeError()` still decides the message it
+  shows; it is the record and the event — written once, in the handle's
+  `classifyReceiptFailure`, for every door — that go through `parseAIError`.
+  The camera never calls the shared classifier directly.
 
 ## Departures from the issues
 
@@ -171,11 +185,6 @@ the image extraction's own result, not from a row count shared with the CSV.
   for a richer event on the existing population; the population was found to
   include bank statements, contradicting the documented rule, and the kind
   gate fixes that in the same change rather than describing it better.
-- **The in-form scan writes a record only on failure.** The issue asked for
-  "a record on both entry points". A successful in-form scan produces a
-  transaction the user is about to save, and that transaction is the record;
-  a second document per scan would double the collection for nothing a
-  failure does not already capture.
 - **The currency that was read is not on the event.** The issue listed it
   among the discarded values; it is a value the privacy boundary forbids
   sending, and the record carries the transaction's currency already.
@@ -227,10 +236,15 @@ the image extraction's own result, not from a row count shared with the CSV.
   not in the `receipt_import` series, which counted it as `queued_offline`
   at the moment it queued. A queued receipt that drains successfully leaves
   no record at all — its transactions are the record, as for the form.
-- **A successful in-form scan leaves no record**, by the departure above.
+- **A successful in-form scan leaves no record**, by the decision above: the
+  transaction it produces is the record.
 - **Failed attempts count towards the data hub's `imports` figure.** The hub
   counts documents; a user who scans badly lit receipts will see the number
   rise without importing anything.
 - **The on-device engine reports no provider**, so a native attempt's
   `provider` is `none`, and a native-then-cloud fallback names the cloud
   provider that finished.
+- **The camera dialog's own error-to-message mapper survives.**
+  `describeError()` still decides what the user reads on a camera failure;
+  only the record and the event go through the shared `classifyReceiptFailure`.
+  Folding the two together was not done here.

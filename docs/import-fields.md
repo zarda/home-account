@@ -43,9 +43,11 @@ tell a removal from a row that never had any), `recurringMatch` (the rule
 this row looks like), `receiptCountry` (the country the reader concluded the
 receipt was issued in — it reaches the transaction only inside
 `location.country`, and only when an address was printed) and
-`currencySuggestion` (the slot exists and is declared, but nothing populates
-it yet — #156 is what builds the currency ladder and fills it, offering what
-that ladder finds while `currencyFellBack` stands). None of them reaches the
+`currencySuggestion` (the currency ladder's offer for a fallen-back row —
+`AIImportService.currencySuggestionSlot()` fills it and the review card reads
+it, while `currencyFellBack` keeps standing; see
+[ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md)).
+None of them reaches the
 mapper — it names its fields — and none of them is ever written to a
 transaction.
 

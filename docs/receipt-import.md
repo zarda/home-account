@@ -172,20 +172,27 @@ top rung first, and the first rung that can answer wins:
 | `session` | the last currency you chose for a fallen-back row this session | after you have accepted a chip or edited such a row's currency |
 | `locale` | the region of the device locale | when nothing above answered |
 
-A rung whose country the table does not cover stays silent and the next one is
-asked; a suggestion equal to the row's current currency is not shown. The form
-renders the chip as "Looks like {country} — use {currency}?" with the country
-named in the active language and a line naming the rung. The wizard's review
-card carries the same chip per row; its ladder has no position rung, and the
-bulk currency action applies only what you chose
+A rung whose country the table does not cover stays silent and the next one
+is asked; a rung that does answer ends the ladder right there, even when its
+currency equals the row's current one — that answer offers nothing rather
+than letting a weaker rung underneath get a turn at breaking the tie. The
+form renders the chip as "Looks like {country} — use {currency}?" with the
+country named in the active language and a line naming the rung (the session
+rung names no country, so its chip just reads "Use {currency}?"). The
+wizard's review card carries the same chip per row; its ladder has no
+position rung, and the bulk currency action applies only what you chose
 ([ADR 0062](ADR/0062-the-review-step-can-correct-every-field-the-import-writes.md)).
 
 **What is never overridden or written.** A read currency is never replaced by
 a suggestion. The country the model read is review-step state: it is stored
 only inside `location.country`, and only when the receipt also printed an
-address that became `location.name`. Accepting a chip changes the row's
-currency and nothing else; the session memory is in-memory and cleared on
-sign-out. The ladder, its order and what it rejected are in
+address that became `location.name` — except when a coordinate is attached to
+the transaction, which writes the bundled table's country for that
+coordinate instead, discarding the printed one; a coordinate lands there only
+by the user's own deliberate action, so it outranks the receipt's paper.
+Accepting a chip changes the row's currency and nothing else; the session
+memory is in-memory and cleared on sign-out. The ladder, its order and what
+it rejected are in
 [ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md).
 
 **Representable is not the same as offered.** The currency *picker* lists a
