@@ -59,6 +59,24 @@ class PreviewOverflowProbeComponent {
       recurringMatch: { id: 'rule-1', name: 'Netflix' },
       currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
     },
+    // The session and locale rungs offer a code with no country — "Use
+    // {{currency}}?" — which is one line at any width, unlike r1's
+    // with-country sentence above. The accept button's hit area has to
+    // reach 40px in this shape too, not only the one where the label wraps.
+    {
+      id: 'r2',
+      description: 'Coffee',
+      amount: 500,
+      currency: 'USD',
+      currencyFellBack: true,
+      date: new Date('2026-06-02'),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      currencySuggestion: { code: 'EUR', reason: 'session' },
+    },
   ];
 }
 
@@ -82,11 +100,22 @@ describe('overflow guard: the import review card', () => {
         // chip that interpolates: the rendered sentence runs about a third
         // longer than the key alone, which is exactly the width this probe
         // exists to catch.
+        //
+        // `import.currencySuggested` is the one key this pessimism would
+        // mislead on: r2's whole point is the shape where the label never
+        // wraps, and the bare key "import.currencySuggested" is one long
+        // unbroken token that would wrap regardless of what r2 is actually
+        // testing. Standing in its real, short translation ("Use
+        // {{currency}}?") is what makes r2 the one-line case it needs to be.
         {
           provide: TranslationService,
           useValue: {
             t: (key: string, params?: Record<string, string | number>) =>
-              params ? `${key} ${Object.values(params).join(' ')}` : key,
+              key === 'import.currencySuggested' && params
+                ? `Use ${params['currency']}?`
+                : params
+                  ? `${key} ${Object.values(params).join(' ')}`
+                  : key,
           },
         },
         {
@@ -188,7 +217,7 @@ describe('overflow guard: the import review card', () => {
     // their text breaks mid-word rather than the row growing sideways.
     const extras = el('.card-extras');
     const chips = Array.from(host.querySelectorAll<HTMLElement>('.extra-chip'));
-    expect(chips.length).withContext('currency offer, location plus three tags').toBe(5);
+    expect(chips.length).withContext('two currency offers (r1 with-country, r2 country-less), location plus three tags').toBe(6);
     for (const chip of chips) {
       const remove = chip.querySelector('.extra-remove') as HTMLElement;
       expect(withinWidthOf(clip, chip))
@@ -216,14 +245,31 @@ describe('overflow guard: the import review card', () => {
       .withContext('accept hit area, glyph plus overhang')
       .toBeGreaterThanOrEqual(40);
 
+    // r2's offer carries no country — "Use {{currency}}?" — which never
+    // wraps, at any width. That is the shape a fixed overhang derived from
+    // r1's two-line label gets wrong: the button renders far shorter here,
+    // so the hit area has to reach 40px from a much smaller starting height.
+    const shortAccept = host.querySelectorAll<HTMLElement>('.currency-offer .extra-accept')[1];
+    expect(withinWidthOf(clip, shortAccept)).withContext('country-less accept inside the clip').toBeTrue();
+    const shortHit = getComputedStyle(shortAccept, '::after');
+    expect(shortAccept.getBoundingClientRect().height - parseFloat(shortHit.top) - parseFloat(shortHit.bottom))
+      .withContext('country-less accept hit area, glyph plus overhang')
+      .toBeGreaterThanOrEqual(40);
+
     // Every check above measures element *boxes*, which shrink to fit —
     // `.transaction-card` shrinks the accept button rather than growing past
-    // its row, and a `nowrap` label then paints straight through that
-    // shrunk box uncounted. Neither the card nor `.card-main` forms a
-    // scroll container, so that paint escapes them for free; the first
-    // ancestor that does is `.transactions-list` (overflow-y: auto computes
-    // its overflow-x to auto too), which is where the escaped text actually
-    // surfaces as a horizontal scrollbar on the review list.
+    // its row, and an overflowing label paints straight through that shrunk
+    // box. That does not escape uncounted: `scrollWidth` reports an
+    // element's full rendered extent whether or not the element itself
+    // establishes a scroll container, so `card.scrollWidth`, asserted
+    // earlier in this file, already catches it geometrically — this file's
+    // own red run once measured it at 360 against a 257 clientWidth, from a
+    // label that had gone back to overflowing. What that number does not
+    // say is whether the escape becomes a *visible* problem: the first
+    // ancestor whose `overflow` actually computes to a scrolling value is
+    // `.transactions-list` (`overflow-y: auto` computes its `overflow-x` to
+    // `auto` too), which is where an overflow would show up as a real
+    // scrollbar on the review list.
     const list = host.querySelector('.transactions-list') as HTMLElement;
     expect(list.scrollWidth)
       .withContext('review list does not scroll sideways for the offer chip\'s label')
