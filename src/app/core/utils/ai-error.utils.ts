@@ -7,6 +7,9 @@
  * without a cycle. The sentinel codes live here for the same reason.
  */
 
+// type-only: ai-types imports models only, so this is not a cycle
+import type { ReceiptAttemptDiagnostics } from '../services/ai-types';
+
 export interface AIErrorInfo {
   /** English, for logs and for the cases only a provider can describe. */
   message: string;
@@ -40,10 +43,30 @@ export const AI_QUEUED_OFFLINE = 'AI_QUEUED_OFFLINE';
 export const AI_CLOUD_UNAVAILABLE = 'AI_CLOUD_UNAVAILABLE';
 
 /**
+ * A receipt pipeline failure that carries what was learned before it failed.
+ *
+ * The message is the cause's own, so a caller comparing it against a sentinel
+ * code or showing a provider's wording sees exactly what it saw before the
+ * diagnostics existed; `cause` is kept for parseAIError, which reads the
+ * error's name as well as its message. `override` because lib.es2022 already
+ * declares `cause` on Error and tsconfig sets noImplicitOverride.
+ */
+export class ReceiptProcessingError extends Error {
+  constructor(
+    readonly diagnostics: ReceiptAttemptDiagnostics,
+    override readonly cause: unknown
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'ReceiptProcessingError';
+  }
+}
+
+/**
  * Parse raw AI API errors into user-friendly messages with error type classification.
  */
 export function parseAIError(error: unknown): AIErrorInfo {
-  const raw = error instanceof Error ? error.message : String(error);
+  const source = error instanceof ReceiptProcessingError ? error.cause : error;
+  const raw = source instanceof Error ? source.message : String(source);
   const lower = raw.toLowerCase();
 
   // Rate limit (429)
@@ -97,7 +120,7 @@ export function parseAIError(error: unknown): AIErrorInfo {
   // fetching …') rather than as anything time-shaped, so it used to reach
   // the user as 'AI processing failed: Request was aborted' — the one
   // wording that says nothing about the ninety seconds they just waited.
-  const aborted = error instanceof Error && error.name === 'AbortError';
+  const aborted = source instanceof Error && source.name === 'AbortError';
   if (aborted || lower.includes('timeout') || lower.includes('timed out') || lower.includes('abort') || lower.includes('deadline_exceeded')) {
     return {
       message: 'AI processing timed out. Try with a clearer image or fewer files.',
