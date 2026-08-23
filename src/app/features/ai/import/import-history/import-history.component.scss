@@ -122,6 +122,11 @@
   vertical-align: -4px;
 }
 
+.failure-class {
+  @apply text-sm text-red-700 dark:text-red-300;
+  margin: 4px 0 0;
+}
+
 mat-chip {
   &.completed {
     @apply bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 #{!important};

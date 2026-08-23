@@ -41,6 +41,7 @@ import {
   ImportWarning,
   CategorizedImportTransaction,
   ImportHistory,
+  ImportProvenance,
   ImportSource,
   ImportFileType,
   DuplicateCheck,
@@ -1002,7 +1003,8 @@ export class AIImportService {
     fileSize: number,
     source: ImportSource,
     fileType: ImportFileType,
-    sourceFiles?: File[]
+    sourceFiles?: File[],
+    provenance?: ImportProvenance
   ): Promise<ImportHistory> {
     this.isProcessing.set(true);
     this.processingStatus.set('Saving transactions...');
@@ -1026,7 +1028,8 @@ export class AIImportService {
       fileName,
       fileSize,
       source,
-      fileType
+      fileType,
+      provenance
     );
 
     let successCount = 0;

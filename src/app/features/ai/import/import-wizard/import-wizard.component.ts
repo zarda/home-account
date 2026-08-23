@@ -28,7 +28,7 @@ import { TransactionPreviewTableComponent } from '../transaction-preview-table/t
 import { DuplicateWarningComponent, DuplicateInfo } from '../duplicate-warning/duplicate-warning.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../../core/services/notification.service';
-import { ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
+import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/receipt-attempt.service';
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
@@ -507,13 +507,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // numbers can be mapped back to rows. Safe to take before the await:
       // the review UI is unreachable while isImporting disables the stepper.
       const submitted = this.extractedTransactions().filter(t => t.selected);
+      // The receipt attempt's provenance rides the record for image batches;
+      // a CSV-only batch has none, and an absent slot means nobody looked.
+      const diagnostics = this.fromCamera
+        ? this.cameraImportResult?.diagnostics ?? null
+        : this.imageDiagnostics;
+      const provenance = this.processedBatches.some(b => b.source === 'image')
+        ? provenanceOf(this.fromCamera ? 'camera' : 'wizard', diagnostics)
+        : undefined;
       const result = await this.importService.confirmImport(
         this.extractedTransactions(),
         batch.fileName,
         batch.fileSize,
         batch.source,
         batch.fileType,
-        this.sourceImageFiles()
+        this.sourceImageFiles(),
+        provenance
       );
 
       if (result.receiptsSkipped) {

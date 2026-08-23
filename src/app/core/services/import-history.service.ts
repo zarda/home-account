@@ -3,7 +3,14 @@ import { Observable, of, map } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
-import { ImportHistory, ImportStatus } from '../../models';
+import { ImportHistory, ImportProvenance, ImportStatus } from '../../models';
+
+/**
+ * How many records the history page subscribes to. Every failed receipt
+ * attempt is a record now, so the page would otherwise grow without bound
+ * for exactly the accounts that have the most to diagnose.
+ */
+export const IMPORT_HISTORY_LIMIT = 200;
 
 @Injectable({ providedIn: 'root' })
 export class ImportHistoryService {
@@ -21,7 +28,7 @@ export class ImportHistoryService {
   }
 
   /**
-   * Get all import history for the current user
+   * Get the newest IMPORT_HISTORY_LIMIT import records for the current user
    */
   getImportHistory(): Observable<ImportHistory[]> {
     const userId = this.authService.userId();
@@ -30,7 +37,8 @@ export class ImportHistoryService {
     return this.firestoreService.subscribeToCollection<ImportHistory>(
       this.userImportsPath,
       {
-        orderBy: [{ field: 'importedAt', direction: 'desc' }]
+        orderBy: [{ field: 'importedAt', direction: 'desc' }],
+        limit: IMPORT_HISTORY_LIMIT
       }
     ).pipe(
       map(history => {
@@ -143,7 +151,8 @@ export class ImportHistoryService {
     fileName: string,
     fileSize: number,
     source: ImportHistory['source'],
-    fileType: ImportHistory['fileType']
+    fileType: ImportHistory['fileType'],
+    provenance?: ImportProvenance
   ): Promise<string> {
     const userId = this.authService.userId();
     if (!userId) throw new Error('User not authenticated');
@@ -162,7 +171,8 @@ export class ImportHistoryService {
       totalIncome: 0,
       totalExpenses: 0,
       status: 'pending',
-      duplicatesSkipped: 0
+      duplicatesSkipped: 0,
+      ...(provenance ?? {})
     };
 
     return this.saveImportHistory(history);

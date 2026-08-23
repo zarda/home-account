@@ -14,7 +14,7 @@ import { ImportHistoryService } from '../../../../core/services/import-history.s
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { ConfirmDialogComponent } from '../../../../shared/components/confirm-dialog/confirm-dialog.component';
-import { ImportHistory, ImportFileType, ImportStatus } from '../../../../models';
+import { ImportHistory, ImportFileType, ImportStatus, LLMProvider, ReceiptEngine, ReceiptFailureClass } from '../../../../models';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { PageHeaderComponent } from '../../../../shared/components/page-header/page-header.component';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
@@ -144,6 +144,43 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
       default:
         return 'table_view';
     }
+  }
+
+  /** The engine, and the pair when the preferred one lost. */
+  getEngineLabel(item: { engine?: ReceiptEngine; fellBackFrom?: ReceiptEngine }): string {
+    if (item.fellBackFrom === 'native') return this.t('import.engineCloudAfterNative');
+    if (item.fellBackFrom === 'cloud') return this.t('import.engineNativeAfterCloud');
+    return this.t(item.engine === 'native' ? 'import.engineNative' : 'import.engineCloud');
+  }
+
+  getEngineIcon(engine: ReceiptEngine): string {
+    return engine === 'native' ? 'phone_iphone' : 'cloud';
+  }
+
+  /** Brand names are not translated. */
+  getProviderLabel(provider: LLMProvider): string {
+    const labels: Record<LLMProvider, string> = { gemini: 'Gemini', openai: 'OpenAI', claude: 'Claude' };
+    return labels[provider];
+  }
+
+  formatDuration(durationMs: number): string {
+    return this.t('import.durationSeconds', { seconds: Math.floor(durationMs / 1000) });
+  }
+
+  getFailureLabel(errorType: ReceiptFailureClass): string {
+    const keys: Record<ReceiptFailureClass, string> = {
+      rate_limit: 'import.failureRateLimit',
+      auth: 'import.failureAuth',
+      network: 'import.failureNetwork',
+      quota: 'import.failureQuota',
+      server: 'import.failureServer',
+      timeout: 'import.failureTimeout',
+      no_provider: 'import.failureNoProvider',
+      nothing_extracted: 'import.failureNothingExtracted',
+      queue_write: 'import.failureQueueWrite',
+      unknown: 'import.failureUnknown',
+    };
+    return this.t(keys[errorType]);
   }
 
   formatDate(timestamp: Timestamp): string {
