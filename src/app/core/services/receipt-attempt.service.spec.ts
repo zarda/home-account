@@ -88,6 +88,14 @@ describe('ReceiptAttemptService', () => {
       expect(classifyReceiptFailure(new Error('something odd')).failure).toBe('unknown');
     });
 
+    it('does not take a prototype property as a pipeline reason', () => {
+      // 'constructor', 'toString' and friends are `in` any object literal —
+      // a `value in REASON_MESSAGES` test would have taken this string as
+      // reason 'constructor' rather than falling through to parseAIError.
+      expect(classifyReceiptFailure('constructor').failure).toBe('unknown');
+      expect(classifyReceiptFailure('toString').failure).toBe('unknown');
+    });
+
     it('files the no-provider sentinel under no_provider, not auth', () => {
       // parseAIError says 'auth' so the wizard can show the key hint; for
       // the record the honest class is that nothing was configured.

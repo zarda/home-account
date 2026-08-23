@@ -8,6 +8,14 @@ import { TransactionService } from './transaction.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
+import { ReceiptAttempt, ReceiptAttemptService } from './receipt-attempt.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 async function waitFor(pred: () => boolean, timeout = 2000): Promise<void> {
   const start = Date.now();
@@ -51,6 +59,7 @@ describe('OfflineQueueProcessorService', () => {
   let notifications: jasmine.SpyObj<NotificationService>;
   let translation: jasmine.SpyObj<TranslationService>;
   let userId: WritableSignal<string | null>;
+  let attempts: ReturnType<typeof attemptStub>;
 
   beforeEach(() => {
     queue = jasmine.createSpyObj<OfflineQueueService>('OfflineQueueService', [
@@ -78,6 +87,7 @@ describe('OfflineQueueProcessorService', () => {
     ]);
     translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
+    attempts = attemptStub();
 
     TestBed.configureTestingModule({
       providers: [
@@ -88,6 +98,7 @@ describe('OfflineQueueProcessorService', () => {
         { provide: NotificationService, useValue: notifications },
         { provide: TranslationService, useValue: translation },
         { provide: AuthService, useValue: { userId } },
+        { provide: ReceiptAttemptService, useValue: attempts.service },
       ],
     });
     processor = TestBed.inject(OfflineQueueProcessorService);
@@ -287,6 +298,39 @@ describe('OfflineQueueProcessorService', () => {
 
       expect(ai.processReceipt).not.toHaveBeenCalled();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_3', 'failed', 'Image not found in queue');
+    });
+
+    it('opens a queue-door handle and reports success', async () => {
+      const diagnostics = { engine: 'cloud' as const, provider: 'gemini' as const, durationMs: 5 };
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo({ ...processingResult([extracted()]), diagnostics });
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(attempts.service.begin.calls.mostRecent().args[0]).toBe('queue');
+      expect(attempts.handle.succeeded).toHaveBeenCalledWith(jasmine.objectContaining({ diagnostics }));
+    });
+
+    it('reports nothing_extracted and the thrown error through the handle', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([]));
+      dispatchImage('img_4');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+      expect(attempts.handle.failed).toHaveBeenCalledWith('nothing_extracted');
+
+      const failure = new Error('AI unavailable');
+      ai.processReceipt.and.rejectWith(failure);
+      dispatchImage('img_2');
+      await waitFor(() => queue.updateImageStatus.calls.count() === 2);
+      expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
+    });
+
+    it('opens no handle for a missing file or another account\'s image', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(null);
+      dispatchImage('img_3');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+      expect(attempts.service.begin).not.toHaveBeenCalled();
     });
   });
 

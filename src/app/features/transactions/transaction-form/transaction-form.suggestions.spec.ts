@@ -25,6 +25,14 @@ import { TagSuggestionService } from '../../../core/services/tag-suggestion.serv
 import { NotificationService } from '../../../core/services/notification.service';
 import { Category, User } from '../../../models';
 import { createCategory, createUser } from '../../../core/services/testing';
+import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 /**
  * The suggestion chips, rendered.
@@ -111,6 +119,8 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: TagSuggestionService, useValue: tagSuggestions },
         { provide: GroundingHistoryService, useValue: groundingHistory },
         { provide: TagMemoryService, useValue: tagMemory },
+        // The form door's attempt handle; the real service reaches Firestore.
+        { provide: ReceiptAttemptService, useValue: attemptStub().service },
         { provide: GoalService, useValue: {
           goals: signal([]),
           activeGoals: signal([]),

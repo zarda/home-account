@@ -22,12 +22,20 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { AIStrategyService, ProcessingResult, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
+import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
 import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
 import { Transaction, Category, Goal, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
 import { NotificationService } from '../../../core/services/notification.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 describe('TransactionFormComponent', () => {
   let transactionService: jasmine.SpyObj<TransactionService>;
@@ -57,6 +65,7 @@ describe('TransactionFormComponent', () => {
     activeGoals: ReturnType<typeof signal<Goal[]>>;
     getGoals: jasmine.Spy;
   };
+  let attempts: ReturnType<typeof attemptStub>;
 
   /** One receipt photo, as the strategy service hands it back. */
   function scanResult(
@@ -143,6 +152,7 @@ describe('TransactionFormComponent', () => {
       activeGoals: signal<Goal[]>([]),
       getGoals: jasmine.createSpy('getGoals').and.returnValue(of([])),
     };
+    attempts = attemptStub();
 
     const currency = jasmine.createSpyObj('CurrencyService', ['getSupportedCurrencies', 'getCurrencyInfo']);
     currency.getSupportedCurrencies.and.returnValue([{ code: 'USD', name: 'US Dollar', symbol: '$' }]);
@@ -173,6 +183,7 @@ describe('TransactionFormComponent', () => {
         { provide: GroundingHistoryService, useValue: groundingHistory },
         { provide: TagMemoryService, useValue: tagMemory },
         { provide: GoalService, useValue: goalService },
+        { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     })
@@ -1292,6 +1303,39 @@ describe('TransactionFormComponent', () => {
     it('ngOnDestroy unsubscribes without error', () => {
       const fixture = build();
       expect(() => fixture.destroy()).not.toThrow();
+    });
+  });
+
+  describe('the in-form scan as a receipt attempt', () => {
+    const scan = (component: TransactionFormComponent) =>
+      (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+
+    it('opens a form-door handle and reports success with the result diagnostics', async () => {
+      const diagnostics = { engine: 'cloud' as const, provider: 'gemini' as const, durationMs: 1200 };
+      strategy.processReceipt.and.resolveTo({ ...scanResult(), diagnostics });
+      await scan(build().componentInstance);
+
+      const [door, kind] = attempts.service.begin.calls.mostRecent().args;
+      expect(door).toBe('form');
+      expect(kind).toBe('receipt_image');
+      expect(attempts.handle.succeeded).toHaveBeenCalledWith(jasmine.objectContaining({ diagnostics }));
+    });
+
+    it('reports nothing_extracted when the scan produced no row', async () => {
+      strategy.processReceipt.and.resolveTo({ ...scanResult(), transactions: [] });
+      const component = build().componentInstance;
+      await scan(component);
+
+      expect(attempts.handle.failed).toHaveBeenCalledWith('nothing_extracted');
+      expect(component.scanError()).toBe('ai.scanError');
+    });
+
+    it('reports the thrown error', async () => {
+      const failure = new Error('429 too many requests');
+      strategy.processReceipt.and.rejectWith(failure);
+      await scan(build().componentInstance);
+
+      expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
     });
   });
 });

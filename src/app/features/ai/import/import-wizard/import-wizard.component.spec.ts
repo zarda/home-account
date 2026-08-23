@@ -6,7 +6,7 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ImportWizardComponent } from './import-wizard.component';
-import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
+import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -14,7 +14,14 @@ import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { Category, CategorizedImportTransaction, ImportResult } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
-import { AnalyticsService } from '../../../../core/services/analytics.service';
+import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 describe('ImportWizardComponent', () => {
   let component: ImportWizardComponent;
@@ -28,7 +35,7 @@ describe('ImportWizardComponent', () => {
   let mockRouter: jasmine.SpyObj<Router>;
   let mockDuplicateService: jasmine.SpyObj<DuplicateDetectionService>;
   let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
-  let mockAnalytics: jasmine.SpyObj<AnalyticsService>;
+  let attempts: ReturnType<typeof attemptStub>;
   let routeStub: { snapshot: { queryParamMap: ReturnType<typeof convertToParamMap> } };
 
   const mockCategories: Category[] = [
@@ -141,7 +148,7 @@ describe('ImportWizardComponent', () => {
 
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
     mockShareIntake.consumeAll.and.resolveTo([]);
-    mockAnalytics = jasmine.createSpyObj('AnalyticsService', ['trackReceiptImport']);
+    attempts = attemptStub();
     routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
 
     await TestBed.configureTestingModule({
@@ -156,7 +163,7 @@ describe('ImportWizardComponent', () => {
         { provide: Router, useValue: mockRouter },
         { provide: DuplicateDetectionService, useValue: mockDuplicateService },
         { provide: ShareIntakeService, useValue: mockShareIntake },
-        { provide: AnalyticsService, useValue: mockAnalytics },
+        { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: ActivatedRoute, useValue: routeStub }
       ],
       schemas: [NO_ERRORS_SCHEMA]
@@ -236,18 +243,73 @@ describe('ImportWizardComponent', () => {
       expect(mockImportService.importFromFile).not.toHaveBeenCalled();
     });
 
-    it('reports a receipt import for shared images on success and on failure', async () => {
+    it('opens one attempt over the shared images and settles it from their own result', async () => {
       component.onFilesSelected([octetImage()]);
       await component.processFiles();
 
-      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith(jasmine.objectContaining({ outcome: 'ok' }));
+      expect(attempts.service.begin).toHaveBeenCalledTimes(1);
+      const [door, kind] = attempts.service.begin.calls.mostRecent().args;
+      expect(door).toBe('wizard');
+      expect(kind).toBe('receipt_image');
+      expect(attempts.handle.succeeded).toHaveBeenCalled();
 
-      mockAnalytics.trackReceiptImport.calls.reset();
-      mockImportService.importFromMultipleImages.and.rejectWith(new Error('extraction failed'));
+      attempts.service.begin.calls.reset();
+      attempts.handle.succeeded.calls.reset();
+      const failure = new Error('extraction failed');
+      mockImportService.importFromMultipleImages.and.rejectWith(failure);
       component.onFilesSelected([octetImage()]);
       await component.processFiles();
 
-      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith(jasmine.objectContaining({ outcome: 'failed' }));
+      expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
+      expect(attempts.handle.succeeded).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing_extracted from the image result even when a CSV in the batch yielded rows', async () => {
+      // The outcome used to be computed from the running row total, so a CSV
+      // that parsed made an image that read nothing report ok.
+      mockImportService.importFromMultipleImages.and.resolveTo({
+        ...mockImportResult, source: 'image', fileType: 'receipt_image', transactions: [],
+      });
+      component.onFilesSelected([octetImage(), new File(['a,b'], 'rows.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+
+      expect(attempts.handle.failed).toHaveBeenCalledWith('nothing_extracted');
+      expect(component.extractedTransactions().length).toBe(2);
+    });
+
+    it('opens no attempt for statement screenshots', async () => {
+      component.imageKind.set('statement');
+      component.onFilesSelected([octetImage()]);
+      await component.processFiles();
+
+      expect(mockImportService.importFromStatementImages).toHaveBeenCalled();
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+    });
+
+    it('settles the one handle from the catch path when a later file throws', async () => {
+      mockImportService.importFromFile.and.rejectWith(new Error('bad csv'));
+      component.onFilesSelected([octetImage(), new File(['a,b'], 'rows.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+
+      // One handle; the service's guard makes the second settle a no-op.
+      expect(attempts.service.begin).toHaveBeenCalledTimes(1);
+      expect(attempts.handle.succeeded).toHaveBeenCalledTimes(1);
+    });
+
+    // #151 review finding: AI_QUEUED_OFFLINE means the image was safely
+    // stored, not that the attempt failed. importFromMultipleImages never
+    // raises it today (only AIImportService.importFromImage does, and the
+    // wizard's image path never calls that method) — this pins the catch
+    // block's translation for if that call graph ever changes, rather than
+    // leaving the sentinel to fall through to receiptAttempt.failed() and
+    // become a failed record for a receipt that queued fine.
+    it('reports queued, not failed, when the image batch raises the offline sentinel', async () => {
+      mockImportService.importFromMultipleImages.and.rejectWith(new Error(AI_QUEUED_OFFLINE));
+      component.onFilesSelected([octetImage()]);
+      await component.processFiles();
+
+      expect(attempts.handle.queued).toHaveBeenCalled();
+      expect(attempts.handle.failed).not.toHaveBeenCalled();
     });
   });
 

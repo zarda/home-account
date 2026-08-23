@@ -18,6 +18,7 @@ import { AIStrategyService } from './ai-strategy.service';
 import { PwaService } from './pwa.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
+import { AnalyticsService } from './analytics.service';
 
 /**
  * Integration smoke test for the offline-queue processor against the Firebase
@@ -150,6 +151,10 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
         // translation loader, neither of which the emulator run has.
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: TranslationService, useValue: jasmine.createSpyObj('TranslationService', ['t']) },
+        // The processor's attempt record: the history write is real (it is
+        // what the case below proves), analytics is stubbed because the
+        // queue door never sends and the real service needs a transport.
+        { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackReceiptImport']) },
       ],
     });
 
@@ -300,4 +305,23 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
 
     expect((await matching()).length).toBe(1);
   }, 45000);
+
+  // #151. A queued image that reads nothing used to leave no trace outside
+  // the IndexedDB row's lastError. Now it is a failed record in Import
+  // History, written under the real rules, and no analytics event.
+  it('leaves a failed Import History record when a queued receipt reads nothing', async () => {
+    ai.processReceipt.and.resolveTo({ transactions: [], source: 'cloud', confidence: 0, processingTimeMs: 1 });
+    const id = await queue.queueImage(receiptFile('blank.jpg'));
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.peekQueuedImage(id))?.status === 'failed');
+
+    await waitFor(async () => {
+      const imports = await firestoreService.getCollection<{ door?: string; errorType?: string; fileName: string }>(
+        `users/${uid}/imports`,
+      );
+      return imports.some((i) => i.fileName === 'blank.jpg' && i.door === 'queue' && i.errorType === 'nothing_extracted');
+    });
+    expect(TestBed.inject(AnalyticsService).trackReceiptImport).not.toHaveBeenCalled();
+  }, 20000);
 });

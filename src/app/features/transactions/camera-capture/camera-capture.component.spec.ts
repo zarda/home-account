@@ -3,8 +3,9 @@ import { Router } from '@angular/router';
 import { MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { CameraCaptureComponent } from './camera-capture.component';
-import { AIImportService } from '../../../core/services/ai-import.service';
+import { AIImportService, AI_QUEUED_OFFLINE } from '../../../core/services/ai-import.service';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
+import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
 import { PwaService } from '../../../core/services/pwa.service';
 import { OfflineQueueService } from '../../../core/services/offline-queue.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
@@ -16,6 +17,13 @@ import {
 } from '../../../core/utils/categorization.utils';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 describe('CameraCaptureComponent', () => {
   let importService: jasmine.SpyObj<AIImportService>;
@@ -29,6 +37,7 @@ describe('CameraCaptureComponent', () => {
   let dialogRef: jasmine.SpyObj<MatDialogRef<CameraCaptureComponent>>;
   let router: jasmine.SpyObj<Router>;
   let duplicateService: jasmine.SpyObj<DuplicateDetectionService>;
+  let attempts: ReturnType<typeof attemptStub>;
 
   const importResult: ImportResult = {
     source: 'image', fileType: 'receipt_image', fileName: 'a.jpg', fileSize: 1,
@@ -77,6 +86,7 @@ describe('CameraCaptureComponent', () => {
     duplicateService = jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']);
     duplicateService.checkDuplicates.and.resolveTo([]);
     duplicateService.markDuplicates.and.callFake(transactions => transactions);
+    attempts = attemptStub();
 
     await TestBed.configureTestingModule({
       imports: [CameraCaptureComponent],
@@ -84,6 +94,7 @@ describe('CameraCaptureComponent', () => {
         { provide: NotificationService, useValue: notifications },
         { provide: AIImportService, useValue: importService },
         { provide: AIStrategyService, useValue: strategyService },
+        { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: PwaService, useValue: pwaService },
         { provide: OfflineQueueService, useValue: offlineQueue },
         { provide: MatSnackBar, useValue: snackBar },
@@ -470,6 +481,96 @@ describe('CameraCaptureComponent', () => {
       withImages(component, 1);
       await component.processImage();
       expect(component.error()).toContain('No transactions found');
+    });
+
+    describe('the attempt record', () => {
+      // Five terminal branches, one handle. The dialog used to keep its own
+      // de-dup flag and report an outcome with no why; the handle owns both.
+      it('opens one handle per run over the files it will process', async () => {
+        const component = build().componentInstance;
+        withImages(component, 2);
+        await component.processImage();
+        expect(attempts.service.begin).toHaveBeenCalledTimes(1);
+        const [door, kind, files] = attempts.service.begin.calls.mostRecent().args;
+        expect(door).toBe('camera');
+        expect(kind).toBe('receipt_image');
+        expect(files.map(f => f.name)).toEqual(['f0.jpg', 'f1.jpg']);
+      });
+
+      it('reports queued when offline, and queue_write when the queue refuses', async () => {
+        pwaService.isOnline.and.returnValue(false);
+        const component = build().componentInstance;
+        withImages(component, 1);
+        await component.processImage();
+        expect(attempts.handle.queued).toHaveBeenCalled();
+
+        offlineQueue.queueImage.and.rejectWith(new Error('quota'));
+        const again = build().componentInstance;
+        withImages(again, 1);
+        await again.processImage();
+        expect(attempts.handle.failed).toHaveBeenCalledWith('queue_write');
+      });
+
+      it('reports no_provider when no engine is configured', async () => {
+        strategyService.canUseCloud.and.returnValue(false);
+        strategyService.canUseNative.and.returnValue(false);
+        const component = build().componentInstance;
+        withImages(component, 1);
+        await component.processImage();
+        expect(attempts.handle.failed).toHaveBeenCalledWith('no_provider');
+      });
+
+      it('reports nothing_extracted when both pipelines read nothing', async () => {
+        strategyService.processMultipleImages.and.resolveTo({ transactions: [], confidence: 0 } as never);
+        importService.importFromMultipleImages.and.resolveTo({ ...importResult, transactions: [] });
+        const component = build().componentInstance;
+        withImages(component, 1);
+        await component.processImage();
+        expect(attempts.handle.failed).toHaveBeenCalledWith('nothing_extracted');
+      });
+
+      it('reports success with the diagnostics the strategy produced', async () => {
+        const diagnostics = { engine: 'native' as const, provider: null, durationMs: 900 };
+        strategyService.processMultipleImages.and.resolveTo({
+          transactions: [{ description: 'X', amount: 1, currency: 'USD', date: new Date(), type: 'expense', confidence: 1 }],
+          confidence: 1, diagnostics,
+        } as never);
+        const component = build().componentInstance;
+        withImages(component, 1);
+        await component.processImage();
+        expect(attempts.handle.succeeded).toHaveBeenCalledWith(jasmine.objectContaining({ diagnostics }));
+        const navState = (router.navigate.calls.mostRecent().args[1] as { state: { importResult: ImportResult } }).state;
+        expect(navState.importResult.diagnostics).toEqual(diagnostics);
+      });
+
+      it('reports the error when both the strategy and the fallback throw', async () => {
+        const failure = new Error('503 service unavailable');
+        strategyService.processMultipleImages.and.rejectWith(new Error('boom'));
+        importService.importFromMultipleImages.and.rejectWith(failure);
+        const component = build().componentInstance;
+        withImages(component, 1);
+        await component.processImage();
+        expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
+        expect(component.error()).toBe('503 service unavailable');
+      });
+
+      // #151 review finding: AI_QUEUED_OFFLINE means the image was safely
+      // stored, not that the attempt failed. Nothing throws it into this
+      // door's own try block today (the camera never reaches
+      // AIImportService.importFromImage, the sentinel's only source) — this
+      // pins the outer catch's translation for if that call graph ever
+      // changes, rather than leaving the sentinel to fall through to
+      // attempt.failed() and become a failed record for a receipt that
+      // queued fine.
+      it('reports queued, not failed, when the fallback raises the offline sentinel', async () => {
+        strategyService.processMultipleImages.and.resolveTo({ transactions: [], confidence: 0 } as never);
+        importService.importFromMultipleImages.and.rejectWith(new Error(AI_QUEUED_OFFLINE));
+        const component = build().componentInstance;
+        withImages(component, 1);
+        await component.processImage();
+        expect(attempts.handle.queued).toHaveBeenCalled();
+        expect(attempts.handle.failed).not.toHaveBeenCalled();
+      });
     });
   });
 
