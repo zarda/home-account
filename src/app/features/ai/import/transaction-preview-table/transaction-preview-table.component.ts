@@ -56,6 +56,19 @@ export class TransactionPreviewTableComponent {
   @Output() transactionsUpdated = new EventEmitter<CategorizedImportTransaction[]>();
   @Output() selectionChanged = new EventEmitter<Set<string>>();
 
+  /**
+   * Row ids that have fallen back at some point this session, kept apart
+   * from `currencyFellBack` itself — which the first hand-correction clears,
+   * because the row really is settled and the marker earns its removal.
+   * Eligibility to record a choice is a different question from whether the
+   * marker is still showing, the same separation the transaction form keeps
+   * between its own visible marker and its own `scanCurrencyFellBack` flag
+   * (#156): otherwise a second correction to an already-settled row sees a
+   * clean `currencyFellBack` and records nothing, and the session is left
+   * holding the user's first guess rather than the answer they landed on.
+   */
+  private fellBackEligible = new Set<string>();
+
   readonly currencies = this.currencyService.getSupportedCurrencies();
 
   // Plain methods, not computed(): `transactions` is a regular @Input array,
@@ -148,19 +161,48 @@ export class TransactionPreviewTableComponent {
     return this.currencyService.formatCurrency(row.amount, row.currency);
   }
 
+  /**
+   * True the first time a row falls back, and every time after — clearing
+   * the visible marker on the row does not retire the row's own membership
+   * here. See `fellBackEligible` for why the two have to stay apart.
+   */
+  private markFellBackEligible(transaction: CategorizedImportTransaction): boolean {
+    const eligible = !!transaction.currencyFellBack || this.fellBackEligible.has(transaction.id);
+    if (eligible) {
+      this.fellBackEligible.add(transaction.id);
+    }
+    return eligible;
+  }
+
   updateCurrency(transaction: CategorizedImportTransaction, code: string): void {
     // Chosen by the user, so whatever the source failed to read no longer
     // applies — and a choice made for a fallen-back row is worth remembering
-    // for the next one this session.
-    if (transaction.currencyFellBack) {
+    // for the next one this session, including a later hand-correction to
+    // this same row after an earlier one already cleared its marker.
+    if (this.markFellBackEligible(transaction)) {
       this.currencySession.remember(code);
     }
     this.replaceRow(transaction, { currency: code, currencyFellBack: false, currencySuggestion: undefined });
   }
 
-  /** A batch of photos from one trip is nearly always one currency. Bulk is the user's choice, never the ladder's (ADR 0062). */
+  /**
+   * A batch of photos from one trip is nearly always one currency. Bulk is
+   * the user's choice, never the ladder's (ADR 0062) — but the session
+   * memory is documented to hold a choice for a row nobody could read, so a
+   * currency picked for a batch that already read fine does not belong
+   * there. Gated the same way the per-row edit is, on eligibility rather
+   * than the live marker, so a row already settled by hand earlier this
+   * session still counts here.
+   */
   applyCurrencyToSelected(code: string): void {
-    this.currencySession.remember(code);
+    const selected = this.transactions.filter(t => t.selected);
+    let eligible = false;
+    for (const t of selected) {
+      if (this.markFellBackEligible(t)) eligible = true;
+    }
+    if (eligible) {
+      this.currencySession.remember(code);
+    }
     this.transactions = this.transactions.map(t =>
       t.selected ? { ...t, currency: code, currencyFellBack: false, currencySuggestion: undefined } : t
     );
@@ -215,7 +257,8 @@ export class TransactionPreviewTableComponent {
   }
 
   currencyOfferReason(row: CategorizedImportTransaction): string {
-    return this.reasonLabel(row.currencySuggestion?.reason ?? 'receipt');
+    const offer = row.currencySuggestion;
+    return offer ? this.reasonLabel(offer.reason) : '';
   }
 
   /** The accept button's name says what it does and why; the visible text alone says neither fully. */

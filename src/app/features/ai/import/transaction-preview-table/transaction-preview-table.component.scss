@@ -380,10 +380,12 @@
 // The offer is the one extra with an action of its own. The accept button is
 // the chip's body, so it borrows the remove button's trick: a 40px-tall hit
 // area laid over the chip-sized glyph, never a fatter chip. The vertical
-// overhang is (40 - rendered height) / 2 — measured at 18px for this row in
-// transaction-preview-table.overflow.spec.ts, so 11px each way — which fills
-// the 14px row-gap without reaching the row below. On the right it stops 2px
-// in, where the remove button's own 6px overhang begins.
+// overhang is (40 - rendered height) / 2 — measured at 36px for this row in
+// transaction-preview-table.overflow.spec.ts now that the label wraps to two
+// lines instead of overflowing on one, so 2px each way — which stays clear of
+// the 14px row-gap on both sides without reaching the row above or below. On
+// the right it stops 2px in, where the remove button's own 6px overhang
+// begins.
 .extra-accept {
   display: inline-flex;
   align-items: center;
@@ -399,19 +401,22 @@
   position: relative;
 
   // Its own text, not a fatter chip: overflow-wrap: anywhere (inherited from
-  // .extra-text) lets the flex item's shrink-to-fit sizing settle far below
-  // the space actually available, wrapping a label that would otherwise fit
-  // on one line. The label is short enough to fit the card at any width the
-  // app supports, so it stays on one line instead.
+  // .extra-text) breaks mid-word, settling the flex item's shrink-to-fit
+  // sizing far below what a reader could make out — a sentence needs to
+  // break between words, not inside them. Restoring word-level wrapping
+  // (rather than forbidding wrapping outright with nowrap, which let the
+  // label paint straight past the shrunk chip and out of the card) is what
+  // lets a long offer sentence take the second line it needs at 288px
+  // without spilling anywhere.
   .extra-text {
-    white-space: nowrap;
+    overflow-wrap: normal;
   }
 
   &::after {
     content: '';
     position: absolute;
-    top: -11px;
-    bottom: -11px;
+    top: -2px;
+    bottom: -2px;
     left: -9px;
     right: 2px;
   }
