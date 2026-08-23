@@ -23,7 +23,7 @@ const REASON_MESSAGES: Record<ReceiptFailureReason, string> = {
 };
 
 function isReason(value: unknown): value is ReceiptFailureReason {
-  return typeof value === 'string' && value in REASON_MESSAGES;
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(REASON_MESSAGES, value);
 }
 
 type ReceiptImportPayload = AnalyticsEventParams<'receipt_import'>;
@@ -44,18 +44,23 @@ export interface ReceiptAttempt {
   queued(): void;
 }
 
-/** The analytics payload for one settled attempt — every dimension filled. */
+/**
+ * The analytics payload for one settled attempt — every dimension filled.
+ *
+ * `door` excludes 'queue' in its type, not just its convention: the queue
+ * door never sends (ReceiptAttemptService.begin's `send` returns before
+ * building a payload), and the only caller passes the cast that makes that
+ * true, not a decorative one.
+ */
 export function buildReceiptImportPayload(
-  door: ReceiptDoor,
+  door: Exclude<ReceiptDoor, 'queue'>,
   outcome: ReceiptImportPayload['outcome'],
   diagnostics: ReceiptAttemptDiagnostics | null,
   failure: ReceiptFailureClass | null
 ): ReceiptImportPayload {
   return {
     outcome,
-    // The queue door never reaches here (see ReceiptAttemptService.begin),
-    // so the narrowing is a type-level statement of that policy.
-    path: door as ReceiptImportPayload['path'],
+    path: door,
     engine: engineOf(diagnostics),
     provider: diagnostics?.provider ?? 'none',
     failure: failure ?? 'none',
@@ -142,21 +147,27 @@ export class ReceiptAttemptService {
       settled = true;
       settle();
     };
-    const send = (payload: ReceiptImportPayload): void => {
+    const send = (
+      outcome: ReceiptImportPayload['outcome'],
+      diagnostics: ReceiptAttemptDiagnostics | null,
+      failure: ReceiptFailureClass | null
+    ): void => {
       if (door === 'queue') return;
-      this.analytics.trackReceiptImport(payload);
+      this.analytics.trackReceiptImport(
+        buildReceiptImportPayload(door as Exclude<ReceiptDoor, 'queue'>, outcome, diagnostics, failure)
+      );
     };
 
     return {
       succeeded: result => once(() => {
-        send(buildReceiptImportPayload(door, 'ok', result.diagnostics ?? null, null));
+        send('ok', result.diagnostics ?? null, null);
       }),
       queued: () => once(() => {
-        send(buildReceiptImportPayload(door, 'queued_offline', null, null));
+        send('queued_offline', null, null);
       }),
       failed: errorOrReason => once(() => {
         const { failure, diagnostics, message } = classifyReceiptFailure(errorOrReason);
-        send(buildReceiptImportPayload(door, 'failed', diagnostics, failure));
+        send('failed', diagnostics, failure);
         void this.recordFailure(door, kind, files, provenanceOf(door, diagnostics, failure), message);
       }),
     };

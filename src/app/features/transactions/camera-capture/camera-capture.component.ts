@@ -27,7 +27,7 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { compressImage as compressImageUtil } from '../../../shared/utils/image-compression';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner/loading-spinner.component';
 import { NotificationService } from '../../../core/services/notification.service';
-import { AnalyticsService } from '../../../core/services/analytics.service';
+import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
 
 interface CapturedImage {
   id: string;
@@ -64,29 +64,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   private translationService = inject(TranslationService);
   private duplicateService = inject(DuplicateDetectionService);
   private router = inject(Router);
-  private analytics = inject(AnalyticsService);
-
-  /**
-   * One receipt_import per attempt, whichever branch resolves it.
-   *
-   * processImage has five terminal paths — queued offline, no AI configured,
-   * nothing extracted, extracted, and the outer catch — and two of them are
-   * reached through nested helpers. A flag is cheaper to follow than threading
-   * an outcome back up through all of them, and it makes double counting
-   * structurally impossible rather than a thing to be careful about.
-   */
-  private importReported = false;
-
-  private reportImport(outcome: 'ok' | 'failed' | 'queued_offline'): void {
-    if (this.importReported) return;
-    this.importReported = true;
-    // Interim shape until the attempt handle replaces this method: the
-    // dimensions this dialog cannot know are 'none'.
-    this.analytics.trackReceiptImport({
-      outcome, path: 'camera', engine: 'none', provider: 'none',
-      failure: outcome === 'failed' ? 'unknown' : 'none', duration: 'none',
-    });
-  }
+  private receiptAttempts = inject(ReceiptAttemptService);
 
   // Support for multiple captured images
   capturedImages = signal<CapturedImage[]>([]);
@@ -290,22 +268,23 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
 
     this.isProcessing.set(true);
     this.error.set(null);
-    this.importReported = false;
+
+    const files = images.map(img => img.compressedFile || img.file);
+    // One handle for the run: five terminal branches, two of them inside
+    // helpers, and the handle settles exactly once whichever gets there.
+    const attempt = this.receiptAttempts.begin('camera', 'receipt_image', files);
 
     try {
-      const files = images.map(img => img.compressedFile || img.file);
-      const isOffline = !this.pwaService.isOnline();
-
       // Queue for later if offline
-      if (isOffline) {
-        await this.queueForLaterProcessing(files);
+      if (!this.pwaService.isOnline()) {
+        await this.queueForLaterProcessing(files, attempt);
         return;
       }
 
       // Check if AI is available
       if (!this.strategyService.canUseCloud() && !this.strategyService.canUseNative()) {
         this.error.set(this.translationService.t('import.errorNoProvider'));
-        this.reportImport('failed');
+        attempt.failed('no_provider');
         return;
       }
 
@@ -326,21 +305,31 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
         if (strategyResult.transactions.length === 0) {
           // Fall back to import service
           const result = await this.importService.importFromMultipleImages(files);
-          this.handleImportResult(result, multiImage);
+          this.handleImportResult(result, multiImage, attempt);
           return;
         }
 
         const importResult = await this.convertStrategyResult(strategyResult, files);
-        this.handleImportResult(importResult, multiImage);
+        this.handleImportResult(importResult, multiImage, attempt);
       } catch (strategyErr) {
         console.warn('[Camera] Strategy processing failed, falling back:', strategyErr);
         // Fall back to original import service
         const result = await this.importService.importFromMultipleImages(files);
-        this.handleImportResult(result, multiImage);
+        this.handleImportResult(result, multiImage, attempt);
       }
     } catch (err) {
       this.error.set(this.describeError(err));
-      this.reportImport('failed');
+      // AIImportService's single-image path can still raise this sentinel
+      // (importFromFile → importFromImage); this run never calls it, but the
+      // outer catch is the one place every AIImportService throw funnels
+      // through, so it is where the sentinel must be told apart from a real
+      // failure — a queued image is a success from the user's point of view
+      // and must never become a failed Import History record.
+      if (err instanceof Error && err.message === AI_QUEUED_OFFLINE) {
+        attempt.queued();
+      } else {
+        attempt.failed(err);
+      }
     } finally {
       this.isProcessing.set(false);
       this.processingStatus.set('');
@@ -370,7 +359,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     return raw || this.translationService.t('import.errorProcessingFailed');
   }
 
-  private async queueForLaterProcessing(files: File[]): Promise<void> {
+  private async queueForLaterProcessing(files: File[], attempt: ReceiptAttempt): Promise<void> {
     this.processingStatus.set('Saving for later processing...');
 
     try {
@@ -383,11 +372,11 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
 
       // Not a failure and not yet a success: the images are safely stored and
       // the real outcome lands later, from the queue processor.
-      this.reportImport('queued_offline');
+      attempt.queued();
       this.dialogRef.close({ success: true, queued: true, count: files.length });
     } catch {
       this.error.set('Failed to save images for later. Please try again.');
-      this.reportImport('failed');
+      attempt.failed('queue_write');
     } finally {
       this.isProcessing.set(false);
       this.processingStatus.set('');
@@ -465,6 +454,8 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       // path ships them already, and without them the strategy path saved
       // every camera receipt photo-less.
       sourceFiles: files,
+      // How the engine ran, for the confirm-time record.
+      ...(strategyResult.diagnostics ? { diagnostics: strategyResult.diagnostics } : {}),
     };
   }
 
@@ -473,7 +464,8 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
    */
   private handleImportResult(
     result: import('../../../models').ImportResult,
-    isMultiImage: boolean
+    isMultiImage: boolean,
+    attempt: ReceiptAttempt
   ): void {
     if (result.transactions.length === 0) {
       const message = isMultiImage
@@ -484,7 +476,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       // Nothing extracted is a failed import from the user's point of view,
       // whatever the pipeline thinks: they photographed a receipt and got no
       // transaction out of it.
-      this.reportImport('failed');
+      attempt.failed('nothing_extracted');
       return;
     }
 
@@ -492,7 +484,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     const platform = this.strategyService.platform();
     console.log(`[Camera] Processed on ${platform}`);
 
-    this.reportImport('ok');
+    attempt.succeeded(result);
     this.dialogRef.close({ success: true, result });
     this.router.navigate(['/import/file'], {
       state: { 

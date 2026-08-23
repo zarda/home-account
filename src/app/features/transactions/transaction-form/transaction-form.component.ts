@@ -40,6 +40,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AIStrategyService, ProcessedTransaction } from '../../../core/services/ai-strategy.service';
 import { AIImportService } from '../../../core/services/ai-import.service';
+import { ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
 import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
@@ -123,6 +124,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private tagMemory = inject(TagMemoryService);
   private cdr = inject(ChangeDetectorRef);
   private analytics = inject(AnalyticsService);
+  private receiptAttempts = inject(ReceiptAttemptService);
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
 
@@ -771,6 +773,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.scanError.set(null);
     this.scanSuggestedTags = [];
     let receiptCount = 1;
+    // The form door: a failed scan leaves a record, a successful one leaves
+    // the transaction the user goes on to save, which is the record.
+    const attempt = this.receiptAttempts.begin('form', 'receipt_image', [file]);
 
     try {
       const result = await this.strategyService.processReceipt(file);
@@ -778,6 +783,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // Unlike a parsed receipt, a processing result can legitimately come
       // back with no rows — an unreadable photo is not an error to the engine.
       if (!primary) {
+        attempt.failed('nothing_extracted');
         throw new Error('The scan produced no transaction');
       }
 
@@ -828,10 +834,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       const message = this.translationService.t('ai.scanSuccess');
       this.notifications.success(message);
       this.filledByScan = true;
+      attempt.succeeded(result);
       receiptCount = result.receiptCount ?? 1;
       await this.suggestTagsForScan(primary);
     } catch (error) {
       console.error('Receipt scan error:', error);
+      attempt.failed(error);
       const message = this.translationService.t('ai.scanError');
       this.scanError.set(message);
       this.notifications.error(message);
