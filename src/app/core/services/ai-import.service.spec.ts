@@ -466,6 +466,20 @@ describe('AIImportService', () => {
       expect(result.transactions[0].currency).toBe('EUR');
       expect('currencyFellBack' in result.transactions[0]).toBeFalse();
     });
+
+    it('carries the receipt country onto the reviewed row as a mark', async () => {
+      strategyService.processReceipt.and.returnValue(Promise.resolve({
+        source: 'cloud', confidence: 0.9, processingTimeMs: 5,
+        transactions: [{
+          date: new Date(2024, 5, 1), description: 'Item', amount: 3, type: 'expense',
+          currency: 'JPY', confidence: 0.9, source: 'cloud', receiptCountry: 'JP',
+        }],
+      }));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].receiptCountry).toBe('JP');
+    });
   });
 
   describe('remembered categories', () => {
@@ -939,6 +953,16 @@ describe('AIImportService', () => {
       expect(result.source).toBe('image');
       expect(result.fileType).toBe('screenshot');
     });
+
+    it('carries a row\'s receipt country as a mark', async () => {
+      cloudLLMProvider.extractStatementTransactions.and.callFake(async () => [
+        { ...statementRows()[0], receiptCountry: 'US' },
+        statementRows()[1],
+      ]);
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+      expect(result.transactions[0].receiptCountry).toBe('US');
+      expect('receiptCountry' in result.transactions[1]).toBeFalse();
+    });
   });
 
   describe('importFromMultipleImages', () => {
@@ -1135,6 +1159,17 @@ describe('AIImportService', () => {
       ]);
 
       expect(result.warnings.some(w => w.type === 'duplicate')).toBeTrue();
+    });
+
+    it('carries the receipt country through consolidation onto the reviewed row', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+        { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'bottom', confidence: 0.8, receiptId: 1, receiptCountry: 'JP' },
+      ]));
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+      expect(result.transactions[0].receiptCountry).toBe('JP');
     });
   });
 

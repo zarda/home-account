@@ -222,6 +222,24 @@ describe('NativeReceiptService', () => {
       expect('location' in (await service.processImage(imageFile())).transactions[0]).toBeFalse();
     });
 
+    it('carries the on-device country as a mark and into a printed address', async () => {
+      const extraction = {
+        merchant: 'Cafe Tokyo', date: '2026-01-15', amount: 1200, currency: 'JPY',
+        category: 'Coffee & Drinks', details: '',
+      };
+      appleMock.parseReceiptText.and.resolveTo({ ...extraction, location: '渋谷店', country: 'JP' });
+      const row = (await service.processImage(imageFile())).transactions[0];
+      expect(row.receiptCountry).toBe('JP');
+      expect(row.location).toEqual({ name: '渋谷店', country: 'JP' });
+
+      // An older binary answers without the key; a model that could not tell
+      // answers ''. Both read as nobody looked.
+      appleMock.parseReceiptText.and.resolveTo({ ...extraction, country: '' });
+      expect('receiptCountry' in (await service.processImage(imageFile())).transactions[0]).toBeFalse();
+      appleMock.parseReceiptText.and.resolveTo(extraction);
+      expect('receiptCountry' in (await service.processImage(imageFile())).transactions[0]).toBeFalse();
+    });
+
     it('sends no raw i18n key and no deactivated category to the model', async () => {
       await service.processImage(imageFile());
 

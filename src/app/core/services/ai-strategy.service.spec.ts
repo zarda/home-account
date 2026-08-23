@@ -326,6 +326,18 @@ describe('AIStrategyService', () => {
       expect('location' in plain.transactions[0]).toBeFalse();
     });
 
+    it('carries the receipt country out as a mark, and into the printed address', async () => {
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, location: 'Shibuya', receiptCountry: 'JP' });
+      const service = createService('web');
+
+      const row = (await service.processReceipt(imageFile())).transactions[0];
+      expect(row.receiptCountry).toBe('JP');
+      expect(row.location).toEqual({ name: 'Shibuya', country: 'JP' });
+
+      cloudMock.parseReceipt.and.resolveTo(parsedReceipt);
+      expect('receiptCountry' in (await service.processReceipt(imageFile())).transactions[0]).toBeFalse();
+    });
+
     it('carries the per-field confidences out', async () => {
       cloudMock.parseReceipt.and.resolveTo({
         ...parsedReceipt,
@@ -652,6 +664,24 @@ describe('AIStrategyService', () => {
 
       expect(result.transactions[0].location).toEqual({ name: 'Shibuya 1-2-3' });
       expect('location' in result.transactions[1]).toBeFalse();
+    });
+
+    it('carries the receipt country through consolidation onto the row', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        { date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense', currency: 'KRW',
+          merchant: 'Diner', imageIndex: 0, positionInImage: 'top', confidence: 0.8, receiptId: 1 },
+        { date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense', currency: 'KRW',
+          imageIndex: 1, positionInImage: 'bottom', confidence: 0.6, receiptId: 1, receiptCountry: 'KR' },
+        { date: '2026-01-16', description: 'Solo', amount: 7, type: 'expense', currency: 'KRW',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 2 },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      expect(result.transactions[0].receiptCountry).toBe('KR');
+      expect('receiptCountry' in result.transactions[1]).toBeFalse();
     });
 
     it('should prefer the full receipt details from the AI for merged notes', async () => {

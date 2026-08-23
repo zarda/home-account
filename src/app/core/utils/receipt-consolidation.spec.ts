@@ -269,5 +269,19 @@ describe('consolidateReceiptItems', () => {
 
       expect('location' in merged).toBeFalse();
     });
+
+    it('takes the country once per group, from whichever item carried it', () => {
+      const merged = consolidateReceiptItems([
+        item({ description: 'Lunch', receiptId: 1 }),
+        item({ description: 'Snack', receiptId: 1, receiptCountry: 'KR' }),
+      ])[0];
+      expect(merged.receiptCountry).toBe('KR');
+
+      const none = consolidateReceiptItems([
+        item({ description: 'Lunch', receiptId: 1 }),
+        item({ description: 'Snack', receiptId: 1 }),
+      ])[0];
+      expect('receiptCountry' in none).toBeFalse();
+    });
   });
 });

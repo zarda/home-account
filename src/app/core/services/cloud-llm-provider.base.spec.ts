@@ -640,5 +640,51 @@ describe('CloudLLMProviderBase', () => {
 
       expect('location' in rows[0]).toBeFalse();
     });
+
+    it('carries the issuing country out of a receipt, and the country onto a row location', async () => {
+      provider.response = {
+        text: '{"merchant":"Cafe","amount":4,"location":"Shibuya 1-2-3","country":"jp"}',
+        truncated: false,
+      };
+      const receipt = await provider.parseReceipt('img');
+      expect(receipt.receiptCountry).toBe('JP');
+
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-07-01', description: 'CAFE', amount: 4.5, type: 'expense',
+            currency: 'JPY', merchant: 'Cafe', location: 'Shibuya 1-2-3', country: 'JP' },
+          { date: '2026-07-01', description: 'SHOP', amount: 9, type: 'expense',
+            currency: 'JPY', merchant: 'Shop', country: 'JP' },
+          { date: '2026-07-01', description: 'BAR', amount: 9, type: 'expense',
+            currency: 'JPY', merchant: 'Bar', country: 'Japan' },
+        ]),
+        truncated: false,
+      };
+      const rows = await provider.extractStatementTransactions('img');
+      expect(rows[0].location).toEqual({ name: 'Shibuya 1-2-3', country: 'JP' });
+      expect(rows[0].receiptCountry).toBe('JP');
+      // No address: the country is a mark on the row and nothing more.
+      expect('location' in rows[1]).toBeFalse();
+      expect(rows[1].receiptCountry).toBe('JP');
+      // A name is not a code.
+      expect('receiptCountry' in rows[2]).toBeFalse();
+    });
+
+    it('carries the country on a multi-image row the same way', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-07-01', description: 'A', amount: 5, type: 'expense', currency: 'KRW',
+            merchant: 'Cafe', imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 },
+          { date: '2026-07-01', description: 'B', amount: 6, type: 'expense', currency: 'KRW',
+            merchant: 'Cafe', imageIndex: 0, positionInImage: 'bottom', confidence: 0.9, receiptId: 1,
+            location: '서울 강남구', country: 'KR' },
+        ]),
+        truncated: false,
+      };
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+      expect('receiptCountry' in rows[0]).toBeFalse();
+      expect(rows[1].receiptCountry).toBe('KR');
+      expect(rows[1].location).toEqual({ name: '서울 강남구', country: 'KR' });
+    });
   });
 });
