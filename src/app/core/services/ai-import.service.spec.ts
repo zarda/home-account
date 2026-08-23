@@ -470,15 +470,22 @@ describe('AIImportService', () => {
     it('carries the receipt country onto the reviewed row as a mark', async () => {
       strategyService.processReceipt.and.returnValue(Promise.resolve({
         source: 'cloud', confidence: 0.9, processingTimeMs: 5,
-        transactions: [{
-          date: new Date(2024, 5, 1), description: 'Item', amount: 3, type: 'expense',
-          currency: 'JPY', confidence: 0.9, source: 'cloud', receiptCountry: 'JP',
-        }],
+        transactions: [
+          {
+            date: new Date(2024, 5, 1), description: 'Item', amount: 3, type: 'expense',
+            currency: 'JPY', confidence: 0.9, source: 'cloud', receiptCountry: 'JP',
+          },
+          {
+            date: new Date(2024, 5, 1), description: 'No Country', amount: 4, type: 'expense',
+            currency: 'JPY', confidence: 0.9, source: 'cloud',
+          },
+        ],
       }));
 
       const result = await service.importFromImage(makeFile('r.png', 'image/png'));
 
       expect(result.transactions[0].receiptCountry).toBe('JP');
+      expect('receiptCountry' in result.transactions[1]).toBeFalse();
     });
   });
 
@@ -1167,9 +1174,14 @@ describe('AIImportService', () => {
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
         { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'bottom', confidence: 0.8, receiptId: 1, receiptCountry: 'JP' },
+        { date: '2024-06-02', description: 'No Country', amount: 50, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 2 },
       ]));
       const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
-      expect(result.transactions[0].receiptCountry).toBe('JP');
+      const merged = result.transactions.find(t => t.description === 'Shop');
+      const standalone = result.transactions.find(t => t.description === 'No Country');
+      expect(merged?.receiptCountry).toBe('JP');
+      expect('receiptCountry' in (standalone ?? {})).toBeFalse();
     });
   });
 
