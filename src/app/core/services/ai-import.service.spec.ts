@@ -548,7 +548,13 @@ describe('AIImportService', () => {
       expect('currencySuggestion' in rows[1]).toBeFalse();
     });
 
-    it('offers the session choice, then the locale, and never a position', () => {
+    // No "never a position" clause here: ProcessedTransaction carries no
+    // positionCountry field for a rung to read, so there is no evidence a
+    // case here could supply and assert was ignored — the ladder's position
+    // rung only exists on the transaction form's own call into
+    // suggestCurrency, built from the device's own coordinates, and that is
+    // where a case belongs pinning it never reaches the import review path.
+    it('offers the session choice, then the locale', () => {
       currencySession.current.and.returnValue('THB');
       expect(service.convertStrategyResultToCategories(processed([
         { currency: 'USD', currencyFellBack: true },

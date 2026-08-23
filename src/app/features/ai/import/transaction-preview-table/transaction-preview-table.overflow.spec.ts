@@ -74,10 +74,21 @@ describe('overflow guard: the import review card', () => {
       providers: [
         // t() alone: TranslatePipe, LocaleDatePipe, LocaleFormatService and
         // CategorySuggestionComponent all guard their signal reads for exactly
-        // this mock. Keys render in place of the strings, and a key is both
-        // longer than the English it stands for and a single unbreakable word,
-        // so every width here is the pessimistic one.
-        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        // this mock. A key with no params renders bare, still longer than the
+        // English it stands for and still one unbreakable word. A key called
+        // with params — the offer chip's own case — appends the real values
+        // (a real country name off Intl.DisplayNames, a real currency code)
+        // rather than dropping them, because a bare key under-measures a
+        // chip that interpolates: the rendered sentence runs about a third
+        // longer than the key alone, which is exactly the width this probe
+        // exists to catch.
+        {
+          provide: TranslationService,
+          useValue: {
+            t: (key: string, params?: Record<string, string | number>) =>
+              params ? `${key} ${Object.values(params).join(' ')}` : key,
+          },
+        },
         {
           provide: CurrencyService,
           useValue: {
@@ -204,6 +215,19 @@ describe('overflow guard: the import review card', () => {
     expect(accept.getBoundingClientRect().height - parseFloat(hit.top) - parseFloat(hit.bottom))
       .withContext('accept hit area, glyph plus overhang')
       .toBeGreaterThanOrEqual(40);
+
+    // Every check above measures element *boxes*, which shrink to fit —
+    // `.transaction-card` shrinks the accept button rather than growing past
+    // its row, and a `nowrap` label then paints straight through that
+    // shrunk box uncounted. Neither the card nor `.card-main` forms a
+    // scroll container, so that paint escapes them for free; the first
+    // ancestor that does is `.transactions-list` (overflow-y: auto computes
+    // its overflow-x to auto too), which is where the escaped text actually
+    // surfaces as a horizontal scrollbar on the review list.
+    const list = host.querySelector('.transactions-list') as HTMLElement;
+    expect(list.scrollWidth)
+      .withContext('review list does not scroll sideways for the offer chip\'s label')
+      .toBeLessThanOrEqual(list.clientWidth + 1);
   });
 
   it('wraps a long rule name rather than carrying it past the card', () => {
@@ -247,14 +271,26 @@ describe('overflow guard: the import review card', () => {
       .withContext('remove button hit area is wider than the glyph')
       .toBeGreaterThanOrEqual(32);
 
-    // And the chip it sits in is still one line of --text-xs: the hit area
-    // grew outside the box precisely so this number would not move.
+    // And the tag chip is still one line of --text-xs: the hit area grew
+    // outside the box precisely so this number would not move.
     expect(host.querySelectorAll<HTMLElement>('.extra-chip')[2].getBoundingClientRect().height)
       .withContext('tag chip stays chip-sized')
       .toBeLessThanOrEqual(28);
-    expect(el('.currency-offer').getBoundingClientRect().height)
-      .withContext('offer chip stays chip-sized too')
-      .toBeLessThanOrEqual(28);
+
+    // The offer chip is the one exception, and on purpose: its label is a
+    // full sentence rather than a single word, and at 288px the real
+    // sentence needs a second line. Taller here is the label wrapping, not
+    // the chip fattening — the accept button still floors its own hit area
+    // at 40px on top of the taller box, with a smaller overhang than the
+    // 18px-tall single line this shipped with first.
+    const offerChip = el('.currency-offer');
+    expect(offerChip.getBoundingClientRect().height)
+      .withContext('offer chip taller than a one-line chip because its label wrapped')
+      .toBeGreaterThan(28);
+    const acceptText = el('.currency-offer .extra-accept .extra-text');
+    expect(acceptText.getBoundingClientRect().height)
+      .withContext('the label really did take a second line rather than spilling past the chip')
+      .toBeGreaterThan(20);
   });
 
   it('never lets one chip\'s tap target reach into the row below', () => {
