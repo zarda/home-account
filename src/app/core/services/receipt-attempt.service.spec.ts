@@ -10,7 +10,7 @@ import { AnalyticsService } from './analytics.service';
 import { ImportHistoryService } from './import-history.service';
 import { AuthService } from './auth.service';
 import { ReceiptAttemptDiagnostics } from './ai-types';
-import { AI_NO_PROVIDER, ReceiptProcessingError } from '../utils/ai-error.utils';
+import { AI_NO_PROVIDER, AI_QUEUED_OFFLINE, ReceiptProcessingError } from '../utils/ai-error.utils';
 
 /**
  * The one producer of receipt_import and the one writer of a failed-attempt
@@ -199,6 +199,29 @@ describe('ReceiptAttemptService', () => {
       expect(history.saveImportHistory).not.toHaveBeenCalled();
     });
 
+    it('takes the offline sentinel as queued, not failed, when it reaches failed()', async () => {
+      const attempt = service.begin('camera', 'receipt_image', files);
+      attempt.failed(new Error(AI_QUEUED_OFFLINE));
+      await Promise.resolve();
+
+      expect(analytics.trackReceiptImport).toHaveBeenCalledWith(
+        jasmine.objectContaining({ outcome: 'queued_offline', engine: 'none' })
+      );
+      expect(history.saveImportHistory).not.toHaveBeenCalled();
+
+      // Still settles the handle — a later terminal is a no-op.
+      attempt.succeeded({ diagnostics: cloud });
+      expect(analytics.trackReceiptImport).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes nothing and sends nothing for the offline sentinel on the queue door', async () => {
+      service.begin('queue', 'receipt_image', files).failed(new Error(AI_QUEUED_OFFLINE));
+      await Promise.resolve();
+
+      expect(analytics.trackReceiptImport).not.toHaveBeenCalled();
+      expect(history.saveImportHistory).not.toHaveBeenCalled();
+    });
+
     it('records but never sends for the queue door', async () => {
       const attempt = service.begin('queue', 'receipt_image', files);
       attempt.failed(new Error('503 service unavailable'));
@@ -211,6 +234,18 @@ describe('ReceiptAttemptService', () => {
 
       service.begin('queue', 'receipt_image', files).succeeded({ diagnostics: cloud });
       expect(analytics.trackReceiptImport).not.toHaveBeenCalled();
+    });
+
+    it('does not let a throwing terminal escape, and still counts as settled', () => {
+      analytics.trackReceiptImport.and.throwError('boom');
+      const attempt = service.begin('camera', 'receipt_image', files);
+
+      expect(() => attempt.succeeded({ diagnostics: cloud })).not.toThrow();
+      expect(analytics.trackReceiptImport).toHaveBeenCalledTimes(1);
+
+      // The guard was set before the throw, so a later terminal is a no-op.
+      attempt.failed(new Error('x'));
+      expect(history.saveImportHistory).not.toHaveBeenCalled();
     });
 
     it('never throws when the record cannot be written', async () => {

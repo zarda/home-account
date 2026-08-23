@@ -6,7 +6,7 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ImportWizardComponent } from './import-wizard.component';
-import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
+import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -294,22 +294,6 @@ describe('ImportWizardComponent', () => {
       // One handle; the service's guard makes the second settle a no-op.
       expect(attempts.service.begin).toHaveBeenCalledTimes(1);
       expect(attempts.handle.succeeded).toHaveBeenCalledTimes(1);
-    });
-
-    // #151 review finding: AI_QUEUED_OFFLINE means the image was safely
-    // stored, not that the attempt failed. importFromMultipleImages never
-    // raises it today (only AIImportService.importFromImage does, and the
-    // wizard's image path never calls that method) — this pins the catch
-    // block's translation for if that call graph ever changes, rather than
-    // leaving the sentinel to fall through to receiptAttempt.failed() and
-    // become a failed record for a receipt that queued fine.
-    it('reports queued, not failed, when the image batch raises the offline sentinel', async () => {
-      mockImportService.importFromMultipleImages.and.rejectWith(new Error(AI_QUEUED_OFFLINE));
-      component.onFilesSelected([octetImage()]);
-      await component.processFiles();
-
-      expect(attempts.handle.queued).toHaveBeenCalled();
-      expect(attempts.handle.failed).not.toHaveBeenCalled();
     });
   });
 

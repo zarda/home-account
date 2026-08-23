@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { CameraCaptureComponent } from './camera-capture.component';
-import { AIImportService, AI_QUEUED_OFFLINE } from '../../../core/services/ai-import.service';
+import { AIImportService } from '../../../core/services/ai-import.service';
 import { AIStrategyService } from '../../../core/services/ai-strategy.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
 import { PwaService } from '../../../core/services/pwa.service';
@@ -552,24 +552,6 @@ describe('CameraCaptureComponent', () => {
         await component.processImage();
         expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
         expect(component.error()).toBe('503 service unavailable');
-      });
-
-      // #151 review finding: AI_QUEUED_OFFLINE means the image was safely
-      // stored, not that the attempt failed. Nothing throws it into this
-      // door's own try block today (the camera never reaches
-      // AIImportService.importFromImage, the sentinel's only source) — this
-      // pins the outer catch's translation for if that call graph ever
-      // changes, rather than leaving the sentinel to fall through to
-      // attempt.failed() and become a failed record for a receipt that
-      // queued fine.
-      it('reports queued, not failed, when the fallback raises the offline sentinel', async () => {
-        strategyService.processMultipleImages.and.resolveTo({ transactions: [], confidence: 0 } as never);
-        importService.importFromMultipleImages.and.rejectWith(new Error(AI_QUEUED_OFFLINE));
-        const component = build().componentInstance;
-        withImages(component, 1);
-        await component.processImage();
-        expect(attempts.handle.queued).toHaveBeenCalled();
-        expect(attempts.handle.failed).not.toHaveBeenCalled();
       });
     });
   });

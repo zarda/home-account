@@ -51,6 +51,21 @@ function processingResult(transactions: ProcessedTransaction[]): ProcessingResul
   };
 }
 
+function queuedImage(overrides: Partial<QueuedImage> = {}): QueuedImage {
+  return {
+    id: 'img_1',
+    userId: 'user-a',
+    fileName: 'r.jpg',
+    mimeType: 'image/jpeg',
+    size: 3,
+    data: new Uint8Array([1, 2, 3]).buffer,
+    createdAt: Date.now(),
+    status: 'processing',
+    retryCount: 0,
+    ...overrides,
+  };
+}
+
 describe('OfflineQueueProcessorService', () => {
   let processor: OfflineQueueProcessorService;
   let queue: jasmine.SpyObj<OfflineQueueService>;
@@ -331,26 +346,16 @@ describe('OfflineQueueProcessorService', () => {
       dispatchImage('img_3');
       await waitFor(() => queue.updateImageStatus.calls.any());
       expect(attempts.service.begin).not.toHaveBeenCalled();
+
+      queue.peekQueuedImage.and.resolveTo(queuedImage({ userId: 'user-b' }));
+      dispatchImage('img_5');
+      await waitFor(() => queue.updateImageStatus.calls.count() === 2);
+      expect(attempts.service.begin).not.toHaveBeenCalled();
     });
   });
 
 
   describe('account ownership', () => {
-    function queuedImage(overrides: Partial<QueuedImage> = {}): QueuedImage {
-      return {
-        id: 'img_1',
-        userId: 'user-a',
-        fileName: 'r.jpg',
-        mimeType: 'image/jpeg',
-        size: 3,
-        data: new Uint8Array([1, 2, 3]).buffer,
-        createdAt: Date.now(),
-        status: 'processing',
-        retryCount: 0,
-        ...overrides,
-      };
-    }
-
     // The regression. addTransaction resolves the account at call time, so a
     // sync that fires after a different user signs in wrote account A's
     // receipt straight into account B's ledger.
