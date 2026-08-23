@@ -8,7 +8,7 @@ import { ImportHistoryService } from './import-history.service';
 import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
-import { AIStrategyService, ProcessingResult } from './ai-strategy.service';
+import { AIStrategyService, ProcessingResult, ReceiptAttemptDiagnostics } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
 import { IMAGE_FILE_EXTENSIONS } from '../utils/file.utils';
 import { OfflineQueueService } from './offline-queue.service';
@@ -20,6 +20,7 @@ import {
   AI_NO_PROVIDER,
   AI_QUEUED_OFFLINE,
   parseAIError,
+  ReceiptProcessingError,
 } from '../utils/ai-error.utils';
 import { nextImportRowId } from '../utils/import-row-id.utils';
 import {
@@ -133,6 +134,7 @@ export class AIImportService {
    * Uses cloud AI or native OCR (iOS)
    */
   async importFromImage(file: File): Promise<ImportResult> {
+    const startedAt = performance.now();
     const isOnline = this.pwaService.isOnline();
     const canUseCloud = this.strategyService.canUseCloud();
     const canUseNative = this.strategyService.canUseNative();
@@ -180,8 +182,10 @@ export class AIImportService {
           this.processingProgress.set(100);
 
           const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
-          result.processingSource = strategyResult.source;
-          
+          if (strategyResult.diagnostics) {
+            result.diagnostics = strategyResult.diagnostics;
+          }
+
           return result;
         }
       } catch (strategyError) {
@@ -227,7 +231,7 @@ export class AIImportService {
       this.processingProgress.set(100);
 
       const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
-      result.processingSource = 'cloud';
+      result.diagnostics = this.cloudDiagnostics(startedAt);
 
       return result;
     } finally {
@@ -261,6 +265,7 @@ export class AIImportService {
       throw new Error('No image files provided');
     }
 
+    const startedAt = performance.now();
     this.isProcessing.set(true);
     this.processingStatus.set('Reading statement...');
     this.processingProgress.set(10);
@@ -300,8 +305,10 @@ export class AIImportService {
       const result = this.buildImportResult(
         files[0], 'image', 'screenshot', marked, duplicates
       );
-      result.processingSource = 'cloud';
+      result.diagnostics = this.cloudDiagnostics(startedAt);
       return result;
+    } catch (error) {
+      throw this.asReceiptProcessingError(error, startedAt);
     } finally {
       this.isProcessing.set(false);
       this.processingSource.set(null);
@@ -324,7 +331,6 @@ export class AIImportService {
       ...gradeCategorySuggestion(tx),
       isDuplicate: false,
       selected: true,
-      processingSource: tx.source,
       notes: tx.notes,
       fieldConfidence: tx.fieldConfidence,
       ...(tx.tags?.length ? { tags: tx.tags } : {}),
@@ -332,6 +338,31 @@ export class AIImportService {
       ...(tx.period ? { period: tx.period } : {}),
       ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {})
     }));
+  }
+
+  /**
+   * Diagnostics for the paths that call a cloud provider directly rather
+   * than through the strategy service. Always cloud, provider as routed,
+   * timed from the moment the door was entered.
+   */
+  private cloudDiagnostics(startedAt: number, error?: unknown): ReceiptAttemptDiagnostics {
+    const base: ReceiptAttemptDiagnostics = {
+      engine: 'cloud',
+      provider: this.strategyService.receiptProvider(),
+      durationMs: performance.now() - startedAt,
+    };
+    if (error === undefined) {
+      return base;
+    }
+    const parsed = parseAIError(error);
+    return { ...base, errorType: parsed.type, retryable: parsed.retryable };
+  }
+
+  /** Wrap a direct-provider throw so the door can read what was learned. */
+  private asReceiptProcessingError(error: unknown, startedAt: number): ReceiptProcessingError {
+    return error instanceof ReceiptProcessingError
+      ? error
+      : new ReceiptProcessingError(this.cloudDiagnostics(startedAt, error), error);
   }
 
   /**
@@ -349,6 +380,8 @@ export class AIImportService {
     if (!this.cloudLLMProvider.hasAnyCloudProvider()) {
       throw new Error(AI_NO_PROVIDER);
     }
+
+    const startedAt = performance.now();
 
     // After the availability guard, so a request that was never issued is not
     // counted. Tagged here rather than in AIStrategyService because the import
@@ -408,13 +441,16 @@ export class AIImportService {
 
       this.processingProgress.set(100);
 
-      // Build result with multi-image metadata
-      return this.buildMultiImageImportResult(
+      const result = this.buildMultiImageImportResult(
         files,
         markedTransactions,
         duplicates,
         extractedTransactions
       );
+      result.diagnostics = this.cloudDiagnostics(startedAt);
+      return result;
+    } catch (error) {
+      throw this.asReceiptProcessingError(error, startedAt);
     } finally {
       this.isProcessing.set(false);
     }
@@ -759,7 +795,6 @@ export class AIImportService {
           message: `Only the first ${pages.length} of ${totalPages} pages were read.`,
         });
       }
-      result.processingSource = 'cloud';
       return result;
     } finally {
       this.isProcessing.set(false);

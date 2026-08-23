@@ -380,6 +380,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       if (imageFiles.length >= 1) {
         this.analytics.trackReceiptImport({
           outcome: this.extractedTransactions().length > 0 ? 'ok' : 'failed',
+          path: 'wizard', engine: 'none', provider: 'none',
+          failure: this.extractedTransactions().length > 0 ? 'none' : 'unknown',
+          duration: 'none',
         });
       }
     } catch (error) {
@@ -395,6 +398,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // success with a broken tail, not a failed import.
         this.analytics.trackReceiptImport({
           outcome: this.extractedTransactions().length > 0 ? 'ok' : 'failed',
+          path: 'wizard', engine: 'none', provider: 'none',
+          failure: this.extractedTransactions().length > 0 ? 'none' : 'unknown',
+          duration: 'none',
         });
       }
     }

@@ -18,7 +18,24 @@
   "receipt_import": {
     "since": "1.16.91",
     "params": {
-      "outcome": ["ok", "failed", "queued_offline"]
+      "outcome": ["ok", "failed", "queued_offline"],
+      "path": ["camera", "wizard", "form"],
+      "engine": ["cloud", "native", "cloud_after_native", "native_after_cloud", "none"],
+      "provider": ["gemini", "openai", "claude", "none"],
+      "failure": [
+        "none",
+        "rate_limit",
+        "auth",
+        "network",
+        "quota",
+        "server",
+        "timeout",
+        "no_provider",
+        "nothing_extracted",
+        "queue_write",
+        "unknown"
+      ],
+      "duration": ["under_5s", "5s_to_15s", "15s_to_60s", "over_60s", "none"]
     }
   },
   "budget_create": {

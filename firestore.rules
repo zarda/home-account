@@ -514,7 +514,18 @@ service cloud.firestore {
       return (!('errors' in d) || d.errors is list)
         && (!('fileSize' in d) || d.fileSize is number)
         && (!('createdAt' in d) || d.createdAt is timestamp)
-        && (!('updatedAt' in d) || d.updatedAt is timestamp);
+        && (!('updatedAt' in d) || d.updatedAt is timestamp)
+        // The receipt-attempt slots (#151). Closed enumerations, so a
+        // provider's error prose can never land here.
+        && (!('door' in d) || d.door in ['camera', 'wizard', 'form', 'queue'])
+        && (!('engine' in d) || d.engine in ['cloud', 'native'])
+        && (!('fellBackFrom' in d) || d.fellBackFrom in ['cloud', 'native'])
+        && (!('provider' in d) || d.provider in ['gemini', 'openai', 'claude'])
+        && (!('errorType' in d) || d.errorType in [
+             'rate_limit', 'auth', 'network', 'quota', 'server', 'timeout',
+             'no_provider', 'nothing_extracted', 'queue_write', 'unknown'
+           ])
+        && (!('durationMs' in d) || (d.durationMs is number && d.durationMs >= 0));
     }
 
     function importCreateValid(userId) {

@@ -84,14 +84,15 @@ Every place the app reports an event. `Since` is the release the row shipped
 in. `scripts/check-analytics-registry.mjs` fails the build when this table and
 the code disagree. `Since` covers the event, not its parameters —
 `transaction_add`'s `has_tags`, `has_location` and `receipt_image_count`
-arrived in 1.18.95.
+arrived in 1.18.95. `receipt_import`'s `path`, `engine`, `provider`, `failure`
+and `duration` arrived in 1.27.140.
 
 <!-- analytics-registry:start -->
 | Event | Trigger | Params | Source | Since |
 |---|---|---|---|---|
 | `transaction_add` | The add-transaction form saved a new transaction. Not restore or offline replay. | `method`, `type`, `has_tags`, `has_location`, `receipt_image_count` | `src/app/features/transactions/transaction-form/transaction-form.component.ts` | 1.16.91 |
 | `transaction_search` | A search was committed on the transaction list and recorded as new. | `has_filters` | `src/app/features/transactions/transaction-filters/transaction-filters.component.ts` | 1.16.91 |
-| `receipt_import` | A receipt import reached a terminal outcome. Images only. | `outcome` | `src/app/features/transactions/camera-capture/camera-capture.component.ts`, `src/app/features/ai/import/import-wizard/import-wizard.component.ts` | 1.16.91 |
+| `receipt_import` | A receipt attempt reached a terminal outcome: camera, wizard (receipt kind only) and the in-form scan. Statement screenshots and the offline queue drain are excluded. | `outcome`, `path`, `engine`, `provider`, `failure`, `duration` | `src/app/features/transactions/camera-capture/camera-capture.component.ts`, `src/app/features/ai/import/import-wizard/import-wizard.component.ts`, `src/app/core/services/receipt-attempt.service.ts` | 1.16.91 |
 | `budget_create` | A budget was created from the budgets page. | — | `src/app/features/budgets/budget-form/budget-form.component.ts` | 1.16.91 |
 | `budget_exceeded_viewed` | The dashboard budget-alert banner became visible, once per appearance. | `severity` | `src/app/features/dashboard/budget-alert-banner/budget-alert-banner.component.ts` | 1.16.91 |
 | `report_view` | A report tab was shown, including the one the page opens on. | `report_type` | `src/app/features/reports/reports.component.ts` | 1.16.91 |
@@ -111,6 +112,11 @@ arrived in 1.18.95.
 | `receipt_image_count` | `0`–`5` — images attached at creation; later appends and removals are not re-reported |
 | `has_filters` | `true`, `false` — any of type, category, currency, amount range, or a date range other than the default month |
 | `outcome` | `ok`, `failed`, `queued_offline` |
+| `path` | `camera`, `wizard`, `form` — which surface ran the receipt. The queue drain never reports. |
+| `engine` | `cloud`, `native`, `cloud_after_native` (native ran first and lost), `native_after_cloud`, `none` (nothing ran — no provider, queued, queue save failed) |
+| `provider` | `gemini`, `openai`, `claude`, `none` — the cloud provider the attempt routed to; the key itself is never sent |
+| `failure` | `none` on success; otherwise `rate_limit`, `auth`, `network`, `quota`, `server`, `timeout` (parseAIError's classes), `no_provider`, `nothing_extracted`, `queue_write`, `unknown`. Never the provider's wording. |
+| `duration` | `under_5s`, `5s_to_15s`, `15s_to_60s`, `over_60s`, `none` (nothing was timed) |
 | `severity` | `warning`, `critical`, `exceeded` |
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
 | `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative` |
@@ -124,11 +130,13 @@ arrived in 1.18.95.
   restored file and re-count queued rows that were already counted when they
   were queued.
 - **The deferred outcome of a queued import.** `queued_offline` is terminal for
-  the attempt. Reporting again when the queue processor eventually succeeds or
-  fails would put two events on one import and corrupt the denominator of the
-  reliability figure.
-- **CSV, PDF and JSON imports**, as `receipt_import`. They go through the same
-  wizard method, but a bank statement is not a receipt.
+  the attempt. The queue drain goes through the same `ReceiptAttemptService`
+  handle as every other door, and that service is where the policy is
+  enforced: door `queue` writes the Import History record and sends nothing.
+- **Statement screenshots, and CSV, PDF and JSON imports**, as
+  `receipt_import`. A bank statement is not a receipt. The wizard's handle is
+  opened only for the receipt image kind, so the screenshot kind — which used
+  to be counted — no longer is.
 - **Date format, display name, and the AI settings page.** The taxonomy
   enumerates the settings worth steering by; widening it to every control is
   how a taxonomy stops meaning anything.
@@ -299,7 +307,8 @@ it simply reports nothing.
 4. **Register custom dimensions.** GA4 admin → Data display → Custom
    definitions → one event-scoped dimension per parameter: `method`, `type`,
    `has_tags`, `has_location`, `receipt_image_count`, `has_filters`, `outcome`,
-   `severity`, `report_type`, `feature`, `setting`.
+   `path`, `engine`, `provider`, `failure`, `duration`, `severity`,
+   `report_type`, `feature`, `setting`.
    Unregistered parameters are still collected but appear in no report, and GA4
    does not backfill.
 5. **Add an internal traffic filter** for developer IPs. `ng serve` uses the

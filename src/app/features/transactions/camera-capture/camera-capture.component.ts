@@ -80,7 +80,12 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
   private reportImport(outcome: 'ok' | 'failed' | 'queued_offline'): void {
     if (this.importReported) return;
     this.importReported = true;
-    this.analytics.trackReceiptImport({ outcome });
+    // Interim shape until the attempt handle replaces this method: the
+    // dimensions this dialog cannot know are 'none'.
+    this.analytics.trackReceiptImport({
+      outcome, path: 'camera', engine: 'none', provider: 'none',
+      failure: outcome === 'failed' ? 'unknown' : 'none', duration: 'none',
+    });
   }
 
   // Support for multiple captured images

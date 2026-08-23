@@ -241,7 +241,7 @@ export class AIStrategyService {
   async processReceipt(imageFile: File): Promise<ProcessingResult> {
     return this.runProcessing(
       () => this.nativeReceipt.processImage(imageFile),
-      () => this.processWithCloud(imageFile),
+      diagnostics => this.processWithCloud(imageFile, diagnostics),
     );
   }
 
@@ -254,7 +254,7 @@ export class AIStrategyService {
   async processMultipleImages(imageFiles: File[]): Promise<ProcessingResult> {
     return this.runProcessing(
       () => this.nativeReceipt.processImages(imageFiles),
-      () => this.processMultipleWithCloud(imageFiles),
+      diagnostics => this.processMultipleWithCloud(imageFiles, diagnostics),
     );
   }
 
@@ -307,7 +307,7 @@ export class AIStrategyService {
    */
   private async runProcessing(
     native: () => Promise<ProcessingResult>,
-    cloud: () => Promise<ProcessingResult>,
+    cloud: (diagnostics: ReceiptAttemptDiagnostics) => Promise<ProcessingResult>,
   ): Promise<ProcessingResult> {
     const startTime = performance.now();
     this._isProcessing.set(true);
@@ -318,12 +318,11 @@ export class AIStrategyService {
       provider: null,
       durationMs: 0,
     };
-    // The provider is resolved at the moment a cloud request is issued, so a
-    // key edited mid-session is reported as what actually answered.
-    const runCloud = (): Promise<ProcessingResult> => {
-      diagnostics.provider = this.receiptProvider();
-      return cloud();
-    };
+    // The provider is resolved once the cloud path clears
+    // ensureCloudAvailable(), inside processWithCloud/processMultipleWithCloud
+    // themselves — not here — so an offline device with a configured key
+    // reports no provider for a request that was never issued.
+    const runCloud = (): Promise<ProcessingResult> => cloud(diagnostics);
     let returned: ProcessingResult | undefined;
 
     try {
@@ -397,8 +396,14 @@ export class AIStrategyService {
   /**
    * Process with cloud AI.
    */
-  private async processWithCloud(imageFile: File): Promise<ProcessingResult> {
+  private async processWithCloud(
+    imageFile: File,
+    diagnostics: ReceiptAttemptDiagnostics,
+  ): Promise<ProcessingResult> {
     this.ensureCloudAvailable();
+    // Resolved only once a request is actually going to be sent, so a key
+    // edited mid-session is reported as what actually answered.
+    diagnostics.provider = this.receiptProvider();
 
     const imageBase64 = await fileToBase64(imageFile);
     const receipt = await this.cloudLLMProvider.parseReceipt(imageBase64);
@@ -415,8 +420,14 @@ export class AIStrategyService {
   /**
    * Process multiple images with cloud AI.
    */
-  private async processMultipleWithCloud(imageFiles: File[]): Promise<ProcessingResult> {
+  private async processMultipleWithCloud(
+    imageFiles: File[],
+    diagnostics: ReceiptAttemptDiagnostics,
+  ): Promise<ProcessingResult> {
     this.ensureCloudAvailable();
+    // Resolved only once a request is actually going to be sent, so a key
+    // edited mid-session is reported as what actually answered.
+    diagnostics.provider = this.receiptProvider();
 
     const imageBase64Array: string[] = [];
     for (const file of imageFiles) {
