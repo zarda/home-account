@@ -16,9 +16,27 @@
  * lower rung knows less about this receipt than a higher one that already
  * spoke, so it must never be asked to break the tie (see #156).
  */
-import type { CurrencySuggestion } from '../../models';
+import type { CurrencySuggestion, CurrencySuggestionReason } from '../../models';
 import { currencyForCountry } from './country-bounds';
 import { readCountryCode } from './receipt-extraction.utils';
+
+const REASON_KEYS: Record<CurrencySuggestionReason, string> = {
+  receipt: 'import.currencyReasonReceipt',
+  position: 'import.currencyReasonPosition',
+  session: 'import.currencyReasonSession',
+  locale: 'import.currencyReasonLocale',
+};
+
+/**
+ * The i18n key naming why a rung answered — one namespace, shared by the
+ * form's own chip and the review card's, which used to carry the same four
+ * strings twice under `transactions` and `import`. `position` is real here
+ * even though the review card's own ladder never reaches it (it asks with
+ * no position rung at all): the type is shared, so the mapping has to be.
+ */
+export function currencyReasonKey(reason: CurrencySuggestionReason): string {
+  return REASON_KEYS[reason];
+}
 
 export interface CurrencyEvidence {
   /** ISO 3166-1 alpha-2 the reader concluded the receipt was issued in. */

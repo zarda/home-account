@@ -63,7 +63,7 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
-import { countryDisplayName, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
+import { countryDisplayName, currencyReasonKey, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
 import { readCountryCode } from '../../../core/utils/receipt-extraction.utils';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
@@ -986,20 +986,15 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   /** "Looks like South Korea — use KRW?", or just "Use THB?" for a session rung that knows no country. */
   suggestionLabel(suggestion: CurrencySuggestion): string {
     return suggestion.country
-      ? this.translationService.t('transactions.currencyFromLocation', {
+      ? this.translationService.t('import.currencyFromCountry', {
           country: countryDisplayName(suggestion.country, this.localeFormat.locale),
           currency: suggestion.code,
         })
-      : this.translationService.t('transactions.currencySuggested', { currency: suggestion.code });
+      : this.translationService.t('import.currencySuggested', { currency: suggestion.code });
   }
 
   reasonLabel(reason: CurrencySuggestionReason): string {
-    switch (reason) {
-      case 'receipt': return this.translationService.t('transactions.currencyReasonReceipt');
-      case 'position': return this.translationService.t('transactions.currencyReasonPosition');
-      case 'session': return this.translationService.t('transactions.currencyReasonSession');
-      case 'locale': return this.translationService.t('transactions.currencyReasonLocale');
-    }
+    return this.translationService.t(currencyReasonKey(reason));
   }
 
   /** Take the suggested currency, adding it to the picker if it is uncurated, and remember it for the session. */
@@ -1096,15 +1091,25 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (!confirmed) return;
 
     this.isScanning.set(true);
+    // This extraction starts at the form, from an image the user chose
+    // there — the same door the single-shot scan above already opened and
+    // settled, not the camera's (#151).
+    const attempt = this.receiptAttempts.begin('form', 'receipt_image', [file]);
     try {
       const importResult = await this.aiImportService.importFromMultipleImages([file]);
+      if (importResult.transactions.length > 0) {
+        attempt.succeeded(importResult);
+      } else {
+        attempt.failed('nothing_extracted');
+      }
       // Close before navigating so the wizard reads the completed
       // navigation's history state
       this.dialogRef.close(false);
       this.router.navigate(['/import/file'], {
-        state: { importResult, fromCamera: true, multiImage: false },
+        state: { importResult, fromCamera: true, door: 'form', multiImage: false },
       });
     } catch (error) {
+      attempt.failed(error);
       console.error('Multi-receipt import error:', error);
       this.notifications.error(this.translationService.t('ai.scanError'));
     } finally {
@@ -1124,6 +1129,10 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanFieldConfidence.set(null);
       this.suggestedCurrency.set(null);
       this.scanCurrencyFellBack = false;
+      // The prefilled address's country claim dies with the scan that made
+      // it — otherwise a still-typed Location field would save with a
+      // country read off a receipt the user just discarded.
+      this.printedLocationCountry = null;
     }
   }
 

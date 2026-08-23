@@ -164,6 +164,12 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
   }
 
   formatDuration(durationMs: number): string {
+    // A native pass often finishes in a few hundred milliseconds; floor
+    // alone renders every one of those as "0 s", which reads as instant
+    // rather than fast.
+    if (durationMs < 1000) {
+      return this.t('import.durationUnderOneSecond');
+    }
     return this.t('import.durationSeconds', { seconds: Math.floor(durationMs / 1000) });
   }
 

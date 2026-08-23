@@ -17,7 +17,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
-import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
+import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -286,12 +286,7 @@ export class TransactionPreviewTableComponent {
   }
 
   private reasonLabel(reason: CurrencySuggestionReason): string {
-    switch (reason) {
-      case 'receipt': return this.translationService.t('import.currencyReasonReceipt');
-      case 'session': return this.translationService.t('import.currencyReasonSession');
-      case 'locale': return this.translationService.t('import.currencyReasonLocale');
-      case 'position': return this.translationService.t('import.currencyReasonPosition');
-    }
+    return this.translationService.t(currencyReasonKey(reason));
   }
 
   /** Link to the offered rule, or undo it — restoring what the source said about isRecurring. */

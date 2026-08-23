@@ -452,9 +452,10 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
     attempt.succeeded(result);
     this.dialogRef.close({ success: true, result });
     this.router.navigate(['/import/file'], {
-      state: { 
-        importResult: result, 
-        fromCamera: true, 
+      state: {
+        importResult: result,
+        fromCamera: true,
+        door: 'camera',
         multiImage: isMultiImage,
       }
     });

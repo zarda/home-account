@@ -20,7 +20,8 @@ import {
   ImportSource,
   ImportFileType,
   DuplicateCheck,
-  MultiImageMetadata
+  MultiImageMetadata,
+  ReceiptDoor
 } from '../../../../models';
 
 import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
@@ -70,10 +71,16 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   acceptedFileTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp';
 
-  // Flag to track if we came from camera
+  // Flag to track if the review data arrived already extracted, via router
+  // state, rather than through this wizard's own processFiles.
   fromCamera = false;
   isMultiImage = false;
   private cameraImportResult: ImportResult | null = null;
+  // Which door actually ran the extraction the state carries — the camera
+  // dialog's own capture by default, since it is the door that predates
+  // this field; a producer that is not the camera (the transaction form's
+  // own multi-receipt review) names itself explicitly (#151).
+  private resultDoor: ReceiptDoor = 'camera';
 
   /**
    * What each processed result actually was, row-counted.
@@ -221,15 +228,19 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
 
-    // Check if we received import result from camera capture via router state
+    // Check if we received an already-extracted import result via router
+    // state — the camera dialog's capture, or the transaction form's own
+    // multi-receipt review.
     const state = history.state as {
       importResult?: ImportResult;
       fromCamera?: boolean;
       multiImage?: boolean;
+      door?: ReceiptDoor;
     } | undefined;
 
     if (state?.importResult && state?.fromCamera) {
       this.fromCamera = true;
+      this.resultDoor = state.door ?? 'camera';
       this.isMultiImage = state.multiImage ?? false;
       this.cameraImportResult = state.importResult;
       this.processedBatches = [{
@@ -513,7 +524,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         ? this.cameraImportResult?.diagnostics ?? null
         : this.imageDiagnostics;
       const provenance = this.processedBatches.some(b => b.source === 'image')
-        ? provenanceOf(this.fromCamera ? 'camera' : 'wizard', diagnostics)
+        ? provenanceOf(this.fromCamera ? this.resultDoor : 'wizard', diagnostics)
         : undefined;
       const result = await this.importService.confirmImport(
         this.extractedTransactions(),

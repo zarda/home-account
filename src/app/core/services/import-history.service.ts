@@ -216,7 +216,14 @@ export class ImportHistoryService {
   }
 
   /**
-   * Get import statistics for the current user
+   * Get import statistics for the current user.
+   *
+   * Derived from `getImportHistory()`, so every figure here is over the
+   * newest `IMPORT_HISTORY_LIMIT` (200) records, not the account's whole
+   * history — an account with more imports than that sees `totalImports`
+   * and `successRate` describe only its most recent slice. No production
+   * caller reads this today; an unbounded count would need its own read
+   * rather than riding the page's own subscription.
    */
   getImportStats(): Observable<{
     totalImports: number;

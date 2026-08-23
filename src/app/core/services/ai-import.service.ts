@@ -223,7 +223,12 @@ export class AIImportService {
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
 
-      const categorized = await this.categorizeTransactions(extractedTransactions);
+      // The one categorizeTransactions call site that is a real receipt
+      // photo, so the ladder is layered on here rather than inside the
+      // shared mapper — the CSV, PDF and statement doors that mapper also
+      // serves have no receipt to read a country off (ADR 0064).
+      const categorized = (await this.categorizeTransactions(extractedTransactions))
+        .map(row => ({ ...row, ...this.currencySuggestionSlot(row) }));
       const suggested = await this.suggestTagsFor(categorized, history);
       const offered = await this.attachRecurringMatches(suggested);
 
@@ -236,7 +241,9 @@ export class AIImportService {
       this.processingProgress.set(100);
 
       const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
-      result.diagnostics = this.cloudDiagnostics(startedAt);
+      // The call above already succeeded, so resolving the provider here
+      // reports exactly what answered.
+      result.diagnostics = this.cloudDiagnostics(startedAt, this.strategyService.receiptProvider());
 
       return result;
     } finally {
@@ -275,6 +282,11 @@ export class AIImportService {
     this.processingStatus.set('Reading statement...');
     this.processingProgress.set(10);
     this.processingSource.set('cloud');
+    // Stays null until a request is actually issued, the same discipline
+    // AIStrategyService.runProcessing keeps: a failure in groundingHistory
+    // or a page's own fileToBase64 is not the provider's doing, and must not
+    // report one.
+    let provider: ReceiptAttemptDiagnostics['provider'] = null;
 
     try {
       const history = await this.groundingHistory.recent();
@@ -282,6 +294,7 @@ export class AIImportService {
       for (let i = 0; i < files.length; i++) {
         this.processingProgress.set(10 + Math.round((i / files.length) * 50));
         const imageBase64 = await this.fileToBase64(files[i]);
+        provider = this.strategyService.receiptProvider();
         extracted.push(
           ...(await this.withTimeout(
             signal => this.cloudLLMProvider.extractStatementTransactions(imageBase64, { signal }),
@@ -310,10 +323,10 @@ export class AIImportService {
       const result = this.buildImportResult(
         files[0], 'image', 'screenshot', marked, duplicates
       );
-      result.diagnostics = this.cloudDiagnostics(startedAt);
+      result.diagnostics = this.cloudDiagnostics(startedAt, provider);
       return result;
     } catch (error) {
-      throw this.asReceiptProcessingError(error, startedAt);
+      throw this.asReceiptProcessingError(error, startedAt, provider);
     } finally {
       this.isProcessing.set(false);
       this.processingSource.set(null);
@@ -395,13 +408,22 @@ export class AIImportService {
 
   /**
    * Diagnostics for the paths that call a cloud provider directly rather
-   * than through the strategy service. Always cloud, provider as routed,
-   * timed from the moment the door was entered.
+   * than through the strategy service. Always cloud, timed from the moment
+   * the door was entered. `provider` is the caller's own — resolved only
+   * once a request was actually issued, the same discipline
+   * AIStrategyService.runProcessing keeps, so a failure before any request
+   * left the process (a grounding read, a file that would not decode)
+   * reports no provider rather than blaming whichever one happens to be
+   * configured.
    */
-  private cloudDiagnostics(startedAt: number, error?: unknown): ReceiptAttemptDiagnostics {
+  private cloudDiagnostics(
+    startedAt: number,
+    provider: ReceiptAttemptDiagnostics['provider'],
+    error?: unknown
+  ): ReceiptAttemptDiagnostics {
     const base: ReceiptAttemptDiagnostics = {
       engine: 'cloud',
-      provider: this.strategyService.receiptProvider(),
+      provider,
       durationMs: performance.now() - startedAt,
     };
     if (error === undefined) {
@@ -412,10 +434,14 @@ export class AIImportService {
   }
 
   /** Wrap a direct-provider throw so the door can read what was learned. */
-  private asReceiptProcessingError(error: unknown, startedAt: number): ReceiptProcessingError {
+  private asReceiptProcessingError(
+    error: unknown,
+    startedAt: number,
+    provider: ReceiptAttemptDiagnostics['provider']
+  ): ReceiptProcessingError {
     return error instanceof ReceiptProcessingError
       ? error
-      : new ReceiptProcessingError(this.cloudDiagnostics(startedAt, error), error);
+      : new ReceiptProcessingError(this.cloudDiagnostics(startedAt, provider, error), error);
   }
 
   /**
@@ -445,6 +471,11 @@ export class AIImportService {
     this.isProcessing.set(true);
     this.processingStatus.set('Reading images...');
     this.processingProgress.set(5);
+    // Stays null until the extraction request is actually issued, the same
+    // discipline AIStrategyService.runProcessing keeps: a failure in the
+    // grounding read or in decoding one of the files above is not the
+    // provider's doing, and must not report one.
+    let provider: ReceiptAttemptDiagnostics['provider'] = null;
 
     try {
       const history = await this.groundingHistory.recent();
@@ -461,6 +492,7 @@ export class AIImportService {
 
       this.processingStatus.set('Extracting items from all images with AI...');
       this.processingProgress.set(30);
+      provider = this.strategyService.receiptProvider();
 
       // Use multi-image extraction with position-aware deduplication
       const extractedTransactions = await this.withTimeout(
@@ -500,10 +532,10 @@ export class AIImportService {
         duplicates,
         extractedTransactions
       );
-      result.diagnostics = this.cloudDiagnostics(startedAt);
+      result.diagnostics = this.cloudDiagnostics(startedAt, provider);
       return result;
     } catch (error) {
-      throw this.asReceiptProcessingError(error, startedAt);
+      throw this.asReceiptProcessingError(error, startedAt, provider);
     } finally {
       this.isProcessing.set(false);
     }
@@ -993,7 +1025,18 @@ export class AIImportService {
   }
 
   /**
-   * Categorize extracted transactions
+   * Categorize extracted transactions.
+   *
+   * Shared by every import path that is not itself a receipt photo — a CSV
+   * row, a rasterized PDF page and a statement screenshot all describe the
+   * account holder's own paper, not a purchase made somewhere the phone
+   * could place. It carries `receiptCountry` through when a row's own
+   * extraction happened to read one (the statement and PDF prompts ask for
+   * it too), but never layers the currency ladder on top of it: the offer
+   * stays a receipt affordance (ADR 0064), applied instead only where the
+   * extraction actually came off a receipt photo — this method's own
+   * caller for the single-image legacy fallback, `convertStrategyResultToCategories`
+   * and `categorizeMultiImageTransactions`.
    */
   async categorizeTransactions(
     transactions: ExtractedTransaction[]
@@ -1046,7 +1089,7 @@ export class AIImportService {
         ...(t.period ? { period: t.period } : {}),
         ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
       };
-      return { ...row, ...this.currencySuggestionSlot(row) };
+      return row;
     });
   }
 

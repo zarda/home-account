@@ -105,7 +105,7 @@ export interface RecurringMatchSuggestion {
   sourceIsRecurring?: boolean;
 }
 
-/** Which rung of the currency ladder spoke; the ladder itself is #156's slot to build. */
+/** Which rung of the currency ladder spoke: the receipt, the phone's position, the session's last choice, or the device locale (`suggestCurrency`, #156). */
 export type CurrencySuggestionReason = 'receipt' | 'position' | 'session' | 'locale';
 
 /** A currency offered for a row whose currency fell back. Offered, never applied in bulk (ADR 0062); never written. */
@@ -158,7 +158,7 @@ export interface CategorizedImportTransaction {
   location?: TransactionLocation;
   /** A review-step mark, never written: the country the reader concluded the receipt was issued in. */
   receiptCountry?: string;
-  /** A review-step mark, never written: the currency the ladder offers while `currencyFellBack` stands. The slot is declared; #156 builds the ladder that fills it. */
+  /** A review-step mark, never written: what `suggestCurrency` offers while `currencyFellBack` stands (currency-suggestion.utils.ts, #156). */
   currencySuggestion?: CurrencySuggestion;
   period?: BudgetPeriod;
   isRecurring?: boolean;
