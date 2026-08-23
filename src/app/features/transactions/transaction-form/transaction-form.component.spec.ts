@@ -26,6 +26,7 @@ import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/re
 import { GroundingHistoryService } from '../../../core/services/grounding-history.service';
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
+import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { Transaction, Category, Goal, User } from '../../../models';
 import { createTransaction, createCategory, createUser } from '../../../core/services/testing';
 import { NotificationService } from '../../../core/services/notification.service';
@@ -59,6 +60,7 @@ describe('TransactionFormComponent', () => {
   let tagSuggestions: jasmine.SpyObj<TagSuggestionService>;
   let groundingHistory: jasmine.SpyObj<GroundingHistoryService>;
   let tagMemory: jasmine.SpyObj<TagMemoryService>;
+  let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
   let currentUser: ReturnType<typeof signal<User | null>>;
   let goalService: {
     goals: ReturnType<typeof signal<Goal[]>>;
@@ -146,6 +148,8 @@ describe('TransactionFormComponent', () => {
     groundingHistory.recent.and.resolveTo([]);
     tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']);
     tagMemory.remember.and.resolveTo(undefined);
+    currencySession = jasmine.createSpyObj<CurrencyChoiceSessionService>('CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
+    currencySession.current.and.returnValue(null);
     currentUser = signal<User | null>(createUser());
     goalService = {
       goals: signal<Goal[]>([]),
@@ -184,6 +188,7 @@ describe('TransactionFormComponent', () => {
         { provide: TagMemoryService, useValue: tagMemory },
         { provide: GoalService, useValue: goalService },
         { provide: ReceiptAttemptService, useValue: attempts.service },
+        { provide: CurrencyChoiceSessionService, useValue: currencySession },
         { provide: MAT_DIALOG_DATA, useValue: { mode: 'add' } },
       ],
     })
@@ -754,46 +759,86 @@ describe('TransactionFormComponent', () => {
   describe('currency suggested from location', () => {
     const scan = (component: TransactionFormComponent) =>
       (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+    const fellBack = (row: Partial<ProcessedTransaction> = {}) =>
+      scanResult({ currency: 'USD', currencyFellBack: true, ...row });
+    let getCurrentPosition: jasmine.Spy;
 
-    it('offers the local currency when the receipt did not state one', async () => {
-      // currencyFellBack means the amount is sitting in the account's base
-      // currency because nothing was read — where the user is standing is a
-      // better guess than where they live.
-      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+    beforeEach(() => {
+      getCurrentPosition = jasmine.createSpy('getCurrentPosition')
+        .and.callFake((ok: (p: GeolocationPosition) => void) =>
+          ok({ coords: { latitude: 37.5665, longitude: 126.978 } } as GeolocationPosition)); // Seoul
+      spyOnProperty(navigator, 'geolocation', 'get').and.returnValue({ getCurrentPosition } as never);
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+    });
+
+    it('offers the currency of the country read off the receipt, over where the phone is', async () => {
+      strategy.processReceipt.and.resolveTo(fellBack({ receiptCountry: 'JP' }));
       const component = build().componentInstance;
       component.locationCoords.set({ lat: 37.5665, lng: 126.978 }); // Seoul
 
       await scan(component);
 
-      expect(component.suggestedCurrency()).toEqual({ code: 'KRW', country: 'KR' });
+      expect(component.suggestedCurrency()).toEqual({ code: 'JPY', country: 'JP', reason: 'receipt' });
+      expect(getCurrentPosition).not.toHaveBeenCalled();
       // Offered, not applied.
       expect(component.form.get('currency')?.value).toBe('USD');
     });
 
+    it('falls through to the position when the receipt did not say where it was issued', async () => {
+      strategy.processReceipt.and.resolveTo(fellBack());
+      const component = build().componentInstance;
+      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
+
+      await scan(component);
+
+      expect(component.suggestedCurrency()).toEqual({ code: 'KRW', country: 'KR', reason: 'position' });
+    });
+
+    it('never asks for a position for a receipt that is not from today', async () => {
+      // 2026-01-01 is never today; a fix taken now says nothing about it.
+      strategy.processReceipt.and.resolveTo(fellBack({ date: new Date(2026, 0, 1) }));
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      expect(component.suggestedCoordinates()).toBeNull();
+      // en-US locale → USD, which is already in the field, so nothing speaks.
+      expect(component.suggestedCurrency()).toBeNull();
+    });
+
+    it('offers what the user chose for the last fallen-back receipt this session', async () => {
+      currencySession.current.and.returnValue('THB');
+      strategy.processReceipt.and.resolveTo(fellBack({ date: new Date(2026, 0, 1) }));
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      expect(component.suggestedCurrency()).toEqual({ code: 'THB', reason: 'session' });
+    });
+
+    it('falls back to the device locale\'s region when nothing else speaks', async () => {
+      (Object.getOwnPropertyDescriptor(navigator, 'language')?.get as jasmine.Spy).and.returnValue('ja-JP');
+      strategy.processReceipt.and.resolveTo(fellBack({ date: new Date(2026, 0, 1) }));
+      const component = build().componentInstance;
+
+      await scan(component);
+
+      expect(component.suggestedCurrency()).toEqual({ code: 'JPY', country: 'JP', reason: 'locale' });
+    });
+
     it('says nothing when the model actually read a currency', async () => {
-      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: false }));
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: false, receiptCountry: 'KR' }));
       const component = build().componentInstance;
-      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
 
       await scan(component);
 
       expect(component.suggestedCurrency()).toBeNull();
     });
 
-    it('says nothing when the local currency is already in the field', async () => {
-      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'KRW', currencyFellBack: true }));
+    it('says nothing when the suggested currency is already in the field', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'KRW', currencyFellBack: true, receiptCountry: 'KR' }));
       const component = build().componentInstance;
-      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
-
-      await scan(component);
-
-      expect(component.suggestedCurrency()).toBeNull();
-    });
-
-    it('says nothing when the coordinates cannot be placed', async () => {
-      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
-      const component = build().componentInstance;
-      component.locationCoords.set({ lat: 0, lng: -140 }); // mid-Pacific
 
       await scan(component);
 
@@ -801,23 +846,48 @@ describe('TransactionFormComponent', () => {
     });
 
     it('says nothing when the platform refuses a position', async () => {
-      // A refusal is silent on purpose: the base currency is already in the
-      // field, and a suggestion nobody asked for is not worth an error.
-      const geolocation = { getCurrentPosition: (_ok: unknown, fail: () => void) => fail() };
-      spyOnProperty(navigator, 'geolocation', 'get').and.returnValue(geolocation as never);
-      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+      // Dated today, no receipt country and nothing attached: the one shape
+      // that actually reaches getCurrentPosition. scanResult's default date
+      // (2026-01-01) would be gated out before the platform was ever asked.
+      getCurrentPosition.and.callFake((_ok: unknown, fail: () => void) => fail());
+      strategy.processReceipt.and.resolveTo(fellBack({ date: new Date() }));
       const component = build().componentInstance;
 
       await scan(component);
 
+      expect(getCurrentPosition).toHaveBeenCalled();
       expect(component.suggestedCurrency()).toBeNull();
       expect(notifications.error).not.toHaveBeenCalledWith(jasmine.stringMatching(/location/i));
     });
 
-    it('accepting applies it and keeps it selectable', async () => {
-      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+    it('renders the country name and the reason, in the active locale', async () => {
+      strategy.processReceipt.and.resolveTo(fellBack({ receiptCountry: 'KR' }));
       const component = build().componentInstance;
-      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
+      await scan(component);
+
+      component.suggestionLabel(component.suggestedCurrency()!);
+      expect(TestBed.inject(TranslationService).t)
+        .toHaveBeenCalledWith('transactions.currencyFromLocation', { country: 'South Korea', currency: 'KRW' });
+      expect(component.reasonLabel('receipt')).toBe('transactions.currencyReasonReceipt');
+      expect(component.reasonLabel('position')).toBe('transactions.currencyReasonPosition');
+      expect(component.reasonLabel('session')).toBe('transactions.currencyReasonSession');
+      expect(component.reasonLabel('locale')).toBe('transactions.currencyReasonLocale');
+    });
+
+    it('labels a session suggestion without a country', async () => {
+      currencySession.current.and.returnValue('THB');
+      strategy.processReceipt.and.resolveTo(fellBack({ date: new Date(2026, 0, 1) }));
+      const component = build().componentInstance;
+      await scan(component);
+
+      component.suggestionLabel(component.suggestedCurrency()!);
+      expect(TestBed.inject(TranslationService).t)
+        .toHaveBeenCalledWith('transactions.currencySuggested', { currency: 'THB' });
+    });
+
+    it('accepting applies it, keeps it selectable and remembers it for the session', async () => {
+      strategy.processReceipt.and.resolveTo(fellBack({ receiptCountry: 'KR' }));
+      const component = build().componentInstance;
       await scan(component);
 
       component.acceptCurrencySuggestion();
@@ -825,18 +895,40 @@ describe('TransactionFormComponent', () => {
       expect(component.form.get('currency')?.value).toBe('KRW');
       expect(component.currencies().map(c => c.code)).toContain('KRW');
       expect(component.suggestedCurrency()).toBeNull();
+      expect(currencySession.remember).toHaveBeenCalledWith('KRW');
     });
 
-    it('dismissing leaves the form alone', async () => {
-      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: true }));
+    it('dismissing leaves the form alone and remembers nothing', async () => {
+      strategy.processReceipt.and.resolveTo(fellBack({ receiptCountry: 'KR' }));
       const component = build().componentInstance;
-      component.locationCoords.set({ lat: 37.5665, lng: 126.978 });
       await scan(component);
 
       component.dismissCurrencySuggestion();
 
       expect(component.suggestedCurrency()).toBeNull();
       expect(component.form.get('currency')?.value).toBe('USD');
+      expect(currencySession.remember).not.toHaveBeenCalled();
+    });
+
+    it('remembers a currency the user picks by hand for a fallen-back scan, and drops the chip', async () => {
+      strategy.processReceipt.and.resolveTo(fellBack({ receiptCountry: 'KR' }));
+      const component = build().componentInstance;
+      await scan(component);
+
+      component.form.patchValue({ currency: 'JPY' });
+
+      expect(currencySession.remember).toHaveBeenCalledWith('JPY');
+      expect(component.suggestedCurrency()).toBeNull();
+    });
+
+    it('remembers nothing when the model read the currency and the user merely edits it', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'USD', currencyFellBack: false }));
+      const component = build().componentInstance;
+      await scan(component);
+
+      component.form.patchValue({ currency: 'JPY' });
+
+      expect(currencySession.remember).not.toHaveBeenCalled();
     });
   });
 
@@ -874,6 +966,29 @@ describe('TransactionFormComponent', () => {
       component.form.patchValue({ locationName: '   ' });
       await scan(component);
       expect(component.form.get('locationName')?.value).toBe('渋谷店');
+    });
+
+    it('carries the country the reader read off the address to the saved transaction, when the prefill is kept', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店', country: 'JP' } }));
+      const component = build().componentInstance;
+      await scan(component);
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: '渋谷店', country: 'JP' });
+    });
+
+    it('drops the printed country once the prefilled name is edited', async () => {
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店', country: 'JP' } }));
+      const component = build().componentInstance;
+      await scan(component);
+      component.form.patchValue({ locationName: 'My café' });
+
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'My café' });
     });
   });
 

@@ -134,7 +134,7 @@ describe('TransactionFormComponent suggestion chips', () => {
   describe('the currency suggestion', () => {
     it('renders as a button, so a keyboard can reach the accept', () => {
       const fixture = build();
-      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH' });
+      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH', reason: 'position' });
       fixture.detectChanges();
 
       const chip: HTMLElement = fixture.nativeElement.querySelector('.suggestion-chip');
@@ -145,19 +145,20 @@ describe('TransactionFormComponent suggestion chips', () => {
 
     it('says what accepting does', () => {
       const fixture = build();
-      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH' });
+      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH', reason: 'position' });
       fixture.detectChanges();
 
       const chip: HTMLElement = fixture.nativeElement.querySelector('.suggestion-chip');
 
       // Its own text is the name — it already reads as an offer to accept.
       expect(chip.getAttribute('aria-label')).toBeNull();
-      expect(chip.textContent).toContain('transactions.currencyFromLocation:THB');
+      expect(chip.textContent).toContain('transactions.currencyFromLocation:Thailand,THB');
+      expect(chip.textContent).toContain('transactions.currencyReasonPosition');
     });
 
     it('applies the currency when activated', () => {
       const fixture = build();
-      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH' });
+      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH', reason: 'position' });
       fixture.detectChanges();
 
       fixture.nativeElement.querySelector('.suggestion-chip').click();
@@ -169,7 +170,7 @@ describe('TransactionFormComponent suggestion chips', () => {
 
     it('gives accept and dismiss the same keyboard affordance', () => {
       const fixture = build();
-      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH' });
+      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH', reason: 'position' });
       fixture.detectChanges();
 
       // The asymmetry this fixes: dismiss was always a real button, accept
