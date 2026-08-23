@@ -2,6 +2,7 @@ import {
   AI_CLOUD_UNAVAILABLE,
   AI_NO_PROVIDER,
   AI_QUEUED_OFFLINE,
+  ReceiptProcessingError,
   parseAIError,
 } from './ai-error.utils';
 
@@ -70,5 +71,18 @@ describe('parseAIError', () => {
 
   it('handles non-Error inputs', () => {
     expect(parseAIError('plain string 429').type).toBe('rate_limit');
+  });
+
+  it('classifies a ReceiptProcessingError by its cause, name included', () => {
+    // The strategy service wraps the provider's throw; the abort name lives
+    // on the cause, and unwrapping is what keeps a timeout a timeout.
+    const cause = new Error('The operation was cancelled');
+    cause.name = 'AbortError';
+    const wrapped = new ReceiptProcessingError(
+      { engine: 'cloud', provider: 'gemini', durationMs: 10 },
+      cause
+    );
+    expect(wrapped.message).toBe('The operation was cancelled');
+    expect(parseAIError(wrapped).type).toBe('timeout');
   });
 });
