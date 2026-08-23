@@ -324,4 +324,29 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     });
     expect(TestBed.inject(AnalyticsService).trackReceiptImport).not.toHaveBeenCalled();
   }, 20000);
+
+  // ADR 0059 through the queue door, under real rules: the printed address
+  // survives to the stored document, and a slot nobody filled is absent.
+  it('stores the location a queued receipt printed, through the one mapper', async () => {
+    ai.processReceipt.and.resolveTo({
+      transactions: [{
+        date: new Date(2026, 5, 15), description: 'Smoke located', amount: 88.8, type: 'income',
+        currency: 'USD', confidence: 0.9, source: 'cloud', suggestedCategoryId: 'salary',
+        location: { name: 'Shibuya 1-2-3', country: 'JP' }, tags: ['trip'],
+      }],
+      source: 'cloud', confidence: 0.9, processingTimeMs: 1,
+    });
+    const id = await queue.queueImage(receiptFile());
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    const stored = await firestoreService.getCollection<{
+      amount: number; location?: { name: string; country?: string }; tags?: string[]; period?: unknown;
+    }>(`users/${uid}/transactions`);
+    const row = stored.find((t) => t.amount === 88.8);
+    expect(row?.location).toEqual({ name: 'Shibuya 1-2-3', country: 'JP' });
+    expect(row?.tags).toEqual(['trip']);
+    expect(row && 'period' in row).toBeFalse();
+  }, 20000);
 });

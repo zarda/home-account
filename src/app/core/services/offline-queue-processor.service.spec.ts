@@ -112,7 +112,7 @@ describe('OfflineQueueProcessorService', () => {
         { provide: TransactionService, useValue: transactions },
         { provide: NotificationService, useValue: notifications },
         { provide: TranslationService, useValue: translation },
-        { provide: AuthService, useValue: { userId } },
+        { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
         { provide: ReceiptAttemptService, useValue: attempts.service },
       ],
     });
@@ -353,6 +353,46 @@ describe('OfflineQueueProcessorService', () => {
       await waitFor(() => queue.updateImageStatus.calls.count() === 2);
       expect(attempts.service.begin).not.toHaveBeenCalled();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_5', 'pending');
+    });
+
+    it('carries location, tags, period and recurring through the one mapper', async () => {
+      // The queue used to hand-build its DTO with six fields, so exactly the
+      // receipts most likely to be foreign — queued because the phone was
+      // offline — lost the address the model read (ADR 0059).
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({
+        location: { name: 'Shibuya 1-2-3' }, tags: ['travel'], period: 'monthly', isRecurring: false,
+      })]));
+
+      dispatchImage('img_7');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      const dto = transactions.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'Shibuya 1-2-3' });
+      expect(dto.tags).toEqual(['travel']);
+      expect(dto.period).toBe('monthly');
+      expect(dto.isRecurring).toBeFalse();
+    });
+
+    it('writes no empty slot for a row that carries none', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({ notes: undefined })]));
+
+      dispatchImage('img_8');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      const dto = transactions.addTransaction.calls.mostRecent().args[0];
+      expect(Object.keys(dto).sort()).toEqual(['amount', 'categoryId', 'currency', 'date', 'description', 'type']);
+    });
+
+    it('never writes a review mark', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({ currencyFellBack: true, currency: 'USD' })]));
+
+      dispatchImage('img_9');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect('currencyFellBack' in transactions.addTransaction.calls.mostRecent().args[0]).toBeFalse();
     });
   });
 
