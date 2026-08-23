@@ -240,14 +240,14 @@ describe('ImportWizardComponent', () => {
       component.onFilesSelected([octetImage()]);
       await component.processFiles();
 
-      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith({ outcome: 'ok' });
+      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith(jasmine.objectContaining({ outcome: 'ok' }));
 
       mockAnalytics.trackReceiptImport.calls.reset();
       mockImportService.importFromMultipleImages.and.rejectWith(new Error('extraction failed'));
       component.onFilesSelected([octetImage()]);
       await component.processFiles();
 
-      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith({ outcome: 'failed' });
+      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith(jasmine.objectContaining({ outcome: 'failed' }));
     });
   });
 

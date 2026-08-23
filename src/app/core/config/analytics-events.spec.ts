@@ -97,6 +97,20 @@ describe('validateAnalyticsParams', () => {
     expect(validateAnalyticsParams('receipt_import', { outcome: 'partially_ok' })).toBeNull();
   });
 
+  it('accepts a full receipt_import payload and rejects one missing a dimension', () => {
+    // Every declared parameter on every branch, or the event is dropped —
+    // which is why the service fills 'none' for a branch that never chose an
+    // engine rather than leaving the key out.
+    const full = {
+      outcome: 'failed', path: 'camera', engine: 'cloud_after_native',
+      provider: 'gemini', failure: 'timeout', duration: '15s_to_60s',
+    };
+    expect(validateAnalyticsParams('receipt_import', full)).toEqual(full);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { path: _omitted, ...missingPath } = full;
+    expect(validateAnalyticsParams('receipt_import', missingPath)).toBeNull();
+  });
+
   it('should reject free text even in a declared parameter', () => {
     // The case that matters: a call site passing something derived from user
     // data into a slot that only ever holds enumerated values.

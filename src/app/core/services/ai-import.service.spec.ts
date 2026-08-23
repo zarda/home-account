@@ -9,6 +9,7 @@ import {
   IMPORT_READBACK_FAILED,
   IMPORT_READBACK_TIMEOUT_MS,
 } from './ai-import.service';
+import { ReceiptProcessingError } from '../utils/ai-error.utils';
 import {
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
@@ -89,7 +90,9 @@ describe('AIImportService', () => {
       currentUser: jasmine.createSpy('currentUser').and.returnValue(createMockUser('user123')),
       userId: jasmine.createSpy('userId').and.returnValue('user123')
     });
-    strategyService = jasmine.createSpyObj('AIStrategyService', ['canUseCloud', 'canUseNative', 'processReceipt']);
+    strategyService = jasmine.createSpyObj('AIStrategyService', ['canUseCloud', 'canUseNative', 'processReceipt'], {
+      receiptProvider: signal<'gemini' | 'openai' | 'claude' | null>('gemini'),
+    });
     offlineQueue = jasmine.createSpyObj('OfflineQueueService', ['queueImage']);
     isOnlineSignal = signal(true);
     pwaService = jasmine.createSpyObj('PwaService', [], {
@@ -251,6 +254,7 @@ describe('AIImportService', () => {
         source: 'cloud',
         confidence: 0.9,
         processingTimeMs: 10,
+        diagnostics: { engine: 'cloud', provider: 'gemini', durationMs: 10 },
         transactions: [{
           date: new Date(2024, 5, 1),
           description: 'Lunch',
@@ -266,7 +270,7 @@ describe('AIImportService', () => {
 
       expect(result.source).toBe('image');
       expect(result.transactions.length).toBe(1);
-      expect(result.processingSource).toBe('cloud');
+      expect(result.diagnostics).toEqual({ engine: 'cloud', provider: 'gemini', durationMs: 10 });
       expect(duplicateService.checkDuplicates).toHaveBeenCalled();
       expect(service.isProcessing()).toBeFalse();
     });
@@ -279,6 +283,7 @@ describe('AIImportService', () => {
         source: 'native',
         confidence: 0.5,
         processingTimeMs: 5,
+        diagnostics: { engine: 'native', provider: null, durationMs: 5 },
         transactions: [{
           date: new Date(2024, 5, 1),
           description: 'Item',
@@ -297,7 +302,7 @@ describe('AIImportService', () => {
       // Coerced to the catch-all for display, but graded for review rather
       // than wearing the 0.4 the extraction reported about something else.
       expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
-      expect(result.processingSource).toBe('native');
+      expect(result.diagnostics?.engine).toBe('native');
     });
 
     it('keeps the extraction confidence on a row whose category resolved', async () => {
@@ -369,8 +374,24 @@ describe('AIImportService', () => {
       const result = await service.importFromImage(makeFile('r.png', 'image/png'));
 
       expect(cloudLLMProvider.extractTransactionsFromImage).toHaveBeenCalled();
-      expect(result.processingSource).toBe('cloud');
+      expect(result.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', provider: 'gemini',
+      }));
       expect(result.transactions.length).toBe(1);
+    });
+
+    it('wraps a direct-provider failure with cloud diagnostics', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.rejectWith(new Error('503 service unavailable'));
+
+      const failure = await service
+        .importFromMultipleImages([makeFile('r.png', 'image/png')])
+        .catch(e => e);
+
+      expect(failure).toBeInstanceOf(ReceiptProcessingError);
+      expect(failure.message).toBe('503 service unavailable');
+      expect(failure.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', provider: 'gemini', errorType: 'server',
+      }));
     });
 
     it('should fall back to provider extraction when the strategy returns zero transactions', async () => {

@@ -800,6 +800,23 @@ describe('AIStrategyService', () => {
       }));
     });
 
+    it('reports no provider when the device was offline and nothing was sent', async () => {
+      // canUseCloud() is isOnline && hasAnyCloudProvider, but receiptProvider()
+      // reads availability alone — so a configured key on an offline phone used
+      // to be reported as the provider that answered, for a request
+      // ensureCloudAvailable refused to send.
+      cloudMock.hasAnyCloudProvider.and.returnValue(true);
+      cloudMock.resolveProvider.and.returnValue('gemini');
+      pwaMock.isOnline.and.returnValue(false);
+      const service = createService('web');
+
+      const failure = await service.processReceipt(imageFile()).catch(e => e);
+
+      expect(failure.message).toBe(AI_CLOUD_UNAVAILABLE);
+      expect(failure.diagnostics.provider).toBeNull();
+      expect(failure.diagnostics.errorType).toBe('network');
+    });
+
     it('attaches diagnostics to a multi-image result too', async () => {
       cloudMock.extractTransactionsFromMultipleImages.and.resolveTo([]);
       const service = createService('web');
