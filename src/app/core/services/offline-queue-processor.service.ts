@@ -7,7 +7,8 @@ import { TranslationService } from './translation.service';
 import { AuthService } from './auth.service';
 import { ReceiptAttemptService } from './receipt-attempt.service';
 import { ProcessedTransaction } from './ai-types';
-import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
+import { toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { baseCurrencyOf } from '../../models';
 
 /**
  * Coordinates the asynchronous side of the offline queue.
@@ -23,6 +24,9 @@ import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
  *
  * It is instantiated eagerly at startup (via provideAppInitializer in
  * app.config.ts) so its listener is attached before any sync fires.
+ *
+ * Rows are written through toCreateTransactionDTO, so what the reader filled
+ * is what lands.
  */
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueProcessorService implements OnDestroy {
@@ -147,16 +151,18 @@ export class OfflineQueueProcessorService implements OnDestroy {
           continue;
         }
 
-        await this.transactionService.addTransaction({
-          type: tx.type,
-          amount: tx.amount,
-          currency: tx.currency,
-          // Same fallback the review table applies to an unlabelled row.
-          categoryId: tx.suggestedCategoryId || FALLBACK_CATEGORY_ID,
-          description: tx.description,
-          date: tx.date,
-          note: tx.notes,
-        }, { id: rowTxId });
+        // The same mapper every other import door writes through (ADR 0059):
+        // the row's renames only, and every optional the reader filled
+        // travels without this door naming it. The photo is the one thing
+        // that still does not travel from here — a follow-up.
+        await this.transactionService.addTransaction(
+          toCreateTransactionDTO({
+            ...tx,
+            categoryId: tx.suggestedCategoryId,
+            note: tx.notes,
+          }, baseCurrencyOf(this.authService.currentUser())),
+          { id: rowTxId },
+        );
         landed++;
       } catch (error) {
         anyFailed = true;
