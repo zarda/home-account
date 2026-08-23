@@ -336,6 +336,7 @@ export class AIImportService {
       fieldConfidence: tx.fieldConfidence,
       ...(tx.tags?.length ? { tags: tx.tags } : {}),
       ...(tx.location ? { location: tx.location } : {}),
+      ...(tx.receiptCountry ? { receiptCountry: tx.receiptCountry } : {}),
       ...(tx.period ? { period: tx.period } : {}),
       ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {})
     }));
@@ -558,6 +559,7 @@ export class AIImportService {
         ...(original.merchant ? { merchant: original.merchant } : {}),
         ...(original.tags?.length ? { tags: original.tags } : {}),
         ...(original.location ? { location: original.location } : {}),
+        ...(original.receiptCountry ? { receiptCountry: original.receiptCountry } : {}),
         ...(original.period ? { period: original.period } : {}),
         ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {})
       };
@@ -988,6 +990,7 @@ export class AIImportService {
         ...(t.merchant ? { merchant: t.merchant } : {}),
         ...(t.tags?.length ? { tags: t.tags } : {}),
         ...(t.location ? { location: t.location } : {}),
+        ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
         ...(t.period ? { period: t.period } : {}),
         ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
       };

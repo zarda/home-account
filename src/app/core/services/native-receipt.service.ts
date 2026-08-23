@@ -8,6 +8,7 @@ import { parseReceiptOcrText } from './receipt-text-parser';
 import { buildCategoryPromptCatalog, matchCategoryName } from '../utils/categorization.utils';
 import {
   printedLocationSlot,
+  readCountryCode,
   readCurrencyCode,
   readPrintedLocation,
 } from '../utils/receipt-extraction.utils';
@@ -126,6 +127,7 @@ export class NativeReceiptService {
     const match = extraction.category
       ? matchCategoryName(extraction.category, categories, translate)
       : undefined;
+    const country = readCountryCode(extraction.country);
 
     return {
       // The model answers `YYYY-MM-DD`, which the Date constructor reads as UTC
@@ -143,7 +145,8 @@ export class NativeReceiptService {
       source: 'native',
       notes: extraction.details || undefined,
       suggestedCategoryId: match?.matched ? match.id : undefined,
-      ...printedLocationSlot(readPrintedLocation(extraction.location, extraction.merchant)),
+      ...printedLocationSlot(readPrintedLocation(extraction.location, extraction.merchant), country),
+      ...(country ? { receiptCountry: country } : {}),
     };
   }
 

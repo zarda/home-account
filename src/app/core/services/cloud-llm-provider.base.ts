@@ -10,6 +10,7 @@ import {
   SearchIntent,
   SearchQueryContext,
   Transaction,
+  TransactionLocation,
 } from '../../models';
 import {
   PromptId,
@@ -36,6 +37,7 @@ import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
 import {
   printedLocationSlot,
+  readCountryCode,
   readCurrencyCode,
   readFieldConfidence,
   readPrintedLocation,
@@ -250,6 +252,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       const response = await this.sendVision('receiptParse', rendered, [imageBase64], options);
       const parsed = JSON.parse(this.extractJson(response.text));
       const printed = readPrintedLocation(parsed.location, parsed.merchant);
+      const country = readCountryCode(parsed.country);
 
       return {
         merchant: parsed.merchant || 'Unknown',
@@ -263,6 +266,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         receiptCount: Number(parsed.receiptCount) || 1,
         fieldConfidence: readFieldConfidence(parsed),
         ...(printed ? { location: printed } : {}),
+        ...(country ? { receiptCountry: country } : {}),
       };
     });
   }
@@ -290,7 +294,8 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         [imageBase64],
         options
       );
-      const extracted: ExtractedTransaction[] = JSON.parse(this.extractJson(response.text));
+      const extracted: (ExtractedTransaction & { country?: unknown })[] =
+        JSON.parse(this.extractJson(response.text));
 
       return extracted.map(t => ({
         date: t.date || dayKey(new Date()),
@@ -303,7 +308,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         details: t.details,
         amountConfidence: t.amountConfidence,
         dateConfidence: t.dateConfidence,
-        ...printedLocationSlot(readPrintedLocation(t.location, t.merchant)),
+        ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
       }));
     });
   }
@@ -347,7 +352,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         imageBase64Array,
         options
       );
-      const extracted: MultiImageExtractedTransaction[] = JSON.parse(
+      const extracted: (MultiImageExtractedTransaction & { country?: unknown })[] = JSON.parse(
         this.extractJson(response.text)
       );
 
@@ -368,7 +373,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: t.wasMerged || false,
         mergedFromImages: t.mergedFromImages,
-        ...printedLocationSlot(readPrintedLocation(t.location, t.merchant)),
+        ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
       }));
     });
   }
@@ -802,5 +807,21 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       name => this.translateCategoryName(name)
     );
     return match.matched ? match.id : undefined;
+  }
+
+  /**
+   * The location slot, with the country filed inside it when an address was
+   * read, plus the country as a mark on the row either way. The mark is what
+   * the currency ladder reads; the address is what the transaction keeps.
+   */
+  protected countrySlots(
+    country: unknown,
+    printed: string | undefined
+  ): { location?: TransactionLocation; receiptCountry?: string } {
+    const code = readCountryCode(country);
+    return {
+      ...printedLocationSlot(printed, code),
+      ...(code ? { receiptCountry: code } : {}),
+    };
   }
 }

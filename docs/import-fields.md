@@ -32,14 +32,20 @@ All three carry the optional field set `tags`, `location`, `period`,
 `isRecurring` and `recurringId` (plus `note` on `ExtractedTransaction` and
 `merchant` on the extraction and review shapes). `ProcessedTransaction` also
 carries `imageIndex`/`mergedFromImages`, the photo mapping the camera path
-needs.
+needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
+also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
+files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries three more that are **review-step marks,
+`CategorizedImportTransaction` carries five more that are **review-step marks,
 not fields**: `currencyFellBack` (nobody read a currency, so the base currency
 is standing in), `suggestedTags` (what was offered, so the confirm step can
-tell a removal from a row that never had any) and `recurringMatch` (the rule
-this row looks like). None of them reaches the mapper — it names its fields —
-and none of them is ever written to a transaction.
+tell a removal from a row that never had any), `recurringMatch` (the rule
+this row looks like), `receiptCountry` (the country the reader concluded the
+receipt was issued in — it reaches the transaction only inside
+`location.country`, and only when an address was printed) and
+`currencySuggestion` (what the currency ladder offers while `currencyFellBack`
+stands). None of them reaches the mapper — it names its fields — and none of
+them is ever written to a transaction.
 
 The renames, applied only at the confirm step's call into the mapper:
 `suggestedCategoryId` → `categoryId`, `notes` → `note`. Nothing else is named

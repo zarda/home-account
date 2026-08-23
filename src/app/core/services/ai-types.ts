@@ -48,6 +48,8 @@ export interface ProcessedTransaction {
   // nobody looked, so no producer defaults any of them.
   tags?: string[];
   location?: TransactionLocation;
+  /** ISO 3166-1 alpha-2 the model concluded the receipt was issued in; absent when it could not say. A review-step mark, never written. */
+  receiptCountry?: string;
   period?: BudgetPeriod;
   isRecurring?: boolean;
   recurringId?: string;

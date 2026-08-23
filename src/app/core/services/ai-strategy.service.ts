@@ -463,6 +463,7 @@ export class AIStrategyService {
       imageIndex: t.imageIndex,
       ...(t.mergedFromImages?.length ? { mergedFromImages: t.mergedFromImages } : {}),
       ...(t.location ? { location: t.location } : {}),
+      ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
     }));
 
     const avgConfidence = transactions.length > 0
@@ -545,7 +546,8 @@ export class AIStrategyService {
       suggestedCategoryId: receipt.suggestedCategory,
       fieldConfidence: receipt.fieldConfidence,
       currencyFellBack: !receipt.currency,
-      ...printedLocationSlot(receipt.location),
+      ...printedLocationSlot(receipt.location, receipt.receiptCountry),
+      ...(receipt.receiptCountry ? { receiptCountry: receipt.receiptCountry } : {}),
     };
   }
 

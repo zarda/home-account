@@ -90,8 +90,9 @@ const REGION_NAMES: Intl.DisplayNames | null = (() => {
 
 /**
  * Folds a CLDR-only spelling to the ISO 3166-1 code it stands for — UK to GB,
- * and the deprecated SU/AN/ZR/YU/CS/DD codes to whatever replaced them —
- * using Intl.Locale's own canonicalization rather than a maintained list, in
+ * and the whole deprecated-territory alias table CLDR maintains (SU, AN, ZR,
+ * YU, CS, DD and the rest of it) to whatever replaced each one — using
+ * Intl.Locale's own canonicalization rather than a maintained list, in
  * keeping with ADR 0008. UK is the one that matters: it is a plausible answer
  * for a British receipt, and without this it would pass readCountryCode
  * unchanged while quietly losing the GBP suggestion GB carries downstream.
@@ -123,9 +124,17 @@ function canonicalizeRegion(code: string): string {
  * of what it can name, not a table of which of those names are countries,
  * and there is no rule to derive that distinction from — only a maintained
  * list would separate them, which is the thing ADR 0008 asks this file not to
- * keep. They are harmless left in: none of them is a COUNTRY_CURRENCY key, so
- * the currency ladder simply finds nothing for them, which is the same
- * tolerance a code this function cannot place already falls back to.
+ * keep. This function serves two consumers, and both tolerate it. The
+ * currency ladder is the harmless one: none of them is a COUNTRY_CURRENCY
+ * key, so it simply finds nothing for them, the same fallback a code this
+ * function cannot place already gets. The other is `location.country` on a
+ * transaction (`printedLocationSlot`), which only ever stores this value
+ * alongside a printed address the same answer also produced — a receipt
+ * claiming to be issued from "the European Union" rather than a place is not
+ * a case the address next to it is trustworthy for either, so a macroregion
+ * landing there is no worse than the free-text place name a model can put in
+ * that same slot unchecked. Nothing here aggregates the value; it is read
+ * back for display and for the currency lookup that already tolerates it.
  */
 export function readCountryCode(value: unknown): string {
   if (typeof value !== 'string') {
@@ -203,7 +212,14 @@ export function readPrintedLocation(value: unknown, merchant?: unknown): string 
   return name;
 }
 
-/** The row slot for a printed location, or nothing at all when none was read. */
-export function printedLocationSlot(name: string | undefined): { location?: TransactionLocation } {
-  return name ? { location: { name } } : {};
+/**
+ * The row slot for a printed location, or nothing at all when none was read.
+ * The country rides inside it only when there is an address to hang it on.
+ */
+export function printedLocationSlot(
+  name: string | undefined,
+  country?: string
+): { location?: TransactionLocation } {
+  if (!name) return {};
+  return { location: { name, ...(country ? { country } : {}) } };
 }

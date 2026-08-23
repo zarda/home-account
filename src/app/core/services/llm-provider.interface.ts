@@ -39,6 +39,8 @@ export interface ParsedReceipt {
    */
   fieldConfidence?: FieldConfidence;
   location?: string;                // branch/address as printed, absent when none
+  /** ISO 3166-1 alpha-2 the model concluded the receipt was issued in; absent when it could not say. A review-step mark, never written. */
+  receiptCountry?: string;
 }
 
 export interface ReceiptItem {
@@ -92,6 +94,8 @@ export interface ExtractedTransaction {
   note?: string;
   tags?: string[];
   location?: TransactionLocation;
+  /** ISO 3166-1 alpha-2 the model concluded the receipt was issued in; absent when it could not say. A review-step mark, never written. */
+  receiptCountry?: string;
   period?: BudgetPeriod;
   isRecurring?: boolean;
   recurringId?: string;

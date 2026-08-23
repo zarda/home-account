@@ -8,7 +8,6 @@ import type {
 import { CloudLLMProviderBase, ProviderResponse } from './cloud-llm-provider.base';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
 import {
-  printedLocationSlot,
   readCurrencyCode,
   readPrintedLocation,
   readReceiptTotal,
@@ -296,7 +295,7 @@ export class GeminiService extends CloudLLMProviderBase {
         category: this.matchedCategoryId(receiptData.suggestedCategory),
         details: receiptData.receiptDetails || receiptData.itemsSummary ||
           receiptData.items || receiptData.description || '',
-        ...printedLocationSlot(readPrintedLocation(receiptData.location, receiptData.merchant)),
+        ...this.countrySlots(receiptData.country, readPrintedLocation(receiptData.location, receiptData.merchant)),
       }];
     });
   }
@@ -336,7 +335,7 @@ export class GeminiService extends CloudLLMProviderBase {
       );
       const extracted = JSON.parse(this.extractJson(response.text));
 
-      return extracted.map((t: Partial<MultiImageExtractedTransaction>) => ({
+      return extracted.map((t: Partial<MultiImageExtractedTransaction> & { country?: unknown }) => ({
         date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),
@@ -352,7 +351,7 @@ export class GeminiService extends CloudLLMProviderBase {
         receiptDetails: t.receiptDetails,
         receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: false,
-        ...printedLocationSlot(readPrintedLocation(t.location, t.merchant)),
+        ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
       }));
     });
   }

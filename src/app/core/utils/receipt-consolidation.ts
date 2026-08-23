@@ -112,6 +112,7 @@ export function consolidateReceiptItems(
       // Reported once per receipt, on whichever line the model chose to put it
       // — the same convention receiptDetails and receiptTotal use.
       const location = first.location ?? groupItems.find(i => i.location)?.location;
+      const receiptCountry = first.receiptCountry ?? groupItems.find(i => i.receiptCountry)?.receiptCountry;
       const netAmount = groupItems.reduce(
         (sum, item) => sum + (item.type === 'income' ? -item.amount : item.amount),
         0
@@ -141,6 +142,7 @@ export function consolidateReceiptItems(
         wasMerged: true,
         mergedFromImages: [...new Set(groupItems.map(i => i.imageIndex))],
         ...(location ? { location } : {}),
+        ...(receiptCountry ? { receiptCountry } : {}),
       });
     }
   }

@@ -105,6 +105,17 @@ export interface RecurringMatchSuggestion {
   sourceIsRecurring?: boolean;
 }
 
+/** Which rung of the currency ladder spoke (core/utils/currency-suggestion.utils.ts). */
+export type CurrencySuggestionReason = 'receipt' | 'position' | 'session' | 'locale';
+
+/** A currency offered for a row whose currency fell back. Offered, never applied in bulk (ADR 0062); never written. */
+export interface CurrencySuggestion {
+  code: string;
+  /** Alpha-2 of the country the rung answered from; absent on the session rung, which remembers a code and not a place. */
+  country?: string;
+  reason: CurrencySuggestionReason;
+}
+
 export interface CategorizedImportTransaction {
   id: string;                      // Temporary ID for UI selection
   description: string;
@@ -145,6 +156,10 @@ export interface CategorizedImportTransaction {
   /** What the suggester offered, so the confirm step can record what was removed. Never written. */
   suggestedTags?: string[];
   location?: TransactionLocation;
+  /** A review-step mark, never written: the country the reader concluded the receipt was issued in. */
+  receiptCountry?: string;
+  /** A review-step mark, never written: the currency the ladder offers while `currencyFellBack` stands. Filled in Task 12. */
+  currencySuggestion?: CurrencySuggestion;
   period?: BudgetPeriod;
   isRecurring?: boolean;
   /** The active rule this row looks like, offered unchecked. Never written. */

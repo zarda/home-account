@@ -138,10 +138,13 @@ export interface TransactionLocation {
   lat?: number;
   lng?: number;
   /**
-   * ISO 3166-1 alpha-2 country the coordinates fall in, when they could be
-   * placed. Derived on device from a bundled bounding-box table rather than
-   * looked up, so it is coarse near a land border and absent for a coordinate
-   * in open water or a country the table does not cover.
+   * ISO 3166-1 alpha-2 country of the location, from one of two sources.
+   * For an attached coordinate it is derived on device from a bundled
+   * bounding-box table rather than looked up, so it is coarse near a land
+   * border and absent for a coordinate in open water or a country the table
+   * does not cover. For a scanned receipt it is the country the reader
+   * concluded the receipt was issued in (`readCountryCode`), filed here by
+   * `printedLocationSlot(name, country)` only when an address was printed.
    *
    * Recorded because "what did the trip cost" is a question the ledger cannot
    * answer from a place name someone typed.
