@@ -68,6 +68,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted | 2026-08-21 |
 | [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted | 2026-08-22 |
 | [0063](0063-an-import-suggests-only-what-the-account-already-knows.md) | An import suggests only what the account already knows | Accepted | 2026-08-22 |
+| [0064](0064-the-country-comes-off-the-paper-before-the-phone.md) | The country comes off the paper before it comes off the phone | Accepted | 2026-08-23 |
+| [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted | 2026-08-23 |
 
 ## What belongs here
 

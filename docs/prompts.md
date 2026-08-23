@@ -54,7 +54,7 @@ currency: readCurrencyCode(parsed.currency),   // '' unless the ISO table knows 
 
 `readCurrencyCode` (`core/utils/receipt-extraction.utils.ts`) checks against `Intl.supportedValuesOf('currency')`, so neither the prompt nor the validator keeps a list. Empty is deliberate: the caller substitutes the account's own base currency, which is a better answer than any constant the prompt layer could name.
 
-The country works the same way. `COUNTRY_FIELD` asks for an ISO 3166-1 alpha-2 code concluded from what the receipt prints, and `readCountryCode` checks it against `Intl.DisplayNames` with `fallback: 'none'`, so neither side keeps a list. The vocabulary scan in `check-prompts.mjs` would not catch a run of two-letter codes — `prompt-registry.spec.ts` pins that no prompt carries one.
+The country works the same way. `COUNTRY_FIELD` asks for an ISO 3166-1 alpha-2 code concluded from what the receipt prints, and `readCountryCode` checks it against `Intl.DisplayNames` with `fallback: 'none'`, so neither side keeps a list. The vocabulary scan in `check-prompts.mjs` would not catch a run of two-letter codes — `prompt-registry.spec.ts` pins that no prompt carries one. A prompt or a Swift `@Guide` that started naming countries would pass the check and fail the rule; review is the other guard, and [ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md) records why the list is forbidden.
 
 The same rule applies to examples. Demonstrate the *shape* with placeholders (`"<item name as printed>"`) rather than a real receipt in one language, and say explicitly that the receipt's own script must be reproduced.
 
