@@ -32,8 +32,8 @@ type ReceiptImportPayload = AnalyticsEventParams<'receipt_import'>;
  * One receipt attempt, from the moment a door decides to run it to the one
  * branch that settles it.
  *
- * `succeeded` and `queued` send the event; `failed` sends it and writes the
- * failed record. Only the first call does anything — the camera dialog has
+ * `succeeded` and `queued` send the event; `failed` writes the failed record
+ * and sends it. Only the first call does anything — the camera dialog has
  * five terminal branches, two of them inside helpers, and the guard is what
  * makes counting an attempt twice structurally impossible rather than a
  * thing each door has to be careful about.
@@ -183,8 +183,8 @@ export class ReceiptAttemptService {
           return;
         }
         const { failure, diagnostics, message } = classifyReceiptFailure(errorOrReason);
-        send('failed', diagnostics, failure);
         void this.recordFailure(door, kind, files, provenanceOf(door, diagnostics, failure), message);
+        send('failed', diagnostics, failure);
       }),
     };
   }
