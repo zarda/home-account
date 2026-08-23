@@ -11,10 +11,7 @@ import { OfflineQueueService } from '../../../core/services/offline-queue.servic
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { ImportResult } from '../../../models';
-import {
-  UNCATEGORIZED_CATEGORY_CONFIDENCE,
-  UNRESOLVED_CATEGORY_CONFIDENCE,
-} from '../../../core/utils/categorization.utils';
+import { ProcessingResult } from '../../../core/services/ai-strategy.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 
@@ -59,10 +56,18 @@ describe('CameraCaptureComponent', () => {
     spyOn(URL, 'createObjectURL').and.returnValue('blob:fake');
     spyOn(URL, 'revokeObjectURL');
 
-    importService = jasmine.createSpyObj('AIImportService', ['importFromImage', 'importFromMultipleImages']);
+    importService = jasmine.createSpyObj('AIImportService', ['importFromImage', 'importFromMultipleImages', 'convertStrategyResultToCategories']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     importService.importFromImage.and.resolveTo(importResult);
     importService.importFromMultipleImages.and.resolveTo(importResult);
+    importService.convertStrategyResultToCategories.and.callFake((result: ProcessingResult) =>
+      result.transactions.map((tx, i) => ({
+        id: `row-${i}`, description: tx.description, amount: tx.amount, currency: tx.currency,
+        date: tx.date, type: tx.type, suggestedCategoryId: tx.suggestedCategoryId ?? 'other_expense',
+        categoryConfidence: tx.confidence, isDuplicate: false, selected: true,
+        ...(tx.currencyFellBack ? { currencyFellBack: true } : {}),
+        ...(tx.receiptCountry ? { receiptCountry: tx.receiptCountry } : {}),
+      })));
     strategyService = jasmine.createSpyObj('AIStrategyService', [
       'canUseNative', 'canUseCloud', 'processReceipt', 'processMultipleImages', 'platform',
     ]);
@@ -289,158 +294,40 @@ describe('CameraCaptureComponent', () => {
       expect(router.navigate).toHaveBeenCalledWith(['/import/file'], jasmine.any(Object));
     });
 
-    it('carries item notes and suggested category into the review payload', async () => {
-      strategyService.processMultipleImages.and.resolveTo({
+    it('hands the strategy result to the shared converter and carries its rows, marks included, to review', async () => {
+      const strategyResult = {
         transactions: [{
-          description: 'Cafe', amount: 1200, currency: 'JPY', date: new Date(), type: 'expense',
-          confidence: 0.9, notes: 'Latte — JPY 500\nMocha — JPY 700', suggestedCategoryId: 'food_coffee_&_drinks',
+          description: 'Cafe', amount: 1200, currency: 'TWD', currencyFellBack: true, receiptCountry: 'JP',
+          date: new Date(), type: 'expense', confidence: 0.9, source: 'cloud',
         }],
-        confidence: 0.9,
-      } as never);
-      const component = build().componentInstance;
-      withImages(component, 1);
-      await component.processImage();
-
-      const navState = (router.navigate.calls.mostRecent().args[1] as {
-        state: { importResult: ImportResult };
-      }).state;
-      const transaction = navState.importResult.transactions[0];
-      expect(transaction.notes).toBe('Latte — JPY 500\nMocha — JPY 700');
-      expect(transaction.suggestedCategoryId).toBe('food_coffee_&_drinks');
-      expect(transaction.categoryConfidence).toBe(0.9);
-    });
-
-    it('grades a category that resolved to nothing for review instead of confidently', async () => {
-      strategyService.processMultipleImages.and.resolveTo({
-        transactions: [{
-          description: 'Cafe', amount: 1200, currency: 'JPY', date: new Date(), type: 'expense',
-          // What an on-device scan reports when the model answered and the
-          // catalog could not place it: Vision's character confidence, and no
-          // category. The chip used to render this green.
-          confidence: 0.9, receiptId: 1,
-        }],
-        confidence: 0.9,
-      } as never);
-      const component = build().componentInstance;
-      withImages(component, 1);
-      await component.processImage();
-
-      const navState = (router.navigate.calls.mostRecent().args[1] as {
-        state: { importResult: ImportResult };
-      }).state;
-      const transaction = navState.importResult.transactions[0];
-      expect(transaction.suggestedCategoryId).toBe('other_expense');
-      expect(transaction.categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
-      // A different question, a different number: the duplicate detector picks
-      // which of two overlapping rows survives by comparing these.
-      expect(transaction.imageMetadata?.confidenceScore).toBe(0.9);
-    });
-
-    it('grades a row nothing attempted to categorize at the floor', async () => {
-      strategyService.processMultipleImages.and.resolveTo({
-        transactions: [{
-          description: 'Diner', amount: 15, currency: 'USD', date: new Date(), type: 'expense',
-          confidence: 0.77, categoryAttempted: false,
-        }],
-        confidence: 0.77,
-      } as never);
-      const component = build().componentInstance;
-      withImages(component, 1);
-      await component.processImage();
-
-      const navState = (router.navigate.calls.mostRecent().args[1] as {
-        state: { importResult: ImportResult };
-      }).state;
-      const transaction = navState.importResult.transactions[0];
-      expect(transaction.suggestedCategoryId).toBe('other_expense');
-      expect(transaction.categoryConfidence).toBe(UNCATEGORIZED_CATEGORY_CONFIDENCE);
-    });
-
-    it('carries the review flag for an item-sum fallback amount', async () => {
-      strategyService.processMultipleImages.and.resolveTo({
-        transactions: [{
-          description: 'Diner', amount: 15, currency: 'USD', date: new Date(), type: 'expense',
-          confidence: 0.7, fieldConfidence: { amount: 0.5 },
-        }],
-        confidence: 0.7,
-      } as never);
-      const component = build().componentInstance;
-      withImages(component, 1);
-      await component.processImage();
-
-      const navState = (router.navigate.calls.mostRecent().args[1] as {
-        state: { importResult: ImportResult };
-      }).state;
-      const transaction = navState.importResult.transactions[0];
-      expect(transaction.fieldConfidence).toEqual({ amount: 0.5 });
-    });
-
-    it('runs duplicate detection on strategy results and keeps receipt groups', async () => {
-      strategyService.processMultipleImages.and.resolveTo({
-        transactions: [
-          { description: 'Store A', amount: 10, currency: 'USD', date: new Date(), type: 'expense', confidence: 0.9, receiptId: 1 },
-          { description: 'Store B', amount: 20, currency: 'USD', date: new Date(), type: 'expense', confidence: 0.8, receiptId: 2 },
-        ],
-        confidence: 0.85,
-      } as never);
-      const component = build().componentInstance;
-      withImages(component, 1);
-      await component.processImage();
-
-      expect(duplicateService.checkDuplicates).toHaveBeenCalled();
-      const navState = (router.navigate.calls.mostRecent().args[1] as {
-        state: { importResult: ImportResult };
-      }).state;
-      const metas = navState.importResult.transactions.map(t => t.imageMetadata?.receiptId);
-      expect(metas).toEqual([1, 2]);
-    });
-
-    it('carries the real photo mapping and the files themselves into the review payload', async () => {
-      strategyService.processMultipleImages.and.resolveTo({
-        transactions: [
-          { description: 'Store A', amount: 10, currency: 'USD', date: new Date(), type: 'expense',
-            confidence: 0.9, receiptId: 1, imageIndex: 1 },
-          { description: 'Store B', amount: 20, currency: 'USD', date: new Date(), type: 'expense',
-            confidence: 0.8, receiptId: 2, imageIndex: 0, mergedFromImages: [0, 1] },
-        ],
-        confidence: 0.85,
-      } as never);
+        source: 'cloud', confidence: 0.9, processingTimeMs: 1,
+      } as ProcessingResult;
+      strategyService.processMultipleImages.and.resolveTo(strategyResult);
       const component = build().componentInstance;
       withImages(component, 2);
       await component.processImage();
 
+      expect(importService.convertStrategyResultToCategories).toHaveBeenCalledWith(strategyResult);
       const navState = (router.navigate.calls.mostRecent().args[1] as {
         state: { importResult: ImportResult };
       }).state;
-      const [a, b] = navState.importResult.transactions;
-      // The converter used to stamp every row image_0, so the confirm step
-      // attached the first photo to whatever came first.
-      expect(a.imageMetadata?.imageIndex).toBe(1);
-      expect(a.imageMetadata?.imageId).toBe('image_1');
-      expect(b.imageMetadata?.mergedFromImages).toEqual([0, 1]);
-      // And the files themselves must ride along, or there is nothing to
-      // attach when the wizard confirms.
+      const [row] = navState.importResult.transactions;
+      // The dialog's own converter used to drop both of these on the floor.
+      expect(row.currencyFellBack).toBeTrue();
+      expect(row.receiptCountry).toBe('JP');
+      // The files ride along, or there is nothing to attach when the wizard confirms.
       expect(navState.importResult.sourceFiles?.length).toBe(2);
+      expect(navState.importResult.fileType).toBe('receipt_image');
     });
 
-    it('keeps the photo mapping for a native row that has no receipt group', async () => {
-      strategyService.processMultipleImages.and.resolveTo({
-        transactions: [
-          { description: 'Diner', amount: 15, currency: 'USD', date: new Date(), type: 'expense',
-            confidence: 0.9, imageIndex: 0 },
-        ],
-        confidence: 0.9,
-      } as never);
+    it('still runs duplicate detection over the converted rows', async () => {
       const component = build().componentInstance;
       withImages(component, 1);
       await component.processImage();
-
-      const navState = (router.navigate.calls.mostRecent().args[1] as {
-        state: { importResult: ImportResult };
-      }).state;
-      const transaction = navState.importResult.transactions[0];
-      expect(transaction.imageMetadata?.imageIndex).toBe(0);
-      expect(transaction.imageMetadata?.receiptId).toBeUndefined();
+      expect(duplicateService.checkDuplicates).toHaveBeenCalledWith(
+        jasmine.arrayContaining([jasmine.objectContaining({ description: 'X' })])
+      );
+      expect(duplicateService.markDuplicates).toHaveBeenCalled();
     });
 
     it('falls back to the import service when strategy yields nothing', async () => {

@@ -21,7 +21,7 @@ import { ImportHistoryService } from './import-history.service';
 import { TransactionService, RECEIPT_ATTACH_FAILED, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
-import { AIStrategyService } from './ai-strategy.service';
+import { AIStrategyService, ProcessedTransaction, ProcessingResult } from './ai-strategy.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { CategoryMemoryService } from './category-memory.service';
@@ -29,6 +29,7 @@ import { RagContextService } from './rag-context.service';
 import { TagMemoryService } from './tag-memory.service';
 import { TagSuggestionService } from './tag-suggestion.service';
 import { RecurringService } from './recurring.service';
+import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
 import { createRecurring, createTransaction } from './testing/test-data';
@@ -57,6 +58,7 @@ describe('AIImportService', () => {
   let tagSuggestions: jasmine.SpyObj<TagSuggestionService>;
   let tagMemory: jasmine.SpyObj<TagMemoryService>;
   let recurringService: jasmine.SpyObj<RecurringService>;
+  let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
   let rasterize: jasmine.Spy;
   let isOnlineSignal: WritableSignal<boolean>;
@@ -114,6 +116,8 @@ describe('AIImportService', () => {
     tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
     tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['rememberAll']);
     recurringService = jasmine.createSpyObj<RecurringService>('RecurringService', ['listAll']);
+    currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['current', 'remember', 'clear']);
+    currencySession.current.and.returnValue(null);
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', [
       'trackAiAssistUsed',
     ]);
@@ -155,6 +159,7 @@ describe('AIImportService', () => {
         { provide: TagSuggestionService, useValue: tagSuggestions },
         { provide: TagMemoryService, useValue: tagMemory },
         { provide: RecurringService, useValue: recurringService },
+        { provide: CurrencyChoiceSessionService, useValue: currencySession },
         { provide: AnalyticsService, useValue: analytics }
       ]
     });
@@ -486,6 +491,80 @@ describe('AIImportService', () => {
 
       expect(result.transactions[0].receiptCountry).toBe('JP');
       expect('receiptCountry' in result.transactions[1]).toBeFalse();
+    });
+  });
+
+  describe('convertStrategyResultToCategories', () => {
+    const processed = (rows: Partial<ProcessedTransaction>[]): ProcessingResult => ({
+      source: 'cloud', confidence: 0.9, processingTimeMs: 1,
+      transactions: rows.map(r => ({
+        date: new Date(2024, 5, 1), description: 'Row', amount: 10, type: 'expense',
+        currency: 'USD', confidence: 0.9, source: 'cloud', ...r,
+      })),
+    });
+
+    beforeEach(() => {
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+    });
+
+    it('carries the photo mapping and receipt group, which the camera converter used to build by hand', () => {
+      const rows = service.convertStrategyResultToCategories(processed([
+        { receiptId: 1, imageIndex: 1 },
+        { receiptId: 2, imageIndex: 0, mergedFromImages: [0, 1] },
+        { imageIndex: 0 },
+        {},
+      ]));
+
+      expect(rows[0].imageMetadata).toEqual(jasmine.objectContaining({ imageIndex: 1, imageId: 'image_1', receiptId: 1 }));
+      expect(rows[1].imageMetadata?.mergedFromImages).toEqual([0, 1]);
+      expect(rows[2].imageMetadata?.receiptId).toBeUndefined();
+      expect(rows[2].imageMetadata?.imageIndex).toBe(0);
+      // No photo mapping at all (the single-image door): no metadata block.
+      expect(rows[3].imageMetadata).toBeUndefined();
+    });
+
+    it('keeps the fallen-back mark, the location, the receipt country and the review flag', () => {
+      const [row] = service.convertStrategyResultToCategories(processed([
+        {
+          currency: 'USD', currencyFellBack: true, location: { name: 'Seoul', country: 'KR' },
+          receiptCountry: 'KR', fieldConfidence: { amount: 0.5 },
+        },
+      ]));
+
+      expect(row.currencyFellBack).toBeTrue();
+      expect(row.location).toEqual({ name: 'Seoul', country: 'KR' });
+      expect(row.receiptCountry).toBe('KR');
+      // The item-sum fallback flag, which the camera spec used to pin on its own converter.
+      expect(row.fieldConfidence).toEqual({ amount: 0.5 });
+    });
+
+    it('offers the receipt country\'s currency on a fallen-back row, and nothing on a read one', () => {
+      const rows = service.convertStrategyResultToCategories(processed([
+        { currency: 'USD', currencyFellBack: true, receiptCountry: 'KR' },
+        { currency: 'USD', currencyFellBack: false, receiptCountry: 'KR' },
+      ]));
+
+      expect(rows[0].currencySuggestion).toEqual({ code: 'KRW', country: 'KR', reason: 'receipt' });
+      expect('currencySuggestion' in rows[1]).toBeFalse();
+    });
+
+    it('offers the session choice, then the locale, and never a position', () => {
+      currencySession.current.and.returnValue('THB');
+      expect(service.convertStrategyResultToCategories(processed([
+        { currency: 'USD', currencyFellBack: true },
+      ]))[0].currencySuggestion).toEqual({ code: 'THB', reason: 'session' });
+
+      currencySession.current.and.returnValue(null);
+      (Object.getOwnPropertyDescriptor(navigator, 'language')?.get as jasmine.Spy).and.returnValue('ja-JP');
+      expect(service.convertStrategyResultToCategories(processed([
+        { currency: 'USD', currencyFellBack: true },
+      ]))[0].currencySuggestion).toEqual({ code: 'JPY', country: 'JP', reason: 'locale' });
+    });
+
+    it('offers nothing equal to what the row already shows', () => {
+      expect('currencySuggestion' in service.convertStrategyResultToCategories(processed([
+        { currency: 'USD', currencyFellBack: true, receiptCountry: 'US' },
+      ]))[0]).toBeFalse();
     });
   });
 
@@ -970,6 +1049,16 @@ describe('AIImportService', () => {
       expect(result.transactions[0].receiptCountry).toBe('US');
       expect('receiptCountry' in result.transactions[1]).toBeFalse();
     });
+
+    it('marks a fallen-back row with the ladder\'s offer', async () => {
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+      cloudLLMProvider.extractStatementTransactions.and.callFake(async () => [
+        { ...statementRows()[0], currency: '', receiptCountry: 'JP' },
+      ]);
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+      expect(result.transactions[0].currencySuggestion).toEqual({ code: 'JPY', country: 'JP', reason: 'receipt' });
+    });
   });
 
   describe('importFromMultipleImages', () => {
@@ -1182,6 +1271,17 @@ describe('AIImportService', () => {
       const standalone = result.transactions.find(t => t.description === 'No Country');
       expect(merged?.receiptCountry).toBe('JP');
       expect('receiptCountry' in (standalone ?? {})).toBeFalse();
+    });
+
+    it('marks a fallen-back row with the ladder\'s offer', async () => {
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item', amount: 100, type: 'expense', currency: '',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, receiptCountry: 'JP' },
+      ]));
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+      expect(result.transactions[0].currencySuggestion).toEqual({ code: 'JPY', country: 'JP', reason: 'receipt' });
     });
   });
 

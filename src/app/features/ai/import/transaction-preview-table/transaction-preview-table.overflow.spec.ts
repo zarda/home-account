@@ -6,6 +6,7 @@ import { TransactionPreviewTableComponent } from './transaction-preview-table.co
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry';
 
 /**
@@ -56,6 +57,7 @@ class PreviewOverflowProbeComponent {
       location: { name: '東京都渋谷区道玄坂一丁目二番三号 渋谷マークシティ店' },
       tags: ['coffee', 'work', 'reimbursable'],
       recurringMatch: { id: 'rule-1', name: 'Netflix' },
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
     },
   ];
 }
@@ -92,6 +94,7 @@ describe('overflow guard: the import review card', () => {
               new Intl.NumberFormat('en', { style: 'currency', currency: code }).format(amount),
           },
         },
+        { provide: CurrencyChoiceSessionService, useValue: { remember: () => undefined, current: () => null, clear: () => undefined } },
       ],
     }).compileComponents();
 
@@ -174,7 +177,7 @@ describe('overflow guard: the import review card', () => {
     // their text breaks mid-word rather than the row growing sideways.
     const extras = el('.card-extras');
     const chips = Array.from(host.querySelectorAll<HTMLElement>('.extra-chip'));
-    expect(chips.length).withContext('location plus three tags').toBe(4);
+    expect(chips.length).withContext('currency offer, location plus three tags').toBe(5);
     for (const chip of chips) {
       const remove = chip.querySelector('.extra-remove') as HTMLElement;
       expect(withinWidthOf(clip, chip))
@@ -191,6 +194,16 @@ describe('overflow guard: the import review card', () => {
         .withContext(`${chip.textContent?.trim()} inside the strip`)
         .toBeTrue();
     }
+
+    // The offer is the one chip with two controls; both must be reachable.
+    // The accept button is chip-sized (no ≥26px floor — the chip must not
+    // fatten); its 40px hit area is the ::after overhang, measured below.
+    const accept = el('.currency-offer .extra-accept');
+    expect(withinWidthOf(clip, accept)).withContext('accept inside the clip').toBeTrue();
+    const hit = getComputedStyle(accept, '::after');
+    expect(accept.getBoundingClientRect().height - parseFloat(hit.top) - parseFloat(hit.bottom))
+      .withContext('accept hit area, glyph plus overhang')
+      .toBeGreaterThanOrEqual(40);
   });
 
   it('wraps a long rule name rather than carrying it past the card', () => {
@@ -236,8 +249,11 @@ describe('overflow guard: the import review card', () => {
 
     // And the chip it sits in is still one line of --text-xs: the hit area
     // grew outside the box precisely so this number would not move.
-    expect(host.querySelectorAll<HTMLElement>('.extra-chip')[1].getBoundingClientRect().height)
+    expect(host.querySelectorAll<HTMLElement>('.extra-chip')[2].getBoundingClientRect().height)
       .withContext('tag chip stays chip-sized')
+      .toBeLessThanOrEqual(28);
+    expect(el('.currency-offer').getBoundingClientRect().height)
+      .withContext('offer chip stays chip-sized too')
       .toBeLessThanOrEqual(28);
   });
 
@@ -246,7 +262,7 @@ describe('overflow guard: the import review card', () => {
     // exactly how a tap on the bottom edge of one tag ends up removing the
     // tag under it. `.card-extras` pays for the overhang in row-gap, so the
     // boxes meet and never overlap.
-    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove')).map(button => {
+    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept')).map(button => {
       const r = button.getBoundingClientRect();
       const after = getComputedStyle(button, '::after');
       return {

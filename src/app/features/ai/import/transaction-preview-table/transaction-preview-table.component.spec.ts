@@ -6,6 +6,7 @@ import { TransactionPreviewTableComponent } from './transaction-preview-table.co
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -53,9 +54,11 @@ describe('TransactionPreviewTableComponent', () => {
     }
   ];
   let mockTransactions: CategorizedImportTransaction[];
+  let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
 
   beforeEach(async () => {
     mockTransactions = createMockTransactions();
+    currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
 
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
@@ -85,6 +88,7 @@ describe('TransactionPreviewTableComponent', () => {
             formatCurrency: (amount: number, code: string) => `${code} ${amount}`,
           },
         },
+        { provide: CurrencyChoiceSessionService, useValue: currencySession },
       ],
     })
       .overrideComponent(TransactionPreviewTableComponent, {
@@ -474,6 +478,40 @@ describe('TransactionPreviewTableComponent', () => {
       expect(component.currencyChipLabel(makeRow({ currency: 'JPY' })))
         .toBe('import.setCurrency:{"currency":"JPY"}');
     });
+
+    it('remembers a currency chosen by hand for a fallen-back row, and drops the offer', () => {
+      const row = makeRow({ currency: 'USD', currencyFellBack: true, currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.updateCurrency(row, 'JPY');
+
+      expect(currencySession.remember).toHaveBeenCalledWith('JPY');
+      expect(emitted[0][0].currencySuggestion).toBeUndefined();
+    });
+
+    it('does not remember an edit to a currency the source read', () => {
+      const row = makeRow({ currency: 'USD' });
+      component.transactions = [row];
+      component.updateCurrency(row, 'JPY');
+      expect(currencySession.remember).not.toHaveBeenCalled();
+    });
+
+    it('remembers the bulk choice and drops every selected row\'s offer', () => {
+      component.transactions = [
+        makeRow({ id: 'a', currency: 'USD', selected: true, currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } }),
+        makeRow({ id: 'b', currency: 'USD', selected: false, currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } }),
+      ];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(currencySession.remember).toHaveBeenCalledWith('JPY');
+      expect(emitted[0][0].currencySuggestion).toBeUndefined();
+      expect(emitted[0][1].currencySuggestion).toBeDefined();
+    });
   });
 
   describe('suggested fields', () => {
@@ -503,6 +541,55 @@ describe('TransactionPreviewTableComponent', () => {
       component.removeTag(row, 'work');
 
       expect(emitted[0][0].tags).toEqual(['coffee']);
+    });
+  });
+
+  describe('the offered currency', () => {
+    const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}) => ({
+      ...createMockTransactions()[0],
+      ...overrides,
+    });
+    const offer = { code: 'KRW', country: 'KR', reason: 'receipt' as const };
+
+    it('accepting applies it through the currency edit, clears both marks and remembers it', () => {
+      const row = makeRow({ currency: 'USD', currencyFellBack: true, currencySuggestion: offer });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.acceptCurrencySuggestion(row);
+
+      expect(emitted[0][0].currency).toBe('KRW');
+      expect(emitted[0][0].currencyFellBack).toBeFalse();
+      expect(emitted[0][0].currencySuggestion).toBeUndefined();
+      expect(currencySession.remember).toHaveBeenCalledWith('KRW');
+      expect(row.currency).toBe('USD'); // the input object is untouched
+    });
+
+    it('dismissing drops the offer and nothing else — ADR 0062: offered, never applied', () => {
+      const row = makeRow({ currency: 'USD', currencyFellBack: true, currencySuggestion: offer });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.dismissCurrencySuggestion(row);
+
+      expect(emitted[0][0].currency).toBe('USD');
+      expect(emitted[0][0].currencyFellBack).toBeTrue();
+      expect(emitted[0][0].currencySuggestion).toBeUndefined();
+      expect(currencySession.remember).not.toHaveBeenCalled();
+    });
+
+    it('names the country in the chip and the reason in its accessible name', () => {
+      const row = makeRow({ currencySuggestion: offer });
+      expect(component.currencyOfferText(row)).toBe('import.currencyFromCountry:{"country":"South Korea","currency":"KRW"}');
+      expect(component.currencyOfferLabel(row)).toBe('import.acceptCurrencySuggestion:{"currency":"KRW"}. import.currencyReasonReceipt');
+      expect(component.currencyOfferText(makeRow({ currencySuggestion: { code: 'THB', reason: 'session' } })))
+        .toBe('import.currencySuggested:{"currency":"THB"}');
+      expect(component.currencyOfferReason(makeRow({ currencySuggestion: { code: 'THB', reason: 'session' } })))
+        .toBe('import.currencyReasonSession');
+      expect(component.currencyOfferReason(makeRow({ currencySuggestion: { code: 'JPY', country: 'JP', reason: 'locale' } })))
+        .toBe('import.currencyReasonLocale');
     });
   });
 
