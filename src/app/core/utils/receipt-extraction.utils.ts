@@ -73,6 +73,52 @@ export function readCurrencyCode(value: unknown): string {
   return ISO_CURRENCY_CODES.has(code) ? code : '';
 }
 
+/**
+ * Every region the runtime can name, asked with `fallback: 'none'` so a
+ * well-formed code it does not know answers undefined rather than echoing
+ * itself — the default fallback would make "AA" look like a country called AA.
+ */
+const REGION_NAMES: Intl.DisplayNames | null = (() => {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
+  } catch {
+    // Older runtimes without DisplayNames: shape alone, which still rejects
+    // prose, alpha-3 codes and numbers.
+    return null;
+  }
+})();
+
+/**
+ * The ISO 3166-1 alpha-2 country a model reported, or '' when it reported
+ * nothing usable.
+ *
+ * Empty rather than a guess, like readCurrencyCode: a country the model
+ * inferred badly is worse than none, because everything downstream offers a
+ * currency from it. The prompt carries no list of codes (ADR 0008), so the
+ * answer is checked against the runtime's own region table on the way back.
+ * ZZ is refused by name: CLDR calls it "Unknown Region", which is an honest
+ * answer and not a country.
+ */
+export function readCountryCode(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const code = value.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code) || code === 'ZZ') {
+    return '';
+  }
+  if (!REGION_NAMES) {
+    return code;
+  }
+  let name: string | undefined;
+  try {
+    name = REGION_NAMES.of(code);
+  } catch {
+    return '';
+  }
+  return name && name !== code ? code : '';
+}
+
 /** The printed grand total a model reported, or undefined when it reported nothing usable. */
 export function readReceiptTotal(value: unknown): number | undefined {
   if (value === null || value === undefined || value === '') return undefined;

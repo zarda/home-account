@@ -54,6 +54,8 @@ currency: readCurrencyCode(parsed.currency),   // '' unless the ISO table knows 
 
 `readCurrencyCode` (`core/utils/receipt-extraction.utils.ts`) checks against `Intl.supportedValuesOf('currency')`, so neither the prompt nor the validator keeps a list. Empty is deliberate: the caller substitutes the account's own base currency, which is a better answer than any constant the prompt layer could name.
 
+The country works the same way. `COUNTRY_FIELD` asks for an ISO 3166-1 alpha-2 code concluded from what the receipt prints, and `readCountryCode` checks it against `Intl.DisplayNames` with `fallback: 'none'`, so neither side keeps a list. The vocabulary scan in `check-prompts.mjs` would not catch a run of two-letter codes — `prompt-registry.spec.ts` pins that no prompt carries one.
+
 The same rule applies to examples. Demonstrate the *shape* with placeholders (`"<item name as printed>"`) rather than a real receipt in one language, and say explicitly that the receipt's own script must be reproduced.
 
 A list the user owns is not a list in source. `suggestTags` asks the model to tag a row using only the tags this account already uses, and that vocabulary is rendered at request time — from the last six months of transactions and from tag memory, one `- tag` per line — so `categorization.prompts.ts` names no tag at all and no build ships an opinion about what people tag things with. The answer is filtered back down to the same list by `applyTagSuggestions`, so an invented, translated or respelled tag is dropped rather than created. An account with no tags gets no request: there is nothing to choose from, and a prompt that had to supply the candidates itself would be exactly the hand-written list this rule forbids.
@@ -68,11 +70,11 @@ A list the user owns is not a list in source. `suggestTags` asks the model to ta
 
 | Prompt | Feature | Providers | Since | Purpose |
 |---|---|---|---|---|
-| `receiptParse` | receiptScanning | claude, gemini, openai | 1.17.93 | One receipt photo → one transaction, with `receiptCount` so several receipts in one photo are noticed |
-| `receiptSummary` | receiptScanning | gemini | 1.17.93 | One receipt photo → one summary row carrying the full receipt body as notes |
-| `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, plus the receipt's printed total, with position metadata for overlap detection |
-| `statementTransactions` | receiptScanning | claude, gemini, openai | 1.17.93 | A statement or multi-row document image → one row per line item |
-| `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges, one printed total per group |
+| `receiptParse` | receiptScanning | claude, gemini, openai | 1.17.93 | One receipt photo → one transaction, with `receiptCount` so several receipts in one photo are noticed; reports the issuing country as an alpha-2 code |
+| `receiptSummary` | receiptScanning | gemini | 1.17.93 | One receipt photo → one summary row carrying the full receipt body as notes; reports the issuing country as an alpha-2 code |
+| `receiptItems` | receiptScanning | gemini | 1.17.93 | One receipt photo → one row per purchased item, plus the receipt's printed total, with position metadata for overlap detection; reports the issuing country as an alpha-2 code |
+| `statementTransactions` | receiptScanning | claude, gemini, openai | 1.17.93 | A statement or multi-row document image → one row per line item; reports the issuing country as an alpha-2 code |
+| `multiImageReceipts` | receiptScanning | claude, gemini, openai | 1.17.93 | Several photos at once, grouped by `receiptId` and deduplicated across overlapping edges, one printed total per group; reports the issuing country as an alpha-2 code |
 | `categorizeTransactions` | categorization | claude, gemini, openai | 1.17.93 | Assign a catalog category and a confidence to each extracted row; sent in chunks of 25 rows so every answer fits the declared 800-token budget |
 | `categorySuggestion` | categorization | claude, gemini, openai | 1.17.93 | Single-description category lookup outside the import flow |
 | `csvMapping` | categorization | claude, gemini, openai | 1.17.93 | Map a bank export's columns onto the transaction fields |
