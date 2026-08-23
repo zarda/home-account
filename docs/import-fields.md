@@ -71,7 +71,7 @@ Callers: `ExportService.parseImportedData` (the data hub),
 `OfflineQueueProcessorService.createTransactions` (the offline queue drain,
 which writes without a review step). The wizard composes `receiptFiles` onto
 the mapper's output afterwards — the mapper stays pure. The queue drain used
-to hand-build a six-field DTO and dropped everything else the reader filled;
+to hand-build a seven-field DTO and dropped everything else the reader filled;
 it is the fourth door now, not an exception to the rule.
 
 ## What travels through which door

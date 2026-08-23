@@ -356,7 +356,7 @@ describe('OfflineQueueProcessorService', () => {
     });
 
     it('carries location, tags, period and recurring through the one mapper', async () => {
-      // The queue used to hand-build its DTO with six fields, so exactly the
+      // The queue used to hand-build its DTO with seven fields, so exactly the
       // receipts most likely to be foreign — queued because the phone was
       // offline — lost the address the model read (ADR 0059).
       queue.getQueuedImageAsFile.and.resolveTo(imageFile());
