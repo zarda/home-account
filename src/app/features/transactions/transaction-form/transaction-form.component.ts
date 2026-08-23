@@ -64,6 +64,7 @@ import { CameraCaptureComponent } from '../camera-capture/camera-capture.compone
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
 import { countryDisplayName, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
+import { readCountryCode } from '../../../core/utils/receipt-extraction.utils';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
@@ -642,7 +643,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * The DTO's location fragment. A blank name means no location: the field
    * is omitted on add, and cleared on edit (coordinates hang off the name —
    * a bare lat/lng with nothing human-readable would render as an empty
-   * chip, so clearing the name discards them too).
+   * chip, so clearing the name discards them too). When a coordinate is
+   * attached, its bundled-table country overrules whatever the receipt's own
+   * address printed — the phone outranking the paper, backwards from the
+   * currency ladder's own precedence — acceptable only because a coordinate
+   * lands here solely by the user's own deliberate action, never a scan's
+   * guess (#156).
    */
   private locationField(rawName: unknown): Partial<CreateTransactionDTO> {
     const name = typeof rawName === 'string' ? rawName.trim() : '';
@@ -813,6 +819,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
         throw new Error('The scan produced no transaction');
       }
 
+      // Cleared before the patch below, which fires onCurrencyEdited through
+      // valueChanges — otherwise a still-true flag left over from an earlier
+      // scan this form instance ran would mistake this scan's own read for a
+      // user settling that earlier fallback (#156).
+      this.scanCurrencyFellBack = false;
+
       // Auto-fill form with extracted data
       this.ensureCurrencyListed(primary.currency);
       this.form.patchValue({
@@ -924,7 +936,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * the field, and a suggestion nobody asked for is not worth an error.
    */
   private async suggestCurrencyFromLocation(primary: ProcessedTransaction): Promise<void> {
-    const receiptSpeaks = !!currencyForCountry(primary.receiptCountry);
+    // The same question the ladder's own receipt rung asks (#156):
+    // readCountryCode canonicalizes CLDR aliases (UK → GB) before the
+    // currency table is consulted, so this gate never fetches a position
+    // the ladder was always going to ignore in favour of the receipt.
+    const receiptSpeaks = !!currencyForCountry(readCountryCode(primary.receiptCountry));
     const attached = this.locationCoords();
     const datedToday = this.isDatedToday();
     let positionCountry: string | undefined;
@@ -1005,12 +1021,16 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * A currency the user settles by hand on a fallen-back scan is as good an
    * answer as an accepted chip, and the next receipt this session should
    * know it. A scan whose currency was read is not a choice about fallback.
+   *
+   * The flag is left standing rather than cleared here, so a later correction
+   * to the same fallen-back scan overwrites the session with the user's
+   * final answer instead of their first. It is cleared only where a new
+   * scan — or the discarding of one — means there is no fallback left to settle.
    */
   private onCurrencyEdited(code: string): void {
     if (!this.scanCurrencyFellBack || !code) {
       return;
     }
-    this.scanCurrencyFellBack = false;
     this.suggestedCurrency.set(null);
     this.currencySession.remember(code);
   }
@@ -1103,6 +1123,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanError.set(null);
       this.scanFieldConfidence.set(null);
       this.suggestedCurrency.set(null);
+      this.scanCurrencyFellBack = false;
     }
   }
 

@@ -237,12 +237,17 @@
     flex-direction: column;
     min-width: 0;
     overflow-wrap: anywhere;
-  }
 
-  .suggestion-reason {
-    font-size: var(--text-xs);
-    font-weight: 400;
-    color: var(--text-muted, #666);
+    // Nested under .suggestion-text (three classes) rather than a sibling of
+    // it, so this outranks the dark-theme variant of the `span` rule above
+    // (`.dark-theme .suggestion-chip span`, two classes plus a type
+    // selector) — otherwise the reason line renders in the same colour as
+    // the offer text in dark theme and the two are indistinguishable.
+    .suggestion-reason {
+      font-size: var(--text-xs);
+      font-weight: 400;
+      color: var(--text-muted);
+    }
   }
 }
 
