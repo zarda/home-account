@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
@@ -96,6 +96,11 @@ describe('TransactionFormComponent suggestion chips', () => {
     const tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']);
     tagMemory.remember.and.resolveTo(undefined);
 
+    // The component now constructs the real CurrencyChoiceSessionService,
+    // whose constructor effect reads authService.userId() — this stub needs
+    // to answer that too, derived the way the real service derives it.
+    const currentUser = signal<User | null>(createUser());
+
     await TestBed.configureTestingModule({
       imports: [TransactionFormComponent, ReactiveFormsModule],
       providers: [
@@ -104,7 +109,7 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },
         { provide: CurrencyService, useValue: currency },
-        { provide: AuthService, useValue: { currentUser: signal<User | null>(createUser()) } },
+        { provide: AuthService, useValue: { currentUser, userId: computed(() => currentUser()?.id ?? null) } },
         { provide: TranslationService, useValue: translation },
         { provide: AIStrategyService, useValue: strategy },
         { provide: AIImportService, useValue: jasmine.createSpyObj('AIImportService', ['importFromMultipleImages']) },

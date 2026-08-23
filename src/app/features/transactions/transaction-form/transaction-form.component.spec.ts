@@ -930,6 +930,35 @@ describe('TransactionFormComponent', () => {
 
       expect(currencySession.remember).not.toHaveBeenCalled();
     });
+
+    it('does not credit a second scan\'s own read currency to a fallback the first scan left unsettled', async () => {
+      // Two scans in sequence, unlike spec:913's single patchValue — that
+      // test cannot distinguish a user's hand edit from the scan's own
+      // currency patch, because both go through the same form.patchValue.
+      // Driving a real second scan is the only way to see the stale flag.
+      strategy.processReceipt.and.resolveTo(fellBack({ receiptCountry: 'KR' }));
+      const component = build().componentInstance;
+      await scan(component);
+      expect(component.suggestedCurrency()).not.toBeNull();
+
+      // The user never touched the chip or the field by hand — they just
+      // ran a second scan, whose own currency was read rather than guessed.
+      strategy.processReceipt.and.resolveTo(scanResult({ currency: 'JPY', currencyFellBack: false }));
+      await scan(component);
+
+      expect(currencySession.remember).not.toHaveBeenCalled();
+    });
+
+    it('remembers the user\'s final answer when an accepted suggestion is then hand-corrected', async () => {
+      strategy.processReceipt.and.resolveTo(fellBack({ receiptCountry: 'KR' }));
+      const component = build().componentInstance;
+      await scan(component);
+
+      component.acceptCurrencySuggestion(); // accepts KRW
+      component.form.patchValue({ currency: 'JPY' }); // then corrected by hand
+
+      expect(currencySession.remember.calls.allArgs()).toEqual([['KRW'], ['JPY']]);
+    });
   });
 
   describe('location read off the receipt', () => {
@@ -989,6 +1018,25 @@ describe('TransactionFormComponent', () => {
 
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
       expect(dto.location).toEqual({ name: 'My café' });
+    });
+
+    it('drops the printed country on a second scan, even though the field still shows the earlier prefill', async () => {
+      // Conservative and deliberate, not an accident: the field is non-empty
+      // once the first scan prefills it, so the second scan's own prefill
+      // guard treats it the same as a name the user typed by hand and never
+      // re-derives a country for it.
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: '渋谷店', country: 'JP' } }));
+      const component = build().componentInstance;
+      await scan(component);
+
+      strategy.processReceipt.and.resolveTo(scanResult());
+      await scan(component);
+
+      expect(component.form.get('locationName')?.value).toBe('渋谷店');
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: '渋谷店' });
     });
   });
 
