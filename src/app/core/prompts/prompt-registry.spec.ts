@@ -165,6 +165,17 @@ describe('prompt registry', () => {
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
     });
+
+    it('asks for the issuing country as a code, never a default, and lists none', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('receiptParse');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
+      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
+    });
   });
 
   describe('categorizeTransactions', () => {
@@ -457,6 +468,17 @@ describe('prompt registry', () => {
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
     });
+
+    it('asks for the issuing country as a code, never a default, and lists none', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('multiImageReceipts');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
+      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
+    });
   });
 
   describe('statementTransactions', () => {
@@ -473,6 +495,17 @@ describe('prompt registry', () => {
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
     });
+
+    it('asks for the issuing country as a code, never a default, and lists none', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('statementTransactions');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
+      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
+    });
   });
 
   describe('receiptSummary', () => {
@@ -487,6 +520,17 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"location"');
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
+    });
+
+    it('asks for the issuing country as a code, never a default, and lists none', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('receiptSummary');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
+      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
     });
   });
 
@@ -513,6 +557,17 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"location"');
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
+    });
+
+    it('asks for the issuing country as a code, never a default, and lists none', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('receiptItems');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
+      expect(prompt).not.toMatch(/\b[A-Z]{2}(,\s*[A-Z]{2}){2,}\b/);
     });
   });
 

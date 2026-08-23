@@ -1,6 +1,7 @@
 import {
   printedLocationSlot,
   readConfidence,
+  readCountryCode,
   readCurrencyCode,
   readFieldConfidence,
   readPrintedLocation,
@@ -41,6 +42,44 @@ describe('readCurrencyCode', () => {
     expect(readCurrencyCode(undefined)).toBe('');
     expect(readCurrencyCode(null)).toBe('');
     expect(readCurrencyCode(42)).toBe('');
+  });
+});
+
+describe('readCountryCode', () => {
+  it('accepts an ISO 3166-1 alpha-2 code, normalizing case and space', () => {
+    expect(readCountryCode('JP')).toBe('JP');
+    expect(readCountryCode(' kr ')).toBe('KR');
+    expect(readCountryCode('tw')).toBe('TW');
+  });
+
+  it('accepts a country nobody added to the app by hand', () => {
+    // The runtime's region table, not a list kept here — the same reason
+    // readCurrencyCode checks Intl rather than a shortlist.
+    expect(readCountryCode('PL')).toBe('PL');
+    expect(readCountryCode('RW')).toBe('RW');
+  });
+
+  it('rejects a name, an alpha-3 code or a number the model wrote instead', () => {
+    expect(readCountryCode('Japan')).toBe('');
+    expect(readCountryCode('JPN')).toBe('');
+    expect(readCountryCode('J1')).toBe('');
+    expect(readCountryCode(81)).toBe('');
+  });
+
+  it('rejects a well-formed code that is not a country', () => {
+    // DisplayNames.of() echoes the input for an unknown-but-well-formed code
+    // under its default fallback; the reader asks for fallback 'none' and
+    // also refuses a name equal to the code, so 'AA' cannot slip through as
+    // a country called "AA".
+    expect(readCountryCode('AA')).toBe('');
+    // CLDR does name ZZ — "Unknown Region" — which is exactly not a country.
+    expect(readCountryCode('ZZ')).toBe('');
+  });
+
+  it('reports nothing rather than guessing when the model said nothing', () => {
+    expect(readCountryCode('')).toBe('');
+    expect(readCountryCode(undefined)).toBe('');
+    expect(readCountryCode(null)).toBe('');
   });
 });
 
