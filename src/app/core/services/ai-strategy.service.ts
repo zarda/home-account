@@ -15,6 +15,7 @@ import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT
 import { AI_PREFERENCES_SCHEMA_VERSION, migrateModelPreferences } from '../config/ai-model-migrations';
 import { Category, LLMProvider, baseCurrencyOf} from '../../models';
 import { parseDateInput } from '../utils/transaction-date.utils';
+import { AI_CLOUD_UNAVAILABLE } from '../utils/ai-error.utils';
 
 export type { ProcessedTransaction, ProcessingResult } from './ai-types';
 
@@ -48,15 +49,8 @@ const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
  */
 const USABLE_CONFIDENCE = 0.4;
 
-/**
- * Thrown when no cloud provider can be reached for a request that needs one.
- *
- * A code rather than a sentence, following the receipt-to-note errors: the
- * message used to be English prose that AIImportService recognized by
- * substring and passed straight to the screen, so it could never be
- * translated, and rewording it would silently have reclassified the error.
- */
-export const AI_CLOUD_UNAVAILABLE = 'AI_CLOUD_UNAVAILABLE';
+/** Re-exported so callers that import the code from here keep compiling. */
+export { AI_CLOUD_UNAVAILABLE } from '../utils/ai-error.utils';
 
 /**
  * Routes receipt processing to the best available engine:
