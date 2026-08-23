@@ -10,7 +10,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 
-import { AIImportService, AI_QUEUED_OFFLINE, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
+import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
@@ -401,14 +401,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.processingErrorType.set(parsed.type);
       this.processingErrorRetryable.set(parsed.retryable);
       // A throw from the image batch settles the handle here; a throw from a
-      // later file finds it already settled and this is a no-op. The queued
-      // sentinel is not a failure — the image was safely stored — and must
-      // never become a failed Import History record.
-      if (error instanceof Error && error.message === AI_QUEUED_OFFLINE) {
-        receiptAttempt?.queued();
-      } else {
-        receiptAttempt?.failed(error);
-      }
+      // later file finds it already settled and this is a no-op.
+      receiptAttempt?.failed(error);
     }
   }
 

@@ -5,7 +5,7 @@ import { ImportHistoryService } from './import-history.service';
 import { AuthService } from './auth.service';
 import { ReceiptAttemptDiagnostics } from './ai-types';
 import { AnalyticsEventParams } from '../config/analytics-events';
-import { AI_NO_PROVIDER, ReceiptProcessingError, parseAIError } from '../utils/ai-error.utils';
+import { AI_NO_PROVIDER, AI_QUEUED_OFFLINE, ReceiptProcessingError, parseAIError } from '../utils/ai-error.utils';
 import {
   ImportHistory,
   ImportProvenance,
@@ -48,9 +48,10 @@ export interface ReceiptAttempt {
  * The analytics payload for one settled attempt — every dimension filled.
  *
  * `door` excludes 'queue' in its type, not just its convention: the queue
- * door never sends (ReceiptAttemptService.begin's `send` returns before
- * building a payload), and the only caller passes the cast that makes that
- * true, not a decorative one.
+ * door never sends — ReceiptAttemptService.begin's `send` returns behind an
+ * `if (door === 'queue') return;` guard before it ever calls this, so the
+ * call site's `door` is already narrowed to `Exclude<ReceiptDoor, 'queue'>`
+ * by the time it gets here.
  */
 export function buildReceiptImportPayload(
   door: Exclude<ReceiptDoor, 'queue'>,
@@ -131,8 +132,9 @@ export function provenanceOf(
  * each used to report differently or not at all. The queue door records and
  * never sends — `queued_offline` was terminal for the attempt when the image
  * was captured, and a second event on the drain would double the denominator
- * (docs/analytics.md). Nothing here throws: an attempt record is never a
- * precondition for the user's receipt.
+ * (docs/analytics.md). An attempt record is never allowed to be a
+ * precondition for the user's receipt — `once` catches whatever its terminal
+ * throws, so a broken analytics call can't turn a working scan into an error.
  */
 @Injectable({ providedIn: 'root' })
 export class ReceiptAttemptService {
@@ -145,7 +147,11 @@ export class ReceiptAttemptService {
     const once = (settle: () => void): void => {
       if (settled) return;
       settled = true;
-      settle();
+      try {
+        settle();
+      } catch (error) {
+        console.warn(`[ReceiptAttempt] The ${door} attempt's terminal threw:`, error);
+      }
     };
     const send = (
       outcome: ReceiptImportPayload['outcome'],
@@ -154,7 +160,7 @@ export class ReceiptAttemptService {
     ): void => {
       if (door === 'queue') return;
       this.analytics.trackReceiptImport(
-        buildReceiptImportPayload(door as Exclude<ReceiptDoor, 'queue'>, outcome, diagnostics, failure)
+        buildReceiptImportPayload(door, outcome, diagnostics, failure)
       );
     };
 
@@ -165,7 +171,17 @@ export class ReceiptAttemptService {
       queued: () => once(() => {
         send('queued_offline', null, null);
       }),
+      // No door raises AI_QUEUED_OFFLINE today — importFromImage is its only
+      // source, and no door's try block reaches it — but the translation
+      // lives here, at the one chokepoint every door's failed() runs
+      // through, so all four are covered the day one does. A queued image
+      // is a queue outcome, not a failure kind: it takes the same path
+      // queued() takes, not a failure class of its own.
       failed: errorOrReason => once(() => {
+        if (errorOrReason instanceof Error && errorOrReason.message === AI_QUEUED_OFFLINE) {
+          send('queued_offline', null, null);
+          return;
+        }
         const { failure, diagnostics, message } = classifyReceiptFailure(errorOrReason);
         send('failed', diagnostics, failure);
         void this.recordFailure(door, kind, files, provenanceOf(door, diagnostics, failure), message);

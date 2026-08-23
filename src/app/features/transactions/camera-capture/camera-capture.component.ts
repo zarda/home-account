@@ -319,17 +319,7 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       }
     } catch (err) {
       this.error.set(this.describeError(err));
-      // AIImportService's single-image path can still raise this sentinel
-      // (importFromFile → importFromImage); this run never calls it, but the
-      // outer catch is the one place every AIImportService throw funnels
-      // through, so it is where the sentinel must be told apart from a real
-      // failure — a queued image is a success from the user's point of view
-      // and must never become a failed Import History record.
-      if (err instanceof Error && err.message === AI_QUEUED_OFFLINE) {
-        attempt.queued();
-      } else {
-        attempt.failed(err);
-      }
+      attempt.failed(err);
     } finally {
       this.isProcessing.set(false);
       this.processingStatus.set('');
