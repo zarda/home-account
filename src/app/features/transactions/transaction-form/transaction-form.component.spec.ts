@@ -866,12 +866,14 @@ describe('TransactionFormComponent', () => {
       await scan(component);
 
       component.suggestionLabel(component.suggestedCurrency()!);
+      // The form and the review card share one namespace for these strings
+      // (M7), the review card's own.
       expect(TestBed.inject(TranslationService).t)
-        .toHaveBeenCalledWith('transactions.currencyFromLocation', { country: 'South Korea', currency: 'KRW' });
-      expect(component.reasonLabel('receipt')).toBe('transactions.currencyReasonReceipt');
-      expect(component.reasonLabel('position')).toBe('transactions.currencyReasonPosition');
-      expect(component.reasonLabel('session')).toBe('transactions.currencyReasonSession');
-      expect(component.reasonLabel('locale')).toBe('transactions.currencyReasonLocale');
+        .toHaveBeenCalledWith('import.currencyFromCountry', { country: 'South Korea', currency: 'KRW' });
+      expect(component.reasonLabel('receipt')).toBe('import.currencyReasonReceipt');
+      expect(component.reasonLabel('position')).toBe('import.currencyReasonPosition');
+      expect(component.reasonLabel('session')).toBe('import.currencyReasonSession');
+      expect(component.reasonLabel('locale')).toBe('import.currencyReasonLocale');
     });
 
     it('labels a session suggestion without a country', async () => {
@@ -882,7 +884,7 @@ describe('TransactionFormComponent', () => {
 
       component.suggestionLabel(component.suggestedCurrency()!);
       expect(TestBed.inject(TranslationService).t)
-        .toHaveBeenCalledWith('transactions.currencySuggested', { currency: 'THB' });
+        .toHaveBeenCalledWith('import.currencySuggested', { currency: 'THB' });
     });
 
     it('accepting applies it, keeps it selectable and remembers it for the session', async () => {
@@ -1216,22 +1218,52 @@ describe('TransactionFormComponent', () => {
       it('confirming routes the photo through the import pipeline to the wizard', async () => {
         const component = primeMultiReceiptScan(3);
         dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
-        const importResult = { source: 'image', transactions: [] } as never;
+        const importResult = { source: 'image', transactions: [{ id: 't1' }] } as never;
         aiImport.importFromMultipleImages.and.resolveTo(importResult);
 
         await scan(component);
 
         expect(aiImport.importFromMultipleImages).toHaveBeenCalledWith([component.pendingReceipts()[0].file]);
         expect(dialogRef.close).toHaveBeenCalledWith(false);
+        // Named as the form's own door, not the camera's — this extraction
+        // began at the form, from an image the user chose there (#151).
         expect(router.navigate).toHaveBeenCalledWith(['/import/file'], {
-          state: { importResult, fromCamera: true, multiImage: false },
+          state: { importResult, fromCamera: true, door: 'form', multiImage: false },
         });
+      });
+
+      it('opens and settles its own attempt, distinct from the single-shot scan\'s', async () => {
+        const component = primeMultiReceiptScan(3);
+        dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+        const importResult = { source: 'image', transactions: [{ id: 't1' }] } as never;
+        aiImport.importFromMultipleImages.and.resolveTo(importResult);
+
+        await scan(component);
+
+        // Once for the primary scan, once for this second extraction.
+        expect(attempts.service.begin.calls.count()).toBe(2);
+        const [door, kind, files] = attempts.service.begin.calls.mostRecent().args;
+        expect(door).toBe('form');
+        expect(kind).toBe('receipt_image');
+        expect(files).toEqual([component.pendingReceipts()[0].file]);
+        expect(attempts.handle.succeeded).toHaveBeenCalledWith(importResult);
+      });
+
+      it('reports no transaction extracted rather than a silent success', async () => {
+        const component = primeMultiReceiptScan(3);
+        dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+        aiImport.importFromMultipleImages.and.resolveTo({ source: 'image', transactions: [] } as never);
+
+        await scan(component);
+
+        expect(attempts.handle.failed).toHaveBeenCalledWith('nothing_extracted');
       });
 
       it('a pipeline failure reports the error and keeps the form open', async () => {
         const component = primeMultiReceiptScan();
         dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
-        aiImport.importFromMultipleImages.and.rejectWith(new Error('bad'));
+        const failure = new Error('bad');
+        aiImport.importFromMultipleImages.and.rejectWith(failure);
 
         await scan(component);
 
@@ -1239,6 +1271,7 @@ describe('TransactionFormComponent', () => {
         expect(dialogRef.close).not.toHaveBeenCalled();
         expect(router.navigate).not.toHaveBeenCalled();
         expect(component.isScanning()).toBeFalse();
+        expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
       });
     });
 
@@ -1325,6 +1358,29 @@ describe('TransactionFormComponent', () => {
       component.removePendingReceipt(1);
 
       expect(component.pendingReceipts()).toEqual([keep]);
+    });
+
+    it('withdraws the scan\'s country claim when its receipt is removed', async () => {
+      // The scan prefilled Location from the printed address and remembered
+      // the country that address implied. Discarding the receipt image must
+      // withdraw that claim too — otherwise a save with the field still
+      // reading the prefill writes a country the user never confirmed.
+      strategy.processReceipt.and.resolveTo(scanResult({ location: { name: 'Bakery St', country: 'JP' } }));
+      const component = build().componentInstance;
+      const file = new File(['x'], 'r.jpg', { type: 'image/jpeg' });
+
+      await component.onReceiptSelected({ target: { files: [file], value: '' } } as unknown as Event);
+      expect(component.form.get('locationName')?.value).toBe('Bakery St');
+
+      component.removePendingReceipt(0);
+      component.form.patchValue({
+        type: 'expense', amount: '15.5', currency: 'USD', categoryId: 'food',
+        description: 'Lunch', date: new Date(2026, 0, 1),
+      });
+      await component.onSubmit();
+
+      const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'Bakery St' });
     });
   });
 

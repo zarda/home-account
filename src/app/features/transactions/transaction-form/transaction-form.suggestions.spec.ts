@@ -156,9 +156,10 @@ describe('TransactionFormComponent suggestion chips', () => {
       const chip: HTMLElement = fixture.nativeElement.querySelector('.suggestion-chip');
 
       // Its own text is the name — it already reads as an offer to accept.
+      // The form reads the same namespace the review card does (M7).
       expect(chip.getAttribute('aria-label')).toBeNull();
-      expect(chip.textContent).toContain('transactions.currencyFromLocation:Thailand,THB');
-      expect(chip.textContent).toContain('transactions.currencyReasonPosition');
+      expect(chip.textContent).toContain('import.currencyFromCountry:Thailand,THB');
+      expect(chip.textContent).toContain('import.currencyReasonPosition');
     });
 
     it('applies the currency when activated', () => {

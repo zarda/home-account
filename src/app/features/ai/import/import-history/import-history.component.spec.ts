@@ -368,8 +368,13 @@ describe('ImportHistoryComponent', () => {
     it('shows the duration in whole seconds', () => {
       expect(component.formatDuration(4321)).toBe('import.durationSeconds');
       expect(mockTranslationService.t).toHaveBeenCalledWith('import.durationSeconds', { seconds: 4 });
-      component.formatDuration(400);
-      expect(mockTranslationService.t).toHaveBeenCalledWith('import.durationSeconds', { seconds: 0 });
+    });
+
+    it('says a sub-second pass was fast rather than rendering it as 0 s', () => {
+      // A native pass often finishes in a few hundred milliseconds; a floored
+      // "0 s" reads as instant, which is not what happened.
+      expect(component.formatDuration(400)).toBe('import.durationUnderOneSecond');
+      expect(mockTranslationService.t).not.toHaveBeenCalledWith('import.durationSeconds', jasmine.anything());
     });
 
     it('labels every failure class', () => {

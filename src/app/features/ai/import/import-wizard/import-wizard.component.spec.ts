@@ -616,6 +616,58 @@ describe('ImportWizardComponent', () => {
         history.replaceState({}, '');
       }
     });
+
+    it('records the door the state named, not always the camera', async () => {
+      // The transaction form's own multi-receipt review also arrives via
+      // fromCamera — it reuses the same "already extracted" skip — so the
+      // door has to be read from the state, not assumed (#151).
+      history.replaceState({
+        importResult: {
+          ...mockImportResult,
+          source: 'image', fileType: 'receipt_image',
+          diagnostics: { engine: 'cloud', provider: 'gemini', durationMs: 500 },
+        },
+        fromCamera: true,
+        door: 'form',
+      }, '');
+      try {
+        const formFixture = TestBed.createComponent(ImportWizardComponent);
+        formFixture.detectChanges();
+        const formComponent = formFixture.componentInstance;
+        formComponent.extractedTransactions.set(mockTransactions);
+
+        await formComponent.confirmImport();
+
+        expect(mockImportService.confirmImport.calls.mostRecent().args[6]).toEqual({
+          door: 'form', engine: 'cloud', provider: 'gemini', durationMs: 500,
+        });
+      } finally {
+        history.replaceState({}, '');
+      }
+    });
+
+    it('defaults an unlabelled camera-style state to the camera door', async () => {
+      history.replaceState({
+        importResult: {
+          ...mockImportResult,
+          source: 'image', fileType: 'receipt_image',
+          diagnostics: { engine: 'cloud', provider: 'gemini', durationMs: 500 },
+        },
+        fromCamera: true,
+      }, '');
+      try {
+        const cameraFixture = TestBed.createComponent(ImportWizardComponent);
+        cameraFixture.detectChanges();
+        const cameraComponent = cameraFixture.componentInstance;
+        cameraComponent.extractedTransactions.set(mockTransactions);
+
+        await cameraComponent.confirmImport();
+
+        expect(mockImportService.confirmImport.calls.mostRecent().args[6]?.door).toBe('camera');
+      } finally {
+        history.replaceState({}, '');
+      }
+    });
   });
 
   describe('confirmImport', () => {

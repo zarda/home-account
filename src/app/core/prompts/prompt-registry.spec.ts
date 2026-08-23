@@ -151,9 +151,11 @@ describe('prompt registry', () => {
   });
 
   it('never lists a run of country codes, in any prompt', () => {
-    // The five receipt prompts get their own test of this below; this one
-    // covers the rest, since a categorization, search or insights prompt
-    // could grow the same mistake and nothing else here would catch it.
+    // Covers all thirteen registered prompts, the five receipt ones
+    // included — their own describe blocks below assert the country field
+    // exists, not this tripwire, so this loop is the only place a
+    // categorization, search or insights prompt growing the same mistake
+    // would be caught.
     for (const id of PROMPT_IDS) {
       expect(render(id))
         .withContext(`${id} lists a run of two-letter codes`)
@@ -185,7 +187,7 @@ describe('prompt registry', () => {
       expect(prompt).toContain('inferred from the merchant name');
     });
 
-    it('asks for the issuing country as a code, never a default, and lists none', () => {
+    it('asks for the issuing country as a code, never a default', () => {
       // The country is concluded from what the receipt prints, reported as a
       // code the reader checks against the runtime's region table — so the
       // prompt names no country, the same rule CURRENCY_FIELD follows.
@@ -487,7 +489,7 @@ describe('prompt registry', () => {
       expect(prompt).toContain('inferred from the merchant name');
     });
 
-    it('asks for the issuing country as a code, never a default, and lists none', () => {
+    it('asks for the issuing country as a code, never a default', () => {
       // The country is concluded from what the receipt prints, reported as a
       // code the reader checks against the runtime's region table — so the
       // prompt names no country, the same rule CURRENCY_FIELD follows.
@@ -513,7 +515,7 @@ describe('prompt registry', () => {
       expect(prompt).toContain('inferred from the merchant name');
     });
 
-    it('asks for the issuing country as a code, never a default, and lists none', () => {
+    it('asks for the issuing country as a code, never a default', () => {
       // The country is concluded from what the receipt prints, reported as a
       // code the reader checks against the runtime's region table — so the
       // prompt names no country, the same rule CURRENCY_FIELD follows.
@@ -538,7 +540,7 @@ describe('prompt registry', () => {
       expect(prompt).toContain('inferred from the merchant name');
     });
 
-    it('asks for the issuing country as a code, never a default, and lists none', () => {
+    it('asks for the issuing country as a code, never a default', () => {
       // The country is concluded from what the receipt prints, reported as a
       // code the reader checks against the runtime's region table — so the
       // prompt names no country, the same rule CURRENCY_FIELD follows.
@@ -574,7 +576,7 @@ describe('prompt registry', () => {
       expect(prompt).toContain('inferred from the merchant name');
     });
 
-    it('asks for the issuing country as a code, never a default, and lists none', () => {
+    it('asks for the issuing country as a code, never a default', () => {
       // The country is concluded from what the receipt prints, reported as a
       // code the reader checks against the runtime's region table — so the
       // prompt names no country, the same rule CURRENCY_FIELD follows.

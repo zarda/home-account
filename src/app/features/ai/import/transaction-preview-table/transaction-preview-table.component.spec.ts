@@ -636,6 +636,8 @@ describe('TransactionPreviewTableComponent', () => {
     });
 
     it('names the country in the chip and the reason in its accessible name', () => {
+      // The review card and the form share one namespace for these strings
+      // (M7): a chip built here reads the same keys the form's own does.
       const row = makeRow({ currencySuggestion: offer });
       expect(component.currencyOfferText(row)).toBe('import.currencyFromCountry:{"country":"South Korea","currency":"KRW"}');
       expect(component.currencyOfferLabel(row)).toBe('import.acceptCurrencySuggestion:{"currency":"KRW"}. import.currencyReasonReceipt');

@@ -1037,6 +1037,24 @@ describe('AIImportService', () => {
         .toBeRejectedWithError(/No image files/);
     });
 
+    it('reports no provider for a failure before any request was issued', async () => {
+      // fileToBase64 fails before extractStatementTransactions is ever
+      // called — the provider must stay unresolved rather than naming
+      // whichever one happens to be configured (the bug ADR 0065 fixed in
+      // AIStrategyService.runProcessing).
+      spyOn(FileReader.prototype, 'readAsDataURL').and.callFake(function (this: FileReader) {
+        this.onerror?.(new ProgressEvent('error') as unknown as ProgressEvent<FileReader>);
+      });
+
+      const failure = await service
+        .importFromStatementImages([makeFile('stmt.png', 'image/png')])
+        .catch(e => e);
+
+      expect(failure).toBeInstanceOf(ReceiptProcessingError);
+      expect(failure.diagnostics.provider).toBeNull();
+      expect(cloudLLMProvider.extractStatementTransactions).not.toHaveBeenCalled();
+    });
+
     it('records a statement batch as a screenshot, not a receipt', async () => {
       // fileType exists precisely to tell these apart; both used to say
       // receipt_image, so Import History could not distinguish them.
@@ -1056,14 +1074,19 @@ describe('AIImportService', () => {
       expect('receiptCountry' in result.transactions[1]).toBeFalse();
     });
 
-    it('marks a fallen-back row with the ladder\'s offer', async () => {
+    it('never offers a currency suggestion, even for a fallen-back row carrying a country', async () => {
+      // A bank statement is not a receipt (ADR 0064): the ladder stays a
+      // receipt affordance, so a statement row that fell back and happens
+      // to carry a printed country still gets no chip — only
+      // convertStrategyResultToCategories and categorizeMultiImageTransactions
+      // apply the ladder.
       spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
       cloudLLMProvider.extractStatementTransactions.and.callFake(async () => [
         { ...statementRows()[0], currency: '', receiptCountry: 'JP' },
       ]);
       const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
       expect(result.transactions[0].currencyFellBack).toBeTrue();
-      expect(result.transactions[0].currencySuggestion).toEqual({ code: 'JPY', country: 'JP', reason: 'receipt' });
+      expect('currencySuggestion' in result.transactions[0]).toBeFalse();
     });
   });
 
@@ -1105,6 +1128,25 @@ describe('AIImportService', () => {
       await expectAsync(
         service.importFromMultipleImages([makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')])
       ).toBeRejectedWithError(AI_NO_PROVIDER);
+    });
+
+    it('reports no provider for a failure before any request was issued', async () => {
+      // fileToBase64 fails before extractTransactionsFromMultipleImages is
+      // ever called. The same bug ADR 0065 found and fixed in
+      // AIStrategyService.runProcessing — a provider stamped for a request
+      // that never left the process — applies here: the provider must stay
+      // unresolved rather than naming whichever one happens to be configured.
+      spyOn(FileReader.prototype, 'readAsDataURL').and.callFake(function (this: FileReader) {
+        this.onerror?.(new ProgressEvent('error') as unknown as ProgressEvent<FileReader>);
+      });
+
+      const failure = await service
+        .importFromMultipleImages([makeFile('a.png', 'image/png')])
+        .catch(e => e);
+
+      expect(failure).toBeInstanceOf(ReceiptProcessingError);
+      expect(failure.diagnostics.provider).toBeNull();
+      expect(cloudLLMProvider.extractTransactionsFromMultipleImages).not.toHaveBeenCalled();
     });
 
     it('should consolidate single-item receipts as standalone transactions', async () => {
@@ -1369,6 +1411,22 @@ describe('AIImportService', () => {
       await expectAsync(service.importFromPDF(pdfFile()))
         .toBeRejectedWithError(/vision-capable provider/);
     });
+
+    it('never offers a currency suggestion, even for a fallen-back row carrying a country', async () => {
+      // A rasterized page reads through the same prompt a statement image
+      // does, so it can carry a receiptCountry — but a bank PDF is not a
+      // receipt (ADR 0064), and the ladder stays a receipt affordance.
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+      cloudLLMProvider.extractStatementTransactions.and.resolveTo([
+        { date: '2024-06-01', description: 'Withdrawal', amount: 50, type: 'expense', currency: '',
+          receiptCountry: 'JP' },
+      ]);
+
+      const result = await service.importFromPDF(pdfFile());
+
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+      expect('currencySuggestion' in result.transactions[0]).toBeFalse();
+    });
   });
 
   /**
@@ -1610,6 +1668,23 @@ describe('AIImportService', () => {
       // never made.
       expect(statuses).toContain('Categorizing transactions...');
       expect(statuses).not.toContain('Categorizing with AI...');
+    });
+
+    it('never offers a currency suggestion for a fallen-back row', async () => {
+      // A CSV row never carries a receiptCountry — there is no receipt to
+      // read one off — so only the locale rung could fire here (base
+      // currency stays the default USD; the device reports Japan), and the
+      // ladder stays a receipt affordance (ADR 0064): a bank export with no
+      // currency column must not have every row guess the device's region.
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('ja-JP');
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'Mystery charge', amount: 12, date: new Date(2024, 5, 1), type: 'expense', currency: '' }
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+      expect('currencySuggestion' in result.transactions[0]).toBeFalse();
     });
   });
 
