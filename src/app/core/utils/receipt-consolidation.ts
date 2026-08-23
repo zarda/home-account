@@ -110,7 +110,12 @@ export function consolidateReceiptItems(
       const merchant = first.merchant || groupItems.find(i => i.merchant)?.merchant || 'Receipt';
       const category = first.category || groupItems.find(i => i.category)?.category;
       // Reported once per receipt, on whichever line the model chose to put it
-      // — the same convention receiptDetails and receiptTotal use.
+      // — the same convention receiptDetails and receiptTotal use. location
+      // and receiptCountry resolve independently, so a group where the model
+      // put the address on one item and the country on another keeps the
+      // mark but silently loses location.country — the nesting already
+      // happened per item, at the reader. Off-nominal (both prompts ask for
+      // both on the group's last item) and not worth code.
       const location = first.location ?? groupItems.find(i => i.location)?.location;
       const receiptCountry = first.receiptCountry ?? groupItems.find(i => i.receiptCountry)?.receiptCountry;
       const netAmount = groupItems.reduce(

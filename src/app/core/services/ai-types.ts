@@ -48,11 +48,11 @@ export interface ProcessedTransaction {
   // nobody looked, so no producer defaults any of them.
   tags?: string[];
   location?: TransactionLocation;
-  /** ISO 3166-1 alpha-2 the model concluded the receipt was issued in; absent when it could not say. A review-step mark, never written. */
-  receiptCountry?: string;
   period?: BudgetPeriod;
   isRecurring?: boolean;
   recurringId?: string;
+  /** ISO 3166-1 alpha-2 the model concluded the receipt was issued in; absent when it could not say. A review-step mark, never written. */
+  receiptCountry?: string;
   /**
    * Which photo the row came from, and which photos a merged row was built
    * from. The strategy path used to drop both on this hop, so the review step

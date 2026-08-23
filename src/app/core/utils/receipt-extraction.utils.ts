@@ -133,8 +133,12 @@ function canonicalizeRegion(code: string): string {
  * claiming to be issued from "the European Union" rather than a place is not
  * a case the address next to it is trustworthy for either, so a macroregion
  * landing there is no worse than the free-text place name a model can put in
- * that same slot unchecked. Nothing here aggregates the value; it is read
- * back for display and for the currency lookup that already tolerates it.
+ * that same slot unchecked. No reader exists yet for either consumer —
+ * `location.country` is write-only today, and nothing displays, exports or
+ * aggregates it. The read that would eventually face this tradeoff is a
+ * country rollup, the reason `transaction.model.ts` gives for keeping the
+ * field at all, and it would see one of these macroregions rather than a
+ * country for exactly the receipts this paragraph describes.
  */
 export function readCountryCode(value: unknown): string {
   if (typeof value !== 'string') {

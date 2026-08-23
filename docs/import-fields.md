@@ -43,9 +43,11 @@ tell a removal from a row that never had any), `recurringMatch` (the rule
 this row looks like), `receiptCountry` (the country the reader concluded the
 receipt was issued in — it reaches the transaction only inside
 `location.country`, and only when an address was printed) and
-`currencySuggestion` (what the currency ladder offers while `currencyFellBack`
-stands). None of them reaches the mapper — it names its fields — and none of
-them is ever written to a transaction.
+`currencySuggestion` (the slot exists and is declared, but nothing populates
+it yet — #156 is what builds the currency ladder and fills it, offering what
+that ladder finds while `currencyFellBack` stands). None of them reaches the
+mapper — it names its fields — and none of them is ever written to a
+transaction.
 
 The renames, applied only at the confirm step's call into the mapper:
 `suggestedCategoryId` → `categoryId`, `notes` → `note`. Nothing else is named
