@@ -183,7 +183,12 @@
     "locationDenied": "Location permission was denied. You can still type a place name.",
     "locationUnavailable": "Your location could not be found. You can still type a place name.",
     "clearCoordinates": "Remove coordinates",
-    "currencyFromLocation": "Looks like you are in {{currency}} territory — use it?",
+    "currencyFromLocation": "Looks like {{country}} — use {{currency}}?",
+    "currencySuggested": "Use {{currency}}?",
+    "currencyReasonReceipt": "Read off the receipt",
+    "currencyReasonPosition": "Where you are right now",
+    "currencyReasonSession": "What you chose for your last receipt",
+    "currencyReasonLocale": "Your device's region",
     "attachScanPosition": "Attach where you are now as this receipt's location",
     "useSuggestedCategory": "Use suggested category {{category}}"
   },

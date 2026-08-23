@@ -180,7 +180,12 @@
     "locationDenied": "位置權限遭拒。您仍可輸入地點名稱。",
     "locationUnavailable": "無法取得您的位置。您仍可輸入地點名稱。",
     "clearCoordinates": "移除座標",
-    "currencyFromLocation": "您目前所在地區使用 {{currency}}，要套用嗎？",
+    "currencyFromLocation": "看起來是{{country}}的收據，要改用 {{currency}} 嗎？",
+    "currencySuggested": "要改用 {{currency}} 嗎？",
+    "currencyReasonReceipt": "從收據上讀到的",
+    "currencyReasonPosition": "依你目前的位置",
+    "currencyReasonSession": "你上一張收據選的貨幣",
+    "currencyReasonLocale": "依裝置的地區設定",
     "attachScanPosition": "將目前位置附加為這張收據的地點",
     "useSuggestedCategory": "使用建議分類 {{category}}"
   },

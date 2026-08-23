@@ -1,4 +1,5 @@
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { CommonModule } from '@angular/common';
@@ -50,6 +51,8 @@ import {
   BudgetPeriod,
   Category,
   CurrencyInfo,
+  CurrencySuggestion,
+  CurrencySuggestionReason,
   FieldConfidence,
   Goal,
   VERIFY_FIELD_THRESHOLD,
@@ -60,6 +63,9 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
+import { countryDisplayName, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
+import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
 import { dayKey, parseDateInput } from '../../../core/utils/transaction-date.utils';
 import {
@@ -125,6 +131,11 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private cdr = inject(ChangeDetectorRef);
   private analytics = inject(AnalyticsService);
   private receiptAttempts = inject(ReceiptAttemptService);
+  private currencySession = inject(CurrencyChoiceSessionService);
+  private localeFormat = inject(LocaleFormatService);
+  private destroyRef = inject(DestroyRef);
+  /** True from a scan that fell back until the user settles the currency; what makes a hand edit worth remembering. */
+  private scanCurrencyFellBack = false;
 
   @ViewChild('picker') picker!: MatDatepicker<Date>;
 
@@ -157,6 +168,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private scannedReceipt: { file: File; preview: string } | null = null;
   /** What the last scan offered, so saving can record which offers were refused. */
   private scanSuggestedTags: string[] = [];
+  /**
+   * The country the reader read off a printed address, and the exact name it
+   * prefilled alongside it. `locationField` carries the country to the save
+   * only while the Location field still holds this name unedited — a typed
+   * name outranks the paper it replaced, and the country goes with it (#156).
+   */
+  private printedLocationCountry: { name: string; country: string } | null = null;
 
   // Images already stored on the item being edited, by storage slot. Kept as
   // local state so per-image removal and conversion update the strip without
@@ -199,13 +217,13 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   scanFieldConfidence = signal<FieldConfidence | null>(null);
 
   /**
-   * A currency the receipt did not state, guessed from where the device is.
-   *
-   * Offered rather than applied. The stored value stays the account's base
-   * currency until the user accepts, because a guess that silently becomes a
-   * stored amount is the failure this whole area has been working away from.
+   * A currency the receipt did not state, offered from the ladder in
+   * currency-suggestion.utils.ts: the receipt's own country first, then where
+   * the device is, then the last choice this session, then the locale.
+   * Offered rather than applied: the stored value stays the account's base
+   * currency until the user accepts.
    */
-  suggestedCurrency = signal<{ code: string; country: string } | null>(null);
+  suggestedCurrency = signal<CurrencySuggestion | null>(null);
 
   /**
    * The position the scan fetched for its currency guess, offered as the
@@ -324,6 +342,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     if (location?.lat !== undefined && location?.lng !== undefined) {
       this.locationCoords.set({ lat: location.lat, lng: location.lng });
     }
+    this.form.get('currency')?.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(code => this.onCurrencyEdited(String(code ?? '')));
   }
 
   /**
@@ -630,7 +651,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     }
     const coords = this.locationCoords();
     if (!coords) {
-      return { location: { name } };
+      // The scan's own conclusion about the address it just prefilled, kept
+      // only while the field still holds that exact prefill.
+      const printedCountry = this.printedLocationCountry?.name === name
+        ? this.printedLocationCountry.country
+        : undefined;
+      return { location: { name, ...(printedCountry ? { country: printedCountry } : {}) } };
     }
     // Placed on device from the bundled table; absent when the coordinates
     // fall in open water or a country the table does not cover.
@@ -817,17 +843,25 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       const typedLocation = String(this.form.get('locationName')?.value ?? '').trim();
       if (printedLocation && !typedLocation) {
         this.form.patchValue({ locationName: printedLocation });
+        // The reader's own country claim for that address, carried to the
+        // save only while the field still holds exactly this prefill — an
+        // edit means the paper's address no longer describes it (#156).
+        this.printedLocationCountry = primary.location?.country
+          ? { name: printedLocation, country: primary.location.country }
+          : null;
+      } else {
+        this.printedLocationCountry = null;
       }
 
       this.scanFieldConfidence.set(primary.fieldConfidence ?? null);
 
       // The receipt did not say what money this was, so the account's base
-      // currency is sitting in the field. Where the user is standing is a
-      // better guess than where they live — offer it, but do not apply it.
+      // currency is sitting in the field. Offer a better guess; never apply it.
       this.suggestedCurrency.set(null);
       this.suggestedCoordinates.set(null);
+      this.scanCurrencyFellBack = !!primary.currencyFellBack;
       if (primary.currencyFellBack) {
-        void this.suggestCurrencyFromLocation();
+        void this.suggestCurrencyFromLocation(primary);
       }
 
       // Show success message
@@ -849,6 +883,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanFieldConfidence.set(null);
       this.suggestedCurrency.set(null);
       this.suggestedCoordinates.set(null);
+      this.scanCurrencyFellBack = false;
     } finally {
       this.isScanning.set(false);
     }
@@ -879,35 +914,41 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   /**
-   * Offer the currency of wherever the device is, when the receipt did not say.
+   * Offer a currency for a scan that fell back, from the ladder.
    *
-   * Only ever runs after a scan came back without a currency, so an ordinary
-   * import never asks for a position. The browser and iOS own the permission:
-   * a coordinate already attached to this transaction is reused, and otherwise
-   * the platform decides whether to prompt, reuse a recent fix, or refuse —
-   * there is no in-app toggle to keep in step with that decision. Refusal is
-   * silent, because the account's base currency is already in the field and a
-   * suggestion nobody asked for is not worth an error about.
+   * The receipt's own country is asked first and costs nothing. A position
+   * is fetched only when that rung is silent and the receipt is dated today
+   * — an old receipt never prompts for location — and a coordinate already
+   * attached to this transaction is reused whatever the date, being the
+   * receipt's own place. Refusal is silent: the base currency is already in
+   * the field, and a suggestion nobody asked for is not worth an error.
    */
-  private async suggestCurrencyFromLocation(): Promise<void> {
+  private async suggestCurrencyFromLocation(primary: ProcessedTransaction): Promise<void> {
+    const receiptSpeaks = !!currencyForCountry(primary.receiptCountry);
     const attached = this.locationCoords();
-    const coords = attached ?? (await this.currentCoordinates());
-    if (!coords) {
-      return;
-    }
-    // A fix fetched for the currency is also where this receipt was paid —
-    // when it is from today. Offered, never attached: the coordinate is
-    // evidence about the phone, not about the paper.
-    if (!attached && this.isDatedToday()) {
-      this.suggestedCoordinates.set(coords);
+    const datedToday = this.isDatedToday();
+    let positionCountry: string | undefined;
+
+    if (!receiptSpeaks) {
+      const coords = attached ?? (datedToday ? await this.currentCoordinates() : null);
+      if (coords) {
+        // A fix fetched for the currency is also where this receipt was paid
+        // — when it is from today. Offered, never attached (#314).
+        if (!attached && datedToday) {
+          this.suggestedCoordinates.set(coords);
+        }
+        positionCountry = countryForCoordinates(coords.lat, coords.lng) ?? undefined;
+      }
     }
 
-    const country = countryForCoordinates(coords.lat, coords.lng);
-    const code = currencyForCountry(country);
-    if (!code || !country || code === this.form.get('currency')?.value) {
-      return;
-    }
-    this.suggestedCurrency.set({ code, country });
+    this.suggestedCurrency.set(suggestCurrency({
+      receiptCountry: primary.receiptCountry,
+      positionCountry,
+      datedToday: attached !== null || datedToday,
+      sessionCurrency: this.currencySession.current() ?? undefined,
+      localeRegion: localeRegion(),
+      currentCurrency: String(this.form.get('currency')?.value ?? ''),
+    }));
   }
 
   /** A coarse position, or null for any reason at all. */
@@ -926,19 +967,52 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     });
   }
 
-  /** Take the suggested currency, adding it to the picker if it is uncurated. */
+  /** "Looks like South Korea — use KRW?", or just "Use THB?" for a session rung that knows no country. */
+  suggestionLabel(suggestion: CurrencySuggestion): string {
+    return suggestion.country
+      ? this.translationService.t('transactions.currencyFromLocation', {
+          country: countryDisplayName(suggestion.country, this.localeFormat.locale),
+          currency: suggestion.code,
+        })
+      : this.translationService.t('transactions.currencySuggested', { currency: suggestion.code });
+  }
+
+  reasonLabel(reason: CurrencySuggestionReason): string {
+    switch (reason) {
+      case 'receipt': return this.translationService.t('transactions.currencyReasonReceipt');
+      case 'position': return this.translationService.t('transactions.currencyReasonPosition');
+      case 'session': return this.translationService.t('transactions.currencyReasonSession');
+      case 'locale': return this.translationService.t('transactions.currencyReasonLocale');
+    }
+  }
+
+  /** Take the suggested currency, adding it to the picker if it is uncurated, and remember it for the session. */
   acceptCurrencySuggestion(): void {
     const suggestion = this.suggestedCurrency();
     if (!suggestion) {
       return;
     }
     this.ensureCurrencyListed(suggestion.code);
-    this.form.patchValue({ currency: suggestion.code });
     this.suggestedCurrency.set(null);
+    this.form.patchValue({ currency: suggestion.code });
   }
 
   dismissCurrencySuggestion(): void {
     this.suggestedCurrency.set(null);
+  }
+
+  /**
+   * A currency the user settles by hand on a fallen-back scan is as good an
+   * answer as an accepted chip, and the next receipt this session should
+   * know it. A scan whose currency was read is not a choice about fallback.
+   */
+  private onCurrencyEdited(code: string): void {
+    if (!this.scanCurrencyFellBack || !code) {
+      return;
+    }
+    this.scanCurrencyFellBack = false;
+    this.suggestedCurrency.set(null);
+    this.currencySession.remember(code);
   }
 
   private isDatedToday(): boolean {
