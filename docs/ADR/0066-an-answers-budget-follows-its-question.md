@@ -70,8 +70,9 @@ app knows any model's real output limit; `config/ai-models.ts` records
 sampling support and nothing else. A `max_tokens` above a model's own cap is
 a 400 on the OpenAI and Claude transports, which would trade a truncated
 answer for no answer at all. 8000 is chosen to sit under the lowest cap the
-configured vision models are assumed to have, and is to be re-measured
-against the live models rather than trusted.
+configured vision models are assumed to have, and is measured against a live
+model rather than trusted: `gemini-3.5-flash-lite` accepted a four-photo
+request at that budget on 2026-08-24 (HTTP 200, `finishReason: STOP`).
 
 **Salvage is confined to the receipt paths.** Categorization and tag
 suggestion keep parsing directly: they already chunk to fit their declared
@@ -134,5 +135,9 @@ also have rewritten every one of the ~30 existing stubs of
   survivable, but the app never re-asks with more room. Re-sending the photos
   is the expensive half of the request, and the import already runs against a
   90-second ceiling.
-- **The ceiling is unverified in CI.** Only a live request can prove a model
-  accepts an 8000-token budget, and CI has no provider keys.
+- **The ceiling is verified for one model, and cannot be verified in CI.**
+  The 2026-08-24 probe covers `gemini-3.5-flash-lite`, the model whose cap is
+  assumed lowest; OpenAI and Claude are inferred from their published limits,
+  not measured, because no key for either exists locally. Only a live request
+  can settle it and CI has no provider keys, so this stays a manual check —
+  like `docs/model-probe`, and for the same reason.
