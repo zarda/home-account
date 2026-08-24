@@ -7,7 +7,7 @@ import { AuthService } from './auth.service';
 import { VisionOcrService } from './vision-ocr.service';
 import { AppleIntelligenceService } from './apple-intelligence.service';
 import { NativeReceiptService } from './native-receipt.service';
-import { ProcessedTransaction, ProcessingResult } from './ai-types';
+import { ProcessedTransaction, ProcessingResult, ReceiptAttemptDiagnostics } from './ai-types';
 import { fileToBase64 } from '../utils/file.utils';
 import { consolidateReceiptItems, formatReceiptItemLines } from '../utils/receipt-consolidation';
 import { printedLocationSlot } from '../utils/receipt-extraction.utils';
@@ -15,8 +15,9 @@ import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT
 import { AI_PREFERENCES_SCHEMA_VERSION, migrateModelPreferences } from '../config/ai-model-migrations';
 import { Category, LLMProvider, baseCurrencyOf} from '../../models';
 import { parseDateInput } from '../utils/transaction-date.utils';
+import { AI_CLOUD_UNAVAILABLE, ReceiptProcessingError, parseAIError } from '../utils/ai-error.utils';
 
-export type { ProcessedTransaction, ProcessingResult } from './ai-types';
+export type { ProcessedTransaction, ProcessingResult, ReceiptAttemptDiagnostics } from './ai-types';
 
 export interface AIPreferences {
   autoSync: boolean;
@@ -48,15 +49,8 @@ const PREFERENCES_STORAGE_KEY = 'homeaccount_ai_preferences';
  */
 const USABLE_CONFIDENCE = 0.4;
 
-/**
- * Thrown when no cloud provider can be reached for a request that needs one.
- *
- * A code rather than a sentence, following the receipt-to-note errors: the
- * message used to be English prose that AIImportService recognized by
- * substring and passed straight to the screen, so it could never be
- * translated, and rewording it would silently have reclassified the error.
- */
-export const AI_CLOUD_UNAVAILABLE = 'AI_CLOUD_UNAVAILABLE';
+/** Re-exported so callers that import the code from here keep compiling. */
+export { AI_CLOUD_UNAVAILABLE } from '../utils/ai-error.utils';
 
 /**
  * Routes receipt processing to the best available engine:
@@ -247,7 +241,7 @@ export class AIStrategyService {
   async processReceipt(imageFile: File): Promise<ProcessingResult> {
     return this.runProcessing(
       () => this.nativeReceipt.processImage(imageFile),
-      () => this.processWithCloud(imageFile),
+      diagnostics => this.processWithCloud(imageFile, diagnostics),
     );
   }
 
@@ -260,7 +254,7 @@ export class AIStrategyService {
   async processMultipleImages(imageFiles: File[]): Promise<ProcessingResult> {
     return this.runProcessing(
       () => this.nativeReceipt.processImages(imageFiles),
-      () => this.processMultipleWithCloud(imageFiles),
+      diagnostics => this.processMultipleWithCloud(imageFiles, diagnostics),
     );
   }
 
@@ -304,55 +298,97 @@ export class AIStrategyService {
    * Run native or cloud processing per the routing strategy, falling back to
    * the other engine when the preferred one fails — or when it succeeds
    * without having read anything.
+   *
+   * One diagnostics object is built up front and shared by the result and
+   * the error: the duration is filled in the finally block, after whichever
+   * of the two has already been handed out, so a throw records how long it
+   * took just as a success does. The cross-engine fallbacks used to be four
+   * console.warns; they are the `fellBackFrom` field now.
    */
   private async runProcessing(
     native: () => Promise<ProcessingResult>,
-    cloud: () => Promise<ProcessingResult>,
+    cloud: (diagnostics: ReceiptAttemptDiagnostics) => Promise<ProcessingResult>,
   ): Promise<ProcessingResult> {
     const startTime = performance.now();
     this._isProcessing.set(true);
 
+    const preferNative = this.useNativeOCR();
+    const diagnostics: ReceiptAttemptDiagnostics = {
+      engine: preferNative ? 'native' : 'cloud',
+      provider: null,
+      durationMs: 0,
+    };
+    // The provider is resolved once the cloud path clears
+    // ensureCloudAvailable(), inside processWithCloud/processMultipleWithCloud
+    // themselves — not here — so an offline device with a configured key
+    // reports no provider for a request that was never issued.
+    const runCloud = (): Promise<ProcessingResult> => cloud(diagnostics);
+    let returned: ProcessingResult | undefined;
+
     try {
       let result: ProcessingResult;
 
-      if (this.useNativeOCR()) {
+      if (preferNative) {
         try {
           result = await native();
           if (!this.isUsableResult(result) && this.canUseCloud()) {
-            console.warn('[AIStrategy] Native OCR read too little to trust, trying cloud AI');
-            result = await this.preferUsable(result, cloud);
+            const other = await this.preferUsable(result, runCloud);
+            if (other !== result) {
+              diagnostics.engine = 'cloud';
+              diagnostics.fellBackFrom = 'native';
+              result = other;
+            }
           }
         } catch (error) {
           if (!this.canUseCloud()) {
             throw error;
           }
-          console.warn('[AIStrategy] Native processing failed, falling back to cloud AI:', error);
-          result = await cloud();
+          diagnostics.engine = 'cloud';
+          diagnostics.fellBackFrom = 'native';
+          result = await runCloud();
         }
       } else {
         try {
-          result = await cloud();
+          result = await runCloud();
           if (!this.isUsableResult(result) && this.canUseNative()) {
-            console.warn('[AIStrategy] Cloud AI read too little to trust, trying the native pipeline');
-            result = await this.preferUsable(result, native);
+            const other = await this.preferUsable(result, native);
+            if (other !== result) {
+              diagnostics.engine = 'native';
+              diagnostics.fellBackFrom = 'cloud';
+              result = other;
+            }
           }
         } catch (error) {
           if (!this.canUseNative()) {
             throw error;
           }
-          console.warn('[AIStrategy] Cloud AI failed, falling back to native OCR:', error);
+          diagnostics.engine = 'native';
+          diagnostics.fellBackFrom = 'cloud';
           result = await native();
         }
       }
 
-      const processingTimeMs = performance.now() - startTime;
-      this._lastProcessingTime.set(processingTimeMs);
-
-      return this.withFallbackCurrency({
+      returned = this.withFallbackCurrency({
         ...result,
-        processingTimeMs,
+        processingTimeMs: 0,
+        diagnostics,
       });
+      return returned;
+    } catch (error) {
+      const parsed = parseAIError(error);
+      diagnostics.errorType = parsed.type;
+      diagnostics.retryable = parsed.retryable;
+      throw new ReceiptProcessingError(diagnostics, error);
     } finally {
+      // Measured here so a throw is timed too. `returned` is the very object
+      // the caller receives; finally runs before the promise settles, so the
+      // caller never sees the zero placeholder.
+      const elapsed = performance.now() - startTime;
+      diagnostics.durationMs = elapsed;
+      if (returned) {
+        returned.processingTimeMs = elapsed;
+      }
+      this._lastProcessingTime.set(elapsed);
       this._isProcessing.set(false);
     }
   }
@@ -360,8 +396,14 @@ export class AIStrategyService {
   /**
    * Process with cloud AI.
    */
-  private async processWithCloud(imageFile: File): Promise<ProcessingResult> {
+  private async processWithCloud(
+    imageFile: File,
+    diagnostics: ReceiptAttemptDiagnostics,
+  ): Promise<ProcessingResult> {
     this.ensureCloudAvailable();
+    // Resolved only once a request is actually going to be sent, so a key
+    // edited mid-session is reported as what actually answered.
+    diagnostics.provider = this.receiptProvider();
 
     const imageBase64 = await fileToBase64(imageFile);
     const receipt = await this.cloudLLMProvider.parseReceipt(imageBase64);
@@ -378,8 +420,14 @@ export class AIStrategyService {
   /**
    * Process multiple images with cloud AI.
    */
-  private async processMultipleWithCloud(imageFiles: File[]): Promise<ProcessingResult> {
+  private async processMultipleWithCloud(
+    imageFiles: File[],
+    diagnostics: ReceiptAttemptDiagnostics,
+  ): Promise<ProcessingResult> {
     this.ensureCloudAvailable();
+    // Resolved only once a request is actually going to be sent, so a key
+    // edited mid-session is reported as what actually answered.
+    diagnostics.provider = this.receiptProvider();
 
     const imageBase64Array: string[] = [];
     for (const file of imageFiles) {
@@ -415,6 +463,7 @@ export class AIStrategyService {
       imageIndex: t.imageIndex,
       ...(t.mergedFromImages?.length ? { mergedFromImages: t.mergedFromImages } : {}),
       ...(t.location ? { location: t.location } : {}),
+      ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
     }));
 
     const avgConfidence = transactions.length > 0
@@ -497,7 +546,8 @@ export class AIStrategyService {
       suggestedCategoryId: receipt.suggestedCategory,
       fieldConfidence: receipt.fieldConfidence,
       currencyFellBack: !receipt.currency,
-      ...printedLocationSlot(receipt.location),
+      ...printedLocationSlot(receipt.location, receipt.receiptCountry),
+      ...(receipt.receiptCountry ? { receiptCountry: receipt.receiptCountry } : {}),
     };
   }
 

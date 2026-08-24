@@ -224,16 +224,18 @@
         }
       </mat-form-field>
 
-      <!-- Currency guessed from where the device is, when the receipt was silent -->
+      <!-- Currency offered by the ladder when the receipt was silent -->
       @if (suggestedCurrency(); as suggestion) {
         <div class="ai-suggestion-container">
           <!-- A real button, not a mat-chip: the static display chip sets no
-               tabindex and holds no focusable action, so Tab skipped the accept
-               while the Dismiss beside it was reachable all along. Its own text
-               says what accepting does, so it needs no aria-label. -->
+               tabindex and holds no focusable action. Its own text says what
+               accepting does and why, so it needs no aria-label. -->
           <button type="button" class="suggestion-chip" (click)="acceptCurrencySuggestion()">
             <mat-icon class="ai-icon">public</mat-icon>
-            <span>{{ 'transactions.currencyFromLocation' | translate: { currency: suggestion.code } }}</span>
+            <span class="suggestion-text">
+              <span>{{ suggestionLabel(suggestion) }}</span>
+              <span class="suggestion-reason">{{ reasonLabel(suggestion.reason) }}</span>
+            </span>
           </button>
           <button
             mat-icon-button

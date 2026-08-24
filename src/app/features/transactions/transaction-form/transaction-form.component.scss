@@ -229,6 +229,26 @@
     min-width: 0;
     overflow-wrap: anywhere;
   }
+
+  // Two lines inside the chip: the offer, then why. Both wrap mid-word rather
+  // than push the Dismiss button out of the row (ui-overflow G1); never clipped.
+  .suggestion-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow-wrap: anywhere;
+
+    // Nested under .suggestion-text (three classes) rather than a sibling of
+    // it, so this outranks the dark-theme variant of the `span` rule above
+    // (`.dark-theme .suggestion-chip span`, two classes plus a type
+    // selector) — otherwise the reason line renders in the same colour as
+    // the offer text in dark theme and the two are indistinguishable.
+    .suggestion-reason {
+      font-size: var(--text-xs);
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+  }
 }
 
 // Height and the flex column that distributes it are handled app-wide in

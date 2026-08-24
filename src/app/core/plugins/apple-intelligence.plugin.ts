@@ -13,6 +13,8 @@ export interface AppleReceiptExtraction {
   details: string;
   /** Branch/address as printed, '' when none, absent from a native build older than this field */
   location?: string;
+  /** ISO 3166-1 alpha-2 as the model concluded it, '' when it could not, absent from a native build older than this field */
+  country?: string;
 }
 
 export interface AppleIntelligencePlugin {

@@ -127,4 +127,18 @@ describe('toCreateTransactionDTO and the review flags', () => {
     );
     expect('currencyFellBack' in dto).toBeFalse();
   });
+
+  it('never forwards receiptCountry — it is a review-step mark, not a field', () => {
+    const dto = toCreateTransactionDTO(
+      {
+        amount: 5,
+        date: new Date(2026, 0, 1),
+        location: { name: 'Shibuya', country: 'JP' },
+        receiptCountry: 'JP'
+      } as never,
+      'USD'
+    );
+    expect('receiptCountry' in dto).toBeFalse();
+    expect(dto.location).toEqual({ name: 'Shibuya', country: 'JP' });
+  });
 });

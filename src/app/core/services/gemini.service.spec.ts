@@ -388,6 +388,21 @@ describe('GeminiService', () => {
       expect(result[1].location).toEqual({ name: 'Shibuya 1-2-3' });
     });
 
+    it('carries the issuing country onto the row that reported it', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { date: '2026-07-01', description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD',
+          positionInImage: 'top', confidence: 0.9, merchant: 'Cafe' },
+        { date: '2026-07-01', description: 'Bread', amount: 2, type: 'expense', currency: 'USD',
+          positionInImage: 'bottom', confidence: 0.9, merchant: 'Cafe', location: 'Shibuya 1-2-3', country: 'JP' },
+      ])));
+
+      const result = await service.extractTransactionsFromMultipleImages(['AAA']);
+
+      expect('receiptCountry' in result[0]).toBeFalse();
+      expect(result[1].receiptCountry).toBe('JP');
+      expect(result[1].location).toEqual({ name: 'Shibuya 1-2-3', country: 'JP' });
+    });
+
     it('tells the model a single photo may contain several receipts', async () => {
       visionModel.generateContent.and.resolveTo(makeResult('[]'));
       await service.extractTransactionsFromMultipleImages(['AAA']);
@@ -791,6 +806,18 @@ describe('GeminiService', () => {
         date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY', location: '',
       })));
       expect('location' in (await service.extractTransactionsFromImage('abc'))[0]).toBeFalse();
+    });
+
+    it('carries the issuing country as a mark, and nothing when the model could not say', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY', country: 'JP',
+      })));
+      expect((await service.extractTransactionsFromImage('abc'))[0].receiptCountry).toBe('JP');
+
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY', country: '',
+      })));
+      expect('receiptCountry' in (await service.extractTransactionsFromImage('abc'))[0]).toBeFalse();
     });
 
     it('leaves an unrecognized suggested category undefined', async () => {

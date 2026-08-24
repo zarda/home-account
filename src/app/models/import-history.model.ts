@@ -1,10 +1,24 @@
 import { Timestamp } from '@angular/fire/firestore';
 import type { BudgetPeriod } from './budget.model';
 import type { TransactionLocation } from './transaction.model';
+import type { LLMProvider } from './user.model';
+import type { ReceiptAttemptDiagnostics } from '../core/services/ai-types';
 
 export type ImportSource = 'csv' | 'pdf' | 'image' | 'json';
 export type ImportFileType = 'bank_csv' | 'bank_pdf' | 'receipt_image' | 'screenshot' | 'credit_card' | 'spreadsheet' | 'generic_csv' | 'backup_json';
 export type ImportStatus = 'pending' | 'processing' | 'completed' | 'partial' | 'failed';
+
+/** Which surface ran the receipt. Absent on imports that were not a receipt attempt. */
+export type ReceiptDoor = 'camera' | 'wizard' | 'form' | 'queue';
+export type ReceiptEngine = 'cloud' | 'native';
+/**
+ * The closed set a failed attempt is filed under: parseAIError's classes plus
+ * the three the pipeline itself decides — no engine configured, an engine
+ * that answered with nothing, and an offline queue write that failed.
+ */
+export type ReceiptFailureClass =
+  | 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout'
+  | 'no_provider' | 'nothing_extracted' | 'queue_write' | 'unknown';
 
 export interface ImportHistory {
   id: string;
@@ -30,7 +44,25 @@ export interface ImportHistory {
    * second import. Absent when no photo was skipped.
    */
   receiptsSkipped?: number;
+  /**
+   * How the attempt ran, recorded for receipts only. Written at extraction
+   * time for a failed attempt and at confirm time for a successful one.
+   * Every slot is optional because a CSV import has none of them.
+   */
+  door?: ReceiptDoor;
+  engine?: ReceiptEngine;
+  /** The engine that ran first and lost. Absent when the preferred engine answered. */
+  fellBackFrom?: ReceiptEngine;
+  provider?: LLMProvider;
+  errorType?: ReceiptFailureClass;
+  durationMs?: number;
 }
+
+/** The receipt-attempt slots of a record, as a caller hands them to the writer. */
+export type ImportProvenance = Pick<
+  ImportHistory,
+  'door' | 'engine' | 'fellBackFrom' | 'provider' | 'errorType' | 'durationMs'
+>;
 
 export interface ImportError {
   row?: number;
@@ -73,6 +105,17 @@ export interface RecurringMatchSuggestion {
   sourceIsRecurring?: boolean;
 }
 
+/** Which rung of the currency ladder spoke: the receipt, the phone's position, the session's last choice, or the device locale (`suggestCurrency`, #156). */
+export type CurrencySuggestionReason = 'receipt' | 'position' | 'session' | 'locale';
+
+/** A currency offered for a row whose currency fell back. Offered, never applied in bulk (ADR 0062); never written. */
+export interface CurrencySuggestion {
+  code: string;
+  /** Alpha-2 of the country the rung answered from; absent on the session rung, which remembers a code and not a place. */
+  country?: string;
+  reason: CurrencySuggestionReason;
+}
+
 export interface CategorizedImportTransaction {
   id: string;                      // Temporary ID for UI selection
   description: string;
@@ -113,6 +156,10 @@ export interface CategorizedImportTransaction {
   /** What the suggester offered, so the confirm step can record what was removed. Never written. */
   suggestedTags?: string[];
   location?: TransactionLocation;
+  /** A review-step mark, never written: the country the reader concluded the receipt was issued in. */
+  receiptCountry?: string;
+  /** A review-step mark, never written: what `suggestCurrency` offers while `currencyFellBack` stands (currency-suggestion.utils.ts, #156). */
+  currencySuggestion?: CurrencySuggestion;
   period?: BudgetPeriod;
   isRecurring?: boolean;
   /** The active rule this row looks like, offered unchecked. Never written. */
@@ -171,7 +218,8 @@ export interface ImportResult {
   duplicates: DuplicateCheck[];
   sourceFiles?: File[];            // Support multiple source files
   multiImageMetadata?: MultiImageMetadata;  // Multi-image processing info
-  processingSource?: 'cloud' | 'native';  // Which AI processed the import
+  /** How the receipt engine ran, when one did. Absent for CSV, PDF and JSON. */
+  diagnostics?: ReceiptAttemptDiagnostics;
 }
 
 export interface ImportWarning {

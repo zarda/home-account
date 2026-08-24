@@ -9,6 +9,7 @@ import {
   IMPORT_READBACK_FAILED,
   IMPORT_READBACK_TIMEOUT_MS,
 } from './ai-import.service';
+import { ReceiptProcessingError } from '../utils/ai-error.utils';
 import {
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
@@ -20,7 +21,7 @@ import { ImportHistoryService } from './import-history.service';
 import { TransactionService, RECEIPT_ATTACH_FAILED, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
-import { AIStrategyService } from './ai-strategy.service';
+import { AIStrategyService, ProcessedTransaction, ProcessingResult } from './ai-strategy.service';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { CategoryMemoryService } from './category-memory.service';
@@ -28,6 +29,7 @@ import { RagContextService } from './rag-context.service';
 import { TagMemoryService } from './tag-memory.service';
 import { TagSuggestionService } from './tag-suggestion.service';
 import { RecurringService } from './recurring.service';
+import { CurrencyChoiceSessionService } from './currency-choice-session.service';
 import { AnalyticsService } from './analytics.service';
 import { createMockUser } from './testing/mock-auth.service';
 import { createRecurring, createTransaction } from './testing/test-data';
@@ -56,6 +58,7 @@ describe('AIImportService', () => {
   let tagSuggestions: jasmine.SpyObj<TagSuggestionService>;
   let tagMemory: jasmine.SpyObj<TagMemoryService>;
   let recurringService: jasmine.SpyObj<RecurringService>;
+  let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
   let analytics: jasmine.SpyObj<AnalyticsService>;
   let rasterize: jasmine.Spy;
   let isOnlineSignal: WritableSignal<boolean>;
@@ -89,7 +92,9 @@ describe('AIImportService', () => {
       currentUser: jasmine.createSpy('currentUser').and.returnValue(createMockUser('user123')),
       userId: jasmine.createSpy('userId').and.returnValue('user123')
     });
-    strategyService = jasmine.createSpyObj('AIStrategyService', ['canUseCloud', 'canUseNative', 'processReceipt']);
+    strategyService = jasmine.createSpyObj('AIStrategyService', ['canUseCloud', 'canUseNative', 'processReceipt'], {
+      receiptProvider: signal<'gemini' | 'openai' | 'claude' | null>('gemini'),
+    });
     offlineQueue = jasmine.createSpyObj('OfflineQueueService', ['queueImage']);
     isOnlineSignal = signal(true);
     pwaService = jasmine.createSpyObj('PwaService', [], {
@@ -111,6 +116,8 @@ describe('AIImportService', () => {
     tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
     tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['rememberAll']);
     recurringService = jasmine.createSpyObj<RecurringService>('RecurringService', ['listAll']);
+    currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['current', 'remember', 'clear']);
+    currencySession.current.and.returnValue(null);
     analytics = jasmine.createSpyObj<AnalyticsService>('AnalyticsService', [
       'trackAiAssistUsed',
     ]);
@@ -152,6 +159,7 @@ describe('AIImportService', () => {
         { provide: TagSuggestionService, useValue: tagSuggestions },
         { provide: TagMemoryService, useValue: tagMemory },
         { provide: RecurringService, useValue: recurringService },
+        { provide: CurrencyChoiceSessionService, useValue: currencySession },
         { provide: AnalyticsService, useValue: analytics }
       ]
     });
@@ -251,6 +259,7 @@ describe('AIImportService', () => {
         source: 'cloud',
         confidence: 0.9,
         processingTimeMs: 10,
+        diagnostics: { engine: 'cloud', provider: 'gemini', durationMs: 10 },
         transactions: [{
           date: new Date(2024, 5, 1),
           description: 'Lunch',
@@ -266,7 +275,7 @@ describe('AIImportService', () => {
 
       expect(result.source).toBe('image');
       expect(result.transactions.length).toBe(1);
-      expect(result.processingSource).toBe('cloud');
+      expect(result.diagnostics).toEqual({ engine: 'cloud', provider: 'gemini', durationMs: 10 });
       expect(duplicateService.checkDuplicates).toHaveBeenCalled();
       expect(service.isProcessing()).toBeFalse();
     });
@@ -279,6 +288,7 @@ describe('AIImportService', () => {
         source: 'native',
         confidence: 0.5,
         processingTimeMs: 5,
+        diagnostics: { engine: 'native', provider: null, durationMs: 5 },
         transactions: [{
           date: new Date(2024, 5, 1),
           description: 'Item',
@@ -297,7 +307,7 @@ describe('AIImportService', () => {
       // Coerced to the catch-all for display, but graded for review rather
       // than wearing the 0.4 the extraction reported about something else.
       expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
-      expect(result.processingSource).toBe('native');
+      expect(result.diagnostics?.engine).toBe('native');
     });
 
     it('keeps the extraction confidence on a row whose category resolved', async () => {
@@ -369,8 +379,24 @@ describe('AIImportService', () => {
       const result = await service.importFromImage(makeFile('r.png', 'image/png'));
 
       expect(cloudLLMProvider.extractTransactionsFromImage).toHaveBeenCalled();
-      expect(result.processingSource).toBe('cloud');
+      expect(result.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', provider: 'gemini',
+      }));
       expect(result.transactions.length).toBe(1);
+    });
+
+    it('wraps a direct-provider failure with cloud diagnostics', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.rejectWith(new Error('503 service unavailable'));
+
+      const failure = await service
+        .importFromMultipleImages([makeFile('r.png', 'image/png')])
+        .catch(e => e);
+
+      expect(failure).toBeInstanceOf(ReceiptProcessingError);
+      expect(failure.message).toBe('503 service unavailable');
+      expect(failure.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', provider: 'gemini', errorType: 'server',
+      }));
     });
 
     it('should fall back to provider extraction when the strategy returns zero transactions', async () => {
@@ -444,6 +470,107 @@ describe('AIImportService', () => {
 
       expect(result.transactions[0].currency).toBe('EUR');
       expect('currencyFellBack' in result.transactions[0]).toBeFalse();
+    });
+
+    it('carries the receipt country onto the reviewed row as a mark', async () => {
+      strategyService.processReceipt.and.returnValue(Promise.resolve({
+        source: 'cloud', confidence: 0.9, processingTimeMs: 5,
+        transactions: [
+          {
+            date: new Date(2024, 5, 1), description: 'Item', amount: 3, type: 'expense',
+            currency: 'JPY', confidence: 0.9, source: 'cloud', receiptCountry: 'JP',
+          },
+          {
+            date: new Date(2024, 5, 1), description: 'No Country', amount: 4, type: 'expense',
+            currency: 'JPY', confidence: 0.9, source: 'cloud',
+          },
+        ],
+      }));
+
+      const result = await service.importFromImage(makeFile('r.png', 'image/png'));
+
+      expect(result.transactions[0].receiptCountry).toBe('JP');
+      expect('receiptCountry' in result.transactions[1]).toBeFalse();
+    });
+  });
+
+  describe('convertStrategyResultToCategories', () => {
+    const processed = (rows: Partial<ProcessedTransaction>[]): ProcessingResult => ({
+      source: 'cloud', confidence: 0.9, processingTimeMs: 1,
+      transactions: rows.map(r => ({
+        date: new Date(2024, 5, 1), description: 'Row', amount: 10, type: 'expense',
+        currency: 'USD', confidence: 0.9, source: 'cloud', ...r,
+      })),
+    });
+
+    beforeEach(() => {
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+    });
+
+    it('carries the photo mapping and receipt group, which the camera converter used to build by hand', () => {
+      const rows = service.convertStrategyResultToCategories(processed([
+        { receiptId: 1, imageIndex: 1 },
+        { receiptId: 2, imageIndex: 0, mergedFromImages: [0, 1] },
+        { imageIndex: 0 },
+        {},
+      ]));
+
+      expect(rows[0].imageMetadata).toEqual(jasmine.objectContaining({ imageIndex: 1, imageId: 'image_1', receiptId: 1 }));
+      expect(rows[1].imageMetadata?.mergedFromImages).toEqual([0, 1]);
+      expect(rows[2].imageMetadata?.receiptId).toBeUndefined();
+      expect(rows[2].imageMetadata?.imageIndex).toBe(0);
+      // No photo mapping at all (the single-image door): no metadata block.
+      expect(rows[3].imageMetadata).toBeUndefined();
+    });
+
+    it('keeps the fallen-back mark, the location, the receipt country and the review flag', () => {
+      const [row] = service.convertStrategyResultToCategories(processed([
+        {
+          currency: 'USD', currencyFellBack: true, location: { name: 'Seoul', country: 'KR' },
+          receiptCountry: 'KR', fieldConfidence: { amount: 0.5 },
+        },
+      ]));
+
+      expect(row.currencyFellBack).toBeTrue();
+      expect(row.location).toEqual({ name: 'Seoul', country: 'KR' });
+      expect(row.receiptCountry).toBe('KR');
+      // The item-sum fallback flag, which the camera spec used to pin on its own converter.
+      expect(row.fieldConfidence).toEqual({ amount: 0.5 });
+    });
+
+    it('offers the receipt country\'s currency on a fallen-back row, and nothing on a read one', () => {
+      const rows = service.convertStrategyResultToCategories(processed([
+        { currency: 'USD', currencyFellBack: true, receiptCountry: 'KR' },
+        { currency: 'USD', currencyFellBack: false, receiptCountry: 'KR' },
+      ]));
+
+      expect(rows[0].currencySuggestion).toEqual({ code: 'KRW', country: 'KR', reason: 'receipt' });
+      expect('currencySuggestion' in rows[1]).toBeFalse();
+    });
+
+    // No "never a position" clause here: ProcessedTransaction carries no
+    // positionCountry field for a rung to read, so there is no evidence a
+    // case here could supply and assert was ignored — the ladder's position
+    // rung only exists on the transaction form's own call into
+    // suggestCurrency, built from the device's own coordinates, and that is
+    // where a case belongs pinning it never reaches the import review path.
+    it('offers the session choice, then the locale', () => {
+      currencySession.current.and.returnValue('THB');
+      expect(service.convertStrategyResultToCategories(processed([
+        { currency: 'USD', currencyFellBack: true },
+      ]))[0].currencySuggestion).toEqual({ code: 'THB', reason: 'session' });
+
+      currencySession.current.and.returnValue(null);
+      (Object.getOwnPropertyDescriptor(navigator, 'language')?.get as jasmine.Spy).and.returnValue('ja-JP');
+      expect(service.convertStrategyResultToCategories(processed([
+        { currency: 'USD', currencyFellBack: true },
+      ]))[0].currencySuggestion).toEqual({ code: 'JPY', country: 'JP', reason: 'locale' });
+    });
+
+    it('offers nothing equal to what the row already shows', () => {
+      expect('currencySuggestion' in service.convertStrategyResultToCategories(processed([
+        { currency: 'USD', currencyFellBack: true, receiptCountry: 'US' },
+      ]))[0]).toBeFalse();
     });
   });
 
@@ -910,6 +1037,24 @@ describe('AIImportService', () => {
         .toBeRejectedWithError(/No image files/);
     });
 
+    it('reports no provider for a failure before any request was issued', async () => {
+      // fileToBase64 fails before extractStatementTransactions is ever
+      // called — the provider must stay unresolved rather than naming
+      // whichever one happens to be configured (the bug ADR 0065 fixed in
+      // AIStrategyService.runProcessing).
+      spyOn(FileReader.prototype, 'readAsDataURL').and.callFake(function (this: FileReader) {
+        this.onerror?.(new ProgressEvent('error') as unknown as ProgressEvent<FileReader>);
+      });
+
+      const failure = await service
+        .importFromStatementImages([makeFile('stmt.png', 'image/png')])
+        .catch(e => e);
+
+      expect(failure).toBeInstanceOf(ReceiptProcessingError);
+      expect(failure.diagnostics.provider).toBeNull();
+      expect(cloudLLMProvider.extractStatementTransactions).not.toHaveBeenCalled();
+    });
+
     it('records a statement batch as a screenshot, not a receipt', async () => {
       // fileType exists precisely to tell these apart; both used to say
       // receipt_image, so Import History could not distinguish them.
@@ -917,6 +1062,31 @@ describe('AIImportService', () => {
 
       expect(result.source).toBe('image');
       expect(result.fileType).toBe('screenshot');
+    });
+
+    it('carries a row\'s receipt country as a mark', async () => {
+      cloudLLMProvider.extractStatementTransactions.and.callFake(async () => [
+        { ...statementRows()[0], receiptCountry: 'US' },
+        statementRows()[1],
+      ]);
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+      expect(result.transactions[0].receiptCountry).toBe('US');
+      expect('receiptCountry' in result.transactions[1]).toBeFalse();
+    });
+
+    it('never offers a currency suggestion, even for a fallen-back row carrying a country', async () => {
+      // A bank statement is not a receipt (ADR 0064): the ladder stays a
+      // receipt affordance, so a statement row that fell back and happens
+      // to carry a printed country still gets no chip — only
+      // convertStrategyResultToCategories and categorizeMultiImageTransactions
+      // apply the ladder.
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+      cloudLLMProvider.extractStatementTransactions.and.callFake(async () => [
+        { ...statementRows()[0], currency: '', receiptCountry: 'JP' },
+      ]);
+      const result = await service.importFromStatementImages([makeFile('stmt.png', 'image/png')]);
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+      expect('currencySuggestion' in result.transactions[0]).toBeFalse();
     });
   });
 
@@ -958,6 +1128,25 @@ describe('AIImportService', () => {
       await expectAsync(
         service.importFromMultipleImages([makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')])
       ).toBeRejectedWithError(AI_NO_PROVIDER);
+    });
+
+    it('reports no provider for a failure before any request was issued', async () => {
+      // fileToBase64 fails before extractTransactionsFromMultipleImages is
+      // ever called. The same bug ADR 0065 found and fixed in
+      // AIStrategyService.runProcessing — a provider stamped for a request
+      // that never left the process — applies here: the provider must stay
+      // unresolved rather than naming whichever one happens to be configured.
+      spyOn(FileReader.prototype, 'readAsDataURL').and.callFake(function (this: FileReader) {
+        this.onerror?.(new ProgressEvent('error') as unknown as ProgressEvent<FileReader>);
+      });
+
+      const failure = await service
+        .importFromMultipleImages([makeFile('a.png', 'image/png')])
+        .catch(e => e);
+
+      expect(failure).toBeInstanceOf(ReceiptProcessingError);
+      expect(failure.diagnostics.provider).toBeNull();
+      expect(cloudLLMProvider.extractTransactionsFromMultipleImages).not.toHaveBeenCalled();
     });
 
     it('should consolidate single-item receipts as standalone transactions', async () => {
@@ -1115,6 +1304,33 @@ describe('AIImportService', () => {
 
       expect(result.warnings.some(w => w.type === 'duplicate')).toBeTrue();
     });
+
+    it('carries the receipt country through consolidation onto the reviewed row', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+        { date: '2024-06-01', description: 'Item B', amount: 200, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'bottom', confidence: 0.8, receiptId: 1, receiptCountry: 'JP' },
+        { date: '2024-06-02', description: 'No Country', amount: 50, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 2 },
+      ]));
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+      const merged = result.transactions.find(t => t.description === 'Shop');
+      const standalone = result.transactions.find(t => t.description === 'No Country');
+      expect(merged?.receiptCountry).toBe('JP');
+      expect('receiptCountry' in (standalone ?? {})).toBeFalse();
+    });
+
+    it('marks a fallen-back row with the ladder\'s offer', async () => {
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item', amount: 100, type: 'expense', currency: '',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, receiptCountry: 'JP' },
+      ]));
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+      expect(result.transactions[0].currencySuggestion).toEqual({ code: 'JPY', country: 'JP', reason: 'receipt' });
+    });
   });
 
   describe('importFromPDF', () => {
@@ -1194,6 +1410,22 @@ describe('AIImportService', () => {
 
       await expectAsync(service.importFromPDF(pdfFile()))
         .toBeRejectedWithError(/vision-capable provider/);
+    });
+
+    it('never offers a currency suggestion, even for a fallen-back row carrying a country', async () => {
+      // A rasterized page reads through the same prompt a statement image
+      // does, so it can carry a receiptCountry — but a bank PDF is not a
+      // receipt (ADR 0064), and the ladder stays a receipt affordance.
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('en-US');
+      cloudLLMProvider.extractStatementTransactions.and.resolveTo([
+        { date: '2024-06-01', description: 'Withdrawal', amount: 50, type: 'expense', currency: '',
+          receiptCountry: 'JP' },
+      ]);
+
+      const result = await service.importFromPDF(pdfFile());
+
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+      expect('currencySuggestion' in result.transactions[0]).toBeFalse();
     });
   });
 
@@ -1437,6 +1669,23 @@ describe('AIImportService', () => {
       expect(statuses).toContain('Categorizing transactions...');
       expect(statuses).not.toContain('Categorizing with AI...');
     });
+
+    it('never offers a currency suggestion for a fallen-back row', async () => {
+      // A CSV row never carries a receiptCountry — there is no receipt to
+      // read one off — so only the locale rung could fire here (base
+      // currency stays the default USD; the device reports Japan), and the
+      // ladder stays a receipt affordance (ADR 0064): a bank export with no
+      // currency column must not have every row guess the device's region.
+      spyOnProperty(navigator, 'language', 'get').and.returnValue('ja-JP');
+      exportService.importFromCSV.and.returnValue(Promise.resolve([
+        { description: 'Mystery charge', amount: 12, date: new Date(2024, 5, 1), type: 'expense', currency: '' }
+      ] as never));
+
+      const result = await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      expect(result.transactions[0].currencyFellBack).toBeTrue();
+      expect('currencySuggestion' in result.transactions[0]).toBeFalse();
+    });
   });
 
   describe('importFromJSON', () => {
@@ -1669,6 +1918,16 @@ describe('AIImportService', () => {
       importHistoryService.failImport.and.returnValue(Promise.resolve());
       importHistoryService.getImportById.and.returnValue(of(completedHistory));
       transactionService.addTransaction.and.returnValue(Promise.resolve('txn-id'));
+    });
+
+    it('hands the attempt provenance to the pending record', async () => {
+      await service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image', undefined, {
+        door: 'camera', engine: 'cloud', provider: 'gemini', durationMs: 3100,
+      });
+      expect(importHistoryService.createPendingImport).toHaveBeenCalledWith(
+        'r.png', 10, 'image', 'receipt_image',
+        { door: 'camera', engine: 'cloud', provider: 'gemini', durationMs: 3100 }
+      );
     });
 
     it('should throw when user is not authenticated', async () => {

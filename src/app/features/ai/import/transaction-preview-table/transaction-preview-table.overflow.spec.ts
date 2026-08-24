@@ -6,6 +6,7 @@ import { TransactionPreviewTableComponent } from './transaction-preview-table.co
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry';
 
 /**
@@ -56,6 +57,25 @@ class PreviewOverflowProbeComponent {
       location: { name: '東京都渋谷区道玄坂一丁目二番三号 渋谷マークシティ店' },
       tags: ['coffee', 'work', 'reimbursable'],
       recurringMatch: { id: 'rule-1', name: 'Netflix' },
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+    },
+    // The session and locale rungs offer a code with no country — "Use
+    // {{currency}}?" — which is one line at any width, unlike r1's
+    // with-country sentence above. The accept button's hit area has to
+    // reach 40px in this shape too, not only the one where the label wraps.
+    {
+      id: 'r2',
+      description: 'Coffee',
+      amount: 500,
+      currency: 'USD',
+      currencyFellBack: true,
+      date: new Date('2026-06-02'),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      currencySuggestion: { code: 'EUR', reason: 'session' },
     },
   ];
 }
@@ -72,10 +92,32 @@ describe('overflow guard: the import review card', () => {
       providers: [
         // t() alone: TranslatePipe, LocaleDatePipe, LocaleFormatService and
         // CategorySuggestionComponent all guard their signal reads for exactly
-        // this mock. Keys render in place of the strings, and a key is both
-        // longer than the English it stands for and a single unbreakable word,
-        // so every width here is the pessimistic one.
-        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        // this mock. A key with no params renders bare, still longer than the
+        // English it stands for and still one unbreakable word. A key called
+        // with params — the offer chip's own case — appends the real values
+        // (a real country name off Intl.DisplayNames, a real currency code)
+        // rather than dropping them, because a bare key under-measures a
+        // chip that interpolates: the rendered sentence runs about a third
+        // longer than the key alone, which is exactly the width this probe
+        // exists to catch.
+        //
+        // `import.currencySuggested` is the one key this pessimism would
+        // mislead on: r2's whole point is the shape where the label never
+        // wraps, and the bare key "import.currencySuggested" is one long
+        // unbroken token that would wrap regardless of what r2 is actually
+        // testing. Standing in its real, short translation ("Use
+        // {{currency}}?") is what makes r2 the one-line case it needs to be.
+        {
+          provide: TranslationService,
+          useValue: {
+            t: (key: string, params?: Record<string, string | number>) =>
+              key === 'import.currencySuggested' && params
+                ? `Use ${params['currency']}?`
+                : params
+                  ? `${key} ${Object.values(params).join(' ')}`
+                  : key,
+          },
+        },
         {
           provide: CurrencyService,
           useValue: {
@@ -92,6 +134,7 @@ describe('overflow guard: the import review card', () => {
               new Intl.NumberFormat('en', { style: 'currency', currency: code }).format(amount),
           },
         },
+        { provide: CurrencyChoiceSessionService, useValue: { remember: () => undefined, current: () => null, clear: () => undefined } },
       ],
     }).compileComponents();
 
@@ -174,7 +217,7 @@ describe('overflow guard: the import review card', () => {
     // their text breaks mid-word rather than the row growing sideways.
     const extras = el('.card-extras');
     const chips = Array.from(host.querySelectorAll<HTMLElement>('.extra-chip'));
-    expect(chips.length).withContext('location plus three tags').toBe(4);
+    expect(chips.length).withContext('two currency offers (r1 with-country, r2 country-less), location plus three tags').toBe(6);
     for (const chip of chips) {
       const remove = chip.querySelector('.extra-remove') as HTMLElement;
       expect(withinWidthOf(clip, chip))
@@ -191,6 +234,46 @@ describe('overflow guard: the import review card', () => {
         .withContext(`${chip.textContent?.trim()} inside the strip`)
         .toBeTrue();
     }
+
+    // The offer is the one chip with two controls; both must be reachable.
+    // The accept button is chip-sized (no ≥26px floor — the chip must not
+    // fatten); its 40px hit area is the ::after overhang, measured below.
+    const accept = el('.currency-offer .extra-accept');
+    expect(withinWidthOf(clip, accept)).withContext('accept inside the clip').toBeTrue();
+    const hit = getComputedStyle(accept, '::after');
+    expect(accept.getBoundingClientRect().height - parseFloat(hit.top) - parseFloat(hit.bottom))
+      .withContext('accept hit area, glyph plus overhang')
+      .toBeGreaterThanOrEqual(40);
+
+    // r2's offer carries no country — "Use {{currency}}?" — which never
+    // wraps, at any width. That is the shape a fixed overhang derived from
+    // r1's two-line label gets wrong: the button renders far shorter here,
+    // so the hit area has to reach 40px from a much smaller starting height.
+    const shortAccept = host.querySelectorAll<HTMLElement>('.currency-offer .extra-accept')[1];
+    expect(withinWidthOf(clip, shortAccept)).withContext('country-less accept inside the clip').toBeTrue();
+    const shortHit = getComputedStyle(shortAccept, '::after');
+    expect(shortAccept.getBoundingClientRect().height - parseFloat(shortHit.top) - parseFloat(shortHit.bottom))
+      .withContext('country-less accept hit area, glyph plus overhang')
+      .toBeGreaterThanOrEqual(40);
+
+    // Every check above measures element *boxes*, which shrink to fit —
+    // `.transaction-card` shrinks the accept button rather than growing past
+    // its row, and an overflowing label paints straight through that shrunk
+    // box. That does not escape uncounted: `scrollWidth` reports an
+    // element's full rendered extent whether or not the element itself
+    // establishes a scroll container, so `card.scrollWidth`, asserted
+    // earlier in this file, already catches it geometrically — this file's
+    // own red run once measured it at 360 against a 257 clientWidth, from a
+    // label that had gone back to overflowing. What that number does not
+    // say is whether the escape becomes a *visible* problem: the first
+    // ancestor whose `overflow` actually computes to a scrolling value is
+    // `.transactions-list` (`overflow-y: auto` computes its `overflow-x` to
+    // `auto` too), which is where an overflow would show up as a real
+    // scrollbar on the review list.
+    const list = host.querySelector('.transactions-list') as HTMLElement;
+    expect(list.scrollWidth)
+      .withContext('review list does not scroll sideways for the offer chip\'s label')
+      .toBeLessThanOrEqual(list.clientWidth + 1);
   });
 
   it('wraps a long rule name rather than carrying it past the card', () => {
@@ -234,11 +317,26 @@ describe('overflow guard: the import review card', () => {
       .withContext('remove button hit area is wider than the glyph')
       .toBeGreaterThanOrEqual(32);
 
-    // And the chip it sits in is still one line of --text-xs: the hit area
-    // grew outside the box precisely so this number would not move.
-    expect(host.querySelectorAll<HTMLElement>('.extra-chip')[1].getBoundingClientRect().height)
+    // And the tag chip is still one line of --text-xs: the hit area grew
+    // outside the box precisely so this number would not move.
+    expect(host.querySelectorAll<HTMLElement>('.extra-chip')[2].getBoundingClientRect().height)
       .withContext('tag chip stays chip-sized')
       .toBeLessThanOrEqual(28);
+
+    // The offer chip is the one exception, and on purpose: its label is a
+    // full sentence rather than a single word, and at 288px the real
+    // sentence needs a second line. Taller here is the label wrapping, not
+    // the chip fattening — the accept button still floors its own hit area
+    // at 40px on top of the taller box, with a smaller overhang than the
+    // 18px-tall single line this shipped with first.
+    const offerChip = el('.currency-offer');
+    expect(offerChip.getBoundingClientRect().height)
+      .withContext('offer chip taller than a one-line chip because its label wrapped')
+      .toBeGreaterThan(28);
+    const acceptText = el('.currency-offer .extra-accept .extra-text');
+    expect(acceptText.getBoundingClientRect().height)
+      .withContext('the label really did take a second line rather than spilling past the chip')
+      .toBeGreaterThan(20);
   });
 
   it('never lets one chip\'s tap target reach into the row below', () => {
@@ -246,7 +344,7 @@ describe('overflow guard: the import review card', () => {
     // exactly how a tap on the bottom edge of one tag ends up removing the
     // tag under it. `.card-extras` pays for the overhang in row-gap, so the
     // boxes meet and never overlap.
-    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove')).map(button => {
+    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept')).map(button => {
       const r = button.getBoundingClientRect();
       const after = getComputedStyle(button, '::after');
       return {
@@ -312,5 +410,138 @@ describe('overflow guard: the import review card', () => {
     expect(withinWidthOf(clip, el('.selected-badge')))
       .withContext('count badge inside the clip')
       .toBeTrue();
+  });
+});
+
+/**
+ * Regression for 05a235d: `.extra-accept .extra-text` used to carry
+ * `overflow-wrap: normal`. That did not leave the label's *box* refusing to
+ * shrink — every ancestor from `.card-extras` down to here already carries
+ * `min-width: 0`, so the box really did shrink to the room the strip left it
+ * — it let the *ink* paint straight through that shrunk box and out past the
+ * card's edge, which a box measurement (`getBoundingClientRect`,
+ * `scrollWidth`) cannot see happen.
+ *
+ * That is exactly why the 288px guard above did not catch it: at that width
+ * the pre-fix label overflowed the card by a single pixel on the machine it
+ * was written on (`card.scrollWidth` 257 against a `clientWidth` of 256,
+ * inside that assertion's own +1 tolerance) and only went red in CI, where a
+ * font fallback renders the same string about 9px wider. Reverting the fix
+ * would go green again locally and red again in CI — the same round trip.
+ *
+ * A single unbreakable token sidesteps the font dependency rather than
+ * chasing it: no spaces for `normal` to wrap at even by accident, and long
+ * enough that `normal` overflows by hundreds of pixels under any font
+ * metrics. The assertion reads the painted text itself via
+ * `Range.getClientRects()`, not any element's box, so this fails on
+ * `overflow-wrap: normal` and passes on `break-word` regardless of which
+ * platform renders it.
+ */
+describe('overflow guard: the currency offer label\'s ink, not just its box', () => {
+  @Component({
+    standalone: true,
+    imports: [TransactionPreviewTableComponent],
+    template: `
+      <!-- Same 288px probe as the guard above; a narrower one would trip on
+           the category button's min-content, a different component's floor. -->
+      <div class="narrow">
+        <app-transaction-preview-table [transactions]="rows" [categories]="[]" />
+      </div>
+    `,
+    styles: ['.narrow { width: 288px; overflow: hidden; }'],
+  })
+  class InkOverflowProbeComponent {
+    readonly rows: CategorizedImportTransaction[] = [
+      {
+        id: 'r1',
+        description: 'Coffee',
+        amount: 500,
+        currency: 'USD',
+        currencyFellBack: true,
+        date: new Date('2026-06-01'),
+        type: 'expense',
+        suggestedCategoryId: 'food',
+        categoryConfidence: 0.8,
+        isDuplicate: false,
+        selected: true,
+        // No country: the same country-less shape as r2 above, which keeps
+        // this fixture to the one chip the test cares about.
+        currencySuggestion: { code: 'EUR', reason: 'session' },
+      },
+    ];
+  }
+
+  // 88 characters, no spaces or hyphens anywhere in it — the same technique
+  // 05a235d's own diagnosis used. Unbroken, this is hundreds of pixels wide
+  // in any font, far past the ~250px the card's content box leaves once
+  // padding and the chip's own furniture are accounted for, so `normal`
+  // fails by a wide margin rather than by the one pixel that let it hide.
+  const UNBREAKABLE_LABEL = 'unbreakable'.repeat(8);
+
+  let fixture: ComponentFixture<InkOverflowProbeComponent>;
+  let host: HTMLElement;
+  let card: HTMLElement;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [InkOverflowProbeComponent, NoopAnimationsModule],
+      providers: [
+        // Same shape as the mock above, with one substitution: the
+        // country-less offer key renders the unbreakable token in place of
+        // its usual short "Use {{currency}}?" stand-in.
+        {
+          provide: TranslationService,
+          useValue: {
+            t: (key: string, params?: Record<string, string | number>) =>
+              key === 'import.currencySuggested' && params
+                ? UNBREAKABLE_LABEL
+                : params
+                  ? `${key} ${Object.values(params).join(' ')}`
+                  : key,
+          },
+        },
+        {
+          provide: CurrencyService,
+          useValue: {
+            getSupportedCurrencies: () => [{ code: 'USD', nameKey: 'currencies.usd', symbol: '$' }],
+            getCurrencyInfo: () => undefined,
+            formatCurrency: (amount: number, code: string) =>
+              new Intl.NumberFormat('en', { style: 'currency', currency: code }).format(amount),
+          },
+        },
+        { provide: CurrencyChoiceSessionService, useValue: { remember: () => undefined, current: () => null, clear: () => undefined } },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(InkOverflowProbeComponent);
+    host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.detectChanges();
+    TestBed.inject(FitTextRegistry).flush();
+    card = host.querySelector('.transaction-card') as HTMLElement;
+  });
+
+  afterEach(() => host.remove());
+
+  it('keeps the offer label\'s painted ink inside the card, not just its box', () => {
+    const textEl = host.querySelector('.currency-offer .extra-accept .extra-text') as HTMLElement;
+    expect(textEl.textContent?.trim())
+      .withContext('the unbreakable token actually rendered, so a failure below is the wrap setting and nothing else')
+      .toBe(UNBREAKABLE_LABEL);
+
+    // Range.getClientRects() over the text node is the painted extent,
+    // independent of whatever box the element around it reports — the box
+    // can and did shrink to fit while the ink kept going.
+    const textNode = textEl.firstChild as Text;
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const inkRight = Math.max(...Array.from(range.getClientRects()).map(r => r.right));
+
+    const box = card.getBoundingClientRect();
+    const contentRight = box.right - parseFloat(getComputedStyle(card).paddingRight);
+
+    expect(inkRight)
+      .withContext('the label\'s painted text stays inside the card\'s content edge, not just its own box')
+      .toBeLessThanOrEqual(contentRight + 1);
   });
 });

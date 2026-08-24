@@ -9,11 +9,15 @@ import {
   Category,
   CategorizedImportTransaction,
   CurrencyInfo,
+  CurrencySuggestionReason,
   VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
+import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -44,11 +48,35 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
 export class TransactionPreviewTableComponent {
   private translationService = inject(TranslationService);
   private currencyService = inject(CurrencyService);
+  private currencySession = inject(CurrencyChoiceSessionService);
+  private localeFormat = inject(LocaleFormatService);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
   @Input() categories: Category[] = [];
   @Output() transactionsUpdated = new EventEmitter<CategorizedImportTransaction[]>();
   @Output() selectionChanged = new EventEmitter<Set<string>>();
+
+  /**
+   * Row ids that have fallen back at some point this session, kept apart
+   * from `currencyFellBack` itself — which the first hand-correction clears,
+   * because the row really is settled and the marker earns its removal.
+   * Eligibility to record a choice is a different question from whether the
+   * marker is still showing, the same separation the transaction form keeps
+   * between its own visible marker and its own `scanCurrencyFellBack` flag
+   * (#156): otherwise a second correction to an already-settled row sees a
+   * clean `currencyFellBack` and records nothing, and the session is left
+   * holding the user's first guess rather than the answer they landed on.
+   *
+   * This Set's own correctness assumes the review step stays eagerly
+   * instantiated the way it is today (its content sits directly in the
+   * `mat-step`, not behind a lazy `<ng-template matStepContent>`). If that
+   * ever changes, the step's view — and this Set with it — resets each time
+   * the stepper navigates away and back, while the rows themselves persist
+   * on the parent; a row's eligibility would be forgotten and the
+   * first-answer bug this Set exists to prevent would return with no spec
+   * to catch it.
+   */
+  private fellBackEligible = new Set<string>();
 
   readonly currencies = this.currencyService.getSupportedCurrencies();
 
@@ -142,15 +170,59 @@ export class TransactionPreviewTableComponent {
     return this.currencyService.formatCurrency(row.amount, row.currency);
   }
 
-  updateCurrency(transaction: CategorizedImportTransaction, code: string): void {
-    // Chosen by the user, so whatever the source failed to read no longer applies.
-    this.replaceRow(transaction, { currency: code, currencyFellBack: false });
+  /**
+   * Records this row as eligible to have a currency choice remembered, and
+   * reports whether it now is. True the first time a row falls back, and
+   * every time after — clearing the visible marker on the row does not
+   * retire the row's own membership here. See `fellBackEligible` for why the
+   * two have to stay apart. Named as an action rather than a plain predicate
+   * because the recording is not incidental: `applyCurrencyToSelected` below
+   * calls this once per selected row specifically so every row's membership
+   * gets recorded, and depends on that call never being skipped by
+   * short-circuiting.
+   */
+  private recordFellBackEligibility(transaction: CategorizedImportTransaction): boolean {
+    const eligible = !!transaction.currencyFellBack || this.fellBackEligible.has(transaction.id);
+    if (eligible) {
+      this.fellBackEligible.add(transaction.id);
+    }
+    return eligible;
   }
 
-  /** A batch of photos from one trip is nearly always one currency. */
+  updateCurrency(transaction: CategorizedImportTransaction, code: string): void {
+    // Chosen by the user, so whatever the source failed to read no longer
+    // applies — and a choice made for a fallen-back row is worth remembering
+    // for the next one this session, including a later hand-correction to
+    // this same row after an earlier one already cleared its marker.
+    if (this.recordFellBackEligibility(transaction)) {
+      this.currencySession.remember(code);
+    }
+    this.replaceRow(transaction, { currency: code, currencyFellBack: false, currencySuggestion: undefined });
+  }
+
+  /**
+   * A batch of photos from one trip is nearly always one currency. Bulk is
+   * the user's choice, never the ladder's (ADR 0062) — but the session
+   * memory is documented to hold a choice for a row nobody could read, so a
+   * currency picked for a batch that already read fine does not belong
+   * there. Gated the same way the per-row edit is, on eligibility rather
+   * than the live marker, so a row already settled by hand earlier this
+   * session still counts here.
+   */
   applyCurrencyToSelected(code: string): void {
+    const selected = this.transactions.filter(t => t.selected);
+    let eligible = false;
+    // Not `selected.some(t => this.recordFellBackEligibility(t))`: `.some`
+    // stops at the first `true`, and every selected row needs its own
+    // membership in `fellBackEligible` recorded, not just the first one.
+    for (const t of selected) {
+      if (this.recordFellBackEligibility(t)) eligible = true;
+    }
+    if (eligible) {
+      this.currencySession.remember(code);
+    }
     this.transactions = this.transactions.map(t =>
-      t.selected ? { ...t, currency: code, currencyFellBack: false } : t
+      t.selected ? { ...t, currency: code, currencyFellBack: false, currencySuggestion: undefined } : t
     );
     this.emitChanges();
   }
@@ -177,6 +249,44 @@ export class TransactionPreviewTableComponent {
 
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
     this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
+  }
+
+  /** Accept = the ordinary currency edit, so one path clears the marks and records the choice. */
+  acceptCurrencySuggestion(transaction: CategorizedImportTransaction): void {
+    const offer = transaction.currencySuggestion;
+    if (!offer) return;
+    this.updateCurrency(transaction, offer.code);
+  }
+
+  /** Dismiss = drop the mark. The row keeps its fallen-back marker; nothing was applied. */
+  dismissCurrencySuggestion(transaction: CategorizedImportTransaction): void {
+    this.replaceRow(transaction, { currencySuggestion: undefined });
+  }
+
+  currencyOfferText(row: CategorizedImportTransaction): string {
+    const offer = row.currencySuggestion;
+    if (!offer) return '';
+    return offer.country
+      ? this.translationService.t('import.currencyFromCountry', {
+          country: countryDisplayName(offer.country, this.localeFormat.locale),
+          currency: offer.code,
+        })
+      : this.translationService.t('import.currencySuggested', { currency: offer.code });
+  }
+
+  currencyOfferReason(row: CategorizedImportTransaction): string {
+    const offer = row.currencySuggestion;
+    return offer ? this.reasonLabel(offer.reason) : '';
+  }
+
+  /** The accept button's name says what it does and why; the visible text alone says neither fully. */
+  currencyOfferLabel(row: CategorizedImportTransaction): string {
+    const code = row.currencySuggestion?.code ?? '';
+    return `${this.translationService.t('import.acceptCurrencySuggestion', { currency: code })}. ${this.currencyOfferReason(row)}`;
+  }
+
+  private reasonLabel(reason: CurrencySuggestionReason): string {
+    return this.translationService.t(currencyReasonKey(reason));
   }
 
   /** Link to the offered rule, or undo it — restoring what the source said about isRecurring. */

@@ -139,24 +139,61 @@ reports low confidence where it has none, so a receipt it cannot really read is
 visibly uncertain rather than confidently wrong. Adding per-language patterns to
 it is the wrong direction; see the ADR.
 
-## Currency
+## Country and currency
 
-The prompts ask for an ISO 4217 code and explicitly permit "I cannot tell". The
-answer is checked against `Intl.supportedValuesOf('currency')` — so `KRW` and
-`PLN` are accepted, and `Won`, `₩` and `ABC` are not.
-
-When the model could not read a currency, the fallback is **your account's base
-currency**, not a constant. This matters more than it sounds: a receipt whose
-currency is unreadable used to be stored as CNY, JPY or USD depending purely on
-which extraction path had run, and a wrong currency looks exactly like a right
-one on screen.
-
-There are two different questions about a currency, answered by two helpers:
+The prompts ask for an ISO 4217 currency code and, beside it, the ISO 3166-1
+alpha-2 code of the country the receipt was *issued in* — concluded from the
+printed address, the tax or registration number, the phone number format, the
+currency symbol and the receipt's own language. Both explicitly permit "I
+cannot tell" (`""`), and neither lists the values it expects. The currency is
+checked against `Intl.supportedValuesOf('currency')`, the country against the
+runtime's region table through `Intl.DisplayNames`, so `KRW` and `KR` are
+accepted and `Won`, `₩`, `Korea` and `KOR` are not.
 
 | Question | Helper | Behaviour |
 |---|---|---|
-| Can the app represent this? | `isCurrencyCode` | Permissive — anything ISO-shaped. The rates endpoint carries 160+ currencies. |
-| Did the model read a real code? | `readCurrencyCode` | Strict — must be in the ISO table, because a plausible invention is the failure mode here. |
+| Can the app represent this currency? | `isCurrencyCode` | Permissive — anything ISO-shaped. The rates endpoint carries 160+ currencies. |
+| Did the model read a real currency code? | `readCurrencyCode` | Strict — must be in the ISO table, because a plausible invention is the failure mode here. |
+| Did the model read a real country code? | `readCountryCode` | Strict — two letters the region table names; anything else (and `ZZ`, "Unknown Region") is `''`. |
+
+When the model could not read a currency, the fallback is **your account's
+base currency**, not a constant, and the row is marked `currencyFellBack` so
+the review card and the form know the figure is a stand-in. A currency the
+model *did* read is never overridden by anything below.
+
+**For a fallen-back row the app offers a currency and says why.** One ladder
+(`suggestCurrency`, `core/utils/currency-suggestion.utils.ts`) is consulted,
+top rung first, and the first rung that can answer wins:
+
+| Rung | Evidence | When it speaks |
+|---|---|---|
+| `receipt` | the country read off the paper | whenever the model reported one the app's country table covers |
+| `position` | the phone's current country | only for a receipt dated today — the form does not fetch a position otherwise; a location already attached to the receipt counts on any date |
+| `session` | the last currency you chose for a fallen-back row this session | after you have accepted a chip or edited such a row's currency |
+| `locale` | the region of the device locale | when nothing above answered |
+
+A rung whose country the table does not cover stays silent and the next one
+is asked; a rung that does answer ends the ladder right there, even when its
+currency equals the row's current one — that answer offers nothing rather
+than letting a weaker rung underneath get a turn at breaking the tie. The
+form renders the chip as "Looks like {country} — use {currency}?" with the
+country named in the active language and a line naming the rung (the session
+rung names no country, so its chip just reads "Use {currency}?"). The
+wizard's review card carries the same chip per row; its ladder has no
+position rung, and the bulk currency action applies only what you chose
+([ADR 0062](ADR/0062-the-review-step-can-correct-every-field-the-import-writes.md)).
+
+**What is never overridden or written.** A read currency is never replaced by
+a suggestion. The country the model read is review-step state: it is stored
+only inside `location.country`, and only when the receipt also printed an
+address that became `location.name` — except when a coordinate is attached to
+the transaction, which writes the bundled table's country for that
+coordinate instead, discarding the printed one; a coordinate lands there only
+by the user's own deliberate action, so it outranks the receipt's paper.
+Accepting a chip changes the row's currency and nothing else; the session
+memory is in-memory and cleared on sign-out. The ladder, its order and what
+it rejected are in
+[ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md).
 
 **Representable is not the same as offered.** The currency *picker* lists a
 curated nineteen, because a 160-entry dropdown helps nobody. Extraction is not
@@ -275,6 +312,56 @@ double-import — and the completion toast carries both counts. When every row
 saved but the summary read-back fails, the wizard says so and moves on; the
 full record, including per-row errors, is on the Import History page.
 
+**Every attempt is recorded where it runs.** `AIStrategyService.runProcessing`
+is where the engine, the cross-engine fallback, the cloud provider, the
+duration and the error class are known, and it carries them out as
+`ProcessingResult.diagnostics` or inside the thrown
+`ReceiptProcessingError` when nothing answered. The camera, the in-form
+scan and the offline drain all route through it. The wizard's own image
+and statement imports call a cloud provider directly instead, so
+`AIImportService` fills the same shape for those from what it knows —
+which is why the provider there is resolved only once a request is
+actually issued, exactly as the strategy layer does it. Each door
+opens one `ReceiptAttempt` handle from `ReceiptAttemptService` before it runs
+and settles it from exactly one branch:
+
+| Door | `path` | On success | On failure |
+|---|---|---|---|
+| Camera dialog | `camera` | event | event + failed record |
+| Import wizard (receipt kind only) | `wizard` | event | event + failed record |
+| In-form **Scan Receipt** | `form` | event; the transaction the user saves is the record | event + failed record |
+| In-form multi-receipt review | `form` | event | event + failed record |
+| Offline queue drain | — | nothing | failed record only |
+
+The multi-receipt review is a second `form`-door attempt, not a fifth door
+value: **Scan Receipt** offers it when one photo turns out to hold several
+receipts, and accepting re-extracts that same photo through the wizard's own
+pipeline before handing the result to the wizard for review — an extraction
+that starts at the form, from an image the user chose there, so it settles
+its own handle rather than riding on the scan's. The wizard learns which
+door actually ran from the state this hand-off carries, rather than
+assuming the camera: the router state's `door` field names it, defaulting to
+`camera` only for a producer that leaves it unset.
+
+A handle settles once, so the camera's five terminal branches and a wizard
+batch where a CSV throws after the photos succeeded cannot count an attempt
+twice. The event is `receipt_import` with `outcome`, `path`, `engine`,
+`provider`, `failure` and `duration` — every value enumerated, never the
+provider's wording (see [analytics.md](analytics.md)). The failed record is an
+Import History entry with `status: failed`, the first file's name, the
+batch's size, and the same diagnostics as optional slots (`door`, `engine`,
+`fellBackFrom`, `provider`, `errorType`, `durationMs`); a confirmed import
+writes the same slots on its record at confirm time. Import History renders
+them as chips, with the error class on a failed record, and subscribes to
+the newest 200 records.
+
+The classes a failure is filed under: `parseAIError`'s
+`rate_limit | auth | network | quota | server | timeout | unknown`, plus
+three the pipeline decides itself — `no_provider` (nothing configured;
+filed here even though `parseAIError` calls the sentinel `auth` so the wizard
+can offer the key hint), `nothing_extracted` (an engine answered with no
+row) and `queue_write` (the offline queue could not store the image).
+
 ## Offline capture and the queue
 
 An image captured offline is neither processed nor lost: it is stored in an
@@ -340,8 +427,19 @@ shown on the AI settings page, which is what **Clear Queue** is for.
   runs after whichever engine read the receipt, so memory answers either way
   and the model rung asks whatever cloud key is set up — a receipt read
   on-device still gets suggested tags when there is one.
+- **A queued receipt keeps no photo.** The drain writes the rows through the
+  same mapper as every other door, so the address, tags and period the
+  model read now land; the image bytes themselves are not re-uploaded from
+  the queue. Filed as a follow-up.
 
-If a receipt fails for any other reason, that is a bug rather than a limitation.
-Be aware that diagnosing one is currently harder than it should be: the app
-records that an import succeeded or failed and nothing about which engine ran,
-which provider, how long it took, or what class of error occurred.
+If a receipt fails for any other reason, that is a bug rather than a
+limitation. Diagnosing one starts on the Import History page: the failed
+record says which door, which engine (and whether it fell back), which
+provider, how long it took and what class of error it was. The same facts
+reach GA4 as `receipt_import` dimensions, so a regression in one provider or
+one engine is visible as a rate rather than as a pile of support messages.
+Why the facts are produced at the strategy chokepoint and reported through one
+handle per attempt, why a failed attempt is an Import History record rather
+than a collection of its own, and why the queue's drain writes a record but
+sends no event, is in
+[ADR 0065](ADR/0065-an-attempt-is-recorded-where-it-runs.md).

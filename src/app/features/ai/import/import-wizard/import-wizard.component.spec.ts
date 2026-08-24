@@ -14,7 +14,14 @@ import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { Category, CategorizedImportTransaction, ImportResult } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
-import { AnalyticsService } from '../../../../core/services/analytics.service';
+import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 describe('ImportWizardComponent', () => {
   let component: ImportWizardComponent;
@@ -28,7 +35,7 @@ describe('ImportWizardComponent', () => {
   let mockRouter: jasmine.SpyObj<Router>;
   let mockDuplicateService: jasmine.SpyObj<DuplicateDetectionService>;
   let mockShareIntake: jasmine.SpyObj<ShareIntakeService>;
-  let mockAnalytics: jasmine.SpyObj<AnalyticsService>;
+  let attempts: ReturnType<typeof attemptStub>;
   let routeStub: { snapshot: { queryParamMap: ReturnType<typeof convertToParamMap> } };
 
   const mockCategories: Category[] = [
@@ -141,7 +148,7 @@ describe('ImportWizardComponent', () => {
 
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
     mockShareIntake.consumeAll.and.resolveTo([]);
-    mockAnalytics = jasmine.createSpyObj('AnalyticsService', ['trackReceiptImport']);
+    attempts = attemptStub();
     routeStub = { snapshot: { queryParamMap: convertToParamMap({}) } };
 
     await TestBed.configureTestingModule({
@@ -156,7 +163,7 @@ describe('ImportWizardComponent', () => {
         { provide: Router, useValue: mockRouter },
         { provide: DuplicateDetectionService, useValue: mockDuplicateService },
         { provide: ShareIntakeService, useValue: mockShareIntake },
-        { provide: AnalyticsService, useValue: mockAnalytics },
+        { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: ActivatedRoute, useValue: routeStub }
       ],
       schemas: [NO_ERRORS_SCHEMA]
@@ -236,18 +243,57 @@ describe('ImportWizardComponent', () => {
       expect(mockImportService.importFromFile).not.toHaveBeenCalled();
     });
 
-    it('reports a receipt import for shared images on success and on failure', async () => {
+    it('opens one attempt over the shared images and settles it from their own result', async () => {
       component.onFilesSelected([octetImage()]);
       await component.processFiles();
 
-      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith({ outcome: 'ok' });
+      expect(attempts.service.begin).toHaveBeenCalledTimes(1);
+      const [door, kind] = attempts.service.begin.calls.mostRecent().args;
+      expect(door).toBe('wizard');
+      expect(kind).toBe('receipt_image');
+      expect(attempts.handle.succeeded).toHaveBeenCalled();
 
-      mockAnalytics.trackReceiptImport.calls.reset();
-      mockImportService.importFromMultipleImages.and.rejectWith(new Error('extraction failed'));
+      attempts.service.begin.calls.reset();
+      attempts.handle.succeeded.calls.reset();
+      const failure = new Error('extraction failed');
+      mockImportService.importFromMultipleImages.and.rejectWith(failure);
       component.onFilesSelected([octetImage()]);
       await component.processFiles();
 
-      expect(mockAnalytics.trackReceiptImport).toHaveBeenCalledWith({ outcome: 'failed' });
+      expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
+      expect(attempts.handle.succeeded).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing_extracted from the image result even when a CSV in the batch yielded rows', async () => {
+      // The outcome used to be computed from the running row total, so a CSV
+      // that parsed made an image that read nothing report ok.
+      mockImportService.importFromMultipleImages.and.resolveTo({
+        ...mockImportResult, source: 'image', fileType: 'receipt_image', transactions: [],
+      });
+      component.onFilesSelected([octetImage(), new File(['a,b'], 'rows.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+
+      expect(attempts.handle.failed).toHaveBeenCalledWith('nothing_extracted');
+      expect(component.extractedTransactions().length).toBe(2);
+    });
+
+    it('opens no attempt for statement screenshots', async () => {
+      component.imageKind.set('statement');
+      component.onFilesSelected([octetImage()]);
+      await component.processFiles();
+
+      expect(mockImportService.importFromStatementImages).toHaveBeenCalled();
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+    });
+
+    it('settles the one handle from the catch path when a later file throws', async () => {
+      mockImportService.importFromFile.and.rejectWith(new Error('bad csv'));
+      component.onFilesSelected([octetImage(), new File(['a,b'], 'rows.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+
+      // One handle; the service's guard makes the second settle a no-op.
+      expect(attempts.service.begin).toHaveBeenCalledTimes(1);
+      expect(attempts.handle.succeeded).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -570,6 +616,58 @@ describe('ImportWizardComponent', () => {
         history.replaceState({}, '');
       }
     });
+
+    it('records the door the state named, not always the camera', async () => {
+      // The transaction form's own multi-receipt review also arrives via
+      // fromCamera — it reuses the same "already extracted" skip — so the
+      // door has to be read from the state, not assumed (#151).
+      history.replaceState({
+        importResult: {
+          ...mockImportResult,
+          source: 'image', fileType: 'receipt_image',
+          diagnostics: { engine: 'cloud', provider: 'gemini', durationMs: 500 },
+        },
+        fromCamera: true,
+        door: 'form',
+      }, '');
+      try {
+        const formFixture = TestBed.createComponent(ImportWizardComponent);
+        formFixture.detectChanges();
+        const formComponent = formFixture.componentInstance;
+        formComponent.extractedTransactions.set(mockTransactions);
+
+        await formComponent.confirmImport();
+
+        expect(mockImportService.confirmImport.calls.mostRecent().args[6]).toEqual({
+          door: 'form', engine: 'cloud', provider: 'gemini', durationMs: 500,
+        });
+      } finally {
+        history.replaceState({}, '');
+      }
+    });
+
+    it('defaults an unlabelled camera-style state to the camera door', async () => {
+      history.replaceState({
+        importResult: {
+          ...mockImportResult,
+          source: 'image', fileType: 'receipt_image',
+          diagnostics: { engine: 'cloud', provider: 'gemini', durationMs: 500 },
+        },
+        fromCamera: true,
+      }, '');
+      try {
+        const cameraFixture = TestBed.createComponent(ImportWizardComponent);
+        cameraFixture.detectChanges();
+        const cameraComponent = cameraFixture.componentInstance;
+        cameraComponent.extractedTransactions.set(mockTransactions);
+
+        await cameraComponent.confirmImport();
+
+        expect(mockImportService.confirmImport.calls.mostRecent().args[6]?.door).toBe('camera');
+      } finally {
+        history.replaceState({}, '');
+      }
+    });
   });
 
   describe('confirmImport', () => {
@@ -729,6 +827,28 @@ describe('ImportWizardComponent', () => {
       });
       expect(component.isImporting()).toBeFalse();
     }));
+
+    it('passes the image batch provenance to the confirm step', async () => {
+      const diagnostics = { engine: 'cloud' as const, provider: 'gemini' as const, durationMs: 2000 };
+      mockImportService.importFromMultipleImages.and.resolveTo({
+        ...mockImportResult, source: 'image', fileType: 'receipt_image', diagnostics,
+      });
+      component.onFilesSelected([new File(['x'], 'r.jpg', { type: 'image/jpeg' })]);
+      await component.processFiles();
+      await component.confirmImport();
+
+      expect(mockImportService.confirmImport.calls.mostRecent().args[6]).toEqual({
+        door: 'wizard', engine: 'cloud', provider: 'gemini', durationMs: 2000,
+      });
+    });
+
+    it('passes no provenance for a CSV-only batch', async () => {
+      component.onFilesSelected([new File(['a,b'], 'rows.csv', { type: 'text/csv' })]);
+      await component.processFiles();
+      await component.confirmImport();
+
+      expect(mockImportService.confirmImport.calls.mostRecent().args[6]).toBeUndefined();
+    });
   });
 
   describe('goBack', () => {

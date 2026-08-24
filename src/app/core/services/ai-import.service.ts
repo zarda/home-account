@@ -8,13 +8,22 @@ import { ImportHistoryService } from './import-history.service';
 import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
-import { AIStrategyService, AI_CLOUD_UNAVAILABLE, ProcessingResult } from './ai-strategy.service';
+import { AIStrategyService, ProcessingResult, ReceiptAttemptDiagnostics } from './ai-strategy.service';
 import { AnalyticsService } from './analytics.service';
 import { IMAGE_FILE_EXTENSIONS } from '../utils/file.utils';
 import { OfflineQueueService } from './offline-queue.service';
 import { PwaService } from './pwa.service';
 import { consolidateReceiptItems } from '../utils/receipt-consolidation';
 import { readCurrencyCode } from '../utils/receipt-extraction.utils';
+import { localeRegion, suggestCurrency } from '../utils/currency-suggestion.utils';
+import { CurrencyChoiceSessionService } from './currency-choice-session.service';
+import {
+  AIErrorInfo,
+  AI_NO_PROVIDER,
+  AI_QUEUED_OFFLINE,
+  parseAIError,
+  ReceiptProcessingError,
+} from '../utils/ai-error.utils';
 import { nextImportRowId } from '../utils/import-row-id.utils';
 import {
   FALLBACK_CATEGORY_ID,
@@ -34,6 +43,7 @@ import {
   ImportWarning,
   CategorizedImportTransaction,
   ImportHistory,
+  ImportProvenance,
   ImportSource,
   ImportFileType,
   DuplicateCheck,
@@ -42,7 +52,8 @@ import {
   TransactionLocation,
   isBudgetPeriod,
   CATEGORY_MEMORY_CONFIDENCE,
-  baseCurrencyOf
+  baseCurrencyOf,
+  CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import { resolveImportCurrency, toCreateTransactionDTO } from '../utils/import-dto.utils';
@@ -64,27 +75,13 @@ export const IMPORT_READBACK_FAILED = 'IMPORT_HISTORY_READBACK_FAILED';
  */
 export const IMPORT_READBACK_TIMEOUT_MS = 5000;
 
-export interface AIErrorInfo {
-  /** English, for logs and for the cases only a provider can describe. */
-  message: string;
-  /** Present when the app raised this itself and the screen can translate it. */
-  messageKey?: string;
-  type: 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout' | 'unknown';
-  retryable: boolean;
-}
-
 /**
- * Thrown when no AI provider is configured at all.
- *
- * A code rather than a sentence, so the screen can say it in the user's
- * language. parseAIError used to recognize these throws by substring-matching
- * English prose, which meant rewording one silently reclassified it as an
- * unknown failure.
+ * Re-exported from their new home so the dialogs and specs that import the
+ * codes from here keep compiling. The definitions moved to the util because
+ * parseAIError needs them and the strategy service needs parseAIError.
  */
-export const AI_NO_PROVIDER = 'AI_NO_PROVIDER';
-
-/** Thrown when an image was queued instead of processed, having no connection. */
-export const AI_QUEUED_OFFLINE = 'AI_QUEUED_OFFLINE';
+export type { AIErrorInfo } from '../utils/ai-error.utils';
+export { AI_NO_PROVIDER, AI_QUEUED_OFFLINE } from '../utils/ai-error.utils';
 
 @Injectable({ providedIn: 'root' })
 export class AIImportService {
@@ -105,6 +102,7 @@ export class AIImportService {
   private analytics = inject(AnalyticsService);
   private offlineQueue = inject(OfflineQueueService);
   private pwaService = inject(PwaService);
+  private currencySession = inject(CurrencyChoiceSessionService);
 
   // Processing state signals
   isProcessing = signal<boolean>(false);
@@ -141,6 +139,7 @@ export class AIImportService {
    * Uses cloud AI or native OCR (iOS)
    */
   async importFromImage(file: File): Promise<ImportResult> {
+    const startedAt = performance.now();
     const isOnline = this.pwaService.isOnline();
     const canUseCloud = this.strategyService.canUseCloud();
     const canUseNative = this.strategyService.canUseNative();
@@ -188,8 +187,10 @@ export class AIImportService {
           this.processingProgress.set(100);
 
           const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
-          result.processingSource = strategyResult.source;
-          
+          if (strategyResult.diagnostics) {
+            result.diagnostics = strategyResult.diagnostics;
+          }
+
           return result;
         }
       } catch (strategyError) {
@@ -222,7 +223,12 @@ export class AIImportService {
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
 
-      const categorized = await this.categorizeTransactions(extractedTransactions);
+      // The one categorizeTransactions call site that is a real receipt
+      // photo, so the ladder is layered on here rather than inside the
+      // shared mapper — the CSV, PDF and statement doors that mapper also
+      // serves have no receipt to read a country off (ADR 0064).
+      const categorized = (await this.categorizeTransactions(extractedTransactions))
+        .map(row => ({ ...row, ...this.currencySuggestionSlot(row) }));
       const suggested = await this.suggestTagsFor(categorized, history);
       const offered = await this.attachRecurringMatches(suggested);
 
@@ -235,7 +241,9 @@ export class AIImportService {
       this.processingProgress.set(100);
 
       const result = this.buildImportResult(file, 'image', 'receipt_image', markedTransactions, duplicates);
-      result.processingSource = 'cloud';
+      // The call above already succeeded, so resolving the provider here
+      // reports exactly what answered.
+      result.diagnostics = this.cloudDiagnostics(startedAt, this.strategyService.receiptProvider());
 
       return result;
     } finally {
@@ -269,10 +277,16 @@ export class AIImportService {
       throw new Error('No image files provided');
     }
 
+    const startedAt = performance.now();
     this.isProcessing.set(true);
     this.processingStatus.set('Reading statement...');
     this.processingProgress.set(10);
     this.processingSource.set('cloud');
+    // Stays null until a request is actually issued, the same discipline
+    // AIStrategyService.runProcessing keeps: a failure in groundingHistory
+    // or a page's own fileToBase64 is not the provider's doing, and must not
+    // report one.
+    let provider: ReceiptAttemptDiagnostics['provider'] = null;
 
     try {
       const history = await this.groundingHistory.recent();
@@ -280,6 +294,7 @@ export class AIImportService {
       for (let i = 0; i < files.length; i++) {
         this.processingProgress.set(10 + Math.round((i / files.length) * 50));
         const imageBase64 = await this.fileToBase64(files[i]);
+        provider = this.strategyService.receiptProvider();
         extracted.push(
           ...(await this.withTimeout(
             signal => this.cloudLLMProvider.extractStatementTransactions(imageBase64, { signal }),
@@ -308,8 +323,10 @@ export class AIImportService {
       const result = this.buildImportResult(
         files[0], 'image', 'screenshot', marked, duplicates
       );
-      result.processingSource = 'cloud';
+      result.diagnostics = this.cloudDiagnostics(startedAt, provider);
       return result;
+    } catch (error) {
+      throw this.asReceiptProcessingError(error, startedAt, provider);
     } finally {
       this.isProcessing.set(false);
       this.processingSource.set(null);
@@ -317,29 +334,114 @@ export class AIImportService {
   }
 
   /**
-   * Convert strategy service result to categorized import transactions
+   * Convert a strategy result to review rows.
+   *
+   * Public because the camera dialog converts the same result: its own copy
+   * dropped currencyFellBack, location and the photo mapping had to be
+   * rebuilt by hand, so a camera receipt reached the review card unable to
+   * show the mark or the address the wizard path shows for the identical
+   * ProcessingResult. The photo-mapping block below is the one the camera
+   * used to build; the wizard's single-image door (importFromImage) now
+   * stamps it too, which changes nothing there — convertParsedReceipt sets
+   * neither imageIndex nor receiptId, so a single-receipt scan still gets no
+   * block.
    */
-  private convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {
+  convertStrategyResultToCategories(result: ProcessingResult): CategorizedImportTransaction[] {
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
-    return result.transactions.map(tx => ({
-      id: nextImportRowId('strategy'),
-      description: tx.description,
-      amount: tx.amount,
-      ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
-      date: tx.date,
-      type: tx.type,
-      ...gradeCategorySuggestion(tx),
-      isDuplicate: false,
-      selected: true,
-      processingSource: tx.source,
-      notes: tx.notes,
-      fieldConfidence: tx.fieldConfidence,
-      ...(tx.tags?.length ? { tags: tx.tags } : {}),
-      ...(tx.location ? { location: tx.location } : {}),
-      ...(tx.period ? { period: tx.period } : {}),
-      ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {})
-    }));
+    return result.transactions.map(tx => {
+      const row: CategorizedImportTransaction = {
+        id: nextImportRowId('strategy'),
+        description: tx.description,
+        amount: tx.amount,
+        ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
+        date: tx.date,
+        type: tx.type,
+        ...gradeCategorySuggestion(tx),
+        isDuplicate: false,
+        selected: true,
+        notes: tx.notes,
+        fieldConfidence: tx.fieldConfidence,
+        // The receipt badge keys on receiptId, which only the cloud strategy
+        // path reports; the photo mapping comes from either engine. Both ride
+        // the same metadata block, with their real values.
+        ...(tx.receiptId != null || tx.imageIndex !== undefined ? {
+          imageMetadata: {
+            imageIndex: tx.imageIndex ?? 0,
+            imageId: `image_${tx.imageIndex ?? 0}`,
+            positionInImage: 'middle' as const,
+            confidenceScore: tx.confidence,
+            ...(tx.mergedFromImages?.length ? { mergedFromImages: tx.mergedFromImages } : {}),
+            ...(tx.receiptId != null ? { receiptId: tx.receiptId } : {}),
+          },
+        } : {}),
+        ...(tx.tags?.length ? { tags: tx.tags } : {}),
+        ...(tx.location ? { location: tx.location } : {}),
+        ...(tx.receiptCountry ? { receiptCountry: tx.receiptCountry } : {}),
+        ...(tx.period ? { period: tx.period } : {}),
+        ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {}),
+      };
+      return { ...row, ...this.currencySuggestionSlot(row) };
+    });
+  }
+
+  /**
+   * The ladder's offer for a row whose currency fell back, as a mark on the
+   * row. No position rung here: a batch is reviewed wherever the user happens
+   * to be, and ADR 0062 keeps a position-derived currency off the bulk path.
+   */
+  private currencySuggestionSlot(
+    row: Pick<CategorizedImportTransaction, 'currency' | 'currencyFellBack' | 'receiptCountry'>
+  ): { currencySuggestion?: CurrencySuggestion } {
+    if (!row.currencyFellBack) {
+      return {};
+    }
+    const suggestion = suggestCurrency({
+      receiptCountry: row.receiptCountry,
+      datedToday: false,
+      sessionCurrency: this.currencySession.current() ?? undefined,
+      localeRegion: localeRegion(),
+      currentCurrency: row.currency,
+    });
+    return suggestion ? { currencySuggestion: suggestion } : {};
+  }
+
+  /**
+   * Diagnostics for the paths that call a cloud provider directly rather
+   * than through the strategy service. Always cloud, timed from the moment
+   * the door was entered. `provider` is the caller's own — resolved only
+   * once a request was actually issued, the same discipline
+   * AIStrategyService.runProcessing keeps, so a failure before any request
+   * left the process (a grounding read, a file that would not decode)
+   * reports no provider rather than blaming whichever one happens to be
+   * configured.
+   */
+  private cloudDiagnostics(
+    startedAt: number,
+    provider: ReceiptAttemptDiagnostics['provider'],
+    error?: unknown
+  ): ReceiptAttemptDiagnostics {
+    const base: ReceiptAttemptDiagnostics = {
+      engine: 'cloud',
+      provider,
+      durationMs: performance.now() - startedAt,
+    };
+    if (error === undefined) {
+      return base;
+    }
+    const parsed = parseAIError(error);
+    return { ...base, errorType: parsed.type, retryable: parsed.retryable };
+  }
+
+  /** Wrap a direct-provider throw so the door can read what was learned. */
+  private asReceiptProcessingError(
+    error: unknown,
+    startedAt: number,
+    provider: ReceiptAttemptDiagnostics['provider']
+  ): ReceiptProcessingError {
+    return error instanceof ReceiptProcessingError
+      ? error
+      : new ReceiptProcessingError(this.cloudDiagnostics(startedAt, provider, error), error);
   }
 
   /**
@@ -358,6 +460,8 @@ export class AIImportService {
       throw new Error(AI_NO_PROVIDER);
     }
 
+    const startedAt = performance.now();
+
     // After the availability guard, so a request that was never issued is not
     // counted. Tagged here rather than in AIStrategyService because the import
     // wizard reaches this method directly, and because the strategy service is
@@ -367,6 +471,11 @@ export class AIImportService {
     this.isProcessing.set(true);
     this.processingStatus.set('Reading images...');
     this.processingProgress.set(5);
+    // Stays null until the extraction request is actually issued, the same
+    // discipline AIStrategyService.runProcessing keeps: a failure in the
+    // grounding read or in decoding one of the files above is not the
+    // provider's doing, and must not report one.
+    let provider: ReceiptAttemptDiagnostics['provider'] = null;
 
     try {
       const history = await this.groundingHistory.recent();
@@ -383,6 +492,7 @@ export class AIImportService {
 
       this.processingStatus.set('Extracting items from all images with AI...');
       this.processingProgress.set(30);
+      provider = this.strategyService.receiptProvider();
 
       // Use multi-image extraction with position-aware deduplication
       const extractedTransactions = await this.withTimeout(
@@ -416,13 +526,16 @@ export class AIImportService {
 
       this.processingProgress.set(100);
 
-      // Build result with multi-image metadata
-      return this.buildMultiImageImportResult(
+      const result = this.buildMultiImageImportResult(
         files,
         markedTransactions,
         duplicates,
         extractedTransactions
       );
+      result.diagnostics = this.cloudDiagnostics(startedAt, provider);
+      return result;
+    } catch (error) {
+      throw this.asReceiptProcessingError(error, startedAt, provider);
     } finally {
       this.isProcessing.set(false);
     }
@@ -502,7 +615,7 @@ export class AIImportService {
     // Convert to CategorizedImportTransaction with image metadata
     return categorizedByAI.map((t, index) => {
       const original = transactions[index];
-      return {
+      const row: CategorizedImportTransaction = {
         id: nextImportRowId('multi_img'),
         description: t.description,
         amount: Math.abs(t.amount),
@@ -529,9 +642,11 @@ export class AIImportService {
         ...(original.merchant ? { merchant: original.merchant } : {}),
         ...(original.tags?.length ? { tags: original.tags } : {}),
         ...(original.location ? { location: original.location } : {}),
+        ...(original.receiptCountry ? { receiptCountry: original.receiptCountry } : {}),
         ...(original.period ? { period: original.period } : {}),
         ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {})
       };
+      return { ...row, ...this.currencySuggestionSlot(row) };
     });
   }
 
@@ -767,7 +882,6 @@ export class AIImportService {
           message: `Only the first ${pages.length} of ${totalPages} pages were read.`,
         });
       }
-      result.processingSource = 'cloud';
       return result;
     } finally {
       this.isProcessing.set(false);
@@ -911,7 +1025,18 @@ export class AIImportService {
   }
 
   /**
-   * Categorize extracted transactions
+   * Categorize extracted transactions.
+   *
+   * Shared by every import path that is not itself a receipt photo — a CSV
+   * row, a rasterized PDF page and a statement screenshot all describe the
+   * account holder's own paper, not a purchase made somewhere the phone
+   * could place. It carries `receiptCountry` through when a row's own
+   * extraction happened to read one (the statement and PDF prompts ask for
+   * it too), but never layers the currency ladder on top of it: the offer
+   * stays a receipt affordance (ADR 0064), applied instead only where the
+   * extraction actually came off a receipt photo — this method's own
+   * caller for the single-image legacy fallback, `convertStrategyResultToCategories`
+   * and `categorizeMultiImageTransactions`.
    */
   async categorizeTransactions(
     transactions: ExtractedTransaction[]
@@ -933,7 +1058,7 @@ export class AIImportService {
       const parsedDate = parseDateInput(t.date);
       const dateConfidence = parsedDate === null ? 0 : t.dateConfidence;
 
-      return {
+      const row: CategorizedImportTransaction = {
         id: nextImportRowId('import'),
         description: t.description,
         amount: Math.abs(t.amount),
@@ -960,9 +1085,11 @@ export class AIImportService {
         ...(t.merchant ? { merchant: t.merchant } : {}),
         ...(t.tags?.length ? { tags: t.tags } : {}),
         ...(t.location ? { location: t.location } : {}),
+        ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
         ...(t.period ? { period: t.period } : {}),
         ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
       };
+      return row;
     });
   }
 
@@ -975,7 +1102,8 @@ export class AIImportService {
     fileSize: number,
     source: ImportSource,
     fileType: ImportFileType,
-    sourceFiles?: File[]
+    sourceFiles?: File[],
+    provenance?: ImportProvenance
   ): Promise<ImportHistory> {
     this.isProcessing.set(true);
     this.processingStatus.set('Saving transactions...');
@@ -999,7 +1127,8 @@ export class AIImportService {
       fileName,
       fileSize,
       source,
-      fileType
+      fileType,
+      provenance
     );
 
     let successCount = 0;
@@ -1334,104 +1463,10 @@ export class AIImportService {
   }
 
   /**
-   * Parse raw AI API errors into user-friendly messages with error type classification.
+   * Classify a raw AI failure. Kept as a method because the wizard calls it
+   * through the injected service; the work is the pure util's.
    */
   parseAIError(error: unknown): AIErrorInfo {
-    const raw = error instanceof Error ? error.message : String(error);
-    const lower = raw.toLowerCase();
-
-    // Rate limit (429)
-    if (lower.includes('429') || lower.includes('rate limit') || lower.includes('resource_exhausted') || lower.includes('too many requests') || lower.includes('quota exceeded')) {
-      return {
-        message: 'AI rate limit reached. Please wait a moment and try again.',
-        type: 'rate_limit',
-        retryable: true
-      };
-    }
-
-    // Authentication / invalid API key (401, 403)
-    if (lower.includes('401') || lower.includes('403') || lower.includes('unauthorized') || lower.includes('forbidden') || lower.includes('invalid api key') || lower.includes('api_key_invalid') || lower.includes('permission_denied')) {
-      return {
-        message: 'AI API key is invalid or expired.',
-        messageKey: 'import.errorInvalidKey',
-        type: 'auth',
-        retryable: false
-      };
-    }
-
-    // Network / connection errors
-    if (lower.includes('network') || lower.includes('failed to fetch') || lower.includes('net::') || lower.includes('econnrefused') || lower.includes('enotfound') || lower.includes('cors') || lower.includes('dns')) {
-      return {
-        message: 'Network error. Please check your internet connection and try again.',
-        type: 'network',
-        retryable: true
-      };
-    }
-
-    // Quota / billing (402)
-    if (lower.includes('402') || lower.includes('billing') || lower.includes('insufficient_quota') || lower.includes('payment required') || lower.includes('credit')) {
-      return {
-        message: 'AI service quota exceeded or billing issue. Please check your API account.',
-        type: 'quota',
-        retryable: false
-      };
-    }
-
-    // Server errors (500, 502, 503)
-    if (lower.includes('500') || lower.includes('502') || lower.includes('503') || lower.includes('internal server error') || lower.includes('service unavailable') || lower.includes('bad gateway') || lower.includes('overloaded')) {
-      return {
-        message: 'AI service is temporarily unavailable. Please try again shortly.',
-        type: 'server',
-        retryable: true
-      };
-    }
-
-    // Timeout, including the cancellation our own timeout fires. Every SDK
-    // surfaces that as an abort ('Request was aborted', 'Request aborted when
-    // fetching …') rather than as anything time-shaped, so it used to reach
-    // the user as 'AI processing failed: Request was aborted' — the one
-    // wording that says nothing about the ninety seconds they just waited.
-    const aborted = error instanceof Error && error.name === 'AbortError';
-    if (aborted || lower.includes('timeout') || lower.includes('timed out') || lower.includes('abort') || lower.includes('deadline_exceeded')) {
-      return {
-        message: 'AI processing timed out. Try with a clearer image or fewer files.',
-        type: 'timeout',
-        retryable: true
-      };
-    }
-
-    // Our own throws carry a code, not prose, so they are matched exactly and
-    // handed to the screen as a key rather than as English.
-    if (raw === AI_NO_PROVIDER) {
-      return {
-        message: 'No AI provider is configured.',
-        messageKey: 'import.errorNoProvider',
-        type: 'auth',
-        retryable: false
-      };
-    }
-    if (raw === AI_CLOUD_UNAVAILABLE) {
-      return {
-        message: 'Cloud AI is not reachable.',
-        messageKey: 'import.errorCloudUnavailable',
-        type: 'network',
-        retryable: true
-      };
-    }
-    if (raw === AI_QUEUED_OFFLINE) {
-      return {
-        message: 'Image queued for processing when back online.',
-        messageKey: 'import.errorQueuedOffline',
-        type: 'network',
-        retryable: false
-      };
-    }
-
-    // Unknown
-    return {
-      message: `AI processing failed: ${raw}`,
-      type: 'unknown',
-      retryable: true
-    };
+    return parseAIError(error);
   }
 }

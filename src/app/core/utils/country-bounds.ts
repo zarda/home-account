@@ -131,7 +131,7 @@ const COUNTRY_BOXES: readonly CountryBox[] = [
  * A country is here only if it is in the table above; the pairing is what
  * makes a location useful, and a country with no entry yields no suggestion.
  */
-const COUNTRY_CURRENCY: Readonly<Record<string, string>> = {
+export const COUNTRY_CURRENCY: Readonly<Record<string, string>> = {
   JP: 'JPY', KR: 'KRW', KP: 'KPW', CN: 'CNY', TW: 'TWD', HK: 'HKD', MO: 'MOP',
   SG: 'SGD', MY: 'MYR', TH: 'THB', VN: 'VND', PH: 'PHP', ID: 'IDR', KH: 'KHR',
   LA: 'LAK', MM: 'MMK', IN: 'INR', NP: 'NPR', LK: 'LKR', BD: 'BDT', PK: 'PKR',

@@ -1,8 +1,10 @@
 import {
+  COUNTRY_CURRENCY,
   countryForCoordinates,
   currencyForCoordinates,
   currencyForCountry,
 } from './country-bounds';
+import { readCountryCode } from './receipt-extraction.utils';
 
 describe('countryForCoordinates', () => {
   it('places a capital in its own country', () => {
@@ -87,12 +89,22 @@ describe('currencyForCountry', () => {
     expect(currencyForCountry('')).toBeNull();
   });
 
-  it('names a currency the ISO table recognises', () => {
-    // A typo here would be invisible until a receipt landed in it, and
-    // readCurrencyCode would then reject the app's own suggestion.
+  it('names a currency the ISO table recognises, for every country in the table', () => {
+    // Ten of 79 entries used to be sampled. A typo in one of the other 69
+    // would be invisible until a receipt landed in it, and readCurrencyCode
+    // would then reject the app's own suggestion.
     const known = new Set(Intl.supportedValuesOf('currency'));
-    for (const country of ['KR', 'JP', 'TW', 'FR', 'GB', 'US', 'BR', 'ZA', 'FJ', 'MO']) {
-      expect(known.has(currencyForCountry(country)!)).toBeTrue();
+    for (const [country, currency] of Object.entries(COUNTRY_CURRENCY)) {
+      expect(known.has(currency)).withContext(`${country} → ${currency}`).toBeTrue();
+    }
+  });
+
+  it('keys every entry by a country the runtime recognises', () => {
+    // The same check the receipt's own country answer goes through, so a
+    // code the model can report and a code the table answers for are the
+    // same vocabulary.
+    for (const country of Object.keys(COUNTRY_CURRENCY)) {
+      expect(readCountryCode(country)).withContext(country).toBe(country);
     }
   });
 });

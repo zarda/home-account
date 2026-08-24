@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
@@ -25,6 +25,14 @@ import { TagSuggestionService } from '../../../core/services/tag-suggestion.serv
 import { NotificationService } from '../../../core/services/notification.service';
 import { Category, User } from '../../../models';
 import { createCategory, createUser } from '../../../core/services/testing';
+import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 /**
  * The suggestion chips, rendered.
@@ -88,6 +96,11 @@ describe('TransactionFormComponent suggestion chips', () => {
     const tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['remember']);
     tagMemory.remember.and.resolveTo(undefined);
 
+    // The component now constructs the real CurrencyChoiceSessionService,
+    // whose constructor effect reads authService.userId() — this stub needs
+    // to answer that too, derived the way the real service derives it.
+    const currentUser = signal<User | null>(createUser());
+
     await TestBed.configureTestingModule({
       imports: [TransactionFormComponent, ReactiveFormsModule],
       providers: [
@@ -96,7 +109,7 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: TransactionService, useValue: transactionService },
         { provide: CategoryService, useValue: categoryService },
         { provide: CurrencyService, useValue: currency },
-        { provide: AuthService, useValue: { currentUser: signal<User | null>(createUser()) } },
+        { provide: AuthService, useValue: { currentUser, userId: computed(() => currentUser()?.id ?? null) } },
         { provide: TranslationService, useValue: translation },
         { provide: AIStrategyService, useValue: strategy },
         { provide: AIImportService, useValue: jasmine.createSpyObj('AIImportService', ['importFromMultipleImages']) },
@@ -111,6 +124,8 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: TagSuggestionService, useValue: tagSuggestions },
         { provide: GroundingHistoryService, useValue: groundingHistory },
         { provide: TagMemoryService, useValue: tagMemory },
+        // The form door's attempt handle; the real service reaches Firestore.
+        { provide: ReceiptAttemptService, useValue: attemptStub().service },
         { provide: GoalService, useValue: {
           goals: signal([]),
           activeGoals: signal([]),
@@ -124,7 +139,7 @@ describe('TransactionFormComponent suggestion chips', () => {
   describe('the currency suggestion', () => {
     it('renders as a button, so a keyboard can reach the accept', () => {
       const fixture = build();
-      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH' });
+      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH', reason: 'position' });
       fixture.detectChanges();
 
       const chip: HTMLElement = fixture.nativeElement.querySelector('.suggestion-chip');
@@ -135,19 +150,21 @@ describe('TransactionFormComponent suggestion chips', () => {
 
     it('says what accepting does', () => {
       const fixture = build();
-      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH' });
+      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH', reason: 'position' });
       fixture.detectChanges();
 
       const chip: HTMLElement = fixture.nativeElement.querySelector('.suggestion-chip');
 
       // Its own text is the name — it already reads as an offer to accept.
+      // The form reads the same namespace the review card does (M7).
       expect(chip.getAttribute('aria-label')).toBeNull();
-      expect(chip.textContent).toContain('transactions.currencyFromLocation:THB');
+      expect(chip.textContent).toContain('import.currencyFromCountry:Thailand,THB');
+      expect(chip.textContent).toContain('import.currencyReasonPosition');
     });
 
     it('applies the currency when activated', () => {
       const fixture = build();
-      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH' });
+      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH', reason: 'position' });
       fixture.detectChanges();
 
       fixture.nativeElement.querySelector('.suggestion-chip').click();
@@ -159,7 +176,7 @@ describe('TransactionFormComponent suggestion chips', () => {
 
     it('gives accept and dismiss the same keyboard affordance', () => {
       const fixture = build();
-      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH' });
+      fixture.componentInstance.suggestedCurrency.set({ code: 'THB', country: 'TH', reason: 'position' });
       fixture.detectChanges();
 
       // The asymmetry this fixes: dismiss was always a real button, accept

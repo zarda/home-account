@@ -6,6 +6,7 @@ import { TransactionPreviewTableComponent } from './transaction-preview-table.co
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -53,9 +54,11 @@ describe('TransactionPreviewTableComponent', () => {
     }
   ];
   let mockTransactions: CategorizedImportTransaction[];
+  let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
 
   beforeEach(async () => {
     mockTransactions = createMockTransactions();
+    currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
 
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
@@ -85,6 +88,7 @@ describe('TransactionPreviewTableComponent', () => {
             formatCurrency: (amount: number, code: string) => `${code} ${amount}`,
           },
         },
+        { provide: CurrencyChoiceSessionService, useValue: currencySession },
       ],
     })
       .overrideComponent(TransactionPreviewTableComponent, {
@@ -474,6 +478,95 @@ describe('TransactionPreviewTableComponent', () => {
       expect(component.currencyChipLabel(makeRow({ currency: 'JPY' })))
         .toBe('import.setCurrency:{"currency":"JPY"}');
     });
+
+    it('remembers a currency chosen by hand for a fallen-back row, and drops the offer', () => {
+      const row = makeRow({ currency: 'USD', currencyFellBack: true, currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.updateCurrency(row, 'JPY');
+
+      expect(currencySession.remember).toHaveBeenCalledWith('JPY');
+      expect(emitted[0][0].currencySuggestion).toBeUndefined();
+    });
+
+    it('does not remember an edit to a currency the source read', () => {
+      const row = makeRow({ currency: 'USD' });
+      component.transactions = [row];
+      component.updateCurrency(row, 'JPY');
+      expect(currencySession.remember).not.toHaveBeenCalled();
+    });
+
+    it('keeps remembering a hand-correction after the marker that first earned it has cleared, so the session holds the final answer — not the first (#156)', () => {
+      // Mirrors the form's own fix (see transaction-form.component.ts):
+      // the visible fell-back marker and the row's eligibility to record a
+      // choice are two different things. The first correction clears the
+      // marker — the row really is settled, the icon should go — but a
+      // second, third, however-many-th hand-correction to the same row has
+      // to keep landing in the session, because that is the whole point of
+      // remembering a fallen-back row's choice: the next receipt this
+      // session should see what the user meant, not what they mis-picked.
+      const row = makeRow({ currency: 'USD', currencyFellBack: true });
+      component.transactions = [row];
+
+      component.updateCurrency(row, 'JPY');
+      const settled = component.transactions[0];
+      expect(settled.currencyFellBack).withContext('marker cleared by the first correction').toBeFalse();
+
+      component.updateCurrency(settled, 'KRW');
+
+      expect(currencySession.remember).toHaveBeenCalledTimes(2);
+      expect(currencySession.remember.calls.mostRecent().args).toEqual(['KRW']);
+    });
+
+    it('remembers the bulk choice and drops every selected row\'s offer', () => {
+      component.transactions = [
+        makeRow({
+          id: 'a',
+          currency: 'USD',
+          selected: true,
+          currencyFellBack: true,
+          currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+        }),
+        makeRow({ id: 'b', currency: 'USD', selected: false, currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' } }),
+      ];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(currencySession.remember).toHaveBeenCalledWith('JPY');
+      expect(emitted[0][0].currencySuggestion).toBeUndefined();
+      expect(emitted[0][1].currencySuggestion).toBeDefined();
+    });
+
+    it('does not remember a bulk choice when none of the selected rows fell back — the memory is documented to hold only that', () => {
+      component.transactions = [
+        makeRow({ id: 'a', currency: 'USD', selected: true }),
+        makeRow({ id: 'b', currency: 'USD', selected: true }),
+      ];
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(currencySession.remember).not.toHaveBeenCalled();
+    });
+
+    it('remembers a bulk choice for a row already settled by hand this session, even though its own marker is gone', () => {
+      // The bulk path has to consult the same persisted eligibility as the
+      // per-row edit — gating it on the row's live currencyFellBack flag
+      // alone would reproduce the first-answer-only bug through this path
+      // the moment a row had already been corrected once by hand (#156).
+      const row = makeRow({ id: 'a', currency: 'USD', selected: true, currencyFellBack: true });
+      component.transactions = [row];
+      component.updateCurrency(row, 'JPY');
+      currencySession.remember.calls.reset();
+
+      component.transactions = component.transactions.map(t => ({ ...t, selected: true }));
+      component.applyCurrencyToSelected('KRW');
+
+      expect(currencySession.remember).toHaveBeenCalledWith('KRW');
+    });
   });
 
   describe('suggested fields', () => {
@@ -503,6 +596,65 @@ describe('TransactionPreviewTableComponent', () => {
       component.removeTag(row, 'work');
 
       expect(emitted[0][0].tags).toEqual(['coffee']);
+    });
+  });
+
+  describe('the offered currency', () => {
+    const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}) => ({
+      ...createMockTransactions()[0],
+      ...overrides,
+    });
+    const offer = { code: 'KRW', country: 'KR', reason: 'receipt' as const };
+
+    it('accepting applies it through the currency edit, clears both marks and remembers it', () => {
+      const row = makeRow({ currency: 'USD', currencyFellBack: true, currencySuggestion: offer });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.acceptCurrencySuggestion(row);
+
+      expect(emitted[0][0].currency).toBe('KRW');
+      expect(emitted[0][0].currencyFellBack).toBeFalse();
+      expect(emitted[0][0].currencySuggestion).toBeUndefined();
+      expect(currencySession.remember).toHaveBeenCalledWith('KRW');
+      expect(row.currency).toBe('USD'); // the input object is untouched
+    });
+
+    it('dismissing drops the offer and nothing else — ADR 0062: offered, never applied', () => {
+      const row = makeRow({ currency: 'USD', currencyFellBack: true, currencySuggestion: offer });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.dismissCurrencySuggestion(row);
+
+      expect(emitted[0][0].currency).toBe('USD');
+      expect(emitted[0][0].currencyFellBack).toBeTrue();
+      expect(emitted[0][0].currencySuggestion).toBeUndefined();
+      expect(currencySession.remember).not.toHaveBeenCalled();
+    });
+
+    it('names the country in the chip and the reason in its accessible name', () => {
+      // The review card and the form share one namespace for these strings
+      // (M7): a chip built here reads the same keys the form's own does.
+      const row = makeRow({ currencySuggestion: offer });
+      expect(component.currencyOfferText(row)).toBe('import.currencyFromCountry:{"country":"South Korea","currency":"KRW"}');
+      expect(component.currencyOfferLabel(row)).toBe('import.acceptCurrencySuggestion:{"currency":"KRW"}. import.currencyReasonReceipt');
+      expect(component.currencyOfferText(makeRow({ currencySuggestion: { code: 'THB', reason: 'session' } })))
+        .toBe('import.currencySuggested:{"currency":"THB"}');
+      expect(component.currencyOfferReason(makeRow({ currencySuggestion: { code: 'THB', reason: 'session' } })))
+        .toBe('import.currencyReasonSession');
+      expect(component.currencyOfferReason(makeRow({ currencySuggestion: { code: 'JPY', country: 'JP', reason: 'locale' } })))
+        .toBe('import.currencyReasonLocale');
+    });
+
+    it('gives no reason for a row with no offer, matching currencyOfferText\'s own empty return', () => {
+      // Unreachable through the template, which gates the whole strip on
+      // row.currencySuggestion — but a helper that invents a "receipt"
+      // reason for a row with no offer at all invites a future caller to
+      // trust it.
+      expect(component.currencyOfferReason(makeRow({ currencySuggestion: undefined }))).toBe('');
     });
   });
 
@@ -570,5 +722,97 @@ describe('TransactionPreviewTableComponent', () => {
 
       expect(emitted.length).toBe(0);
     });
+  });
+});
+
+/**
+ * Every case above overrides the template to `<div></div>`, so none of them
+ * would notice a typo'd `(click)` or a broken `@if` gate on the offer chip —
+ * they call the methods directly. This is the one place the real template
+ * is rendered and its controls actually clicked, the same way a user would
+ * reach acceptCurrencySuggestion and dismissCurrencySuggestion.
+ */
+describe('TransactionPreviewTableComponent, the offer chip through its own template', () => {
+  let fixture: ComponentFixture<TransactionPreviewTableComponent>;
+  let component: TransactionPreviewTableComponent;
+  let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
+
+  const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+    id: 'txn1',
+    description: 'Coffee Shop',
+    amount: 5.5,
+    currency: 'USD',
+    date: new Date('2024-01-15'),
+    type: 'expense',
+    suggestedCategoryId: 'food',
+    categoryConfidence: 0.9,
+    isDuplicate: false,
+    selected: true,
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        {
+          provide: CurrencyService,
+          useValue: {
+            getSupportedCurrencies: () => [{ code: 'USD', nameKey: 'currencies.usd', symbol: '$' }],
+            getCurrencyInfo: () => undefined,
+            formatCurrency: (amount: number, code: string) => `${code} ${amount}`,
+          },
+        },
+        { provide: CurrencyChoiceSessionService, useValue: currencySession },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionPreviewTableComponent);
+    component = fixture.componentInstance;
+  });
+
+  function emissions(): CategorizedImportTransaction[][] {
+    const emitted: CategorizedImportTransaction[][] = [];
+    component.transactionsUpdated.subscribe(t => emitted.push(t));
+    return emitted;
+  }
+
+  it('clicking accept applies the offer, the same way acceptCurrencySuggestion does', () => {
+    const row = makeRow({
+      currencyFellBack: true,
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+    });
+    component.transactions = [row];
+    component.categories = [];
+    fixture.detectChanges();
+    const emitted = emissions();
+
+    (fixture.nativeElement.querySelector('.currency-offer .extra-accept') as HTMLElement).click();
+
+    expect(emitted[0][0].currency).toBe('KRW');
+    expect(emitted[0][0].currencyFellBack).toBeFalse();
+    expect(emitted[0][0].currencySuggestion).toBeUndefined();
+    expect(currencySession.remember).toHaveBeenCalledWith('KRW');
+  });
+
+  it('clicking dismiss drops only the offer, the same way dismissCurrencySuggestion does', () => {
+    const row = makeRow({
+      currencyFellBack: true,
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+    });
+    component.transactions = [row];
+    component.categories = [];
+    fixture.detectChanges();
+    const emitted = emissions();
+
+    (fixture.nativeElement.querySelector('.currency-offer .extra-remove') as HTMLElement).click();
+
+    expect(emitted[0][0].currency).toBe('USD');
+    expect(emitted[0][0].currencyFellBack).toBeTrue();
+    expect(emitted[0][0].currencySuggestion).toBeUndefined();
+    expect(currencySession.remember).not.toHaveBeenCalled();
   });
 });

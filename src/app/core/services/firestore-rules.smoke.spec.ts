@@ -1317,6 +1317,31 @@ describe('firestore.rules (emulator smoke test)', () => {
         'progress update'
       );
     });
+
+    it('accepts the receipt-attempt slots on a failed record', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('imports')), validImport({
+          source: 'image', fileType: 'receipt_image', fileName: 'r.jpg', status: 'failed',
+          door: 'camera', engine: 'cloud', fellBackFrom: 'native', provider: 'gemini',
+          errorType: 'timeout', durationMs: 4200,
+        })),
+        'failed attempt with diagnostics'
+      );
+    });
+
+    it('rejects an engine outside the pair', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ engine: 'abacus' })),
+        'unknown engine'
+      );
+    });
+
+    it('rejects a negative duration', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ durationMs: -1 })),
+        'negative duration'
+      );
+    });
   });
 
   describe('user profile', () => {

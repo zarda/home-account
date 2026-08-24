@@ -1,7 +1,8 @@
 /**
  * Shared types for the AI receipt-processing pipeline.
  */
-import type { BudgetPeriod, FieldConfidence, TransactionLocation } from '../../models';
+import type { BudgetPeriod, FieldConfidence, LLMProvider, TransactionLocation } from '../../models';
+import type { AIErrorInfo } from '../utils/ai-error.utils';
 
 export interface ProcessedTransaction {
   date: Date;
@@ -50,6 +51,8 @@ export interface ProcessedTransaction {
   period?: BudgetPeriod;
   isRecurring?: boolean;
   recurringId?: string;
+  /** ISO 3166-1 alpha-2 the model concluded the receipt was issued in; absent when it could not say. A review-step mark, never written. */
+  receiptCountry?: string;
   /**
    * Which photo the row came from, and which photos a merged row was built
    * from. The strategy path used to drop both on this hop, so the review step
@@ -58,6 +61,25 @@ export interface ProcessedTransaction {
    */
   imageIndex?: number;
   mergedFromImages?: number[];
+}
+
+/**
+ * What one run of the receipt pipeline can say about itself.
+ *
+ * Computed once in AIStrategyService.runProcessing — the chokepoint every
+ * door passes through — and carried out on the result or inside the thrown
+ * ReceiptProcessingError. `fellBackFrom` names the engine that ran first and
+ * lost; absent when the preferred engine answered. `provider` is the cloud
+ * provider the attempt routed to, null when no cloud request was made.
+ * `errorType`/`retryable` are present only on a throw.
+ */
+export interface ReceiptAttemptDiagnostics {
+  engine: 'cloud' | 'native';
+  fellBackFrom?: 'cloud' | 'native';
+  provider: LLMProvider | null;
+  durationMs: number;
+  errorType?: AIErrorInfo['type'];
+  retryable?: boolean;
 }
 
 export interface ProcessingResult {
@@ -73,4 +95,6 @@ export interface ProcessingResult {
    * leaves this unset and callers read it as 1.
    */
   receiptCount?: number;
+  /** How this result was produced. Absent only on results built outside the strategy service. */
+  diagnostics?: ReceiptAttemptDiagnostics;
 }

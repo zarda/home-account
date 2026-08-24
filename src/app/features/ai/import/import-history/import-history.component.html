@@ -78,8 +78,24 @@
                   {{ getFileTypeLabel(item.fileType) }}
                 </mat-chip>
                 <mat-chip>{{ formatFileSize(item.fileSize) }}</mat-chip>
+                @if (item.engine) {
+                  <mat-chip class="kind-chip">
+                    <mat-icon>{{ getEngineIcon(item.engine) }}</mat-icon>
+                    {{ getEngineLabel(item) }}
+                  </mat-chip>
+                }
+                @if (item.provider) {
+                  <mat-chip>{{ getProviderLabel(item.provider) }}</mat-chip>
+                }
+                @if (item.durationMs !== undefined) {
+                  <mat-chip>{{ formatDuration(item.durationMs) }}</mat-chip>
+                }
               </mat-chip-set>
             </div>
+
+            @if (item.status === 'failed' && item.errorType) {
+              <p class="failure-class">{{ getFailureLabel(item.errorType) }}</p>
+            }
 
             @if (item.errors && item.errors.length > 0) {
               <div class="errors">

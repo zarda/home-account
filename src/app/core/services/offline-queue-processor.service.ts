@@ -5,8 +5,10 @@ import { TransactionService } from './transaction.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { AuthService } from './auth.service';
+import { ReceiptAttemptService } from './receipt-attempt.service';
 import { ProcessedTransaction } from './ai-types';
-import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
+import { toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { baseCurrencyOf } from '../../models';
 
 /**
  * Coordinates the asynchronous side of the offline queue.
@@ -22,6 +24,9 @@ import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
  *
  * It is instantiated eagerly at startup (via provideAppInitializer in
  * app.config.ts) so its listener is attached before any sync fires.
+ *
+ * Rows are written through toCreateTransactionDTO, so what the reader filled
+ * is what lands.
  */
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueProcessorService implements OnDestroy {
@@ -31,6 +36,7 @@ export class OfflineQueueProcessorService implements OnDestroy {
   private notifications = inject(NotificationService);
   private translation = inject(TranslationService);
   private authService = inject(AuthService);
+  private receiptAttempts = inject(ReceiptAttemptService);
 
   private imageHandler = (event: Event): void => {
     const { id } = (event as CustomEvent<{ id: string }>).detail;
@@ -75,21 +81,31 @@ export class OfflineQueueProcessorService implements OnDestroy {
         return;
       }
 
-      const result = await this.aiStrategy.processReceipt(file);
-      if (result.transactions.length === 0) {
-        // Deliberately not 'completed': the photo produced nothing, and
-        // completing it would drop the receipt and say so nowhere. Failing
-        // keeps the image in the queue for the retries the queue already
-        // bounds, and leaves it in the failed count once they run out.
-        await this.queue.updateImageStatus(id, 'failed', 'No transaction could be read from this receipt');
-        return;
-      }
+      // Door 'queue': the attempt record is written, no event is sent — the
+      // capture already sent queued_offline (docs/analytics.md).
+      const attempt = this.receiptAttempts.begin('queue', 'receipt_image', [file]);
+      try {
+        const result = await this.aiStrategy.processReceipt(file);
+        if (result.transactions.length === 0) {
+          // Deliberately not 'completed': the photo produced nothing, and
+          // completing it would drop the receipt and say so nowhere. Failing
+          // keeps the image in the queue for the retries the queue already
+          // bounds, and leaves it in the failed count once they run out.
+          attempt.failed('nothing_extracted');
+          await this.queue.updateImageStatus(id, 'failed', 'No transaction could be read from this receipt');
+          return;
+        }
 
-      const landed = await this.createTransactions(id, result.transactions);
-      await this.queue.updateImageStatus(id, 'completed');
-      this.notifications.success(
-        this.translation.t('settings.transactionsImported', { count: landed }),
-      );
+        const landed = await this.createTransactions(id, result.transactions);
+        attempt.succeeded(result);
+        await this.queue.updateImageStatus(id, 'completed');
+        this.notifications.success(
+          this.translation.t('settings.transactionsImported', { count: landed }),
+        );
+      } catch (error) {
+        attempt.failed(error);
+        throw error;
+      }
     } catch (error) {
       await this.queue.updateImageStatus(id, 'failed', this.errorMessage(error));
     }
@@ -135,16 +151,18 @@ export class OfflineQueueProcessorService implements OnDestroy {
           continue;
         }
 
-        await this.transactionService.addTransaction({
-          type: tx.type,
-          amount: tx.amount,
-          currency: tx.currency,
-          // Same fallback the review table applies to an unlabelled row.
-          categoryId: tx.suggestedCategoryId || FALLBACK_CATEGORY_ID,
-          description: tx.description,
-          date: tx.date,
-          note: tx.notes,
-        }, { id: rowTxId });
+        // The same mapper every other import door writes through (ADR 0059):
+        // the row's renames only, and every optional the reader filled
+        // travels without this door naming it. The photo is the one thing
+        // that still does not travel from here — a follow-up.
+        await this.transactionService.addTransaction(
+          toCreateTransactionDTO({
+            ...tx,
+            categoryId: tx.suggestedCategoryId,
+            note: tx.notes,
+          }, baseCurrencyOf(this.authService.currentUser())),
+          { id: rowTxId },
+        );
         landed++;
       } catch (error) {
         anyFailed = true;

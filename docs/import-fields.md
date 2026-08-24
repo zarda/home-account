@@ -32,14 +32,26 @@ All three carry the optional field set `tags`, `location`, `period`,
 `isRecurring` and `recurringId` (plus `note` on `ExtractedTransaction` and
 `merchant` on the extraction and review shapes). `ProcessedTransaction` also
 carries `imageIndex`/`mergedFromImages`, the photo mapping the camera path
-needs.
+needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
+also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
+files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries three more that are **review-step marks,
+`CategorizedImportTransaction` carries five more that are **review-step marks,
 not fields**: `currencyFellBack` (nobody read a currency, so the base currency
 is standing in), `suggestedTags` (what was offered, so the confirm step can
-tell a removal from a row that never had any) and `recurringMatch` (the rule
-this row looks like). None of them reaches the mapper — it names its fields —
-and none of them is ever written to a transaction.
+tell a removal from a row that never had any), `recurringMatch` (the rule
+this row looks like), `receiptCountry` (the country the reader concluded the
+receipt was issued in — it reaches the transaction only inside
+`location.country`, and from this mark only when an address was printed;
+an attached coordinate writes that field from its own bundled table
+instead, see [ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md)) and
+`currencySuggestion` (the currency ladder's offer for a fallen-back row —
+`AIImportService.currencySuggestionSlot()` fills it and the review card reads
+it, while `currencyFellBack` keeps standing; see
+[ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md)).
+None of them reaches the
+mapper — it names its fields — and none of them is ever written to a
+transaction.
 
 The renames, applied only at the confirm step's call into the mapper:
 `suggestedCategoryId` → `categoryId`, `notes` → `note`. Nothing else is named
@@ -66,22 +78,26 @@ travels with zero edits.
 A bare row produces exactly the six required keys. That key set is spec-pinned;
 an undefined-valued key would ride into Firestore, which rejects it.
 
-Callers: `ExportService.parseImportedData` (the data hub) and
-`AIImportService.confirmImport` (the wizard, every kind). The wizard composes
-`receiptFiles` onto the mapper's output afterwards — the mapper stays pure.
+Callers: `ExportService.parseImportedData` (the data hub),
+`AIImportService.confirmImport` (the wizard, every kind) and
+`OfflineQueueProcessorService.createTransactions` (the offline queue drain,
+which writes without a review step). The wizard composes `receiptFiles` onto
+the mapper's output afterwards — the mapper stays pure. The queue drain used
+to hand-build a seven-field DTO and dropped everything else the reader filled;
+it is the fourth door now, not an exception to the rule.
 
 ## What travels through which door
 
-| | CSV (data hub) | CSV (wizard) | Receipt photos | Statement photos | Bank PDF | JSON backup |
-|---|---|---|---|---|---|---|
-| type, amount, currency, date, description | yes | yes | yes | yes | yes | yes |
-| note | yes | yes | items list → note | — | — | yes |
-| tags, location, period, recurring | from the file | from the file | `location` when the receipt prints one | `location` when the document prints one | `location` when the document prints one | from the file |
-| suggestions (tags, rule link) | — | yes | yes | yes | yes | — |
-| currency marked as fallen back | — | yes | yes | yes | yes | yes |
-| category | catch-all (ADR 0011) | ladder (#258) | ladder / extraction | ladder | ladder | the backup's own |
-| photo attached | — | — | **yes** | no (known gap, ADR 0060) | no | no |
-| recorded as | n/a | `csv` / `generic_csv` | `image` / `receipt_image` | `image` / `screenshot` | `pdf` / `bank_pdf` | `json` / `backup_json` |
+| | CSV (data hub) | CSV (wizard) | Receipt photos | Statement photos | Bank PDF | JSON backup | Queued receipt (offline drain) |
+|---|---|---|---|---|---|---|---|
+| type, amount, currency, date, description | yes | yes | yes | yes | yes | yes | yes |
+| note | yes | yes | items list → note | — | — | yes | items list → note |
+| tags, location, period, recurring | from the file | from the file | `location` when the receipt prints one | `location` when the document prints one | `location` when the document prints one | from the file | `location` when the receipt prints one |
+| suggestions (tags, rule link) | — | yes | yes | yes | yes | — | — (no review step) |
+| currency marked as fallen back | — | yes | yes | yes | yes | yes | — (the base currency is written, unmarked) |
+| category | catch-all (ADR 0011) | ladder (#258) | ladder / extraction | ladder | ladder | the backup's own | extraction, else catch-all |
+| photo attached | — | — | **yes** | no (known gap, ADR 0060) | no | no | no (follow-up) |
+| recorded as | n/a | `csv` / `generic_csv` | `image` / `receipt_image` | `image` / `screenshot` | `pdf` / `bank_pdf` | `json` / `backup_json` | a failed attempt only: `image` / `receipt_image`, door `queue` |
 
 The data hub's CSV path has no review step, so it takes no suggestions and
 carries no marks. The JSON backup is the one wizard door that takes none
@@ -90,6 +106,12 @@ either: its rows already carry what the backup recorded.
 A mixed wizard batch is recorded as its dominant kind by row count (ties keep
 the first processed), sized by every file in the batch. Import History renders
 `fileType` as a labelled, iconed chip.
+
+A receipt attempt's record also carries `door`, `engine`, `fellBackFrom`,
+`provider`, `errorType` and `durationMs` — written at extraction time for a
+failed attempt by `ReceiptAttemptService`, and at confirm time for a
+successful one from `ImportResult.diagnostics`. See
+[receipt-import.md](receipt-import.md#failure-surfacing).
 
 ## Photos
 

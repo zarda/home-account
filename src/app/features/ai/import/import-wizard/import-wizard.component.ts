@@ -20,7 +20,8 @@ import {
   ImportSource,
   ImportFileType,
   DuplicateCheck,
-  MultiImageMetadata
+  MultiImageMetadata,
+  ReceiptDoor
 } from '../../../../models';
 
 import { FileDropzoneComponent } from '../file-dropzone/file-dropzone.component';
@@ -28,7 +29,8 @@ import { TransactionPreviewTableComponent } from '../transaction-preview-table/t
 import { DuplicateWarningComponent, DuplicateInfo } from '../duplicate-warning/duplicate-warning.component';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { NotificationService } from '../../../../core/services/notification.service';
-import { AnalyticsService } from '../../../../core/services/analytics.service';
+import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/receipt-attempt.service';
+import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
 
@@ -57,7 +59,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private notifications = inject(NotificationService);
   private importService = inject(AIImportService);
   private duplicateService = inject(DuplicateDetectionService);
-  private analytics = inject(AnalyticsService);
+  private receiptAttempts = inject(ReceiptAttemptService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
   private router = inject(Router);
@@ -69,10 +71,16 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   acceptedFileTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp';
 
-  // Flag to track if we came from camera
+  // Flag to track if the review data arrived already extracted, via router
+  // state, rather than through this wizard's own processFiles.
   fromCamera = false;
   isMultiImage = false;
   private cameraImportResult: ImportResult | null = null;
+  // Which door actually ran the extraction the state carries — the camera
+  // dialog's own capture by default, since it is the door that predates
+  // this field; a producer that is not the camera (the transaction form's
+  // own multi-receipt review) names itself explicitly (#151).
+  private resultDoor: ReceiptDoor = 'camera';
 
   /**
    * What each processed result actually was, row-counted.
@@ -86,6 +94,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     fileType: ImportFileType;
     rows: number;
   }[] = [];
+
+  /** How the image batch's engine ran, for the confirm-time record. Null when no image was processed. */
+  private imageDiagnostics: ReceiptAttemptDiagnostics | null = null;
 
   // State signals
   selectedFiles = signal<File[]>([]);
@@ -217,15 +228,19 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
 
-    // Check if we received import result from camera capture via router state
+    // Check if we received an already-extracted import result via router
+    // state — the camera dialog's capture, or the transaction form's own
+    // multi-receipt review.
     const state = history.state as {
       importResult?: ImportResult;
       fromCamera?: boolean;
       multiImage?: boolean;
+      door?: ReceiptDoor;
     } | undefined;
 
     if (state?.importResult && state?.fromCamera) {
       this.fromCamera = true;
+      this.resultDoor = state.door ?? 'camera';
       this.isMultiImage = state.multiImage ?? false;
       this.cameraImportResult = state.importResult;
       this.processedBatches = [{
@@ -310,13 +325,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.processingError.set(null);
     this.extractedTransactions.set([]);
     this.processedBatches = [];
+    this.imageDiagnostics = null;
+
+    const files = this.selectedFiles();
+    const imageFiles = files.filter(f => looksLikeImageFile(f));
+    const nonImageFiles = files.filter(f => !looksLikeImageFile(f));
+
+    // Only receipts are receipt attempts. A statement screenshot runs
+    // through this same method and used to be counted as one; the handle is
+    // opened for the receipt kind alone, and it settles from the image
+    // batch's own result — never from the running row total, which a CSV
+    // in the same batch could have filled.
+    const receiptAttempt = imageFiles.length >= 1 && this.imageKind() === 'receipt'
+      ? this.receiptAttempts.begin('wizard', 'receipt_image', imageFiles)
+      : null;
 
     try {
-      const files = this.selectedFiles();
-
-      const imageFiles = files.filter(f => looksLikeImageFile(f));
-      const nonImageFiles = files.filter(f => !looksLikeImageFile(f));
-
       if (imageFiles.length >= 1) {
         // Receipt and statement images need opposite treatment and look alike
         // to a MIME check, so the user says which they have. Receipts go
@@ -326,6 +350,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         const result = this.imageKind() === 'statement'
           ? await this.importService.importFromStatementImages(imageFiles)
           : await this.importService.importFromMultipleImages(imageFiles);
+        this.imageDiagnostics = result.diagnostics ?? null;
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
         this.processedBatches.push({
@@ -333,6 +358,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           fileType: result.fileType,
           rows: result.transactions.length
         });
+        if (receiptAttempt) {
+          if (result.transactions.length > 0) {
+            receiptAttempt.succeeded(result);
+          } else {
+            receiptAttempt.failed('nothing_extracted');
+          }
+        }
       }
 
       // Process non-image files individually
@@ -373,30 +405,15 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           .map(t => t.id)
       );
       this.selectedTransactionIds.set(nonDuplicateIds);
-
-      // Only images are receipts. This method also handles CSV, PDF and JSON,
-      // and counting a bank statement as a receipt import would make the
-      // reliability figure this event exists to produce meaningless.
-      if (imageFiles.length >= 1) {
-        this.analytics.trackReceiptImport({
-          outcome: this.extractedTransactions().length > 0 ? 'ok' : 'failed',
-        });
-      }
     } catch (error) {
       const parsed = this.importService.parseAIError(error);
       this.processingError.set(parsed.message);
       this.processingErrorKey.set(parsed.messageKey ?? null);
       this.processingErrorType.set(parsed.type);
       this.processingErrorRetryable.set(parsed.retryable);
-
-      if (this.selectedFiles().some(f => looksLikeImageFile(f))) {
-        // A later non-image file can throw after the images already produced
-        // transactions; the user still has a usable review step, so that is a
-        // success with a broken tail, not a failed import.
-        this.analytics.trackReceiptImport({
-          outcome: this.extractedTransactions().length > 0 ? 'ok' : 'failed',
-        });
-      }
+      // A throw from the image batch settles the handle here; a throw from a
+      // later file finds it already settled and this is a no-op.
+      receiptAttempt?.failed(error);
     }
   }
 
@@ -501,13 +518,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // numbers can be mapped back to rows. Safe to take before the await:
       // the review UI is unreachable while isImporting disables the stepper.
       const submitted = this.extractedTransactions().filter(t => t.selected);
+      // The receipt attempt's provenance rides the record for image batches;
+      // a CSV-only batch has none, and an absent slot means nobody looked.
+      const diagnostics = this.fromCamera
+        ? this.cameraImportResult?.diagnostics ?? null
+        : this.imageDiagnostics;
+      const provenance = this.processedBatches.some(b => b.source === 'image')
+        ? provenanceOf(this.fromCamera ? this.resultDoor : 'wizard', diagnostics)
+        : undefined;
       const result = await this.importService.confirmImport(
         this.extractedTransactions(),
         batch.fileName,
         batch.fileSize,
         batch.source,
         batch.fileType,
-        this.sourceImageFiles()
+        this.sourceImageFiles(),
+        provenance
       );
 
       if (result.receiptsSkipped) {

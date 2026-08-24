@@ -17,6 +17,14 @@ import {
 import { SearchQueryContext } from '../../models';
 
 /**
+ * A run of three or more bare two-letter codes, joined by a comma, a slash, a
+ * pipe or the word "or" — the same separator set check-prompts.mjs uses for
+ * its currency-code tripwire. check-prompts.mjs cannot see country codes at
+ * all, so this is the only guard against a prompt listing them by hand.
+ */
+const COUNTRY_CODE_RUN = /\b[A-Z]{2}\b(?:\s*(?:,|\/|\||\bor\b)\s*\b[A-Z]{2}\b){2,}/;
+
+/**
  * One rendering per prompt id, so every registered prompt is exercised and the
  * consistency check can require that this file names each of them.
  *
@@ -142,6 +150,19 @@ describe('prompt registry', () => {
     }
   });
 
+  it('never lists a run of country codes, in any prompt', () => {
+    // Covers all thirteen registered prompts, the five receipt ones
+    // included — their own describe blocks below assert the country field
+    // exists, not this tripwire, so this loop is the only place a
+    // categorization, search or insights prompt growing the same mistake
+    // would be caught.
+    for (const id of PROMPT_IDS) {
+      expect(render(id))
+        .withContext(`${id} lists a run of two-letter codes`)
+        .not.toMatch(COUNTRY_CODE_RUN);
+    }
+  });
+
   describe('receiptParse', () => {
     it('asks for receiptCount, which drives the multi-receipt review flow', () => {
       // Only Gemini's copy asked for this before the registry, so the flow
@@ -164,6 +185,16 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"location"');
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
+    });
+
+    it('asks for the issuing country as a code, never a default', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('receiptParse');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
     });
   });
 
@@ -457,6 +488,16 @@ describe('prompt registry', () => {
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
     });
+
+    it('asks for the issuing country as a code, never a default', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('multiImageReceipts');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
+    });
   });
 
   describe('statementTransactions', () => {
@@ -473,6 +514,16 @@ describe('prompt registry', () => {
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
     });
+
+    it('asks for the issuing country as a code, never a default', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('statementTransactions');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
+    });
   });
 
   describe('receiptSummary', () => {
@@ -487,6 +538,16 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"location"');
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
+    });
+
+    it('asks for the issuing country as a code, never a default', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('receiptSummary');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
     });
   });
 
@@ -513,6 +574,16 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"location"');
       expect(prompt).toContain('never translated');
       expect(prompt).toContain('inferred from the merchant name');
+    });
+
+    it('asks for the issuing country as a code, never a default', () => {
+      // The country is concluded from what the receipt prints, reported as a
+      // code the reader checks against the runtime's region table — so the
+      // prompt names no country, the same rule CURRENCY_FIELD follows.
+      const prompt = render('receiptItems');
+      expect(prompt).toContain('"country"');
+      expect(prompt).toContain('ISO 3166-1 alpha-2');
+      expect(prompt).toContain('never a default');
     });
   });
 

@@ -24,10 +24,19 @@ import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { DuplicateDetectionService } from '../../../core/services/duplicate-detection.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 describe('CameraCaptureComponent offline queue (smoke test)', () => {
   let queue: OfflineQueueService;
   let dialogRef: jasmine.SpyObj<MatDialogRef<CameraCaptureComponent>>;
+  let attempts: ReturnType<typeof attemptStub>;
 
   beforeEach(async () => {
     const pwaService = jasmine.createSpyObj('PwaService', [
@@ -45,6 +54,7 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
     const translationService = jasmine.createSpyObj('TranslationService', ['t']);
     translationService.t.and.callFake((key: string) => key);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
+    attempts = attemptStub();
 
     await TestBed.configureTestingModule({
       imports: [CameraCaptureComponent],
@@ -57,6 +67,10 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
         { provide: AIImportService, useValue: importService },
         { provide: AIStrategyService, useValue: strategyService },
         { provide: TranslationService, useValue: translationService },
+        // The dialog's attempt handle. Stubbed, not real: the real service
+        // reaches Firestore through ImportHistoryService, and this spec
+        // proves the IndexedDB leg only.
+        { provide: ReceiptAttemptService, useValue: attempts.service },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
@@ -106,5 +120,6 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
     expect(pending.every(img => img.size > 0)).toBeTrue();
 
     expect(dialogRef.close).toHaveBeenCalledWith({ success: true, queued: true, count: 3 });
+    expect(attempts.handle.queued).toHaveBeenCalled();
   }, 20000);
 });

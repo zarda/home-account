@@ -36,7 +36,7 @@ Note, Tags, Location, Period, Recurring
 | `Category` | the translated category name, in the locale that exported |
 | `Amount` / `Amount (Base)` | plain decimals, never guarded, so `SUM()` works on the column |
 | `Tags` | joined with `; ` in one cell |
-| `Location` | the place name only; coordinates stay in the JSON backup |
+| `Location` | the place name only; coordinates and the country stay in the JSON backup |
 | `Period` | `weekly`, `monthly`, `yearly`, or empty |
 | `Recurring` | `true`, or empty |
 
@@ -48,7 +48,7 @@ Note, Tags, Location, Period, Recurring
 | description, note, tags, location name | yes | — | yes |
 | budget period, recurring flag | yes | — | yes |
 | **category** | written, **not read back** | written, not read back | yes |
-| location coordinates, ids | — | — | yes |
+| location coordinates, country, ids | — | — | yes |
 | **receipt images** | — | — | see below |
 
 **Category is written but never re-imported.** The importer has no `category`

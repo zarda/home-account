@@ -64,7 +64,8 @@ describe('ImportHistoryComponent', () => {
       totalIncome: 0,
       totalExpenses: 50,
       duplicatesSkipped: 0,
-      status: 'completed'
+      status: 'completed',
+      door: 'camera', engine: 'cloud', fellBackFrom: 'native', provider: 'gemini', durationMs: 4321,
     }
   ];
 
@@ -346,5 +347,45 @@ describe('ImportHistoryComponent', () => {
       // Just ensure ngOnDestroy doesn't throw
       expect(() => component.ngOnDestroy()).not.toThrow();
     }));
+  });
+
+  describe('attempt chips', () => {
+    beforeEach(() => { fixture.detectChanges(); });
+
+    it('labels the engine, and the pair when one fell back', () => {
+      expect(component.getEngineLabel({ engine: 'cloud' })).toBe('import.engineCloud');
+      expect(component.getEngineLabel({ engine: 'native' })).toBe('import.engineNative');
+      expect(component.getEngineLabel({ engine: 'cloud', fellBackFrom: 'native' })).toBe('import.engineCloudAfterNative');
+      expect(component.getEngineLabel({ engine: 'native', fellBackFrom: 'cloud' })).toBe('import.engineNativeAfterCloud');
+    });
+
+    it('names the provider as it brands itself, untranslated', () => {
+      expect(component.getProviderLabel('gemini')).toBe('Gemini');
+      expect(component.getProviderLabel('openai')).toBe('OpenAI');
+      expect(component.getProviderLabel('claude')).toBe('Claude');
+    });
+
+    it('shows the duration in whole seconds', () => {
+      expect(component.formatDuration(4321)).toBe('import.durationSeconds');
+      expect(mockTranslationService.t).toHaveBeenCalledWith('import.durationSeconds', { seconds: 4 });
+    });
+
+    it('says a sub-second pass was fast rather than rendering it as 0 s', () => {
+      // A native pass often finishes in a few hundred milliseconds; a floored
+      // "0 s" reads as instant, which is not what happened.
+      expect(component.formatDuration(400)).toBe('import.durationUnderOneSecond');
+      expect(mockTranslationService.t).not.toHaveBeenCalledWith('import.durationSeconds', jasmine.anything());
+    });
+
+    it('labels every failure class', () => {
+      const classes = ['rate_limit', 'auth', 'network', 'quota', 'server', 'timeout',
+        'no_provider', 'nothing_extracted', 'queue_write', 'unknown'] as const;
+      const labels = classes.map(c => component.getFailureLabel(c));
+      expect(labels).toEqual([
+        'import.failureRateLimit', 'import.failureAuth', 'import.failureNetwork', 'import.failureQuota',
+        'import.failureServer', 'import.failureTimeout', 'import.failureNoProvider',
+        'import.failureNothingExtracted', 'import.failureQueueWrite', 'import.failureUnknown',
+      ]);
+    });
   });
 });

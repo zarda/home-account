@@ -3,6 +3,7 @@ import { WritableSignal, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 
 import { AIStrategyService, AI_CLOUD_UNAVAILABLE } from './ai-strategy.service';
+import { ReceiptProcessingError } from '../utils/ai-error.utils';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { PwaService } from './pwa.service';
 import { AuthService } from './auth.service';
@@ -66,6 +67,7 @@ describe('AIStrategyService', () => {
       'hasAnyCloudProvider',
       'availableProviders',
       'providerStatus',
+      'resolveProvider',
       'parseReceipt',
       'extractTransactionsFromMultipleImages',
       'reinitializeGemini',
@@ -78,6 +80,7 @@ describe('AIStrategyService', () => {
     cloudMock.hasAnyCloudProvider.and.returnValue(true);
     cloudMock.availableProviders.and.returnValue(['gemini']);
     cloudMock.providerStatus.and.returnValue({ gemini: true, openai: false, claude: false });
+    cloudMock.resolveProvider.and.returnValue('gemini');
     cloudMock.parseReceipt.and.resolveTo(parsedReceipt);
 
     pwaMock = jasmine.createSpyObj('PwaService', ['isOnline']);
@@ -321,6 +324,18 @@ describe('AIStrategyService', () => {
       cloudMock.parseReceipt.and.resolveTo(parsedReceipt);
       const plain = await service.processReceipt(imageFile());
       expect('location' in plain.transactions[0]).toBeFalse();
+    });
+
+    it('carries the receipt country out as a mark, and into the printed address', async () => {
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, location: 'Shibuya', receiptCountry: 'JP' });
+      const service = createService('web');
+
+      const row = (await service.processReceipt(imageFile())).transactions[0];
+      expect(row.receiptCountry).toBe('JP');
+      expect(row.location).toEqual({ name: 'Shibuya', country: 'JP' });
+
+      cloudMock.parseReceipt.and.resolveTo(parsedReceipt);
+      expect('receiptCountry' in (await service.processReceipt(imageFile())).transactions[0]).toBeFalse();
     });
 
     it('carries the per-field confidences out', async () => {
@@ -651,6 +666,24 @@ describe('AIStrategyService', () => {
       expect('location' in result.transactions[1]).toBeFalse();
     });
 
+    it('carries the receipt country through consolidation onto the row', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        { date: '2026-01-15', description: 'Lunch', amount: 10, type: 'expense', currency: 'KRW',
+          merchant: 'Diner', imageIndex: 0, positionInImage: 'top', confidence: 0.8, receiptId: 1 },
+        { date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense', currency: 'KRW',
+          imageIndex: 1, positionInImage: 'bottom', confidence: 0.6, receiptId: 1, receiptCountry: 'KR' },
+        { date: '2026-01-16', description: 'Solo', amount: 7, type: 'expense', currency: 'KRW',
+          imageIndex: 1, positionInImage: 'top', confidence: 0.9, receiptId: 2 },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      expect(result.transactions[0].receiptCountry).toBe('KR');
+      expect('receiptCountry' in result.transactions[1]).toBeFalse();
+    });
+
     it('should prefer the full receipt details from the AI for merged notes', async () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {
@@ -678,6 +711,148 @@ describe('AIStrategyService', () => {
 
       expect(nativeMock.processImages).toHaveBeenCalled();
       expect(result.source).toBe('native');
+    });
+  });
+
+  describe('attempt diagnostics', () => {
+    // The engine, the fallback, the provider, the duration and the error
+    // class are all known here and used to be thrown away — four
+    // console.warns and a signal nobody read. This is the one place every
+    // door passes through, so it is the one place to record them.
+    const unreadable: ProcessingResult = {
+      ...nativeResult,
+      transactions: [{ ...nativeResult.transactions[0], amount: 0, confidence: 0.1 }],
+      confidence: 0.1,
+    };
+
+    it('reports a plain cloud run with its provider and a measured duration', async () => {
+      const service = createService('web');
+      const result = await service.processReceipt(imageFile());
+
+      expect(result.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', provider: 'gemini',
+      }));
+      expect('fellBackFrom' in result.diagnostics!).toBeFalse();
+      expect(result.diagnostics!.durationMs).toBeGreaterThanOrEqual(0);
+      expect(result.diagnostics!.durationMs).toBe(result.processingTimeMs);
+      expect(service.lastProcessingTime()).toBe(result.diagnostics!.durationMs);
+    });
+
+    it('reports a plain native run with no provider', async () => {
+      const service = createService('ios');
+      const result = await service.processReceipt(imageFile());
+
+      expect(result.diagnostics).toEqual(jasmine.objectContaining({ engine: 'native', provider: null }));
+      expect('fellBackFrom' in result.diagnostics!).toBeFalse();
+    });
+
+    it('names the engine that fell back when native throws and the cloud answers', async () => {
+      nativeMock.processImage.and.rejectWith(new Error('OCR failed'));
+      const service = createService('ios');
+      const result = await service.processReceipt(imageFile());
+
+      expect(result.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', fellBackFrom: 'native', provider: 'gemini',
+      }));
+    });
+
+    it('names the fallback when native read too little and the cloud read it better', async () => {
+      nativeMock.processImage.and.resolveTo(unreadable);
+      const service = createService('ios');
+      const result = await service.processReceipt(imageFile());
+
+      expect(result.source).toBe('cloud');
+      expect(result.diagnostics).toEqual(jasmine.objectContaining({ engine: 'cloud', fellBackFrom: 'native' }));
+    });
+
+    it('records no fallback when the second engine lost and the first result stood', async () => {
+      nativeMock.processImage.and.resolveTo(unreadable);
+      cloudMock.parseReceipt.and.resolveTo({ ...parsedReceipt, amount: 0, confidence: 0.1 });
+      const service = createService('ios');
+      const result = await service.processReceipt(imageFile());
+
+      expect(result.source).toBe('native');
+      expect(result.diagnostics!.engine).toBe('native');
+      expect('fellBackFrom' in result.diagnostics!).toBeFalse();
+    });
+
+    it('names the fallback when cloud fails on a Mac and native answers', async () => {
+      visionMock.isMacEnvironment.and.returnValue(true);
+      cloudMock.parseReceipt.and.rejectWith(new Error('rate limited'));
+      const service = createService('ios');
+      const result = await service.processReceipt(imageFile());
+
+      expect(result.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'native', fellBackFrom: 'cloud', provider: 'gemini',
+      }));
+    });
+
+    it('throws a ReceiptProcessingError carrying the classified failure when nothing answered', async () => {
+      cloudMock.parseReceipt.and.rejectWith(new Error('401 Incorrect API key provided'));
+      const service = createService('web');
+
+      const failure = await service.processReceipt(imageFile()).catch(e => e);
+
+      expect(failure).toBeInstanceOf(ReceiptProcessingError);
+      // The message is the cause's, so callers comparing sentinels or
+      // asserting the provider's wording see exactly what they saw before.
+      expect(failure.message).toBe('401 Incorrect API key provided');
+      expect(failure.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', provider: 'gemini', errorType: 'auth', retryable: false,
+      }));
+      expect(failure.diagnostics.durationMs).toBeGreaterThanOrEqual(0);
+      expect(service.lastProcessingTime()).toBe(failure.diagnostics.durationMs);
+    });
+
+    it('throws with the fallback recorded when both engines failed', async () => {
+      nativeMock.processImage.and.rejectWith(new Error('OCR failed'));
+      cloudMock.parseReceipt.and.rejectWith(new Error('503 service unavailable'));
+      const service = createService('ios');
+
+      const failure = await service.processReceipt(imageFile()).catch(e => e);
+
+      expect(failure).toBeInstanceOf(ReceiptProcessingError);
+      expect(failure.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', fellBackFrom: 'native', errorType: 'server', retryable: true,
+      }));
+    });
+
+    it('throws the cloud-unavailable code with no provider when the web has no engine', async () => {
+      cloudMock.hasAnyCloudProvider.and.returnValue(false);
+      cloudMock.resolveProvider.and.returnValue(null);
+      const service = createService('web');
+
+      const failure = await service.processReceipt(imageFile()).catch(e => e);
+
+      expect(failure.message).toBe(AI_CLOUD_UNAVAILABLE);
+      expect(failure.diagnostics).toEqual(jasmine.objectContaining({
+        engine: 'cloud', provider: null, errorType: 'network',
+      }));
+    });
+
+    it('reports no provider when the device was offline and nothing was sent', async () => {
+      // canUseCloud() is isOnline && hasAnyCloudProvider, but receiptProvider()
+      // reads availability alone — so a configured key on an offline phone used
+      // to be reported as the provider that answered, for a request
+      // ensureCloudAvailable refused to send.
+      cloudMock.hasAnyCloudProvider.and.returnValue(true);
+      cloudMock.resolveProvider.and.returnValue('gemini');
+      pwaMock.isOnline.and.returnValue(false);
+      const service = createService('web');
+
+      const failure = await service.processReceipt(imageFile()).catch(e => e);
+
+      expect(failure.message).toBe(AI_CLOUD_UNAVAILABLE);
+      expect(failure.diagnostics.provider).toBeNull();
+      expect(failure.diagnostics.errorType).toBe('network');
+    });
+
+    it('attaches diagnostics to a multi-image result too', async () => {
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo([]);
+      const service = createService('web');
+      const result = await service.processMultipleImages([imageFile()]);
+
+      expect(result.diagnostics!.engine).toBe('cloud');
     });
   });
 

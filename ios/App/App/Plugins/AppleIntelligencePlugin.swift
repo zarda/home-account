@@ -28,6 +28,9 @@ struct ReceiptExtraction {
 
     @Guide(description: "Branch name and/or street address exactly as the receipt prints it, in its own script — never translated or inferred from the merchant name — or an empty string if none is printed")
     var location: String
+
+    @Guide(description: "ISO 3166-1 alpha-2 code of the country the receipt was issued in, concluded from the printed address, tax or registration number, phone number format, currency sign and the receipt's own language — or an empty string if it cannot be told, never a default")
+    var country: String
 }
 #endif
 
@@ -109,7 +112,8 @@ public class AppleIntelligencePlugin: CAPPlugin, CAPBridgedPlugin {
                         "currency": receipt.currency,
                         "category": receipt.category,
                         "details": receipt.details,
-                        "location": receipt.location
+                        "location": receipt.location,
+                        "country": receipt.country
                     ])
                 } catch {
                     call.reject("Apple Intelligence generation failed: \(error.localizedDescription)")

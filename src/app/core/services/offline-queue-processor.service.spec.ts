@@ -8,6 +8,14 @@ import { TransactionService } from './transaction.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { ProcessedTransaction, ProcessingResult } from './ai-types';
+import { ReceiptAttempt, ReceiptAttemptService } from './receipt-attempt.service';
+
+function attemptStub() {
+  const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
+  const service = jasmine.createSpyObj<ReceiptAttemptService>('ReceiptAttemptService', ['begin']);
+  service.begin.and.returnValue(handle);
+  return { service, handle };
+}
 
 async function waitFor(pred: () => boolean, timeout = 2000): Promise<void> {
   const start = Date.now();
@@ -43,6 +51,21 @@ function processingResult(transactions: ProcessedTransaction[]): ProcessingResul
   };
 }
 
+function queuedImage(overrides: Partial<QueuedImage> = {}): QueuedImage {
+  return {
+    id: 'img_1',
+    userId: 'user-a',
+    fileName: 'r.jpg',
+    mimeType: 'image/jpeg',
+    size: 3,
+    data: new Uint8Array([1, 2, 3]).buffer,
+    createdAt: Date.now(),
+    status: 'processing',
+    retryCount: 0,
+    ...overrides,
+  };
+}
+
 describe('OfflineQueueProcessorService', () => {
   let processor: OfflineQueueProcessorService;
   let queue: jasmine.SpyObj<OfflineQueueService>;
@@ -51,6 +74,7 @@ describe('OfflineQueueProcessorService', () => {
   let notifications: jasmine.SpyObj<NotificationService>;
   let translation: jasmine.SpyObj<TranslationService>;
   let userId: WritableSignal<string | null>;
+  let attempts: ReturnType<typeof attemptStub>;
 
   beforeEach(() => {
     queue = jasmine.createSpyObj<OfflineQueueService>('OfflineQueueService', [
@@ -78,6 +102,7 @@ describe('OfflineQueueProcessorService', () => {
     ]);
     translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
+    attempts = attemptStub();
 
     TestBed.configureTestingModule({
       providers: [
@@ -87,7 +112,8 @@ describe('OfflineQueueProcessorService', () => {
         { provide: TransactionService, useValue: transactions },
         { provide: NotificationService, useValue: notifications },
         { provide: TranslationService, useValue: translation },
-        { provide: AuthService, useValue: { userId } },
+        { provide: AuthService, useValue: { userId, currentUser: signal(null) } },
+        { provide: ReceiptAttemptService, useValue: attempts.service },
       ],
     });
     processor = TestBed.inject(OfflineQueueProcessorService);
@@ -288,25 +314,89 @@ describe('OfflineQueueProcessorService', () => {
       expect(ai.processReceipt).not.toHaveBeenCalled();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_3', 'failed', 'Image not found in queue');
     });
+
+    it('opens a queue-door handle and reports success', async () => {
+      const diagnostics = { engine: 'cloud' as const, provider: 'gemini' as const, durationMs: 5 };
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo({ ...processingResult([extracted()]), diagnostics });
+
+      dispatchImage('img_1');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect(attempts.service.begin.calls.mostRecent().args[0]).toBe('queue');
+      expect(attempts.handle.succeeded).toHaveBeenCalledWith(jasmine.objectContaining({ diagnostics }));
+    });
+
+    it('reports nothing_extracted and the thrown error through the handle', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([]));
+      dispatchImage('img_4');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+      expect(attempts.handle.failed).toHaveBeenCalledWith('nothing_extracted');
+
+      const failure = new Error('AI unavailable');
+      ai.processReceipt.and.rejectWith(failure);
+      dispatchImage('img_2');
+      await waitFor(() => queue.updateImageStatus.calls.count() === 2);
+      expect(attempts.handle.failed).toHaveBeenCalledWith(failure);
+    });
+
+    it('opens no handle for a missing file or another account\'s image', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(null);
+      dispatchImage('img_3');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+
+      queue.peekQueuedImage.and.resolveTo(queuedImage({ userId: 'user-b' }));
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      dispatchImage('img_5');
+      await waitFor(() => queue.updateImageStatus.calls.count() === 2);
+      expect(attempts.service.begin).not.toHaveBeenCalled();
+      expect(queue.updateImageStatus).toHaveBeenCalledWith('img_5', 'pending');
+    });
+
+    it('carries location, tags, period and recurring through the one mapper', async () => {
+      // The queue used to hand-build its DTO with seven fields, so exactly the
+      // receipts most likely to be foreign — queued because the phone was
+      // offline — lost the address the model read (ADR 0059).
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({
+        location: { name: 'Shibuya 1-2-3' }, tags: ['travel'], period: 'monthly', isRecurring: false,
+      })]));
+
+      dispatchImage('img_7');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      const dto = transactions.addTransaction.calls.mostRecent().args[0];
+      expect(dto.location).toEqual({ name: 'Shibuya 1-2-3' });
+      expect(dto.tags).toEqual(['travel']);
+      expect(dto.period).toBe('monthly');
+      expect(dto.isRecurring).toBeFalse();
+    });
+
+    it('writes no empty slot for a row that carries none', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({ notes: undefined })]));
+
+      dispatchImage('img_8');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      const dto = transactions.addTransaction.calls.mostRecent().args[0];
+      expect(Object.keys(dto).sort()).toEqual(['amount', 'categoryId', 'currency', 'date', 'description', 'type']);
+    });
+
+    it('never writes a review mark', async () => {
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({ currencyFellBack: true, currency: 'USD' })]));
+
+      dispatchImage('img_9');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      expect('currencyFellBack' in transactions.addTransaction.calls.mostRecent().args[0]).toBeFalse();
+    });
   });
 
-
   describe('account ownership', () => {
-    function queuedImage(overrides: Partial<QueuedImage> = {}): QueuedImage {
-      return {
-        id: 'img_1',
-        userId: 'user-a',
-        fileName: 'r.jpg',
-        mimeType: 'image/jpeg',
-        size: 3,
-        data: new Uint8Array([1, 2, 3]).buffer,
-        createdAt: Date.now(),
-        status: 'processing',
-        retryCount: 0,
-        ...overrides,
-      };
-    }
-
     // The regression. addTransaction resolves the account at call time, so a
     // sync that fires after a different user signs in wrote account A's
     // receipt straight into account B's ledger.
@@ -336,7 +426,5 @@ describe('OfflineQueueProcessorService', () => {
       expect(transactions.addTransaction).toHaveBeenCalled();
       expect(queue.updateImageStatus).toHaveBeenCalledWith('img_1', 'completed');
     });
-
-
   });
 });
