@@ -70,6 +70,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0063](0063-an-import-suggests-only-what-the-account-already-knows.md) | An import suggests only what the account already knows | Accepted | 2026-08-22 |
 | [0064](0064-the-country-comes-off-the-paper-before-the-phone.md) | The country comes off the paper before it comes off the phone | Accepted | 2026-08-23 |
 | [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted | 2026-08-23 |
+| [0066](0066-an-answers-budget-follows-its-question.md) | An answer's budget follows its question, and a cut-off answer is read as far as it goes | Accepted | 2026-08-24 |
 
 ## What belongs here
 

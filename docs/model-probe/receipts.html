@@ -1,0 +1,156 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; background: #888; font-family: "Hiragino Sans", "Apple SD Gothic Neo", monospace; }
+  .r { width: 340px; background: #fff; color: #111; padding: 18px 20px; font-size: 13px; line-height: 1.55; }
+  .wrap { display: inline-block; margin: 12px; vertical-align: top; }
+  .c { text-align: center; }
+  .b { font-weight: 700; }
+  .line { border-top: 1px dashed #666; margin: 8px 0; }
+  .row { display: flex; justify-content: space-between; }
+  .sm { font-size: 11px; color: #333; }
+  .big { font-size: 17px; font-weight: 700; }
+  /* The crop: the paper is physically cut off mid-item. No total, no footer. */
+  .cropped { height: 430px; overflow: hidden; }
+</style>
+
+<div class="wrap"><div class="r" id="jp">
+  <div class="c b">セブン-イレブン</div>
+  <div class="c sm">渋谷道玄坂二丁目店</div>
+  <div class="c sm">東京都渋谷区道玄坂2-10-12</div>
+  <div class="c sm">TEL 03-3461-8901</div>
+  <div class="line"></div>
+  <div class="sm">2026年8月14日(金) 19:42</div>
+  <div class="line"></div>
+  <div class="row"><span>おにぎり 鮭</span><span>¥168</span></div>
+  <div class="row"><span>緑茶 500ml</span><span>¥151</span></div>
+  <div class="row"><span>肉まん</span><span>¥180</span></div>
+  <div class="line"></div>
+  <div class="row"><span>小計</span><span>¥499</span></div>
+  <div class="row"><span>消費税(8%)</span><span>¥39</span></div>
+  <div class="row big"><span>合計</span><span>¥538</span></div>
+  <div class="line"></div>
+  <div class="sm">現金 ¥1,000</div>
+  <div class="sm">お釣り ¥462</div>
+  <div class="sm">登録番号 T7011001049267</div>
+</div></div>
+
+<div class="wrap"><div class="r" id="kr">
+  <div class="c b">스타벅스커피 코리아</div>
+  <div class="c sm">강남대로점</div>
+  <div class="c sm">서울특별시 강남구 강남대로 390</div>
+  <div class="c sm">TEL 02-538-4100</div>
+  <div class="c sm">사업자번호 201-81-21515</div>
+  <div class="line"></div>
+  <div class="sm">2026-08-11 08:23</div>
+  <div class="line"></div>
+  <div class="row"><span>아메리카노 (T)</span><span>4,500</span></div>
+  <div class="row"><span>카페라떼 (G)</span><span>5,900</span></div>
+  <div class="line"></div>
+  <div class="row"><span>공급가액</span><span>9,455</span></div>
+  <div class="row"><span>부가세</span><span>945</span></div>
+  <div class="row big"><span>합계</span><span>10,400</span></div>
+  <div class="line"></div>
+  <div class="sm">신용카드 승인 10,400</div>
+</div></div>
+
+<div class="wrap"><div class="r" id="none">
+  <div class="c b">CORNER MARKET</div>
+  <div class="line"></div>
+  <div class="sm">14/08/2026  10:05</div>
+  <div class="line"></div>
+  <div class="row"><span>BREAD</span><span>2.40</span></div>
+  <div class="row"><span>MILK 1L</span><span>1.15</span></div>
+  <div class="row"><span>APPLES</span><span>3.30</span></div>
+  <div class="line"></div>
+  <div class="row"><span>SUBTOTAL</span><span>6.85</span></div>
+  <div class="row big"><span>TOTAL</span><span>6.85</span></div>
+  <div class="line"></div>
+  <div class="sm">CARD ****4417</div>
+  <div class="sm">THANK YOU</div>
+</div></div>
+
+<!-- A long supermarket receipt: 34 items, printed total at the very bottom.
+     Tests the item-sum-vs-printed-total rule with a lot of noise in between. -->
+<div class="wrap"><div class="r" id="long">
+  <div class="c b">イオンスタイル</div>
+  <div class="c sm">品川シーサイド店</div>
+  <div class="c sm">東京都品川区東品川4-12-5</div>
+  <div class="c sm">TEL 03-5495-3800</div>
+  <div class="line"></div>
+  <div class="sm">2026年8月09日(日) 17:11  レジ04</div>
+  <div class="line"></div>
+  <div class="row"><span>牛乳 1L</span><span>¥218</span></div>
+  <div class="row"><span>食パン 6枚</span><span>¥158</span></div>
+  <div class="row"><span>たまご 10個</span><span>¥278</span></div>
+  <div class="row"><span>バナナ</span><span>¥198</span></div>
+  <div class="row"><span>トマト 4個</span><span>¥398</span></div>
+  <div class="row"><span>きゅうり 3本</span><span>¥158</span></div>
+  <div class="row"><span>にんじん</span><span>¥128</span></div>
+  <div class="row"><span>玉ねぎ 3個</span><span>¥198</span></div>
+  <div class="row"><span>じゃがいも</span><span>¥248</span></div>
+  <div class="row"><span>鶏むね肉 300g</span><span>¥357</span></div>
+  <div class="row"><span>豚こま切れ</span><span>¥489</span></div>
+  <div class="row"><span>さば 切身</span><span>¥298</span></div>
+  <div class="row"><span>絹ごし豆腐</span><span>¥88</span></div>
+  <div class="row"><span>納豆 3P</span><span>¥108</span></div>
+  <div class="row"><span>味噌 750g</span><span>¥328</span></div>
+  <div class="row"><span>醤油 1L</span><span>¥298</span></div>
+  <div class="row"><span>サラダ油</span><span>¥368</span></div>
+  <div class="row"><span>米 5kg</span><span>¥1,980</span></div>
+  <div class="row"><span>うどん 3食</span><span>¥138</span></div>
+  <div class="row"><span>カップ麺</span><span>¥168</span></div>
+  <div class="row"><span>ヨーグルト</span><span>¥138</span></div>
+  <div class="row"><span>チーズ スライス</span><span>¥258</span></div>
+  <div class="row"><span>バター</span><span>¥458</span></div>
+  <div class="row"><span>コーヒー 豆</span><span>¥698</span></div>
+  <div class="row"><span>緑茶 ティーバッグ</span><span>¥248</span></div>
+  <div class="row"><span>洗剤 詰替</span><span>¥298</span></div>
+  <div class="row"><span>トイレットペーパー</span><span>¥398</span></div>
+  <div class="row"><span>ティッシュ 5箱</span><span>¥328</span></div>
+  <div class="row"><span>シャンプー</span><span>¥698</span></div>
+  <div class="row"><span>歯磨き粉</span><span>¥248</span></div>
+  <div class="row"><span>アイスクリーム</span><span>¥298</span></div>
+  <div class="row"><span>冷凍餃子</span><span>¥258</span></div>
+  <div class="row"><span>ビール 6缶</span><span>¥1,180</span></div>
+  <div class="row"><span>スナック菓子</span><span>¥128</span></div>
+  <div class="line"></div>
+  <div class="row"><span>小計 (34点)</span><span>¥12,281</span></div>
+  <div class="row"><span>値引き クーポン</span><span>-¥500</span></div>
+  <div class="row"><span>消費税(8%)</span><span>¥942</span></div>
+  <div class="row big"><span>合計</span><span>¥12,723</span></div>
+  <div class="line"></div>
+  <div class="sm">クレジット ¥12,723</div>
+  <div class="sm">登録番号 T3010401011971</div>
+</div></div>
+
+<!-- The same long receipt, physically cut off mid-item list.
+     Header cues survive (address, phone). NO total, no tax line, no footer.
+     The honest answers here are: country JP, and no reliable total. -->
+<div class="wrap"><div class="r cropped" id="cropped">
+  <div class="c b">イオンスタイル</div>
+  <div class="c sm">品川シーサイド店</div>
+  <div class="c sm">東京都品川区東品川4-12-5</div>
+  <div class="c sm">TEL 03-5495-3800</div>
+  <div class="line"></div>
+  <div class="sm">2026年8月09日(日) 17:11  レジ04</div>
+  <div class="line"></div>
+  <div class="row"><span>牛乳 1L</span><span>¥218</span></div>
+  <div class="row"><span>食パン 6枚</span><span>¥158</span></div>
+  <div class="row"><span>たまご 10個</span><span>¥278</span></div>
+  <div class="row"><span>バナナ</span><span>¥198</span></div>
+  <div class="row"><span>トマト 4個</span><span>¥398</span></div>
+  <div class="row"><span>きゅうり 3本</span><span>¥158</span></div>
+  <div class="row"><span>にんじん</span><span>¥128</span></div>
+  <div class="row"><span>玉ねぎ 3個</span><span>¥198</span></div>
+  <div class="row"><span>じゃがいも</span><span>¥248</span></div>
+  <div class="row"><span>鶏むね肉 300g</span><span>¥357</span></div>
+  <div class="row"><span>豚こま切れ</span><span>¥489</span></div>
+  <div class="row"><span>さば</span><span>¥298</span></div>
+  <div class="row"><span>絹ごし豆腐</span><span>¥88</span></div>
+  <div class="row"><span>納豆 3P</span><span>¥108</span></div>
+  <div class="row"><span>味噌 750g</span><span>¥328</span></div>
+  <div class="row"><span>醤油 1L</span><span>¥298</span></div>
+  <div class="row"><span>サラダ油</span><span>¥368</span></div>
+  <div class="row"><span>米 5kg</span><span>¥1,980</span></div>
+</div></div>

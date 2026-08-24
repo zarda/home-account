@@ -236,6 +236,13 @@
           <p>{{ 'import.reviewDescription' | translate }}</p>
         </div>
 
+        @if (answerIncomplete()) {
+          <div class="incomplete-notice" role="status">
+            <mat-icon class="incomplete-icon">content_cut</mat-icon>
+            <p>{{ 'import.warningAnswerIncomplete' | translate }}</p>
+          </div>
+        }
+
         @if (duplicateInfos().length > 0) {
           <app-duplicate-warning
             [duplicates]="duplicateInfos()"

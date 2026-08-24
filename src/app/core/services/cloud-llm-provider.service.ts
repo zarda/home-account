@@ -283,6 +283,20 @@ export class CloudLLMProviderService {
     return this.resolve('receiptScanning').extractTransactionsFromImage(imageBase64, options);
   }
 
+  /**
+   * Whether the receipt reader's last answer was cut short, leaving only the
+   * rows that arrived whole.
+   *
+   * Asked of the adapter the request routed to, rather than folded across all
+   * three the way `getLastError` folds errors: a provider that salvaged an
+   * answer an hour ago and has not run since would otherwise report on a
+   * request it had no part in. Read straight after awaiting the extraction,
+   * which is the window `run` clears the flag for.
+   */
+  answerWasIncomplete(): boolean {
+    return this.resolve('receiptScanning').answerIncomplete();
+  }
+
   /** Extract transactions from multiple images. */
   async extractTransactionsFromMultipleImages(
     imageBase64Array: string[],

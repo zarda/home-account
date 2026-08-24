@@ -115,7 +115,7 @@ and `duration` arrived in 1.27.140.
 | `path` | `camera`, `wizard`, `form` — which surface ran the receipt. The queue drain never reports. |
 | `engine` | `cloud`, `native`, `cloud_after_native` (native ran first and lost), `native_after_cloud`, `none` (nothing ran — no provider, queued, queue save failed) |
 | `provider` | `gemini`, `openai`, `claude`, `none` — the cloud provider the attempt routed to; the key itself is never sent |
-| `failure` | `none` on success; otherwise `rate_limit`, `auth`, `network`, `quota`, `server`, `timeout` (parseAIError's classes), `no_provider`, `nothing_extracted`, `queue_write`, `unknown`. Never the provider's wording. |
+| `failure` | `none` on success; otherwise `rate_limit`, `auth`, `network`, `quota`, `server`, `timeout`, `incomplete` (parseAIError's classes — `incomplete` is an answer that was cut short or was never the list the prompt asked for), `no_provider`, `nothing_extracted`, `queue_write`, `unknown`. Never the provider's wording. |
 | `duration` | `under_5s`, `5s_to_15s`, `15s_to_60s`, `over_60s`, `none` (nothing was timed) |
 | `severity` | `warning`, `critical`, `exceeded` |
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |

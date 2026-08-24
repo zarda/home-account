@@ -976,6 +976,7 @@
     "failureQuota": "超出配額",
     "failureServer": "服務無法使用",
     "failureTimeout": "逾時",
+    "failureIncomplete": "回覆中途中斷",
     "failureNoProvider": "尚未設定 AI 供應商",
     "failureNothingExtracted": "無法讀取任何內容",
     "failureQueueWrite": "無法儲存以稍後處理",
@@ -1024,6 +1025,7 @@
     "errorTitleQuota": "配額已超過",
     "errorTitleServer": "服務暫時無法使用",
     "errorTitleTimeout": "處理逾時",
+    "errorTitleIncomplete": "回覆中途中斷",
     "errorTitleGeneral": "處理失敗",
     "errorHintRateLimit": "AI 服務有請求限制，請等待 30-60 秒後重試。",
     "errorHintAuth": "API 金鑰可能無效或已過期。請在「設定 → AI 處理」中更新。",
@@ -1057,7 +1059,9 @@
     "errorCloudUnavailable": "無法連線至雲端 AI。請檢查網路連線，或在「設定 → AI 處理」中新增 API 金鑰。",
     "errorQueuedOffline": "目前沒有網路連線，此圖片已加入佇列，恢復連線後將自動處理。",
     "errorProcessingFailed": "無法處理圖片，請重試。",
-    "errorInvalidKey": "AI 的 API 金鑰無效或已過期。請在「設定 → AI 處理」中更新。"
+    "errorInvalidKey": "AI 的 API 金鑰無效或已過期。請在「設定 → AI 處理」中更新。",
+    "errorAnswerIncomplete": "在讀完這張收據前就達到輸出上限。請再試一次，或減少一次上傳的相片數量。",
+    "warningAnswerIncomplete": "讀取在收據中途達到輸出上限，之後的品項因此缺漏。請核對下方金額，並補上沒有列出的品項。"
   },
   "errors": {
     "generic": "發生錯誤，請重試。",

@@ -460,6 +460,56 @@ describe('ImportWizardComponent', () => {
 
       expect(component.processingError()).toBe('Test error');
     }));
+
+    it('raises the notice when the image batch reports a cut-off answer', fakeAsync(() => {
+      mockImportService.importFromMultipleImages.and.returnValue(Promise.resolve({
+        ...mockImportResult,
+        source: 'image' as const,
+        fileType: 'receipt_image' as const,
+        warnings: [{ type: 'parse_error' as const, message: 'ran out of room' }],
+      }));
+      component.selectedFiles.set([new File([''], 'r.png', { type: 'image/png' })]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.answerIncomplete()).toBeTrue();
+      // The rows that did arrive are still the review step's business.
+      expect(component.extractedTransactions().length).toBe(2);
+    }));
+
+    it('leaves the notice down for an ordinary import', fakeAsync(() => {
+      component.selectedFiles.set([new File([''], 'r.png', { type: 'image/png' })]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.answerIncomplete()).toBeFalse();
+    }));
+
+    it('clears a raised notice when the next batch is processed', fakeAsync(() => {
+      component.answerIncomplete.set(true);
+      component.selectedFiles.set([new File([''], 'r.png', { type: 'image/png' })]);
+
+      component.processFiles();
+      tick();
+
+      expect(component.answerIncomplete()).toBeFalse();
+    }));
+  });
+
+  describe('the cut-off answer notice', () => {
+    // Whether the strip actually renders is pinned in
+    // import-wizard.smoke.spec.ts: this suite overrides the template with a
+    // bare div, so nothing here can see the review step at all.
+
+    it('titles the error card for an answer nobody could read', () => {
+      component.processingErrorType.set('incomplete');
+
+      expect(component.getErrorIcon()).toBe('content_cut');
+      // The stub echoes the key, so this is the key the card would render.
+      expect(component.getErrorTitle()).toBe('import.errorTitleIncomplete');
+    });
   });
 
   describe('onTransactionsUpdated', () => {

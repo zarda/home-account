@@ -1,0 +1,60 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "recorded": "2026-08-24",
+  "results": {
+    "jp": {
+      "country": "JP",
+      "currency": "JPY",
+      "total": 538,
+      "amountConfidence": 1,
+      "location": "渋谷道玄坂二丁目店 東京都渋谷区道玄坂2-10-12",
+      "merchant": "セブン-イレブン",
+      "countryOk": true,
+      "currencyOk": true,
+      "totalOk": true
+    },
+    "kr": {
+      "country": "KR",
+      "currency": "KRW",
+      "total": 10400,
+      "amountConfidence": 1,
+      "location": "강남대료점",
+      "merchant": "스타벅스커피 코리아",
+      "countryOk": true,
+      "currencyOk": true,
+      "totalOk": true
+    },
+    "none": {
+      "country": "",
+      "currency": "",
+      "total": 6.85,
+      "amountConfidence": 1,
+      "merchant": "CORNER MARKET",
+      "countryOk": true,
+      "currencyOk": true,
+      "totalOk": true
+    },
+    "long": {
+      "country": "JP",
+      "currency": "JPY",
+      "total": 12723,
+      "amountConfidence": 1,
+      "location": "品川シーサイド店 東京都品川区東品川4-12-5",
+      "merchant": "イオンスタイル",
+      "countryOk": true,
+      "currencyOk": true,
+      "totalOk": true
+    },
+    "cropped": {
+      "country": "JP",
+      "currency": "JPY",
+      "total": 3848,
+      "amountConfidence": 0.9,
+      "location": "品川シーサイド店 東京都品川区東品川4-12-5",
+      "merchant": "イオンスタイル",
+      "countryOk": true,
+      "currencyOk": true,
+      "totalOk": false
+    }
+  }
+}

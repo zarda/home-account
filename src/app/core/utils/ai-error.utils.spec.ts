@@ -1,4 +1,5 @@
 import {
+  AI_ANSWER_INCOMPLETE,
   AI_CLOUD_UNAVAILABLE,
   AI_NO_PROVIDER,
   AI_QUEUED_OFFLINE,
@@ -71,6 +72,47 @@ describe('parseAIError', () => {
 
   it('handles non-Error inputs', () => {
     expect(parseAIError('plain string 429').type).toBe('rate_limit');
+  });
+
+  it('classifies an unreadable answer as its own retryable class', () => {
+    const parsed = parseAIError(new Error(AI_ANSWER_INCOMPLETE));
+    expect(parsed.type).toBe('incomplete');
+    expect(parsed.messageKey).toBe('import.errorAnswerIncomplete');
+    expect(parsed.retryable).toBeTrue();
+  });
+
+  it('never shows the JSON parser its own words', () => {
+    // What the bug looked like on the screen, in both engines' wording.
+    for (const message of [
+      "JSON Parse error: Expected ']'",
+      "Expected ',' or ']' after array element in JSON at position 147",
+      // A third wording, observed from a real cut-off answer during the QA
+      // run: where the break lands decides which sentence the engine picks,
+      // which is why this branch tests the error's type and not its words.
+      'Unterminated string in JSON at position 1688',
+    ]) {
+      const parsed = parseAIError(new SyntaxError(message));
+      expect(parsed.type).withContext(message).toBe('incomplete');
+      expect(parsed.message).withContext(message).not.toContain('JSON');
+    }
+  });
+
+  it('does not read a character offset as a status code', () => {
+    // 'in JSON at position 502' contains 502, and every status test below the
+    // ladder's top is a substring test — so this used to be reportable as an
+    // outage the service never had.
+    const parsed = parseAIError(
+      new SyntaxError("Expected ',' or ']' after array element in JSON at position 502")
+    );
+    expect(parsed.type).toBe('incomplete');
+  });
+
+  it('classifies a wrapped parse failure by its cause', () => {
+    const wrapped = new ReceiptProcessingError(
+      { engine: 'cloud', provider: 'claude', durationMs: 10 },
+      new Error(AI_ANSWER_INCOMPLETE)
+    );
+    expect(parseAIError(wrapped).type).toBe('incomplete');
   });
 
   it('classifies a ReceiptProcessingError by its cause, name included', () => {

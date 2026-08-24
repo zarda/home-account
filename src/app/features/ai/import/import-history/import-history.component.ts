@@ -181,6 +181,7 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
       quota: 'import.failureQuota',
       server: 'import.failureServer',
       timeout: 'import.failureTimeout',
+      incomplete: 'import.failureIncomplete',
       no_provider: 'import.failureNoProvider',
       nothing_extracted: 'import.failureNothingExtracted',
       queue_write: 'import.failureQueueWrite',
