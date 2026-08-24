@@ -181,6 +181,8 @@ export interface CloudLLMProviderAdapter {
   readonly isAvailableSignal: Signal<boolean>;
   readonly isProcessing: WritableSignal<boolean>;
   readonly lastError: WritableSignal<string | null>;
+  /** True when the last operation kept only what a cut-off answer delivered. */
+  readonly answerIncomplete: WritableSignal<boolean>;
 
   /**
    * Gemini alone takes model ids, because it is the only provider with
