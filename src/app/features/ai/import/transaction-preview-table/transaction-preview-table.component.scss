@@ -406,16 +406,24 @@
   cursor: pointer;
   position: relative;
 
-  // Its own text, not a fatter chip: overflow-wrap: anywhere (inherited from
-  // .extra-text) breaks mid-word, settling the flex item's shrink-to-fit
-  // sizing far below what a reader could make out — a sentence needs to
-  // break between words, not inside them. Restoring word-level wrapping
-  // (rather than forbidding wrapping outright with nowrap, which let the
-  // label paint straight past the shrunk chip and out of the card) is what
-  // lets a long offer sentence take the second line it needs at 288px
-  // without spilling anywhere.
+  // Its own text, not a fatter chip. Three-way choice, and the two obvious
+  // answers are both wrong here:
+  //   - `anywhere` (inherited from .extra-text) breaks greedily *between
+  //     characters*, so every line of a sentence ends mid-word — fine for a
+  //     place name or a tag, unreadable for a sentence.
+  //   - `normal` refuses to break inside a word at all, so a word longer
+  //     than the box paints straight through it and out of the card. The
+  //     box itself is not the problem — min-width: 0 on every level from
+  //     .card-extras down to here already lets it shrink — the ink is.
+  // `break-word` is the one that does both: word boundaries as long as they
+  // fit, a mid-word break only for a word that could not fit on a line of
+  // its own. G3 in docs/ui-overflow.md prefers `anywhere` because
+  // `break-word` leaves min-content intact and so leaves an element refusing
+  // to shrink; that objection does not reach this label, whose every
+  // ancestor already carries min-width: 0, and keeping min-content intact is
+  // what stops the chip collapsing to a column of syllables.
   .extra-text {
-    overflow-wrap: normal;
+    overflow-wrap: break-word;
   }
 
   &::after {

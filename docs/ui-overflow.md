@@ -102,6 +102,20 @@ the type scale already declares — and wraps only past that.
 min-content size. `break-word` leaves the element still refusing to shrink,
 still pushing its neighbours out, and looking like a fix.
 
+**The one shape where `break-word` is the right answer: a *sentence* whose box
+is already free to shrink.** `anywhere` breaks greedily between characters, so
+every line ends mid-word — unreadable for prose, which is what the currency
+offer chip's label is (`.currency-offer .extra-text` in
+`transaction-preview-table.component.scss`). Where the box can already shrink
+on its own — `min-width: 0` on every level between the text and its container —
+the min-content argument above does not apply, and `break-word` is what keeps
+word boundaries while still breaking the one word too long to fit a line.
+`normal` is the trap in that shape: the box shrinks, the long word does not
+break, and the ink paints straight through the shrunk box and out of the card.
+That overflow is invisible wherever the word happens to fit, so it surfaces on
+whichever machine has the wider font fallback rather than on the one that
+shipped it.
+
 **Three corollaries worth knowing, because between them they made four rules in
 this app dead code for a long time:**
 
