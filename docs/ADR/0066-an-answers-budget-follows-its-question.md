@@ -51,8 +51,13 @@ per request cannot deduplicate against a photo it was never shown.
 **Three layers, in the order the failure travels.**
 
 1. **The budget scales with the photo count.** `multiImageAnswerBudget(n)` is
-   `min(8000, 2500 + 1500n)`: one photo keeps exactly the 4000 it had, and
-   each further photo buys room for roughly the rows it adds.
+   `min(8000, 4000 + 2000n)`, and `receiptItems` — the single-photo
+   itemization, which asks for the same answer shape — moves from 3000 to
+   6000. Both figures come from a live read rather than from arithmetic: two
+   overlapping photos of the 34-item fixture cost **5272 output tokens** on
+   `gemini-3.5-flash-lite`. The photo count is only a proxy for how long the
+   receipt is, so the floor matters as much as the slope — a single photo of
+   that receipt would not have fitted in 4000 either.
 2. **A cut-off answer is read as far as it goes.** `parseModelJsonArray`
    closes the array after the last element that arrived whole and keeps those
    rows, reporting that it had to. It repairs nothing else — no quote
@@ -65,14 +70,17 @@ per request cannot deduplicate against a photo it was never shown.
    asked for. It is the one failure class the app can act on itself — it
    means the answer outgrew the budget its prompt declared.
 
-**The ceiling is an assumption, and is written down as one.** Nothing in the
-app knows any model's real output limit; `config/ai-models.ts` records
-sampling support and nothing else. A `max_tokens` above a model's own cap is
-a 400 on the OpenAI and Claude transports, which would trade a truncated
-answer for no answer at all. 8000 is chosen to sit under the lowest cap the
-configured vision models are assumed to have, and is measured against a live
-model rather than trusted: `gemini-3.5-flash-lite` accepted a four-photo
-request at that budget on 2026-08-24 (HTTP 200, `finishReason: STOP`).
+**A budget is not a bill, so only the ceiling is a real cost.** Providers
+charge for the tokens generated, not the ones reserved, which is why asking
+high costs nothing on a short receipt. The ceiling is the part that has to be
+conservative: nothing in the app knows any model's real output limit
+(`config/ai-models.ts` records sampling support and nothing else), and a
+`max_tokens` above a model's own cap is a 400 on the OpenAI and Claude
+transports — which would trade a truncated answer for no answer at all. 8000
+sits under the lowest cap the configured vision models are assumed to have,
+and is measured rather than trusted: `gemini-3.5-flash-lite` accepted a
+four-photo request at that budget on 2026-08-24 (HTTP 200,
+`finishReason: STOP`).
 
 **Salvage is confined to the receipt paths.** Categorization and tag
 suggestion keep parsing directly: they already chunk to fit their declared
@@ -124,6 +132,20 @@ also have rewritten every one of the ~30 existing stubs of
   component template with a bare `<div>`, so the notice is pinned in
   `import-wizard.smoke.spec.ts`, which renders the real template with a real
   stepper.
+- **The first budget was still too small, and only a live read said so.** The
+  formula shipped in this change began as `min(8000, 2500 + 1500n)`, derived
+  from counting characters in the prompt's own example row. An end-to-end run
+  against the model — two overlapping photos of the 34-item fixture — cost
+  5272 output tokens against the 5500 that formula allowed: 4% of headroom,
+  and a receipt one aisle longer would have truncated again. Estimating the
+  size of an answer is what produced the bug in the first place; the figures
+  above are the ones that were observed.
+- **There is a third engine wording.** Alongside `Expected ']'` and
+  `Expected ',' or ']' after array element`, a real cut-off answer produced
+  `Unterminated string in JSON at position 1688` — the break landed inside a
+  `receiptDetails` string. Which sentence appears depends on where the answer
+  stops, which is why the classification tests the error's type rather than
+  its words.
 
 ## Known gaps
 
