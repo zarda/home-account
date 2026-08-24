@@ -398,6 +398,7 @@
 .error-quota .error-icon { color: #e91e63; }
 .error-server .error-icon { color: #9c27b0; }
 .error-timeout .error-icon { color: var(--color-warning); }
+.error-incomplete .error-icon { color: var(--color-warning); }
 
 /* Review Step */
 .review-header {
@@ -415,6 +416,35 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 0;
+}
+
+/* Review Step - the reader ran out of room mid-answer */
+.incomplete-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 5%, var(--surface-card));
+}
+
+.incomplete-notice p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* Sized here rather than by a utility class: a Material icon ships its own
+   line-height, and a font-size set without one drops the glyph off its row. */
+.incomplete-icon {
+  flex: 0 0 auto;
+  font-size: var(--text-xl);
+  width: var(--text-xl);
+  height: var(--text-xl);
+  line-height: var(--text-xl);
+  color: var(--color-warning);
 }
 
 /* Confirm Step - Summary */

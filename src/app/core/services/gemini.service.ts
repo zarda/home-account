@@ -333,9 +333,13 @@ export class GeminiService extends CloudLLMProviderBase {
         [{ mimeType: 'image/jpeg', data: imageBase64.replace(/^data:[^;,]+;base64,/, '') }],
         options
       );
-      const extracted = JSON.parse(this.extractJson(response.text));
+      // One photo, but it can hold several receipts side by side, so this
+      // answer runs long enough to be cut short like the multi-photo one.
+      const extracted = this.parseRowsAnswer(response.text) as (Partial<MultiImageExtractedTransaction> & {
+        country?: unknown;
+      })[];
 
-      return extracted.map((t: Partial<MultiImageExtractedTransaction> & { country?: unknown }) => ({
+      return extracted.map(t => ({
         date: t.date || dayKey(new Date()),
         description: t.description || 'Unknown',
         amount: Math.abs(t.amount || 0),

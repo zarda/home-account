@@ -7,6 +7,7 @@ import { TranslationService } from './translation.service';
 import { ProviderCapabilities } from './llm-provider.interface';
 import { PromptId, RenderedPrompt } from '../prompts';
 import { Category } from '../../models';
+import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
 import { createCategory } from './testing';
 
@@ -557,6 +558,75 @@ describe('CloudLLMProviderBase', () => {
       // The import flow reads this field as a category id, so the model's own
       // wording must not reach it.
       expect(rows[0].category).toBe('food_groceries');
+    });
+  });
+
+  /**
+   * An answer that stopped at the output ceiling used to take the whole
+   * import down with it, on the parser's own words (#331). What the reader
+   * finished is worth keeping; that it did not finish is worth saying.
+   */
+  describe('a cut-off answer', () => {
+    const wholeRow = (description: string) =>
+      `{"date":"2026-07-01","description":"${description}","amount":4.5,"type":"expense","currency":"USD","receiptId":1}`;
+
+    it('keeps the rows a multi-image answer finished, and says it was cut off', async () => {
+      provider.response = {
+        text: `[${wholeRow('MILK')},${wholeRow('BREAD')},{"date":"2026-07-01","descrip`,
+        truncated: true,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['a', 'b']);
+
+      expect(rows.map(r => r.description)).toEqual(['MILK', 'BREAD']);
+      expect(provider.answerIncomplete()).toBeTrue();
+      // Salvage is not failure: the caller gets rows, and nothing is recorded
+      // as an error for the wizard to render instead of them.
+      expect(provider.lastError()).toBeNull();
+    });
+
+    it('leaves the flag down when the answer arrived whole', async () => {
+      provider.response = { text: `[${wholeRow('MILK')}]`, truncated: false };
+
+      await provider.extractTransactionsFromMultipleImages(['a']);
+
+      expect(provider.answerIncomplete()).toBeFalse();
+    });
+
+    it('clears the flag on the next clean answer', async () => {
+      // The flag describes the call just awaited. A salvage on one receipt
+      // must not still be reported against the next one.
+      provider.response = { text: `[${wholeRow('MILK')},{"date":"2026`, truncated: true };
+      await provider.extractTransactionsFromMultipleImages(['a']);
+      expect(provider.answerIncomplete()).toBeTrue();
+
+      provider.response = { text: `[${wholeRow('TEA')}]`, truncated: false };
+      await provider.extractTransactionsFromMultipleImages(['a']);
+
+      expect(provider.answerIncomplete()).toBeFalse();
+    });
+
+    it('salvages a statement image the same way', async () => {
+      provider.response = {
+        text: `[${wholeRow('CAFE')},{"date":"2026-07-0`,
+        truncated: true,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows.length).toBe(1);
+      expect(provider.answerIncomplete()).toBeTrue();
+    });
+
+    it('throws a classifiable code when nothing survived', async () => {
+      provider.response = { text: '[{"date":"2026-07-01","descrip', truncated: true };
+
+      await expectAsync(provider.extractTransactionsFromMultipleImages(['a'])).toBeRejectedWithError(
+        AI_ANSWER_INCOMPLETE
+      );
+      // A code rather than the parser's sentence, so parseAIError can name it
+      // in the user's language instead of quoting the engine.
+      expect(provider.lastError()).toBe(AI_ANSWER_INCOMPLETE);
     });
   });
 

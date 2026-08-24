@@ -75,8 +75,10 @@ describe('AIImportService', () => {
       'categorizeTransactions',
       'extractStatementTransactions',
       'extractTransactionsFromImage',
-      'extractTransactionsFromMultipleImages'
+      'extractTransactionsFromMultipleImages',
+      'answerWasIncomplete'
     ]);
+    cloudLLMProvider.answerWasIncomplete.and.returnValue(false);
     exportService = jasmine.createSpyObj('ExportService', ['importFromCSV']);
     duplicateService = jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']);
     importHistoryService = jasmine.createSpyObj('ImportHistoryService', [
@@ -590,6 +592,27 @@ describe('AIImportService', () => {
 
       expect(cloudLLMProvider.categorizeTransactions).not.toHaveBeenCalled();
       expect(result.transactions[0].suggestedCategoryId).toBe('food_coffee');
+    });
+
+    it('warns on the result when the answer was cut short', async () => {
+      // The rows are real; what is missing is whatever came after the break,
+      // so the review step has to be told rather than shown a short receipt
+      // that looks complete (#331).
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+      cloudLLMProvider.answerWasIncomplete.and.returnValue(true);
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.warnings.some(w => w.type === 'parse_error')).toBeTrue();
+    });
+
+    it('says nothing when the answer arrived whole', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(oneItem());
+
+      const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+      expect(result.warnings.some(w => w.type === 'parse_error')).toBeFalse();
     });
 
     it('stamps a remembered category just below certainty', async () => {

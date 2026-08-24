@@ -201,6 +201,39 @@ export interface MultiImageInputs {
 }
 
 /**
+ * Output budget for a multi-photo receipt read, in tokens.
+ *
+ * The binding constraint is the answer, and the answer grows with the photos:
+ * one JSON object per line item across every photo, plus one full
+ * `receiptDetails` reproduction per receipt group. Measured against the row
+ * this prompt's own example declares, one row costs about 69 tokens in ASCII
+ * and about 92 in Japanese — a 40-item Japanese receipt is roughly 4260 tokens
+ * of answer on its own, before a second photo is considered. A flat 4000 was
+ * therefore a single-photo, single-language assumption, and past it the array
+ * truncates mid-row and the parse takes the whole import down with it (#331).
+ *
+ * The figures come from a live read rather than from arithmetic: two
+ * overlapping photos of that 34-item receipt cost **5272 output tokens** on
+ * gemini-3.5-flash-lite (2026-08-24). So the old 4000 could not have held it,
+ * and neither could a one-photo budget of 4000 — the answer's size follows
+ * the receipt, and the photo count is only a proxy for how long the receipt
+ * is. Hence a 4000 floor, 2000 a photo, and the ceiling reached by the second
+ * one.
+ *
+ * A budget is not a bill: providers charge for the tokens generated, not the
+ * ones reserved, so the only cost of asking high is the ceiling itself. That
+ * ceiling is deliberately conservative — nothing here knows any model's real
+ * output limit (`config/ai-models.ts` records sampling support and nothing
+ * else), and a `max_tokens` above a model's own cap is a 400 on the OpenAI
+ * and Claude transports, which would turn a truncated answer into no answer
+ * at all. 8000 was accepted by the lowest-cap configured model with four
+ * images attached; ADR 0066 records what that does and does not prove.
+ */
+export function multiImageAnswerBudget(imageCount: number): number {
+  return Math.min(8000, 4000 + 2000 * imageCount);
+}
+
+/**
  * Read several photos at once, grouping line items by `receiptId` so
  * `consolidateReceiptItems` can merge each group into one transaction.
  *
@@ -270,7 +303,7 @@ Return ONLY a valid JSON array (no markdown):
 
 If no transactions can be extracted, return an empty array: []`,
     expects: 'json',
-    maxOutputTokens: 4000,
+    maxOutputTokens: multiImageAnswerBudget(i.imageCount),
     temperature: 0.1,
     topP: 0.8,
   };
@@ -315,7 +348,11 @@ Example:
 
 Output ONLY JSON array. Nothing else.`,
     expects: 'json',
-    maxOutputTokens: 3000,
+    // Same answer shape as multiImageReceipts — a row per item plus the full
+    // receipt reproduced once — so the same measurement binds: 5272 output
+    // tokens for a 34-item receipt. One photo is no guarantee of a short
+    // answer, since a photo can hold a long receipt or several side by side.
+    maxOutputTokens: 6000,
     temperature: 0.1,
     topP: 0.8,
   };

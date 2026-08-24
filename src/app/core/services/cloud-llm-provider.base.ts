@@ -33,6 +33,7 @@ import {
 } from '../utils/categorization.utils';
 import { goalProgressAmount } from '../utils/goal-progress.utils';
 import { applyTagSuggestions } from '../utils/tag-suggestion.utils';
+import { parseModelJsonArray } from '../utils/llm-json.utils';
 import { trimToLastCompleteSentence } from '../utils/llm-text.utils';
 import { parseSearchIntent } from '../utils/nl-search.utils';
 import {
@@ -108,6 +109,18 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
 
   readonly isProcessing = signal<boolean>(false);
   readonly lastError = signal<string | null>(null);
+
+  /**
+   * True when the last operation's answer was cut short and only the rows
+   * that arrived whole were kept.
+   *
+   * A signal beside `lastError` rather than a wider return type: the fact
+   * describes the answer, not any row in it, and the rows that are missing
+   * are precisely the ones with nowhere to carry a flag. Cleared at the start
+   * of every operation by `run`, so it always describes the call the caller
+   * just awaited.
+   */
+  readonly answerIncomplete = signal<boolean>(false);
 
   /**
    * Set by each provider's own initialization. Kept separate from
@@ -206,6 +219,7 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
   protected async run<T>(operation: string, body: () => Promise<T>): Promise<T> {
     this.isProcessing.set(true);
     this.lastError.set(null);
+    this.answerIncomplete.set(false);
     try {
       return await body();
     } catch (error) {
@@ -240,6 +254,27 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
     } finally {
       this.isProcessing.set(false);
     }
+  }
+
+  /**
+   * The rows of a JSON array answer, keeping what a cut-off answer did
+   * deliver and recording that it was cut off.
+   *
+   * The receipt paths only. Categorization and tag suggestion parse their own
+   * answers directly: those chunk their requests to fit the declared budget
+   * (CATEGORIZE_CHUNK_SIZE) and degrade one chunk at a time through
+   * `runOrDefault`, so a short answer there costs a fallback category rather
+   * than rows the user can see missing.
+   */
+  protected parseRowsAnswer(text: string): unknown[] {
+    const { rows, salvaged } = parseModelJsonArray(this.extractJson(text));
+    if (salvaged) {
+      this.answerIncomplete.set(true);
+      console.warn(
+        `[${this.providerLabel}] answer was cut short; kept ${rows.length} complete row(s)`
+      );
+    }
+    return rows;
   }
 
   // ---------------------------------------------- receipt scanning
@@ -294,8 +329,9 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         [imageBase64],
         options
       );
-      const extracted: (ExtractedTransaction & { country?: unknown })[] =
-        JSON.parse(this.extractJson(response.text));
+      const extracted = this.parseRowsAnswer(response.text) as (ExtractedTransaction & {
+        country?: unknown;
+      })[];
 
       return extracted.map(t => ({
         date: t.date || dayKey(new Date()),
@@ -352,9 +388,9 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         imageBase64Array,
         options
       );
-      const extracted: (MultiImageExtractedTransaction & { country?: unknown })[] = JSON.parse(
-        this.extractJson(response.text)
-      );
+      const extracted = this.parseRowsAnswer(response.text) as (MultiImageExtractedTransaction & {
+        country?: unknown;
+      })[];
 
       return extracted.map(t => ({
         date: t.date || dayKey(new Date()),

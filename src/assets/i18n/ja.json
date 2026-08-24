@@ -976,6 +976,7 @@
     "failureQuota": "利用枠を超過",
     "failureServer": "サービス利用不可",
     "failureTimeout": "タイムアウト",
+    "failureIncomplete": "回答が途中で切れた",
     "failureNoProvider": "AIプロバイダー未設定",
     "failureNothingExtracted": "読み取れませんでした",
     "failureQueueWrite": "後で処理するための保存に失敗",
@@ -1024,6 +1025,7 @@
     "errorTitleQuota": "クォータ超過",
     "errorTitleServer": "サービス利用不可",
     "errorTitleTimeout": "処理タイムアウト",
+    "errorTitleIncomplete": "回答が途中で切れました",
     "errorTitleGeneral": "処理に失敗しました",
     "errorHintRateLimit": "AIサービスのリクエスト制限です。30〜60秒待ってから再試行してください。",
     "errorHintAuth": "APIキーが無効か期限切れの可能性があります。設定 → AI処理 で更新してください。",
@@ -1057,7 +1059,9 @@
     "errorCloudUnavailable": "クラウドAIに接続できませんでした。接続を確認するか、設定 → AI処理 でAPIキーを追加してください。",
     "errorQueuedOffline": "接続がないため、この画像をキューに追加しました。オンラインに戻ると処理されます。",
     "errorProcessingFailed": "画像を処理できませんでした。もう一度お試しください。",
-    "errorInvalidKey": "AIのAPIキーが無効か期限切れです。設定 → AI処理 で更新してください。"
+    "errorInvalidKey": "AIのAPIキーが無効か期限切れです。設定 → AI処理 で更新してください。",
+    "errorAnswerIncomplete": "レシートを読み終える前に出力の上限に達しました。もう一度、または写真の枚数を減らしてお試しください。",
+    "warningAnswerIncomplete": "レシートの途中で出力の上限に達したため、それ以降の項目が欠けています。下の金額を確認し、足りない項目を追加してください。"
   },
   "errors": {
     "generic": "エラーが発生しました。もう一度お試しください。",

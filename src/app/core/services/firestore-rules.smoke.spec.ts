@@ -1329,6 +1329,27 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a cut-off answer as a failure class of its own', async () => {
+      // Added with the class itself (#331): the enumeration is duplicated in
+      // the rules, and a value the app writes but the rules do not list fails
+      // the write silently — the record simply never appears.
+      await expectAllowed(
+        setDoc(doc(firestore, path('imports')), validImport({
+          source: 'image', fileType: 'receipt_image', fileName: 'r.jpg', status: 'failed',
+          door: 'wizard', engine: 'cloud', provider: 'claude',
+          errorType: 'incomplete', durationMs: 3100,
+        })),
+        'failed attempt with an incomplete answer'
+      );
+    });
+
+    it('rejects a failure class the enumeration does not list', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ errorType: 'truncated' })),
+        'unknown failure class'
+      );
+    });
+
     it('rejects an engine outside the pair', async () => {
       await expectDenied(
         setDoc(doc(firestore, path('imports')), validImport({ engine: 'abacus' })),
