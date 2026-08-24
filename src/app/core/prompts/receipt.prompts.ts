@@ -212,17 +212,25 @@ export interface MultiImageInputs {
  * therefore a single-photo, single-language assumption, and past it the array
  * truncates mid-row and the parse takes the whole import down with it (#331).
  *
- * 1500 per photo on top of a 2500 floor keeps one photo at exactly the 4000 it
- * had. The ceiling is deliberately conservative: nothing here knows any
- * model's real output limit — `config/ai-models.ts` records sampling support
- * and nothing else — and a `max_tokens` above a model's own cap is a 400 on
- * the OpenAI and Claude transports, which would turn a truncated answer into
- * no answer at all. 8000 is under the lowest cap the configured vision models
- * are assumed to have; ADR 0066 records that as an assumption to re-measure,
- * not as a fact.
+ * The figures come from a live read rather than from arithmetic: two
+ * overlapping photos of that 34-item receipt cost **5272 output tokens** on
+ * gemini-3.5-flash-lite (2026-08-24). So the old 4000 could not have held it,
+ * and neither could a one-photo budget of 4000 — the answer's size follows
+ * the receipt, and the photo count is only a proxy for how long the receipt
+ * is. Hence a 4000 floor, 2000 a photo, and the ceiling reached by the second
+ * one.
+ *
+ * A budget is not a bill: providers charge for the tokens generated, not the
+ * ones reserved, so the only cost of asking high is the ceiling itself. That
+ * ceiling is deliberately conservative — nothing here knows any model's real
+ * output limit (`config/ai-models.ts` records sampling support and nothing
+ * else), and a `max_tokens` above a model's own cap is a 400 on the OpenAI
+ * and Claude transports, which would turn a truncated answer into no answer
+ * at all. 8000 was accepted by the lowest-cap configured model with four
+ * images attached; ADR 0066 records what that does and does not prove.
  */
 export function multiImageAnswerBudget(imageCount: number): number {
-  return Math.min(8000, 2500 + 1500 * imageCount);
+  return Math.min(8000, 4000 + 2000 * imageCount);
 }
 
 /**
@@ -340,7 +348,11 @@ Example:
 
 Output ONLY JSON array. Nothing else.`,
     expects: 'json',
-    maxOutputTokens: 3000,
+    // Same answer shape as multiImageReceipts — a row per item plus the full
+    // receipt reproduced once — so the same measurement binds: 5272 output
+    // tokens for a 34-item receipt. One photo is no guarantee of a short
+    // answer, since a photo can hold a long receipt or several side by side.
+    maxOutputTokens: 6000,
     temperature: 0.1,
     topP: 0.8,
   };
