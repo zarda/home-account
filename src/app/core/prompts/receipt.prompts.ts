@@ -201,6 +201,31 @@ export interface MultiImageInputs {
 }
 
 /**
+ * Output budget for a multi-photo receipt read, in tokens.
+ *
+ * The binding constraint is the answer, and the answer grows with the photos:
+ * one JSON object per line item across every photo, plus one full
+ * `receiptDetails` reproduction per receipt group. Measured against the row
+ * this prompt's own example declares, one row costs about 69 tokens in ASCII
+ * and about 92 in Japanese — a 40-item Japanese receipt is roughly 4260 tokens
+ * of answer on its own, before a second photo is considered. A flat 4000 was
+ * therefore a single-photo, single-language assumption, and past it the array
+ * truncates mid-row and the parse takes the whole import down with it (#331).
+ *
+ * 1500 per photo on top of a 2500 floor keeps one photo at exactly the 4000 it
+ * had. The ceiling is deliberately conservative: nothing here knows any
+ * model's real output limit — `config/ai-models.ts` records sampling support
+ * and nothing else — and a `max_tokens` above a model's own cap is a 400 on
+ * the OpenAI and Claude transports, which would turn a truncated answer into
+ * no answer at all. 8000 is under the lowest cap the configured vision models
+ * are assumed to have; ADR 0066 records that as an assumption to re-measure,
+ * not as a fact.
+ */
+export function multiImageAnswerBudget(imageCount: number): number {
+  return Math.min(8000, 2500 + 1500 * imageCount);
+}
+
+/**
  * Read several photos at once, grouping line items by `receiptId` so
  * `consolidateReceiptItems` can merge each group into one transaction.
  *
@@ -270,7 +295,7 @@ Return ONLY a valid JSON array (no markdown):
 
 If no transactions can be extracted, return an empty array: []`,
     expects: 'json',
-    maxOutputTokens: 4000,
+    maxOutputTokens: multiImageAnswerBudget(i.imageCount),
     temperature: 0.1,
     topP: 0.8,
   };
