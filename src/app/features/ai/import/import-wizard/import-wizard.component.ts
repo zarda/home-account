@@ -122,6 +122,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   processingErrorKey = signal<string | null>(null);
   processingErrorType = signal<string>('unknown');
   processingErrorRetryable = signal<boolean>(true);
+  /**
+   * Set when the reader's answer was cut short and only the rows it had
+   * finished were kept. The rows on the review step are real; what is missing
+   * is whatever came after the break, which is why this says so rather than
+   * letting a short receipt look complete (#331).
+   */
+  answerIncomplete = signal(false);
   isImporting = signal(false);
   importProgress = signal(0);
   importStatus = signal('');
@@ -249,6 +256,12 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         rows: state.importResult.transactions.length
       }];
 
+      // A handed-over result carries the same warning a wizard import does;
+      // the review step is the same step either way.
+      if (state.importResult.warnings?.some(w => w.type === 'parse_error')) {
+        this.answerIncomplete.set(true);
+      }
+
       // Set multi-image metadata if available
       if (state.importResult.multiImageMetadata) {
         this.multiImageMetadata.set(state.importResult.multiImageMetadata);
@@ -323,6 +336,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   async processFiles(): Promise<void> {
     this.processingError.set(null);
+    this.answerIncomplete.set(false);
     this.extractedTransactions.set([]);
     this.processedBatches = [];
     this.imageDiagnostics = null;
@@ -351,6 +365,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           ? await this.importService.importFromStatementImages(imageFiles)
           : await this.importService.importFromMultipleImages(imageFiles);
         this.imageDiagnostics = result.diagnostics ?? null;
+        if (result.warnings.some(w => w.type === 'parse_error')) {
+          this.answerIncomplete.set(true);
+        }
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
         this.processedBatches.push({
@@ -613,6 +630,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       case 'quota': return 'account_balance_wallet';
       case 'server': return 'cloud_off';
       case 'timeout': return 'hourglass_empty';
+      case 'incomplete': return 'content_cut';
       default: return 'error_outline';
     }
   }
@@ -635,6 +653,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       case 'quota': return this.t('import.errorTitleQuota');
       case 'server': return this.t('import.errorTitleServer');
       case 'timeout': return this.t('import.errorTitleTimeout');
+      case 'incomplete': return this.t('import.errorTitleIncomplete');
       default: return this.t('import.errorTitleGeneral');
     }
   }

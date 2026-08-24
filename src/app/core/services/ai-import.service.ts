@@ -501,6 +501,9 @@ export class AIImportService {
         90000, // 90 second timeout for multiple images
         'AI extraction timed out. Please try again with fewer images.'
       );
+      // Read before anything else can issue a request: the flag describes the
+      // call just awaited, and every later provider call clears it (#331).
+      const answerIncomplete = this.cloudLLMProvider.answerWasIncomplete();
 
       this.processingStatus.set('Categorizing transactions...');
       this.processingProgress.set(60);
@@ -530,7 +533,8 @@ export class AIImportService {
         files,
         markedTransactions,
         duplicates,
-        extractedTransactions
+        extractedTransactions,
+        answerIncomplete
       );
       result.diagnostics = this.cloudDiagnostics(startedAt, provider);
       return result;
@@ -755,9 +759,23 @@ export class AIImportService {
     files: File[],
     transactions: CategorizedImportTransaction[],
     duplicates: DuplicateCheck[],
-    extractedTransactions: MultiImageExtractedTransaction[]
+    extractedTransactions: MultiImageExtractedTransaction[],
+    answerIncomplete = false
   ): ImportResult {
     const warnings: ImportWarning[] = [];
+
+    // The reader's answer stopped mid-row and only its complete rows were
+    // kept, so items further down the receipt are missing from the rows
+    // below. The affected group also lost its printed total — that field is
+    // asked for on the group's last item — so consolidateReceiptItems falls
+    // back to the item sum at REVIEW_AMOUNT_CONFIDENCE and the review table
+    // already flags the amount. This says why (#331).
+    if (answerIncomplete) {
+      warnings.push({
+        type: 'parse_error',
+        message: 'The reader ran out of room mid-answer; some items may be missing.'
+      });
+    }
 
     // Add warnings for duplicates
     const duplicateCount = duplicates.filter(d => d.isDuplicate).length;

@@ -434,6 +434,11 @@ export class AIStrategyService {
       imageBase64Array.push(await fileToBase64(file));
     }
 
+    // A cut-off answer arrives here as the rows that survived it, not as a
+    // throw (#331). Nothing is said about it on this path: the in-form scan
+    // has no review table to say it on, and the group that lost its tail also
+    // lost the printed total asked for on its last item, so
+    // consolidateReceiptItems already grades the amount for verification.
     const extracted = await this.cloudLLMProvider.extractTransactionsFromMultipleImages(imageBase64Array);
 
     // Merge line items belonging to the same receipt into one transaction so
