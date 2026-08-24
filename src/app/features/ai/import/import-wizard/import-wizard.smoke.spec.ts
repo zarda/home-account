@@ -209,6 +209,57 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
+    'says on the review step when the reader ran out of room mid-answer',
+    async () => {
+      // The rows are real and reviewable; what is missing is whatever came
+      // after the break. Only this suite renders the actual review step —
+      // the unit spec overrides the template with a bare div — so this is
+      // the one place that can say the notice reaches a screen (#331).
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'long-receipt.jpg',
+        fileSize: 2048,
+        confidence: 0.9,
+        warnings: [{ type: 'parse_error', message: 'ran out of room mid-answer' }],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'Corner Store',
+            amount: 12.5,
+            currency: 'USD',
+            date: new Date('2026-07-01'),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: true }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      expect(fixture.componentInstance.stepper.selectedIndex).toBe(2);
+      expect(host.querySelector('.incomplete-notice')).not.toBeNull();
+      // And the row it did read is still there to review.
+      expect(host.textContent ?? '').toContain('Corner Store');
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
     'imports a receipt at its printed total, not its item sum, into Firestore',
     async () => {
       // Two line items from the same receipt; only the printed grand total
@@ -245,6 +296,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         'CloudLLMProviderService',
         [
           'hasAnyCloudProvider',
+          'answerWasIncomplete',
           'extractTransactionsFromMultipleImages',
           'categorizeTransactions',
           'initializeProviders',
@@ -257,6 +309,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         ]
       );
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.answerWasIncomplete.and.returnValue(false);
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(extractedRows);
       cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
         raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
@@ -352,6 +405,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         'CloudLLMProviderService',
         [
           'hasAnyCloudProvider',
+          'answerWasIncomplete',
           'extractTransactionsFromMultipleImages',
           'categorizeTransactions',
           'initializeProviders',
@@ -364,6 +418,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         ]
       );
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.answerWasIncomplete.and.returnValue(false);
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(extractedRows);
       cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
         raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
@@ -538,6 +593,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         'CloudLLMProviderService',
         [
           'hasAnyCloudProvider',
+          'answerWasIncomplete',
           'extractTransactionsFromMultipleImages',
           'categorizeTransactions',
           'suggestTags',
@@ -551,6 +607,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         ]
       );
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.answerWasIncomplete.and.returnValue(false);
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(extractedRows);
       cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
         raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
