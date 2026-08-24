@@ -412,3 +412,136 @@ describe('overflow guard: the import review card', () => {
       .toBeTrue();
   });
 });
+
+/**
+ * Regression for 05a235d: `.extra-accept .extra-text` used to carry
+ * `overflow-wrap: normal`. That did not leave the label's *box* refusing to
+ * shrink — every ancestor from `.card-extras` down to here already carries
+ * `min-width: 0`, so the box really did shrink to the room the strip left it
+ * — it let the *ink* paint straight through that shrunk box and out past the
+ * card's edge, which a box measurement (`getBoundingClientRect`,
+ * `scrollWidth`) cannot see happen.
+ *
+ * That is exactly why the 288px guard above did not catch it: at that width
+ * the pre-fix label overflowed the card by a single pixel on the machine it
+ * was written on (`card.scrollWidth` 257 against a `clientWidth` of 256,
+ * inside that assertion's own +1 tolerance) and only went red in CI, where a
+ * font fallback renders the same string about 9px wider. Reverting the fix
+ * would go green again locally and red again in CI — the same round trip.
+ *
+ * A single unbreakable token sidesteps the font dependency rather than
+ * chasing it: no spaces for `normal` to wrap at even by accident, and long
+ * enough that `normal` overflows by hundreds of pixels under any font
+ * metrics. The assertion reads the painted text itself via
+ * `Range.getClientRects()`, not any element's box, so this fails on
+ * `overflow-wrap: normal` and passes on `break-word` regardless of which
+ * platform renders it.
+ */
+describe('overflow guard: the currency offer label\'s ink, not just its box', () => {
+  @Component({
+    standalone: true,
+    imports: [TransactionPreviewTableComponent],
+    template: `
+      <!-- Same 288px probe as the guard above; a narrower one would trip on
+           the category button's min-content, a different component's floor. -->
+      <div class="narrow">
+        <app-transaction-preview-table [transactions]="rows" [categories]="[]" />
+      </div>
+    `,
+    styles: ['.narrow { width: 288px; overflow: hidden; }'],
+  })
+  class InkOverflowProbeComponent {
+    readonly rows: CategorizedImportTransaction[] = [
+      {
+        id: 'r1',
+        description: 'Coffee',
+        amount: 500,
+        currency: 'USD',
+        currencyFellBack: true,
+        date: new Date('2026-06-01'),
+        type: 'expense',
+        suggestedCategoryId: 'food',
+        categoryConfidence: 0.8,
+        isDuplicate: false,
+        selected: true,
+        // No country: the same country-less shape as r2 above, which keeps
+        // this fixture to the one chip the test cares about.
+        currencySuggestion: { code: 'EUR', reason: 'session' },
+      },
+    ];
+  }
+
+  // 88 characters, no spaces or hyphens anywhere in it — the same technique
+  // 05a235d's own diagnosis used. Unbroken, this is hundreds of pixels wide
+  // in any font, far past the ~250px the card's content box leaves once
+  // padding and the chip's own furniture are accounted for, so `normal`
+  // fails by a wide margin rather than by the one pixel that let it hide.
+  const UNBREAKABLE_LABEL = 'unbreakable'.repeat(8);
+
+  let fixture: ComponentFixture<InkOverflowProbeComponent>;
+  let host: HTMLElement;
+  let card: HTMLElement;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [InkOverflowProbeComponent, NoopAnimationsModule],
+      providers: [
+        // Same shape as the mock above, with one substitution: the
+        // country-less offer key renders the unbreakable token in place of
+        // its usual short "Use {{currency}}?" stand-in.
+        {
+          provide: TranslationService,
+          useValue: {
+            t: (key: string, params?: Record<string, string | number>) =>
+              key === 'import.currencySuggested' && params
+                ? UNBREAKABLE_LABEL
+                : params
+                  ? `${key} ${Object.values(params).join(' ')}`
+                  : key,
+          },
+        },
+        {
+          provide: CurrencyService,
+          useValue: {
+            getSupportedCurrencies: () => [{ code: 'USD', nameKey: 'currencies.usd', symbol: '$' }],
+            getCurrencyInfo: () => undefined,
+            formatCurrency: (amount: number, code: string) =>
+              new Intl.NumberFormat('en', { style: 'currency', currency: code }).format(amount),
+          },
+        },
+        { provide: CurrencyChoiceSessionService, useValue: { remember: () => undefined, current: () => null, clear: () => undefined } },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(InkOverflowProbeComponent);
+    host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    fixture.detectChanges();
+    TestBed.inject(FitTextRegistry).flush();
+    card = host.querySelector('.transaction-card') as HTMLElement;
+  });
+
+  afterEach(() => host.remove());
+
+  it('keeps the offer label\'s painted ink inside the card, not just its box', () => {
+    const textEl = host.querySelector('.currency-offer .extra-accept .extra-text') as HTMLElement;
+    expect(textEl.textContent?.trim())
+      .withContext('the unbreakable token actually rendered, so a failure below is the wrap setting and nothing else')
+      .toBe(UNBREAKABLE_LABEL);
+
+    // Range.getClientRects() over the text node is the painted extent,
+    // independent of whatever box the element around it reports — the box
+    // can and did shrink to fit while the ink kept going.
+    const textNode = textEl.firstChild as Text;
+    const range = document.createRange();
+    range.selectNodeContents(textNode);
+    const inkRight = Math.max(...Array.from(range.getClientRects()).map(r => r.right));
+
+    const box = card.getBoundingClientRect();
+    const contentRight = box.right - parseFloat(getComputedStyle(card).paddingRight);
+
+    expect(inkRight)
+      .withContext('the label\'s painted text stays inside the card\'s content edge, not just its own box')
+      .toBeLessThanOrEqual(contentRight + 1);
+  });
+});
