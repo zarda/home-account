@@ -86,6 +86,10 @@ describe('parseAIError', () => {
     for (const message of [
       "JSON Parse error: Expected ']'",
       "Expected ',' or ']' after array element in JSON at position 147",
+      // A third wording, observed from a real cut-off answer during the QA
+      // run: where the break lands decides which sentence the engine picks,
+      // which is why this branch tests the error's type and not its words.
+      'Unterminated string in JSON at position 1688',
     ]) {
       const parsed = parseAIError(new SyntaxError(message));
       expect(parsed.type).withContext(message).toBe('incomplete');

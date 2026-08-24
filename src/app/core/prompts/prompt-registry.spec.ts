@@ -499,11 +499,12 @@ describe('prompt registry', () => {
       expect(prompt).toContain('never a default');
     });
 
-    it('budgets one photo exactly as it always did', () => {
-      // The flat 4000 was right for the case it was written against; what it
-      // could not do was grow. Pinning it keeps the single-photo callers —
-      // OpenAI and Claude route one image through this prompt — unchanged.
-      expect(renderPrompt('multiImageReceipts', { imageCount: 1 }).maxOutputTokens).toBe(4000);
+    it('budgets one photo above what a long receipt actually costs', () => {
+      // A live read of the 34-item fixture across two photos cost 5272 output
+      // tokens, and the answer's size follows the receipt rather than the
+      // photo count — so a single photo of that receipt would not have fitted
+      // in the old flat 4000 either.
+      expect(renderPrompt('multiImageReceipts', { imageCount: 1 }).maxOutputTokens).toBe(6000);
     });
 
     it('gives every further photo room to answer in', () => {
@@ -511,20 +512,25 @@ describe('prompt registry', () => {
         renderPrompt('multiImageReceipts', { imageCount }).maxOutputTokens;
 
       expect(budget(2)).toBeGreaterThan(budget(1));
-      expect(budget(3)).toBeGreaterThan(budget(2));
-      expect(budget(2)).toBe(5500);
-      expect(budget(3)).toBe(7000);
+      expect(budget(2)).toBe(8000);
     });
 
     it('stops at a ceiling no photo count can push past', () => {
       // A budget above a model's own output cap is a 400 on the OpenAI and
       // Claude transports, which would trade a truncated answer for none at
-      // all. Twenty photos must ask for no more than four do.
-      for (const imageCount of [4, 6, 20]) {
+      // all. Twenty photos must ask for no more than two do.
+      for (const imageCount of [2, 4, 20]) {
         expect(renderPrompt('multiImageReceipts', { imageCount }).maxOutputTokens)
           .withContext(`${imageCount} photos`)
           .toBe(8000);
       }
+    });
+
+    it('leaves headroom over the one answer size anybody has measured', () => {
+      // The guard on both numbers above: whatever the formula becomes, a
+      // two-photo read must ask for more than the 5272 tokens a real one took.
+      expect(renderPrompt('multiImageReceipts', { imageCount: 2 }).maxOutputTokens)
+        .toBeGreaterThan(5272);
     });
   });
 
