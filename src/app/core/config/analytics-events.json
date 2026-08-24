@@ -30,6 +30,7 @@
         "quota",
         "server",
         "timeout",
+        "incomplete",
         "no_provider",
         "nothing_extracted",
         "queue_write",

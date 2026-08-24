@@ -17,7 +17,7 @@ export type ReceiptEngine = 'cloud' | 'native';
  * that answered with nothing, and an offline queue write that failed.
  */
 export type ReceiptFailureClass =
-  | 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout'
+  | 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout' | 'incomplete'
   | 'no_provider' | 'nothing_extracted' | 'queue_write' | 'unknown';
 
 export interface ImportHistory {

@@ -15,7 +15,15 @@ export interface AIErrorInfo {
   message: string;
   /** Present when the app raised this itself and the screen can translate it. */
   messageKey?: string;
-  type: 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout' | 'unknown';
+  type:
+    | 'rate_limit'
+    | 'auth'
+    | 'network'
+    | 'quota'
+    | 'server'
+    | 'timeout'
+    | 'incomplete'
+    | 'unknown';
   retryable: boolean;
 }
 
@@ -43,6 +51,17 @@ export const AI_QUEUED_OFFLINE = 'AI_QUEUED_OFFLINE';
 export const AI_CLOUD_UNAVAILABLE = 'AI_CLOUD_UNAVAILABLE';
 
 /**
+ * Thrown when a model's answer could not be read: cut off before its first
+ * complete row, or never the list the prompt asked for.
+ *
+ * A class of its own rather than `unknown`, because it is the one failure the
+ * app can act on itself — it means the answer outgrew the output budget the
+ * prompt declared, and the record of how often it happens is what says whether
+ * that budget is still right (#331).
+ */
+export const AI_ANSWER_INCOMPLETE = 'AI_ANSWER_INCOMPLETE';
+
+/**
  * A receipt pipeline failure that carries what was learned before it failed.
  *
  * The message is the cause's own, so a caller comparing it against a sentinel
@@ -68,6 +87,24 @@ export function parseAIError(error: unknown): AIErrorInfo {
   const source = error instanceof ReceiptProcessingError ? error.cause : error;
   const raw = source instanceof Error ? source.message : String(source);
   const lower = raw.toLowerCase();
+
+  // An answer nobody could read, from either direction: the sentinel
+  // parseModelJsonArray throws when it cannot salvage a row, and a bare
+  // SyntaxError from any other JSON path — which is what used to put
+  // `JSON Parse error: Expected ']'` on the screen (#331).
+  //
+  // Ahead of the substring ladder, not after it: a SyntaxError names the
+  // character offset it gave up at, so `... in JSON at position 502` matches
+  // the 502 in the server branch and a truncated answer would be reported as
+  // an outage. Every status-code test below is a substring test.
+  if (raw === AI_ANSWER_INCOMPLETE || source instanceof SyntaxError) {
+    return {
+      message: 'The AI answer was cut short and could not be read in full.',
+      messageKey: 'import.errorAnswerIncomplete',
+      type: 'incomplete',
+      retryable: true
+    };
+  }
 
   // Rate limit (429)
   if (lower.includes('429') || lower.includes('rate limit') || lower.includes('resource_exhausted') || lower.includes('too many requests') || lower.includes('quota exceeded')) {
@@ -155,6 +192,7 @@ export function parseAIError(error: unknown): AIErrorInfo {
       retryable: false
     };
   }
+
 
   // Unknown
   return {

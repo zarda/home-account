@@ -523,7 +523,8 @@ service cloud.firestore {
         && (!('provider' in d) || d.provider in ['gemini', 'openai', 'claude'])
         && (!('errorType' in d) || d.errorType in [
              'rate_limit', 'auth', 'network', 'quota', 'server', 'timeout',
-             'no_provider', 'nothing_extracted', 'queue_write', 'unknown'
+             'incomplete', 'no_provider', 'nothing_extracted', 'queue_write',
+             'unknown'
            ])
         && (!('durationMs' in d) || (d.durationMs is number && d.durationMs >= 0));
     }

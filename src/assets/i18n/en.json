@@ -1039,6 +1039,7 @@
     "failureQuota": "Quota exceeded",
     "failureServer": "Service unavailable",
     "failureTimeout": "Timed out",
+    "failureIncomplete": "Answer cut short",
     "failureNoProvider": "No AI provider configured",
     "failureNothingExtracted": "Nothing could be read",
     "failureQueueWrite": "Could not save for later",
@@ -1087,6 +1088,7 @@
     "errorTitleQuota": "Quota Exceeded",
     "errorTitleServer": "Service Unavailable",
     "errorTitleTimeout": "Processing Timeout",
+    "errorTitleIncomplete": "Answer Cut Short",
     "errorTitleGeneral": "Processing Failed",
     "errorHintRateLimit": "The AI service has a request limit. Wait 30-60 seconds before retrying.",
     "errorHintAuth": "Your API key may be invalid or expired. Update it in Settings → AI Processing.",
@@ -1120,7 +1122,9 @@
     "errorCloudUnavailable": "Cloud AI could not be reached. Check your connection, or add an API key in Settings → AI Processing.",
     "errorQueuedOffline": "No connection, so this image was queued. It will be processed when you are back online.",
     "errorProcessingFailed": "Could not process the image. Please try again.",
-    "errorInvalidKey": "Your AI API key is invalid or expired. Update it in Settings → AI Processing."
+    "errorInvalidKey": "Your AI API key is invalid or expired. Update it in Settings → AI Processing.",
+    "errorAnswerIncomplete": "The reader ran out of room before it finished this receipt. Try again, or with fewer photos at a time.",
+    "warningAnswerIncomplete": "The reader ran out of room mid-receipt, so items after the break are missing. Check the amounts below and add anything that is not here."
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",
