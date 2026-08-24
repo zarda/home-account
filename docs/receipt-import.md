@@ -312,6 +312,21 @@ double-import — and the completion toast carries both counts. When every row
 saved but the summary read-back fails, the wizard says so and moves on; the
 full record, including per-row errors, is on the Import History page.
 
+**An answer that ran out of room is read as far as it goes.** A model asked
+for several photos at once answers with one JSON row per line item, and the
+budget it has to do that in follows the photo count
+(`multiImageAnswerBudget`, ADR 0066) rather than being the flat 4000 that a
+long receipt used to overrun. When the answer stops mid-row anyway,
+`parseModelJsonArray` closes the array after the last row that arrived whole
+and keeps those: the import proceeds with what the reader finished, and the
+review step carries a notice that items after the break are missing. That
+group has also lost its printed total — the prompts ask for it on a group's
+last item — so its amount falls back to the item sum at review confidence and
+the table's verify chip fires on it. When not even one row survived, the
+failure is classed `incomplete` and shown as its own error card; the JSON
+parser's own wording never reaches a screen. The in-form scan keeps the
+salvaged rows too, but has no review table on which to explain them.
+
 **Every attempt is recorded where it runs.** `AIStrategyService.runProcessing`
 is where the engine, the cross-engine fallback, the cloud provider, the
 duration and the error class are known, and it carries them out as
@@ -416,6 +431,11 @@ shown on the AI settings page, which is what **Clear Queue** is for.
 ## What still bounds coverage
 
 - **The configured model.** This is the intended limit and the only one.
+- **The answer budget**, for a receipt long enough to outgrow it. The budget
+  scales with the number of photos and stops at a ceiling chosen to sit under
+  what the configured vision models are assumed to accept, so a receipt long
+  enough still comes back short — with the rows it did read, and a notice
+  saying so, rather than as a failure.
 - **Vision's supported languages**, on the on-device path only. Queried at
   runtime, not assumed.
 - **Connectivity**, for the cloud path. Images captured offline are queued
