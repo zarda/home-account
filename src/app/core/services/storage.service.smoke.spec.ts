@@ -50,6 +50,30 @@ describe('StorageService (emulator smoke test)', () => {
   const markerOf = async (blob: Blob): Promise<number> =>
     new Uint8Array(await blob.arrayBuffer())[2];
 
+  /**
+   * A photo far too large for the ceiling, in the shape a phone produces:
+   * portrait, and noisy enough that JPEG cannot compress it away. The
+   * fixtures above are four bytes and prove nothing about the size path.
+   */
+  const oversizedPhoto = async (): Promise<File> => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1600;
+    canvas.height = 2000;
+    const context = canvas.getContext('2d')!;
+    const pixels = context.createImageData(canvas.width, canvas.height);
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      pixels.data[i] = Math.floor(Math.random() * 256);
+      pixels.data[i + 1] = Math.floor(Math.random() * 256);
+      pixels.data[i + 2] = Math.floor(Math.random() * 256);
+      pixels.data[i + 3] = 255;
+    }
+    context.putImageData(pixels, 0, 0);
+    const blob = await new Promise<Blob | null>(resolve =>
+      canvas.toBlob(resolve, 'image/jpeg', 1)
+    );
+    return new File([blob!], 'IMG_0042.jpg', { type: 'image/jpeg' });
+  };
+
   beforeAll(async () => {
     app = initializeApp(
       {
@@ -155,6 +179,21 @@ describe('StorageService (emulator smoke test)', () => {
 
     await expectAsync(service.downloadReceipt(uid, id, 0)).toBeRejected();
     await expectAsync(service.downloadReceipt(uid, id, 2)).toBeRejected();
+  });
+
+  it('uploads a photo that was too large, having made it fit', async () => {
+    // The bug this covers (#334): a phone photo is 2-5 MB, the ceiling is 2,
+    // and nothing used to close that gap — so the upload failed and the
+    // import lost the whole transaction. What lands must be under the real
+    // rule, which is enforced by the emulator here and not by the client.
+    const photo = await oversizedPhoto();
+    expect(photo.size).toBeGreaterThan(MAX_RECEIPT_BYTES);
+
+    await expectAsync(service.uploadReceipt(uid, 'smoke-oversized-ok', photo)).toBeResolved();
+
+    const stored = await service.downloadReceipt(uid, 'smoke-oversized-ok');
+    expect(stored.size).toBeLessThanOrEqual(MAX_RECEIPT_BYTES);
+    expect(stored.size).toBeGreaterThan(0);
   });
 
   it('storage.rules cover suffixed slot names too', async () => {
