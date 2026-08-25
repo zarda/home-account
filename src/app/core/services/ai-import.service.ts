@@ -5,7 +5,11 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { ImportHistoryService } from './import-history.service';
-import { TransactionService, RECEIPT_IMAGE_LIMIT_ERROR } from './transaction.service';
+import {
+  TransactionService,
+  RECEIPT_ATTACH_FAILED,
+  RECEIPT_IMAGE_LIMIT_ERROR,
+} from './transaction.service';
 import { BudgetService } from './budget.service';
 import { AuthService } from './auth.service';
 import { AIStrategyService, ProcessingResult, ReceiptAttemptDiagnostics } from './ai-strategy.service';
@@ -1152,6 +1156,7 @@ export class AIImportService {
     let successCount = 0;
     let errorCount = 0;
     let receiptsSkipped = 0;
+    let receiptsFailed = 0;
     let totalIncome = 0;
     let totalExpenses = 0;
     const errors: ImportHistory['errors'] = [];
@@ -1196,16 +1201,27 @@ export class AIImportService {
           try {
             await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
           } catch (error) {
-            // A quota refusal is about the images, not the row, and it fires
-            // before any id, upload or write exists — so the transaction is
-            // still worth saving bare, and the skip is reported as its own
-            // figure. An upload failure (RECEIPT_ATTACH_FAILED) stays a
-            // failed row: retrying photo-less there would silently drop
-            // photos on a flaky network.
+            // Both of these are about the images, not the row, and both leave
+            // the batch rolled back with no id, upload or write behind them —
+            // so the transaction is still worth saving bare, and each is
+            // reported as its own figure.
+            //
+            // The attach failure used to fail the whole row, on the grounds
+            // that retrying photo-less would silently drop photos on a flaky
+            // network. It is not silent: the count is reported and recorded
+            // per import. Losing a receipt's amount, date and category to
+            // protect its photograph is the wrong way round — the transaction
+            // is the record, the photo is evidence attached to it (#334).
             const message = error instanceof Error ? error.message : '';
-            if (attachedFiles.length && message === RECEIPT_IMAGE_LIMIT_ERROR) {
+            const imagesOnly =
+              message === RECEIPT_IMAGE_LIMIT_ERROR || message === RECEIPT_ATTACH_FAILED;
+            if (attachedFiles.length && imagesOnly) {
               await this.transactionService.addTransaction(bareDto, { skipBudgetRecalc: true });
-              receiptsSkipped++;
+              if (message === RECEIPT_IMAGE_LIMIT_ERROR) {
+                receiptsSkipped++;
+              } else {
+                receiptsFailed++;
+              }
             } else {
               throw error;
             }
@@ -1252,6 +1268,7 @@ export class AIImportService {
         duplicatesSkipped: number;
         errors?: ImportHistory['errors'];
         receiptsSkipped?: number;
+        receiptsFailed?: number;
       } = {
         transactionCount: selectedTransactions.length,
         successCount,
@@ -1267,6 +1284,9 @@ export class AIImportService {
       }
       if (receiptsSkipped > 0) {
         completeStats.receiptsSkipped = receiptsSkipped;
+      }
+      if (receiptsFailed > 0) {
+        completeStats.receiptsFailed = receiptsFailed;
       }
 
       await this.importHistoryService.completeImport(historyId, completeStats);

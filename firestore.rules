@@ -526,7 +526,12 @@ service cloud.firestore {
              'incomplete', 'no_provider', 'nothing_extracted', 'queue_write',
              'unknown'
            ])
-        && (!('durationMs' in d) || (d.durationMs is number && d.durationMs >= 0));
+        && (!('durationMs' in d) || (d.durationMs is number && d.durationMs >= 0))
+        // Rows saved without their photos: the quota refused them, or the
+        // upload failed (#334). Counts, never a reason — the reason is prose
+        // and belongs in `errors`.
+        && (!('receiptsSkipped' in d) || (d.receiptsSkipped is int && d.receiptsSkipped >= 0))
+        && (!('receiptsFailed' in d) || (d.receiptsFailed is int && d.receiptsFailed >= 0));
     }
 
     function importCreateValid(userId) {

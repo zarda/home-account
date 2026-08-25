@@ -999,6 +999,10 @@
       "one": "The transactions were saved, but {{count}} receipt photo was not attached — image storage limit reached",
       "other": "The transactions were saved, but {{count}} receipt photos were not attached — image storage limit reached"
     },
+    "importPhotosFailed": {
+      "one": "The transactions were saved, but {{count}} receipt photo could not be uploaded. You can attach it from the transaction.",
+      "other": "The transactions were saved, but {{count}} receipt photos could not be uploaded. You can attach them from the transaction."
+    },
     "importSavedHistoryUnavailable": "Import finished, but the summary could not be loaded. See Import History for details.",
     "selectAll": "Select all",
     "deselectAll": "Deselect all",
