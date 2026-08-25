@@ -7,6 +7,7 @@ import {
   getBlob,
   deleteObject
 } from '@angular/fire/storage';
+import { prepareReceiptImage } from '../utils/receipt-image.utils';
 
 /** Maximum receipt image size in bytes (2 MB). Mirrors storage.rules. */
 export const MAX_RECEIPT_BYTES = 2 * 1024 * 1024;
@@ -46,9 +47,19 @@ export class StorageService {
 
   /**
    * Upload (or overwrite) one of a transaction's receipt images and return
-   * its download URL. Rejects oversized files before hitting the network so
-   * the caller gets a clear error instead of an opaque storage-rules
-   * rejection.
+   * its download URL.
+   *
+   * The image is compressed to fit `MAX_RECEIPT_BYTES` first. That happens
+   * here, and not at each door, because every door ends up in this method —
+   * the form's attach, the import wizard's confirm, the camera dialog, the
+   * queue drain — and a door added tomorrow cannot forget a step it does not
+   * know about. Until this call existed the ceiling was enforced and never
+   * met: the camera was safe only because it captures at quality 0.85, while
+   * a photo picked from the library arrived at its full 2–5 MB and cost the
+   * user the whole transaction (#334).
+   *
+   * The size guard stays underneath it as the last line of defence, with its
+   * specific message, for the case where a prepared file still does not fit.
    */
   async uploadReceipt(
     userId: string,
@@ -56,12 +67,13 @@ export class StorageService {
     file: File,
     slot = 0
   ): Promise<string> {
-    if (file.size > MAX_RECEIPT_BYTES) {
+    const prepared = await prepareReceiptImage(file, MAX_RECEIPT_BYTES);
+    if (prepared.size > MAX_RECEIPT_BYTES) {
       throw new Error(`Receipt image exceeds the ${MAX_RECEIPT_BYTES} byte limit`);
     }
 
     const storageRef = ref(this.storage, this.receiptPath(userId, transactionId, slot));
-    await uploadBytes(storageRef, file, { contentType: file.type || 'image/jpeg' });
+    await uploadBytes(storageRef, prepared, { contentType: prepared.type || 'image/jpeg' });
     return getDownloadURL(storageRef);
   }
 

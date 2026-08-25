@@ -730,12 +730,19 @@ export class TransactionService {
       )
     );
 
-    if (results.some(result => result.status === 'rejected')) {
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure) {
       const landed = results
         .map((result, i) => (result.status === 'fulfilled' ? firstSlot + i : -1))
         .filter(slot => slot >= 0);
       await this.storageService.deleteReceiptSlots(userId, transactionId, landed);
-      throw new Error(RECEIPT_ATTACH_FAILED);
+      // The sentinel is the contract every caller matches on; the cause is the
+      // diagnosis. Replacing one with the other is why a photo that was simply
+      // too large reached the user as "could not be saved", and took a code
+      // read to explain (#334).
+      const cause = (failure as PromiseRejectedResult).reason;
+      console.error('[Transactions] Receipt upload failed:', cause);
+      throw new Error(RECEIPT_ATTACH_FAILED, { cause });
     }
 
     return results.map(result => (result as PromiseFulfilledResult<string>).value);

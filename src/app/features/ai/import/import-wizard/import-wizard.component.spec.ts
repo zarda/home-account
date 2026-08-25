@@ -807,6 +807,26 @@ describe('ImportWizardComponent', () => {
       expect(mockRouter.navigate).toHaveBeenCalled();
     }));
 
+    it('says when photos could not be uploaded, without calling the import partial', fakeAsync(() => {
+      // The rows landed; only their photos did not. Calling this partial would
+      // invite re-importing transactions that already saved (#334).
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'image' as const, fileType: 'receipt_image' as const,
+        fileName: 'r.png', fileSize: 10, transactionCount: 1, successCount: 1,
+        skippedCount: 0, errorCount: 0, totalIncome: 0, totalExpenses: 10503,
+        duplicatesSkipped: 0, status: 'completed' as const, receiptsFailed: 1
+      }));
+
+      component.confirmImport();
+      tick();
+
+      expect(notifications.info).toHaveBeenCalledWith('import.importPhotosFailed');
+      expect(notifications.info).not.toHaveBeenCalledWith('import.importPhotosSkipped');
+      expect(notifications.error).not.toHaveBeenCalled();
+      expect(notifications.success).toHaveBeenCalledWith('import.importComplete');
+    }));
+
     it('should set isImporting to false after completion', fakeAsync(() => {
       component.confirmImport();
       tick();

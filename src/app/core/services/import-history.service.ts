@@ -193,6 +193,7 @@ export class ImportHistoryService {
       duplicatesSkipped: number;
       errors?: ImportHistory['errors'];
       receiptsSkipped?: number;
+      receiptsFailed?: number;
     }
   ): Promise<void> {
     const status: ImportStatus = stats.errorCount > 0

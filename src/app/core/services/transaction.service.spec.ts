@@ -400,6 +400,27 @@ describe('TransactionService', () => {
       expect(mockFirestore.setDocumentSpy.calls.length).toBe(0);
     });
 
+    it('carries why the upload failed alongside the sentinel', async () => {
+      // The sentinel is what every caller matches on, so it must not change;
+      // the cause is what makes the next failure diagnosable instead of
+      // reaching the user as "could not be saved" with no reason (#334).
+      mockStorage.failFromSlot = 0;
+      const files = [new File(['r0'], 'r0.jpg', { type: 'image/jpeg' })];
+
+      const thrown = await service.addTransaction({
+        type: 'expense',
+        amount: 100,
+        currency: 'USD',
+        categoryId: 'food',
+        description: 'Upload refused',
+        date: new Date(),
+        receiptFiles: files
+      }).then(() => null, (error: unknown) => error as Error);
+
+      expect(thrown?.message).toBe(RECEIPT_ATTACH_FAILED);
+      expect(thrown?.cause).toBeDefined();
+    });
+
     it('writes nothing and rolls back landed uploads when one in the batch fails', async () => {
       // Slot 1 (and beyond) reject; slot 0 lands and must be swept.
       mockStorage.failFromSlot = 1;

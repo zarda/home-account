@@ -2325,10 +2325,45 @@ describe('AIImportService', () => {
       expect('errors' in stats).toBeFalse();
     });
 
-    it('keeps an upload failure a failed row, with no skip recorded', async () => {
+    it('saves the row without its photo when the upload fails, counted apart from a quota skip', async () => {
+      // This used to fail the whole row, to avoid dropping photos silently on
+      // a flaky network. It is not silent — the count is reported and
+      // recorded — and losing a receipt's amount, date and category to protect
+      // its photograph is the wrong way round (#334).
+      const fileA = new File(['a'], 'a.png', { type: 'image/png' });
       transactionService.addTransaction.and.callFake(dto =>
         dto.receiptFiles?.length
           ? Promise.reject(new Error(RECEIPT_ATTACH_FAILED))
+          : Promise.resolve('txn-id')
+      );
+
+      await service.confirmImport(
+        [withMeta({ amount: 10503, description: 'COSTCO WHOLESALE' }, { imageIndex: 0, receiptId: 1 })],
+        'r.png', 10, 'image', 'receipt_image',
+        [fileA]
+      );
+
+      const dtos = transactionService.addTransaction.calls.all().map(c => c.args[0]);
+      expect(dtos.length).toBe(2);
+      expect(dtos[0].receiptFiles).toEqual([fileA]);
+      expect('receiptFiles' in dtos[1]).toBeFalse();
+      // The money survives the photo: what the user came for is intact on the
+      // row that actually landed.
+      expect(dtos[1].amount).toBe(10503);
+      expect(dtos[1].description).toBe('COSTCO WHOLESALE');
+
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+      expect(stats['successCount']).toBe(1);
+      expect(stats['errorCount']).toBe(0);
+      expect(stats['receiptsFailed']).toBe(1);
+      // Two figures, because the two need different things from the user.
+      expect('receiptsSkipped' in stats).toBeFalse();
+    });
+
+    it('records a quota skip as a skip, never as a failed photo', async () => {
+      transactionService.addTransaction.and.callFake(dto =>
+        dto.receiptFiles?.length
+          ? Promise.reject(new Error(RECEIPT_IMAGE_LIMIT_ERROR))
           : Promise.resolve('txn-id')
       );
 
@@ -2338,12 +2373,29 @@ describe('AIImportService', () => {
         [new File(['a'], 'a.png', { type: 'image/png' })]
       );
 
-      // A failed upload is not a quota refusal: retrying photo-less here
-      // would silently drop photos on a flaky network.
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+      expect(stats['receiptsSkipped']).toBe(1);
+      expect('receiptsFailed' in stats).toBeFalse();
+    });
+
+    it('still fails a row whose write fails for a reason that is not the photo', async () => {
+      // The bare retry is for image failures only. A rules refusal on the row
+      // itself must stay a failed row, or the user is told a row saved when
+      // nothing did.
+      transactionService.addTransaction.and.returnValue(
+        Promise.reject(new Error('PERMISSION_DENIED'))
+      );
+
+      await service.confirmImport(
+        [withMeta({}, { imageIndex: 0, receiptId: 1 })],
+        'r.png', 10, 'image', 'receipt_image',
+        [new File(['a'], 'a.png', { type: 'image/png' })]
+      );
+
       const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
       expect(stats['errorCount']).toBe(1);
       expect(stats['successCount']).toBe(0);
-      expect('receiptsSkipped' in stats).toBeFalse();
+      expect('receiptsFailed' in stats).toBeFalse();
     });
 
     it('should fail the import and rethrow when completion throws', async () => {

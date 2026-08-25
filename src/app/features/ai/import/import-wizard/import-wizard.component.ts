@@ -562,6 +562,16 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         }));
       }
 
+      if (result.receiptsFailed) {
+        // Also saved, also photo-less, but for a reason the user can act on:
+        // the photo could not be uploaded at all. Separate from the quota
+        // message because the next step differs — one is a plan limit, the
+        // other a file to re-attach from the transaction (#334).
+        this.notifications.info(this.t('import.importPhotosFailed', {
+          count: result.receiptsFailed
+        }));
+      }
+
       if (result.errorCount > 0) {
         // Some rows were rejected (a zero-amount summary line, a rules
         // denial). Navigating away would destroy the only copy of them and

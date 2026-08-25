@@ -45,6 +45,13 @@ export interface ImportHistory {
    */
   receiptsSkipped?: number;
   /**
+   * Rows saved without their photos because the upload failed, as opposed to
+   * `receiptsSkipped`, where the images hit the account's quota. Two figures
+   * because the two need different things from the user: one is a plan limit,
+   * the other a file that could not be sent.
+   */
+  receiptsFailed?: number;
+  /**
    * How the attempt ran, recorded for receipts only. Written at extraction
    * time for a failed attempt and at confirm time for a successful one.
    * Every slot is optional because a CSV import has none of them.

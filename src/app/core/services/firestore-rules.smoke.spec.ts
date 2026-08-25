@@ -1343,6 +1343,29 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts the photo counters a photo-less save records', async () => {
+      // Both figures mean "the row saved, its photo did not" — one for the
+      // account's image quota, one for an upload that failed (#334).
+      await expectAllowed(
+        setDoc(doc(firestore, path('imports')), validImport({
+          source: 'image', fileType: 'receipt_image', fileName: 'r.jpg',
+          receiptsSkipped: 1, receiptsFailed: 2,
+        })),
+        'import with photo counters'
+      );
+    });
+
+    it('rejects a photo counter that is not a count', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ receiptsFailed: -1 })),
+        'negative photo counter'
+      );
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ receiptsFailed: 'two' })),
+        'photo counter as prose'
+      );
+    });
+
     it('rejects a failure class the enumeration does not list', async () => {
       await expectDenied(
         setDoc(doc(firestore, path('imports')), validImport({ errorType: 'truncated' })),

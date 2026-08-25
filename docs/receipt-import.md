@@ -327,6 +327,17 @@ failure is classed `incomplete` and shown as its own error card; the JSON
 parser's own wording never reaches a screen. The in-form scan keeps the
 salvaged rows too, but has no review table on which to explain them.
 
+**A photo never costs its transaction.** A receipt image is compressed to fit
+the 2 MB ceiling on its way into Storage — at `uploadReceipt`, the one call
+every door passes through, so no door can skip it (ADR 0067). What the model
+reads is still the original: a downscale destroys exactly the small print the
+reader needs. When a photo cannot be attached even so — an image nothing can
+decode, or a failed upload — the row is saved without it and the completion
+notice says how many photos that happened to, counted apart from the photos
+the account's image quota refused. The photo can be attached again from the
+transaction; the amount, date and category are not worth losing to keep them
+together.
+
 **Every attempt is recorded where it runs.** `AIStrategyService.runProcessing`
 is where the engine, the cross-engine fallback, the cloud provider, the
 duration and the error class are known, and it carries them out as
@@ -441,6 +452,10 @@ shown on the AI settings page, which is what **Clear Queue** is for.
 - **Connectivity**, for the cloud path. Images captured offline are queued
   instead — see *Offline capture and the queue* above.
 - **The receipt image quota**, which is a tier limit rather than a technical one.
+- **The 2 MB ceiling on a stored image**, which the app now meets by compressing
+  rather than by refusing: a photo is redrawn at 2000px on its longest edge and
+  re-encoded only as far as it must be. An image the browser cannot decode at
+  all is the one case that still cannot be stored.
 - **The on-device reader itself suggests no tags.** It reports a printed
   location like the cloud readers do and proposes no tags of its own. That
   bounds coverage only when no cloud provider is configured: the tag ladder

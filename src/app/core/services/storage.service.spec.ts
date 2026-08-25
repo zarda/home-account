@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Storage } from '@angular/fire/storage';
 import { StorageService, MAX_RECEIPT_BYTES } from './storage.service';
+import { RECEIPT_IMAGE_UNREADABLE } from '../utils/receipt-image.utils';
 
 /**
  * Unit tests for StorageService. The thin Firebase Storage pass-throughs
@@ -30,27 +31,31 @@ describe('StorageService', () => {
     expect(MAX_RECEIPT_BYTES).toBe(2 * 1024 * 1024);
   });
 
-  it('rejects an oversized receipt before attempting an upload', async () => {
-    const oversized = {
-      size: MAX_RECEIPT_BYTES + 1,
-      type: 'image/jpeg',
-      name: 'big.jpg'
-    } as File;
+  // An oversized image is no longer refused — it is compressed to fit, which
+  // is what storage.service.smoke.spec.ts proves against real Storage. What is
+  // still refused here is an oversized file nothing can decode, and it is
+  // refused by name: "attach failed" told a user nothing they could act on.
+  it('names an oversized file it cannot decode, rather than failing vaguely', async () => {
+    const undecodable = new File(
+      ['x'.repeat(MAX_RECEIPT_BYTES + 1)],
+      'big.heic',
+      { type: 'image/heic' }
+    );
 
     await expectAsync(
-      service.uploadReceipt('uid', 'txn-1', oversized)
-    ).toBeRejectedWithError(/limit/);
+      service.uploadReceipt('uid', 'txn-1', undecodable)
+    ).toBeRejectedWithError(RECEIPT_IMAGE_UNREADABLE);
   });
 
-  it('rejects an oversized receipt on a non-zero slot too', async () => {
-    const oversized = {
-      size: MAX_RECEIPT_BYTES + 1,
-      type: 'image/jpeg',
-      name: 'big.jpg'
-    } as File;
+  it('refuses the same file on a non-zero slot too', async () => {
+    const undecodable = new File(
+      ['x'.repeat(MAX_RECEIPT_BYTES + 1)],
+      'big.heic',
+      { type: 'image/heic' }
+    );
 
     await expectAsync(
-      service.uploadReceipt('uid', 'txn-1', oversized, 2)
-    ).toBeRejectedWithError(/limit/);
+      service.uploadReceipt('uid', 'txn-1', undecodable, 2)
+    ).toBeRejectedWithError(RECEIPT_IMAGE_UNREADABLE);
   });
 });
