@@ -33,6 +33,25 @@ export interface CategoryTotalWithCount extends CategoryTotal {
   count: number;
 }
 
+/** Expense total for one ISO 3166-1 alpha-2 country, and the rows behind it. */
+export interface CountryTotal {
+  country: string;
+  total: number;
+  count: number;
+}
+
+/**
+ * Expense totals per country, with the coverage figure that says how much of
+ * the period the ranked list actually speaks for.
+ */
+export interface CountryBreakdown {
+  countries: CountryTotal[];
+  /** Expense rows carrying a country. */
+  placed: number;
+  /** Expense rows in the period, placed or not. */
+  expenses: number;
+}
+
 /** Per-month totals for one category, parallel to a `months` array. */
 export interface CategorySeries {
   categoryId: string;
@@ -145,6 +164,57 @@ export function groupExpensesByCategoryWithCounts(
       count: entry.count,
     }))
     .sort((a, b) => b.total - a.total || compareIds(a.categoryId, b.categoryId));
+}
+
+/**
+ * Expense totals per country, largest first, tie-broken by country code.
+ *
+ * Rows with no country are counted but not ranked. A country reaches a
+ * transaction only from a receipt that named one or a coordinate the user
+ * attached, and neither happens retroactively — so on any account with
+ * history most of the money has no country at all. Ranking an "unknown"
+ * bucket would put it first forever and make the card a reminder rather than
+ * a readback; `placed` against `expenses` says the same thing honestly, in
+ * one line the card can show.
+ *
+ * The country is not validated here. `readCountryCode` and the rules both
+ * pin it to two letters upstream, and CLDR names some macroregions (`EU`,
+ * `QO`) that are not countries — a row for one of those is a coarser answer,
+ * which is what it is, not a broken one.
+ */
+export function groupExpensesByCountry(
+  transactions: Transaction[],
+  toBase: ToBase,
+): CountryBreakdown {
+  const totals = new Map<string, { total: number; count: number }>();
+  let expenses = 0;
+  let placed = 0;
+
+  for (const transaction of transactions) {
+    if (transaction.type !== 'expense') {
+      continue;
+    }
+    expenses += 1;
+    const country = transaction.location?.country?.trim();
+    if (!country) {
+      continue;
+    }
+    placed += 1;
+    const entry = totals.get(country) ?? { total: 0, count: 0 };
+    entry.total += toBase(transaction);
+    entry.count += 1;
+    totals.set(country, entry);
+  }
+
+  const countries = [...totals.entries()]
+    .map(([country, entry]) => ({
+      country,
+      total: roundMoney(entry.total),
+      count: entry.count,
+    }))
+    .sort((a, b) => b.total - a.total || compareIds(a.country, b.country));
+
+  return { countries, placed, expenses };
 }
 
 /**

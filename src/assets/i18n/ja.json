@@ -360,7 +360,12 @@
     "recurringExpenses": "定期",
     "oneOffExpenses": "単発",
     "noRecurringExpenses": "定期支出はありません",
-    "noRecurringExpensesHint": "定期取引から作成された支出や、定期としてマークされた支出がここに表示されます。"
+    "noRecurringExpensesHint": "定期取引から作成された支出や、定期としてマークされた支出がここに表示されます。",
+    "spendingByCountry": "国別の支出",
+    "countryCoverage": "{{count}} 件中 {{placed}} 件の支出に国が記録されています",
+    "countriesMore": "他 {{count}} か国",
+    "noCountriesRecorded": "記録された国はまだありません",
+    "noCountriesRecordedHint": "国はレシートをスキャンしたとき、または位置情報を添付したときに読み取られます。既存の取引はそのままです。"
   },
   "settings": {
     "title": "設定",

@@ -369,7 +369,18 @@
     "recurringExpenses": "Recurring",
     "oneOffExpenses": "One-off",
     "noRecurringExpenses": "No recurring expenses",
-    "noRecurringExpensesHint": "Expenses from your recurring transactions, or marked as recurring, will appear here."
+    "noRecurringExpensesHint": "Expenses from your recurring transactions, or marked as recurring, will appear here.",
+    "spendingByCountry": "Spending by Country",
+    "countryCoverage": {
+      "one": "Country recorded for {{placed}} of {{count}} expense",
+      "other": "Country recorded for {{placed}} of {{count}} expenses"
+    },
+    "countriesMore": {
+      "one": "+{{count}} more country",
+      "other": "+{{count}} more countries"
+    },
+    "noCountriesRecorded": "No countries recorded yet",
+    "noCountriesRecordedHint": "A country is read from a receipt when you scan one, or from a location you attach. Existing transactions are left as they are."
   },
   "settings": {
     "title": "Settings",

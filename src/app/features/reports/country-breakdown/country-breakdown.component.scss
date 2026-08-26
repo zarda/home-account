@@ -1,0 +1,71 @@
+:host {
+  display: block;
+}
+
+// Same reason as the recurring card beside it: the tab's 24px rhythm lives in
+// a sibling's flex gap that cannot reach here, and Material 3 cards carry no
+// margin. On the card rather than the host, so a period with no expenses
+// leaves no orphan gap.
+.country-breakdown {
+  margin-top: 24px;
+}
+
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+
+  & + .breakdown-row {
+    border-top: 1px solid var(--border-secondary);
+  }
+}
+
+.row-icon {
+  flex: 0 0 auto;
+  @apply text-gray-400 dark:text-gray-500;
+}
+
+// No fixed width and no truncation: a country name is as long as the active
+// language makes it, and the amount beside it is what must never be clipped.
+.row-label {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  @apply text-gray-800 dark:text-gray-100;
+}
+
+.row-count {
+  font-weight: 400;
+  @apply text-gray-400 dark:text-gray-500;
+}
+
+.row-amount {
+  flex: 0 0 auto;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  @apply text-gray-800 dark:text-gray-100;
+}
+
+.row-percentage {
+  padding: 2px 6px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  min-width: 36px;
+  text-align: center;
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+.breakdown-note {
+  margin: 8px 0 0;
+  font-size: var(--text-xs);
+  @apply text-gray-500 dark:text-gray-400;
+
+  &.coverage {
+    padding-top: 8px;
+    border-top: 1px solid var(--border-secondary);
+  }
+}

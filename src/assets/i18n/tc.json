@@ -360,7 +360,12 @@
     "recurringExpenses": "定期",
     "oneOffExpenses": "一次性",
     "noRecurringExpenses": "沒有定期支出",
-    "noRecurringExpensesHint": "由定期交易建立的支出，或標記為定期的支出，將顯示於此。"
+    "noRecurringExpensesHint": "由定期交易建立的支出，或標記為定期的支出，將顯示於此。",
+    "spendingByCountry": "各國支出",
+    "countryCoverage": "{{count}} 筆支出中有 {{placed}} 筆記錄了國家",
+    "countriesMore": "另有 {{count}} 個國家",
+    "noCountriesRecorded": "尚未記錄任何國家",
+    "noCountriesRecordedHint": "掃描收據或附加位置時會讀取國家。既有的交易維持不變。"
   },
   "settings": {
     "title": "設定",
