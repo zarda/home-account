@@ -245,6 +245,65 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a location carrying only a country', async () => {
+      // 0068: a receipt can name its country through a tax number, a phone
+      // format or its own script and print no address at all.
+      await expectAllowed(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { country: 'KR' }
+        })),
+        'country-only location'
+      );
+    });
+
+    it('rejects an empty location map', async () => {
+      // A map that says nothing is not a location. It passed the truthy
+      // spread and the old rule alike.
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: {}
+        })),
+        'empty location map'
+      );
+    });
+
+    it('rejects a location with only coordinates', async () => {
+      // Nothing renders a bare fix, and locationSlot refuses to build one.
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { lat: 35.66, lng: 139.71 }
+        })),
+        'coordinates without a place'
+      );
+    });
+
+    it('rejects a blank location name', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { name: '' }
+        })),
+        'blank location name'
+      );
+    });
+
+    it('rejects a non-string location name', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { name: 42 }
+        })),
+        'location name as a number'
+      );
+    });
+
+    it('rejects a non-numeric coordinate', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('transactions')), validTransaction({
+          location: { name: 'Aoyama Market', lat: '35.66', lng: 139.71 }
+        })),
+        'latitude as a string'
+      );
+    });
+
     it('accepts a budget period from the enum the picker offers', async () => {
       await expectAllowed(
         setDoc(doc(firestore, path('transactions')), validTransaction({ period: 'monthly' })),

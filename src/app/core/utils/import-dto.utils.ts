@@ -83,6 +83,21 @@ export function locationSlot(
 }
 
 /**
+ * The same decision for a location that arrives whole rather than in parts —
+ * from a backup file, a restore, or any other door that did not build it.
+ *
+ * Such a location is untrusted input: a hand-edited or truncated backup can
+ * hold `{}`, a bare coordinate pair or a blank name, all of which the rules
+ * now refuse. Rebuilding it here drops the junk and keeps the row, rather
+ * than letting one malformed field fail the whole write.
+ */
+export function locationSlotFrom(
+  location: TransactionLocation | null | undefined
+): { location?: TransactionLocation } {
+  return locationSlot(location?.name, location?.country, location);
+}
+
+/**
  * Build the create DTO every import door writes through.
  *
  * This is the chokepoint the CSV escaper already proved out: when each door

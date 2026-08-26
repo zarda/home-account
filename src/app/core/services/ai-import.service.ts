@@ -60,7 +60,7 @@ import {
   CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { resolveImportCurrency, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { locationSlotFrom, resolveImportCurrency, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
@@ -1024,9 +1024,10 @@ export class AIImportService {
           // or malformed stays absent rather than being defaulted.
           ...(t['note'] ? { notes: t['note'] as string } : {}),
           ...(Array.isArray(t['tags']) && t['tags'].length ? { tags: t['tags'] as string[] } : {}),
-          ...((t['location'] as TransactionLocation | undefined)?.name
-            ? { location: t['location'] as TransactionLocation }
-            : {}),
+          // Gated on a name until 0068, which silently dropped a location
+          // that carried only a country -- exactly what a backup taken after
+          // that change holds for a receipt that printed no address.
+          ...locationSlotFrom(t['location'] as TransactionLocation | undefined),
           ...(isBudgetPeriod(t['period']) ? { period: t['period'] } : {}),
           ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {})
         })

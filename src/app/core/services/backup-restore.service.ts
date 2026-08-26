@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { locationSlotFrom } from '../utils/import-dto.utils';
 import { Timestamp } from '@angular/fire/firestore';
 
 import {
@@ -214,7 +215,7 @@ export class BackupRestoreService {
           ...(transaction.note ? { note: transaction.note } : {}),
           ...(transaction.tags?.length ? { tags: transaction.tags } : {}),
           ...(transaction.period ? { period: transaction.period } : {}),
-          ...(transaction.location ? { location: transaction.location } : {}),
+          ...locationSlotFrom(transaction.location),
           // Restored: the field says which rule posted the row, and the same
           // file restores those rules at their own ids, so it cannot dangle.
           // Without it the detector reads engine-posted history as untagged

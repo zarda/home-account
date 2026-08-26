@@ -20,7 +20,7 @@ import {
 import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
 import { parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
 import { normalizeTags } from '../utils/tag.utils';
-import { toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { locationSlot, toCreateTransactionDTO } from '../utils/import-dto.utils';
 
 // File System Access API type declarations
 interface SaveFilePickerOptions {
@@ -561,7 +561,7 @@ export class ExportService {
         ...(isRecurring ? { isRecurring } : {}),
         ...(note ? { note } : {}),
         ...(tags.length ? { tags } : {}),
-        ...(locationName ? { location: { name: locationName } } : {})
+        ...locationSlot(locationName)
       });
     }
 
