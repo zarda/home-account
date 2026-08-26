@@ -5,6 +5,7 @@ import {
   fnv1a32,
   groupExpensesByCategory,
   groupExpensesByCategoryWithCounts,
+  groupExpensesByCountry,
   median,
   percentDelta,
   percentileNearestRank,
@@ -284,6 +285,104 @@ describe('transaction-aggregation.utils', () => {
 
     it('distinguishes reorderings', () => {
       expect(fnv1a32('ab')).not.toBe(fnv1a32('ba'));
+    });
+  });
+});
+
+describe('groupExpensesByCountry', () => {
+  const toBase = (t: Transaction) => t.amount;
+  const expense = (amount: number, country?: string, extra: Partial<Transaction> = {}) =>
+    createTransaction({
+      type: 'expense',
+      amount,
+      ...(country ? { location: { country } } : {}),
+      ...extra,
+    });
+
+  it('groups expenses by the country their location records', () => {
+    const result = groupExpensesByCountry(
+      [expense(10, 'KR'), expense(5, 'JP'), expense(7, 'KR')],
+      toBase
+    );
+
+    expect(result.countries).toEqual([
+      { country: 'KR', total: 17, count: 2 },
+      { country: 'JP', total: 5, count: 1 },
+    ]);
+  });
+
+  it('orders by total, tie-broken by country code', () => {
+    const result = groupExpensesByCountry(
+      [expense(10, 'KR'), expense(10, 'JP'), expense(10, 'DE')],
+      toBase
+    );
+
+    expect(result.countries.map(c => c.country)).toEqual(['DE', 'JP', 'KR']);
+  });
+
+  it('excludes rows with no country and reports the coverage', () => {
+    const result = groupExpensesByCountry(
+      [expense(10, 'KR'), expense(5), expense(3), expense(2, 'JP')],
+      toBase
+    );
+
+    expect(result.countries.map(c => c.country)).toEqual(['KR', 'JP']);
+    expect(result.placed).toBe(2);
+    expect(result.expenses).toBe(4);
+  });
+
+  it('treats a blank country as no country', () => {
+    const result = groupExpensesByCountry([expense(10, '  ')], toBase);
+
+    expect(result.countries).toEqual([]);
+    expect(result.placed).toBe(0);
+    expect(result.expenses).toBe(1);
+  });
+
+  it('counts a location that names a place but no country as unplaced', () => {
+    const rows = [
+      createTransaction({ type: 'expense', amount: 9, location: { name: 'Aoyama Market' } }),
+    ];
+    const result = groupExpensesByCountry(rows, toBase);
+
+    expect(result.countries).toEqual([]);
+    expect(result.placed).toBe(0);
+    expect(result.expenses).toBe(1);
+  });
+
+  it('ignores income', () => {
+    const income = createTransaction({ type: 'income', amount: 500, location: { country: 'KR' } });
+    const result = groupExpensesByCountry([income, expense(10, 'KR')], toBase);
+
+    expect(result.countries).toEqual([{ country: 'KR', total: 10, count: 1 }]);
+    expect(result.expenses).toBe(1);
+  });
+
+  it('rounds each total at the boundary', () => {
+    const result = groupExpensesByCountry(
+      [expense(0.1, 'KR'), expense(0.2, 'KR')],
+      toBase
+    );
+
+    expect(result.countries[0].total).toBe(0.3);
+  });
+
+  it('produces identical output for shuffled input', () => {
+    const rows = [
+      expense(10, 'KR'), expense(10, 'JP'), expense(5, 'DE'),
+      expense(7), expense(10, 'DE'), expense(3, 'JP'),
+    ];
+    const forward = groupExpensesByCountry(rows, toBase);
+    const reversed = groupExpensesByCountry([...rows].reverse(), toBase);
+    const rotated = groupExpensesByCountry([...rows.slice(3), ...rows.slice(0, 3)], toBase);
+
+    expect(reversed).toEqual(forward);
+    expect(rotated).toEqual(forward);
+  });
+
+  it('answers for an empty period without dividing by anything', () => {
+    expect(groupExpensesByCountry([], toBase)).toEqual({
+      countries: [], placed: 0, expenses: 0,
     });
   });
 });

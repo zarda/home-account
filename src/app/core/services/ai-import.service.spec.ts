@@ -1759,6 +1759,46 @@ describe('AIImportService', () => {
       expect('tags' in result.transactions[1]).toBeFalse();
       expect('isRecurring' in result.transactions[1]).toBeFalse();
     });
+
+    it('keeps a location that carries only a country', async () => {
+      // The row shape a backup holds for a receipt that named its country and
+      // printed no address. This path gated on a name until 0068, so such a
+      // location round-tripped out of the file and silently vanished.
+      const backup = {
+        transactions: [
+          { description: 'Cafe', amount: -5, type: 'expense',
+            date: { seconds: 1700000000 }, location: { country: 'KR' } }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].location).toEqual({ country: 'KR' });
+    });
+
+    it('drops a location shape the rules would refuse rather than failing the row', async () => {
+      // A hand-edited or truncated backup. One malformed field must not cost
+      // the transaction it sits on.
+      const backup = {
+        transactions: [
+          { description: 'A', amount: -5, type: 'expense',
+            date: { seconds: 1700000000 }, location: {} },
+          { description: 'B', amount: -6, type: 'expense',
+            date: { seconds: 1700000000 }, location: { lat: 35.66, lng: 139.71 } },
+          { description: 'C', amount: -7, type: 'expense',
+            date: { seconds: 1700000000 }, location: { name: '   ' } }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.length).toBe(3);
+      for (const row of result.transactions) {
+        expect('location' in row).toBeFalse();
+      }
+    });
   });
 
   describe('categorizeTransactions', () => {

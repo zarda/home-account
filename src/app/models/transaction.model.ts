@@ -133,8 +133,26 @@ export function firstReceiptSlot(
   return first === -1 ? 0 : first;
 }
 
+/**
+ * Where a transaction happened.
+ *
+ * The invariant, and the reason `name` is optional: a location map carries at
+ * least one of `name` or `country`. `{}` is not a location, and neither is a
+ * bare pair of coordinates — `locationSlot()` in `import-dto.utils.ts` is the
+ * one builder that decides the shape, and `txOptionalsValid` in the rules
+ * refuses the rest.
+ *
+ * A map with a `country` and no `name` means the receipt said which country it
+ * was issued in and printed no address. It is not a place anyone typed and it
+ * has no coordinate; `locationLabel()` renders it as the country's own name.
+ */
 export interface TransactionLocation {
-  name: string;
+  /**
+   * The place the receipt printed, or the one the user typed. Absent when the
+   * only thing known about the location is its country — never blank: a
+   * present-but-empty name is the shape both the builder and the rules refuse.
+   */
+  name?: string;
   lat?: number;
   lng?: number;
   /**
@@ -143,8 +161,8 @@ export interface TransactionLocation {
    * bounding-box table rather than looked up, so it is coarse near a land
    * border and absent for a coordinate in open water or a country the table
    * does not cover. For a scanned receipt it is the country the reader
-   * concluded the receipt was issued in (`readCountryCode`), filed here by
-   * `printedLocationSlot(name, country)` only when an address was printed.
+   * concluded the receipt was issued in (`readCountryCode`), filed here
+   * whether or not an address was printed (0068, amending 0064).
    *
    * Recorded because "what did the trip cost" is a question the ledger cannot
    * answer from a place name someone typed.
@@ -171,6 +189,18 @@ export interface TransactionFilters {
    * header its exact count.
    */
   goalId?: string;
+  /**
+   * Only rows recorded in this ISO 3166-1 alpha-2 country. Server-side, for
+   * the reason goalId is: country is the sparsest filter the app has — it
+   * reaches a row only from a receipt that named one or a coordinate the user
+   * attached — so a client-side pass over each fetched page would render
+   * near-empty pages and cost the header its exact count.
+   *
+   * It is the one filter that reads inside a map. Firestore addresses that
+   * with dot notation and its own composite indexes; note that adding a fifth
+   * equality field doubles the index set check-firestore-indexes.mjs demands.
+   */
+  country?: string;
 }
 
 export interface CreateTransactionDTO {

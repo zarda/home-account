@@ -1086,8 +1086,9 @@ describe('TransactionFiltersComponent', () => {
 
       const compiled = fixture.nativeElement as HTMLElement;
       const selects = compiled.querySelectorAll('.filter-grid mat-select');
-      // Type + Category + Currency
-      expect(selects.length).toBe(3);
+      // Type + Category + Currency + Country. The goal select is conditional
+      // on there being goals to link against, so it is absent here.
+      expect(selects.length).toBe(4);
     });
 
     it('should emit the chosen currency when an option is picked in the rendered dropdown', fakeAsync(() => {
@@ -1199,4 +1200,46 @@ describe('TransactionFiltersComponent', () => {
       expect(emitSpy).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('the country filter', () => {
+    it('lists the countries the bundled table knows, named and ordered by name', () => {
+      const options = component.countryOptions;
+
+      expect(options.length).toBeGreaterThan(50);
+      expect(options.map(o => o.code)).toContain('KR');
+      const names = options.map(o => o.name);
+      expect([...names].sort((a, b) => a.localeCompare(b))).toEqual(names);
+    });
+
+    it('keeps a selected country that the table does not cover', () => {
+      // readCountryCode admits any region CLDR names, so a receipt can store
+      // one the bounding-box table has no box for. An arriving filter must
+      // still render its value and stay clearable.
+      component.filters.country = 'VA';
+
+      expect(component.countryOptions.map(o => o.code)).toContain('VA');
+    });
+
+    it('counts an active country as a filter and emits it', () => {
+      spyOn(component.filtersChanged, 'emit');
+      component.filters.country = 'KR';
+
+      component.onFilterChange();
+
+      expect(component.filtersChanged.emit).toHaveBeenCalledWith(
+        jasmine.objectContaining({ country: 'KR' })
+      );
+    });
+
+    it('drops the country from the emitted filters once cleared', () => {
+      spyOn(component.filtersChanged, 'emit');
+      component.filters.country = undefined;
+
+      component.onFilterChange();
+
+      const emitted = (component.filtersChanged.emit as jasmine.Spy).calls.mostRecent().args[0];
+      expect('country' in emitted).toBeFalse();
+    });
+  });
+
 });

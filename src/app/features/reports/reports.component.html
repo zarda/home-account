@@ -50,6 +50,7 @@
             (categoryActivated)="onCategoryDrillDown($event)"
           />
           <app-recurring-breakdown [transactions]="transactions()" [currency]="baseCurrency()" />
+          <app-country-breakdown [transactions]="transactions()" [currency]="baseCurrency()" />
         </div>
       </mat-tab>
 

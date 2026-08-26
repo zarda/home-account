@@ -1,4 +1,4 @@
-import { resolveImportCurrency, toCreateTransactionDTO } from './import-dto.utils';
+import { locationSlot, resolveImportCurrency, toCreateTransactionDTO } from './import-dto.utils';
 
 describe('toCreateTransactionDTO', () => {
   const date = new Date(2026, 5, 1);
@@ -140,5 +140,101 @@ describe('toCreateTransactionDTO and the review flags', () => {
     );
     expect('receiptCountry' in dto).toBeFalse();
     expect(dto.location).toEqual({ name: 'Shibuya', country: 'JP' });
+  });
+});
+
+describe('locationSlot', () => {
+  it('writes a country-only location when a receipt named a country and printed no address', () => {
+    expect(locationSlot(undefined, 'KR')).toEqual({ location: { country: 'KR' } });
+  });
+
+  it('keeps the printed address and its country together', () => {
+    expect(locationSlot('Myeongdong', 'KR')).toEqual({
+      location: { name: 'Myeongdong', country: 'KR' }
+    });
+  });
+
+  it('writes no location at all when neither a name nor a country was read', () => {
+    expect(locationSlot(undefined, undefined)).toEqual({});
+  });
+
+  it('never writes an empty location map', () => {
+    // The shape a truthy spread waves through and the rules used to accept.
+    expect(locationSlot('', '')).toEqual({});
+    expect(locationSlot('   ', '   ')).toEqual({});
+  });
+
+  it('never writes a blank name', () => {
+    // A present-but-empty name is the hole toCreateTransactionDTO's own
+    // comment named for as long as the truthy spread owned this decision.
+    const slot = locationSlot('   ', 'JP');
+    expect(slot.location).toEqual({ country: 'JP' });
+    expect('name' in slot.location!).toBeFalse();
+  });
+
+  it('trims a name rather than storing the padding', () => {
+    expect(locationSlot('  Shibuya  ')).toEqual({ location: { name: 'Shibuya' } });
+  });
+
+  it('carries coordinates only alongside something that names the place', () => {
+    expect(locationSlot('Shibuya', undefined, { lat: 35.6, lng: 139.7 })).toEqual({
+      location: { name: 'Shibuya', lat: 35.6, lng: 139.7 }
+    });
+    // Coordinates alone are not a location: nothing renders them, and the
+    // rules refuse the map they would produce.
+    expect(locationSlot(undefined, undefined, { lat: 35.6, lng: 139.7 })).toEqual({});
+  });
+
+  it('keeps a zero coordinate, which is a real place and not an absent one', () => {
+    const slot = locationSlot(undefined, 'GH', { lat: 0, lng: 0 });
+    expect(slot.location).toEqual({ lat: 0, lng: 0, country: 'GH' });
+  });
+});
+
+describe('toCreateTransactionDTO and the location it writes', () => {
+  const date = new Date(2026, 5, 1);
+
+  it('writes a country-only location from the review-step mark', () => {
+    const dto = toCreateTransactionDTO({ amount: 9, date, receiptCountry: 'KR' }, 'USD');
+
+    expect(dto.location).toEqual({ country: 'KR' });
+  });
+
+  it('prefers the row location country over the review-step mark', () => {
+    // The address and its country came from the same answer; the mark is the
+    // weaker copy of it, so it must not overwrite what the address carried.
+    const dto = toCreateTransactionDTO({
+      amount: 9,
+      date,
+      location: { name: 'Myeongdong', country: 'KR' },
+      receiptCountry: 'JP'
+    }, 'USD');
+
+    expect(dto.location).toEqual({ name: 'Myeongdong', country: 'KR' });
+  });
+
+  it('lends the mark to a location the address named but left countryless', () => {
+    const dto = toCreateTransactionDTO({
+      amount: 9,
+      date,
+      location: { name: 'Myeongdong' },
+      receiptCountry: 'KR'
+    }, 'USD');
+
+    expect(dto.location).toEqual({ name: 'Myeongdong', country: 'KR' });
+  });
+
+  it('writes no location when neither the row nor the mark says anything', () => {
+    const dto = toCreateTransactionDTO({ amount: 9, date }, 'USD');
+
+    expect('location' in dto).toBeFalse();
+  });
+
+  it('never lets the mark itself reach the document', () => {
+    // receiptCountry is the one review mark allowed to become a field, and
+    // it becomes location.country — never a key of its own.
+    const dto = toCreateTransactionDTO({ amount: 9, date, receiptCountry: 'KR' }, 'USD');
+
+    expect('receiptCountry' in dto).toBeFalse();
   });
 });

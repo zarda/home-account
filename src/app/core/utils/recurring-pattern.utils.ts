@@ -8,6 +8,19 @@ import {
   roundMoney,
 } from './transaction-aggregation.utils';
 
+import {
+  DEFAULT_MERCHANT_SIMILARITY,
+  bigramSimilarity,
+  merchantKeysMatch
+} from './merchant-match.utils';
+
+/**
+ * Re-exported so the modules and specs that read it from here keep working.
+ * The implementation moved to merchant-match.utils with the matcher it backs;
+ * editing a pin in the same commit as the refactor is how a pin stops pinning.
+ */
+export { bigramSimilarity };
+
 /**
  * Recurring-spend detection: the subscription-creep insight.
  *
@@ -141,7 +154,7 @@ export type CoveragePredicate = (group: RecurringGroup) => boolean;
 export const DEFAULT_RECURRING_OPTIONS: RecurringOptions = {
   minOccurrences: 3,
   minDeclaredOccurrences: 2,
-  similarityThreshold: 0.7,
+  similarityThreshold: DEFAULT_MERCHANT_SIMILARITY,
   amountTolerance: 0.15,
   minAmountTolerance: 1,
   regularityRatio: 0.7,
@@ -171,45 +184,6 @@ export function normalizeMerchant(description: string): string {
   return cleaned.replace(/\s+\d+$/, '').trim();
 }
 
-/**
- * Sørensen-Dice coefficient over character bigrams, 0..1, symmetric.
- *
- * Character bigrams rather than word tokens because CJK text has no whitespace
- * to tokenise on, and length-normalised so a long description cannot dominate
- * a short one.
- */
-export function bigramSimilarity(a: string, b: string): number {
-  if (a === b) {
-    return a.length > 0 ? 1 : 0;
-  }
-  const charsA = Array.from(a);
-  const charsB = Array.from(b);
-  if (charsA.length < 2 || charsB.length < 2) {
-    return 0;
-  }
-
-  const countBigrams = (chars: string[]): Map<string, number> => {
-    const counts = new Map<string, number>();
-    for (let i = 0; i < chars.length - 1; i += 1) {
-      const gram = chars[i] + chars[i + 1];
-      counts.set(gram, (counts.get(gram) ?? 0) + 1);
-    }
-    return counts;
-  };
-
-  const bigramsA = countBigrams(charsA);
-  const bigramsB = countBigrams(charsB);
-  let shared = 0;
-  for (const [gram, count] of bigramsA) {
-    const other = bigramsB.get(gram);
-    if (other) {
-      shared += Math.min(count, other);
-    }
-  }
-
-  return (2 * shared) / (charsA.length - 1 + charsB.length - 1);
-}
-
 interface Candidate {
   transaction: Transaction;
   normalized: string;
@@ -220,18 +194,6 @@ interface Candidate {
 interface Cluster {
   representative: string;
   members: Candidate[];
-}
-
-/** Two merchant keys describe the same payee. */
-function merchantsMatch(a: string, b: string, threshold: number): boolean {
-  if (a === b) {
-    return true;
-  }
-  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
-  if (shorter.length >= 3 && longer.includes(shorter)) {
-    return true;
-  }
-  return bigramSimilarity(a, b) >= threshold;
 }
 
 function classifyCadence(medianGap: number): CadenceRange | null {
@@ -390,7 +352,7 @@ export function computeRecurringGroups(
     const clusters: Cluster[] = [];
     for (const candidate of candidates) {
       const existing = clusters.find(
-        cluster => merchantsMatch(
+        cluster => merchantKeysMatch(
           cluster.representative, candidate.normalized, settings.similarityThreshold));
       if (existing) {
         existing.members.push(candidate);

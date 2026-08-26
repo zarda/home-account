@@ -207,8 +207,23 @@ rule that satisfies all of:
 | name | matched by the **detector's own ladder** — normalized equality, containment at three characters or more, then bigram similarity at the detector's threshold |
 | amount | within the detector's tolerance of the rule's amount — 15% of the larger figure, floored at 1 — when the row's currency and the rule's agree, or when the row's currency fell back, in which case the printed figure is compared as-is |
 
-It is the same ladder coverage suppression uses, deliberately: the import and
-the Insights tab should not disagree about what counts as the same merchant.
+It is the same ladder coverage suppression uses — now literally the same
+function rather than two copies of it. `merchantKeysMatch` in
+`merchant-match.utils.ts` is the single place the rule lives, and both the
+detector and the coverage check call it, so the import and the Insights tab
+cannot disagree about what counts as the same merchant. It refuses a pair of
+empty keys, which one of the two retired copies had called a match.
+
+**It is a string ladder, and stays one.** Whether a semantic representation of
+merchant text would do better was measured rather than assumed, and declined:
+embeddings scored far better overall but merged two products from one vendor —
+`AT&T Wireless` with `AT&T Internet` — which for recurring detection turns two
+subscriptions into one wrong figure. The numbers, the corpus and the reasoning
+are in
+[ADR 0069](ADR/0069-one-ladder-decides-what-is-the-same-merchant.md) and
+[docs/merchant-match-probe](merchant-match-probe/README.md). The consequence
+that remains: a descriptor that changes script or abbreviates — `7-ELEVEN`
+against `セブン-イレブン` — still splits into two groups.
 
 **The amount stands in for the cadence.** A detected group is a set of charges
 with gaps between them, and the gaps are what make it recurring; one import row

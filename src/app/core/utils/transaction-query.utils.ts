@@ -52,6 +52,13 @@ export function buildTransactionWhere(
     whereConditions.push({ field: 'goalId', op: '==', value: filters.goalId });
   }
 
+  // Dot notation reads inside the location map. Server-side deliberately —
+  // see the field's own comment on TransactionFilters — and note that this
+  // fifth equality field doubles the index set indexes:check demands.
+  if (filters.country) {
+    whereConditions.push({ field: 'location.country', op: '==', value: filters.country });
+  }
+
   return whereConditions.length > 0 ? whereConditions : undefined;
 }
 

@@ -1,0 +1,40 @@
+@if (hasExpenses()) {
+  <mat-card class="country-breakdown">
+    <mat-card-header>
+      <mat-card-title>{{ 'reports.spendingByCountry' | translate }}</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (hasCountries()) {
+        @for (row of rows(); track row.country) {
+          <div class="breakdown-row">
+            <mat-icon class="row-icon">public</mat-icon>
+            <span class="row-label">
+              {{ row.name }}
+              <span class="row-count">({{ row.count }})</span>
+            </span>
+            <span class="row-amount">{{ row.total | currency:currencyCode:'symbol':'1.2-2' }}</span>
+            <span class="row-percentage">{{ row.share | localeNumber:'1.0-0' }}%</span>
+          </div>
+        }
+
+        @if (remainderCount() > 0) {
+          <p class="breakdown-note">
+            {{ 'reports.countriesMore' | translate: { count: remainderCount() } }}
+          </p>
+        }
+
+        <p class="breakdown-note coverage">
+          {{ 'reports.countryCoverage' | translate: { placed: placed(), count: expenses() } }}
+        </p>
+      } @else {
+        <app-empty-state
+          size="sm"
+          icon="public"
+          [title]="'reports.noCountriesRecorded' | translate"
+          [description]="'reports.noCountriesRecordedHint' | translate"
+        />
+      }
+    </mat-card-content>
+  </mat-card>
+}

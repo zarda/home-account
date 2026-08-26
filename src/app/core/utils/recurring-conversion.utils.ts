@@ -7,9 +7,9 @@ import {
 import {
   DEFAULT_RECURRING_OPTIONS,
   RecurringCadence,
-  bigramSimilarity,
   normalizeMerchant
 } from './recurring-pattern.utils';
+import { merchantKeysMatch } from './merchant-match.utils';
 import { compareIds, fnv1a32 } from './transaction-aggregation.utils';
 import { parseDayKey } from './transaction-date.utils';
 
@@ -118,7 +118,7 @@ export function isGroupCovered(
     if (!rule.isActive) return false;
     if (rule.frequency.type !== equivalent.type) return false;
     if (rule.frequency.interval !== equivalent.interval) return false;
-    return merchantNamesMatch(groupKey, normalizeMerchant(rule.name));
+    return merchantKeysMatch(groupKey, normalizeMerchant(rule.name));
   });
 }
 
@@ -180,7 +180,7 @@ export function matchRecurringRule(
       return (
         rule.isActive &&
         rule.type === row.type &&
-        merchantNamesMatch(key, normalizeMerchant(rule.name)) &&
+        merchantKeysMatch(key, normalizeMerchant(rule.name)) &&
         (!comparable || amountsAgree(row.amount, rule.amount))
       );
     }) ?? null
@@ -191,11 +191,4 @@ function amountsAgree(a: number, b: number): boolean {
   const { amountTolerance, minAmountTolerance } = DEFAULT_RECURRING_OPTIONS;
   const tolerance = Math.max(minAmountTolerance, amountTolerance * Math.max(Math.abs(a), Math.abs(b)));
   return Math.abs(Math.abs(a) - Math.abs(b)) <= tolerance;
-}
-
-function merchantNamesMatch(a: string, b: string): boolean {
-  if (!a || !b) return false;
-  if (a === b) return true;
-  if (a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a))) return true;
-  return bigramSimilarity(a, b) >= DEFAULT_RECURRING_OPTIONS.similarityThreshold;
 }

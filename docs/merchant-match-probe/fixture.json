@@ -1,0 +1,431 @@
+{
+  "pairs": [
+    {
+      "a": "SQ *BLUE BOTTLE COFFEE",
+      "b": "BLUE BOTTLE COFFEE 1234",
+      "same": true,
+      "family": "processor-prefix",
+      "why": "Square prefix plus a per-visit store number"
+    },
+    {
+      "a": "PAYPAL *SPOTIFY",
+      "b": "Spotify AB",
+      "same": true,
+      "family": "processor-prefix",
+      "why": "PayPal wrapper against the legal name"
+    },
+    {
+      "a": "TST* SWEETGREEN",
+      "b": "Sweetgreen",
+      "same": true,
+      "family": "processor-prefix",
+      "why": "Toast prefix"
+    },
+    {
+      "a": "SQ *THE COFFEE CLUB",
+      "b": "The Coffee Club",
+      "same": true,
+      "family": "processor-prefix",
+      "why": "Square prefix only"
+    },
+    {
+      "a": "AMZN Mktp DE*2X4G9",
+      "b": "Amazon.de",
+      "same": true,
+      "family": "processor-prefix",
+      "why": "The example the issue opens with"
+    },
+    {
+      "a": "AMZN MKTP US*M12AB",
+      "b": "Amazon Marketplace",
+      "same": true,
+      "family": "processor-prefix",
+      "why": "Marketplace abbreviated"
+    },
+    {
+      "a": "PAYPAL *UBER BV",
+      "b": "Uber BV",
+      "same": true,
+      "family": "processor-prefix",
+      "why": "PayPal wrapper, legal suffix kept"
+    },
+    {
+      "a": "SQ *TARTINE BAKERY",
+      "b": "Tartine Manufactory",
+      "same": false,
+      "family": "processor-prefix",
+      "why": "Two businesses from one owner, billed separately"
+    },
+    {
+      "a": "Nintendo Co Ltd",
+      "b": "Nintendo",
+      "same": true,
+      "family": "legal-suffix",
+      "why": "Suffix dropped"
+    },
+    {
+      "a": "株式会社ファミリーマート",
+      "b": "ファミリーマート",
+      "same": true,
+      "family": "legal-suffix",
+      "why": "Japanese company prefix"
+    },
+    {
+      "a": "SEVEN-ELEVEN JAPAN CO LTD",
+      "b": "Seven-Eleven Japan",
+      "same": true,
+      "family": "legal-suffix",
+      "why": "Suffix plus case"
+    },
+    {
+      "a": "Zalando SE",
+      "b": "Zalando",
+      "same": true,
+      "family": "legal-suffix",
+      "why": "German legal form"
+    },
+    {
+      "a": "台灣大哥大股份有限公司",
+      "b": "台灣大哥大",
+      "same": true,
+      "family": "legal-suffix",
+      "why": "Chinese company suffix"
+    },
+    {
+      "a": "Delivery Hero SE",
+      "b": "Delivery Hero Korea",
+      "same": false,
+      "family": "legal-suffix",
+      "why": "Parent against a national subsidiary billed separately"
+    },
+    {
+      "a": "7-ELEVEN",
+      "b": "セブン-イレブン",
+      "same": true,
+      "family": "cross-script",
+      "why": "Same chain, Latin against katakana"
+    },
+    {
+      "a": "STARBUCKS",
+      "b": "スターバックス",
+      "same": true,
+      "family": "cross-script",
+      "why": "Transliteration only"
+    },
+    {
+      "a": "MCDONALDS",
+      "b": "マクドナルド",
+      "same": true,
+      "family": "cross-script",
+      "why": "Transliteration only"
+    },
+    {
+      "a": "UNIQLO",
+      "b": "ユニクロ",
+      "same": true,
+      "family": "cross-script",
+      "why": "Transliteration only"
+    },
+    {
+      "a": "FAMILYMART",
+      "b": "全家便利商店",
+      "same": true,
+      "family": "cross-script",
+      "why": "Same chain, English against its Chinese name"
+    },
+    {
+      "a": "MUJI",
+      "b": "無印良品",
+      "same": true,
+      "family": "cross-script",
+      "why": "Brand against its Japanese name"
+    },
+    {
+      "a": "STARBUCKS",
+      "b": "マクドナルド",
+      "same": false,
+      "family": "cross-script",
+      "why": "Two chains, one of them transliterated"
+    },
+    {
+      "a": "7-ELEVEN",
+      "b": "ローソン",
+      "same": false,
+      "family": "cross-script",
+      "why": "Two convenience chains"
+    },
+    {
+      "a": "MCDONALDS",
+      "b": "MC DONALD'S",
+      "same": true,
+      "family": "abbreviation",
+      "why": "Spacing and apostrophe"
+    },
+    {
+      "a": "H&M",
+      "b": "H & M HENNES MAURITZ",
+      "same": true,
+      "family": "abbreviation",
+      "why": "Initialism against the full name"
+    },
+    {
+      "a": "KFC",
+      "b": "Kentucky Fried Chicken",
+      "same": true,
+      "family": "abbreviation",
+      "why": "Initialism, no shared bigrams"
+    },
+    {
+      "a": "BK",
+      "b": "Burger King",
+      "same": true,
+      "family": "abbreviation",
+      "why": "Two-letter initialism"
+    },
+    {
+      "a": "JR EAST",
+      "b": "East Japan Railway",
+      "same": true,
+      "family": "abbreviation",
+      "why": "Initialism against the full name"
+    },
+    {
+      "a": "BP",
+      "b": "British Petroleum",
+      "same": true,
+      "family": "abbreviation",
+      "why": "Initialism"
+    },
+    {
+      "a": "KFC",
+      "b": "Kentucky Derby Museum",
+      "same": false,
+      "family": "abbreviation",
+      "why": "Shares the first word only"
+    },
+    {
+      "a": "BK",
+      "b": "Bank of America",
+      "same": false,
+      "family": "abbreviation",
+      "why": "Two letters that could initialise either"
+    },
+    {
+      "a": "スターバックス コーヒー 渋谷",
+      "b": "スターバックス渋谷店",
+      "same": true,
+      "family": "cjk-variant",
+      "why": "Spacing and a branch suffix"
+    },
+    {
+      "a": "全聯福利中心 #123",
+      "b": "全聯福利中心",
+      "same": true,
+      "family": "cjk-variant",
+      "why": "Per-store number"
+    },
+    {
+      "a": "セブンイレブン 渋谷店",
+      "b": "セブン-イレブン新宿店",
+      "same": true,
+      "family": "cjk-variant",
+      "why": "Two branches of one chain"
+    },
+    {
+      "a": "吉野家 新宿",
+      "b": "吉野家",
+      "same": true,
+      "family": "cjk-variant",
+      "why": "Branch dropped"
+    },
+    {
+      "a": "すき家 渋谷",
+      "b": "吉野家 渋谷",
+      "same": false,
+      "family": "cjk-variant",
+      "why": "Two beef-bowl chains, same district"
+    },
+    {
+      "a": "全聯福利中心",
+      "b": "全家便利商店",
+      "same": false,
+      "family": "cjk-variant",
+      "why": "Two chains sharing one character"
+    },
+    {
+      "a": "AT&T Wireless",
+      "b": "AT&T Internet",
+      "same": false,
+      "family": "same-vendor",
+      "why": "Two bills, both recurring; merging makes one wrong figure"
+    },
+    {
+      "a": "Apple.com/Bill",
+      "b": "Apple Store",
+      "same": false,
+      "family": "same-vendor",
+      "why": "Subscriptions against retail purchases"
+    },
+    {
+      "a": "Amazon Prime",
+      "b": "Amazon.de",
+      "same": false,
+      "family": "same-vendor",
+      "why": "A subscription against ordinary shopping"
+    },
+    {
+      "a": "Google Storage",
+      "b": "Google Play",
+      "same": false,
+      "family": "same-vendor",
+      "why": "Two Google subscriptions"
+    },
+    {
+      "a": "Verizon Wireless",
+      "b": "Verizon Fios",
+      "same": false,
+      "family": "same-vendor",
+      "why": "Phone against home internet"
+    },
+    {
+      "a": "SFR Mobile",
+      "b": "SFR Box",
+      "same": false,
+      "family": "same-vendor",
+      "why": "Mobile against broadband"
+    },
+    {
+      "a": "Netflix",
+      "b": "Netflix UK",
+      "same": true,
+      "family": "same-vendor",
+      "why": "One subscription, descriptor gained a region"
+    },
+    {
+      "a": "Spotify AB",
+      "b": "Spotify Premium",
+      "same": true,
+      "family": "same-vendor",
+      "why": "One subscription, two descriptors"
+    },
+    {
+      "a": "CVS",
+      "b": "CVs Nails",
+      "same": false,
+      "family": "string-near",
+      "why": "The containment rung matches these today"
+    },
+    {
+      "a": "Shell",
+      "b": "Shel Bakery",
+      "same": false,
+      "family": "string-near",
+      "why": "One character apart at the front"
+    },
+    {
+      "a": "Target",
+      "b": "Target Optical",
+      "same": false,
+      "family": "string-near",
+      "why": "Distinct businesses inside one store"
+    },
+    {
+      "a": "Costco Gas",
+      "b": "Costco Wholesale",
+      "same": false,
+      "family": "string-near",
+      "why": "Fuel against groceries, separately budgeted"
+    },
+    {
+      "a": "Lidl",
+      "b": "Aldi",
+      "same": false,
+      "family": "string-near",
+      "why": "Two discounters, similar length"
+    },
+    {
+      "a": "MTA",
+      "b": "MTA Bridges and Tunnels",
+      "same": false,
+      "family": "string-near",
+      "why": "Transit fares against tolls"
+    },
+    {
+      "a": "Bar Luca",
+      "b": "Barlucca Ristorante",
+      "same": false,
+      "family": "string-near",
+      "why": "Near-identical names, different places"
+    },
+    {
+      "a": "Uber",
+      "b": "Uber Eats",
+      "same": false,
+      "family": "string-near",
+      "why": "Rides against food delivery"
+    },
+    {
+      "a": "NETFLIX.COM",
+      "b": "Netflix.com",
+      "same": true,
+      "family": "already-matched",
+      "why": "Case only"
+    },
+    {
+      "a": "STARBUCKS #4412",
+      "b": "STARBUCKS #7781",
+      "same": true,
+      "family": "already-matched",
+      "why": "Per-store numbers"
+    },
+    {
+      "a": "ＮＥＴＦＬＩＸ",
+      "b": "NETFLIX",
+      "same": true,
+      "family": "already-matched",
+      "why": "Full-width folded by NFKC"
+    },
+    {
+      "a": "Trader Joe's",
+      "b": "TRADER JOES",
+      "same": true,
+      "family": "already-matched",
+      "why": "Case and apostrophe"
+    },
+    {
+      "a": "Whole Foods Market",
+      "b": "WHOLEFOODS MKT",
+      "same": true,
+      "family": "abbreviation",
+      "why": "MKT abbreviated and a space dropped; scores 0.667, just under the 0.7 cut"
+    },
+    {
+      "a": "Netflix",
+      "b": "Groceries",
+      "same": false,
+      "family": "already-refused",
+      "why": "Nothing in common"
+    },
+    {
+      "a": "Rent",
+      "b": "Spotify",
+      "same": false,
+      "family": "already-refused",
+      "why": "Nothing in common"
+    },
+    {
+      "a": "Con Edison",
+      "b": "Verizon",
+      "same": false,
+      "family": "already-refused",
+      "why": "Two utilities, unrelated names"
+    },
+    {
+      "a": "Delta Air Lines",
+      "b": "Delta Dental",
+      "same": false,
+      "family": "already-refused",
+      "why": "One word shared, unrelated businesses"
+    }
+  ]
+}

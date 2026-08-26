@@ -598,6 +598,126 @@ describe('TransactionFormComponent', () => {
       expect(dto.location).toBeUndefined();
     });
 
+    // 0068: a receipt can name the country it was issued in through a tax
+    // number, a phone format or its own script while printing no address at
+    // all. 0064 kept that country as a review mark because nothing rendered
+    // it; these pin that it now reaches the document, and the two places it
+    // still must not.
+    describe('the country a scan concluded', () => {
+      const scan = (component: TransactionFormComponent) =>
+        (component as unknown as { scanReceipt: (f: File) => Promise<void> })
+          .scanReceipt(receiptFile());
+
+      it('stores the scanned country when the receipt printed no address', async () => {
+        strategy.processReceipt.and.resolveTo(scanResult({ receiptCountry: 'KR' }));
+        const component = build().componentInstance;
+        await scan(component);
+        validForm(component);
+        component.form.patchValue({ locationName: '' });
+
+        await component.onSubmit();
+
+        const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+        expect(dto.location).toEqual({ country: 'KR' });
+      });
+
+      it('keeps the printed address and its country together', async () => {
+        strategy.processReceipt.and.resolveTo(scanResult({
+          receiptCountry: 'KR',
+          location: { name: 'Myeongdong', country: 'KR' },
+        }));
+        const component = build().componentInstance;
+        await scan(component);
+        validForm(component);
+
+        await component.onSubmit();
+
+        const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+        expect(dto.location).toEqual({ name: 'Myeongdong', country: 'KR' });
+      });
+
+      it('does not attach the paper country to a place the user typed instead', async () => {
+        // The name-equality gate 0064 set: a typed name is the user's own
+        // answer to "where", and the paper's country is not attached to it.
+        strategy.processReceipt.and.resolveTo(scanResult({
+          receiptCountry: 'KR',
+          location: { name: 'Myeongdong', country: 'KR' },
+        }));
+        const component = build().componentInstance;
+        await scan(component);
+        validForm(component);
+        component.form.patchValue({ locationName: "Mum's place" });
+
+        await component.onSubmit();
+
+        const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+        expect(dto.location).toEqual({ name: "Mum's place" });
+      });
+
+      it('lets an attached coordinate overrule the scanned country', async () => {
+        // 0064's one exception, unchanged: a coordinate lands on the row only
+        // by a deliberate user action, so it outranks the paper.
+        strategy.processReceipt.and.resolveTo(scanResult({ receiptCountry: 'KR' }));
+        const component = build().componentInstance;
+        await scan(component);
+        validForm(component);
+        component.form.patchValue({ locationName: 'Aoyama Market' });
+        component.locationCoords.set({ lat: 35.66, lng: 139.71 }); // Tokyo
+
+        await component.onSubmit();
+
+        const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+        expect(dto.location).toEqual({
+          name: 'Aoyama Market', lat: 35.66, lng: 139.71, country: 'JP',
+        });
+      });
+
+      it('drops the scanned country when a new scan replaces it', async () => {
+        strategy.processReceipt.and.resolveTo(scanResult({ receiptCountry: 'KR' }));
+        const component = build().componentInstance;
+        await scan(component);
+
+        strategy.processReceipt.and.resolveTo(scanResult({}));
+        await scan(component);
+        validForm(component);
+        component.form.patchValue({ locationName: '' });
+
+        await component.onSubmit();
+
+        const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+        expect('location' in dto).toBeFalse();
+      });
+
+      it('stores no country when the scan concluded none', async () => {
+        strategy.processReceipt.and.resolveTo(scanResult({}));
+        const component = build().componentInstance;
+        await scan(component);
+        validForm(component);
+        component.form.patchValue({ locationName: '' });
+
+        await component.onSubmit();
+
+        const dto = transactionService.addTransaction.calls.mostRecent().args[0];
+        expect('location' in dto).toBeFalse();
+      });
+
+      it('still clears a stored location in edit mode when nothing was scanned', async () => {
+        const txn = createTransaction({
+          id: 'e1',
+          location: { name: 'Aoyama Market', country: 'JP' },
+        });
+        const component = build({ mode: 'edit', transaction: txn }).componentInstance;
+        validForm(component);
+        component.form.patchValue({ locationName: '' });
+
+        await component.onSubmit();
+
+        const dto = transactionService.updateTransaction.calls.mostRecent().args[1];
+        expect('location' in dto).toBeTrue();
+        expect(dto.location).toBeUndefined();
+      });
+    });
+
     it('updates an existing transaction in edit mode', async () => {
       const txn = createTransaction({ id: 'e1' });
       const component = build({ mode: 'edit', transaction: txn }).componentInstance;

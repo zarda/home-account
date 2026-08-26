@@ -68,10 +68,12 @@ reverse — why a thing is the way it is, not how to use it.
 | [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted | 2026-08-21 |
 | [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted | 2026-08-22 |
 | [0063](0063-an-import-suggests-only-what-the-account-already-knows.md) | An import suggests only what the account already knows | Accepted | 2026-08-22 |
-| [0064](0064-the-country-comes-off-the-paper-before-the-phone.md) | The country comes off the paper before it comes off the phone | Accepted | 2026-08-23 |
+| [0064](0064-the-country-comes-off-the-paper-before-the-phone.md) | The country comes off the paper before it comes off the phone | Accepted; amended by 0068 | 2026-08-23 |
 | [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted | 2026-08-23 |
 | [0066](0066-an-answers-budget-follows-its-question.md) | An answer's budget follows its question, and a cut-off answer is read as far as it goes | Accepted | 2026-08-24 |
 | [0067](0067-a-photo-is-made-to-fit-and-never-costs-its-transaction.md) | A receipt photo is made to fit, and never costs its transaction | Accepted | 2026-08-25 |
+| [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted | 2026-08-26 |
+| [0069](0069-one-ladder-decides-what-is-the-same-merchant.md) | One ladder decides what is the same merchant, and it stays a string ladder | Accepted | 2026-08-26 |
 
 ## What belongs here
 

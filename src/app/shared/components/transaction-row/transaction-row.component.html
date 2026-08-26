@@ -92,7 +92,7 @@
       <!-- Line 2: where it belongs — category, place, tags. -->
       <span class="row-category">
         {{ categoryName() }}
-        @if (transaction().location?.name; as locationName) {
+        @if (transaction().location | locationLabel; as locationName) {
           @if (mapsUrl(); as url) {
             <a
               class="location-chip location-link"

@@ -25,6 +25,7 @@ import {
 import { SpendingAnalysisComponent } from './spending-analysis/spending-analysis.component';
 import { CategoryBreakdownComponent } from './category-breakdown/category-breakdown.component';
 import { RecurringBreakdownComponent } from './recurring-breakdown/recurring-breakdown.component';
+import { CountryBreakdownComponent } from './country-breakdown/country-breakdown.component';
 import { MonthlyComparisonComponent } from './monthly-comparison/monthly-comparison.component';
 import { InsightsTabComponent } from './insights/insights-tab.component';
 import { ForecastComponent } from './forecast/forecast.component';
@@ -56,6 +57,7 @@ export const REPORT_TABS = ['analysis', 'categories', 'monthly', 'insights', 'fo
     SpendingAnalysisComponent,
     CategoryBreakdownComponent,
     RecurringBreakdownComponent,
+    CountryBreakdownComponent,
     MonthlyComparisonComponent,
     InsightsTabComponent,
     ForecastComponent,

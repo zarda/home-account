@@ -195,6 +195,28 @@ memory is in-memory and cleared on sign-out. The ladder, its order and what
 it rejected are in
 [ADR 0064](ADR/0064-the-country-comes-off-the-paper-before-the-phone.md).
 
+**A country reaches the document whether or not an address was printed.** 0064
+kept it as a review-step mark, because a country with no place name rendered as
+nothing anywhere;
+[ADR 0068](ADR/0068-a-country-is-stored-on-the-evidence-that-produced-it.md)
+gives it a reader and lets it through. A receipt that reveals where it was
+issued through a tax number, a phone format or its own script now stores
+`location.country` with no `location.name` beside it, and that location renders
+as the country's own name in the active language.
+
+**A country is written by the evidence that produced it.** Accepting a
+suggested *currency* never writes a country. For the `receipt` rung the
+question does not arise — the country is stored because the receipt said so.
+For the `position` and `locale` rungs the answer is no: writing `TW` onto a
+Korean receipt because the phone is in Taiwan is the failure 0064 exists to
+prevent, and "dated today" licenses a suggestion, not a fact in the ledger. The
+same rule is why removing a location in the review card also forgets the
+country the receipt claimed — otherwise the mapper would rebuild it from the
+mark the user just dismissed.
+
+**Nothing was backfilled.** A country is read forward only, so the country
+rollup in Reports starts empty on every existing account and says so.
+
 **Representable is not the same as offered.** The currency *picker* lists a
 curated nineteen, because a 160-entry dropdown helps nobody. Extraction is not
 limited to those: a receipt in a currency outside the list is stored and
@@ -250,6 +272,12 @@ A scan fills two fields beyond the amount, the date and the category, and they
 get there in opposite ways: the location is **read off the paper**, and the
 tags come from **what the account already uses**. Neither is ever invented. The decision and what it rejected are in
 [ADR 0063](ADR/0063-an-import-suggests-only-what-the-account-already-knows.md).
+
+**A location map has to say something**: at least one of a name or a country.
+`locationSlot()` in `import-dto.utils.ts` is the one builder that decides that,
+and the Firestore rules refuse the rest — an empty map, a bare coordinate pair
+and a blank name are all rejected at the write. `{ name: '' }` in particular
+had been legal for as long as the mapper spread the location on truthiness.
 
 **The location is the branch name and/or street address the receipt itself
 prints**, asked for exactly as printed and in the receipt's own script — never

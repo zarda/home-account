@@ -343,5 +343,46 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
       const stored = (await getDoc(doc(firestore, `users/${uid}/transactions/${id}`))).data() ?? {};
       expect(stored['location']).toEqual({ name: 'Shibuya' });
     }, 20000);
+
+    it('stores a location carrying only a country', async () => {
+      // The shape a receipt that printed no address now produces. The rules
+      // are the only thing that can refuse a location saying nothing, so a
+      // real write is the only place this shape is actually proved legal.
+      const id = await service.addTransaction({
+        type: 'expense',
+        amount: 12,
+        currency: 'KRW',
+        categoryId: 'cat-food',
+        description: 'Country-only location',
+        date: new Date(2026, 5, 21, 12),
+        location: { country: 'KR' }
+      });
+      written.push(id);
+
+      const stored = (await getDoc(doc(firestore, `users/${uid}/transactions/${id}`))).data() ?? {};
+      expect(stored['location']).toEqual({ country: 'KR' });
+    }, 20000);
+  });
+
+  describe('the country filter', () => {
+    // Reads inside the location map with dot notation. The emulator does not
+    // enforce composite indexes, so this proves the path and the predicate,
+    // NOT that the deployed query will work -- that needs
+    // `firebase deploy --only firestore:indexes` and a run against the real
+    // project (docs/emulator-blind-spots.md).
+    it('reads only the transactions recorded in one country', async () => {
+      const rows = await firstValueFrom(service.getTransactions({ country: 'JP' }));
+
+      expect(rows.map(r => r.id)).toEqual(['smoke-range-2026-06-located']);
+    }, 20000);
+
+    it('reads nothing for a country no row records', async () => {
+      // Deliberately not KR: the country-only round-trip above writes one,
+      // and its cleanup runs in that describe's afterAll. Under Jasmine's
+      // random ordering this would pass or fail depending on which ran first.
+      const rows = await firstValueFrom(service.getTransactions({ country: 'BR' }));
+
+      expect(rows).toEqual([]);
+    }, 20000);
   });
 });

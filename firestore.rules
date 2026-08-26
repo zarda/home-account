@@ -68,10 +68,20 @@ service cloud.firestore {
         // Same enum budgetCreateValid pins. Transactions were the one place it
         // was accepted unvalidated, because the field never reached a write.
         && (!('period' in d) || d.period in ['weekly', 'monthly', 'yearly'])
-        // The map itself was the whole check; country is derived on device
-        // from coordinates, so it is worth pinning to the shape the client
-        // produces rather than accepting any string.
+        // A location map has to say something. 0064 cited "the rules accept a
+        // nameless location map" as a reason not to store one; now that a
+        // nameless map is legal (0068), {} and a bare coordinate pair are the
+        // shapes to refuse, and this is the only place that can. The blank
+        // name is the hole toCreateTransactionDTO's comment named for years.
+        // lat/lng were never individually checked, and a nameless location is
+        // exactly the shape where a bad coordinate would be the only other
+        // content, so they are pinned here too.
         && (!('location' in d) || (d.location is map
+             && ('name' in d.location || 'country' in d.location)
+             && (!('name' in d.location)
+                 || (d.location.name is string && d.location.name.size() > 0))
+             && (!('lat' in d.location) || d.location.lat is number)
+             && (!('lng' in d.location) || d.location.lng is number)
              && (!('country' in d.location)
                  || (d.location.country is string && d.location.country.size() == 2))))
         && (!('createdAt' in d) || d.createdAt is timestamp)
