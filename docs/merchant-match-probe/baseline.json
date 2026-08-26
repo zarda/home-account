@@ -1,0 +1,275 @@
+{
+  "model": "gemini-embedding-001",
+  "threshold": 0.7,
+  "pairs": 61,
+  "fromCsv": 0,
+  "string": {
+    "tp": 17,
+    "fp": 5,
+    "fn": 18,
+    "tn": 21,
+    "precision": 0.773,
+    "recall": 0.486,
+    "f1": 0.596,
+    "families": {
+      "processor-prefix": {
+        "correct": 5,
+        "total": 8
+      },
+      "legal-suffix": {
+        "correct": 5,
+        "total": 6
+      },
+      "cross-script": {
+        "correct": 2,
+        "total": 8
+      },
+      "abbreviation": {
+        "correct": 3,
+        "total": 9
+      },
+      "cjk-variant": {
+        "correct": 4,
+        "total": 6
+      },
+      "same-vendor": {
+        "correct": 7,
+        "total": 8
+      },
+      "string-near": {
+        "correct": 4,
+        "total": 8
+      },
+      "already-matched": {
+        "correct": 4,
+        "total": 4
+      },
+      "already-refused": {
+        "correct": 4,
+        "total": 4
+      }
+    }
+  },
+  "embedding": {
+    "best": {
+      "threshold": 0.75,
+      "tp": 30,
+      "fp": 10,
+      "fn": 5,
+      "tn": 16,
+      "precision": 0.75,
+      "recall": 0.857,
+      "f1": 0.8
+    },
+    "sweep": [
+      {
+        "threshold": 0.6,
+        "tp": 35,
+        "fp": 23,
+        "fn": 0,
+        "tn": 3,
+        "precision": 0.603,
+        "recall": 1,
+        "f1": 0.753
+      },
+      {
+        "threshold": 0.65,
+        "tp": 35,
+        "fp": 22,
+        "fn": 0,
+        "tn": 4,
+        "precision": 0.614,
+        "recall": 1,
+        "f1": 0.761
+      },
+      {
+        "threshold": 0.7,
+        "tp": 34,
+        "fp": 17,
+        "fn": 1,
+        "tn": 9,
+        "precision": 0.667,
+        "recall": 0.971,
+        "f1": 0.791
+      },
+      {
+        "threshold": 0.75,
+        "tp": 30,
+        "fp": 10,
+        "fn": 5,
+        "tn": 16,
+        "precision": 0.75,
+        "recall": 0.857,
+        "f1": 0.8
+      },
+      {
+        "threshold": 0.8,
+        "tp": 23,
+        "fp": 6,
+        "fn": 12,
+        "tn": 20,
+        "precision": 0.793,
+        "recall": 0.657,
+        "f1": 0.719
+      },
+      {
+        "threshold": 0.85,
+        "tp": 19,
+        "fp": 1,
+        "fn": 16,
+        "tn": 25,
+        "precision": 0.95,
+        "recall": 0.543,
+        "f1": 0.691
+      },
+      {
+        "threshold": 0.9,
+        "tp": 8,
+        "fp": 0,
+        "fn": 27,
+        "tn": 26,
+        "precision": 1,
+        "recall": 0.229,
+        "f1": 0.372
+      },
+      {
+        "threshold": 0.95,
+        "tp": 5,
+        "fp": 0,
+        "fn": 30,
+        "tn": 26,
+        "precision": 1,
+        "recall": 0.143,
+        "f1": 0.25
+      }
+    ],
+    "families": {
+      "processor-prefix": {
+        "correct": 5,
+        "total": 8
+      },
+      "legal-suffix": {
+        "correct": 5,
+        "total": 6
+      },
+      "cross-script": {
+        "correct": 8,
+        "total": 8
+      },
+      "abbreviation": {
+        "correct": 8,
+        "total": 9
+      },
+      "cjk-variant": {
+        "correct": 4,
+        "total": 6
+      },
+      "same-vendor": {
+        "correct": 4,
+        "total": 8
+      },
+      "string-near": {
+        "correct": 4,
+        "total": 8
+      },
+      "already-matched": {
+        "correct": 4,
+        "total": 4
+      },
+      "already-refused": {
+        "correct": 4,
+        "total": 4
+      }
+    },
+    "requests": 2,
+    "elapsedMs": 4717,
+    "wonByEmbedding": [
+      [
+        "AMZN Mktp DE*2X4G9",
+        "Amazon.de"
+      ],
+      [
+        "7-ELEVEN",
+        "セブン-イレブン"
+      ],
+      [
+        "STARBUCKS",
+        "スターバックス"
+      ],
+      [
+        "MCDONALDS",
+        "マクドナルド"
+      ],
+      [
+        "UNIQLO",
+        "ユニクロ"
+      ],
+      [
+        "FAMILYMART",
+        "全家便利商店"
+      ],
+      [
+        "MUJI",
+        "無印良品"
+      ],
+      [
+        "MCDONALDS",
+        "MC DONALD'S"
+      ],
+      [
+        "KFC",
+        "Kentucky Fried Chicken"
+      ],
+      [
+        "JR EAST",
+        "East Japan Railway"
+      ],
+      [
+        "BP",
+        "British Petroleum"
+      ],
+      [
+        "スターバックス コーヒー 渋谷",
+        "スターバックス渋谷店"
+      ],
+      [
+        "セブンイレブン 渋谷店",
+        "セブン-イレブン新宿店"
+      ],
+      [
+        "Whole Foods Market",
+        "WHOLEFOODS MKT"
+      ]
+    ],
+    "lostByEmbedding": [
+      [
+        "SQ *TARTINE BAKERY",
+        "Tartine Manufactory"
+      ],
+      [
+        "すき家 渋谷",
+        "吉野家 渋谷"
+      ],
+      [
+        "全聯福利中心",
+        "全家便利商店"
+      ],
+      [
+        "AT&T Wireless",
+        "AT&T Internet"
+      ],
+      [
+        "SFR Mobile",
+        "SFR Box"
+      ],
+      [
+        "Lidl",
+        "Aldi"
+      ],
+      [
+        "Bar Luca",
+        "Barlucca Ristorante"
+      ]
+    ]
+  }
+}
