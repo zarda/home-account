@@ -63,6 +63,7 @@ import { DialogHeaderComponent } from '../../../shared/components/dialog-header/
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
+import { locationSlot } from '../../../core/utils/import-dto.utils';
 import { countryDisplayName, currencyReasonKey, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
 import { readCountryCode } from '../../../core/utils/receipt-extraction.utils';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
@@ -176,6 +177,18 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
    * name outranks the paper it replaced, and the country goes with it (#156).
    */
   private printedLocationCountry: { name: string; country: string } | null = null;
+
+  /**
+   * The country the last scan concluded the receipt was issued in.
+   *
+   * Separate state from `printedLocationCountry`, not a relaxation of it. That
+   * one is gated on the Location field still holding the paper's own address,
+   * because an edited address no longer describes what the paper described.
+   * This one never came from an address at all — a receipt can name its
+   * country through a tax number, a phone format or its own script — so an
+   * empty or rewritten address field does not refute it (0068).
+   */
+  private scanCountry: string | null = null;
 
   // Images already stored on the item being edited, by storage slot. Kept as
   // local state so per-image removal and conversion update the strip without
@@ -653,28 +666,28 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   private locationField(rawName: unknown): Partial<CreateTransactionDTO> {
     const name = typeof rawName === 'string' ? rawName.trim() : '';
     if (!name) {
+      // No address, but the scan may still have concluded a country. That is
+      // a location in its own right now (0068); it renders as the country's
+      // name and it is what makes a trip reportable.
+      const scanned = locationSlot(undefined, this.scanCountry);
+      if (scanned.location) return scanned;
       return this.data.mode === 'edit' ? { location: undefined } : {};
     }
     const coords = this.locationCoords();
     if (!coords) {
       // The scan's own conclusion about the address it just prefilled, kept
-      // only while the field still holds that exact prefill.
+      // only while the field still holds that exact prefill. A name the user
+      // typed is their own answer to "where", and the paper's country is not
+      // attached to it.
       const printedCountry = this.printedLocationCountry?.name === name
         ? this.printedLocationCountry.country
         : undefined;
-      return { location: { name, ...(printedCountry ? { country: printedCountry } : {}) } };
+      return locationSlot(name, printedCountry);
     }
     // Placed on device from the bundled table; absent when the coordinates
     // fall in open water or a country the table does not cover.
     const country = countryForCoordinates(coords.lat, coords.lng);
-    return {
-      location: {
-        name,
-        lat: coords.lat,
-        lng: coords.lng,
-        ...(country ? { country } : {}),
-      },
-    };
+    return locationSlot(name, country, coords);
   }
 
   private openLimitDialog(): void {
@@ -824,6 +837,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // scan this form instance ran would mistake this scan's own read for a
       // user settling that earlier fallback (#156).
       this.scanCurrencyFellBack = false;
+      this.scanCountry = null;
 
       // Auto-fill form with extracted data
       this.ensureCurrencyListed(primary.currency);
@@ -864,6 +878,9 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       } else {
         this.printedLocationCountry = null;
       }
+      // The receipt's own country claim, independent of whether it printed an
+      // address and of what the Location field ends up holding.
+      this.scanCountry = primary.receiptCountry || null;
 
       this.scanFieldConfidence.set(primary.fieldConfidence ?? null);
 
@@ -896,6 +913,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.suggestedCurrency.set(null);
       this.suggestedCoordinates.set(null);
       this.scanCurrencyFellBack = false;
+      this.scanCountry = null;
     } finally {
       this.isScanning.set(false);
     }
@@ -1131,8 +1149,10 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.scanCurrencyFellBack = false;
       // The prefilled address's country claim dies with the scan that made
       // it — otherwise a still-typed Location field would save with a
-      // country read off a receipt the user just discarded.
+      // country read off a receipt the user just discarded. The receipt's own
+      // country claim dies with it for the same reason.
       this.printedLocationCountry = null;
+      this.scanCountry = null;
     }
   }
 

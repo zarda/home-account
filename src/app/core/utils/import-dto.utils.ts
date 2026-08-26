@@ -65,9 +65,9 @@ export function resolveImportCurrency(
  * script while printing no address at all (0068, amending 0064).
  */
 export function locationSlot(
-  name?: string,
-  country?: string,
-  coords?: { lat?: number; lng?: number }
+  name?: string | null,
+  country?: string | null,
+  coords?: { lat?: number; lng?: number } | null
 ): { location?: TransactionLocation } {
   const trimmed = name?.trim();
   const code = country?.trim();
