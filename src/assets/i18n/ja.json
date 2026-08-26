@@ -181,7 +181,8 @@
     "locationUnavailable": "現在地を取得できませんでした。場所名の入力は引き続き可能です。",
     "clearCoordinates": "座標を削除",
     "attachScanPosition": "現在地をこのレシートの場所として添付",
-    "useSuggestedCategory": "提案されたカテゴリ {{category}} を使用"
+    "useSuggestedCategory": "提案されたカテゴリ {{category}} を使用",
+    "countryFilter": "国"
   },
   "budget": {
     "title": "予算",

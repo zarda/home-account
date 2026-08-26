@@ -16,6 +16,9 @@ import { Subject, Subscription, debounceTime } from 'rxjs';
 import { Category, CurrencyInfo, Goal, SavedSearch, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CurrencyService } from '../../../core/services/currency.service';
+import { COUNTRY_CURRENCY } from '../../../core/utils/country-bounds';
+import { countryDisplayName } from '../../../core/utils/currency-suggestion.utils';
+import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
 import { AnalyticsService } from '../../../core/services/analytics.service';
@@ -56,6 +59,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   private transactionService = inject(TransactionService);
   private cdr = inject(ChangeDetectorRef);
   private currencyService = inject(CurrencyService);
+  private localeFormat = inject(LocaleFormatService);
   private goalService = inject(GoalService);
   private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   searchHistory = inject(SearchHistoryService);
@@ -103,6 +107,36 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (!selected || active.some(goal => goal.id === selected)) return active;
     const filtered = this.goalService.goals().find(goal => goal.id === selected);
     return filtered ? [...active, filtered] : active;
+  }
+
+  /**
+   * The countries offered for filtering, named in the active language and
+   * ordered by that name.
+   *
+   * The domain is the bundled bounding-box table's own country set — the same
+   * list the currency ladder places a coordinate in — rather than every region
+   * CLDR knows, because ADR 0008's discipline is that no country list ships
+   * for the model to be steered by, and this one already exists for another
+   * reason. It is travel-destination coverage, which is exactly when a country
+   * gets recorded.
+   *
+   * A receipt can still name a region outside that set, so a selected value
+   * that is not in it is appended rather than dropped — the goal picker's rule,
+   * for the same reason: an arriving filter must render its value and stay
+   * clearable. Listing the whole domain rather than only the countries present
+   * follows the currency filter beside it.
+   *
+   * A getter rather than a computed, again like goalOptions: `filters` is a
+   * plain object, so the selected code is not a signal.
+   */
+  get countryOptions(): { code: string; name: string }[] {
+    const locale = this.localeFormat.locale;
+    const codes = new Set(Object.keys(COUNTRY_CURRENCY));
+    const selected = this.filters.country;
+    if (selected) codes.add(selected);
+    return [...codes]
+      .map(code => ({ code, name: countryDisplayName(code, locale) }))
+      .sort((a, b) => a.name.localeCompare(b.name, locale) || a.code.localeCompare(b.code));
   }
 
   // Store transaction dates for calendar highlighting - keyed by "year-month"
@@ -283,6 +317,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
       typeof this.filters.maxAmount === 'number' ||
       !!this.filters.tags?.length ||
       !!this.filters.goalId ||
+      !!this.filters.country ||
       this.activeQuickFilter() !== 'thisMonth'
     );
   }
@@ -443,6 +478,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (this.filters.currency) count++;
     if (this.filters.tags?.length) count++;
     if (this.filters.goalId) count++;
+    if (this.filters.country) count++;
     return count;
   }
 
@@ -551,6 +587,7 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
     if (this.filters.currency) cleanFilters.currency = this.filters.currency;
     if (this.filters.tags?.length) cleanFilters.tags = this.filters.tags;
     if (this.filters.goalId) cleanFilters.goalId = this.filters.goalId;
+    if (this.filters.country) cleanFilters.country = this.filters.country;
 
     this.filtersChanged.emit(cleanFilters);
   }

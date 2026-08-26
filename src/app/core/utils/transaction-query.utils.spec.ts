@@ -28,6 +28,41 @@ describe('buildTransactionWhere', () => {
     expect(conditions?.length).toBe(4);
   });
 
+  it('constrains the query by country server-side, reading inside the location map', () => {
+    // Dot notation, and server-side for the same reason as goalId: country is
+    // the sparsest filter the app has, so a client-side pass over each fetched
+    // page would render near-empty pages.
+    expect(buildTransactionWhere({ country: 'KR' })).toEqual([
+      { field: 'location.country', op: '==', value: 'KR' }
+    ]);
+  });
+
+  it('composes country with every other server-side field', () => {
+    const conditions = buildTransactionWhere({
+      goalId: 'g1',
+      type: 'expense',
+      categoryId: 'food',
+      currency: 'USD',
+      country: 'KR'
+    });
+
+    expect(conditions).toContain({ field: 'location.country', op: '==', value: 'KR' });
+    // Five equality fields is what check-firestore-indexes.mjs computes the
+    // required index set from; the count is the contract it greps for.
+    expect(conditions?.length).toBe(5);
+  });
+
+  it('leaves country out of the client-side pass', () => {
+    const rows = [
+      createTransaction({ id: 'a', location: { country: 'KR' } }),
+      createTransaction({ id: 'b', location: { country: 'JP' } }),
+    ];
+
+    // The server already narrowed; re-filtering here would be a second,
+    // page-local pass that the pager's counts do not expect.
+    expect(applyClientTransactionFilters(rows, { country: 'KR' }).length).toBe(2);
+  });
+
   it('leaves client-only fields out of the query', () => {
     // Amount bounds, tags and search are applied after fetch; sending them
     // here would demand composite indexes that do not exist.

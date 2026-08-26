@@ -181,7 +181,8 @@
     "locationUnavailable": "無法取得您的位置。您仍可輸入地點名稱。",
     "clearCoordinates": "移除座標",
     "attachScanPosition": "將目前位置附加為這張收據的地點",
-    "useSuggestedCategory": "使用建議分類 {{category}}"
+    "useSuggestedCategory": "使用建議分類 {{category}}",
+    "countryFilter": "國家"
   },
   "budget": {
     "title": "預算",

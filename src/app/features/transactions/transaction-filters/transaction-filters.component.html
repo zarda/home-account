@@ -270,6 +270,17 @@
           </mat-select>
         </mat-form-field>
 
+        <!-- Country: server-side, like currency and the goal link -->
+        <mat-form-field appearance="outline" class="compact-field">
+          <mat-label>{{ 'transactions.countryFilter' | translate }}</mat-label>
+          <mat-select [(ngModel)]="filters.country" (selectionChange)="onFilterChange()">
+            <mat-option [value]="undefined">{{ 'transactions.all' | translate }}</mat-option>
+            @for (country of countryOptions; track country.code) {
+              <mat-option [value]="country.code">{{ country.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
         <!-- Goal: hidden when there is nothing to link against -->
         @if (goalOptions.length > 0) {
           <mat-form-field appearance="outline" class="compact-field">

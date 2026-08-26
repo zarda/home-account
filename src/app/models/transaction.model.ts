@@ -189,6 +189,18 @@ export interface TransactionFilters {
    * header its exact count.
    */
   goalId?: string;
+  /**
+   * Only rows recorded in this ISO 3166-1 alpha-2 country. Server-side, for
+   * the reason goalId is: country is the sparsest filter the app has — it
+   * reaches a row only from a receipt that named one or a coordinate the user
+   * attached — so a client-side pass over each fetched page would render
+   * near-empty pages and cost the header its exact count.
+   *
+   * It is the one filter that reads inside a map. Firestore addresses that
+   * with dot notation and its own composite indexes; note that adding a fifth
+   * equality field doubles the index set check-firestore-indexes.mjs demands.
+   */
+  country?: string;
 }
 
 export interface CreateTransactionDTO {
