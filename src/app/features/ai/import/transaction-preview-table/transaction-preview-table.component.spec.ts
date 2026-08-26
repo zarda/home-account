@@ -587,6 +587,40 @@ describe('TransactionPreviewTableComponent', () => {
       expect(row.location).toEqual({ name: 'Shibuya' });
     });
 
+    it('removing a location also forgets the country the receipt claimed', () => {
+      // The mapper rebuilds a location from receiptCountry when the row has
+      // none, so clearing the slot alone would walk the dismissed country
+      // straight back into the document.
+      const row = makeRow({ location: { country: 'KR' }, receiptCountry: 'KR' });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.removeLocation(row);
+
+      expect(emitted[0][0].location).toBeUndefined();
+      expect(emitted[0][0].receiptCountry).toBeUndefined();
+      expect(row.receiptCountry).toBe('KR');
+    });
+
+    it('keeps the currency offer after the location is removed', () => {
+      // The offer is materialised once at row build, so dropping the country
+      // mark afterwards must not take the suggestion with it.
+      const row = makeRow({
+        location: { country: 'KR' },
+        receiptCountry: 'KR',
+        currencyFellBack: true,
+        currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+      });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.removeLocation(row);
+
+      expect(emitted[0][0].currencySuggestion).toEqual({ code: 'KRW', country: 'KR', reason: 'receipt' });
+    });
+
     it('removes one tag and leaves the others', () => {
       const row = makeRow({ tags: ['coffee', 'work'] });
       component.transactions = [row];
@@ -779,6 +813,26 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     component.transactionsUpdated.subscribe(t => emitted.push(t));
     return emitted;
   }
+
+  it('renders a country-only location as the country name', () => {
+    // 0064 declined to store a nameless country because "a country alone
+    // renders as nothing anywhere". This is that objection answered.
+    component.transactions = [makeRow({ location: { country: 'KR' } })];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const chip = fixture.nativeElement.querySelector('.extra-chip .extra-text') as HTMLElement;
+    expect(chip.textContent?.trim()).toBe('South Korea');
+  });
+
+  it('still renders a printed address by its own name', () => {
+    component.transactions = [makeRow({ location: { name: 'Myeongdong', country: 'KR' } })];
+    component.categories = [];
+    fixture.detectChanges();
+
+    const chip = fixture.nativeElement.querySelector('.extra-chip .extra-text') as HTMLElement;
+    expect(chip.textContent?.trim()).toBe('Myeongdong');
+  });
 
   it('clicking accept applies the offer, the same way acceptCurrencySuggestion does', () => {
     const row = makeRow({

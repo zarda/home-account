@@ -42,6 +42,7 @@ import { TransactionRowComponent } from '../../../shared/components/transaction-
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
+import { LocationLabelPipe } from '../../../shared/pipes/location-label.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
 import { FitTextDirective } from '../../../shared/directives/fit-text.directive';
 
@@ -69,7 +70,8 @@ const HIGHLIGHT_MS = 2000;
     MatProgressSpinnerModule,
     MatTooltipModule,
     EmptyStateComponent,
-    TranslatePipe
+    TranslatePipe,
+    LocationLabelPipe
   ],
   templateUrl: './transaction-list.component.html',
   styleUrl: './transaction-list.component.scss',

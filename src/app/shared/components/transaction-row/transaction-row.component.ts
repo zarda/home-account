@@ -20,6 +20,7 @@ import { CategoryChipComponent } from '../category-chip/category-chip.component'
 import { FitTextDirective } from '../../directives/fit-text.directive';
 import { SwipeRevealDirective } from '../../directives/swipe-reveal.directive';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { LocationLabelPipe } from '../../pipes/location-label.pipe';
 
 /**
  * One transaction-row anatomy (category tile beside a three-line text stack:
@@ -31,7 +32,7 @@ import { TranslatePipe } from '../../pipes/translate.pipe';
 @Component({
   selector: 'app-transaction-row',
   standalone: true,
-  imports: [MatIconModule, CategoryChipComponent, FitTextDirective, SwipeRevealDirective, TranslatePipe],
+  imports: [MatIconModule, CategoryChipComponent, FitTextDirective, SwipeRevealDirective, TranslatePipe, LocationLabelPipe],
   templateUrl: './transaction-row.component.html',
   styleUrl: './transaction-row.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -167,7 +167,7 @@
               @if (row.location; as location) {
                 <span class="extra-chip">
                   <mat-icon aria-hidden="true">place</mat-icon>
-                  <span class="extra-text">{{ location.name }}</span>
+                  <span class="extra-text">{{ location | locationLabel }}</span>
                   <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
                     <mat-icon>close</mat-icon>
                   </button>

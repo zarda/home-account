@@ -183,6 +183,28 @@ describe('TransactionListComponent', () => {
     });
   });
 
+  describe('mapsUrl', () => {
+    it('links a location that carries coordinates', () => {
+      const txn = createTransaction({ location: { name: 'Aoyama', lat: 35.66, lng: 139.71 } });
+      expect(component.mapsUrl(txn)).toBe(
+        'https://www.google.com/maps/search/?api=1&query=35.66,139.71'
+      );
+    });
+
+    it('renders a country-only location without a maps link', () => {
+      // 0068 lets a location exist with nothing but a country. It has no
+      // coordinate to point at, so it takes the plain-text branch rather
+      // than sending a country code to a maps search.
+      const txn = createTransaction({ location: { country: 'KR' } });
+      expect(component.mapsUrl(txn)).toBeNull();
+    });
+
+    it('renders a name-only location without a maps link', () => {
+      const txn = createTransaction({ location: { name: 'Aoyama Market' } });
+      expect(component.mapsUrl(txn)).toBeNull();
+    });
+  });
+
   describe('confirmDelete', () => {
     it('emits delete when confirmed', () => {
       dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);

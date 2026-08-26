@@ -21,6 +21,7 @@ import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/cu
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
+import { LocationLabelPipe } from '../../../../shared/pipes/location-label.pipe';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 
@@ -39,6 +40,7 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
     MatTooltipModule,
     LocaleDatePipe,
     TranslatePipe,
+    LocationLabelPipe,
     FitTextDirective
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -241,10 +243,13 @@ export class TransactionPreviewTableComponent {
     return row.currencyFellBack ? `${this.currencyFellBackTooltip()}. ${label}` : label;
   }
 
-  // The mapper spreads `location` only when truthy and `tags` only when
-  // non-empty, so an undefined slot or an emptied list is exactly "not written".
+  // `tags` is spread only when non-empty, so an emptied list is exactly "not
+  // written". The location is no longer that simple: since 0068 the mapper
+  // rebuilds one from `receiptCountry` when the row carries no location, so
+  // clearing the slot alone would let the country the user just dismissed
+  // walk back in. Both marks go, or removal does not mean removal.
   removeLocation(transaction: CategorizedImportTransaction): void {
-    this.replaceRow(transaction, { location: undefined });
+    this.replaceRow(transaction, { location: undefined, receiptCountry: undefined });
   }
 
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {

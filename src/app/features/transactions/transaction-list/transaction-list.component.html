@@ -126,7 +126,7 @@
         >{{ 'transactions.description' | translate }}</th>
         <td mat-cell *matCellDef="let transaction" class="col-description">
           <span class="description-text">{{ transaction.description }}</span>
-          @if (transaction.location?.name; as locationName) {
+          @if (transaction.location | locationLabel; as locationName) {
             @if (mapsUrl(transaction); as url) {
               <a
                 class="location-chip location-link"
