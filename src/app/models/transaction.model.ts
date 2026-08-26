@@ -133,8 +133,26 @@ export function firstReceiptSlot(
   return first === -1 ? 0 : first;
 }
 
+/**
+ * Where a transaction happened.
+ *
+ * The invariant, and the reason `name` is optional: a location map carries at
+ * least one of `name` or `country`. `{}` is not a location, and neither is a
+ * bare pair of coordinates — `locationSlot()` in `import-dto.utils.ts` is the
+ * one builder that decides the shape, and `txOptionalsValid` in the rules
+ * refuses the rest.
+ *
+ * A map with a `country` and no `name` means the receipt said which country it
+ * was issued in and printed no address. It is not a place anyone typed and it
+ * has no coordinate; `locationLabel()` renders it as the country's own name.
+ */
 export interface TransactionLocation {
-  name: string;
+  /**
+   * The place the receipt printed, or the one the user typed. Absent when the
+   * only thing known about the location is its country — never blank: a
+   * present-but-empty name is the shape both the builder and the rules refuse.
+   */
+  name?: string;
   lat?: number;
   lng?: number;
   /**
@@ -143,8 +161,8 @@ export interface TransactionLocation {
    * bounding-box table rather than looked up, so it is coarse near a land
    * border and absent for a coordinate in open water or a country the table
    * does not cover. For a scanned receipt it is the country the reader
-   * concluded the receipt was issued in (`readCountryCode`), filed here by
-   * `printedLocationSlot(name, country)` only when an address was printed.
+   * concluded the receipt was issued in (`readCountryCode`), filed here
+   * whether or not an address was printed (0068, amending 0064).
    *
    * Recorded because "what did the trip cost" is a question the ledger cannot
    * answer from a place name someone typed.

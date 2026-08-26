@@ -733,8 +733,9 @@ describe('CloudLLMProviderBase', () => {
       const rows = await provider.extractStatementTransactions('img');
       expect(rows[0].location).toEqual({ name: 'Shibuya 1-2-3', country: 'JP' });
       expect(rows[0].receiptCountry).toBe('JP');
-      // No address: the country is a mark on the row and nothing more.
-      expect('location' in rows[1]).toBeFalse();
+      // No address: since 0068 the country is a location in its own right,
+      // and still a mark on the row for the currency ladder to read.
+      expect(rows[1].location).toEqual({ country: 'JP' });
       expect(rows[1].receiptCountry).toBe('JP');
       // A name is not a code.
       expect('receiptCountry' in rows[2]).toBeFalse();

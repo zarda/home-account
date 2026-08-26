@@ -191,12 +191,17 @@ describe('printedLocationSlot', () => {
     expect(printedLocationSlot(undefined)).toEqual({});
   });
 
-  it('files the country under the printed address, and only there', () => {
-    // TransactionLocation.name is required: a country with no printed
-    // address has nowhere to live on the transaction (a known gap), so it
-    // stays a review-step mark and the slot stays empty.
+  it('files the country whether or not an address was printed', () => {
+    // 0064 kept a countryless-address pairing because TransactionLocation
+    // required a name and a country alone rendered as nothing. 0068 gives it
+    // a reader, so the country no longer needs an address to hang it on.
     expect(printedLocationSlot('Shibuya', 'JP')).toEqual({ location: { name: 'Shibuya', country: 'JP' } });
     expect(printedLocationSlot('Shibuya', '')).toEqual({ location: { name: 'Shibuya' } });
-    expect(printedLocationSlot(undefined, 'JP')).toEqual({});
+    expect(printedLocationSlot(undefined, 'JP')).toEqual({ location: { country: 'JP' } });
+  });
+
+  it('still yields nothing when neither an address nor a country was read', () => {
+    expect(printedLocationSlot(undefined, undefined)).toEqual({});
+    expect(printedLocationSlot('', '')).toEqual({});
   });
 });

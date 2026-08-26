@@ -8,6 +8,7 @@
  */
 import { isCurrencyCode } from '../../models';
 import type { FieldConfidence, TransactionLocation } from '../../models';
+import { locationSlot } from './import-dto.utils';
 
 /**
  * A confidence the model reported, clamped to 0–1.
@@ -128,17 +129,16 @@ function canonicalizeRegion(code: string): string {
  * currency ladder is the harmless one: none of them is a COUNTRY_CURRENCY
  * key, so it simply finds nothing for them, the same fallback a code this
  * function cannot place already gets. The other is `location.country` on a
- * transaction (`printedLocationSlot`), which only ever stores this value
- * alongside a printed address the same answer also produced — a receipt
- * claiming to be issued from "the European Union" rather than a place is not
- * a case the address next to it is trustworthy for either, so a macroregion
- * landing there is no worse than the free-text place name a model can put in
- * that same slot unchecked. No reader exists yet for either consumer —
- * `location.country` is write-only today, and nothing displays, exports or
- * aggregates it. The read that would eventually face this tradeoff is a
- * country rollup, the reason `transaction.model.ts` gives for keeping the
- * field at all, and it would see one of these macroregions rather than a
- * country for exactly the receipts this paragraph describes.
+ * transaction (`printedLocationSlot`), which since 0068 stores this value
+ * with or without a printed address — a receipt claiming to be issued from
+ * "the European Union" rather than a place is not a case the address next to
+ * it is trustworthy for either, so a macroregion landing there is no worse
+ * than the free-text place name a model can put in that same slot unchecked.
+ * The reader this paragraph used to say did not exist now does: the country
+ * rollup in Reports groups by exactly this value, so a receipt of that kind
+ * shows up under a macroregion rather than a country. `Intl.DisplayNames`
+ * names `EU` and `QO`, so the row is labelled rather than blank — it reads
+ * as a coarser answer, which is what it is, instead of a broken one.
  */
 export function readCountryCode(value: unknown): string {
   if (typeof value !== 'string') {
@@ -217,13 +217,17 @@ export function readPrintedLocation(value: unknown, merchant?: unknown): string 
 }
 
 /**
- * The row slot for a printed location, or nothing at all when none was read.
- * The country rides inside it only when there is an address to hang it on.
+ * The row slot for a printed location, or nothing at all when neither an
+ * address nor a country was read.
+ *
+ * The country no longer needs an address to hang it on: a receipt that names
+ * its country through a tax number, a phone format or its own script yields a
+ * location carrying only that country (0068, amending 0064). `locationSlot`
+ * owns the shape; this keeps the name the receipt readers call it by.
  */
 export function printedLocationSlot(
   name: string | undefined,
   country?: string
 ): { location?: TransactionLocation } {
-  if (!name) return {};
-  return { location: { name, ...(country ? { country } : {}) } };
+  return locationSlot(name, country);
 }
