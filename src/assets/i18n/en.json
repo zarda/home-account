@@ -60,7 +60,6 @@
   "nav": {
     "dashboard": "Dashboard",
     "transactions": "Transactions",
-    "budget": "Budget",
     "budgets": "Budgets",
     "reports": "Reports",
     "ai": "AI",
@@ -68,7 +67,10 @@
     "settings": "Settings",
     "about": "About",
     "add": "Add",
-    "more": "More"
+    "more": "More",
+    "searchHistory": "Search History",
+    "importFile": "Import",
+    "importHistory": "Import History"
   },
   "dashboard": {
     "title": "Dashboard",

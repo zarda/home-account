@@ -6,12 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { TranslationService } from '../../../core/services/translation.service';
-
-interface NavItem {
-  labelKey: string;
-  icon: string;
-  route: string;
-}
+import { NAV_ITEMS } from '../nav-items';
 
 @Component({
   selector: 'app-sidebar',
@@ -27,19 +22,8 @@ export class SidebarComponent {
   @Input() isExpanded = true;
   @Output() navItemClicked = new EventEmitter<void>();
 
-  private navItemsConfig: NavItem[] = [
-    { labelKey: 'nav.dashboard', icon: 'dashboard', route: '/dashboard' },
-    { labelKey: 'nav.transactions', icon: 'receipt_long', route: '/transactions' },
-    { labelKey: 'nav.budget', icon: 'savings', route: '/budgets' },
-    { labelKey: 'nav.reports', icon: 'bar_chart', route: '/reports' },
-    { labelKey: 'nav.ai', icon: 'psychology', route: '/ai' },
-    { labelKey: 'nav.data', icon: 'storage', route: '/data' },
-    { labelKey: 'nav.settings', icon: 'settings', route: '/settings' },
-    { labelKey: 'nav.about', icon: 'info', route: '/about' },
-  ];
-
   navItems = computed(() =>
-    this.navItemsConfig.map(item => ({
+    NAV_ITEMS.map(item => ({
       ...item,
       label: this.translationService.t(item.labelKey)
     }))

@@ -60,7 +60,6 @@
   "nav": {
     "dashboard": "ダッシュボード",
     "transactions": "取引履歴",
-    "budget": "予算",
     "budgets": "予算",
     "reports": "レポート",
     "ai": "AI",
@@ -68,7 +67,10 @@
     "settings": "設定",
     "about": "について",
     "add": "追加",
-    "more": "その他"
+    "more": "その他",
+    "searchHistory": "検索履歴",
+    "importFile": "インポート",
+    "importHistory": "インポート履歴"
   },
   "dashboard": {
     "title": "ダッシュボード",

@@ -60,7 +60,6 @@
   "nav": {
     "dashboard": "儀表板",
     "transactions": "交易紀錄",
-    "budget": "預算",
     "budgets": "預算",
     "reports": "報表",
     "ai": "AI",
@@ -68,7 +67,10 @@
     "settings": "設定",
     "about": "關於",
     "add": "新增",
-    "more": "更多"
+    "more": "更多",
+    "searchHistory": "搜尋紀錄",
+    "importFile": "匯入",
+    "importHistory": "匯入歷史"
   },
   "dashboard": {
     "title": "儀表板",
