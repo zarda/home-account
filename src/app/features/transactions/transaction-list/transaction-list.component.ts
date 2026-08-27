@@ -37,6 +37,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { QuickAddService } from '../../../core/services/quick-add.service';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
@@ -97,6 +98,7 @@ export class TransactionListComponent {
   private categoryHelperService = inject(CategoryHelperService);
   private translationService = inject(TranslationService);
   private dialog = inject(MatDialog);
+  private quickAdd = inject(QuickAddService);
 
   displayedColumns = ['date', 'category', 'description', 'amount', 'actions'];
 
@@ -217,6 +219,13 @@ export class TransactionListComponent {
 
   onRetry(): void {
     void this.windowSource.retry();
+  }
+
+  // The empty-state CTA (shown both for a genuinely empty list and for
+  // filters that match nothing) opens the same quick-add seam as the bottom
+  // nav and the page's own add button.
+  onAddFromEmptyState(): void {
+    this.quickAdd.openAddTransaction();
   }
 
   // Helper methods - these are called from template, so they're fine as methods

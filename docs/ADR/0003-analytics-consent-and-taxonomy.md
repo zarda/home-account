@@ -201,9 +201,12 @@ split the Screens report. `FirebaseAutomaticScreenReportingEnabled` is `NO`.
 - **Two accounts on one device share an app-instance id** (and a `_ga` cookie
   on web), and the native enabled flag persists in `NSUserDefaults` across
   accounts. This is one more reason `setUserId` stays off.
-- **No first-run consent prompt.** #113 asks for one; it belongs with the
-  onboarding flow in #83, which does not exist. Until then the setting is
-  discoverable only in Settings, which costs opt-in rate but no privacy.
+- **No first-run consent prompt.** #113 asked for one, to be carried by the
+  onboarding flow in #83. #83 has since shipped, deliberately without a consent
+  step: ADR 0004 made collection follow the tier — always on for free accounts,
+  opt-out for premium — so a first-run ask would misrepresent a choice the free
+  tier does not have. ADR 0072 records that decision. The setting stays
+  discoverable in Settings, which costs opt-in rate but no privacy.
 - **CI has no iOS job**, so every native change here is verified only by a
   local `npm run build:ios` and an Xcode run.
 - **App Store privacy labels are outstanding** — tracked in #127.

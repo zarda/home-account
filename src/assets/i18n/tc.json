@@ -60,7 +60,6 @@
   "nav": {
     "dashboard": "儀表板",
     "transactions": "交易紀錄",
-    "budget": "預算",
     "budgets": "預算",
     "reports": "報表",
     "ai": "AI",
@@ -68,7 +67,9 @@
     "settings": "設定",
     "about": "關於",
     "add": "新增",
-    "more": "更多"
+    "searchHistory": "搜尋紀錄",
+    "importFile": "匯入照片",
+    "importHistory": "匯入歷史"
   },
   "dashboard": {
     "title": "儀表板",
@@ -569,7 +570,16 @@
     "platformWeb": "網頁",
     "platformIos": "iPhone 或 iPad",
     "platformAndroid": "Android",
-    "platformUnknown": "未知裝置"
+    "platformUnknown": "未知裝置",
+    "accessibility": "輔助功能",
+    "fontScale": "文字大小",
+    "fontScaleDefault": "標準",
+    "fontScaleLarge": "大",
+    "fontScaleExtraLarge": "特大",
+    "highContrast": "高對比",
+    "highContrastHint": "提高整個應用程式中文字與背景的對比度。",
+    "reducedMotion": "減少動態效果",
+    "reducedMotionHint": "關閉非必要的動畫與畫面轉場效果。"
   },
   "data": {
     "title": "您的資料",
@@ -1350,5 +1360,28 @@
     "narrativeRefresh": "重新撰寫",
     "narrativeUnchanged": "與上個月相比沒有太大變化。",
     "narrativeNote": "依據上方數字撰寫。僅傳送總額與分類名稱，不會傳送說明、備註或個別交易。"
+  },
+  "onboarding": {
+    "title": "歡迎使用家庭記帳",
+    "welcomeTitle": "把錢的事，集中在一個地方",
+    "welcomeBody": "記錄支出、設定預算、追蹤目標進度，全都在這裡。一切從記下一筆交易開始。",
+    "waysTitle": "記錄支出的三種方式",
+    "wayAdd": "手動新增交易 — 只記一筆時最快的方式。",
+    "wayScan": "用相機掃描紙本收據，自動讀取金額、日期與店家。",
+    "wayImport": "把手邊既有的照片或檔案整批匯入。",
+    "startTitle": "先從一筆開始",
+    "startBody": "記下今天花的一筆錢。預算、目標與報表，都建立在你記錄的交易之上。",
+    "addFirst": "新增交易",
+    "scanFirst": "掃描收據",
+    "skip": "略過",
+    "stepOf": "步驟 {{current}}／{{total}}"
+  },
+  "palette": {
+    "title": "指令面板",
+    "placeholder": "搜尋頁面與操作",
+    "noResults": "沒有符合的項目",
+    "sectionNavigate": "前往",
+    "sectionActions": "操作",
+    "resultCount": "{{count}} 個結果"
   }
 }

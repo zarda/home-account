@@ -31,7 +31,7 @@ import { InsightsTabComponent } from './insights/insights-tab.component';
 import { ForecastComponent } from './forecast/forecast.component';
 import { ExportDialogComponent } from './export-dialog/export-dialog.component';
 import { Category, Transaction, baseCurrencyOf} from '../../models';
-import { tabAnimationDuration } from '../../core/layout/motion';
+import { AccessibilityService } from '../../core/services/accessibility.service';
 import {
   groupExpensesByCategory,
   sumByType,
@@ -76,6 +76,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private analytics = inject(AnalyticsService);
   private pendingFilters = inject(PendingFiltersService);
   private router = inject(Router);
+  private accessibility = inject(AccessibilityService);
 
   isLoading = signal(true);
 
@@ -90,7 +91,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   );
 
   // 0ms under prefers-reduced-motion (tab slide bypasses the CSS switch).
-  readonly tabAnimationDuration = tabAnimationDuration();
+  readonly tabAnimationDuration = this.accessibility.tabAnimationDuration;
 
   // User info
   baseCurrency = computed(() => baseCurrencyOf(this.authService.currentUser()));

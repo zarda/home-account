@@ -84,6 +84,10 @@ export interface UserPreferences {
   appLockTimeoutMinutes?: number; // Grace period after backgrounding; absent = default.
   enableUsageAnalytics?: boolean; // Premium only, absent = off. Ignored on the free tier,
                                   // where collection is always on — see docs/analytics.md.
+  fontScale?: number;             // UI text scale; absent or off-list = default.
+  highContrast?: boolean;         // Absent = off.
+  reducedMotion?: boolean;        // Absent = off.
+  onboardingCompleted?: boolean;  // Absent = not yet completed; the first-run welcome is offered.
 }
 
 /** Auto-lock delays offered in settings, in minutes. 0 locks immediately. */
@@ -108,6 +112,33 @@ export function effectiveAppLockTimeoutMinutes(
     return stored;
   }
   return DEFAULT_APP_LOCK_TIMEOUT_MINUTES;
+}
+
+/** UI text scales offered in settings. 1 is the platform default size. */
+export const FONT_SCALES: readonly number[] = [1, 1.15, 1.3];
+
+export const DEFAULT_FONT_SCALE = 1;
+
+/**
+ * Resolve the UI text scale, tolerating values written by other builds the
+ * same way effectiveAppLockTimeoutMinutes() tolerates unknown timeouts.
+ */
+export function effectiveFontScale(prefs: UserPreferences | null | undefined): number {
+  const stored = prefs?.fontScale;
+  if (typeof stored === 'number' && FONT_SCALES.includes(stored)) {
+    return stored;
+  }
+  return DEFAULT_FONT_SCALE;
+}
+
+/** Whether the account asked for a higher-contrast palette. Absent means off. */
+export function highContrastEnabled(prefs: UserPreferences | null | undefined): boolean {
+  return prefs?.highContrast === true;
+}
+
+/** Whether the account asked to reduce interface motion. Absent means off. */
+export function reducedMotionRequested(prefs: UserPreferences | null | undefined): boolean {
+  return prefs?.reducedMotion === true;
 }
 
 /** The account's tier. No subscription record means the free tier. */

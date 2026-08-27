@@ -12,12 +12,12 @@
 .sidebar-docked {
   position: fixed;
   top: calc(64px + var(--safe-top)); // Below header (+ notch)
-  left: 0;
+  inset-inline-start: 0;
   bottom: 0;
   width: 256px;
   z-index: var(--z-docked-sidebar);
   background: var(--surface-card);
-  border-right: 1px solid var(--border-primary);
+  border-inline-end: 1px solid var(--border-primary);
   overflow-y: auto;
 }
 
@@ -25,8 +25,7 @@
 .sidebar-backdrop {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   bottom: 0;
   background: var(--overlay-backdrop);
   z-index: var(--z-drawer-backdrop);
@@ -37,18 +36,19 @@
 .sidebar-drawer {
   position: fixed;
   top: 0;
-  left: 0;
+  inset-inline-start: 0;
   bottom: 0;
   width: 280px;
   padding-top: var(--safe-top);
   z-index: var(--z-drawer);
   background: var(--surface-card);
-  border-right: 1px solid var(--border-primary);
+  border-inline-end: 1px solid var(--border-primary);
   box-shadow: var(--shadow-overlay);
   animation: slideIn 0.2s ease-out;
   overflow-y: auto;
 }
 
+/* direction:physical — drawer slide; mirrored variant lands with the first RTL locale */
 @keyframes slideIn {
   from {
     transform: translateX(-100%);
@@ -62,8 +62,7 @@
 .main-container {
   position: fixed;
   top: 0;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   bottom: 0;
   overflow-y: auto;
   padding-top: calc(64px + var(--safe-top));
@@ -84,7 +83,7 @@
 }
 
 .main-container.with-docked-sidebar {
-  left: 256px;
+  inset-inline-start: 256px;
 }
 
 .main-container.with-bottom-nav {
@@ -107,8 +106,7 @@
   display: none;
   position: fixed;
   bottom: 0;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   // Home-indicator space below the 64px bar; the nav's own surface
   // paints the inset (see bottom-nav.component.scss).
   height: calc(64px + var(--safe-bottom));

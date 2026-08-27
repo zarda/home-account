@@ -1,6 +1,7 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { ThemeService } from './theme.service';
+import { AccessibilityService } from './accessibility.service';
 
 export interface ChartPalette {
   /** Legend and dataset-label text — --text-secondary. */
@@ -27,6 +28,7 @@ export interface ChartPalette {
 export class ChartThemeService {
   private themeService = inject(ThemeService);
   private document = inject(DOCUMENT);
+  private accessibility = inject(AccessibilityService);
 
   /** Design-token snapshot; recomputed on every effective-theme flip. */
   readonly palette = computed<ChartPalette>(() => {
@@ -55,14 +57,12 @@ export class ChartThemeService {
   /**
    * Chart.js animation config. Canvas animations run off the main thread and
    * so are invisible to the global CSS prefers-reduced-motion kill-switch;
-   * disable them here when the user asks for reduced motion.
+   * disable them here when the user asks for reduced motion. Routed through
+   * AccessibilityService so a runtime toggle (not just the OS setting) is
+   * honored, same as the account preference.
    */
   animation(): false | { duration: number } {
-    return this.prefersReducedMotion() ? false : { duration: 400 };
-  }
-
-  private prefersReducedMotion(): boolean {
-    return this.document.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    return this.accessibility.reducedMotion() ? false : { duration: 400 };
   }
 
   private readTokens(): ChartPalette {

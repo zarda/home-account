@@ -2,11 +2,10 @@ import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { MatDialog } from '@angular/material/dialog';
 import { BottomNavComponent } from './bottom-nav.component';
+import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { TransactionFormComponent } from '../../../features/transactions/transaction-form/transaction-form.component';
-import { CameraCaptureComponent } from '../../../features/transactions/camera-capture/camera-capture.component';
+import { navItemFor } from '../nav-items';
 
 const LABELS: Record<string, string> = {
   'nav.dashboard': 'Dashboard',
@@ -23,10 +22,14 @@ class StubPage {}
 describe('BottomNavComponent', () => {
   let component: BottomNavComponent;
   let fixture: ComponentFixture<BottomNavComponent>;
-  let mockDialog: jasmine.SpyObj<MatDialog>;
+  let mockQuickAdd: jasmine.SpyObj<QuickAddService>;
 
   beforeEach(async () => {
-    mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
+    mockQuickAdd = jasmine.createSpyObj('QuickAddService', [
+      'openAddTransaction',
+      'openScanReceipt',
+      'openImportPhotos',
+    ]);
     const mockTranslationService = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslationService.t.and.callFake((key: string) => LABELS[key] ?? key);
 
@@ -41,7 +44,7 @@ describe('BottomNavComponent', () => {
           { path: 'budgets', component: StubPage },
           { path: 'reports', component: StubPage },
         ]),
-        { provide: MatDialog, useValue: mockDialog },
+        { provide: QuickAddService, useValue: mockQuickAdd },
         { provide: TranslationService, useValue: mockTranslationService },
       ],
     }).compileComponents();
@@ -58,6 +61,25 @@ describe('BottomNavComponent', () => {
   it('exposes an Add action among the nav items', () => {
     const addItem = component.navItems().find((i) => i.isAction);
     expect(addItem?.label).toBe('Add');
+  });
+
+  // The four real destinations resolve through navItemFor rather than
+  // carrying their own labelKey/icon — the whole point of the shared list
+  // is that the bottom nav and the sidebar can no longer say different
+  // things about the same route (the old nav.budget/nav.budgets drift).
+  it('resolves its real destinations through the shared nav-items list', () => {
+    const items = component.navItems();
+    for (const route of ['/dashboard', '/transactions', '/budgets', '/reports']) {
+      const expected = navItemFor(route);
+      const actual = items.find((i) => i.route === route);
+      expect(actual?.labelKey).toBe(expected.labelKey);
+      expect(actual?.icon).toBe(expected.icon);
+    }
+  });
+
+  it('keeps its five-slot order: two links, the add action, then two more links', () => {
+    const routes = component.navItems().map((i) => i.route);
+    expect(routes).toEqual(['/dashboard', '/transactions', '', '/budgets', '/reports']);
   });
 
   it('renders a visible translated label under every nav icon', () => {
@@ -131,27 +153,19 @@ describe('BottomNavComponent', () => {
     });
   });
 
-  it('opens the transaction form in add mode', () => {
+  it('delegates add-transaction to the quick-add service', () => {
     component.openAddTransaction();
-    expect(mockDialog.open).toHaveBeenCalledWith(
-      TransactionFormComponent,
-      jasmine.objectContaining({ data: { mode: 'add' } }),
-    );
+    expect(mockQuickAdd.openAddTransaction).toHaveBeenCalled();
   });
 
-  it('opens the camera capture dialog from the scan entry', () => {
+  it('delegates the scan entry to the quick-add service', () => {
     component.openScanReceipt();
-    expect(mockDialog.open).toHaveBeenCalledWith(
-      CameraCaptureComponent,
-      jasmine.any(Object),
-    );
+    expect(mockQuickAdd.openScanReceipt).toHaveBeenCalled();
   });
 
-  it('routes to the import wizard from the import entry', () => {
-    const router = TestBed.inject(Router);
-    const navigate = spyOn(router, 'navigate');
+  it('delegates the import entry to the quick-add service', () => {
     component.openImportPhotos();
-    expect(navigate).toHaveBeenCalledWith(['/import/file']);
+    expect(mockQuickAdd.openImportPhotos).toHaveBeenCalled();
   });
 
   it('the center action button opens a menu with the three add entries', () => {
@@ -170,22 +184,19 @@ describe('BottomNavComponent', () => {
   });
 
   it('the menu entries trigger their actions', () => {
-    const router = TestBed.inject(Router);
-    const navigate = spyOn(router, 'navigate');
-
     (fixture.nativeElement.querySelector('button.action-button') as HTMLElement).click();
     fixture.detectChanges();
     const items = document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel button[mat-menu-item]');
 
     items[1].click();
     fixture.detectChanges();
-    expect(mockDialog.open).toHaveBeenCalledWith(CameraCaptureComponent, jasmine.any(Object));
+    expect(mockQuickAdd.openScanReceipt).toHaveBeenCalled();
 
     (fixture.nativeElement.querySelector('button.action-button') as HTMLElement).click();
     fixture.detectChanges();
     const reopened = document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel button[mat-menu-item]');
     reopened[2].click();
     fixture.detectChanges();
-    expect(navigate).toHaveBeenCalledWith(['/import/file']);
+    expect(mockQuickAdd.openImportPhotos).toHaveBeenCalled();
   });
 });

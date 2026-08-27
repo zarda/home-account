@@ -21,6 +21,16 @@ html {
   ));
 }
 
+/* AccessibilityService writes --app-font-scale from the account's fontScale
+   preference (removing it entirely at the default scale). A CSS variable
+   rather than a class-per-step, so it composes with the user's own browser
+   font size instead of overriding it; this is also why the type scale above
+   is expressed in rem and icons in em — a non-16px effective root scales
+   every one of them along with it. */
+html {
+  font-size: calc(100% * var(--app-font-scale, 1));
+}
+
 html.light-theme {
   color-scheme: light;
 }
@@ -249,6 +259,35 @@ button.mat-mdc-icon-button {
   --overlay-backdrop: rgba(0, 0, 0, 0.7);
 }
 
+/* High-contrast palette: legibility tokens only — borders plus secondary,
+   muted, and disabled text — each bumped further along the same neutral
+   ramp already used above (the light theme's tokens sit on the Tailwind
+   gray scale; the dark theme's border/surface tokens sit on this file's own
+   dark-neutral ramp, continued here rather than inventing new stops).
+   Surfaces and brand colors are untouched: this is not a second theme, just
+   stronger edges and stronger secondary/muted/disabled text on top of
+   whichever theme is active. */
+.high-contrast {
+  --border-primary: #6b7280;   // gray-500 (was gray-200)
+  --border-secondary: #9ca3af; // gray-400 (was gray-100)
+  --text-secondary: #1f2937;   // gray-800 (was gray-700)
+  --text-muted: #374151;       // gray-700 (was gray-500)
+  --text-disabled: #4b5563;    // gray-600 (was gray-400)
+}
+
+.dark-theme.high-contrast {
+  --border-primary: #5a5a5a;   // continues the dark-neutral ramp (was #3d3d3d)
+  --border-secondary: #4a4a4a; // continues the dark-neutral ramp (was #2d2d2d)
+  --text-secondary: #f3f4f6;   // gray-100 (was gray-200)
+  --text-muted: #e5e7eb;       // gray-200 (was gray-400)
+  --text-disabled: #d1d5db;    // gray-300 (was gray-500)
+}
+
+/* Wider focus ring wherever high contrast is on, light or dark. */
+.high-contrast :focus-visible {
+  outline-width: 3px;
+}
+
 /* Global Styles */
 html, body {
   height: 100%;
@@ -279,6 +318,18 @@ html, body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Same kill-switch as the media query above, driven by AccessibilityService
+   instead of the OS media query — an in-app "reduce motion" preference
+   applies even on a system that itself has no such preference set. */
+.reduced-motion *,
+.reduced-motion *::before,
+.reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 /* Custom utility classes */
