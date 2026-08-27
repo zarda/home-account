@@ -4,6 +4,7 @@ import { BehaviorSubject } from 'rxjs';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { OnboardingService } from '../../../core/services/onboarding.service';
+import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
 import { MainLayoutComponent } from './main-layout.component';
 
 const MOBILE = APP_BREAKPOINTS.mobile;
@@ -24,6 +25,7 @@ describe('MainLayoutComponent', () => {
   let breakpoint$: BehaviorSubject<BreakpointState>;
   let shouldShowOnboarding: WritableSignal<boolean>;
   let onboarding: { shouldShow: WritableSignal<boolean>; show: jasmine.Spy };
+  let keyboardShortcuts: jasmine.SpyObj<KeyboardShortcutService>;
 
   beforeEach(async () => {
     localStorage.removeItem('homeaccount.sidebar-collapsed');
@@ -31,12 +33,14 @@ describe('MainLayoutComponent', () => {
     const observer = { observe: () => breakpoint$.asObservable() };
     shouldShowOnboarding = signal(false);
     onboarding = { shouldShow: shouldShowOnboarding, show: jasmine.createSpy('show') };
+    keyboardShortcuts = jasmine.createSpyObj('KeyboardShortcutService', ['handleAddHotkey']);
 
     await TestBed.configureTestingModule({
       imports: [MainLayoutComponent],
       providers: [
         { provide: BreakpointObserver, useValue: observer },
         { provide: OnboardingService, useValue: onboarding },
+        { provide: KeyboardShortcutService, useValue: keyboardShortcuts },
       ],
     })
       // Isolate from the real header/sidebar/bottom-nav child components.
@@ -172,5 +176,42 @@ describe('MainLayoutComponent', () => {
     component.toggleSidebar();
     component.onNavItemClicked();
     expect(component.sidebarOpen()).toBeFalse();
+  });
+
+  describe('add-transaction hotkey (#80)', () => {
+    // The host map binds `(document:keydown.n)`, not @HostListener — this
+    // dispatches a real event on document to prove the binding is wired,
+    // not just that the delegating method works in isolation.
+    it('reaches the keyboard shortcut service on a bare "n" keydown', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).toHaveBeenCalledTimes(1);
+    });
+
+    // Angular's KeyEventsPlugin folds every active modifier into the
+    // matched key string for a `keydown.n` binding (e.g. "shift.n"), so a
+    // modified keydown never matches a bare `.n` binding. Pinned here with
+    // real dispatched events rather than assumed from the framework source.
+    it('does not fire on shift+n (a capital "N" being typed anywhere)', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', shiftKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+    });
+
+    it('does not fire on ctrl+n', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+    });
+
+    it('does not fire on meta+n', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', metaKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+    });
   });
 });
