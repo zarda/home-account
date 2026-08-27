@@ -148,7 +148,7 @@ describe('NativeReceiptService', () => {
       expect(result.confidence).toBe(0);
     });
 
-    it('should report the parser amount confidence as fieldConfidence', async () => {
+    it('the regex lane grades a missing date at zero, next to the amount confidence', async () => {
       visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\n$100\n$8\n$108' });
 
       const result = await service.processImage(imageFile());

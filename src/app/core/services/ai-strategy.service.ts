@@ -449,6 +449,13 @@ export class AIStrategyService {
 
     const transactions: ProcessedTransaction[] = consolidated.map(t => {
       const parsedDate = parseDateInput(t.date);
+      // A date string that turns out unparseable is `now` above, whatever
+      // upstream claimed about it — but a parseable one can still be a
+      // fabricated fallback (a missing date patched with a parseable
+      // today-string), which only the producer's own grade can tell apart
+      // from a real reading. Either way collapses to 0; only a date nobody
+      // graded at all stays undefined.
+      const dateGrade = parsedDate === null ? 0 : t.dateConfidence;
       return {
         date: parsedDate ?? new Date(),
         description: t.description,
@@ -461,14 +468,11 @@ export class AIStrategyService {
         notes: t.details,
         suggestedCategoryId: t.category,
         receiptId: t.receiptId,
-        // A date string that turns out unparseable is `now` above; nothing
-        // upstream grades this field, so the fallback has to say so itself,
-        // right alongside whatever grade the amount carries.
         fieldConfidence:
-          t.amountConfidence !== undefined || parsedDate === null
+          t.amountConfidence !== undefined || dateGrade !== undefined
             ? {
                 ...(t.amountConfidence !== undefined ? { amount: t.amountConfidence } : {}),
-                ...(parsedDate === null ? { date: 0 } : {}),
+                ...(dateGrade !== undefined ? { date: dateGrade } : {}),
               }
             : undefined,
         // Which photos the row came from. Consolidation hardcodes imageIndex 0

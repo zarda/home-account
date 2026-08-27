@@ -610,6 +610,26 @@ describe('AIStrategyService', () => {
       expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0 });
     });
 
+    it('honors an incoming zero date grade on a consolidated row', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-01-15', dateConfidence: 0, description: 'Lunch', amount: 10, type: 'expense',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          confidence: 0.8, receiptId: 1, receiptTotal: 10,
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile()]);
+
+      // The date string itself parses fine, so only honoring the producer's
+      // own grade — not the unparseable-string check above — can carry this
+      // 0 through. The reported receipt total keeps deriveAmount from adding
+      // its own review-flag noise to the amount slot.
+      expect(result.transactions[0].fieldConfidence).toEqual({ date: 0 });
+    });
+
     it('carries which photos each transaction came from', async () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {

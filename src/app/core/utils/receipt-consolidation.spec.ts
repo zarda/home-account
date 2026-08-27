@@ -284,4 +284,28 @@ describe('consolidateReceiptItems', () => {
       expect('receiptCountry' in none).toBeFalse();
     });
   });
+
+  describe('date confidence', () => {
+    // The merged row's `date` always comes from `first` (below); a claim
+    // about that date — including an honest 0 for a fabricated one — has to
+    // come from the same item, not from a scan across the group the way
+    // location and receiptCountry search.
+    it("carries the first item's date confidence onto a merged row", () => {
+      const merged = consolidateReceiptItems([
+        item({ description: 'Lunch', receiptId: 1, dateConfidence: 0 }),
+        item({ description: 'Snack', receiptId: 1, dateConfidence: 0.9 }),
+      ])[0];
+
+      expect(merged.dateConfidence).toBe(0);
+    });
+
+    it('leaves the merged row without a date confidence when nothing was reported', () => {
+      const merged = consolidateReceiptItems([
+        item({ description: 'Lunch', receiptId: 1 }),
+        item({ description: 'Snack', receiptId: 1 }),
+      ])[0];
+
+      expect(merged.dateConfidence).toBeUndefined();
+    });
+  });
 });

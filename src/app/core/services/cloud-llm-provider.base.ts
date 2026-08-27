@@ -419,6 +419,10 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: t.wasMerged || false,
         mergedFromImages: t.mergedFromImages,
+        // A missing date is patched with today's day-key above, and that
+        // string parses just fine — so a claimed dateConfidence must not
+        // outlive the date it was claimed about.
+        dateConfidence: t.date ? t.dateConfidence : 0,
         ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
       }));
     });
