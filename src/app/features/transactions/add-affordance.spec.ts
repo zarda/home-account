@@ -157,7 +157,13 @@ describe('Add affordance (transactions header FAB + bottom nav)', () => {
         {
           provide: AuthService,
           useValue: {
-            currentUser: signal<User | null>({ preferences: { baseCurrency: 'USD' } } as User),
+            // An established, undegraded account: this spec mounts the real
+            // MainLayoutComponent, whose onboarding effect would otherwise
+            // open the first-run welcome over the affordances being measured.
+            currentUser: signal<User | null>({
+              preferences: { baseCurrency: 'USD', onboardingCompleted: true },
+            } as User),
+            profileDegraded: signal(false),
           },
         },
         {

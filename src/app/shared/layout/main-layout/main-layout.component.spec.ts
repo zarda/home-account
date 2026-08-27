@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { WritableSignal, signal } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+import { OnboardingService } from '../../../core/services/onboarding.service';
 import { MainLayoutComponent } from './main-layout.component';
 
 const MOBILE = APP_BREAKPOINTS.mobile;
@@ -20,15 +22,22 @@ describe('MainLayoutComponent', () => {
   let component: MainLayoutComponent;
   let fixture: ComponentFixture<MainLayoutComponent>;
   let breakpoint$: BehaviorSubject<BreakpointState>;
+  let shouldShowOnboarding: WritableSignal<boolean>;
+  let onboarding: { shouldShow: WritableSignal<boolean>; show: jasmine.Spy };
 
   beforeEach(async () => {
     localStorage.removeItem('homeaccount.sidebar-collapsed');
     breakpoint$ = new BehaviorSubject<BreakpointState>(state([DESKTOP]));
     const observer = { observe: () => breakpoint$.asObservable() };
+    shouldShowOnboarding = signal(false);
+    onboarding = { shouldShow: shouldShowOnboarding, show: jasmine.createSpy('show') };
 
     await TestBed.configureTestingModule({
       imports: [MainLayoutComponent],
-      providers: [{ provide: BreakpointObserver, useValue: observer }],
+      providers: [
+        { provide: BreakpointObserver, useValue: observer },
+        { provide: OnboardingService, useValue: onboarding },
+      ],
     })
       // Isolate from the real header/sidebar/bottom-nav child components.
       .overrideComponent(MainLayoutComponent, { set: { imports: [], template: '<div></div>' } })
@@ -135,6 +144,21 @@ describe('MainLayoutComponent', () => {
     component.toggleSidebar();
     component.onEscape();
     expect(component.sidebarOpen()).toBeFalse();
+  });
+
+  describe('first-run onboarding', () => {
+    it('leaves the welcome closed when the service says not to show it', () => {
+      expect(onboarding.show).not.toHaveBeenCalled();
+    });
+
+    // An effect rather than a one-shot: the authed shell is already mounted
+    // when a degraded profile recovers and the account becomes eligible.
+    it('shows the welcome as soon as the service says to', () => {
+      shouldShowOnboarding.set(true);
+      fixture.detectChanges();
+
+      expect(onboarding.show).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('onNavItemClicked closes the drawer only in overlay mode', () => {

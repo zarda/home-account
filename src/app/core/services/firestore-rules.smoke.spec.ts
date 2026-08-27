@@ -1492,6 +1492,13 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts the dotted update that closes the first-run welcome', async () => {
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), { 'preferences.onboardingCompleted': true }),
+        'onboardingCompleted dotted update'
+      );
+    });
+
     it('rejects replacing preferences with a non-map', async () => {
       await expectDenied(
         updateDoc(doc(firestore, `users/${uid}`), { preferences: 'none' }),
