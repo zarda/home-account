@@ -27,6 +27,7 @@ import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { TranslationService } from './core/services/translation.service';
 import { ThemeService } from './core/services/theme.service';
+import { AccessibilityService } from './core/services/accessibility.service';
 import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
 import { AppLockService } from './core/services/app-lock.service';
 import { ShareIntakeService } from './core/services/share-intake.service';
@@ -222,6 +223,12 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => {
       // Initialize theme service (will apply saved theme once user preferences load)
       inject(ThemeService);
+    }),
+    provideAppInitializer(() => {
+      // Construct the accessibility service so the font-scale variable and
+      // high-contrast/reduced-motion classes are on the document root before
+      // first paint (will apply saved preferences once user data loads).
+      inject(AccessibilityService);
     }),
     provideAppInitializer(() => {
       // Attach the offline-queue processing listeners at startup so queued

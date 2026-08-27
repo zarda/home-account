@@ -30,6 +30,7 @@ import {
 } from '../../models';
 import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService, ThemePreference } from './theme.service';
+import { AccessibilityService } from './accessibility.service';
 import { SecurityLogService } from './security-log.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
@@ -63,6 +64,7 @@ export class AuthService {
   private injector = inject(EnvironmentInjector);
   private translationService = inject(TranslationService);
   private themeService = inject(ThemeService);
+  private accessibilityService = inject(AccessibilityService);
   private securityLog = inject(SecurityLogService);
   private notifications = inject(NotificationService);
   private pwa = inject(PwaService);
@@ -92,8 +94,9 @@ export class AuthService {
   }
 
   /**
-   * Sync language and theme preferences from database when user data changes.
-   * Database is the source of truth for authenticated users.
+   * Sync language, theme, and accessibility preferences from database when
+   * user data changes. Database is the source of truth for authenticated
+   * users.
    */
   private setupPreferencesSyncEffect(): void {
     effect(() => {
@@ -109,6 +112,11 @@ export class AuthService {
           const theme = user.preferences.theme as ThemePreference;
           this.themeService.init(theme);
         }
+        // Sync accessibility preferences unconditionally — an account
+        // switch whose preferences carry none of these keys must reset a
+        // previous account's font scale / high contrast / reduced motion,
+        // which is exactly what AccessibilityService.init's resolvers do.
+        this.accessibilityService.init(user.preferences);
       }
     });
   }
