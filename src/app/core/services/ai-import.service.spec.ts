@@ -1401,6 +1401,11 @@ describe('AIImportService', () => {
 
         expect(+result.transactions[0].date).toBe(+now);
         expect(result.transactions[0].dateAssumed).toBeTrue();
+        // The single-item group has no receiptTotal to corroborate its item
+        // sum, so consolidation adds its own REVIEW_AMOUNT_CONFIDENCE amount
+        // grade alongside the fabricated date one — pin both keys, not just
+        // the date, so a regression in either one is caught here.
+        expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0 });
 
         // The same resolved date reached the categorization ladder, not the
         // unparseable string or a second, independently-computed "now".
@@ -1916,7 +1921,9 @@ describe('AIImportService', () => {
         // Landed on "now" so the row surfaces at the top of today's list...
         expect(+result[0].date).toBe(+now);
         // ...but flagged for verification, overriding the model's own optimism.
-        expect(result[0].fieldConfidence?.date).toBe(0);
+        // The whole shape, not just the date key: this row's extraction never
+        // reported an amountConfidence, so fieldConfidence must not carry one.
+        expect(result[0].fieldConfidence).toEqual({ date: 0 });
         expect(result[0].dateAssumed).toBeTrue();
         // The confident, well-formed row is untouched and unmarked.
         expect(+result[1].date).toBe(+new Date(2024, 5, 1));
@@ -1951,7 +1958,9 @@ describe('AIImportService', () => {
       ]);
 
       expect(+result[0].date).toBe(+parseDateInput('2024-06-01')!);
-      expect(result[0].fieldConfidence?.date).toBeUndefined();
+      // The real contract is the whole object being absent, not just its date
+      // key — an unreported amountConfidence must not manufacture one either.
+      expect(result[0].fieldConfidence).toBeUndefined();
       expect('dateAssumed' in result[0]).toBeFalse();
     });
 
