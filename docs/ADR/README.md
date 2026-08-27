@@ -74,6 +74,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0067](0067-a-photo-is-made-to-fit-and-never-costs-its-transaction.md) | A receipt photo is made to fit, and never costs its transaction | Accepted | 2026-08-25 |
 | [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted | 2026-08-26 |
 | [0069](0069-one-ladder-decides-what-is-the-same-merchant.md) | One ladder decides what is the same merchant, and it stays a string ladder | Accepted | 2026-08-26 |
+| [0070](0070-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted | 2026-08-28 |
+| [0071](0071-a-successful-import-remembers-the-transactions-it-created.md) | A successful import remembers the transactions it created | Accepted; extends 0065 | 2026-08-28 |
 
 ## What belongs here
 

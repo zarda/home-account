@@ -36,9 +36,13 @@ needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
 also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
 files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries five more that are **review-step marks,
+`CategorizedImportTransaction` carries six more that are **review-step marks,
 not fields**: `currencyFellBack` (nobody read a currency, so the base currency
-is standing in), `suggestedTags` (what was offered, so the confirm step can
+is standing in), `dateAssumed` (the row's `date` is *now* rather than something
+read off the source, because `resolveImportDate` could not vouch for what
+arrived — see
+[ADR 0070](ADR/0070-a-date-the-scan-cannot-vouch-for-lands-on-today.md)),
+`suggestedTags` (what was offered, so the confirm step can
 tell a removal from a row that never had any), `recurringMatch` (the rule
 this row looks like), `receiptCountry` (the country the reader concluded the
 receipt was issued in — it reaches the transaction only inside
@@ -70,7 +74,7 @@ travels with zero edits.
 | `currency` | the row's, else the account's base currency (empty string falls back) |
 | `categoryId` | the row's, else the catch-all (empty string falls back) |
 | `description` | the row's, else `Imported transaction` |
-| `date` | passed through — callers parse and default first |
+| `date` | passed through — callers resolve via `resolveImportDate` first |
 | `note`, `tags`, `location`, `period` | spread only when truthy / non-empty |
 | `isRecurring` | spread when **present** — `false` is an answer and travels |
 | `recurringId` | spread when truthy — an id has no `false` to preserve, and a declined link arrives as a key holding `undefined` |
@@ -110,8 +114,11 @@ the first processed), sized by every file in the batch. Import History renders
 A receipt attempt's record also carries `door`, `engine`, `fellBackFrom`,
 `provider`, `errorType` and `durationMs` — written at extraction time for a
 failed attempt by `ReceiptAttemptService`, and at confirm time for a
-successful one from `ImportResult.diagnostics`. See
-[receipt-import.md](receipt-import.md#failure-surfacing).
+successful one from `ImportResult.diagnostics`. A record for an import that
+completed with at least one row also carries `transactionIds`, the ids it
+created, in selected-row order
+([ADR 0071](ADR/0071-a-successful-import-remembers-the-transactions-it-created.md)).
+See [receipt-import.md](receipt-import.md#failure-surfacing).
 
 ## Photos
 

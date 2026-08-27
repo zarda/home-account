@@ -26,8 +26,11 @@ on-device pipeline needs no key.
 
 The in-form path has no review step, so a value the model was unsure of goes
 straight into a field you are about to submit. Where the model reports low
-confidence in the total or the date, that field is flagged in place, using the
-same threshold and wording as the import wizard's preview table.
+confidence in the total or the date, that field is flagged in place, on the
+same 0.7 bar the import wizard's preview table uses. The form's date is only
+flagged, never replaced: the wizard's review step re-dates a date it cannot
+vouch for (see *Failure surfacing*), and a field you are looking at and about
+to submit is the one place that would be the wrong thing to do.
 
 ## Where the amount comes from
 
@@ -86,10 +89,16 @@ this workable on a receipt in any language.
 
 Two limits are worth knowing about the parser. Anything it read outside the
 strongest tier is flagged whatever it picked, because a figure not printed
-beside a currency mark is a guess. And it grades only the amount — the date it
-reports carries no per-field confidence, so an unreadable date is not marked on
-this path. Where Apple's foundation model is available it structures the OCR
-text instead of the parser, and reports no per-field confidence at all.
+beside a currency mark is a guess. And it grades the date as well as the
+amount: 0.9 for an unambiguous match, scaled down for an ambiguous day/month
+order or a two-digit year, 0 when nothing matched at all. That puts every
+ambiguous reading and every two-digit year under the 0.7 bar — `03/04` is
+genuinely two dates and the receipt does not say which — so such a row is
+re-dated and marked rather than filed on a guess, and only an unambiguous
+four-digit-year reading is kept. Where Apple's foundation model is available it
+structures the OCR text instead of the parser and reports no per-field
+confidence of its own, except for a date it could not read at all, which it
+grades at zero for the same reason.
 
 The decision and its rejected alternatives are recorded in
 [ADR 0013](ADR/0013-the-printed-total-is-the-amount-not-the-item-sum.md).
@@ -331,14 +340,33 @@ A provider failure is thrown, never flattened into an empty result: all three
 cloud providers rethrow after recording the error, so an expired key or a
 billing cap renders as the wizard's typed error card (with its retry or
 go-to-settings action) instead of "no transactions found", and the strategy
-layer can fall back between engines on the throw. A row whose date the model
-wrote in an unreadable shape is flagged for verification on the review table
-rather than silently filed under today, and it cannot fail the batch. A
-partial save keeps exactly the failed rows on the review step — editable and
-re-confirmable, with the saved ones removed so a second confirm cannot
-double-import — and the completion toast carries both counts. When every row
-saved but the summary read-back fails, the wizard says so and moves on; the
+layer can fall back between engines on the throw. A row whose date could not be
+read cannot fail the batch either — it is re-dated and marked instead, as
+below. A partial save keeps exactly the failed rows on the review step —
+editable and re-confirmable, with the saved ones removed so a second confirm
+cannot double-import — and the completion toast carries both counts. When every
+row saved but the summary read-back fails, the wizard says so and moves on; the
 full record, including per-row errors, is on the Import History page.
+
+**A date the scan cannot vouch for lands on today, and the row says so.** The
+date is graded like the amount is, on the same 0.7 bar; what is new is what
+happens under it. `resolveImportDate` (`core/utils/import-dto.utils.ts`) is the
+one place that decides. A value nothing can parse, or one the reader graded
+below the bar, becomes *now* — the actual instant, so the row sorts above every
+other row dated today — and the review card carries a **Date set to today** chip
+saying why, in place of the percentage the verify tooltip would otherwise quote.
+A date nobody graded, a CSV cell or a backup row, is kept untouched: absent
+confidence means "nobody looked", not "the reader was unsure".
+
+The asymmetry is the reason the value moves rather than only being flagged. A
+wrong date on today's row is one tap from being fixed; the same wrong date in
+2024 is hundreds of rows down the pager, inside no period anyone is watching, in
+a month whose total has already been read and believed. What makes it work is
+that the readers no longer invent a date to be doubted: the prompts ask for
+`""` where nothing is printed and say never to invent today's date, and every
+reader that patches a missing date grades it at zero instead of passing the
+model's own claim along. The decision, and what it rejected, is
+[ADR 0070](ADR/0070-a-date-the-scan-cannot-vouch-for-lands-on-today.md).
 
 **An answer that ran out of room is read as far as it goes.** A model asked
 for several photos at once answers with one JSON row per line item, and the
@@ -409,6 +437,21 @@ writes the same slots on its record at confirm time. Import History renders
 them as chips, with the error class on a failed record, and subscribes to
 the newest 200 records.
 
+**A completed import names the transactions it created.** A success record
+carries `transactionIds` — the ids of the rows that landed, in selected-row
+order, one per success and nothing else. Import History turns that into a way
+back into the ledger: a **View transaction** button on a record that created
+exactly one, and a menu of positional entries (*Transaction 1*,
+*Transaction 2*) on a batch, since the record stores ids and has no description
+to label them with. Either opens `/transactions?tx=<id>`, which jumps the list
+to that transaction, highlights it and opens its edit dialog; a transaction
+that has since been deleted answers with a notice instead of a dialog, and a
+target outside the page's active filters opens without the list scrolling to
+it. Records written before the field existed, records where every row failed,
+and the in-form and queue doors — which write no success record at all — show
+no button. See
+[ADR 0071](ADR/0071-a-successful-import-remembers-the-transactions-it-created.md).
+
 The classes a failure is filed under: `parseAIError`'s
 `rate_limit | auth | network | quota | server | timeout | unknown`, plus
 three the pipeline decides itself — `no_provider` (nothing configured;
@@ -444,6 +487,12 @@ settings page. Draining is unattended by definition — a reconnect with no dial
 open and possibly nobody looking — so there is no review step: what the model
 read goes straight into the ledger and a toast says how many rows arrived. They
 are ordinary transactions afterwards, editable like any other.
+
+A date the reader doubted is resolved on the drain's own rule — the same
+`resolveImportDate` the review lanes use, run at the moment the row is written.
+So such a row is dated the day the queue drained rather than a day nobody read,
+while a date that was read cleanly keeps it. The mark that decision leaves
+behind is dropped here: there is no review surface on this door to show it on.
 
 A launch does not drain the queue by itself; what it does is sweep. Anything
 left marked *processing* — a tab closed mid-receipt, an app swiped away, a

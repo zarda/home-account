@@ -44,6 +44,26 @@ param is the one that exists — is written with `dayKey` and read with
 `parseDayKey`. They are exact inverses; a private copy of either half is how
 that round trip came to write local and read UTC.
 
+### An import door resolves a date before it writes one
+
+`parseDateInput` answers "is this a date". The import doors have a second
+question — "is this date worth writing" — and `resolveImportDate` in
+`core/utils/import-dto.utils.ts` is the one place that answers it. It calls
+`parseDateInput` and adds the confidence rule: a value nothing can parse, or one
+the reader graded below `VERIFY_FIELD_THRESHOLD`, resolves to `new Date()`, and
+the review step marks the row `dateAssumed`. A value nobody graded keeps its
+parsed date — absent confidence means nobody looked, not that the reader was
+unsure — and so does a value graded at or above the bar.
+
+"Now" there is the instant, deliberately **not** `startOfDay(now)`: a parsed
+date lands at local midnight, so only the actual instant sorts strictly above
+every other row dated today in a newest-first list, which is the point of moving
+the row at all. The helper builds no window and computes no boundary; it chooses
+between a date `parseDateInput` returned and now, which is why it lives beside
+the mapper rather than in this module. See
+[ADR 0070](ADR/0070-a-date-the-scan-cannot-vouch-for-lands-on-today.md) and
+[receipt-import.md](receipt-import.md).
+
 ## Keys
 
 | Helper | Shape | Notes |
