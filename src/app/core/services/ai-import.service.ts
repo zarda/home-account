@@ -60,7 +60,7 @@ import {
   CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { locationSlotFrom, resolveImportCurrency, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
@@ -354,12 +354,13 @@ export class AIImportService {
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
     return result.transactions.map(tx => {
+      const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('strategy'),
         description: tx.description,
         amount: tx.amount,
         ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
-        date: tx.date,
+        date: resolved.date,
         type: tx.type,
         ...gradeCategorySuggestion(tx),
         isDuplicate: false,
@@ -384,6 +385,7 @@ export class AIImportService {
         ...(tx.receiptCountry ? { receiptCountry: tx.receiptCountry } : {}),
         ...(tx.period ? { period: tx.period } : {}),
         ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {}),
+        ...(resolved.dateAssumed ? { dateAssumed: true } : {}),
       };
       return { ...row, ...this.currencySuggestionSlot(row) };
     });
@@ -601,6 +603,11 @@ export class AIImportService {
 
   /**
    * Categorize multi-image extracted transactions, preserving image metadata.
+   *
+   * Unlike the CSV/statement and strategy lanes, this extractor never grades
+   * its own date reading — resolveImportDate here only ever catches an
+   * unparseable or missing date, not a merely doubtful one, because there is
+   * no model confidence for a producer to report yet.
    */
   private async categorizeMultiImageTransactions(
     transactions: MultiImageExtractedTransaction[],
@@ -611,11 +618,13 @@ export class AIImportService {
     // Get user's base currency from settings
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
 
+    const resolutions = transactions.map(t => resolveImportDate(t.date, t.dateConfidence));
+
     // Convert to RawTransaction format for categorization
-    const rawTransactions: RawTransaction[] = transactions.map(t => ({
+    const rawTransactions: RawTransaction[] = transactions.map((t, i) => ({
       description: t.description,
       amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-      date: parseDateInput(t.date) ?? new Date()
+      date: resolutions[i].date
     }));
 
     const categorizedByAI = await this.categorizeWithLadder(rawTransactions, history);
@@ -623,18 +632,22 @@ export class AIImportService {
     // Convert to CategorizedImportTransaction with image metadata
     return categorizedByAI.map((t, index) => {
       const original = transactions[index];
+      const resolved = resolutions[index];
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('multi_img'),
         description: t.description,
         amount: Math.abs(t.amount),
         ...resolveImportCurrency(original.currency, baseCurrency),
-        date: t.date,
+        date: resolved.date,
         type: original.type,
         suggestedCategoryId: original.category || t.suggestedCategoryId,
         categoryConfidence: t.confidence,
         notes: this.formatItemNotes(original.details),
-        fieldConfidence: original.amountConfidence !== undefined
-          ? { amount: original.amountConfidence }
+        fieldConfidence: (original.amountConfidence !== undefined || resolved.dateConfidence !== undefined)
+          ? {
+              ...(original.amountConfidence !== undefined ? { amount: original.amountConfidence } : {}),
+              ...(resolved.dateConfidence !== undefined ? { date: resolved.dateConfidence } : {})
+            }
           : undefined,
         isDuplicate: false,
         selected: true,
@@ -652,7 +665,8 @@ export class AIImportService {
         ...(original.location ? { location: original.location } : {}),
         ...(original.receiptCountry ? { receiptCountry: original.receiptCountry } : {}),
         ...(original.period ? { period: original.period } : {}),
-        ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {})
+        ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {}),
+        ...(resolved.dateAssumed ? { dateAssumed: true } : {})
       };
       return { ...row, ...this.currencySuggestionSlot(row) };
     });
@@ -1073,20 +1087,14 @@ export class AIImportService {
     // If transaction already has a category from extraction, use it; otherwise suggest 'other_expense'
     return transactions.map(t => {
       const suggestedCategoryId = t.category || 'other_expense';
-
-      // A date the model wrote in a shape parseDateInput rejects ("31/12/2024",
-      // "2024-06-31") defaults to today — but flagged, not silently: zero
-      // confidence puts the preview table's needs-verify chip on the row so
-      // the user can catch it before it is filed under the wrong day.
-      const parsedDate = parseDateInput(t.date);
-      const dateConfidence = parsedDate === null ? 0 : t.dateConfidence;
+      const resolved = resolveImportDate(t.date, t.dateConfidence);
 
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('import'),
         description: t.description,
         amount: Math.abs(t.amount),
         ...resolveImportCurrency(t.currency, baseCurrency),
-        date: parsedDate ?? new Date(),
+        date: resolved.date,
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
         // The grade follows the evidence, on the applyCategorizations scale
@@ -1100,8 +1108,11 @@ export class AIImportService {
         // verbatim; formatItemNotes is for receipt item lists and splits
         // plain commas into newlines.
         notes: t.note ?? this.formatItemNotes(t.details),
-        fieldConfidence: (t.amountConfidence !== undefined || dateConfidence !== undefined)
-          ? { amount: t.amountConfidence, date: dateConfidence }
+        fieldConfidence: (t.amountConfidence !== undefined || resolved.dateConfidence !== undefined)
+          ? {
+              ...(t.amountConfidence !== undefined ? { amount: t.amountConfidence } : {}),
+              ...(resolved.dateConfidence !== undefined ? { date: resolved.dateConfidence } : {})
+            }
           : undefined,
         isDuplicate: false,
         selected: true,
@@ -1110,7 +1121,8 @@ export class AIImportService {
         ...(t.location ? { location: t.location } : {}),
         ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
         ...(t.period ? { period: t.period } : {}),
-        ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {})
+        ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {}),
+        ...(resolved.dateAssumed ? { dateAssumed: true } : {})
       };
       return row;
     });

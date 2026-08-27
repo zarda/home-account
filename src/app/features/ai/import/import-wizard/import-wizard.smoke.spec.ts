@@ -53,7 +53,7 @@ import { PwaService } from '../../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
-import { MultiImageExtractedTransaction } from '../../../../core/services/gemini.service';
+import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/services/gemini.service';
 import { DEFAULT_USER_PREFERENCES, ImportResult } from '../../../../models';
 
 jasmine.getEnv().configure({ random: false });
@@ -707,6 +707,111 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(memory['tags']).toEqual(['coffee']);
       expect(memory['suppressed']).toEqual([]);
       expect(memory['count']).toBe(1);
+    },
+    30000
+  );
+
+  it(
+    'a doubted scan date reaches the review step marked and is stored dated today',
+    async () => {
+      // The single-receipt door: importFromImage routes through
+      // AIStrategyService, which has no native engine on this platform, so
+      // it lands on parseReceipt — the one producer that already reports a
+      // dateConfidence today (readFieldConfidence). Task 3, not this one,
+      // teaches a producer to zero it out on a date it had to invent.
+      const parsedReceipt: ParsedReceipt = {
+        merchant: 'Doubtful Diner',
+        amount: 12.5,
+        currency: 'USD',
+        date: new Date(2026, 5, 1),
+        suggestedCategory: 'other_expense',
+        confidence: 0.9,
+        fieldConfidence: { date: 0.3 }
+      };
+
+      const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
+        'CloudLLMProviderService',
+        [
+          'hasAnyCloudProvider',
+          'parseReceipt',
+          'initializeProviders',
+          'resetProviders',
+          'setOpenAIModel',
+          'setClaudeModel',
+          'availableProviders',
+          'providerStatus',
+          'resolveProvider'
+        ]
+      );
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.parseReceipt.and.resolveTo(parsedReceipt);
+      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.resetProviders.and.resolveTo(undefined);
+      cloudLLMProvider.availableProviders.and.returnValue([]);
+      cloudLLMProvider.providerStatus.and.returnValue({
+        gemini: false,
+        openai: false,
+        claude: false
+      });
+      cloudLLMProvider.resolveProvider.and.returnValue(null);
+
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
+        'isOnline',
+        'registerBackgroundSync'
+      ]);
+      pwa.isOnline.and.returnValue(true);
+      pwa.registerBackgroundSync.and.resolveTo(true);
+
+      const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
+        'AnalyticsService',
+        ['trackAiAssistUsed']
+      );
+
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
+          { provide: PwaService, useValue: pwa },
+          { provide: AnalyticsService, useValue: analytics },
+          {
+            provide: CurrencyService,
+            useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      // Earlier cases in this file already wrote rows of their own, so the
+      // confirm below is told apart by id rather than by count or field.
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      // Real clock: mocking it here would desync the Firebase SDK's own
+      // timers, so "today" is read back against the wall clock instead.
+      const testStart = Date.now();
+
+      const result = await importService.importFromImage(
+        new File([new Uint8Array([1])], 'diner.jpg', { type: 'image/jpeg' })
+      );
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].dateAssumed).toBeTrue();
+
+      const importHistory = await importService.confirmImport(
+        result.transactions,
+        'diner.jpg',
+        1234,
+        'image',
+        'receipt_image'
+      );
+      expect(importHistory.successCount).toBe(1);
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect((stored['date'] as Timestamp).toMillis()).toBeGreaterThanOrEqual(testStart);
     },
     30000
   );

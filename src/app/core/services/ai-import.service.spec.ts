@@ -14,6 +14,7 @@ import {
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
+import { parseDateInput } from '../utils/transaction-date.utils';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -573,6 +574,34 @@ describe('AIImportService', () => {
       expect('currencySuggestion' in service.convertStrategyResultToCategories(processed([
         { currency: 'USD', currencyFellBack: true, receiptCountry: 'US' },
       ]))[0]).toBeFalse();
+    });
+
+    it('marks a strategy row whose producer graded the date at zero', () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        const [row] = service.convertStrategyResultToCategories(processed([
+          { date: new Date(2024, 5, 1), fieldConfidence: { date: 0 } },
+        ]));
+
+        expect(+row.date).toBe(+now);
+        expect(row.dateAssumed).toBeTrue();
+        expect(row.fieldConfidence?.date).toBe(0);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('keeps a confident date untouched', () => {
+      const original = new Date(2024, 5, 1);
+      const [row] = service.convertStrategyResultToCategories(processed([
+        { date: original, fieldConfidence: { date: 0.9 } },
+      ]));
+
+      expect(+row.date).toBe(+original);
+      expect('dateAssumed' in row).toBeFalse();
+      expect(row.fieldConfidence?.date).toBe(0.9);
     });
   });
 
@@ -1354,6 +1383,33 @@ describe('AIImportService', () => {
       expect(result.transactions[0].currencyFellBack).toBeTrue();
       expect(result.transactions[0].currencySuggestion).toEqual({ code: 'JPY', country: 'JP', reason: 'receipt' });
     });
+
+    it('an unparseable consolidated date becomes now, marked, and feeds categorization the same date', async () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        // A day that does not exist: parseDateInput rejects it, and this lane
+        // has no model confidence to grade a date with — only the parse
+        // failure marks the row.
+        cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+          { date: '2024-06-31', description: 'Ghost item', amount: 5, type: 'expense', currency: 'JPY',
+            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+        ]));
+
+        const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+        expect(+result.transactions[0].date).toBe(+now);
+        expect(result.transactions[0].dateAssumed).toBeTrue();
+
+        // The same resolved date reached the categorization ladder, not the
+        // unparseable string or a second, independently-computed "now".
+        const fed = cloudLLMProvider.categorizeTransactions.calls.argsFor(0)[0][0];
+        expect(+fed.date).toBe(+now);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
   });
 
   describe('importFromPDF', () => {
@@ -1844,21 +1900,59 @@ describe('AIImportService', () => {
     });
 
     it('flags an unreadable date with zero confidence instead of silently dating it today', async () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        const result = await service.categorizeTransactions([
+          // A day that does not exist: parseDateInput rejects it rather than
+          // letting V8 roll it into 3 March.
+          { date: '2024-06-31', description: 'Ghost', amount: 5, type: 'expense', currency: 'USD',
+            dateConfidence: 0.95 },
+          { date: '2024-06-01', description: 'Real', amount: 5, type: 'expense', currency: 'USD',
+            dateConfidence: 0.95 },
+        ]);
+
+        // Landed on "now" so the row surfaces at the top of today's list...
+        expect(+result[0].date).toBe(+now);
+        // ...but flagged for verification, overriding the model's own optimism.
+        expect(result[0].fieldConfidence?.date).toBe(0);
+        expect(result[0].dateAssumed).toBeTrue();
+        // The confident, well-formed row is untouched and unmarked.
+        expect(+result[1].date).toBe(+new Date(2024, 5, 1));
+        expect(result[1].fieldConfidence?.date).toBe(0.95);
+        expect('dateAssumed' in result[1]).toBeFalse();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('replaces a date read below threshold with now and marks the row', async () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        const result = await service.categorizeTransactions([
+          { date: '2024-06-01', description: 'Doubtful', amount: 5, type: 'expense', currency: 'USD',
+            dateConfidence: 0.4 },
+        ]);
+
+        expect(+result[0].date).toBe(+now);
+        expect(result[0].fieldConfidence?.date).toBe(0.4);
+        expect(result[0].dateAssumed).toBeTrue();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it("leaves a CSV row's unreported date confidence alone", async () => {
       const result = await service.categorizeTransactions([
-        // A day that does not exist: parseDateInput rejects it rather than
-        // letting V8 roll it into 3 March.
-        { date: '2024-06-31', description: 'Ghost', amount: 5, type: 'expense', currency: 'USD',
-          dateConfidence: 0.95 },
-        { date: '2024-06-01', description: 'Real', amount: 5, type: 'expense', currency: 'USD',
-          dateConfidence: 0.95 },
+        { date: '2024-06-01', description: 'Rent', amount: 1200, type: 'expense', currency: 'USD' }
       ]);
 
-      // Defaulted to a valid date so the row cannot poison a query...
-      expect(result[0].date instanceof Date).toBeTrue();
-      expect(Number.isFinite(result[0].date.getTime())).toBeTrue();
-      // ...but flagged for verification, overriding the model's own optimism.
-      expect(result[0].fieldConfidence?.date).toBe(0);
-      expect(result[1].fieldConfidence?.date).toBe(0.95);
+      expect(+result[0].date).toBe(+parseDateInput('2024-06-01')!);
+      expect(result[0].fieldConfidence?.date).toBeUndefined();
+      expect('dateAssumed' in result[0]).toBeFalse();
     });
 
     it('should build originalText from merchant and details', async () => {
