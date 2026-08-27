@@ -33,7 +33,10 @@ describe('MainLayoutComponent', () => {
     const observer = { observe: () => breakpoint$.asObservable() };
     shouldShowOnboarding = signal(false);
     onboarding = { shouldShow: shouldShowOnboarding, show: jasmine.createSpy('show') };
-    keyboardShortcuts = jasmine.createSpyObj('KeyboardShortcutService', ['handleAddHotkey']);
+    keyboardShortcuts = jasmine.createSpyObj('KeyboardShortcutService', [
+      'handleAddHotkey',
+      'handlePaletteHotkey',
+    ]);
 
     await TestBed.configureTestingModule({
       imports: [MainLayoutComponent],
@@ -209,6 +212,39 @@ describe('MainLayoutComponent', () => {
 
     it('does not fire on meta+n', () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', metaKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('command palette hotkey (#80)', () => {
+    // Two host lines, one per platform convention, both dispatched for real:
+    // a binding that never matched would leave the palette unreachable on
+    // whichever platform it belonged to.
+    it('reaches the service on ctrl+k', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handlePaletteHotkey).toHaveBeenCalledTimes(1);
+    });
+
+    it('reaches the service on meta+k', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handlePaletteHotkey).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a bare "k" being typed', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k' }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handlePaletteHotkey).not.toHaveBeenCalled();
+    });
+
+    it('does not reach the add hotkey', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
       fixture.detectChanges();
 
       expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
