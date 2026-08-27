@@ -1,11 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 
-import { Router, RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
-import { MatDialog } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
-import { TransactionFormComponent } from '../../../features/transactions/transaction-form/transaction-form.component';
-import { CameraCaptureComponent } from '../../../features/transactions/camera-capture/camera-capture.component';
+import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { FitTextDirective } from '../../directives/fit-text.directive';
@@ -33,8 +31,7 @@ interface NavItem {
   styleUrl: './bottom-nav.component.scss',
 })
 export class BottomNavComponent {
-  private dialog = inject(MatDialog);
-  private router = inject(Router);
+  private quickAdd = inject(QuickAddService);
   private translationService = inject(TranslationService);
 
   private navItemsConfig: NavItem[] = [
@@ -53,24 +50,14 @@ export class BottomNavComponent {
   );
 
   openAddTransaction(): void {
-    // Open dialog directly - works from any page
-    this.dialog.open(TransactionFormComponent, {
-      width: '500px',
-      maxWidth: '95vw',
-      disableClose: true,
-      data: { mode: 'add' },
-    });
+    this.quickAdd.openAddTransaction();
   }
 
   openScanReceipt(): void {
-    // Same dialog config as the transactions page camera entry
-    this.dialog.open(CameraCaptureComponent, {
-      width: '500px',
-      maxWidth: '95vw',
-    });
+    this.quickAdd.openScanReceipt();
   }
 
   openImportPhotos(): void {
-    this.router.navigate(['/import/file']);
+    this.quickAdd.openImportPhotos();
   }
 }
