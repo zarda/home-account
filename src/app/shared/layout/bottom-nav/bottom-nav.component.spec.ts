@@ -5,6 +5,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { BottomNavComponent } from './bottom-nav.component';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { navItemFor } from '../nav-items';
 
 const LABELS: Record<string, string> = {
   'nav.dashboard': 'Dashboard',
@@ -60,6 +61,25 @@ describe('BottomNavComponent', () => {
   it('exposes an Add action among the nav items', () => {
     const addItem = component.navItems().find((i) => i.isAction);
     expect(addItem?.label).toBe('Add');
+  });
+
+  // The four real destinations resolve through navItemFor rather than
+  // carrying their own labelKey/icon — the whole point of the shared list
+  // is that the bottom nav and the sidebar can no longer say different
+  // things about the same route (the old nav.budget/nav.budgets drift).
+  it('resolves its real destinations through the shared nav-items list', () => {
+    const items = component.navItems();
+    for (const route of ['/dashboard', '/transactions', '/budgets', '/reports']) {
+      const expected = navItemFor(route);
+      const actual = items.find((i) => i.route === route);
+      expect(actual?.labelKey).toBe(expected.labelKey);
+      expect(actual?.icon).toBe(expected.icon);
+    }
+  });
+
+  it('keeps its five-slot order: two links, the add action, then two more links', () => {
+    const routes = component.navItems().map((i) => i.route);
+    expect(routes).toEqual(['/dashboard', '/transactions', '', '/budgets', '/reports']);
   });
 
   it('renders a visible translated label under every nav icon', () => {
