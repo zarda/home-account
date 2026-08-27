@@ -294,7 +294,9 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     const pending = this.pendingOpenTxId;
     if (pending) {
       this.pendingOpenTxId = null;
-      void reset.then(() => this.openLinkedTransaction(pending));
+      void reset
+        .then(() => this.openLinkedTransaction(pending))
+        .catch(() => this.notifications.error(this.translationService.t('common.error')));
     }
   }
 

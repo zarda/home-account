@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, Subject } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { TransactionsComponent } from './transactions.component';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService } from '../../core/services/transaction-window.service';
@@ -297,6 +297,20 @@ describe('TransactionsComponent', () => {
       expect(notifications.info).toHaveBeenCalledWith('import.linkedTransactionGone');
       expect(dialog.open).not.toHaveBeenCalled();
       expect(windowSource.requestScrollTo).not.toHaveBeenCalled();
+    }));
+
+    it('toasts a generic error when the linked-transaction fetch rejects', fakeAsync(() => {
+      transactionService.getTransactionById.and.returnValue(throwError(() => new Error('offline')));
+      routeSnapshotParams = { tx: 'tx-err' };
+
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onFiltersChanged({});
+      tick();
+
+      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
+      expect(dialog.open).not.toHaveBeenCalled();
     }));
 
     it('consumes the tx param once', fakeAsync(() => {
