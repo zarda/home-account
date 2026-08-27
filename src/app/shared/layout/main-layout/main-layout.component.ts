@@ -7,6 +7,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
 import { OnboardingService } from '../../../core/services/onboarding.service';
+import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
 import { HeaderComponent } from '../header/header.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
@@ -24,11 +25,13 @@ const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
   styleUrl: './main-layout.component.scss',
   host: {
     '(document:keydown.escape)': 'onEscape()',
+    '(document:keydown.n)': 'onAddHotkey($event)',
   },
 })
 export class MainLayoutComponent {
   private breakpointObserver = inject(BreakpointObserver);
   private onboarding = inject(OnboardingService);
+  private keyboardShortcuts = inject(KeyboardShortcutService);
 
   /**
    * Overlay-drawer open state (tablet/mobile only). Never auto-opens:
@@ -112,6 +115,10 @@ export class MainLayoutComponent {
     if (this.isOverlayMode() && this.sidebarOpen()) {
       this.closeSidebar();
     }
+  }
+
+  onAddHotkey(event: KeyboardEvent): void {
+    this.keyboardShortcuts.handleAddHotkey(event);
   }
 
   onNavItemClicked(): void {
