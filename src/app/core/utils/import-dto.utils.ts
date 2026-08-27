@@ -1,5 +1,6 @@
-import { BudgetPeriod, CreateTransactionDTO, TransactionLocation } from '../../models';
+import { BudgetPeriod, CreateTransactionDTO, TransactionLocation, VERIFY_FIELD_THRESHOLD } from '../../models';
 import { FALLBACK_CATEGORY_ID } from './categorization.utils';
+import { parseDateInput } from './transaction-date.utils';
 
 /**
  * The one row shape an import door hands over to become a transaction.
@@ -49,6 +50,41 @@ export function resolveImportCurrency(
   baseCurrency: string
 ): { currency: string; currencyFellBack?: true } {
   return read ? { currency: read } : { currency: baseCurrency, currencyFellBack: true };
+}
+
+/** What `resolveImportDate` decided: the date to use, and whether it's a real reading. */
+export interface ResolvedImportDate {
+  date: Date;
+  /** 0 when the raw value was unreadable; otherwise the reader's own grade, when one exists. */
+  dateConfidence?: number;
+  /** Present when `date` is "now" rather than something read off the source. */
+  dateAssumed?: true;
+}
+
+/**
+ * The one place an import row's date is read and, when it can't be trusted,
+ * replaced with `now` so the transaction surfaces at the top of today's list
+ * rather than being buried under a misread day.
+ *
+ * `undefined` confidence never substitutes: CSV and JSON rows have no reader
+ * to grade them, the same rationale `needsVerification` uses for the preview
+ * card. The threshold check is strict `<`, so a reading graded exactly
+ * `VERIFY_FIELD_THRESHOLD` is kept. "Now" means `now` itself, never
+ * `startOfDay(now)` — a parsed date lands at local midnight, so only the
+ * actual instant sorts strictly above every other row dated today in a
+ * newest-first list. `toCreateTransactionDTO` stays untouched (ADR 0059):
+ * callers run their row through this first and hand it an already-resolved
+ * date.
+ */
+export function resolveImportDate(
+  raw: unknown, confidence?: number, now: Date = new Date()
+): ResolvedImportDate {
+  const parsed = parseDateInput(raw);
+  if (parsed === null) return { date: now, dateConfidence: 0, dateAssumed: true };
+  if (confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD) {
+    return { date: now, dateConfidence: confidence, dateAssumed: true };
+  }
+  return { date: parsed, ...(confidence !== undefined ? { dateConfidence: confidence } : {}) };
 }
 
 /**

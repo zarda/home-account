@@ -150,6 +150,13 @@ export interface CategorizedImportTransaction {
    * way it marks a low-confidence amount; the confirm step never writes it.
    */
   currencyFellBack?: boolean;
+  /**
+   * True when `date` is "now" rather than something read off the source — a
+   * review-step mark like `currencyFellBack`, never written to a document. A
+   * wrong date landing on today is easy to spot and fix; the same error
+   * buried under a misread day in the past is not.
+   */
+  dateAssumed?: boolean;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
