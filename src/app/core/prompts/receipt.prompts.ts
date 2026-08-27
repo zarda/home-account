@@ -79,7 +79,7 @@ export function renderReceiptParse(): RenderedPrompt {
   "merchant": "store/restaurant name",
   "amount": total amount as number,
   "currency": "ISO 4217 code, or empty when unreadable",
-  "date": "YYYY-MM-DD format",
+  "date": "YYYY-MM-DD format, or empty when no date is printed",
   "location": "<branch or address as printed, or empty>",
   "country": "<ISO 3166-1 alpha-2 of the issuing country, or empty>",
   "items": [{"name": "item name", "amount": item price as number}],
