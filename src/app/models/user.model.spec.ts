@@ -1,4 +1,5 @@
 import {
+  DEFAULT_FONT_SCALE,
   DEFAULT_USER_PREFERENCES,
   RAG_INSIGHTS_LEVELS,
   RAG_TIER_CONFIGS,
@@ -7,7 +8,10 @@ import {
   UserPreferences,
   baseCurrencyOf,
   canDisableUsageAnalytics,
+  effectiveFontScale,
   effectiveRagLevel,
+  highContrastEnabled,
+  reducedMotionRequested,
   subscriptionTier,
   usageAnalyticsEnabled,
 } from './user.model';
@@ -46,6 +50,88 @@ describe('effectiveRagLevel', () => {
     expect(effectiveRagLevel(corrupt)).toBe('standard');
     const corruptOff = prefs({ ragInsightsLevel: 'bogus' as RagInsightsLevel });
     expect(effectiveRagLevel(corruptOff)).toBe('off');
+  });
+});
+
+describe('effectiveFontScale', () => {
+  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    ...DEFAULT_USER_PREFERENCES,
+    ...overrides,
+  });
+
+  it('should default for missing preferences', () => {
+    expect(effectiveFontScale(undefined)).toBe(DEFAULT_FONT_SCALE);
+    expect(effectiveFontScale(null)).toBe(DEFAULT_FONT_SCALE);
+  });
+
+  it('should default when the field is absent', () => {
+    expect(effectiveFontScale(prefs({}))).toBe(DEFAULT_FONT_SCALE);
+  });
+
+  it('should report a stored scale that is on the list', () => {
+    expect(effectiveFontScale(prefs({ fontScale: 1.15 }))).toBe(1.15);
+    expect(effectiveFontScale(prefs({ fontScale: 1.3 }))).toBe(1.3);
+  });
+
+  it('should fall back to the default for a scale off the list', () => {
+    expect(effectiveFontScale(prefs({ fontScale: 2 }))).toBe(DEFAULT_FONT_SCALE);
+  });
+
+  it('should tolerate junk written by another build', () => {
+    const corrupt = prefs({ fontScale: 'large' as unknown as number });
+    expect(effectiveFontScale(corrupt)).toBe(DEFAULT_FONT_SCALE);
+  });
+});
+
+describe('highContrastEnabled', () => {
+  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    ...DEFAULT_USER_PREFERENCES,
+    ...overrides,
+  });
+
+  it('should be off for missing preferences', () => {
+    expect(highContrastEnabled(undefined)).toBeFalse();
+    expect(highContrastEnabled(null)).toBeFalse();
+  });
+
+  it('should be off when the field is absent', () => {
+    expect(highContrastEnabled(prefs({}))).toBeFalse();
+  });
+
+  it('should be on only for a stored true', () => {
+    expect(highContrastEnabled(prefs({ highContrast: true }))).toBeTrue();
+  });
+
+  it('should require exactly true, tolerating junk', () => {
+    expect(highContrastEnabled(prefs({ highContrast: false }))).toBeFalse();
+    const corrupt = prefs({ highContrast: 'yes' as unknown as boolean });
+    expect(highContrastEnabled(corrupt)).toBeFalse();
+  });
+});
+
+describe('reducedMotionRequested', () => {
+  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    ...DEFAULT_USER_PREFERENCES,
+    ...overrides,
+  });
+
+  it('should be off for missing preferences', () => {
+    expect(reducedMotionRequested(undefined)).toBeFalse();
+    expect(reducedMotionRequested(null)).toBeFalse();
+  });
+
+  it('should be off when the field is absent', () => {
+    expect(reducedMotionRequested(prefs({}))).toBeFalse();
+  });
+
+  it('should be on only for a stored true', () => {
+    expect(reducedMotionRequested(prefs({ reducedMotion: true }))).toBeTrue();
+  });
+
+  it('should require exactly true, tolerating junk', () => {
+    expect(reducedMotionRequested(prefs({ reducedMotion: false }))).toBeFalse();
+    const corrupt = prefs({ reducedMotion: 'yes' as unknown as boolean });
+    expect(reducedMotionRequested(corrupt)).toBeFalse();
   });
 });
 

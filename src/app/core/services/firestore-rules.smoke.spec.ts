@@ -1481,6 +1481,17 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a dotted update of the accessibility preference fields', async () => {
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), {
+          'preferences.fontScale': 1.15,
+          'preferences.highContrast': true,
+          'preferences.reducedMotion': true,
+        }),
+        'accessibility preferences dotted update'
+      );
+    });
+
     it('rejects replacing preferences with a non-map', async () => {
       await expectDenied(
         updateDoc(doc(firestore, `users/${uid}`), { preferences: 'none' }),
