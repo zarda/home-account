@@ -5,7 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDialog } from '@angular/material/dialog';
-import { Subscription } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService, WindowSortDirection } from '../../core/services/transaction-window.service';
 import { PeriodTotalsService } from '../../core/services/period-totals.service';
@@ -171,6 +171,10 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   sortDirection = signal<WindowSortDirection>('desc');
   private categoriesSub?: Subscription;
   private lastAnnouncedResetSeq = 0;
+  // The transaction id named by ?tx=, read once at init and consumed after
+  // the first window seed (see onFiltersChanged) — a later filter change
+  // must not replay it.
+  private pendingOpenTxId: string | null = null;
 
   initialDate = signal<Date | undefined>(undefined);
   showAll = signal<boolean>(false);
@@ -252,6 +256,12 @@ export class TransactionsComponent implements OnInit, OnDestroy {
       }
     }
 
+    // Check for a transaction to open (from the import-history shortcut).
+    // A one-shot snapshot read, deliberately not the re-firing
+    // route.queryParams subscription action=add uses below — replaying this
+    // on every later filter change would reopen the dialog behind the user.
+    this.pendingOpenTxId = this.route.snapshot.queryParamMap.get('tx');
+
     // Load categories (only once)
     this.categoriesSub = this.categoryService.loadCategories().subscribe();
 
@@ -274,9 +284,18 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   onFiltersChanged(filters: TransactionFilters): void {
     this.currentFilters.set(filters);
-    void this.windowSource.reset(filters, this.sortDirection());
+    const reset = this.windowSource.reset(filters, this.sortDirection());
     void this.periodTotals.reset(filters);
     this.scrollToTop();
+
+    // Consumed on the FIRST window seed only: cleared before the reset
+    // settles, so a filter change fired while it is still pending cannot
+    // pick it up again.
+    const pending = this.pendingOpenTxId;
+    if (pending) {
+      this.pendingOpenTxId = null;
+      void reset.then(() => this.openLinkedTransaction(pending));
+    }
   }
 
   applyExternalFilters(filters: TransactionFilters): void {
@@ -353,6 +372,23 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     if (kind !== 'delete') {
       this.windowSource.requestScrollTo(id);
     }
+  }
+
+  // Opens the transaction named by the tx query param (the import-history
+  // shortcut) once the window it lands in is settled. getTransactionById
+  // emits null for a deleted doc — an explicit tap earns an explicit toast,
+  // unlike the silent-skip precedent for passive lists.
+  private async openLinkedTransaction(id: string): Promise<void> {
+    const transaction = await firstValueFrom(this.transactionService.getTransactionById(id));
+    if (!transaction) {
+      this.notifications.info(this.translationService.t('import.linkedTransactionGone'));
+      return;
+    }
+    if (!this.windowSource.isInLoadedRange(transaction.date)) {
+      await this.windowSource.jumpTo(transaction.date);
+    }
+    this.windowSource.requestScrollTo(id);
+    this.openEditDialog(transaction);
   }
 
   private scrollToTop(): void {

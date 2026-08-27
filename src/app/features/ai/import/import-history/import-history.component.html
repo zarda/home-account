@@ -113,6 +113,24 @@
           </mat-card-content>
 
           <mat-card-actions align="end">
+            @if (item.transactionIds?.length === 1) {
+              <button mat-button (click)="openTransaction(item.transactionIds![0])">
+                <mat-icon>open_in_new</mat-icon>
+                {{ 'import.viewTransaction' | translate }}
+              </button>
+            } @else if ((item.transactionIds?.length ?? 0) > 1) {
+              <button mat-button [matMenuTriggerFor]="txMenu">
+                <mat-icon>open_in_new</mat-icon>
+                {{ 'import.viewTransactions' | translate: { count: item.transactionIds!.length } }}
+              </button>
+              <mat-menu #txMenu="matMenu">
+                @for (txId of item.transactionIds; track txId; let i = $index) {
+                  <button mat-menu-item (click)="openTransaction(txId)">
+                    {{ 'import.viewTransactionItem' | translate: { index: i + 1 } }}
+                  </button>
+                }
+              </mat-menu>
+            }
             <button mat-button color="warn" (click)="deleteHistory(item)">
               <mat-icon>delete</mat-icon>
               {{ 'common.delete' | translate }}
