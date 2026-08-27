@@ -327,6 +327,13 @@ describe('ImportHistoryService', () => {
       expect((data as Record<string, unknown>)['errors']).toEqual(errors);
       expect((data as Record<string, unknown>)['totalIncome']).toBe(100);
     });
+
+    it('completeImport forwards transactionIds to the update', async () => {
+      await service.completeImport('import1', { ...stats, transactionIds: ['txn-1', 'txn-2'] });
+
+      const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      expect((data as Record<string, unknown>)['transactionIds']).toEqual(['txn-1', 'txn-2']);
+    });
   });
 
   describe('failImport', () => {

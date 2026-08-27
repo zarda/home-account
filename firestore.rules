@@ -541,7 +541,9 @@ service cloud.firestore {
         // upload failed (#334). Counts, never a reason — the reason is prose
         // and belongs in `errors`.
         && (!('receiptsSkipped' in d) || (d.receiptsSkipped is int && d.receiptsSkipped >= 0))
-        && (!('receiptsFailed' in d) || (d.receiptsFailed is int && d.receiptsFailed >= 0));
+        && (!('receiptsFailed' in d) || (d.receiptsFailed is int && d.receiptsFailed >= 0))
+        // Ids of the transactions a completed import created; ids only, never row data.
+        && (!('transactionIds' in d) || d.transactionIds is list);
     }
 
     function importCreateValid(userId) {

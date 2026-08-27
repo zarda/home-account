@@ -1173,6 +1173,7 @@ export class AIImportService {
     let totalIncome = 0;
     let totalExpenses = 0;
     const errors: ImportHistory['errors'] = [];
+    const transactionIds: string[] = [];
 
     // Get user's base currency for fallback
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
@@ -1211,8 +1212,9 @@ export class AIImportService {
             ? { ...bareDto, receiptFiles: attachedFiles }
             : bareDto;
 
+          let savedId = '';
           try {
-            await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
+            savedId = await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
           } catch (error) {
             // Both of these are about the images, not the row, and both leave
             // the batch rolled back with no id, upload or write behind them —
@@ -1229,7 +1231,7 @@ export class AIImportService {
             const imagesOnly =
               message === RECEIPT_IMAGE_LIMIT_ERROR || message === RECEIPT_ATTACH_FAILED;
             if (attachedFiles.length && imagesOnly) {
-              await this.transactionService.addTransaction(bareDto, { skipBudgetRecalc: true });
+              savedId = await this.transactionService.addTransaction(bareDto, { skipBudgetRecalc: true });
               if (message === RECEIPT_IMAGE_LIMIT_ERROR) {
                 receiptsSkipped++;
               } else {
@@ -1240,6 +1242,7 @@ export class AIImportService {
             }
           }
           successCount++;
+          transactionIds.push(savedId);
 
           if (txn.type === 'income') {
             totalIncome += txn.amount;
@@ -1282,6 +1285,7 @@ export class AIImportService {
         errors?: ImportHistory['errors'];
         receiptsSkipped?: number;
         receiptsFailed?: number;
+        transactionIds?: string[];
       } = {
         transactionCount: selectedTransactions.length,
         successCount,
@@ -1294,6 +1298,9 @@ export class AIImportService {
 
       if (errors.length > 0) {
         completeStats.errors = errors;
+      }
+      if (transactionIds.length > 0) {
+        completeStats.transactionIds = transactionIds;
       }
       if (receiptsSkipped > 0) {
         completeStats.receiptsSkipped = receiptsSkipped;

@@ -815,4 +815,112 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
     },
     30000
   );
+
+  it(
+    'the completed record names the transactions it created',
+    async () => {
+      // Only the real confirmImport path can prove this: the unit suite
+      // mocks addTransaction and can only assert what the service *passes*
+      // to it, never the id a real write returns or that the rules accept
+      // it back on the completed record.
+      const extractedRows: MultiImageExtractedTransaction[] = [
+        {
+          date: '2026-07-03',
+          description: 'Newsstand',
+          amount: 4.5,
+          type: 'expense',
+          currency: 'USD',
+          imageIndex: 0,
+          positionInImage: 'top',
+          confidence: 0.9,
+          receiptId: 1
+        }
+      ];
+
+      const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
+        'CloudLLMProviderService',
+        [
+          'hasAnyCloudProvider',
+          'answerWasIncomplete',
+          'extractTransactionsFromMultipleImages',
+          'categorizeTransactions',
+          'initializeProviders',
+          'resetProviders',
+          'setOpenAIModel',
+          'setClaudeModel',
+          'availableProviders',
+          'providerStatus',
+          'resolveProvider'
+        ]
+      );
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.answerWasIncomplete.and.returnValue(false);
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.resolveTo(extractedRows);
+      cloudLLMProvider.categorizeTransactions.and.callFake(async raws =>
+        raws.map(r => ({ ...r, suggestedCategoryId: 'other_expense', confidence: 0.9 }))
+      );
+      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.resetProviders.and.resolveTo(undefined);
+      cloudLLMProvider.availableProviders.and.returnValue([]);
+      cloudLLMProvider.providerStatus.and.returnValue({
+        gemini: false,
+        openai: false,
+        claude: false
+      });
+      cloudLLMProvider.resolveProvider.and.returnValue(null);
+
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
+        'isOnline',
+        'registerBackgroundSync'
+      ]);
+      pwa.isOnline.and.returnValue(true);
+      pwa.registerBackgroundSync.and.resolveTo(true);
+
+      const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
+        'AnalyticsService',
+        ['trackAiAssistUsed']
+      );
+
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
+          { provide: PwaService, useValue: pwa },
+          { provide: AnalyticsService, useValue: analytics },
+          {
+            provide: CurrencyService,
+            useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      // Earlier cases in this file already wrote rows of their own, so the
+      // ids this confirm creates are told apart by set difference.
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const result = await importService.importFromMultipleImages([
+        new File([new Uint8Array([1])], 'newsstand.jpg', { type: 'image/jpeg' })
+      ]);
+      expect(result.transactions.length).toBe(1);
+
+      const importHistory = await importService.confirmImport(
+        result.transactions,
+        'newsstand.jpg',
+        1234,
+        'image',
+        'receipt_image'
+      );
+      expect(importHistory.successCount).toBe(1);
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const createdIds = after.docs.map(d => d.id).filter(id => !before.has(id));
+
+      expect(importHistory.transactionIds).toEqual(createdIds);
+      expect(importHistory.transactionIds?.length).toBe(importHistory.successCount);
+    },
+    30000
+  );
 });

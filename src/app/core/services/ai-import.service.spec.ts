@@ -2532,6 +2532,73 @@ describe('AIImportService', () => {
       expect('receiptsFailed' in stats).toBeFalse();
     });
 
+    describe('transactionIds', () => {
+      it('records the created transaction ids on the completed record, in row order', async () => {
+        transactionService.addTransaction.and.returnValues(
+          Promise.resolve('id-1'),
+          Promise.resolve('id-2')
+        );
+
+        await service.confirmImport(
+          [selected({ id: 'a' }), selected({ id: 'b' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect(stats['transactionIds']).toEqual(['id-1', 'id-2']);
+      });
+
+      it('a failed row contributes no id and no placeholder', async () => {
+        transactionService.addTransaction.and.returnValues(
+          Promise.resolve('id-1'),
+          Promise.reject(new Error('save failed')),
+          Promise.resolve('id-3')
+        );
+
+        await service.confirmImport(
+          [selected({ id: 'a' }), selected({ id: 'b' }), selected({ id: 'c' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect(stats['transactionIds']).toEqual(['id-1', 'id-3']);
+        expect(stats['successCount']).toBe(2);
+      });
+
+      it("the photo-less retry's id is the one recorded", async () => {
+        const fileA = new File(['a'], 'a.png', { type: 'image/png' });
+        transactionService.addTransaction.and.callFake(dto =>
+          dto.receiptFiles?.length
+            ? Promise.reject(new Error(RECEIPT_IMAGE_LIMIT_ERROR))
+            : Promise.resolve('retry-id')
+        );
+
+        await service.confirmImport(
+          [withMeta({}, { imageIndex: 0, receiptId: 1 })],
+          'r.png', 10, 'image', 'receipt_image',
+          [fileA]
+        );
+
+        // Two calls happen (primary rejected, retry saved), but only the
+        // retry's id is worth recording — the two writes are mutually
+        // exclusive over the same row.
+        const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect(stats['transactionIds']).toEqual(['retry-id']);
+      });
+
+      it('writes no transactionIds key when every row failed', async () => {
+        transactionService.addTransaction.and.returnValue(Promise.reject(new Error('save failed')));
+
+        await service.confirmImport(
+          [selected({ id: 'a' }), selected({ id: 'b' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect('transactionIds' in stats).toBeFalse();
+      });
+    });
+
     it('should fail the import and rethrow when completion throws', async () => {
       importHistoryService.completeImport.and.returnValue(Promise.reject(new Error('complete boom')));
 

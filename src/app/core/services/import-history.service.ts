@@ -194,6 +194,7 @@ export class ImportHistoryService {
       errors?: ImportHistory['errors'];
       receiptsSkipped?: number;
       receiptsFailed?: number;
+      transactionIds?: string[];
     }
   ): Promise<void> {
     const status: ImportStatus = stats.errorCount > 0

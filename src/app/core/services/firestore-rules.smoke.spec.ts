@@ -1445,6 +1445,22 @@ describe('firestore.rules (emulator smoke test)', () => {
         'negative duration'
       );
     });
+
+    it('accepts the created-transaction ids on a completed record', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('imports')), validImport({
+          transactionIds: ['txn-1', 'txn-2'],
+        })),
+        'import with transaction ids'
+      );
+    });
+
+    it('rejects transactionIds that is not a list', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ transactionIds: 'txn-1' })),
+        'transactionIds as a string'
+      );
+    });
   });
 
   describe('user profile', () => {

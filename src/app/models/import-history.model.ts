@@ -52,6 +52,13 @@ export interface ImportHistory {
    */
   receiptsFailed?: number;
   /**
+   * IDs of the transactions this import created, in selected-row order,
+   * successes only (`length === successCount`). Absent on a record that has
+   * not completed yet, on an import where every row failed, and on the doors
+   * that write no success record at all (`form`, `queue` — ADR 0065).
+   */
+  transactionIds?: string[];
+  /**
    * How the attempt ran, recorded for receipts only. Written at extraction
    * time for a failed attempt and at confirm time for a successful one.
    * Every slot is optional because a CSV import has none of them.
