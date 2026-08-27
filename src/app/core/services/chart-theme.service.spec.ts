@@ -1,13 +1,20 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { ChartThemeService } from './chart-theme.service';
 import { ThemeService } from './theme.service';
+import { AccessibilityService } from './accessibility.service';
 
 describe('ChartThemeService', () => {
   let service: ChartThemeService;
   let themeService: ThemeService;
+  let reducedMotion: ReturnType<typeof signal<boolean>>;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    reducedMotion = signal(false);
+
+    TestBed.configureTestingModule({
+      providers: [{ provide: AccessibilityService, useValue: { reducedMotion } }],
+    });
     service = TestBed.inject(ChartThemeService);
     themeService = TestBed.inject(ThemeService);
   });
@@ -62,6 +69,20 @@ describe('ChartThemeService', () => {
 
       expect(labels.color).toBe(palette.text);
       expect(labels.font.family).toBe(palette.fontFamily);
+    });
+  });
+
+  describe('animation', () => {
+    it('runs a 400ms animation when the accessibility signal is not reduced', () => {
+      reducedMotion.set(false);
+
+      expect(service.animation()).toEqual({ duration: 400 });
+    });
+
+    it('disables animation when the accessibility signal prefers reduced motion', () => {
+      reducedMotion.set(true);
+
+      expect(service.animation()).toBeFalse();
     });
   });
 });
