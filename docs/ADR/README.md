@@ -74,6 +74,10 @@ reverse — why a thing is the way it is, not how to use it.
 | [0067](0067-a-photo-is-made-to-fit-and-never-costs-its-transaction.md) | A receipt photo is made to fit, and never costs its transaction | Accepted | 2026-08-25 |
 | [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted | 2026-08-26 |
 | [0069](0069-one-ladder-decides-what-is-the-same-merchant.md) | One ladder decides what is the same merchant, and it stays a string ladder | Accepted | 2026-08-26 |
+| [0070](0070-accessibility-preferences-ride-the-account-and-land-on-the-root.md) | Accessibility preferences ride the account, and land on the root | Accepted | 2026-08-27 |
+| [0071](0071-direction-comes-from-the-locale-and-physical-css-is-frozen.md) | Direction comes from the locale, and physical CSS is frozen | Accepted | 2026-08-27 |
+| [0072](0072-onboarding-runs-once-and-never-against-a-fallback-profile.md) | Onboarding runs once, and never against a fallback profile | Accepted | 2026-08-27 |
+| [0073](0073-shortcuts-live-in-the-shell-and-the-palette-reads-the-sidebars-list.md) | Shortcuts live in the shell, and the palette reads the sidebar's list | Accepted | 2026-08-27 |
 
 ## What belongs here
 
