@@ -318,11 +318,24 @@ export class TransactionPreviewTableComponent {
     return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
   }
 
-  /** Tooltip for a flagged field, carrying the percentage the model reported. */
+  /** Explains why a row is dated today rather than something read off the source. */
+  dateAssumedTooltip(): string {
+    return this.translationService.t('import.dateAssumedTooltip');
+  }
+
+  /**
+   * Tooltip for a flagged field, carrying the percentage the model reported —
+   * except a date whose row already carries `dateAssumed`: the shown value
+   * is "now", not a reading, so a confidence percentage would describe a
+   * date that isn't there anymore. The assumed wording takes over instead.
+   */
   verificationTooltip(
     transaction: CategorizedImportTransaction,
     field: 'amount' | 'date'
   ): string {
+    if (field === 'date' && transaction.dateAssumed) {
+      return this.dateAssumedTooltip();
+    }
     const percent = Math.round((transaction.fieldConfidence?.[field] ?? 0) * 100);
     return this.translationService.t(
       field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate',
