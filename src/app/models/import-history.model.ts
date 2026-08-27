@@ -54,8 +54,9 @@ export interface ImportHistory {
   /**
    * IDs of the transactions this import created, in selected-row order,
    * successes only (`length === successCount`). Absent on a record that has
-   * not completed yet, on an import where every row failed, and on the doors
-   * that write no success record at all (`form`, `queue` — ADR 0065).
+   * not completed yet, on an import where every row failed, on records
+   * completed before this field was added, and on the doors that write no
+   * success record at all (`form`, `queue` — ADR 0065).
    */
   transactionIds?: string[];
   /**
