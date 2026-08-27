@@ -22,7 +22,7 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-import { tabAnimationDuration } from '../../core/layout/motion';
+import { AccessibilityService } from '../../core/services/accessibility.service';
 import { tabIndexFromParam } from '../../core/utils/tab-query-param.utils';
 
 /** The tab strip's sections, in the order the template lays them out. */
@@ -54,6 +54,7 @@ export class BudgetsComponent implements OnInit, OnDestroy {
   private translationService = inject(TranslationService);
   private notifications = inject(NotificationService);
   private dialog = inject(MatDialog);
+  private accessibility = inject(AccessibilityService);
 
   budgets = this.budgetService.budgets;
   isLoading = signal(true);
@@ -72,7 +73,7 @@ export class BudgetsComponent implements OnInit, OnDestroy {
 
   // 0ms when the user prefers reduced motion (Material tab slide runs via the
   // Web Animations API, which the global CSS switch can't reach).
-  readonly tabAnimationDuration = tabAnimationDuration();
+  readonly tabAnimationDuration = this.accessibility.tabAnimationDuration;
 
   /**
    * Which tab a ?tab= link opens on. Read once at construction rather than

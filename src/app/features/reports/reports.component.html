@@ -18,7 +18,7 @@
       [(selectedIndex)]="selectedTabIndex"
       (selectedTabChange)="onTabChange($event.index)"
       class="reports-tabs"
-      [animationDuration]="tabAnimationDuration"
+      [animationDuration]="tabAnimationDuration()"
     >
       <mat-tab>
         <ng-template mat-tab-label>
