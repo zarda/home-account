@@ -586,6 +586,30 @@ describe('AIStrategyService', () => {
       expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE });
     });
 
+    it('a consolidated row whose date cannot parse carries date confidence 0 next to its amount grade', async () => {
+      const extracted: MultiImageExtractedTransaction[] = [
+        {
+          date: 'not a date', description: 'Lunch', amount: 10, type: 'expense',
+          currency: 'USD', merchant: 'Diner', imageIndex: 0, positionInImage: 'top',
+          confidence: 0.8, receiptId: 1,
+        },
+        {
+          date: '2026-01-15', description: 'Snack', amount: 5, type: 'expense',
+          currency: 'USD', imageIndex: 1, positionInImage: 'bottom', confidence: 0.6,
+          receiptId: 1,
+        },
+      ];
+      cloudMock.extractTransactionsFromMultipleImages.and.resolveTo(extracted);
+      const service = createService('web');
+
+      const result = await service.processMultipleImages([imageFile(), imageFile()]);
+
+      // The merge has no reported receipt total, so the amount grade is the
+      // review-flag confidence the same as the plain merge test above; the
+      // unparseable date must carry its own 0 right alongside it.
+      expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0 });
+    });
+
     it('carries which photos each transaction came from', async () => {
       const extracted: MultiImageExtractedTransaction[] = [
         {

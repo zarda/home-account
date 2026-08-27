@@ -153,7 +153,17 @@ describe('NativeReceiptService', () => {
 
       const result = await service.processImage(imageFile());
 
-      expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.8 });
+      // No date in this text, so the date grade is honestly 0 rather than
+      // simply absent.
+      expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.8, date: 0 });
+    });
+
+    it('the regex lane reports both field confidences', async () => {
+      visionMock.recognizeText.and.resolveTo({ ...ocrResult, text: 'Shop\n2026-01-15\n$100\n$8\n$108' });
+
+      const result = await service.processImage(imageFile());
+
+      expect(result.transactions[0].fieldConfidence).toEqual({ amount: 0.8, date: 0.9 });
     });
 
     it('should flag a demoted tendered read below the verify threshold', async () => {
@@ -387,6 +397,14 @@ describe('NativeReceiptService', () => {
 
         expect(isNaN(date.getTime())).toBeFalse();
         expect(date.getDate()).toBe(today.getDate());
+      });
+
+      it('an unreadable Apple Intelligence date is graded 0', async () => {
+        extractionDated('2026-02-31');
+
+        const result = await service.processImage(imageFile());
+
+        expect(result.transactions[0].fieldConfidence).toEqual({ date: 0 });
       });
     });
 

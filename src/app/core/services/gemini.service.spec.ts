@@ -834,6 +834,18 @@ describe('GeminiService', () => {
       expect(result[0].category).toBeUndefined();
     });
 
+    it('zeroes the date confidence when the model names no date, and leaves it unset when it does', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
+      })));
+      expect((await service.extractTransactionsFromImage('abc'))[0].dateConfidence).toBe(0);
+
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify({
+        date: '2024-05-10', merchant: 'Cafe', totalAmount: 25.5, currency: 'JPY',
+      })));
+      expect('dateConfidence' in (await service.extractTransactionsFromImage('abc'))[0]).toBeFalse();
+    });
+
     it('rethrows on error and records lastError', async () => {
       visionModel.generateContent.and.rejectWith(new Error('vision boom'));
       await expectAsync(service.extractTransactionsFromImage('abc'))
@@ -884,6 +896,20 @@ describe('GeminiService', () => {
       expect(result[1].confidence).toBe(0.7);
       expect(result[1].wasMerged).toBeFalse();
       expect(result[1].receiptTotal).toBeUndefined();
+    });
+
+    it('zeroes the date confidence for an item with no date, and leaves it unset when it does', async () => {
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD', positionInImage: 'top', confidence: 0.9 },
+      ])));
+      const noDate = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
+      expect(noDate[0].dateConfidence).toBe(0);
+
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', positionInImage: 'middle', confidence: 0.95 },
+      ])));
+      const withDate = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
+      expect('dateConfidence' in withDate[0]).toBeFalse();
     });
 
     it('leaves an unrecognized category name undefined', async () => {

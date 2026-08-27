@@ -288,18 +288,25 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
       const parsed = JSON.parse(this.extractJson(response.text));
       const printed = readPrintedLocation(parsed.location, parsed.merchant);
       const country = readCountryCode(parsed.country);
+      const parsedDate = parseDateInput(parsed.date);
 
       return {
         merchant: parsed.merchant || 'Unknown',
         amount: Number(parsed.amount) || 0,
         currency: readCurrencyCode(parsed.currency),
-        date: parseDateInput(parsed.date) ?? new Date(),
+        date: parsedDate ?? new Date(),
         items: parsed.items || [],
         receiptDetails: parsed.receiptDetails,
         suggestedCategory: this.mapCategoryNameToId(parsed.suggestedCategory),
         confidence: parsed.amount && parsed.merchant ? 0.85 : 0.5,
         receiptCount: Number(parsed.receiptCount) || 1,
-        fieldConfidence: readFieldConfidence(parsed),
+        // A date the model claimed to read clearly is not a real claim once
+        // it turned out to be unreadable: `date` above is `now`, and a
+        // confidence copied straight from the model would let the fallback
+        // pass for a real reading downstream.
+        fieldConfidence: parsedDate === null
+          ? { ...readFieldConfidence(parsed), date: 0 }
+          : readFieldConfidence(parsed),
         ...(printed ? { location: printed } : {}),
         ...(country ? { receiptCountry: country } : {}),
       };
@@ -343,7 +350,10 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         merchant: t.merchant,
         details: t.details,
         amountConfidence: t.amountConfidence,
-        dateConfidence: t.dateConfidence,
+        // A missing date is patched with today's day-key above, and that
+        // string parses just fine — so a claimed dateConfidence must not
+        // outlive the date it was claimed about.
+        dateConfidence: t.date ? t.dateConfidence : 0,
         ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
       }));
     });
