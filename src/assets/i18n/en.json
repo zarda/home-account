@@ -1460,5 +1460,16 @@
     "scanFirst": "Scan a receipt",
     "skip": "Skip",
     "stepOf": "Step {{current}} of {{total}}"
+  },
+  "palette": {
+    "title": "Command Palette",
+    "placeholder": "Search pages and actions",
+    "noResults": "Nothing matches that",
+    "sectionNavigate": "Go to",
+    "sectionActions": "Actions",
+    "resultCount": {
+      "one": "{{count}} result",
+      "other": "{{count}} results"
+    }
   }
 }

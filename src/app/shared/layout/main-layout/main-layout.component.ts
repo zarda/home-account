@@ -26,6 +26,10 @@ const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
   host: {
     '(document:keydown.escape)': 'onEscape()',
     '(document:keydown.n)': 'onAddHotkey($event)',
+    // Two lines because Angular matches the modifier by name, not by
+    // platform: Ctrl+K is the Windows/Linux chord, Cmd+K the macOS one.
+    '(document:keydown.control.k)': 'onPaletteHotkey($event)',
+    '(document:keydown.meta.k)': 'onPaletteHotkey($event)',
   },
 })
 export class MainLayoutComponent {
@@ -117,8 +121,16 @@ export class MainLayoutComponent {
     }
   }
 
-  onAddHotkey(event: KeyboardEvent): void {
-    this.keyboardShortcuts.handleAddHotkey(event);
+  // A host binding's `$event` is typed `Event` however specific the key
+  // qualifier is, so these take `Event` and narrow. Declaring KeyboardEvent
+  // here compiles under the test tsconfig and fails `ng build`, which is how
+  // it got missed the first time.
+  onAddHotkey(event: Event): void {
+    this.keyboardShortcuts.handleAddHotkey(event as KeyboardEvent);
+  }
+
+  onPaletteHotkey(event: Event): void {
+    this.keyboardShortcuts.handlePaletteHotkey(event as KeyboardEvent);
   }
 
   onNavItemClicked(): void {

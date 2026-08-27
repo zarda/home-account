@@ -1376,5 +1376,13 @@
     "scanFirst": "掃描收據",
     "skip": "略過",
     "stepOf": "步驟 {{current}}／{{total}}"
+  },
+  "palette": {
+    "title": "指令面板",
+    "placeholder": "搜尋頁面與操作",
+    "noResults": "沒有符合的項目",
+    "sectionNavigate": "前往",
+    "sectionActions": "操作",
+    "resultCount": "{{count}} 個結果"
   }
 }

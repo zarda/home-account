@@ -1376,5 +1376,13 @@
     "scanFirst": "レシートを撮影",
     "skip": "スキップ",
     "stepOf": "ステップ {{current}}／{{total}}"
+  },
+  "palette": {
+    "title": "コマンドパレット",
+    "placeholder": "ページと操作を検索",
+    "noResults": "一致するものはありません",
+    "sectionNavigate": "移動先",
+    "sectionActions": "操作",
+    "resultCount": "{{count}} 件の結果"
   }
 }

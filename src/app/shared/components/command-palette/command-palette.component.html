@@ -1,0 +1,72 @@
+<div class="command-palette">
+  <app-dialog-header titleKey="palette.title" icon="bolt" (closed)="close()" />
+
+  <mat-dialog-content class="palette-content">
+    <mat-form-field appearance="outline" class="palette-search" subscriptSizing="dynamic">
+      <input
+        matInput
+        cdkFocusInitial
+        type="text"
+        autocomplete="off"
+        [value]="query()"
+        [placeholder]="'palette.placeholder' | translate"
+        [attr.aria-label]="'palette.placeholder' | translate"
+        (input)="onQueryInput($event)"
+        (keydown.arrowdown)="onInputArrowDown($event)"
+      />
+    </mat-form-field>
+
+    @if (navResults().length > 0) {
+      <section class="palette-section">
+        <h3 class="palette-section-title">{{ 'palette.sectionNavigate' | translate }}</h3>
+        <ul class="palette-list">
+          @for (command of navResults(); track command.labelKey) {
+            <li>
+              <!--
+                A button, not a link: the aria-current invariant in
+                app.smoke.spec counts `a.nav-item` elements, and Enter
+                activates a button without a keydown handler of our own.
+              -->
+              <button
+                type="button"
+                class="palette-item"
+                (click)="select(command)"
+                (keydown.arrowdown)="onRowArrowDown($event)"
+                (keydown.arrowup)="onRowArrowUp($event)"
+              >
+                <mat-icon aria-hidden="true">{{ command.icon }}</mat-icon>
+                <span class="palette-item-label">{{ command.label }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    @if (actionResults().length > 0) {
+      <section class="palette-section">
+        <h3 class="palette-section-title">{{ 'palette.sectionActions' | translate }}</h3>
+        <ul class="palette-list">
+          @for (command of actionResults(); track command.labelKey) {
+            <li>
+              <button
+                type="button"
+                class="palette-item"
+                (click)="select(command)"
+                (keydown.arrowdown)="onRowArrowDown($event)"
+                (keydown.arrowup)="onRowArrowUp($event)"
+              >
+                <mat-icon aria-hidden="true">{{ command.icon }}</mat-icon>
+                <span class="palette-item-label">{{ command.label }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    @if (filtered().length === 0) {
+      <p class="palette-empty">{{ 'palette.noResults' | translate }}</p>
+    }
+  </mat-dialog-content>
+</div>
