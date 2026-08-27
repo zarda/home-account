@@ -26,7 +26,7 @@ const EN_LABELS: Record<string, string> = {
   'nav.settings': 'Settings',
   'nav.about': 'About',
   'nav.searchHistory': 'Search History',
-  'nav.importFile': 'Import',
+  'nav.importFile': 'Import photos',
   'nav.importHistory': 'Import History',
   'transactions.addTransaction': 'Add Transaction',
   'ai.scanReceipt': 'Scan Receipt',
@@ -91,6 +91,21 @@ describe('CommandPaletteComponent', () => {
     input.value = text;
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
+  }
+
+  function enterOn(
+    element: HTMLElement,
+    overrides: Partial<KeyboardEvent> = {}
+  ): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+      ...overrides,
+    });
+    element.dispatchEvent(event);
+    fixture.detectChanges();
+    return event;
   }
 
   function arrowOn(element: HTMLElement, key: 'ArrowDown' | 'ArrowUp'): void {
@@ -218,6 +233,86 @@ describe('CommandPaletteComponent', () => {
       closed$.next(undefined);
 
       expect(quickAdd.openScanReceipt).toHaveBeenCalledTimes(1);
+    });
+
+    // The rows stay hit-testable for the whole exit transition, so without a
+    // latch a double-click queues two runs on the one close — two stacked
+    // add-transaction dialogs, both opened with disableClose.
+    it('runs the command once however many times it is chosen', () => {
+      const add = component.actionResults()[0];
+
+      component.select(add);
+      component.select(add);
+      closed$.next(undefined);
+
+      expect(dialogRef.close).toHaveBeenCalledTimes(1);
+      expect(quickAdd.openAddTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a second click on a row that already fired', () => {
+      type('scan');
+      rows()[0].click();
+      rows()[0].click();
+      closed$.next(undefined);
+
+      expect(quickAdd.openScanReceipt).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not let a second, different row overtake the first choice', () => {
+      const dashboard = component.navResults()[0];
+      const add = component.actionResults()[0];
+
+      component.select(dashboard);
+      component.select(add);
+      closed$.next(undefined);
+
+      expect(router.navigate).toHaveBeenCalledOnceWith(['/dashboard']);
+      expect(quickAdd.openAddTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  // docs/shortcuts.md promises "type a few letters, Enter" — no ArrowDown
+  // first.
+  describe('enter in the search box', () => {
+    it('runs the first result', () => {
+      type('budget');
+
+      const event = enterOn(searchInput());
+      closed$.next(undefined);
+
+      expect(event.defaultPrevented).toBeTrue();
+      expect(router.navigate).toHaveBeenCalledOnceWith(['/budgets']);
+    });
+
+    it('takes the head of the filtered list, which is the top row', () => {
+      const event = enterOn(searchInput());
+      closed$.next(undefined);
+
+      expect(event.defaultPrevented).toBeTrue();
+      expect(router.navigate).toHaveBeenCalledOnceWith(['/dashboard']);
+    });
+
+    it('does nothing, and swallows nothing, when the filter emptied the list', () => {
+      type('zzzznothing');
+
+      const event = enterOn(searchInput());
+
+      expect(event.defaultPrevented).toBeFalse();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    // The Enter that commits a kana composition is text, not a command.
+    it('leaves an IME composition alone', () => {
+      type('budget');
+
+      const event = enterOn(searchInput(), {
+        isComposing: true,
+      } as unknown as KeyboardEventInit);
+
+      expect(event.defaultPrevented).toBeFalse();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(router.navigate).not.toHaveBeenCalled();
     });
   });
 

@@ -141,6 +141,60 @@ describe('KeyboardShortcutService', () => {
     expect(quickAdd.openAddTransaction).not.toHaveBeenCalled();
   });
 
+  // Material drives mat-select, mat-menu and the selection lists with
+  // first-letter typeahead, and none of those is a MatDialog — so the
+  // open-dialog guard never sees them and the letter would jump the list
+  // *and* open the add form. They are recognised by their ARIA roles and by
+  // the overlay pane the open ones render into.
+  it('does nothing when the target is inside an overlay listbox', () => {
+    const listbox = document.createElement('div');
+    listbox.setAttribute('role', 'listbox');
+    const option = document.createElement('div');
+    option.setAttribute('role', 'option');
+    listbox.appendChild(option);
+    const event = keydownN(option);
+
+    service.handleAddHotkey(event);
+
+    expect(quickAdd.openAddTransaction).not.toHaveBeenCalled();
+  });
+
+  // A focused but closed mat-select trigger: the panel is not open, so there
+  // is no overlay pane to find, and the host is a combobox.
+  it('does nothing when the target is a closed select trigger', () => {
+    const combobox = document.createElement('div');
+    combobox.setAttribute('role', 'combobox');
+    const event = keydownN(combobox);
+
+    service.handleAddHotkey(event);
+
+    expect(quickAdd.openAddTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the target is inside an open menu', () => {
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    const item = document.createElement('button');
+    menu.appendChild(item);
+    const event = keydownN(item);
+
+    service.handleAddHotkey(event);
+
+    expect(quickAdd.openAddTransaction).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the target is inside an overlay pane', () => {
+    const pane = document.createElement('div');
+    pane.classList.add('cdk-overlay-pane');
+    const item = document.createElement('button');
+    pane.appendChild(item);
+    const event = keydownN(item);
+
+    service.handleAddHotkey(event);
+
+    expect(quickAdd.openAddTransaction).not.toHaveBeenCalled();
+  });
+
   it('opens the add-transaction dialog and prevents default on a clean event', () => {
     const event = keydownN(document.body);
     spyOn(event, 'preventDefault').and.callThrough();

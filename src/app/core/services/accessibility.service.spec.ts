@@ -150,6 +150,71 @@ describe('AccessibilityService', () => {
     });
   });
 
+  /**
+   * The three constructor effects are the only thing that writes any of this
+   * to the document; the private-cast suites below assert what each write
+   * does, but not that anything ever calls them. Deleting all three
+   * `effect()` calls would leave those green while the feature stopped
+   * working. These drive the public surface instead and flush, so the wiring
+   * itself is what is under test.
+   */
+  describe('the constructor effects', () => {
+    /** Drop the writes the first flush makes, so a test sees only its own. */
+    const resetWrites = () => {
+      (mockHtmlElement.classList.add as jasmine.Spy).calls.reset();
+      (mockHtmlElement.classList.remove as jasmine.Spy).calls.reset();
+      (mockHtmlElement.style.setProperty as jasmine.Spy).calls.reset();
+      (mockHtmlElement.style.removeProperty as jasmine.Spy).calls.reset();
+    };
+
+    it('carries an initialized account down to the document root', () => {
+      service.init(prefs({ fontScale: 1.3, highContrast: true, reducedMotion: true }));
+
+      TestBed.tick();
+
+      expect(mockHtmlElement.style.setProperty).toHaveBeenCalledWith('--app-font-scale', '1.3');
+      expect(mockHtmlElement.classList.add).toHaveBeenCalledWith('high-contrast');
+      expect(mockHtmlElement.classList.add).toHaveBeenCalledWith('reduced-motion');
+    });
+
+    it('lifts every class and variable when the next account carries none', () => {
+      service.init(prefs({ fontScale: 1.3, highContrast: true, reducedMotion: true }));
+      TestBed.tick();
+      resetWrites();
+
+      service.init(prefs({}));
+      TestBed.tick();
+
+      expect(mockHtmlElement.style.removeProperty).toHaveBeenCalledWith('--app-font-scale');
+      expect(mockHtmlElement.classList.remove).toHaveBeenCalledWith('high-contrast');
+      expect(mockHtmlElement.classList.remove).toHaveBeenCalledWith('reduced-motion');
+    });
+
+    it('re-applies on every later change, not only the first', () => {
+      TestBed.tick();
+      resetWrites();
+
+      service.setFontScale(1.15);
+      service.setHighContrast(true);
+      TestBed.tick();
+
+      expect(mockHtmlElement.style.setProperty).toHaveBeenCalledWith('--app-font-scale', '1.15');
+      expect(mockHtmlElement.classList.add).toHaveBeenCalledWith('high-contrast');
+    });
+
+    // The reduced-motion effect reads the resolved computed, not the stored
+    // half of it, so the OS asking on its own has to reach the document too.
+    it('writes the reduced-motion class for the system preference alone', () => {
+      TestBed.tick();
+      resetWrites();
+
+      setSystemReducedMotion(true);
+      TestBed.tick();
+
+      expect(mockHtmlElement.classList.add).toHaveBeenCalledWith('reduced-motion');
+    });
+  });
+
   describe('applyFontScale', () => {
     it('sets the --app-font-scale variable for a non-default scale', () => {
       applyFontScale(1.15);
