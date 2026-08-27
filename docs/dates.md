@@ -46,9 +46,9 @@ that round trip came to write local and read UTC.
 
 ### An import door resolves a date before it writes one
 
-`parseDateInput` answers "is this a date". The wizard's review lanes and the offline queue have a second
-question — "is this date worth writing" — and `resolveImportDate` in
-`core/utils/import-dto.utils.ts` answers it. It calls
+`parseDateInput` answers "is this a date". The wizard's review lanes and the
+offline queue have a second question — "is this date worth writing" — and
+`resolveImportDate` in `core/utils/import-dto.utils.ts` answers it. It calls
 `parseDateInput` and adds the confidence rule: a value nothing can parse, or one
 the reader graded below `VERIFY_FIELD_THRESHOLD`, resolves to `new Date()`, and
 the review step marks the row `dateAssumed`. A value nobody graded keeps its

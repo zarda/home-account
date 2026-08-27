@@ -232,10 +232,13 @@ where before the fabricated one arrived confident.
 ## Things that only became apparent while building
 
 - **The multi-image lane patches a missing date too.**
-  The pattern `date: t.date || dayKey(new Date())` appears three times
-  (`cloud-llm-provider.base.ts:344`, `:406`, `gemini.service.ts:346`), and a
-  variant `date: receiptData.date || dayKey(new Date())` appears once
-  (`gemini.service.ts:289`), spanning four lanes across the two cloud adapters.
+  The pattern `date: t.date || dayKey(new Date())` appears three times and a
+  variant `date: receiptData.date || dayKey(new Date())` appears once, across
+  `extractStatementTransactions`, `extractTransactionsFromMultipleImages` (both
+  in `cloud-llm-provider.base.ts`), `extractWithPositionMetadata` and
+  `extractTransactionsFromImage` (both in `gemini.service.ts`, the second
+  carrying the `receiptData.date` variant), spanning four lanes across the two
+  cloud adapters.
   The multi-image pair was closed a round after the statement pair. The lanes
   read identically at the seam; what hid the second pair is that its prompts
   grade nothing per field, so there was no `dateConfidence` beside the patch to
