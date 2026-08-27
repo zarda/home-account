@@ -19,6 +19,7 @@ import { provideStorage, getStorage } from '@angular/fire/storage';
 import { provideRemoteConfig, getRemoteConfig } from '@angular/fire/remote-config';
 import { provideAnalytics, initializeAnalytics, setConsent } from '@angular/fire/analytics';
 import { MAT_DIALOG_DEFAULT_OPTIONS } from '@angular/material/dialog';
+import { Directionality } from '@angular/cdk/bidi';
 import { provideAppCharts } from './core/config/chart.config';
 import { provideHttpClient } from '@angular/common/http';
 import { Capacitor } from '@capacitor/core';
@@ -28,6 +29,7 @@ import { environment } from '../environments/environment';
 import { TranslationService } from './core/services/translation.service';
 import { ThemeService } from './core/services/theme.service';
 import { AccessibilityService } from './core/services/accessibility.service';
+import { AppDirectionality } from './core/services/app-directionality';
 import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
 import { AppLockService } from './core/services/app-lock.service';
 import { ShareIntakeService } from './core/services/share-intake.service';
@@ -219,6 +221,10 @@ export const appConfig: ApplicationConfig = {
       },
     },
     { provide: LOCALE_ID, useFactory: appLocaleIdFactory },
+    // Everything in Material and the CDK asks for Directionality; handing them
+    // the app's own instance is what lets a locale switch reach components
+    // that were already built (see AppDirectionality).
+    { provide: Directionality, useExisting: AppDirectionality },
     provideAppInitializer(() => inject(TranslationService).init()),
     provideAppInitializer(() => {
       // Initialize theme service (will apply saved theme once user preferences load)
