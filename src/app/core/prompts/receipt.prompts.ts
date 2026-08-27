@@ -98,8 +98,8 @@ IMPORTANT:
 - "country": ${COUNTRY_FIELD}
 - "items" array: each purchased item with its individual price.
 - "receiptDetails": Reproduce the FULL receipt content line by line. Include ALL items with prices, quantities, discounts, tax lines, subtotals, service charges, payment method, change, etc. Use newline to separate lines. Keep the receipt's own language and script exactly as printed — do not translate or transliterate.
-- If fields cannot be extracted, use defaults: merchant="Unknown", currency="", date=today, items=[], amount=0.
-- Lower "amountConfidence" and "dateConfidence" when a figure is blurred, cut off, ambiguous or inferred rather than read.
+- If fields cannot be extracted, use defaults: merchant="Unknown", currency="", date="", items=[], amount=0.
+- Lower "amountConfidence" and "dateConfidence" when a figure is blurred, cut off, ambiguous or inferred rather than read. Use 0.0 for "dateConfidence" when no date is printed or legible — never invent today's date.
 Return ONLY the JSON, nothing else.`,
     expects: 'json',
     maxOutputTokens: 2000,
@@ -130,7 +130,7 @@ Return ONLY a JSON object (not an array):
 }
 
 Rules:
-- date: Receipt date (YYYY-MM-DD), use today if not visible
+- date: Receipt date (YYYY-MM-DD), use "" if not visible
 - merchant: Store or restaurant name
 - totalAmount: Total amount paid (positive number only)
 - currency: ${CURRENCY_FIELD}

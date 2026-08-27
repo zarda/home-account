@@ -196,6 +196,15 @@ describe('prompt registry', () => {
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
     });
+
+    it('never asks the model to default the date to today', () => {
+      // The model does not know today's date; asking it to invent one defeats
+      // the client-side dateConfidence === 0 detection that reads the answer.
+      const prompt = render('receiptParse');
+      expect(prompt).toContain('date=""');
+      expect(prompt).not.toContain('date=today');
+      expect(prompt).toContain('never invent today');
+    });
   });
 
   describe('categorizeTransactions', () => {
@@ -582,6 +591,11 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"country"');
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
+    });
+
+    it('never asks the model to default the date to today', () => {
+      const prompt = render('receiptSummary');
+      expect(prompt).toContain('use "" if not visible');
     });
   });
 
