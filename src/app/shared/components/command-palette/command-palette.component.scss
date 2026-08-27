@@ -54,10 +54,13 @@
 }
 
 .palette-item-label {
+  // G3: nothing truncates (docs/ui-overflow.md). A long destination label
+  // wraps onto a second line inside the row rather than losing its tail to
+  // an ellipsis. `min-inline-size: 0` lets the flex item shrink at all, and
+  // `anywhere` is what lets it shrink below its longest word — a translated
+  // label can be one unbroken run in ja/tc.
   min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .palette-empty {

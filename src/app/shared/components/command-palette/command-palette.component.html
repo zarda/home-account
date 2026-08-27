@@ -12,6 +12,7 @@
         [placeholder]="'palette.placeholder' | translate"
         [attr.aria-label]="'palette.placeholder' | translate"
         (input)="onQueryInput($event)"
+        (keydown.enter)="onInputEnter($event)"
         (keydown.arrowdown)="onInputArrowDown($event)"
       />
     </mat-form-field>

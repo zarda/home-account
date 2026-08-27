@@ -16,9 +16,18 @@ The reasoning and the rejected alternatives are in
 | 2 | The three ways money gets in: by hand, by camera, by import |
 | 3 | Start with one — **Add a transaction** and **Scan a receipt** |
 
-The footer carries a `1/3` indicator (with an `aria-label` spelling it out),
-**Back** from pane 2 on, **Skip** until the last pane, and **Next** / **Done**.
-The header carries the usual close-X.
+The footer carries a `1/3` indicator, **Back** from pane 2 on, **Skip** until
+the last pane, and **Next** / **Done**. The header carries the usual close-X.
+
+The indicator is a `role="status"` region, which does two jobs at once. It is a
+polite live region, so advancing a pane — which otherwise swaps the content
+silently while focus stays on **Next** — announces itself. And it is a role
+that *permits* an author-supplied name, which a bare `<span>` is not: a
+`<span>` maps to `generic`, whose name from author is prohibited, so an
+`aria-label` on it may be dropped outright. What is announced is the localized
+`onboarding.stepOf` sentence ("Step 2 of 3"), rendered into the region as
+`sr-only` text; the `1/3` glyph beside it is `aria-hidden`, or the same fact
+would be read twice.
 
 `OnboardingDialogComponent` holds a `stepIndex` signal and renders `@if` panes
 — not a `mat-stepper`. Nothing else in the app puts a stepper in a dialog, its

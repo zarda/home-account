@@ -73,8 +73,18 @@
  *     problem before it is a direction problem.
  *   - Styles arriving through Angular Material's own stylesheets, which are
  *     not ours to police here.
- *   - `!ml-2` written with a leading important marker, which the lookbehind
- *     deliberately steps over rather than risk mangling other `!` forms.
+ *   - Utilities inside an inline component template. `collect()` walks
+ *     `.scss` and `.html` only, so a physical utility written in a `template:`
+ *     string in a `.ts` file is invisible here. Seven components in this tree
+ *     use inline templates, three of them shared ones rendered on nearly
+ *     every page. Scanning `.ts` would mean deciding what counts as a
+ *     template string; the gate is deliberately cheaper than that, and this
+ *     is the price.
+ *   - Utility values that are not a digit. The margin/padding pattern ends in
+ *     `-\d`, which is what keeps it off `ms-`/`me-` lookalikes and word
+ *     fragments — but it also means `ml-auto`, `mr-px` and the arbitrary
+ *     bracket form `ml-[10px]` score zero hits. The other four patterns are
+ *     unaffected.
  *
  * Reference documentation lives in docs/rtl.md.
  */
@@ -148,9 +158,17 @@ const SCSS_PATTERNS = [
  * `(?<![-\w])` hits `html-2`-shaped fragments and the logical `ms-`/`me-`
  * utilities sit one letter away from the physical ones. The self-test pins
  * each of those.
+ *
+ * The `!?` on the first pattern is the app's important prefix, which is the
+ * house spelling for overriding Material (`!px-4`, `!rounded-xl`) and so is
+ * the likeliest way a physical margin gets written here. It is matched, not
+ * stepped over: the four patterns below never excluded it, and a gate that
+ * flagged `!text-right` while waving `!mr-2` through would be blind to the
+ * exact form the conversion slice had to fix. The `(ml|mr|pl|pr)` alternation
+ * is what keeps `!-me-2` — the converted spelling — out of it.
  */
 const UTILITY_PATTERNS = [
-  /(?<![-\w!])-?(ml|mr|pl|pr)-\d/g,
+  /(?<![-\w])!?-?(ml|mr|pl|pr)-\d/g,
   /(?<![-\w])text-(left|right)(?![-\w])/g,
   /(?<![-\w])(left|right)-\d/g,
   /(?<![-\w])rounded-(tl|tr|bl|br|l|r)(-|\b)/g,
@@ -181,10 +199,12 @@ const EQUIVALENTS = [
   [/^float\s*:\s*left/, 'float: inline-start'],
   [/^float\s*:\s*right/, 'float: inline-end'],
   [/^translateX\(/, 'an inset-inline offset, or a mirrored variant behind [dir="rtl"]'],
-  [/^-?ml-/, 'ms-*'],
-  [/^-?mr-/, 'me-*'],
-  [/^-?pl-/, 'ps-*'],
-  [/^-?pr-/, 'pe-*'],
+  // `!?` so the important-prefixed forms the first utility pattern now
+  // matches still resolve to a suggestion rather than printing none.
+  [/^!?-?ml-/, 'ms-*'],
+  [/^!?-?mr-/, 'me-*'],
+  [/^!?-?pl-/, 'ps-*'],
+  [/^!?-?pr-/, 'pe-*'],
   [/^text-left/, 'text-start'],
   [/^text-right/, 'text-end'],
   [/^left-/, 'start-*'],
@@ -499,6 +519,19 @@ function selfTest() {
   check('utilities inside @apply', scssHits('.a { @apply ml-2 text-right; }'), ['ml-2', 'text-right']);
   check('a physical margin utility', htmlHits('<div class="ml-2"></div>'), ['ml-2']);
   check('a negative physical margin utility', htmlHits('<div class="-mr-1"></div>'), ['-mr-1']);
+  // The important prefix is the house spelling for overriding Material, and
+  // `!-mr-2` is literally the form the conversion slice had to fix.
+  check('an important-prefixed physical margin utility', htmlHits('<div class="!mr-2"></div>'), [
+    '!mr-2',
+  ]);
+  check(
+    'an important-prefixed negative physical margin utility',
+    htmlHits('<div class="!-mr-2"></div>'),
+    ['!-mr-2']
+  );
+  check('an important-prefixed utility behind a variant', htmlHits('<div class="md:!pl-4"></div>'), [
+    '!pl-4',
+  ]);
   check('a physical padding utility', htmlHits('<div class="pl-4 pr-2"></div>'), ['pl-4', 'pr-2']);
   check('a physical text alignment utility', htmlHits('<p class="text-left">x</p>'), ['text-left']);
   check('a physical inset utility', htmlHits('<div class="right-0"></div>'), ['right-0']);
@@ -515,6 +548,10 @@ function selfTest() {
   check('flex-start is not a side', scssHits('.a { align-items: flex-start; }'), []);
   check('flex-end is not a side', scssHits('.a { justify-content: flex-end; }'), []);
   check('the logical margin utilities', htmlHits('<div class="me-2 ms-2 ps-5 pe-3"></div>'), []);
+  // The converted spelling, important prefix and all: matching `!` must not
+  // drag `me`/`ms` into the alternation.
+  check('the important-prefixed logical margin utility', htmlHits('<div class="!-me-2"></div>'), []);
+  check('the important-prefixed logical utilities', htmlHits('<div class="!ms-2 !pe-3"></div>'), []);
   check('the logical margin utilities inside @apply', scssHits('.a { @apply ms-2 me-4; }'), []);
   check('the logical corner and border utilities', htmlHits('<div class="rounded-s-lg border-e"></div>'), []);
   check('the logical alignment utilities', htmlHits('<p class="text-start text-end">x</p>'), []);

@@ -1,12 +1,14 @@
 /**
  * The single list of navigation destinations, shared by the sidebar, the
  * bottom nav, and the command palette. Before this, the sidebar and the
- * bottom nav each kept their own copy — and drifted: the sidebar used
- * `nav.budget` where the bottom nav used `nav.budgets` for the same route
- * (#the budgets label mismatch). Consuming one list makes that class of
- * drift impossible; a surface still decides which items it shows (the
- * bottom nav's five slots, the palette's extra entries), but never what an
- * item is called or which icon it wears.
+ * bottom nav each kept their own copy — and drifted: the sidebar labelled
+ * `/budgets` with `nav.budget` while the bottom nav labelled the same route
+ * `nav.budgets`, so one destination carried two names and two catalog keys
+ * until this file retired the mismatch (`nav.budget` is gone from all three
+ * catalogs). Consuming one list makes that class of drift impossible; a
+ * surface still decides which items it shows (the bottom nav's five slots,
+ * the palette's extra entries), but never what an item is called or which
+ * icon it wears.
  */
 export interface NavItem {
   labelKey: string;
@@ -27,9 +29,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
 ];
 
 /**
- * Destinations that only the command palette surfaces — reachable today
- * from inside a feature (the Smart Search dialog, the transactions FAB),
- * never from the sidebar or the bottom nav.
+ * Destinations no navigation *slot* carries — not the sidebar's list, not
+ * the bottom nav's five. Each is still reachable today, from inside a
+ * feature: `/search-history` from the Smart Search dialog and the Data hub,
+ * `/import/file` from the bottom nav's Add menu and the Data page,
+ * `/import/history` from the Data page. What the palette adds is a way to
+ * reach all three by name, from anywhere.
  */
 export const PALETTE_ONLY_ITEMS: readonly NavItem[] = [
   { labelKey: 'nav.searchHistory', icon: 'travel_explore', route: '/search-history' },

@@ -55,8 +55,16 @@ For `n`, three guards in order, each earning its place:
    read as a command. Reuses `keyboard.utils`' `isImeComposition`.
 2. **A dialog is already open** — the user is mid-form, or focused on a confirm
    button inside one; a second `n` must not spawn another form.
-3. **A text-entry target** — `input`, `textarea`, `select`, `[contenteditable]`.
-   The user is typing `n`, not invoking it.
+3. **A target that already owns the letter.** Two families, one selector.
+   Native text entry — `input`, `textarea`, `select`, `[contenteditable]` —
+   where the user is typing `n` rather than invoking it. And a Material
+   overlay widget whose key manager consumes printable letters for
+   first-letter typeahead: `mat-select` (focused trigger or open panel),
+   `mat-menu`, a selection list. None of those is a `MatDialog`, so guard 2
+   never sees them, and none is a native control, so the tag selectors never
+   see them either — they are reached by their ARIA roles (`combobox`,
+   `listbox`, `menu`, `menubar`) and by the `.cdk-overlay-pane` the open ones
+   render into.
 
 For `Ctrl/Cmd+K`, the IME guard stays first for the same reason and then the
 chain deliberately diverges:
@@ -77,10 +85,15 @@ chain deliberately diverges:
 ### `NAV_ITEMS` is hoisted, and the drift is retired
 
 `shared/layout/nav-items.ts` holds `NAV_ITEMS` (the sidebar's eight, in display
-order), `PALETTE_ONLY_ITEMS` (three destinations reachable today only from
-inside a feature), and `navItemFor(route)`, which **throws** on an unknown
-route rather than returning `undefined` — a typo'd route in a caller has to
-fail a spec, not render a blank slot.
+order), `PALETTE_ONLY_ITEMS`, and `navItemFor(route)`, which **throws** on an
+unknown route rather than returning `undefined` — a typo'd route in a caller
+has to fail a spec, not render a blank slot.
+
+`PALETTE_ONLY_ITEMS` is the three destinations that no navigation *slot*
+carries. Each is still reachable from inside a feature — `/search-history`
+from the Smart Search dialog and the Data hub, `/import/file` from the bottom
+nav's Add menu and the Data page, `/import/history` from the Data page — so
+what the palette adds is a way to reach them **by name**, not a first door.
 
 A surface still decides which items it shows: the bottom nav picks five,
 centre action included, because a sixth crowds the labels on a phone. What it
@@ -144,13 +157,16 @@ speed dial to be already exists, in the surface touch users actually reach for.
 - The sidebar, the bottom nav and the palette cannot disagree about a
   destination's label, icon or route. A new destination is one array entry plus
   a key in three catalogs.
-- Three routes (`/search-history`, `/import/file`, `/import/history`) are
-  keyboard-reachable from anywhere for the first time, without joining a
-  navigation surface that has no room for them.
+- Three routes (`/search-history`, `/import/file`, `/import/history`) become
+  reachable **by name, from anywhere**, without joining a navigation surface
+  that has no room for them. Each already had a door inside a feature — the
+  Smart Search dialog, the bottom nav's Add menu, the Data page — so what is
+  new is naming them, not reaching them.
 - Every add-transaction entry point in the app now goes through
   `QuickAddService` — six callers, one dialog config.
 - The `n` hotkey is a single unmodified letter, which is cheap to press by
-  accident. The text-target and open-dialog guards are what make that
+  accident. The open-dialog guard and the target guard — native text entry
+  plus the overlay widgets that read letters as typeahead — are what make that
   acceptable, and they are the first thing to check if it ever fires when it
   should not.
 

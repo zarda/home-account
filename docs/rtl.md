@@ -174,8 +174,20 @@ Its one live use is the drawer keyframes in
 - Inline `style="margin-left: 4px"` in a template. Templates are scanned with
   the utility patterns only; an inline style is a lint problem first.
 - Styles arriving through Angular Material's own stylesheets.
-- `!ml-2` written with a leading important marker, which the lookbehind steps
-  over rather than risk mangling other `!` forms.
+- Utilities inside an **inline component template**. The scan walks `.scss` and
+  `.html`; a physical utility written in a `template:` string in a `.ts` file is
+  invisible to it. Seven components here use inline templates, three of them
+  shared ones that render on nearly every page.
+- **Utility values that are not a digit.** The margin/padding pattern ends in
+  `-\d`, which is what keeps it off the `ms-`/`me-` lookalikes and off word
+  fragments — and what makes `ml-auto`, `mr-px` and the arbitrary bracket form
+  `ml-[10px]` score zero hits. The other four patterns are unaffected.
+
+The important prefix is **not** on this list any more. `!mr-2` and `!-mr-2` are
+hits, the same as their unprefixed forms: `!` is this app's house spelling for
+overriding Material, so it is the likeliest way a physical margin gets written
+here, and the four other utility patterns never excluded it. The
+`(ml|mr|pl|pr)` alternation is what keeps the converted `!-me-2` out.
 
 ## Still to do before an RTL locale renders correctly
 

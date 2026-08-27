@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { QuickAddService } from '../../../core/services/quick-add.service';
 import { TranslationService } from '../../../core/services/translation.service';
+import { isImeComposition } from '../../../core/utils/keyboard.utils';
 import { NAV_ITEMS, PALETTE_ONLY_ITEMS } from '../../layout/nav-items';
 import { DialogHeaderComponent } from '../dialog-header/dialog-header.component';
 import { TranslatePipe } from '../../pipes/translate.pipe';
@@ -53,8 +54,9 @@ const ACTION_COMMANDS: readonly PaletteCommand[] = [
  *    spelling for navigation, but app.smoke.spec's aria-current invariant
  *    asserts that exactly one `a.nav-item` marks itself current on every
  *    route; a second set of route links living in a dialog would join that
- *    count. Buttons also keep Enter activation native — no keydown handler
- *    of our own to get wrong.
+ *    count. Buttons also keep Enter activation on a *focused row* native —
+ *    the only Enter handler of ours is on the search box, where there is no
+ *    native activation to preserve and Enter would otherwise be inert.
  *  - Filtering matches the *translated* label, and the memo folds
  *    `translationsVersion()` for the reason TranslatePipe does: the catalog
  *    arrives (and is replaced on a language switch) under a signal the query
@@ -101,6 +103,9 @@ export class CommandPaletteComponent {
 
   query = signal('');
 
+  /** Latched by the first `select()`; see the comment there. */
+  private selected = false;
+
   private labelled = computed<LabelledPaletteCommand[]>(() => {
     // Read, not used: the catalog version is what tells this memo the labels
     // it resolved are stale (see the class comment).
@@ -130,6 +135,22 @@ export class CommandPaletteComponent {
     );
   }
 
+  /**
+   * Enter in the search box runs the first result, which is what the palette
+   * promises ("type a few letters, press Enter") and what docs/shortcuts.md
+   * documents. `filtered()` is in render order — every nav command precedes
+   * every action command — so its head is the row the user can see at the
+   * top. An IME composition committing the key is text, not a command, and
+   * an empty result list leaves Enter inert rather than guessing.
+   */
+  onInputEnter(event: Event): void {
+    if (isImeComposition(event)) return;
+    const first = this.filtered()[0];
+    if (!first) return;
+    event.preventDefault();
+    this.select(first);
+  }
+
   /** ArrowDown out of the search box hands focus to the first row. */
   onInputArrowDown(event: Event): void {
     const first = this.rows()[0];
@@ -152,8 +173,15 @@ export class CommandPaletteComponent {
    * one while this dialog is still animating out stacks two dialogs whose
    * focus restoration then fights: the palette's would land last and pull
    * focus out of the form the user just asked for.
+   *
+   * First call wins. The rows stay hit-testable for the whole exit
+   * transition, so a fast double-click — or a click landing on the Enter
+   * that already chose — would otherwise queue a second `run` on the one
+   * close: two stacked add-transaction dialogs, both `disableClose: true`.
    */
   select(command: PaletteCommand): void {
+    if (this.selected) return;
+    this.selected = true;
     this.dialogRef.afterClosed().subscribe(() => this.run(command));
     this.dialogRef.close();
   }

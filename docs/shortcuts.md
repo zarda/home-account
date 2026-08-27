@@ -77,17 +77,30 @@ it ever fires when it should not.
 `Ctrl/Cmd+K`, type a few letters, Enter.
 
 **Go to** lists every destination in the shared nav list — the sidebar's eight
-plus three that no navigation surface shows (`/search-history`,
-`/import/file`, `/import/history`). **Actions** offers Add a transaction and
+plus three that no navigation *slot* carries (`/search-history`,
+`/import/file`, `/import/history`). Those three are still reachable today from
+inside a feature — the Smart Search dialog and the Data hub for
+`/search-history`, the bottom nav's **Add** menu and the Data page for
+`/import/file`, the Data page for `/import/history` — but only the palette
+reaches them by name, from anywhere. **Actions** offers Add a transaction and
 Scan a receipt, under the same two keys the bottom nav's Add menu uses.
 
 Behaviour worth knowing:
 
+- **Enter in the search box runs the first result.** No arrow key first: the
+  handler takes the head of the filtered list, which is the row at the top of
+  the panel, because every destination sorts ahead of every action. An empty
+  result list leaves Enter inert rather than guessing, and an IME composition
+  committing the key is text, not a command.
+- **The first activation wins.** `select()` latches, so a double-click on a row
+  — or a click landing on the Enter that already chose — cannot queue the
+  command twice and stack two add-transaction dialogs.
 - **Rows are buttons, not links.** `app.smoke.spec`'s `aria-current` invariant
   asserts exactly one `a.nav-item` marks itself current on every route (see
   [accessibility.md](accessibility.md)); a second set of route links inside a
-  dialog would join that count. Enter activates a button natively, so there is
-  no keydown handler of ours in the way.
+  dialog would join that count. Enter on a *focused row* activates a button
+  natively, so the only Enter handler of ours is the one on the search box,
+  where there is nothing native to preserve.
 - **Filtering matches the translated label**, case-insensitively, as a
   substring. The memo folds `translationsVersion()`, so an open palette
   re-filters against the new catalog after a language switch instead of
@@ -112,7 +125,7 @@ the sidebar, the bottom nav and the palette:
 | Export | What it holds |
 |---|---|
 | `NAV_ITEMS` | the sidebar's eight, in display order |
-| `PALETTE_ONLY_ITEMS` | three destinations reachable only from inside a feature |
+| `PALETTE_ONLY_ITEMS` | three destinations that no navigation slot carries |
 | `navItemFor(route)` | a lookup across both, which **throws** on an unknown route |
 
 A surface still decides which items it shows — the bottom nav takes five slots,
