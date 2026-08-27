@@ -21,6 +21,7 @@ import { signal } from '@angular/core';
 import { AuthService } from './auth.service';
 import { TranslationService } from './translation.service';
 import { ThemeService } from './theme.service';
+import { AccessibilityService } from './accessibility.service';
 import { SecurityLogService } from './security-log.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
@@ -53,6 +54,7 @@ describe('AuthService (emulator smoke test)', () => {
         }
       },
       { provide: ThemeService, useValue: { init: jasmine.createSpy('init') } },
+      { provide: AccessibilityService, useValue: { init: jasmine.createSpy('init') } },
       {
         provide: SecurityLogService,
         useValue: { record: jasmine.createSpy('record').and.resolveTo() }

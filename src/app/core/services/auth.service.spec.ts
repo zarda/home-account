@@ -5,6 +5,7 @@ import { Firestore, Timestamp } from '@angular/fire/firestore';
 import { AuthService, buildNewUserProfile } from './auth.service';
 import { TranslationService } from './translation.service';
 import { ThemeService } from './theme.service';
+import { AccessibilityService } from './accessibility.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
 
@@ -68,6 +69,10 @@ describe('AuthService', () => {
         },
         {
           provide: ThemeService,
+          useValue: { init: jasmine.createSpy('init') }
+        },
+        {
+          provide: AccessibilityService,
           useValue: { init: jasmine.createSpy('init') }
         },
         {
