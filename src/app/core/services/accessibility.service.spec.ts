@@ -83,7 +83,7 @@ describe('AccessibilityService', () => {
   });
 
   describe('init', () => {
-    it('resolves font scale, high contrast, and reduced motion through the Task-1 resolvers', () => {
+    it('resolves font scale, high contrast, and reduced motion through the user-model resolvers', () => {
       service.init(prefs({ fontScale: 1.3, highContrast: true, reducedMotion: true }));
 
       expect(service.fontScale()).toBe(1.3);
