@@ -36,7 +36,7 @@ misreading. Only one of them is findable.
 Three separate things had to be true for a fabricated date to get that far, and
 all three were.
 
-**The prompts asked for one.** `receiptParse`'s defaults line ended
+**The prompts asked for one.** `receiptParse`'s defaults line carried
 `date=today`, and `receiptSummary` said "use today if not visible". The model
 does not know today's date. Asking it to invent one guarantees a value that is
 indistinguishable, downstream, from a date somebody read off paper.
@@ -232,11 +232,14 @@ where before the fabricated one arrived confident.
 ## Things that only became apparent while building
 
 - **The multi-image lane patches a missing date too.**
-  `date: t.date || dayKey(new Date())` appears four times across the two cloud
-  adapters, in two matched pairs, and the multi-image pair was closed a round
-  after the statement pair. The lanes read identically at the seam; what hid
-  the second pair is that its prompts grade nothing per field, so there was no
-  `dateConfidence` beside the patch to draw the eye to it.
+  The pattern `date: t.date || dayKey(new Date())` appears three times
+  (`cloud-llm-provider.base.ts:344`, `:406`, `gemini.service.ts:346`), and a
+  variant `date: receiptData.date || dayKey(new Date())` appears once
+  (`gemini.service.ts:289`), spanning four lanes across the two cloud adapters.
+  The multi-image pair was closed a round after the statement pair. The lanes
+  read identically at the seam; what hid the second pair is that its prompts
+  grade nothing per field, so there was no `dateConfidence` beside the patch to
+  draw the eye to it.
 - **The strategy lane discarded every date grade there was.** Producing an
   honest zero upstream achieved nothing until `fieldConfidence` on that hop
   stopped carrying `amount` alone. A fix that only wrote zeros would have

@@ -74,7 +74,7 @@ travels with zero edits.
 | `currency` | the row's, else the account's base currency (empty string falls back) |
 | `categoryId` | the row's, else the catch-all (empty string falls back) |
 | `description` | the row's, else `Imported transaction` |
-| `date` | passed through — callers resolve via `resolveImportDate` first |
+| `date` | passed through — the wizard and queue doors resolve via `resolveImportDate` before the row reaches here; the data hub's CSV path parses and defaults its own |
 | `note`, `tags`, `location`, `period` | spread only when truthy / non-empty |
 | `isRecurring` | spread when **present** — `false` is an answer and travels |
 | `recurringId` | spread when truthy — an id has no `false` to preserve, and a declined link arrives as a key holding `undefined` |
