@@ -9,12 +9,14 @@ import { Timestamp } from '@angular/fire/firestore';
 import { of } from 'rxjs';
 import { TransactionListComponent } from './transaction-list.component';
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { TransactionWindowService } from '../../../core/services/transaction-window.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { DateFormatService } from '../../../core/services/date-format.service';
 import { CategoryHelperService } from '../../../core/services/category-helper.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
+import { QuickAddService } from '../../../core/services/quick-add.service';
 import { Transaction } from '../../../models';
 import { createTransaction, createUser } from '../../../core/services/testing';
 
@@ -46,6 +48,7 @@ describe('TransactionListComponent', () => {
   let dialog: jasmine.SpyObj<MatDialog>;
   let translation: jasmine.SpyObj<TranslationService>;
   let windowSource: ReturnType<typeof createMockWindowSource>;
+  let quickAdd: jasmine.SpyObj<QuickAddService>;
 
   const txns: Transaction[] = [
     createTransaction({ amount: 30, description: 'Banana', date: Timestamp.fromDate(new Date(2026, 0, 2)) }),
@@ -72,6 +75,7 @@ describe('TransactionListComponent', () => {
     translation.t.and.callFake((k: string) => k);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
     windowSource = createMockWindowSource();
+    quickAdd = jasmine.createSpyObj('QuickAddService', ['openAddTransaction']);
 
     await TestBed.configureTestingModule({
       imports: [TransactionListComponent, NoopAnimationsModule],
@@ -83,6 +87,7 @@ describe('TransactionListComponent', () => {
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: dialog },
+        { provide: QuickAddService, useValue: quickAdd },
       ],
     }).compileComponents();
 
@@ -155,6 +160,24 @@ describe('TransactionListComponent', () => {
     it('delegates retry to the window source', () => {
       component.onRetry();
       expect(windowSource.retry).toHaveBeenCalled();
+    });
+  });
+
+  describe('empty state CTA', () => {
+    it('renders an add-transaction action and routes it through the quick-add seam', () => {
+      fixture.componentRef.setInput('transactions', []);
+      fixture.detectChanges();
+
+      const emptyState = fixture.debugElement.query(By.directive(EmptyStateComponent));
+      expect(emptyState).withContext('empty state renders once the window is settled and empty').toBeTruthy();
+
+      const instance = emptyState.componentInstance as EmptyStateComponent;
+      expect(instance.actionLabel).toBe('transactions.addTransaction');
+      expect(instance.actionIcon).toBe('add');
+
+      emptyState.triggerEventHandler('action', undefined);
+
+      expect(quickAdd.openAddTransaction).toHaveBeenCalled();
     });
   });
 
@@ -270,6 +293,7 @@ describe('TransactionListComponent mobile row wiring', () => {
         { provide: CategoryHelperService, useValue: categoryHelper },
         { provide: TranslationService, useValue: translation },
         { provide: MatDialog, useValue: dialog },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
       ],
     }).compileComponents();
 

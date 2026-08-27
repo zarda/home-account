@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { of } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { Router } from '@angular/router';
@@ -11,6 +12,7 @@ import { GoalService } from '../../../core/services/goal.service';
 import { PendingFiltersService } from '../../../core/services/pending-filters.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { CreateGoalDTO, Goal } from '../../../models';
 
 describe('GoalsComponent', () => {
@@ -163,5 +165,68 @@ describe('GoalsComponent', () => {
       const applied = pendingFilters.apply.calls.mostRecent().args[0];
       expect(Object.keys(applied)).toEqual(['goalId']);
     });
+  });
+});
+
+/**
+ * The suite above overrides the template with a stub so it can test the
+ * component in isolation; that stub can never see the empty-state wiring.
+ * This suite renders the real template against an empty goal list instead.
+ */
+describe('GoalsComponent empty state CTA', () => {
+  let fixture: ComponentFixture<GoalsComponent>;
+  let component: GoalsComponent;
+
+  beforeEach(async () => {
+    const mockGoalService = jasmine.createSpyObj(
+      'GoalService',
+      ['getGoals'],
+      { goals: signal<Goal[]>([]) }
+    );
+    mockGoalService.getGoals.and.returnValue(of([]));
+
+    const mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
+    const notifications = jasmine.createSpyObj('NotificationService', ['success', 'error']);
+    const mockTranslation = jasmine.createSpyObj('TranslationService', ['t']);
+    mockTranslation.t.and.callFake((key: string) => key);
+    const pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
+    const router = jasmine.createSpyObj('Router', ['navigate']);
+
+    await TestBed.configureTestingModule({
+      imports: [GoalsComponent, NoopAnimationsModule],
+      providers: [
+        { provide: GoalService, useValue: mockGoalService },
+        { provide: MatDialog, useValue: mockDialog },
+        { provide: NotificationService, useValue: notifications },
+        { provide: TranslationService, useValue: mockTranslation },
+        { provide: PendingFiltersService, useValue: pendingFilters },
+        { provide: Router, useValue: router }
+      ]
+    })
+      .overrideComponent(GoalsComponent, {
+        set: {
+          // MatDialogModule in the component's own imports shadows the
+          // TestBed provider, so the mock must land at component level too.
+          providers: [{ provide: MatDialog, useValue: mockDialog }]
+        }
+      })
+      .compileComponents();
+
+    fixture = TestBed.createComponent(GoalsComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  it('renders an add-goal action and routes it through the page\'s own add dialog', () => {
+    const emptyState = fixture.debugElement.query(By.directive(EmptyStateComponent));
+    expect(emptyState).withContext('empty state renders when there are no goals').toBeTruthy();
+
+    const instance = emptyState.componentInstance as EmptyStateComponent;
+    expect(instance.actionLabel).toBe('goal.addGoal');
+
+    spyOn(component, 'openAddDialog');
+    emptyState.triggerEventHandler('action', undefined);
+
+    expect(component.openAddDialog).toHaveBeenCalled();
   });
 });
