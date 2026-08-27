@@ -14,6 +14,9 @@
       icon="flag"
       [title]="'goal.emptyTitle' | translate"
       [description]="'goal.emptyBody' | translate"
+      [actionLabel]="'goal.addGoal' | translate"
+      actionIcon="add"
+      (action)="openAddDialog()"
     />
   } @else {
     <div class="goals-grid">
