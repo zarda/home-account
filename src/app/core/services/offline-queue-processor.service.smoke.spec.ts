@@ -5,7 +5,7 @@
 import { TestBed } from '@angular/core/testing';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
-import { getFirestore, connectFirestoreEmulator, Firestore } from '@angular/fire/firestore';
+import { getFirestore, connectFirestoreEmulator, Firestore, Timestamp } from '@angular/fire/firestore';
 
 import { OfflineQueueService } from './offline-queue.service';
 import { OfflineQueueProcessorService } from './offline-queue-processor.service';
@@ -348,5 +348,58 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     expect(row?.location).toEqual({ name: 'Shibuya 1-2-3', country: 'JP' });
     expect(row?.tags).toEqual(['trip']);
     expect(row && 'period' in row).toBeFalse();
+  }, 20000);
+
+  // This task: resolveImportDate now runs ahead of toCreateTransactionDTO on
+  // this door, so a doubted reading has to be proved against a real write —
+  // the unit suite mocks the clock and asserts instant equality, which this
+  // emulator run cannot do (the smoke rules ban mocking the clock here, since
+  // it would fight the Firebase SDK's own timers). `testStart` and `>=` are
+  // the substitute: the row's stored date must fall at or after the moment
+  // the drain began, never at the stale reading the engine doubted.
+  it('drains a queued receipt whose engine doubted the date into a transaction dated at drain time', async () => {
+    const testStart = Date.now();
+    ai.processReceipt.and.resolveTo({
+      transactions: [{
+        date: new Date(2020, 0, 1), description: 'Smoke doubted date', amount: 64.19, type: 'income',
+        currency: 'USD', confidence: 0.9, source: 'cloud', suggestedCategoryId: 'salary',
+        fieldConfidence: { date: 0.3 },
+      }],
+      source: 'cloud', confidence: 0.9, processingTimeMs: 1,
+    });
+    const id = await queue.queueImage(receiptFile());
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    const stored = await firestoreService.getCollection<{ amount: number; date: Timestamp }>(
+      `users/${uid}/transactions`,
+    );
+    const row = stored.find((t) => t.amount === 64.19);
+    expect(row?.date.toMillis()).toBeGreaterThanOrEqual(testStart);
+  }, 20000);
+
+  // The companion case: resolveImportDate leaves a reading the engine
+  // trusted alone, proved the same way — through the real write.
+  it('drains a confident queued date into the transaction unchanged', async () => {
+    const original = new Date(2026, 5, 15);
+    ai.processReceipt.and.resolveTo({
+      transactions: [{
+        date: original, description: 'Smoke confident date', amount: 73.28, type: 'income',
+        currency: 'USD', confidence: 0.9, source: 'cloud', suggestedCategoryId: 'salary',
+        fieldConfidence: { date: 0.9 },
+      }],
+      source: 'cloud', confidence: 0.9, processingTimeMs: 1,
+    });
+    const id = await queue.queueImage(receiptFile());
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    const stored = await firestoreService.getCollection<{ amount: number; date: Timestamp }>(
+      `users/${uid}/transactions`,
+    );
+    const row = stored.find((t) => t.amount === 73.28);
+    expect(row?.date.toMillis()).toBe(original.getTime());
   }, 20000);
 });

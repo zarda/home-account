@@ -7,7 +7,7 @@ import { TranslationService } from './translation.service';
 import { AuthService } from './auth.service';
 import { ReceiptAttemptService } from './receipt-attempt.service';
 import { ProcessedTransaction } from './ai-types';
-import { toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { baseCurrencyOf } from '../../models';
 
 /**
@@ -26,7 +26,10 @@ import { baseCurrencyOf } from '../../models';
  * app.config.ts) so its listener is attached before any sync fires.
  *
  * Rows are written through toCreateTransactionDTO, so what the reader filled
- * is what lands.
+ * is what lands. A date the reader doubted is resolved to drain time the same
+ * way the review lanes resolve theirs, but the confidence mark that decision
+ * leaves behind is dropped here — there is no review surface on this door to
+ * show it to.
  */
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueProcessorService implements OnDestroy {
@@ -155,11 +158,13 @@ export class OfflineQueueProcessorService implements OnDestroy {
         // the row's renames only, and every optional the reader filled
         // travels without this door naming it. The photo is the one thing
         // that still does not travel from here — a follow-up.
+        const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
         await this.transactionService.addTransaction(
           toCreateTransactionDTO({
             ...tx,
             categoryId: tx.suggestedCategoryId,
             note: tx.notes,
+            date: resolved.date,
           }, baseCurrencyOf(this.authService.currentUser())),
           { id: rowTxId },
         );
