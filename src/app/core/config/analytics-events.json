@@ -77,7 +77,7 @@
   "settings_change": {
     "since": "1.16.91",
     "params": {
-      "setting": ["theme", "language", "currency"]
+      "setting": ["theme", "language", "currency", "font_scale", "high_contrast", "reduced_motion"]
     }
   },
   "search_history_used": {

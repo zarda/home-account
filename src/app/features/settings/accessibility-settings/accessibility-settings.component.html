@@ -1,0 +1,41 @@
+<div class="accessibility-settings">
+  <span class="section-label" id="accessibility-label">{{ 'settings.accessibility' | translate }}</span>
+
+  <div class="setting-row">
+    <span class="row-label" id="font-scale-label">{{ 'settings.fontScale' | translate }}</span>
+    <mat-button-toggle-group
+      class="font-scale-toggle"
+      [value]="fontScale()"
+      (change)="onFontScaleChange($event.value)"
+      aria-labelledby="font-scale-label"
+    >
+      @for (scale of fontScales; track scale) {
+        <mat-button-toggle [value]="scale">{{ fontScaleLabelKey(scale) | translate }}</mat-button-toggle>
+      }
+    </mat-button-toggle-group>
+  </div>
+
+  <div class="setting-row">
+    <mat-slide-toggle
+      [checked]="highContrast()"
+      (change)="onHighContrastChange($event.checked)"
+      aria-labelledby="high-contrast-label"
+      aria-describedby="high-contrast-hint"
+    >
+      <span id="high-contrast-label">{{ 'settings.highContrast' | translate }}</span>
+    </mat-slide-toggle>
+    <p class="setting-hint" id="high-contrast-hint">{{ 'settings.highContrastHint' | translate }}</p>
+  </div>
+
+  <div class="setting-row">
+    <mat-slide-toggle
+      [checked]="reducedMotion()"
+      (change)="onReducedMotionChange($event.checked)"
+      aria-labelledby="reduced-motion-label"
+      aria-describedby="reduced-motion-hint"
+    >
+      <span id="reduced-motion-label">{{ 'settings.reducedMotion' | translate }}</span>
+    </mat-slide-toggle>
+    <p class="setting-hint" id="reduced-motion-hint">{{ 'settings.reducedMotionHint' | translate }}</p>
+  </div>
+</div>

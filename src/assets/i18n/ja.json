@@ -569,7 +569,16 @@
     "platformWeb": "ウェブ",
     "platformIos": "iPhone / iPad",
     "platformAndroid": "Android",
-    "platformUnknown": "不明なデバイス"
+    "platformUnknown": "不明なデバイス",
+    "accessibility": "アクセシビリティ",
+    "fontScale": "文字の大きさ",
+    "fontScaleDefault": "標準",
+    "fontScaleLarge": "大",
+    "fontScaleExtraLarge": "特大",
+    "highContrast": "ハイコントラスト",
+    "highContrastHint": "アプリ全体でテキストと背景のコントラストを高めます。",
+    "reducedMotion": "モーションを減らす",
+    "reducedMotionHint": "不要なアニメーションや画面切り替えの動きをオフにします。"
   },
   "data": {
     "title": "データ",

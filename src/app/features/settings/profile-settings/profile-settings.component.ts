@@ -21,6 +21,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { SecurityActivityComponent } from '../security-activity/security-activity.component';
 import { SecuritySettingsComponent } from '../security-settings/security-settings.component';
 import { AnalyticsSettingsComponent } from '../analytics-settings/analytics-settings.component';
+import { AccessibilitySettingsComponent } from '../accessibility-settings/accessibility-settings.component';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 
 @Component({
@@ -39,6 +40,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
     SecurityActivityComponent,
     SecuritySettingsComponent,
     AnalyticsSettingsComponent,
+    AccessibilitySettingsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile-settings.component.html',

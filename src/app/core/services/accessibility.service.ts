@@ -73,6 +73,30 @@ export class AccessibilityService {
   }
 
   /**
+   * Update the stored font-scale preference and re-apply it immediately —
+   * the settings UI calls this before persisting, the same way
+   * ThemeService.setTheme() takes effect before the write to Firestore
+   * returns.
+   */
+  setFontScale(scale: number): void {
+    this._fontScale.set(scale);
+  }
+
+  /** Update the stored high-contrast preference and re-apply it immediately. */
+  setHighContrast(enabled: boolean): void {
+    this._highContrast.set(enabled);
+  }
+
+  /**
+   * Update the account's stored reduced-motion preference. Leaves the system
+   * preference signal untouched, so `reducedMotion()` stays the OR of both —
+   * this setter only ever changes the account's own half of that.
+   */
+  setReducedMotion(enabled: boolean): void {
+    this._reducedMotionPref.set(enabled);
+  }
+
+  /**
    * Initialize listener for system reduced-motion preference
    */
   private initSystemPreferenceListener(): void {

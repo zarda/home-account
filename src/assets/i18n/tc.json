@@ -569,7 +569,16 @@
     "platformWeb": "網頁",
     "platformIos": "iPhone 或 iPad",
     "platformAndroid": "Android",
-    "platformUnknown": "未知裝置"
+    "platformUnknown": "未知裝置",
+    "accessibility": "輔助功能",
+    "fontScale": "文字大小",
+    "fontScaleDefault": "標準",
+    "fontScaleLarge": "大",
+    "fontScaleExtraLarge": "特大",
+    "highContrast": "高對比",
+    "highContrastHint": "提高整個應用程式中文字與背景的對比度。",
+    "reducedMotion": "減少動態效果",
+    "reducedMotionHint": "關閉非必要的動畫與畫面轉場效果。"
   },
   "data": {
     "title": "您的資料",
