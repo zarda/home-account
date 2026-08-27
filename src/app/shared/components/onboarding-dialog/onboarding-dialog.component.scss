@@ -1,0 +1,66 @@
+.onboarding-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  // The panes differ in height; a floor keeps the footer from jumping as
+  // the reader steps through them.
+  min-block-size: 180px;
+}
+
+.pane-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pane-body {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.ways-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+
+  mat-icon {
+    flex-shrink: 0;
+    color: var(--color-primary);
+  }
+}
+
+.start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block-start: 8px;
+}
+
+.onboarding-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-indicator {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.actions-spacer {
+  flex: 1;
+}

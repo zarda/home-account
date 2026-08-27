@@ -1445,5 +1445,20 @@
     "narrativeRefresh": "Write it again",
     "narrativeUnchanged": "Nothing has moved much since last month.",
     "narrativeNote": "Written from the figures above. Only totals and category names are sent — never descriptions, notes or individual transactions."
+  },
+  "onboarding": {
+    "title": "Welcome to Home Account",
+    "welcomeTitle": "Everything about your money, in one place",
+    "welcomeBody": "Track what you spend, set budgets, and watch your goals fill up. It all starts with a single transaction — here is how they get in.",
+    "waysTitle": "Three ways to record what you spend",
+    "wayAdd": "Add a transaction by hand — the quickest way to record one thing.",
+    "wayScan": "Scan a paper receipt with the camera and let it read the amount, date and merchant.",
+    "wayImport": "Import photos or files you already have, a batch at a time.",
+    "startTitle": "Start with one",
+    "startBody": "Record something you spent today. Budgets, goals and reports all build on the transactions you keep.",
+    "addFirst": "Add a transaction",
+    "scanFirst": "Scan a receipt",
+    "skip": "Skip",
+    "stepOf": "Step {{current}} of {{total}}"
   }
 }

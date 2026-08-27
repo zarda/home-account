@@ -1,0 +1,79 @@
+<div class="onboarding-dialog">
+  <app-dialog-header titleKey="onboarding.title" icon="celebration" (closed)="skip()" />
+
+  <mat-dialog-content class="!px-6 !py-4">
+    @if (step() === 0) {
+      <section class="onboarding-pane">
+        <h3 class="pane-title">{{ 'onboarding.welcomeTitle' | translate }}</h3>
+        <p class="pane-body">{{ 'onboarding.welcomeBody' | translate }}</p>
+      </section>
+    }
+
+    @if (step() === 1) {
+      <section class="onboarding-pane">
+        <h3 class="pane-title">{{ 'onboarding.waysTitle' | translate }}</h3>
+        <ul class="ways-list">
+          <li>
+            <mat-icon aria-hidden="true">edit</mat-icon>
+            <span>{{ 'onboarding.wayAdd' | translate }}</span>
+          </li>
+          <li>
+            <mat-icon aria-hidden="true">photo_camera</mat-icon>
+            <span>{{ 'onboarding.wayScan' | translate }}</span>
+          </li>
+          <li>
+            <mat-icon aria-hidden="true">upload_file</mat-icon>
+            <span>{{ 'onboarding.wayImport' | translate }}</span>
+          </li>
+        </ul>
+      </section>
+    }
+
+    @if (step() === 2) {
+      <section class="onboarding-pane">
+        <h3 class="pane-title">{{ 'onboarding.startTitle' | translate }}</h3>
+        <p class="pane-body">{{ 'onboarding.startBody' | translate }}</p>
+        <div class="start-actions">
+          <button mat-flat-button color="primary" class="start-add" (click)="addFirst()">
+            <mat-icon>add</mat-icon>
+            {{ 'onboarding.addFirst' | translate }}
+          </button>
+          <button mat-stroked-button class="start-scan" (click)="scanFirst()">
+            <mat-icon>photo_camera</mat-icon>
+            {{ 'onboarding.scanFirst' | translate }}
+          </button>
+        </div>
+      </section>
+    }
+  </mat-dialog-content>
+
+  <mat-dialog-actions class="onboarding-actions !px-6 !pb-4">
+    <span
+      class="step-indicator"
+      [attr.aria-label]="
+        'onboarding.stepOf' | translate: { current: step() + 1, total: totalSteps }
+      "
+      >{{ step() + 1 }}/{{ totalSteps }}</span
+    >
+
+    <span class="actions-spacer"></span>
+
+    @if (!isFirstStep()) {
+      <button mat-button (click)="back()">{{ 'common.back' | translate }}</button>
+    }
+    @if (canSkip()) {
+      <button mat-button class="skip-action" (click)="skip()">
+        {{ 'onboarding.skip' | translate }}
+      </button>
+    }
+    @if (isLastStep()) {
+      <button mat-flat-button color="primary" (click)="done()">
+        {{ 'common.done' | translate }}
+      </button>
+    } @else {
+      <button mat-flat-button color="primary" (click)="next()">
+        {{ 'common.next' | translate }}
+      </button>
+    }
+  </mat-dialog-actions>
+</div>

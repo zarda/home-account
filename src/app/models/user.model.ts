@@ -87,6 +87,7 @@ export interface UserPreferences {
   fontScale?: number;             // UI text scale; absent or off-list = default.
   highContrast?: boolean;         // Absent = off.
   reducedMotion?: boolean;        // Absent = off.
+  onboardingCompleted?: boolean;  // Absent = not yet completed; the first-run welcome is offered.
 }
 
 /** Auto-lock delays offered in settings, in minutes. 0 locks immediately. */

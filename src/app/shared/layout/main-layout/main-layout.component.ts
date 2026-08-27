@@ -6,6 +6,7 @@ import { A11yModule } from '@angular/cdk/a11y';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+import { OnboardingService } from '../../../core/services/onboarding.service';
 import { HeaderComponent } from '../header/header.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
@@ -27,6 +28,7 @@ const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
 })
 export class MainLayoutComponent {
   private breakpointObserver = inject(BreakpointObserver);
+  private onboarding = inject(OnboardingService);
 
   /**
    * Overlay-drawer open state (tablet/mobile only). Never auto-opens:
@@ -43,6 +45,18 @@ export class MainLayoutComponent {
     effect(() => {
       if (!this.isOverlayMode()) {
         this.sidebarOpen.set(false);
+      }
+    });
+
+    // The first-run welcome belongs to the authed shell: /login and /lock
+    // live outside this layout, and authGuard has already waited out
+    // AuthService.isLoading before routing here. An effect rather than a
+    // one-shot, because a launch that started on a degraded profile becomes
+    // eligible only when the real profile arrives, with the shell already
+    // mounted. OnboardingService owns the once-per-account guard.
+    effect(() => {
+      if (this.onboarding.shouldShow()) {
+        this.onboarding.show();
       }
     });
   }
