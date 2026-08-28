@@ -19,7 +19,7 @@ import {
 } from '@angular/fire/firestore';
 import { signal } from '@angular/core';
 import { AuthService } from './auth.service';
-import { TranslationService } from './translation.service';
+import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService } from './theme.service';
 import { AccessibilityService } from './accessibility.service';
 import { SecurityLogService } from './security-log.service';
@@ -44,15 +44,22 @@ describe('AuthService (emulator smoke test)', () => {
   const FIRESTORE_PORT = 8080;
   const AUTH_URL = 'http://127.0.0.1:9099';
 
-  function stubProviders() {
+  // The locale a created profile is seeded with, and whether the browser
+  // named it. 'en' keeps the written defaults comparable with
+  // DEFAULT_USER_PREFERENCES below; a case that needs a non-default seed
+  // passes its own locale in, including to override the provider mid-test.
+  function translationStub(locale: SupportedLocale = 'en') {
+    return {
+      syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
+      t: jasmine.createSpy('t').and.callFake((k: string) => k),
+      currentLocale: signal<SupportedLocale>(locale),
+      detectedBrowserLocale: locale as SupportedLocale | null
+    };
+  }
+
+  function stubProviders(locale: SupportedLocale = 'en') {
     return [
-      {
-        provide: TranslationService,
-        useValue: {
-          syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
-          t: jasmine.createSpy('t').and.callFake((k: string) => k)
-        }
-      },
+      { provide: TranslationService, useValue: translationStub(locale) },
       { provide: ThemeService, useValue: { init: jasmine.createSpy('init') } },
       { provide: AccessibilityService, useValue: { init: jasmine.createSpy('init') } },
       {
@@ -138,6 +145,23 @@ describe('AuthService (emulator smoke test)', () => {
       expect('photoURL' in written).toBeFalse();
     });
 
+    it('seeds preferences.language from the detected locale on first sign-in', async () => {
+      await deleteDoc(userRef());
+      // A non-default locale, so the assertion below fails if the create path
+      // ever falls back to DEFAULT_USER_PREFERENCES's 'en' instead of reading
+      // the stub. The shared beforeEach registers the 'en' stub first; this
+      // override replaces it before AuthService (and its onAuthStateChanged
+      // listener) is constructed by authedService() below.
+      TestBed.overrideProvider(TranslationService, { useValue: translationStub('ja') });
+
+      const service = await authedService();
+
+      const written = (await getDoc(userRef())).data()!;
+      const writtenPreferences = written['preferences'] as Record<string, unknown>;
+      expect(writtenPreferences['language']).toBe('ja');
+      expect(service.currentUser()!.preferences.language).toBe('ja');
+    });
+
     it('returns the stored profile and bumps lastLoginAt when one exists', async () => {
       await setDoc(userRef(), {
         email: 'seeded@example.com',
@@ -181,6 +205,29 @@ describe('AuthService (emulator smoke test)', () => {
       expect(written['baseCurrency']).toBe('EUR');
       expect(written['theme']).toBe('dark');
       expect(service.currentUser()!.preferences).toEqual({ ...before, baseCurrency: 'EUR' });
+    });
+
+    it('lands the dotted preferences.language write the Google heal performs on an existing profile', async () => {
+      // A self-contained existing document, independent of whatever earlier
+      // specs left at this uid: the point is the write shape, not a prior
+      // state.
+      await setDoc(userRef(), {
+        email: 'heal@example.com',
+        displayName: 'Heal Target',
+        createdAt: Timestamp.now(),
+        lastLoginAt: Timestamp.now(),
+        preferences: DEFAULT_USER_PREFERENCES
+      });
+
+      // The exact shape healLanguageFromGoogleProfile issues through
+      // updateUserPreferences({ language }) when it adopts a Google account's
+      // detected language on a profile that already exists — proved here
+      // against the real rules, not the mocked AuthService seam the unit
+      // spec's heal cases cover.
+      await updateDoc(userRef(), { 'preferences.language': 'tc' });
+
+      const written = (await getDoc(userRef())).data()!['preferences'] as Record<string, unknown>;
+      expect(written['language']).toBe('tc');
     });
 
     it('clearStoredProviderApiKeys deletes the legacy fields without clobbering the map', async () => {
