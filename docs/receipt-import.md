@@ -366,7 +366,7 @@ that the readers no longer invent a date to be doubted: the prompts ask for
 `""` where nothing is printed and say never to invent today's date, and every
 reader that patches a missing date grades it at zero instead of passing the
 model's own claim along. The decision, and what it rejected, is
-[ADR 0070](ADR/0070-a-date-the-scan-cannot-vouch-for-lands-on-today.md).
+[ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md).
 
 **An answer that ran out of room is read as far as it goes.** A model asked
 for several photos at once answers with one JSON row per line item, and the
@@ -450,7 +450,7 @@ target outside the page's active filters opens without the list scrolling to
 it. Records written before the field existed, records where every row failed,
 and the in-form and queue doors — which write no success record at all — show
 no button. See
-[ADR 0071](ADR/0071-a-successful-import-remembers-the-transactions-it-created.md).
+[ADR 0075](ADR/0075-a-successful-import-remembers-the-transactions-it-created.md).
 
 The classes a failure is filed under: `parseAIError`'s
 `rate_limit | auth | network | quota | server | timeout | unknown`, plus

@@ -61,7 +61,7 @@ every other row dated today in a newest-first list, which is the point of moving
 the row at all. The helper builds no window and computes no boundary; it chooses
 between a date `parseDateInput` returned and now, which is why it lives beside
 the mapper rather than in this module. See
-[ADR 0070](ADR/0070-a-date-the-scan-cannot-vouch-for-lands-on-today.md) and
+[ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) and
 [receipt-import.md](receipt-import.md).
 
 ## Keys

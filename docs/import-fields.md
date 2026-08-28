@@ -41,7 +41,7 @@ not fields**: `currencyFellBack` (nobody read a currency, so the base currency
 is standing in), `dateAssumed` (the row's `date` is *now* rather than something
 read off the source, because `resolveImportDate` could not vouch for what
 arrived — see
-[ADR 0070](ADR/0070-a-date-the-scan-cannot-vouch-for-lands-on-today.md)),
+[ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md)),
 `suggestedTags` (what was offered, so the confirm step can
 tell a removal from a row that never had any), `recurringMatch` (the rule
 this row looks like), `receiptCountry` (the country the reader concluded the
@@ -117,7 +117,7 @@ failed attempt by `ReceiptAttemptService`, and at confirm time for a
 successful one from `ImportResult.diagnostics`. A record for an import that
 completed with at least one row also carries `transactionIds`, the ids it
 created, in selected-row order
-([ADR 0071](ADR/0071-a-successful-import-remembers-the-transactions-it-created.md)).
+([ADR 0075](ADR/0075-a-successful-import-remembers-the-transactions-it-created.md)).
 See [receipt-import.md](receipt-import.md#failure-surfacing).
 
 ## Photos

@@ -1,4 +1,4 @@
-# 70. A date the scan cannot vouch for lands on today
+# 74. A date the scan cannot vouch for lands on today
 
 **Status:** Accepted, implemented · **Date:** 2026-08-28
 

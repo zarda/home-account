@@ -1,4 +1,4 @@
-# 71. A successful import remembers the transactions it created
+# 75. A successful import remembers the transactions it created
 
 **Status:** Accepted, implemented · **Date:** 2026-08-28
 
@@ -9,7 +9,7 @@ Extends [0065](0065-an-attempt-is-recorded-where-it-runs.md), whose door policy
 and the provenance
 [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) put on
 the same record. The reason it is needed now is
-[0070](0070-a-date-the-scan-cannot-vouch-for-lands-on-today.md).
+[0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md).
 
 ## Context
 
@@ -20,7 +20,7 @@ and expense they came to, how many duplicates were skipped and how many photos
 were refused — and nothing whatsoever about *which* rows.
 
 That was survivable while an import's rows were where the user expected to find
-them. 0070 changes the assumption directly: a date the scan could not vouch for
+them. 0074 changes the assumption directly: a date the scan could not vouch for
 now lands on today by decision, and a row nobody corrected at the review step is
 filed on a day it was not bought. The record says twelve transactions were
 created; reaching any of the twelve meant knowing what the merchant was called,
