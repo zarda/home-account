@@ -1,6 +1,6 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 import { of, throwError, Subject } from 'rxjs';
@@ -15,8 +15,8 @@ import { LocaleFormatService } from '../../core/services/locale-format.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
+import { QuickAddService } from '../../core/services/quick-add.service';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
-import { CameraCaptureComponent } from './camera-capture/camera-capture.component';
 import { Transaction, User } from '../../models';
 import { TypeTotals } from '../../core/utils/transaction-aggregation.utils';
 import { createTransaction, createCategory } from '../../core/services/testing';
@@ -67,7 +67,7 @@ describe('TransactionsComponent', () => {
   };
   let announcer: jasmine.SpyObj<AnnouncerService>;
   let dialog: jasmine.SpyObj<MatDialog>;
-  let router: jasmine.SpyObj<Router>;
+  let quickAdd: jasmine.SpyObj<QuickAddService>;
   let queryParams$: Subject<Record<string, string>>;
   let routeSnapshotParams: Record<string, string>;
   let mutationSeq: number;
@@ -104,7 +104,11 @@ describe('TransactionsComponent', () => {
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    quickAdd = jasmine.createSpyObj('QuickAddService', [
+      'openAddTransaction',
+      'openScanReceipt',
+      'openImportPhotos',
+    ]);
     queryParams$ = new Subject<Record<string, string>>();
     routeSnapshotParams = {};
 
@@ -134,7 +138,7 @@ describe('TransactionsComponent', () => {
         },
         { provide: AnnouncerService, useValue: announcer },
         { provide: MatDialog, useValue: dialog },
-        { provide: Router, useValue: router },
+        { provide: QuickAddService, useValue: quickAdd },
         { provide: ActivatedRoute, useValue: activatedRoute },
       ],
     })
@@ -234,9 +238,7 @@ describe('TransactionsComponent', () => {
     fixture.detectChanges();
     queryParams$.next({ action: 'add' });
     tick(100);
-    expect(dialog.open).toHaveBeenCalledWith(TransactionFormComponent, jasmine.objectContaining({
-      data: { mode: 'add' },
-    }));
+    expect(quickAdd.openAddTransaction).toHaveBeenCalled();
   }));
 
   it('onFiltersChanged resets the window and the period totals with the same filters', () => {
@@ -598,14 +600,14 @@ describe('TransactionsComponent', () => {
     expect(console.error).toHaveBeenCalled();
   });
 
-  it('navigateToImportFile routes to the import wizard', () => {
+  it('navigateToImportFile delegates to the quick-add service', () => {
     build().componentInstance.navigateToImportFile();
-    expect(router.navigate).toHaveBeenCalledWith(['/import/file']);
+    expect(quickAdd.openImportPhotos).toHaveBeenCalled();
   });
 
-  it('openCameraDialog opens the camera capture dialog', () => {
+  it('openCameraDialog delegates to the quick-add service', () => {
     build().componentInstance.openCameraDialog();
-    expect(dialog.open).toHaveBeenCalledWith(CameraCaptureComponent, jasmine.any(Object));
+    expect(quickAdd.openScanReceipt).toHaveBeenCalled();
   });
 
   it('ngOnDestroy cleans up subscriptions', () => {

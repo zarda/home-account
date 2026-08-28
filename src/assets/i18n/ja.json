@@ -60,7 +60,6 @@
   "nav": {
     "dashboard": "ダッシュボード",
     "transactions": "取引履歴",
-    "budget": "予算",
     "budgets": "予算",
     "reports": "レポート",
     "ai": "AI",
@@ -68,7 +67,9 @@
     "settings": "設定",
     "about": "について",
     "add": "追加",
-    "more": "その他"
+    "searchHistory": "検索履歴",
+    "importFile": "写真をインポート",
+    "importHistory": "インポート履歴"
   },
   "dashboard": {
     "title": "ダッシュボード",
@@ -569,7 +570,16 @@
     "platformWeb": "ウェブ",
     "platformIos": "iPhone / iPad",
     "platformAndroid": "Android",
-    "platformUnknown": "不明なデバイス"
+    "platformUnknown": "不明なデバイス",
+    "accessibility": "アクセシビリティ",
+    "fontScale": "文字の大きさ",
+    "fontScaleDefault": "標準",
+    "fontScaleLarge": "大",
+    "fontScaleExtraLarge": "特大",
+    "highContrast": "ハイコントラスト",
+    "highContrastHint": "アプリ全体でテキストと背景のコントラストを高めます。",
+    "reducedMotion": "モーションを減らす",
+    "reducedMotionHint": "不要なアニメーションや画面切り替えの動きをオフにします。"
   },
   "data": {
     "title": "データ",
@@ -1356,5 +1366,28 @@
     "narrativeRefresh": "もう一度作成",
     "narrativeUnchanged": "先月から大きな変化はありません。",
     "narrativeNote": "上記の数値から作成しています。送信されるのは合計とカテゴリ名のみで、説明・メモ・個別の取引は送信されません。"
+  },
+  "onboarding": {
+    "title": "家計簿へようこそ",
+    "welcomeTitle": "お金のことを、ひとつの場所に",
+    "welcomeBody": "支出の記録、予算の設定、目標の達成状況まで、まとめて管理できます。すべては取引を1件記録するところから始まります。",
+    "waysTitle": "支出を記録する3つの方法",
+    "wayAdd": "手入力で取引を追加 — 1件だけ記録するときの最短ルートです。",
+    "wayScan": "レシートをカメラで撮影すると、金額・日付・店名を読み取ります。",
+    "wayImport": "手元にある写真やファイルを、まとめて取り込みます。",
+    "startTitle": "まずは1件から",
+    "startBody": "今日使った金額を記録してみましょう。予算も目標もレポートも、記録した取引の上に成り立ちます。",
+    "addFirst": "取引を追加",
+    "scanFirst": "レシートを撮影",
+    "skip": "スキップ",
+    "stepOf": "ステップ {{current}}／{{total}}"
+  },
+  "palette": {
+    "title": "コマンドパレット",
+    "placeholder": "ページと操作を検索",
+    "noResults": "一致するものはありません",
+    "sectionNavigate": "移動先",
+    "sectionActions": "操作",
+    "resultCount": "{{count}} 件の結果"
   }
 }

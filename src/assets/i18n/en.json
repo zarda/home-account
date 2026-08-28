@@ -60,7 +60,6 @@
   "nav": {
     "dashboard": "Dashboard",
     "transactions": "Transactions",
-    "budget": "Budget",
     "budgets": "Budgets",
     "reports": "Reports",
     "ai": "AI",
@@ -68,7 +67,9 @@
     "settings": "Settings",
     "about": "About",
     "add": "Add",
-    "more": "More"
+    "searchHistory": "Search History",
+    "importFile": "Import photos",
+    "importHistory": "Import History"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -611,7 +612,16 @@
     "platformWeb": "Web",
     "platformIos": "iPhone or iPad",
     "platformAndroid": "Android",
-    "platformUnknown": "Unknown device"
+    "platformUnknown": "Unknown device",
+    "accessibility": "Accessibility",
+    "fontScale": "Font size",
+    "fontScaleDefault": "Default",
+    "fontScaleLarge": "Large",
+    "fontScaleExtraLarge": "Extra large",
+    "highContrast": "High contrast",
+    "highContrastHint": "Increases the contrast between text and backgrounds throughout the app.",
+    "reducedMotion": "Reduce motion",
+    "reducedMotionHint": "Turns off non-essential animations and transitions."
   },
   "data": {
     "title": "Your Data",
@@ -1440,5 +1450,31 @@
     "narrativeRefresh": "Write it again",
     "narrativeUnchanged": "Nothing has moved much since last month.",
     "narrativeNote": "Written from the figures above. Only totals and category names are sent — never descriptions, notes or individual transactions."
+  },
+  "onboarding": {
+    "title": "Welcome to Home Account",
+    "welcomeTitle": "Everything about your money, in one place",
+    "welcomeBody": "Track what you spend, set budgets, and watch your goals fill up. It all starts with a single transaction — here is how they get in.",
+    "waysTitle": "Three ways to record what you spend",
+    "wayAdd": "Add a transaction by hand — the quickest way to record one thing.",
+    "wayScan": "Scan a paper receipt with the camera and let it read the amount, date and merchant.",
+    "wayImport": "Import photos or files you already have, a batch at a time.",
+    "startTitle": "Start with one",
+    "startBody": "Record something you spent today. Budgets, goals and reports all build on the transactions you keep.",
+    "addFirst": "Add a transaction",
+    "scanFirst": "Scan a receipt",
+    "skip": "Skip",
+    "stepOf": "Step {{current}} of {{total}}"
+  },
+  "palette": {
+    "title": "Command Palette",
+    "placeholder": "Search pages and actions",
+    "noResults": "Nothing matches that",
+    "sectionNavigate": "Go to",
+    "sectionActions": "Actions",
+    "resultCount": {
+      "one": "{{count}} result",
+      "other": "{{count}} results"
+    }
   }
 }

@@ -1,0 +1,71 @@
+.palette-content {
+  // The list is the only thing that scrolls; a tall viewport still stops
+  // short of the screen edge so the dialog reads as a panel, not a page.
+  max-block-size: 60vh;
+}
+
+.palette-search {
+  inline-size: 100%;
+  margin-block-start: 4px;
+}
+
+.palette-section {
+  margin-block-start: 8px;
+}
+
+.palette-section-title {
+  margin: 0 0 4px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.palette-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.palette-item {
+  inline-size: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+  font: inherit;
+  color: var(--text-primary);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--surface-muted);
+  }
+
+  mat-icon {
+    flex-shrink: 0;
+    color: var(--color-primary);
+  }
+}
+
+.palette-item-label {
+  // G3: nothing truncates (docs/ui-overflow.md). A long destination label
+  // wraps onto a second line inside the row rather than losing its tail to
+  // an ellipsis. `min-inline-size: 0` lets the flex item shrink at all, and
+  // `anywhere` is what lets it shrink below its longest word — a translated
+  // label can be one unbroken run in ja/tc.
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.palette-empty {
+  margin: 16px 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}

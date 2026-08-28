@@ -1,7 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { WritableSignal, signal } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+import { OnboardingService } from '../../../core/services/onboarding.service';
+import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
 import { MainLayoutComponent } from './main-layout.component';
 
 const MOBILE = APP_BREAKPOINTS.mobile;
@@ -20,15 +23,28 @@ describe('MainLayoutComponent', () => {
   let component: MainLayoutComponent;
   let fixture: ComponentFixture<MainLayoutComponent>;
   let breakpoint$: BehaviorSubject<BreakpointState>;
+  let shouldShowOnboarding: WritableSignal<boolean>;
+  let onboarding: { shouldShow: WritableSignal<boolean>; show: jasmine.Spy };
+  let keyboardShortcuts: jasmine.SpyObj<KeyboardShortcutService>;
 
   beforeEach(async () => {
     localStorage.removeItem('homeaccount.sidebar-collapsed');
     breakpoint$ = new BehaviorSubject<BreakpointState>(state([DESKTOP]));
     const observer = { observe: () => breakpoint$.asObservable() };
+    shouldShowOnboarding = signal(false);
+    onboarding = { shouldShow: shouldShowOnboarding, show: jasmine.createSpy('show') };
+    keyboardShortcuts = jasmine.createSpyObj('KeyboardShortcutService', [
+      'handleAddHotkey',
+      'handlePaletteHotkey',
+    ]);
 
     await TestBed.configureTestingModule({
       imports: [MainLayoutComponent],
-      providers: [{ provide: BreakpointObserver, useValue: observer }],
+      providers: [
+        { provide: BreakpointObserver, useValue: observer },
+        { provide: OnboardingService, useValue: onboarding },
+        { provide: KeyboardShortcutService, useValue: keyboardShortcuts },
+      ],
     })
       // Isolate from the real header/sidebar/bottom-nav child components.
       .overrideComponent(MainLayoutComponent, { set: { imports: [], template: '<div></div>' } })
@@ -137,6 +153,21 @@ describe('MainLayoutComponent', () => {
     expect(component.sidebarOpen()).toBeFalse();
   });
 
+  describe('first-run onboarding', () => {
+    it('leaves the welcome closed when the service says not to show it', () => {
+      expect(onboarding.show).not.toHaveBeenCalled();
+    });
+
+    // An effect rather than a one-shot: the authed shell is already mounted
+    // when a degraded profile recovers and the account becomes eligible.
+    it('shows the welcome as soon as the service says to', () => {
+      shouldShowOnboarding.set(true);
+      fixture.detectChanges();
+
+      expect(onboarding.show).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('onNavItemClicked closes the drawer only in overlay mode', () => {
     // Desktop: docked sidebar unaffected.
     component.onNavItemClicked();
@@ -148,5 +179,75 @@ describe('MainLayoutComponent', () => {
     component.toggleSidebar();
     component.onNavItemClicked();
     expect(component.sidebarOpen()).toBeFalse();
+  });
+
+  describe('add-transaction hotkey (#80)', () => {
+    // The host map binds `(document:keydown.n)`, not @HostListener — this
+    // dispatches a real event on document to prove the binding is wired,
+    // not just that the delegating method works in isolation.
+    it('reaches the keyboard shortcut service on a bare "n" keydown', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n' }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).toHaveBeenCalledTimes(1);
+    });
+
+    // Angular's KeyEventsPlugin folds every active modifier into the
+    // matched key string for a `keydown.n` binding (e.g. "shift.n"), so a
+    // modified keydown never matches a bare `.n` binding. Pinned here with
+    // real dispatched events rather than assumed from the framework source.
+    it('does not fire on shift+n (a capital "N" being typed anywhere)', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', shiftKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+    });
+
+    it('does not fire on ctrl+n', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+    });
+
+    it('does not fire on meta+n', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', metaKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('command palette hotkey (#80)', () => {
+    // Two host lines, one per platform convention, both dispatched for real:
+    // a binding that never matched would leave the palette unreachable on
+    // whichever platform it belonged to.
+    it('reaches the service on ctrl+k', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handlePaletteHotkey).toHaveBeenCalledTimes(1);
+    });
+
+    it('reaches the service on meta+k', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handlePaletteHotkey).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a bare "k" being typed', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k' }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handlePaletteHotkey).not.toHaveBeenCalled();
+    });
+
+    it('does not reach the add hotkey', () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+      fixture.detectChanges();
+
+      expect(keyboardShortcuts.handleAddHotkey).not.toHaveBeenCalled();
+    });
   });
 });

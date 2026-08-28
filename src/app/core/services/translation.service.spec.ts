@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { TranslationService } from './translation.service';
+import { AppDirectionality } from './app-directionality';
 
 describe('TranslationService', () => {
   let service: TranslationService;
   let httpMock: HttpTestingController;
+  let setDirection: jasmine.Spy;
 
   const mockTranslations = {
     common: {
@@ -27,6 +29,9 @@ describe('TranslationService', () => {
 
     service = TestBed.inject(TranslationService);
     httpMock = TestBed.inject(HttpTestingController);
+    // The real service would write `dir` on the page Karma is running in;
+    // spying on it keeps every locale switch below off the real document.
+    setDirection = spyOn(TestBed.inject(AppDirectionality), 'setDirection');
   });
 
   afterEach(() => {
@@ -96,6 +101,10 @@ describe('TranslationService', () => {
       await promise;
 
       expect(document.documentElement.lang).toBe('zh-Hant');
+      // The direction travels with the language, through the service every
+      // Material/CDK component resolves — every locale we ship today is
+      // left-to-right, and this is the call an RTL one would ride.
+      expect(setDirection).toHaveBeenCalledWith('ltr');
     });
 
     it('should bump translationsVersion when a catalog loads', async () => {

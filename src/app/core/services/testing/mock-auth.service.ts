@@ -12,6 +12,7 @@ export class MockAuthService {
   currentUser = signal<User | null>(null);
   firebaseUser = signal<unknown | null>(null);
   isLoading = signal<boolean>(false);
+  profileDegraded = signal<boolean>(false);
 
   // Computed signals
   isAuthenticated = computed(() => !!this.currentUser());
@@ -42,6 +43,7 @@ export class MockAuthService {
     this.currentUser.set(null);
     this.firebaseUser.set(null);
     this.isLoading.set(false);
+    this.profileDegraded.set(false);
     this.signInWithGoogleSpy.calls.reset();
     this.signOutSpy.calls.reset();
     this.updateUserPreferencesSpy.calls.reset();
@@ -82,6 +84,10 @@ export class MockAuthService {
 
 /**
  * Factory function to create a mock user
+ *
+ * An established account, not a brand-new one: `onboardingCompleted` is set so
+ * that a spec mounting the authed shell does not have the first-run welcome
+ * open over its assertions. The onboarding specs pass their own preferences.
  */
 export function createMockUser(id = 'test-user-123', overrides: Partial<User> = {}): User {
   return {
@@ -91,7 +97,7 @@ export function createMockUser(id = 'test-user-123', overrides: Partial<User> = 
     photoURL: 'https://example.com/photo.jpg',
     createdAt: Timestamp.now(),
     lastLoginAt: Timestamp.now(),
-    preferences: { ...DEFAULT_USER_PREFERENCES },
+    preferences: { ...DEFAULT_USER_PREFERENCES, onboardingCompleted: true },
     ...overrides
   };
 }

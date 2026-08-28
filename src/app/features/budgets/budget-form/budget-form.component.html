@@ -111,7 +111,7 @@
       <button mat-flat-button color="primary" type="submit"
               [disabled]="form.invalid || isSubmitting()">
         @if (isSubmitting()) {
-          <mat-spinner diameter="20" class="inline-block mr-2"></mat-spinner>
+          <mat-spinner diameter="20" class="inline-block me-2"></mat-spinner>
         }
         {{ data.mode === 'add' ? ('budget.createBudget' | translate) : ('transactions.saveChanges' | translate) }}
       </button>

@@ -49,6 +49,17 @@ describe('SidebarComponent', () => {
     expect(mockTranslationService.t).toHaveBeenCalledWith('nav.dashboard');
   });
 
+  // The label comes from the shared nav-items list (nav-items.ts), not a
+  // copy local to this component — nav.budgets is the standardized key;
+  // nav.budget was the sidebar's own drifted key and no longer exists.
+  it('labels the budgets item from the shared list, under the standardized key', () => {
+    const items = component.navItems();
+    const budgets = items.find((i) => i.route === '/budgets');
+    expect(budgets?.labelKey).toBe('nav.budgets');
+    expect(budgets?.label).toBe('t:nav.budgets');
+    expect(mockTranslationService.t).toHaveBeenCalledWith('nav.budgets');
+  });
+
   // The bottom nav deliberately does not carry this one: it is at five slots
   // including the centre action, and a sixth crowds the labels on a phone.
   it('is the only nav that reaches the data hub', () => {

@@ -41,7 +41,7 @@
     }
 
     .budget-percentage {
-      @apply text-xs font-semibold flex-shrink-0 ml-2;
+      @apply text-xs font-semibold flex-shrink-0 ms-2;
     }
   }
 
@@ -63,7 +63,7 @@
     }
 
     .budget-remaining {
-      @apply flex-shrink-0 ml-2;
+      @apply flex-shrink-0 ms-2;
 
       &.over-budget {
         @apply text-red-500 dark:text-red-400 font-medium;

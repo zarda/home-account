@@ -26,6 +26,9 @@
     icon="receipt_long"
     [title]="'transactions.noTransactions' | translate"
     [description]="'transactions.adjustFilters' | translate"
+    [actionLabel]="'transactions.addTransaction' | translate"
+    actionIcon="add"
+    (action)="onAddFromEmptyState()"
   />
 } @else if (!isDesktopTable()) {
   <!-- Mobile View -->

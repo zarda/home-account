@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
@@ -23,7 +23,7 @@ import { TransactionListComponent } from './transaction-list/transaction-list.co
 import { TransactionFiltersComponent } from './transaction-filters/transaction-filters.component';
 import { InsightChipsComponent } from './insight-chips/insight-chips.component';
 import { TransactionFormComponent } from './transaction-form/transaction-form.component';
-import { CameraCaptureComponent } from './camera-capture/camera-capture.component';
+import { QuickAddService } from '../../core/services/quick-add.service';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { PageHeaderComponent } from '../../shared/components/page-header/page-header.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
@@ -69,7 +69,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private currencyService = inject(CurrencyService);
   private localeFormat = inject(LocaleFormatService);
   private dialog = inject(MatDialog);
-  private router = inject(Router);
+  private quickAdd = inject(QuickAddService);
   private route = inject(ActivatedRoute);
   private translationService = inject(TranslationService);
   private notifications = inject(NotificationService);
@@ -400,12 +400,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
 
   openAddDialog(): void {
     // The window updates via the service's lastMutation signal on save.
-    this.dialog.open(TransactionFormComponent, {
-      width: '500px',
-      maxWidth: '95vw',
-      disableClose: true,
-      data: { mode: 'add' },
-    });
+    this.quickAdd.openAddTransaction();
   }
 
   openEditDialog(transaction: Transaction): void {
@@ -430,13 +425,10 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   }
 
   navigateToImportFile(): void {
-    this.router.navigate(['/import/file']);
+    this.quickAdd.openImportPhotos();
   }
 
   openCameraDialog(): void {
-    this.dialog.open(CameraCaptureComponent, {
-      width: '500px',
-      maxWidth: '95vw',
-    });
+    this.quickAdd.openScanReceipt();
   }
 }

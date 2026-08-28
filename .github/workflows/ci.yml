@@ -113,6 +113,13 @@ jobs:
       - name: Check truncation
         run: npm run truncation:check
 
+      # The physical direction still in the tree is frozen per file in the
+      # script's baseline; it may only shrink. Above the line is a new
+      # margin-left, below it is a ratchet that stopped ratcheting, and both
+      # fail — so a conversion slice edits the baseline in its own commit.
+      - name: Check direction
+        run: npm run direction:check
+
       - name: Unit tests
         run: npm run test:ci
 

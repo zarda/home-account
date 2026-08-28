@@ -1,6 +1,8 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import type { Direction } from '@angular/cdk/bidi';
 import { firstValueFrom } from 'rxjs';
+import { AppDirectionality } from './app-directionality';
 
 export type SupportedLocale = 'en' | 'tc' | 'ja';
 
@@ -17,17 +19,25 @@ export interface Language {
   code: SupportedLocale;
   name: string;
   nativeName: string;
+  /**
+   * The layout direction the language is written in. Every locale shipped
+   * today is left-to-right; carrying it here rather than deriving it means
+   * adding a right-to-left catalog is a data change, and the direction can
+   * never disagree with the language the document declares.
+   */
+  dir: Direction;
 }
 
 @Injectable({ providedIn: 'root' })
 export class TranslationService {
   private readonly http = inject(HttpClient);
+  private readonly directionality = inject(AppDirectionality);
   private readonly DEFAULT_LOCALE: SupportedLocale = 'en';
 
   readonly languages: Language[] = [
-    { code: 'en', name: 'English', nativeName: 'English' },
-    { code: 'tc', name: 'Traditional Chinese', nativeName: '繁體中文' },
-    { code: 'ja', name: 'Japanese', nativeName: '日本語' }
+    { code: 'en', name: 'English', nativeName: 'English', dir: 'ltr' },
+    { code: 'tc', name: 'Traditional Chinese', nativeName: '繁體中文', dir: 'ltr' },
+    { code: 'ja', name: 'Japanese', nativeName: '日本語', dir: 'ltr' }
   ];
 
   private translations = signal<Record<string, unknown>>({});
@@ -62,6 +72,11 @@ export class TranslationService {
       this.translationsVersion.update(v => v + 1);
       this.currentLocale.set(locale);
       document.documentElement.lang = locale === 'tc' ? 'zh-Hant' : locale;
+      // Beside the lang write on purpose: a catalog that failed to load never
+      // gets here, so the document can never declare one locale's language
+      // with another's direction. The service — not the attribute — is what
+      // already-constructed Material and CDK components follow.
+      this.directionality.setDirection(this.currentLanguage().dir);
     } catch (error) {
       console.error(`Failed to load translations for ${locale}:`, error);
       if (locale !== this.DEFAULT_LOCALE) {

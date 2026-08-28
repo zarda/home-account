@@ -6,6 +6,8 @@ import { A11yModule } from '@angular/cdk/a11y';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map } from 'rxjs/operators';
 import { APP_BREAKPOINTS } from '../../../core/layout/breakpoints';
+import { OnboardingService } from '../../../core/services/onboarding.service';
+import { KeyboardShortcutService } from '../../../core/services/keyboard-shortcut.service';
 import { HeaderComponent } from '../header/header.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
@@ -23,10 +25,17 @@ const SIDEBAR_COLLAPSED_KEY = 'homeaccount.sidebar-collapsed';
   styleUrl: './main-layout.component.scss',
   host: {
     '(document:keydown.escape)': 'onEscape()',
+    '(document:keydown.n)': 'onAddHotkey($event)',
+    // Two lines because Angular matches the modifier by name, not by
+    // platform: Ctrl+K is the Windows/Linux chord, Cmd+K the macOS one.
+    '(document:keydown.control.k)': 'onPaletteHotkey($event)',
+    '(document:keydown.meta.k)': 'onPaletteHotkey($event)',
   },
 })
 export class MainLayoutComponent {
   private breakpointObserver = inject(BreakpointObserver);
+  private onboarding = inject(OnboardingService);
+  private keyboardShortcuts = inject(KeyboardShortcutService);
 
   /**
    * Overlay-drawer open state (tablet/mobile only). Never auto-opens:
@@ -43,6 +52,18 @@ export class MainLayoutComponent {
     effect(() => {
       if (!this.isOverlayMode()) {
         this.sidebarOpen.set(false);
+      }
+    });
+
+    // The first-run welcome belongs to the authed shell: /login and /lock
+    // live outside this layout, and authGuard has already waited out
+    // AuthService.isLoading before routing here. An effect rather than a
+    // one-shot, because a launch that started on a degraded profile becomes
+    // eligible only when the real profile arrives, with the shell already
+    // mounted. OnboardingService owns the once-per-account guard.
+    effect(() => {
+      if (this.onboarding.shouldShow()) {
+        this.onboarding.show();
       }
     });
   }
@@ -98,6 +119,18 @@ export class MainLayoutComponent {
     if (this.isOverlayMode() && this.sidebarOpen()) {
       this.closeSidebar();
     }
+  }
+
+  // A host binding's `$event` is typed `Event` however specific the key
+  // qualifier is, so these take `Event` and narrow. Declaring KeyboardEvent
+  // here compiles under the test tsconfig and fails `ng build`, which is how
+  // it got missed the first time.
+  onAddHotkey(event: Event): void {
+    this.keyboardShortcuts.handleAddHotkey(event as KeyboardEvent);
+  }
+
+  onPaletteHotkey(event: Event): void {
+    this.keyboardShortcuts.handlePaletteHotkey(event as KeyboardEvent);
   }
 
   onNavItemClicked(): void {
