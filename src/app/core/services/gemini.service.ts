@@ -296,6 +296,9 @@ export class GeminiService extends CloudLLMProviderBase {
         details: receiptData.receiptDetails || receiptData.itemsSummary ||
           receiptData.items || receiptData.description || '',
         ...this.countrySlots(receiptData.country, readPrintedLocation(receiptData.location, receiptData.merchant)),
+        // A missing date is patched with today's day-key above; nothing was
+        // claimed about that date, so nothing here claims a confidence for it.
+        ...(receiptData.date ? {} : { dateConfidence: 0 }),
       }];
     });
   }
@@ -356,6 +359,9 @@ export class GeminiService extends CloudLLMProviderBase {
         receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: false,
         ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
+        // A missing date is patched with today's day-key above; nothing was
+        // claimed about that date, so nothing here claims a confidence for it.
+        ...(t.date ? {} : { dateConfidence: 0 }),
       }));
     });
   }

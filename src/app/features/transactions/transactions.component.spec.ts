@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, Subject } from 'rxjs';
+import { of, throwError, Subject } from 'rxjs';
 import { TransactionsComponent } from './transactions.component';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService } from '../../core/services/transaction-window.service';
@@ -54,6 +54,7 @@ describe('TransactionsComponent', () => {
     isLoading: ReturnType<typeof signal<boolean>>;
     lastMutation: ReturnType<typeof signal<TransactionMutation | null>>;
     deleteTransaction: jasmine.Spy;
+    getTransactionById: jasmine.Spy;
   };
   let windowSource: ReturnType<typeof createMockWindowSource>;
   let periodTotals: ReturnType<typeof createMockPeriodTotals>;
@@ -86,6 +87,7 @@ describe('TransactionsComponent', () => {
       isLoading: signal(false),
       lastMutation: signal<TransactionMutation | null>(null),
       deleteTransaction: jasmine.createSpy('deleteTransaction').and.resolveTo(undefined),
+      getTransactionById: jasmine.createSpy('getTransactionById').and.returnValue(of(null)),
     };
     windowSource = createMockWindowSource();
     periodTotals = createMockPeriodTotals();
@@ -244,6 +246,94 @@ describe('TransactionsComponent', () => {
     component.onFiltersChanged({ type: 'expense' });
     expect(windowSource.reset).toHaveBeenCalledWith({ type: 'expense' }, 'desc');
     expect(periodTotals.reset).toHaveBeenCalledWith({ type: 'expense' });
+  });
+
+  describe('the tx query param', () => {
+    it('opens, scrolls to and edits the transaction named by the tx query param after the first window seed', fakeAsync(() => {
+      const txn = createTransaction({ id: 'tx-9' });
+      transactionService.getTransactionById.and.returnValue(of(txn));
+      windowSource.isInLoadedRange.and.returnValue(false);
+      routeSnapshotParams = { tx: 'tx-9' };
+
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onFiltersChanged({});
+      tick();
+
+      expect(transactionService.getTransactionById).toHaveBeenCalledWith('tx-9');
+      expect(windowSource.jumpTo).toHaveBeenCalledWith(txn.date);
+      expect(windowSource.requestScrollTo).toHaveBeenCalledWith('tx-9');
+      expect(dialog.open).toHaveBeenCalledWith(TransactionFormComponent, jasmine.objectContaining({
+        data: { mode: 'edit', transaction: txn },
+      }));
+    }));
+
+    it('keeps the window in place when the target is already in range', fakeAsync(() => {
+      const txn = createTransaction({ id: 'tx-5' });
+      transactionService.getTransactionById.and.returnValue(of(txn));
+      windowSource.isInLoadedRange.and.returnValue(true);
+      routeSnapshotParams = { tx: 'tx-5' };
+
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onFiltersChanged({});
+      tick();
+
+      expect(windowSource.jumpTo).not.toHaveBeenCalled();
+      expect(windowSource.requestScrollTo).toHaveBeenCalledWith('tx-5');
+      expect(dialog.open).toHaveBeenCalledWith(TransactionFormComponent, jasmine.objectContaining({
+        data: { mode: 'edit', transaction: txn },
+      }));
+    }));
+
+    it('toasts and opens nothing when the linked transaction is gone', fakeAsync(() => {
+      transactionService.getTransactionById.and.returnValue(of(null));
+      routeSnapshotParams = { tx: 'tx-missing' };
+
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onFiltersChanged({});
+      tick();
+
+      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+      expect(notifications.info).toHaveBeenCalledWith('import.linkedTransactionGone');
+      expect(dialog.open).not.toHaveBeenCalled();
+      expect(windowSource.requestScrollTo).not.toHaveBeenCalled();
+    }));
+
+    it('toasts a generic error when the linked-transaction fetch rejects', fakeAsync(() => {
+      transactionService.getTransactionById.and.returnValue(throwError(() => new Error('offline')));
+      routeSnapshotParams = { tx: 'tx-err' };
+
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onFiltersChanged({});
+      tick();
+
+      const notifications = TestBed.inject(NotificationService) as jasmine.SpyObj<NotificationService>;
+      expect(notifications.error).toHaveBeenCalledWith('common.error');
+      expect(dialog.open).not.toHaveBeenCalled();
+    }));
+
+    it('consumes the tx param once', fakeAsync(() => {
+      const txn = createTransaction({ id: 'tx-1' });
+      transactionService.getTransactionById.and.returnValue(of(txn));
+      routeSnapshotParams = { tx: 'tx-1' };
+
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onFiltersChanged({});
+      tick();
+      expect(dialog.open).toHaveBeenCalledTimes(1);
+
+      dialog.open.calls.reset();
+      transactionService.getTransactionById.calls.reset();
+      fixture.componentInstance.onFiltersChanged({ type: 'expense' });
+      tick();
+
+      expect(transactionService.getTransactionById).not.toHaveBeenCalled();
+      expect(dialog.open).not.toHaveBeenCalled();
+    }));
   });
 
   it('onDateSortChange resets the window only when the direction changes', () => {

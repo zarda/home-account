@@ -7,6 +7,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 
@@ -34,6 +35,7 @@ import { NotificationService } from '../../../../core/services/notification.serv
     MatIconModule,
     MatButtonModule,
     MatChipsModule,
+    MatMenuModule,
     MatDialogModule,
     TranslatePipe
   ],
@@ -261,5 +263,11 @@ export class ImportHistoryComponent implements OnInit, OnDestroy {
 
   goToImport(): void {
     this.router.navigate(['/settings/import']);
+  }
+
+  // The menu's entries are positional — the record stores no per-row data —
+  // so every id, however it arrives, opens the same way.
+  openTransaction(id: string): void {
+    this.router.navigate(['/transactions'], { queryParams: { tx: id } });
   }
 }

@@ -14,6 +14,7 @@ import {
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
+import { parseDateInput } from '../utils/transaction-date.utils';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -573,6 +574,34 @@ describe('AIImportService', () => {
       expect('currencySuggestion' in service.convertStrategyResultToCategories(processed([
         { currency: 'USD', currencyFellBack: true, receiptCountry: 'US' },
       ]))[0]).toBeFalse();
+    });
+
+    it('marks a strategy row whose producer graded the date at zero', () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        const [row] = service.convertStrategyResultToCategories(processed([
+          { date: new Date(2024, 5, 1), fieldConfidence: { date: 0 } },
+        ]));
+
+        expect(+row.date).toBe(+now);
+        expect(row.dateAssumed).toBeTrue();
+        expect(row.fieldConfidence?.date).toBe(0);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('keeps a confident date untouched', () => {
+      const original = new Date(2024, 5, 1);
+      const [row] = service.convertStrategyResultToCategories(processed([
+        { date: original, fieldConfidence: { date: 0.9 } },
+      ]));
+
+      expect(+row.date).toBe(+original);
+      expect('dateAssumed' in row).toBeFalse();
+      expect(row.fieldConfidence?.date).toBe(0.9);
     });
   });
 
@@ -1354,6 +1383,38 @@ describe('AIImportService', () => {
       expect(result.transactions[0].currencyFellBack).toBeTrue();
       expect(result.transactions[0].currencySuggestion).toEqual({ code: 'JPY', country: 'JP', reason: 'receipt' });
     });
+
+    it('an unparseable consolidated date becomes now, marked, and feeds categorization the same date', async () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        // A day that does not exist: parseDateInput rejects it, and this lane
+        // has no model confidence to grade a date with — only the parse
+        // failure marks the row.
+        cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+          { date: '2024-06-31', description: 'Ghost item', amount: 5, type: 'expense', currency: 'JPY',
+            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+        ]));
+
+        const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+        expect(+result.transactions[0].date).toBe(+now);
+        expect(result.transactions[0].dateAssumed).toBeTrue();
+        // The single-item group has no receiptTotal to corroborate its item
+        // sum, so consolidation adds its own REVIEW_AMOUNT_CONFIDENCE amount
+        // grade alongside the fabricated date one — pin both keys, not just
+        // the date, so a regression in either one is caught here.
+        expect(result.transactions[0].fieldConfidence).toEqual({ amount: REVIEW_AMOUNT_CONFIDENCE, date: 0 });
+
+        // The same resolved date reached the categorization ladder, not the
+        // unparseable string or a second, independently-computed "now".
+        const fed = cloudLLMProvider.categorizeTransactions.calls.argsFor(0)[0][0];
+        expect(+fed.date).toBe(+now);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
   });
 
   describe('importFromPDF', () => {
@@ -1844,21 +1905,63 @@ describe('AIImportService', () => {
     });
 
     it('flags an unreadable date with zero confidence instead of silently dating it today', async () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        const result = await service.categorizeTransactions([
+          // A day that does not exist: parseDateInput rejects it rather than
+          // letting V8 roll it into 3 March.
+          { date: '2024-06-31', description: 'Ghost', amount: 5, type: 'expense', currency: 'USD',
+            dateConfidence: 0.95 },
+          { date: '2024-06-01', description: 'Real', amount: 5, type: 'expense', currency: 'USD',
+            dateConfidence: 0.95 },
+        ]);
+
+        // Landed on "now" so the row surfaces at the top of today's list...
+        expect(+result[0].date).toBe(+now);
+        // ...but flagged for verification, overriding the model's own optimism.
+        // The whole shape, not just the date key: this row's extraction never
+        // reported an amountConfidence, so fieldConfidence must not carry one.
+        expect(result[0].fieldConfidence).toEqual({ date: 0 });
+        expect(result[0].dateAssumed).toBeTrue();
+        // The confident, well-formed row is untouched and unmarked.
+        expect(+result[1].date).toBe(+new Date(2024, 5, 1));
+        expect(result[1].fieldConfidence?.date).toBe(0.95);
+        expect('dateAssumed' in result[1]).toBeFalse();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('replaces a date read below threshold with now and marks the row', async () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        const result = await service.categorizeTransactions([
+          { date: '2024-06-01', description: 'Doubtful', amount: 5, type: 'expense', currency: 'USD',
+            dateConfidence: 0.4 },
+        ]);
+
+        expect(+result[0].date).toBe(+now);
+        expect(result[0].fieldConfidence?.date).toBe(0.4);
+        expect(result[0].dateAssumed).toBeTrue();
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it("leaves a CSV row's unreported date confidence alone", async () => {
       const result = await service.categorizeTransactions([
-        // A day that does not exist: parseDateInput rejects it rather than
-        // letting V8 roll it into 3 March.
-        { date: '2024-06-31', description: 'Ghost', amount: 5, type: 'expense', currency: 'USD',
-          dateConfidence: 0.95 },
-        { date: '2024-06-01', description: 'Real', amount: 5, type: 'expense', currency: 'USD',
-          dateConfidence: 0.95 },
+        { date: '2024-06-01', description: 'Rent', amount: 1200, type: 'expense', currency: 'USD' }
       ]);
 
-      // Defaulted to a valid date so the row cannot poison a query...
-      expect(result[0].date instanceof Date).toBeTrue();
-      expect(Number.isFinite(result[0].date.getTime())).toBeTrue();
-      // ...but flagged for verification, overriding the model's own optimism.
-      expect(result[0].fieldConfidence?.date).toBe(0);
-      expect(result[1].fieldConfidence?.date).toBe(0.95);
+      expect(+result[0].date).toBe(+parseDateInput('2024-06-01')!);
+      // The real contract is the whole object being absent, not just its date
+      // key — an unreported amountConfidence must not manufacture one either.
+      expect(result[0].fieldConfidence).toBeUndefined();
+      expect('dateAssumed' in result[0]).toBeFalse();
     });
 
     it('should build originalText from merchant and details', async () => {
@@ -2436,6 +2539,73 @@ describe('AIImportService', () => {
       expect(stats['errorCount']).toBe(1);
       expect(stats['successCount']).toBe(0);
       expect('receiptsFailed' in stats).toBeFalse();
+    });
+
+    describe('transactionIds', () => {
+      it('records the created transaction ids on the completed record, in row order', async () => {
+        transactionService.addTransaction.and.returnValues(
+          Promise.resolve('id-1'),
+          Promise.resolve('id-2')
+        );
+
+        await service.confirmImport(
+          [selected({ id: 'a' }), selected({ id: 'b' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect(stats['transactionIds']).toEqual(['id-1', 'id-2']);
+      });
+
+      it('a failed row contributes no id and no placeholder', async () => {
+        transactionService.addTransaction.and.returnValues(
+          Promise.resolve('id-1'),
+          Promise.reject(new Error('save failed')),
+          Promise.resolve('id-3')
+        );
+
+        await service.confirmImport(
+          [selected({ id: 'a' }), selected({ id: 'b' }), selected({ id: 'c' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect(stats['transactionIds']).toEqual(['id-1', 'id-3']);
+        expect(stats['successCount']).toBe(2);
+      });
+
+      it("the photo-less retry's id is the one recorded", async () => {
+        const fileA = new File(['a'], 'a.png', { type: 'image/png' });
+        transactionService.addTransaction.and.callFake(dto =>
+          dto.receiptFiles?.length
+            ? Promise.reject(new Error(RECEIPT_IMAGE_LIMIT_ERROR))
+            : Promise.resolve('retry-id')
+        );
+
+        await service.confirmImport(
+          [withMeta({}, { imageIndex: 0, receiptId: 1 })],
+          'r.png', 10, 'image', 'receipt_image',
+          [fileA]
+        );
+
+        // Two calls happen (primary rejected, retry saved), but only the
+        // retry's id is worth recording — the two writes are mutually
+        // exclusive over the same row.
+        const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect(stats['transactionIds']).toEqual(['retry-id']);
+      });
+
+      it('writes no transactionIds key when every row failed', async () => {
+        transactionService.addTransaction.and.returnValue(Promise.reject(new Error('save failed')));
+
+        await service.confirmImport(
+          [selected({ id: 'a' }), selected({ id: 'b' })],
+          'r.png', 10, 'image', 'receipt_image'
+        );
+
+        const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+        expect('transactionIds' in stats).toBeFalse();
+      });
     });
 
     it('should fail the import and rethrow when completion throws', async () => {

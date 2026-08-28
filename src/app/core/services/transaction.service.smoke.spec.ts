@@ -202,6 +202,22 @@ describe('TransactionService date ranges (emulator smoke test)', () => {
   }, 20000);
 
   /**
+   * The exact contract the import-history "open transaction" shortcut's
+   * deleted-target toast stands on: onSnapshot reports a missing doc as
+   * exists() === false rather than an error, and the transactions rule
+   * (`allow read: if isOwner(userId)`) never inspects `resource`, so a read
+   * for an id nothing was ever written at is allowed, not denied. The unit
+   * suite mocks FirestoreService and can only assert what subscribeToDocument
+   * was called with, never that a real listener on a real absent doc actually
+   * settles on null instead of hanging or erroring.
+   */
+  it('getTransactionById emits null for an id with no document behind it', async () => {
+    const result = await firstValueFrom(service.getTransactionById('smoke-does-not-exist'));
+
+    expect(result).toBeNull();
+  }, 20000);
+
+  /**
    * A receipt's date arrives as `YYYY-MM-DD` and has to survive being parsed,
    * converted to a Timestamp, stored, and matched by a range query. Every step
    * of that is a chance to lose a day, and the unit suite sees none of it: it

@@ -1,4 +1,5 @@
-import { locationSlot, resolveImportCurrency, toCreateTransactionDTO } from './import-dto.utils';
+import { locationSlot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
+import { parseDateInput } from './transaction-date.utils';
 
 describe('toCreateTransactionDTO', () => {
   const date = new Date(2026, 5, 1);
@@ -119,6 +120,87 @@ describe('resolveImportCurrency', () => {
   });
 });
 
+/**
+ * `now` only reaches the function through its default parameter — later
+ * callers pass just `raw` and `confidence` — so every case here freezes the
+ * clock with `jasmine.clock().mockDate` rather than passing a third
+ * argument. Every assertion is an instant or a delegation comparison, never
+ * a local calendar part, so this file does not need the `test:dates` TZ
+ * sweep (ADR 0050).
+ */
+describe('resolveImportDate', () => {
+  const now = new Date(2026, 7, 20, 9, 30);
+
+  beforeEach(() => {
+    jasmine.clock().install();
+    jasmine.clock().mockDate(now);
+  });
+
+  afterEach(() => {
+    jasmine.clock().uninstall();
+  });
+
+  it('keeps a parsed date-only string, delegating to parseDateInput', () => {
+    const result = resolveImportDate('2026-08-12');
+
+    expect(+result.date).toBe(+parseDateInput('2026-08-12')!);
+    expect(result.dateAssumed).toBeUndefined();
+  });
+
+  it("keeps a confident reading's own confidence, unmarked", () => {
+    const result = resolveImportDate('2026-08-12', 0.95);
+
+    expect(+result.date).toBe(+parseDateInput('2026-08-12')!);
+    expect(result.dateConfidence).toBe(0.95);
+    expect(result.dateAssumed).toBeUndefined();
+  });
+
+  it('substitutes now, marks the row, and forces confidence 0 on an unreadable string', () => {
+    // The reader's own 0.95 does not matter: an unparseable value is worse
+    // than an unconfident one, and the forced 0 says so.
+    const result = resolveImportDate('31/12/2024', 0.95);
+
+    expect(+result.date).toBe(+now);
+    expect(result.dateConfidence).toBe(0);
+    expect(result.dateAssumed).toBeTrue();
+  });
+
+  it('substitutes now on a well-shaped but impossible date', () => {
+    const result = resolveImportDate('2026-02-31');
+
+    expect(+result.date).toBe(+now);
+    expect(result.dateConfidence).toBe(0);
+    expect(result.dateAssumed).toBeTrue();
+  });
+
+  it('substitutes now and marks a parsed date graded below the threshold, keeping its confidence', () => {
+    const result = resolveImportDate('2026-08-12', 0.5);
+
+    expect(+result.date).toBe(+now);
+    expect(result.dateConfidence).toBe(0.5);
+    expect(result.dateAssumed).toBeTrue();
+  });
+
+  it('keeps a parsed date when confidence is undefined, unmarked', () => {
+    // CSV and JSON rows have no reader to grade them — the same rationale
+    // needsVerification uses on the preview card. Absence must never read as
+    // zero.
+    const result = resolveImportDate('2026-08-12', undefined);
+
+    expect(+result.date).toBe(+parseDateInput('2026-08-12')!);
+    expect('dateConfidence' in result).toBeFalse();
+    expect(result.dateAssumed).toBeUndefined();
+  });
+
+  it('keeps a date read at exactly the verify threshold', () => {
+    const result = resolveImportDate('2026-08-12', 0.7);
+
+    expect(+result.date).toBe(+parseDateInput('2026-08-12')!);
+    expect(result.dateConfidence).toBe(0.7);
+    expect(result.dateAssumed).toBeUndefined();
+  });
+});
+
 describe('toCreateTransactionDTO and the review flags', () => {
   it('never forwards currencyFellBack — it is a review-step mark, not a field', () => {
     const dto = toCreateTransactionDTO(
@@ -140,6 +222,14 @@ describe('toCreateTransactionDTO and the review flags', () => {
     );
     expect('receiptCountry' in dto).toBeFalse();
     expect(dto.location).toEqual({ name: 'Shibuya', country: 'JP' });
+  });
+
+  it('never forwards dateAssumed — it is a review-step mark, not a field', () => {
+    const dto = toCreateTransactionDTO(
+      { amount: 5, date: new Date(2026, 0, 1), dateAssumed: true } as never,
+      'USD'
+    );
+    expect('dateAssumed' in dto).toBeFalse();
   });
 });
 

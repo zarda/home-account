@@ -152,8 +152,22 @@
 
           <!-- Anything the source suggested beyond the core fields, each
                droppable in one tap -->
-          @if (row.location || row.tags?.length || row.recurringMatch || row.currencySuggestion) {
+          @if (row.location || row.tags?.length || row.recurringMatch || row.currencySuggestion || row.dateAssumed) {
             <div class="card-extras">
+              <!-- Non-dismissible: there is no date editor on this card, so
+                   there is nothing for a remove button to clear. -->
+              @if (row.dateAssumed) {
+                <span class="extra-chip date-assumed">
+                  <mat-icon
+                    class="verify-flag"
+                    [matTooltip]="dateAssumedTooltip()"
+                    matTooltipPosition="above"
+                    role="img"
+                    [attr.aria-label]="dateAssumedTooltip()"
+                  >event</mat-icon>
+                  <span class="extra-text">{{ 'import.dateAssumed' | translate }}</span>
+                </span>
+              }
               @if (row.recurringMatch; as match) {
                 <mat-checkbox
                   class="recurring-link"

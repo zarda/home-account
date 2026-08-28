@@ -242,4 +242,18 @@ describe('on-device receipt categories over the live catalog (smoke test)', () =
     });
     expect(UNCATEGORIZED_CATEGORY_CONFIDENCE).toBeLessThan(UNRESOLVED_CATEGORY_CONFIDENCE);
   });
+
+  it('a receipt whose text carries no readable date comes back with fieldConfidence.date 0', async () => {
+    // Same no-model regex path as above, but the OCR text carries no date
+    // line at all for the reader to grade.
+    appleMock.isModelAvailable.and.returnValue(false);
+    visionMock.recognizeText.and.resolveTo({
+      ...ocrResult,
+      text: 'Harbour Supplies\nTotal: $120.50',
+    });
+
+    const transaction = (await service.processImage(imageFile())).transactions[0];
+
+    expect(transaction.fieldConfidence?.date).toBe(0);
+  });
 });

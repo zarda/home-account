@@ -128,13 +128,14 @@ export class NativeReceiptService {
       ? matchCategoryName(extraction.category, categories, translate)
       : undefined;
     const country = readCountryCode(extraction.country);
+    // The model answers `YYYY-MM-DD`, which the Date constructor reads as UTC
+    // midnight — the day before, west of UTC. parseDateInput anchors on the
+    // day-key shape and returns null rather than an Invalid Date, so the
+    // fallback covers an unreadable string too.
+    const parsedDate = parseDateInput(extraction.date);
 
     return {
-      // The model answers `YYYY-MM-DD`, which the Date constructor reads as UTC
-      // midnight — the day before, west of UTC. parseDateInput anchors on the
-      // day-key shape and returns null rather than an Invalid Date, so the
-      // fallback covers an unreadable string too.
-      date: parseDateInput(extraction.date) ?? new Date(),
+      date: parsedDate ?? new Date(),
       description: extraction.merchant || 'Unknown Merchant',
       amount: Math.abs(extraction.amount) || 0,
       type: 'expense',
@@ -147,6 +148,9 @@ export class NativeReceiptService {
       suggestedCategoryId: match?.matched ? match.id : undefined,
       ...printedLocationSlot(readPrintedLocation(extraction.location, extraction.merchant), country),
       ...(country ? { receiptCountry: country } : {}),
+      // Nothing else here grades the date; an unreadable one has to say so
+      // itself rather than silently landing on today with no mark at all.
+      ...(parsedDate === null ? { fieldConfidence: { date: 0 } } : {}),
     };
   }
 
@@ -172,7 +176,7 @@ export class NativeReceiptService {
       // receipt's line-by-line content — record it so item details reach
       // the transaction note
       notes: ocrResult.text?.trim() || undefined,
-      fieldConfidence: { amount: parsed.amountConfidence },
+      fieldConfidence: { amount: parsed.amountConfidence, date: parsed.dateConfidence },
       // This parser reads figures and evidence tiers; it never looks at what
       // was bought. Saying so keeps the import from grading a row nobody
       // categorized as one whose category answer we failed to understand.

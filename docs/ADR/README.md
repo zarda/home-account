@@ -78,6 +78,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0071](0071-direction-comes-from-the-locale-and-physical-css-is-frozen.md) | Direction comes from the locale, and physical CSS is frozen | Accepted | 2026-08-27 |
 | [0072](0072-onboarding-runs-once-and-never-against-a-fallback-profile.md) | Onboarding runs once, and never against a fallback profile | Accepted | 2026-08-27 |
 | [0073](0073-shortcuts-live-in-the-shell-and-the-palette-reads-the-sidebars-list.md) | Shortcuts live in the shell, and the palette reads the sidebar's list | Accepted | 2026-08-27 |
+| [0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted | 2026-08-28 |
+| [0075](0075-a-successful-import-remembers-the-transactions-it-created.md) | A successful import remembers the transactions it created | Accepted; extends 0065 | 2026-08-28 |
 
 ## What belongs here
 

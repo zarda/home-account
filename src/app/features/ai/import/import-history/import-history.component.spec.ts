@@ -11,6 +11,7 @@ import { ImportHistoryComponent } from './import-history.component';
 import { ImportHistoryService } from '../../../../core/services/import-history.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { ImportHistory } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 
@@ -387,5 +388,110 @@ describe('ImportHistoryComponent', () => {
         'import.failureNothingExtracted', 'import.failureQueueWrite', 'import.failureUnknown',
       ]);
     });
+  });
+});
+
+// A sibling suite, not a nested describe: the outer file overrides the
+// template with a bare div (see its beforeEach above) so its own
+// TestBed.createComponent runs before any nested beforeEach could
+// reconfigure the module — mat-menu items only ever exist in the DOM once
+// the trigger is clicked and the CDK overlay attaches them to document.body,
+// so this needs the real, un-stubbed template. Mirrors the technique
+// add-affordance.spec.ts uses for TransactionsComponent.
+describe('ImportHistoryComponent transaction shortcut', () => {
+  let fixture: ComponentFixture<ImportHistoryComponent>;
+  let historyService: jasmine.SpyObj<ImportHistoryService>;
+  let router: jasmine.SpyObj<Router>;
+
+  const baseRecord: ImportHistory = {
+    id: 'import1',
+    userId: 'user1',
+    importedAt: { seconds: 1704067200, nanoseconds: 0, toDate: () => new Date(1704067200 * 1000) } as Timestamp,
+    source: 'csv',
+    fileType: 'generic_csv',
+    fileName: 'transactions.csv',
+    fileSize: 2048,
+    transactionCount: 3,
+    successCount: 3,
+    skippedCount: 0,
+    errorCount: 0,
+    totalIncome: 0,
+    totalExpenses: 300,
+    duplicatesSkipped: 0,
+    status: 'completed'
+  };
+
+  function itemWith(transactionIds: string[] | undefined): ImportHistory {
+    return { ...baseRecord, transactionIds };
+  }
+
+  function render(items: ImportHistory[]): void {
+    historyService.getImportHistory.and.returnValue(of(items));
+    fixture.detectChanges();
+  }
+
+  function actionButtons(): HTMLButtonElement[] {
+    return Array.from(fixture.nativeElement.querySelectorAll('mat-card-actions button'));
+  }
+
+  beforeEach(async () => {
+    historyService = jasmine.createSpyObj('ImportHistoryService', ['getImportHistory']);
+    historyService.getImportHistory.and.returnValue(of([]));
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((key: string) => key);
+    router = jasmine.createSpyObj('Router', ['navigate']);
+
+    await TestBed.configureTestingModule({
+      imports: [ImportHistoryComponent, NoopAnimationsModule],
+      providers: [
+        { provide: ImportHistoryService, useValue: historyService },
+        { provide: TranslationService, useValue: translation },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
+        { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
+        { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
+        { provide: Router, useValue: router }
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ImportHistoryComponent);
+  });
+
+  it('shows no shortcut for a record without transaction ids', () => {
+    render([itemWith(undefined)]);
+
+    // Delete is always there; nothing else should join it.
+    expect(actionButtons().length).toBe(1);
+  });
+
+  it('a single-transaction record gets a direct view button that navigates with the tx param', () => {
+    render([itemWith(['tx-1'])]);
+
+    const buttons = actionButtons();
+    expect(buttons.length).toBe(2);
+    const viewButton = buttons.find(b => b.textContent?.includes('import.viewTransaction'));
+    expect(viewButton).withContext('a view-transaction button').toBeTruthy();
+
+    viewButton!.click();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/transactions'], { queryParams: { tx: 'tx-1' } });
+  });
+
+  it('a batch record gets a menu with one entry per created transaction, each navigating with its id', () => {
+    render([itemWith(['tx-1', 'tx-2', 'tx-3'])]);
+
+    const buttons = actionButtons();
+    expect(buttons.length).toBe(2);
+    const trigger = buttons.find(b => b.textContent?.includes('import.viewTransactions'));
+    expect(trigger).withContext('a view-transactions menu trigger').toBeTruthy();
+
+    trigger!.click();
+    fixture.detectChanges();
+
+    const items = document.querySelectorAll<HTMLButtonElement>('.mat-mdc-menu-panel button[mat-menu-item]');
+    expect(items.length).toBe(3);
+
+    items[1].click();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/transactions'], { queryParams: { tx: 'tx-2' } });
   });
 });

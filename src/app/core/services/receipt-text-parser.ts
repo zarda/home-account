@@ -26,6 +26,12 @@ export interface ParsedReceiptText {
    */
   amountConfidence: number;
   /**
+   * 0–1: how clearly the date was read — 0.9 for an unambiguous match, scaled
+   * down further for an ambiguous day/month order or a two-digit year, 0 when
+   * nothing matched at all (including a match the future-date guard rejected).
+   */
+  dateConfidence: number;
+  /**
    * 0–1: how much of this reading came out of the text rather than out of a
    * default. Zero means every field fell back — today's date, no amount, no
    * currency — not that the receipt itself is worthless.
@@ -110,6 +116,7 @@ export function parseReceiptOcrText(text: string): ParsedReceiptText {
     currency,
     merchant,
     amountConfidence: Math.round(amountConfidence * 100) / 100,
+    dateConfidence: Math.round(dateConfidence * 100) / 100,
     confidence: Math.round(confidence * 100) / 100,
   };
 }

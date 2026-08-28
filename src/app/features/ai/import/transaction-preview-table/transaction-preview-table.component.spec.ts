@@ -869,4 +869,41 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(emitted[0][0].currencySuggestion).toBeUndefined();
     expect(currencySession.remember).not.toHaveBeenCalled();
   });
+
+  describe('the date-assumed chip', () => {
+    it('renders the date-assumed chip only when the row carries the mark', () => {
+      component.transactions = [
+        makeRow({ id: 'marked', dateAssumed: true }),
+        makeRow({ id: 'unmarked' }),
+      ];
+      component.categories = [];
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelectorAll('.extra-chip.date-assumed').length).toBe(1);
+    });
+
+    it("the chip's icon carries the tooltip as its accessible name", () => {
+      component.transactions = [makeRow({ dateAssumed: true })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      const icon = fixture.nativeElement.querySelector('.extra-chip.date-assumed mat-icon') as HTMLElement;
+      expect(icon.getAttribute('aria-label')).toBe(component.dateAssumedTooltip());
+    });
+
+    it('a marked row still shows the date verify flag, with the assumed wording', () => {
+      // The row also carries a low date confidence — the ordinary case,
+      // since resolveImportDate marks dateAssumed for the same low reading
+      // that trips needsVerification. The flag itself keeps rendering
+      // exactly as it always did; only its wording changes.
+      const row = makeRow({ dateAssumed: true, fieldConfidence: { date: 0.3 } });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      const flag = fixture.nativeElement.querySelector('.date-chip .verify-flag') as HTMLElement;
+      expect(flag).withContext('the low-confidence flag on the date chip still renders').not.toBeNull();
+      expect(flag.getAttribute('aria-label')).toBe(component.dateAssumedTooltip());
+    });
+  });
 });

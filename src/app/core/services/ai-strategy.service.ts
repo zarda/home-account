@@ -447,29 +447,44 @@ export class AIStrategyService {
     const fallbackCurrency = this.fallbackCurrency();
     const consolidated = consolidateReceiptItems(extracted, fallbackCurrency);
 
-    const transactions: ProcessedTransaction[] = consolidated.map(t => ({
-      date: parseDateInput(t.date) ?? new Date(),
-      description: t.description,
-      amount: t.amount,
-      type: t.type,
-      currency: t.currency || fallbackCurrency,
-      currencyFellBack: !t.currency,
-      confidence: t.confidence,
-      source: 'cloud' as const,
-      notes: t.details,
-      suggestedCategoryId: t.category,
-      receiptId: t.receiptId,
-      fieldConfidence:
-        t.amountConfidence !== undefined ? { amount: t.amountConfidence } : undefined,
-      // Which photos the row came from. Consolidation hardcodes imageIndex 0
-      // on merged rows, so mergedFromImages is the honest list there; both
-      // used to die on this hop, leaving the confirm step unable to attach
-      // the right photo.
-      imageIndex: t.imageIndex,
-      ...(t.mergedFromImages?.length ? { mergedFromImages: t.mergedFromImages } : {}),
-      ...(t.location ? { location: t.location } : {}),
-      ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
-    }));
+    const transactions: ProcessedTransaction[] = consolidated.map(t => {
+      const parsedDate = parseDateInput(t.date);
+      // A date string that turns out unparseable is `now` above, whatever
+      // upstream claimed about it — but a parseable one can still be a
+      // fabricated fallback (a missing date patched with a parseable
+      // today-string), which only the producer's own grade can tell apart
+      // from a real reading. Either way collapses to 0; only a date nobody
+      // graded at all stays undefined.
+      const dateGrade = parsedDate === null ? 0 : t.dateConfidence;
+      return {
+        date: parsedDate ?? new Date(),
+        description: t.description,
+        amount: t.amount,
+        type: t.type,
+        currency: t.currency || fallbackCurrency,
+        currencyFellBack: !t.currency,
+        confidence: t.confidence,
+        source: 'cloud' as const,
+        notes: t.details,
+        suggestedCategoryId: t.category,
+        receiptId: t.receiptId,
+        fieldConfidence:
+          t.amountConfidence !== undefined || dateGrade !== undefined
+            ? {
+                ...(t.amountConfidence !== undefined ? { amount: t.amountConfidence } : {}),
+                ...(dateGrade !== undefined ? { date: dateGrade } : {}),
+              }
+            : undefined,
+        // Which photos the row came from. Consolidation hardcodes imageIndex 0
+        // on merged rows, so mergedFromImages is the honest list there; both
+        // used to die on this hop, leaving the confirm step unable to attach
+        // the right photo.
+        imageIndex: t.imageIndex,
+        ...(t.mergedFromImages?.length ? { mergedFromImages: t.mergedFromImages } : {}),
+        ...(t.location ? { location: t.location } : {}),
+        ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
+      };
+    });
 
     const avgConfidence = transactions.length > 0
       ? transactions.reduce((sum, t) => sum + t.confidence, 0) / transactions.length

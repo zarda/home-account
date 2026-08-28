@@ -370,6 +370,15 @@
   }
 }
 
+// Worn like currency-chip's own fell-back: the same warning border for the
+// same reason — the source didn't give a usable value, so this row got a
+// guess instead. Unlike fell-back, this chip only ever exists in this one
+// state (it renders or it doesn't), so the border needs no transparent
+// placeholder in the base rule to guard against a toggle-time layout shift.
+.extra-chip.date-assumed {
+  border: 1px solid var(--color-warning);
+}
+
 // A place name runs long and a tag can be a single unbroken word, so both wrap
 // mid-word rather than pushing the remove button out of the card.
 .extra-text {

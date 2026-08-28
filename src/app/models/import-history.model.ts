@@ -52,6 +52,14 @@ export interface ImportHistory {
    */
   receiptsFailed?: number;
   /**
+   * IDs of the transactions this import created, in selected-row order,
+   * successes only (`length === successCount`). Absent on a record that has
+   * not completed yet, on an import where every row failed, on records
+   * completed before this field was added, and on the doors that write no
+   * success record at all (`form`, `queue` — ADR 0065).
+   */
+  transactionIds?: string[];
+  /**
    * How the attempt ran, recorded for receipts only. Written at extraction
    * time for a failed attempt and at confirm time for a successful one.
    * Every slot is optional because a CSV import has none of them.
@@ -150,6 +158,13 @@ export interface CategorizedImportTransaction {
    * way it marks a low-confidence amount; the confirm step never writes it.
    */
   currencyFellBack?: boolean;
+  /**
+   * True when `date` is "now" rather than something read off the source — a
+   * review-step mark like `currencyFellBack`, never written to a document. A
+   * wrong date landing on today is easy to spot and fix; the same error
+   * buried under a misread day in the past is not.
+   */
+  dateAssumed?: boolean;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)

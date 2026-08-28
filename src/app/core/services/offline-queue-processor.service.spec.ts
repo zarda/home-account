@@ -25,6 +25,22 @@ async function waitFor(pred: () => boolean, timeout = 2000): Promise<void> {
   }
 }
 
+/**
+ * Like `waitFor`, but safe to use while `jasmine.clock()` is installed.
+ *
+ * The real `waitFor` polls through a real `setTimeout`, which a mocked clock
+ * freezes — nothing ever fires it again, so the poll (and the clock install
+ * it never gets to uninstall) hangs forever. This drains the microtask queue
+ * instead, which the fake clock leaves alone.
+ */
+async function waitForFrozenClock(pred: () => boolean, hops = 200): Promise<void> {
+  for (let i = 0; i < hops; i++) {
+    if (pred()) return;
+    await Promise.resolve();
+  }
+  throw new Error('timed out waiting for condition');
+}
+
 function imageFile(name = 'r.jpg'): File {
   return new File([new Uint8Array([1, 2, 3])], name, { type: 'image/jpeg' });
 }
@@ -393,6 +409,42 @@ describe('OfflineQueueProcessorService', () => {
       await waitFor(() => queue.updateImageStatus.calls.any());
 
       expect('currencyFellBack' in transactions.addTransaction.calls.mostRecent().args[0]).toBeFalse();
+    });
+  });
+
+  describe('date resolution', () => {
+    it('writes a queued row whose date the engine doubted dated now', async () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+        ai.processReceipt.and.resolveTo(
+          processingResult([extracted({ date: new Date(2024, 5, 1), fieldConfidence: { date: 0.3 } })]),
+        );
+
+        dispatchImage('img_10');
+        await waitForFrozenClock(() => queue.updateImageStatus.calls.any());
+
+        const dto = transactions.addTransaction.calls.mostRecent().args[0];
+        expect(+dto.date).toBe(+now);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('keeps a confident queued row\'s date', async () => {
+      const original = new Date(2024, 5, 1);
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(
+        processingResult([extracted({ date: original, fieldConfidence: { date: 0.9 } })]),
+      );
+
+      dispatchImage('img_11');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      const dto = transactions.addTransaction.calls.mostRecent().args[0];
+      expect(+dto.date).toBe(+original);
     });
   });
 

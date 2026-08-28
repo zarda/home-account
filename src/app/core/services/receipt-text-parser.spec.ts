@@ -184,6 +184,18 @@ describe('parseReceiptOcrText', () => {
     it('should report the amount tier as amountConfidence', () => {
       expect(parseReceiptOcrText('Shop\n$1,200').amountConfidence).toBe(0.8);
     });
+
+    it('exports the date confidence the reader computed', () => {
+      expect(parseReceiptOcrText('Shop\n2026-01-15\nTotal: $5').dateConfidence).toBe(0.9);
+
+      // 03/04/2026: both parts are <= 12, so the day/month order is
+      // ambiguous and the reading is scaled down for it (0.9 tier × 0.6).
+      expect(parseReceiptOcrText('Shop\n03/04/2026\nTotal: $5').dateConfidence).toBe(0.54);
+
+      // Nothing has been bought tomorrow yet, so a future date is rejected
+      // the same as no date at all.
+      expect(parseReceiptOcrText('Shop\n2099-01-01\nTotal: $5').dateConfidence).toBe(0);
+    });
   });
 
   describe('cash-tendered demotion', () => {

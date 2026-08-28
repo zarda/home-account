@@ -10,6 +10,7 @@ import { Category } from '../../models';
 import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import { FALLBACK_CATEGORY_ID } from '../utils/categorization.utils';
 import { createCategory } from './testing';
+import { dayKey } from '../utils/transaction-date.utils';
 
 /**
  * What the shared base guarantees, independently of any provider.
@@ -517,6 +518,42 @@ describe('CloudLLMProviderBase', () => {
 
         expect(date.getDate()).toBe(today.getDate());
       });
+
+      it('zeroes the date confidence when it falls back to today, whatever the model claimed', async () => {
+        provider.response = {
+          text: '{"merchant":"Cafe","amount":4,"date":"31/12/2024","dateConfidence":0.95}',
+          truncated: false,
+        };
+
+        const receipt = await provider.parseReceipt('img');
+
+        expect(receipt.fieldConfidence?.date).toBe(0);
+      });
+
+      it('reports {date: 0} rather than staying undefined when the model claimed no confidences at all', async () => {
+        // The common case: most answers name no confidence field at all, so
+        // `readFieldConfidence` returns undefined and this is the
+        // `{ ...undefined, date: 0 }` path — legal, but worth pinning.
+        provider.response = {
+          text: '{"merchant":"Cafe","amount":4,"date":"31/12/2024"}',
+          truncated: false,
+        };
+
+        const receipt = await provider.parseReceipt('img');
+
+        expect(receipt.fieldConfidence).toEqual({ date: 0 });
+      });
+
+      it("keeps the model's date confidence when the date parsed", async () => {
+        provider.response = {
+          text: '{"merchant":"Cafe","amount":4,"date":"2026-08-01","dateConfidence":0.95}',
+          truncated: false,
+        };
+
+        const receipt = await provider.parseReceipt('img');
+
+        expect(receipt.fieldConfidence?.date).toBe(0.95);
+      });
     });
   });
 
@@ -558,6 +595,86 @@ describe('CloudLLMProviderBase', () => {
       // The import flow reads this field as a category id, so the model's own
       // wording must not reach it.
       expect(rows[0].category).toBe('food_groceries');
+    });
+  });
+
+  describe('extractStatementTransactions dates', () => {
+    const today = new Date(2026, 7, 20, 9, 30);
+
+    beforeEach(() => {
+      jasmine.clock().install();
+      jasmine.clock().mockDate(today);
+    });
+
+    afterEach(() => jasmine.clock().uninstall());
+
+    it('a row with no date is dated today at zero confidence', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { description: 'Row', amount: 5, type: 'expense', currency: 'USD', dateConfidence: 0.9 },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      // A missing date is patched with a parseable today-string, which must
+      // not ride the model's own dateConfidence past detection.
+      expect(rows[0].date).toBe(dayKey(today));
+      expect(rows[0].dateConfidence).toBe(0);
+    });
+
+    it("keeps the model's date confidence when a date was reported", async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-06-01', description: 'Row', amount: 5, type: 'expense', currency: 'USD', dateConfidence: 0.9 },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractStatementTransactions('img');
+
+      expect(rows[0].dateConfidence).toBe(0.9);
+    });
+  });
+
+  describe('extractTransactionsFromMultipleImages dates', () => {
+    const today = new Date(2026, 7, 20, 9, 30);
+
+    beforeEach(() => {
+      jasmine.clock().install();
+      jasmine.clock().mockDate(today);
+    });
+
+    afterEach(() => jasmine.clock().uninstall());
+
+    it('a multi-image row with no date is dated today at zero confidence', async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { description: 'Row', amount: 5, type: 'expense', currency: 'USD', dateConfidence: 0.9 },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+
+      // A missing date is patched with a parseable today-string, which must
+      // not ride the model's own dateConfidence past detection.
+      expect(rows[0].date).toBe(dayKey(today));
+      expect(rows[0].dateConfidence).toBe(0);
+    });
+
+    it("keeps the model's date confidence when a date was reported", async () => {
+      provider.response = {
+        text: JSON.stringify([
+          { date: '2026-06-01', description: 'Row', amount: 5, type: 'expense', currency: 'USD', dateConfidence: 0.9 },
+        ]),
+        truncated: false,
+      };
+
+      const rows = await provider.extractTransactionsFromMultipleImages(['img']);
+
+      expect(rows[0].dateConfidence).toBe(0.9);
     });
   });
 

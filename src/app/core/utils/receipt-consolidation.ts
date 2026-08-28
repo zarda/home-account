@@ -133,6 +133,11 @@ export function consolidateReceiptItems(
 
       result.push({
         date: first.date,
+        // Paired with `date` above: the row's date value came from `first`,
+        // so a claim about that date — including an honest 0 for a
+        // fabricated one — has to come from `first` too, not from a scan
+        // across the group the way location and receiptCountry search below.
+        dateConfidence: first.dateConfidence,
         description: merchant,
         ...deriveAmount(groupItems, Math.abs(netAmount)),
         type: netAmount < 0 ? 'income' : 'expense',
