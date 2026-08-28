@@ -45,8 +45,10 @@ describe('buildNewUserProfile', () => {
   });
 
   it('seeds the language it is handed, leaving the other defaults alone', () => {
-    // The account is created in whatever language the app is already speaking,
-    // so a first login does not land in English and stay there.
+    // The account is created in the language its device asked for, so a first
+    // login does not land in English and stay there. Which language that is
+    // belongs to the call sites — the create path hands over the device's own
+    // detection, the degraded fallback the locale already on screen.
     const profile = buildNewUserProfile(firebaseUser({}), 'ja');
 
     expect(profile.preferences.language).toBe('ja');
@@ -333,16 +335,39 @@ describe('AuthService', () => {
       expect(updatePreferences).not.toHaveBeenCalled();
     });
 
+    it('does not wait for the write, so a stalled one cannot hang the sign-in', async () => {
+      // Offline, a Firestore write settles only on reconnect. LoginComponent
+      // navigates on the sign-in promise this heal is the tail of, so awaiting
+      // the write would leave a real, signed-in session on the login spinner
+      // for as long as the network is gone. This case times out if the await
+      // ever comes back.
+      updatePreferences.and.returnValue(new Promise<void>(() => undefined));
+
+      const healed = await heal(created('en'), googleSays('ja-JP'));
+
+      expect(updatePreferences).toHaveBeenCalledWith({ language: 'ja' });
+      // Optimistic: the caller is handed the language that is on its way to
+      // the document, not the one that was there before.
+      expect(healed.preferences.language).toBe('ja');
+    });
+
     it('keeps the sign-in whole when the patch cannot be written', async () => {
       spyOn(console, 'error');
       updatePreferences.and.rejectWith(new Error('offline'));
 
       const healed = await heal(created('en'), googleSays('ja-JP'));
+      // The rejection lands on the fired promise's own handler, after the
+      // caller already has its answer.
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       // The account exists and the session is real; failing to adopt a
-      // language must not turn a completed sign-in into a rejected one.
-      expect(healed.preferences.language).toBe('en');
-      expect(console.error).toHaveBeenCalled();
+      // language must not turn a completed sign-in into a rejected one — and
+      // an unhandled rejection here would fail the suite.
+      expect(healed.preferences.language).toBe('ja');
+      expect(console.error).toHaveBeenCalledWith(
+        '[Auth] Could not adopt the Google account language:',
+        jasmine.any(Error)
+      );
     });
   });
 
@@ -527,6 +552,25 @@ describe('AuthService', () => {
       // be loaded is the second, smaller defect on this path.
       expect(notifications.error).not.toHaveBeenCalled();
       expect(service.isLoading()).toBeFalse();
+    });
+
+    it('seeds the degraded fallback profile from the locale already on screen', async () => {
+      // The other buildNewUserProfile call site, and deliberately the other
+      // source: this profile is never written, and its whole job is to leave
+      // the UI in the language it is already showing — so it reads
+      // currentLocale() even where the device detected nothing. The create
+      // path reads detectedBrowserLocale instead; that half is pinned in the
+      // emulator smoke suite, the only place getOrCreateUser really runs.
+      translation.currentLocale.set('ja');
+      translation.detectedBrowserLocale = null;
+      signedInAs(UID);
+
+      const pending = listenerCallback()({ uid: UID } as FirebaseUser);
+      rejectRead(new Error('offline'));
+      await pending;
+
+      expect(service.profileDegraded()).toBeTrue();
+      expect(service.currentUser()!.preferences.language).toBe('ja');
     });
   });
 });

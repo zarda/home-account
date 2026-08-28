@@ -44,16 +44,22 @@ describe('AuthService (emulator smoke test)', () => {
   const FIRESTORE_PORT = 8080;
   const AUTH_URL = 'http://127.0.0.1:9099';
 
-  // The locale a created profile is seeded with, and whether the browser
-  // named it. 'en' keeps the written defaults comparable with
-  // DEFAULT_USER_PREFERENCES below; a case that needs a non-default seed
-  // passes its own locale in, including to override the provider mid-test.
-  function translationStub(locale: SupportedLocale = 'en') {
+  // The locale the app is speaking, and — separately — the one the device
+  // asked for. They agree on an ordinary page load, which is why `detected`
+  // defaults to `locale`; the create path reads only the second, so a case
+  // that needs them to disagree passes both. 'en' keeps the written defaults
+  // comparable with DEFAULT_USER_PREFERENCES below; a case that needs a
+  // non-default seed passes its own locale in, including to override the
+  // provider mid-test.
+  function translationStub(
+    locale: SupportedLocale = 'en',
+    detected: SupportedLocale | null = locale
+  ) {
     return {
       syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
       t: jasmine.createSpy('t').and.callFake((k: string) => k),
       currentLocale: signal<SupportedLocale>(locale),
-      detectedBrowserLocale: locale as SupportedLocale | null
+      detectedBrowserLocale: detected
     };
   }
 
@@ -147,11 +153,12 @@ describe('AuthService (emulator smoke test)', () => {
 
     it('seeds preferences.language from the detected locale on first sign-in', async () => {
       await deleteDoc(userRef());
-      // A non-default locale, so the assertion below fails if the create path
-      // ever falls back to DEFAULT_USER_PREFERENCES's 'en' instead of reading
-      // the stub. The shared beforeEach registers the 'en' stub first; this
-      // override replaces it before AuthService (and its onAuthStateChanged
-      // listener) is constructed by authedService() below.
+      // A device that asked for a non-default locale, so the assertion below
+      // fails if the create path ever falls back to DEFAULT_USER_PREFERENCES's
+      // 'en' instead of reading `detectedBrowserLocale` off the stub. The
+      // shared beforeEach registers the 'en' stub first; this override
+      // replaces it before AuthService (and its onAuthStateChanged listener)
+      // is constructed by authedService() below.
       TestBed.overrideProvider(TranslationService, { useValue: translationStub('ja') });
 
       const service = await authedService();
@@ -160,6 +167,27 @@ describe('AuthService (emulator smoke test)', () => {
       const writtenPreferences = written['preferences'] as Record<string, unknown>;
       expect(writtenPreferences['language']).toBe('ja');
       expect(service.currentUser()!.preferences.language).toBe('ja');
+    });
+
+    it('seeds from the device, not from the language the session is already speaking', async () => {
+      await deleteDoc(userRef());
+      // An in-session account switch: sign-out is an SPA navigation and
+      // nothing resets the locale, so the departing user leaves the app
+      // speaking Japanese while this device never named a language we ship.
+      // Seeding from currentLocale() here would write the previous person's
+      // choice into a brand-new account and keep it there — there is no
+      // migration — and would disagree with the Google heal's second guard,
+      // which asks detectedBrowserLocale.
+      TestBed.overrideProvider(TranslationService, {
+        useValue: translationStub('ja', null)
+      });
+
+      const service = await authedService();
+
+      const written = (await getDoc(userRef())).data()!;
+      const writtenPreferences = written['preferences'] as Record<string, unknown>;
+      expect(writtenPreferences['language']).toBe('en');
+      expect(service.currentUser()!.preferences.language).toBe('en');
     });
 
     it('returns the stored profile and bumps lastLoginAt when one exists', async () => {
@@ -207,10 +235,9 @@ describe('AuthService (emulator smoke test)', () => {
       expect(service.currentUser()!.preferences).toEqual({ ...before, baseCurrency: 'EUR' });
     });
 
-    it('lands the dotted preferences.language write the Google heal performs on an existing profile', async () => {
+    it('lands the language write the Google heal issues, in the document and in the signal', async () => {
       // A self-contained existing document, independent of whatever earlier
-      // specs left at this uid: the point is the write shape, not a prior
-      // state.
+      // specs left at this uid: the point is the write, not a prior state.
       await setDoc(userRef(), {
         email: 'heal@example.com',
         displayName: 'Heal Target',
@@ -219,15 +246,21 @@ describe('AuthService (emulator smoke test)', () => {
         preferences: DEFAULT_USER_PREFERENCES
       });
 
-      // The exact shape healLanguageFromGoogleProfile issues through
-      // updateUserPreferences({ language }) when it adopts a Google account's
-      // detected language on a profile that already exists — proved here
-      // against the real rules, not the mocked AuthService seam the unit
-      // spec's heal cases cover.
-      await updateDoc(userRef(), { 'preferences.language': 'tc' });
+      const service = await authedService();
+
+      // healLanguageFromGoogleProfile itself cannot be reached from here — it
+      // hangs off signInWithPopup, a module-level @angular/fire function that
+      // cannot be spied — so this drives the one call it makes, rather than
+      // hand-copying the shape that call produces. Break the field-path
+      // construction in updateUserPreferences and this case fails.
+      await service.updateUserPreferences({ language: 'tc' });
 
       const written = (await getDoc(userRef())).data()!['preferences'] as Record<string, unknown>;
       expect(written['language']).toBe('tc');
+      // The other half of the adoption: the signal write is what the
+      // preferences-sync effect watches, and it is the only thing that moves
+      // the UI — the heal deliberately does not wait for the document.
+      expect(service.currentUser()!.preferences.language).toBe('tc');
     });
 
     it('clearStoredProviderApiKeys deletes the legacy fields without clobbering the map', async () => {
