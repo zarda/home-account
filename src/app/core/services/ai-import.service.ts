@@ -1213,7 +1213,7 @@ export class AIImportService {
             ? { ...bareDto, receiptFiles: attachedFiles }
             : bareDto;
 
-          let savedId = '';
+          let savedId: string;
           try {
             savedId = await this.transactionService.addTransaction(dto, { skipBudgetRecalc: true });
           } catch (error) {

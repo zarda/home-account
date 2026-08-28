@@ -542,7 +542,9 @@ service cloud.firestore {
         // and belongs in `errors`.
         && (!('receiptsSkipped' in d) || (d.receiptsSkipped is int && d.receiptsSkipped >= 0))
         && (!('receiptsFailed' in d) || (d.receiptsFailed is int && d.receiptsFailed >= 0))
-        // Ids of the transactions a completed import created; ids only, never row data.
+        // Ids of the transactions a completed import created — a list;
+        // ids by contract, elements unvalidated (rules cannot iterate
+        // a list).
         && (!('transactionIds' in d) || d.transactionIds is list);
     }
 
