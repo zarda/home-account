@@ -3,10 +3,13 @@
 A three-pane welcome that opens once per account, explains the three ways a
 transaction gets into the app, and offers to start one. It is deliberately a
 small feature; almost all of its complexity is in deciding whether this launch
-is a first run at all.
+is a first run at all. The About page can replay it at any time.
 
 The reasoning and the rejected alternatives are in
-[ADR 0072](ADR/0072-onboarding-runs-once-and-never-against-a-fallback-profile.md).
+[ADR 0072](ADR/0072-onboarding-runs-once-and-never-against-a-fallback-profile.md)
+for the automatic run, and
+[ADR 0076](ADR/0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md)
+for the replay.
 
 ## The flow
 
@@ -117,6 +120,9 @@ outside this layout, and `authGuard` has already waited out
 `ngOnInit`, because a launch that started degraded becomes eligible only later,
 with the shell already mounted.
 
+This is the only place `shouldShow` is read. The About page's replay card
+calls `show()` directly — see *Seeing it again* below.
+
 ## Empty states
 
 #83's other half. `EmptyStateComponent` has always accepted `actionLabel`,
@@ -136,13 +142,48 @@ Most of the remaining empty states are report and analysis surfaces saying
 "nothing fell in this period", where the useful control is the period selector
 rather than an add button.
 
-## Re-triggering it for testing
+## Seeing it again
 
-There is no UI for this by design. To see the welcome again:
+**About → Replay welcome.** The About page carries a card between Privacy and
+Feedback, keyed under `about.welcome.*`, whose button is one line of component:
+
+```ts
+onReplayWelcome(): void {
+  this.onboarding.show();
+}
+```
+
+`show()`, not `shouldShow()`. The replay is **unconditional on purpose**:
+someone tapping a button labelled *Replay welcome* is asking for the dialog,
+not asking whether they still qualify for a first run. The gate goes false the
+moment the first run completes, which is exactly when this button starts being
+useful — gating on it would make it do nothing for everyone it is for.
+
+A replay runs the whole of `show()`, and that is the right behaviour in every
+part:
+
+- `attemptedFor` is set to the uid again — ordinarily the value it already
+  holds, and in any case a write that can only push `shouldShow` further
+  towards false.
+- **Every close still persists the flag**, exactly as on the first run. It is a
+  dotted single-field write of a value that is already `true`, so replaying
+  cannot un-complete the first run and cannot arm an automatic one.
+- The two calls to action still return `'add'` / `'scan'` and still open the
+  quick-add dialog after the close.
+
+One caveat: `show()` has no `profileDegraded` guard. The dialog reads nothing
+but its own `MatDialogRef`, so it renders fine on a degraded session — but the
+flag write then targets a document this session never read, and is swallowed
+if it is refused. See [ADR 0076](ADR/0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md).
+
+### The scripted alternatives
+
+The replay card shows the dialog, not the first run. To exercise the **gate**:
 
 1. **The user document.** In the Firebase console (or the emulator UI), open
    `users/{uid}` and delete the `preferences.onboardingCompleted` field — or
-   set it to `false`; the check is `=== true`. Reload the app.
+   set it to `false`; the check is `=== true`. Reload the app, and the welcome
+   arrives the way a new account gets it.
 2. **A fresh account** is the honest test: sign in with an account that has
    never run the app, and the welcome is what it sees.
 3. **The dialog alone**, without the gate, is
@@ -150,7 +191,8 @@ There is no UI for this by design. To see the welcome again:
    through the panes, which is the quickest way to iterate on copy.
 
 Note that clearing the flag on a device whose session is degraded still shows
-nothing. That is the gate working; get the profile to load first.
+nothing automatically. That is the gate working; get the profile to load
+first. The About card still opens the dialog there, because it never asks.
 
 ## What is tested
 
@@ -163,5 +205,7 @@ nothing. That is the gate working; get the profile to load first.
   visibility rules, the step indicator, and the two result values.
 - `main-layout.component.spec.ts` — that the shell watches `shouldShow` and
   calls `show()`.
+- `about.component.spec.ts` — that the replay card renders with its translated
+  button and that a click reaches `OnboardingService.show()`.
 - `transaction-list.component.spec.ts` and `goals.component.spec.ts` — the
   empty-state CTAs reach the right dialog.
