@@ -96,13 +96,22 @@ unrecognized one both produce, and only the second hands the turn on.
 ### The seed goes into the profile, not into the constant
 
 `buildNewUserProfile(firebaseUser, language)` spreads:
-`preferences: { ...DEFAULT_USER_PREFERENCES, language }`. Both call sites pass
-`translationService.currentLocale()` — the real create branch in
-`getOrCreateUser`, and the in-memory fallback the auth-state listener builds
-when the profile read fails. The second matters more than it looks: a fallback
-profile naming `'en'` drove the same sync effect and flipped the UI out of the
-detected language for as long as the degraded session lasted, on the launch
-least able to afford another surprise.
+`preferences: { ...DEFAULT_USER_PREFERENCES, language }`. Its two call sites
+pass deliberately different sources. The real create branch in
+`getOrCreateUser` passes `detectedBrowserLocale ?? 'en'` — the device's own
+answer, which is also what guard 2 of the heal below reads, so the seed and
+the guard cannot disagree. `currentLocale()` there would be the language the
+app happens to be speaking, and nothing resets that between accounts: sign-out
+is an SPA navigation, so a second person signing in on the same page load
+would have the first one's chosen language written into their brand-new
+account, permanently (there is no migration).
+
+The in-memory fallback the auth-state listener builds when the profile read
+fails keeps `currentLocale()`, and that difference is the point: that profile
+is never written, and its whole job is to leave the UI where it already is. It
+matters more than it looks — a fallback profile naming `'en'` drove the same
+sync effect and flipped the UI out of the detected language for as long as the
+degraded session lasted, on the launch least able to afford another surprise.
 
 Rejected: **seeding `DEFAULT_USER_PREFERENCES` itself.** It is the
 resolver-neutral fallback — read by restore, by the accessibility resolvers, by
@@ -127,9 +136,14 @@ Four guards, in this order, and each is a different reason to do nothing:
 4. `mapLocaleTag(tag)` is null, or already equals `user.preferences?.language`
    — nothing to adopt, or nothing to change.
 
-Only then `await updateUserPreferences({ language })`, whose signal write is
+Only then `updateUserPreferences({ language })`, whose signal write is
 what the preferences-sync effect watches; calling `syncFromDatabase` here as
-well would fetch the same catalog twice. A failure is logged and swallowed —
+well would fetch the same catalog twice. The patch is fired rather than
+awaited, like `lastLoginAt` and `recordSignIn`: sign-in resolves into a
+navigation, and offline a Firestore write settles only on reconnect, so
+awaiting it would hold a real session on the login spinner — while the UI
+switch is driven by the signal write inside the method, not by this caller,
+which returns the optimistic profile. A failure is logged and swallowed —
 the account exists and the session is real by that point, and not adopting a
 language must not turn a completed sign-in into a rejected one.
 

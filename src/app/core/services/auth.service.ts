@@ -216,10 +216,12 @@ export class AuthService {
             // session, because a null firebaseUser is an absorbing state for
             // the retry effect — nothing would clear the flag again.
             if (this.stillSignedInAs(firebaseUser.uid)) {
-              // Seeded with the locale the app is already speaking, like the
-              // real create path: a fallback profile that named 'en' flipped
-              // the whole UI out of the browser's language for as long as the
-              // degraded session lasted.
+              // Seeded with the locale the app is already speaking —
+              // deliberately currentLocale() and not the create path's
+              // detectedBrowserLocale: this profile is never written, and its
+              // whole job is to leave the UI where it already is. A fallback
+              // profile that named 'en' flipped the whole UI out of the
+              // browser's language for as long as the degraded session lasted.
               this.currentUser.set({
                 id: firebaseUser.uid,
                 ...buildNewUserProfile(firebaseUser, this.translationService.currentLocale())
@@ -277,7 +279,18 @@ export class AuthService {
     // The signal guards upstream would then hide it — an orphan document
     // surviving account deletion is worse than the ghost session they catch,
     // because nothing on screen says it happened.
-    const newUser = buildNewUserProfile(firebaseUser, this.translationService.currentLocale());
+    // Seeded from the device's own detection, not from currentLocale(): the
+    // two agree only until something moves the locale, and nothing resets it
+    // between accounts — sign-out is an SPA navigation, so the departing
+    // user's chosen language would otherwise be written into the next
+    // person's brand-new account. It is also the source the heal's second
+    // guard reads, and a seed the heal disagrees with is a seed it may
+    // immediately overwrite.
+    const newUser = buildNewUserProfile(
+      firebaseUser,
+      this.translationService.detectedBrowserLocale ??
+        (DEFAULT_USER_PREFERENCES.language as SupportedLocale)
+    );
     if (!this.stillSignedInAs(firebaseUser.uid)) {
       return { id: firebaseUser.uid, ...newUser };
     }
@@ -349,6 +362,14 @@ export class AuthService {
    * effect sees the new `currentUser` and switches the UI; calling
    * syncFromDatabase here as well would load the same catalog twice.
    *
+   * Not awaited, like the lastLoginAt bump and recordSignIn above: this sits
+   * on the sign-in critical path — LoginComponent navigates only once
+   * signInWithGoogle resolves — and offline a Firestore write settles only on
+   * reconnect, so awaiting it would leave a real, signed-in session on the
+   * login spinner. Nothing here needs the acknowledgement: the UI switch is
+   * driven by the signal write inside updateUserPreferences, not by this
+   * caller, and the returned profile is the optimistic one.
+   *
    * Failures are logged and swallowed: the account exists and the session is
    * real, and not adopting a language must not turn a completed sign-in into a
    * rejected one — the user can still pick the language in settings.
@@ -366,12 +387,9 @@ export class AuthService {
     const language = mapLocaleTag(tag);
     if (!language || language === user.preferences?.language) return user;
 
-    try {
-      await this.updateUserPreferences({ language });
-    } catch (error) {
-      console.error('[Auth] Could not adopt the Google account language:', error);
-      return user;
-    }
+    void this.updateUserPreferences({ language }).catch(error =>
+      console.error('[Auth] Could not adopt the Google account language:', error)
+    );
     return { ...user, preferences: { ...user.preferences, language } };
   }
 

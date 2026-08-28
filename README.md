@@ -245,11 +245,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard
 | [docs/data.md](docs/data.md) | The stored-data hub: every kind of record, where each is managed, and what the counts do and do not mean |
 | [docs/feedback.md](docs/feedback.md) | In-app feedback: the stored record, its About-page door, and the mail that leaves from a Cloud Function |
 | [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, and the checks that stand in |
-| [docs/i18n.md](docs/i18n.md) | The translation catalog: three locales, plural entries that only English carries, the checker's three scans, and what still escapes them |
+| [docs/i18n.md](docs/i18n.md) | The translation catalog: which language a session speaks and where a new account's comes from, plural entries that only English carries, the checker's three scans, and what still escapes them |
 | [docs/exchange-rates.md](docs/exchange-rates.md) | Where the exchange-rate table comes from: the fallback ladder from live fetch to device cache to constants, and what each rung stamps |
 | [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the degraded fallback profile and its retry, and the identity check every write across an await makes |
 | [docs/accessibility.md](docs/accessibility.md) | What the app guarantees to assistive technology, where each guarantee is enforced, and the gaps that remain |
-| [docs/onboarding.md](docs/onboarding.md) | The first-run welcome: what decides a launch is a first run, the three panes, and what a skip records |
+| [docs/onboarding.md](docs/onboarding.md) | The first-run welcome: what decides a launch is a first run, the three panes, what a skip records, and the About-page card that replays it |
 | [docs/shortcuts.md](docs/shortcuts.md) | The two global keyboard shortcuts, the guards each stands down for, and the command palette they open |
 | [docs/rtl.md](docs/rtl.md) | Layout direction: where a locale's direction comes from, the ratchet that freezes the physical CSS left, and what still blocks an RTL locale |
 | [docs/locale-formatting.md](docs/locale-formatting.md) | Dates and numbers in the chosen language: the one formatting chokepoint, named styles over patterns, and what deliberately stays raw |
