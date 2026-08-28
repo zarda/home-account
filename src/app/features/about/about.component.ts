@@ -26,6 +26,7 @@ import {
 import { AuthService } from '../../core/services/auth.service';
 import { DateFormatService } from '../../core/services/date-format.service';
 import { FeedbackService } from '../../core/services/feedback.service';
+import { OnboardingService } from '../../core/services/onboarding.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackCategory, FeedbackEntry } from '../../models';
 import { environment } from '../../../environments/environment';
@@ -57,6 +58,7 @@ export class AboutComponent implements OnInit, OnDestroy {
   private authService = inject(AuthService);
   private dateFormat = inject(DateFormatService);
   private translationService = inject(TranslationService);
+  private onboarding = inject(OnboardingService);
 
   currentYear = new Date().getFullYear();
   appVersion = packageJson.version;
@@ -99,6 +101,15 @@ export class AboutComponent implements OnInit, OnDestroy {
 
   openFeedbackDialog(): void {
     this.dialog.open(FeedbackDialogComponent);
+  }
+
+  /**
+   * Replays the first-run welcome on demand. Deliberately unconditional —
+   * no `shouldShow` gate — since a user reaching for this card is asking to
+   * see it again, not asking whether they are eligible for it.
+   */
+  onReplayWelcome(): void {
+    this.onboarding.show();
   }
 
   /**

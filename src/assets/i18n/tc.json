@@ -1177,6 +1177,11 @@
     "donateDescription": "如果您覺得這個應用程式很有幫助，請考慮透過捐款支持其開發。您的貢獻有助於維護和改進應用程式。",
     "donateButton": "捐款",
     "techStack": "技術架構",
+    "welcome": {
+      "cardTitle": "重新查看歡迎畫面",
+      "cardDescription": "再次查看一開始顯示的歡迎畫面，了解家庭記帳能做什麼，以及記錄支出的三種方式。",
+      "replayButton": "查看歡迎畫面"
+    },
     "feedback": {
       "cardTitle": "傳送意見回饋",
       "cardDescription": "無論是錯誤、想法或任何建議，都歡迎告訴開發者。訊息會儲存在您的帳號中，並以電子郵件寄給開發者。",

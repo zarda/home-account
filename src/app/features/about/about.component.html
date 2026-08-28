@@ -43,6 +43,28 @@
     </mat-card-content>
   </mat-card>
 
+  <!-- Welcome Card: replays the first-run welcome, unconditionally -->
+  <mat-card class="welcome-card">
+    <mat-card-content>
+      <div class="welcome-content">
+        <mat-icon class="welcome-icon">celebration</mat-icon>
+        <div class="welcome-text">
+          <p class="welcome-title">{{ 'about.welcome.cardTitle' | translate }}</p>
+          <p class="welcome-body">{{ 'about.welcome.cardDescription' | translate }}</p>
+        </div>
+        <button
+          mat-raised-button
+          color="primary"
+          class="welcome-button"
+          (click)="onReplayWelcome()"
+        >
+          <mat-icon>celebration</mat-icon>
+          {{ 'about.welcome.replayButton' | translate }}
+        </button>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
   <!-- Feedback Card: the door for the stored feedback kind -->
   <mat-card class="feedback-card">
     <mat-card-content>
