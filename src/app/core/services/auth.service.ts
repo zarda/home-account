@@ -9,6 +9,7 @@ import {
   reauthenticateWithPopup,
   reauthenticateWithCredential,
   deleteUser,
+  getAdditionalUserInfo,
   User as FirebaseUser
 } from '@angular/fire/auth';
 import {
@@ -28,7 +29,7 @@ import {
   LegacyProviderApiKeys,
   DEFAULT_USER_PREFERENCES
 } from '../../models';
-import { TranslationService, SupportedLocale } from './translation.service';
+import { TranslationService, SupportedLocale, mapLocaleTag } from './translation.service';
 import { ThemeService, ThemePreference } from './theme.service';
 import { AccessibilityService } from './accessibility.service';
 import { SecurityLogService } from './security-log.service';
@@ -42,14 +43,23 @@ import { PwaService } from './pwa.service';
  * rejects undefined field values, and a provider account without a profile
  * photo (photoURL null) would otherwise make the very first setDoc — and so
  * the whole sign-in — fail. Exported as a pure seam for the spec.
+ *
+ * `language` is passed in rather than taken from DEFAULT_USER_PREFERENCES: the
+ * app has already resolved the browser's language by the time anyone signs in,
+ * and creating every account in English made a first login speak English no
+ * matter what the device asked for. The constant stays the resolver-neutral
+ * fallback for everything else, and is spread rather than mutated.
  */
-export function buildNewUserProfile(firebaseUser: FirebaseUser): Omit<User, 'id'> {
+export function buildNewUserProfile(
+  firebaseUser: FirebaseUser,
+  language: SupportedLocale
+): Omit<User, 'id'> {
   const profile: Omit<User, 'id'> = {
     email: firebaseUser.email ?? '',
     displayName: firebaseUser.displayName ?? 'User',
     createdAt: Timestamp.now(),
     lastLoginAt: Timestamp.now(),
-    preferences: DEFAULT_USER_PREFERENCES
+    preferences: { ...DEFAULT_USER_PREFERENCES, language }
   };
   if (firebaseUser.photoURL) {
     profile.photoURL = firebaseUser.photoURL;
@@ -206,7 +216,14 @@ export class AuthService {
             // session, because a null firebaseUser is an absorbing state for
             // the retry effect — nothing would clear the flag again.
             if (this.stillSignedInAs(firebaseUser.uid)) {
-              this.currentUser.set({ id: firebaseUser.uid, ...buildNewUserProfile(firebaseUser) });
+              // Seeded with the locale the app is already speaking, like the
+              // real create path: a fallback profile that named 'en' flipped
+              // the whole UI out of the browser's language for as long as the
+              // degraded session lasted.
+              this.currentUser.set({
+                id: firebaseUser.uid,
+                ...buildNewUserProfile(firebaseUser, this.translationService.currentLocale())
+              });
               this.profileDegraded.set(true);
               this.notifications.error(this.translationService.t('auth.profileLoadDegraded'));
             }
@@ -260,7 +277,7 @@ export class AuthService {
     // The signal guards upstream would then hide it — an orphan document
     // surviving account deletion is worse than the ghost session they catch,
     // because nothing on screen says it happened.
-    const newUser = buildNewUserProfile(firebaseUser);
+    const newUser = buildNewUserProfile(firebaseUser, this.translationService.currentLocale());
     if (!this.stillSignedInAs(firebaseUser.uid)) {
       return { id: firebaseUser.uid, ...newUser };
     }
@@ -289,7 +306,7 @@ export class AuthService {
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
     this.recordSignIn(user.id);
-    return user;
+    return this.healLanguageFromGoogleProfile(user, getAdditionalUserInfo(result));
   }
 
   private async signInWithGoogleNative(): Promise<User> {
@@ -309,7 +326,53 @@ export class AuthService {
     const user = await this.getOrCreateUser(result.user);
     this.currentUser.set(user);
     this.recordSignIn(user.id);
-    return user;
+    // The plugin's own result, not getAdditionalUserInfo(result): the native
+    // layer has already signed into Firebase by the time signInWithCredential
+    // runs here, so the web SDK sees an existing account and reports
+    // isNewUser: false for what is genuinely a first sign-in.
+    return this.healLanguageFromGoogleProfile(user, nativeResult.additionalUserInfo);
+  }
+
+  /**
+   * Second link of the first-sign-in language chain: adopt the Google
+   * account's language when the device named one we do not ship.
+   *
+   * A heal applied after the profile exists rather than a branch of the
+   * creation path, because the popup result and the auth-state listener race
+   * to create the document — whichever of them wins, this patch lands after
+   * it, so the outcome does not depend on the ordering. All four conditions
+   * have to hold: the account was just created, the browser detected nothing
+   * (a device language we ship outranks the account's), the provider named a
+   * language we have a catalog for, and it differs from what was written.
+   *
+   * The write goes through updateUserPreferences, so the preferences-sync
+   * effect sees the new `currentUser` and switches the UI; calling
+   * syncFromDatabase here as well would load the same catalog twice.
+   *
+   * Failures are logged and swallowed: the account exists and the session is
+   * real, and not adopting a language must not turn a completed sign-in into a
+   * rejected one — the user can still pick the language in settings.
+   */
+  private async healLanguageFromGoogleProfile(
+    user: User,
+    additional: { isNewUser: boolean; profile?: Record<string, unknown> | null } | null
+  ): Promise<User> {
+    if (!additional?.isNewUser) return user;
+    if (this.translationService.detectedBrowserLocale !== null) return user;
+
+    const tag = additional.profile?.['locale'];
+    if (typeof tag !== 'string') return user;
+
+    const language = mapLocaleTag(tag);
+    if (!language || language === user.preferences?.language) return user;
+
+    try {
+      await this.updateUserPreferences({ language });
+    } catch (error) {
+      console.error('[Auth] Could not adopt the Google account language:', error);
+      return user;
+    }
+    return { ...user, preferences: { ...user.preferences, language } };
   }
 
   /**

@@ -15,6 +15,33 @@ export type SupportedLocale = 'en' | 'tc' | 'ja';
  */
 const PLURAL_CATEGORIES = new Set(['zero', 'one', 'two', 'few', 'many', 'other']);
 
+/**
+ * Resolve a BCP 47 language tag to the catalog we would show it in, or null
+ * when we ship none for it.
+ *
+ * Pure and exported because two very different sources are matched with the
+ * same rules: the browser/OS language at boot, and the `locale` a Google
+ * account carries. Null rather than the default locale is the point — a caller
+ * has to be able to tell "asked for English" from "asked for something we
+ * cannot serve", because only the second hands the turn to the next link of
+ * the chain — see AuthService's first-sign-in language.
+ */
+export function mapLocaleTag(tag: string): SupportedLocale | null {
+  const normalized = tag?.toLowerCase() ?? '';
+
+  if (normalized.startsWith('zh')) {
+    return 'tc';
+  }
+  if (normalized.startsWith('ja')) {
+    return 'ja';
+  }
+  if (normalized.startsWith('en')) {
+    return 'en';
+  }
+
+  return null;
+}
+
 export interface Language {
   code: SupportedLocale;
   name: string;
@@ -53,13 +80,26 @@ export class TranslationService {
 
   isLoaded = computed(() => Object.keys(this.translations()).length > 0);
 
+  /**
+   * What the browser/OS asked for at boot, or null when it named a language we
+   * ship no catalog for. Not the same question as `currentLocale`, which has
+   * already collapsed "undetectable" into the 'en' default — a first sign-in
+   * needs the distinction to decide whether the Google account's language gets
+   * a turn. A plain signal would invite writes from elsewhere; this is set once
+   * by init() and read-only to everyone else.
+   */
+  private browserLocale: SupportedLocale | null = null;
+  get detectedBrowserLocale(): SupportedLocale | null {
+    return this.browserLocale;
+  }
+
   currentLanguage = computed(() =>
     this.languages.find(l => l.code === this.currentLocale()) || this.languages[0]
   );
 
   async init(): Promise<void> {
-    const browserLocale = this.detectBrowserLocale();
-    const locale = browserLocale || this.DEFAULT_LOCALE;
+    this.browserLocale = this.detectBrowserLocale();
+    const locale = this.browserLocale || this.DEFAULT_LOCALE;
     await this.setLocale(locale);
   }
 
@@ -150,19 +190,7 @@ export class TranslationService {
   }
 
   private detectBrowserLocale(): SupportedLocale | null {
-    const browserLang = navigator.language.toLowerCase();
-
-    if (browserLang.startsWith('zh')) {
-      return 'tc';
-    }
-    if (browserLang.startsWith('ja')) {
-      return 'ja';
-    }
-    if (browserLang.startsWith('en')) {
-      return 'en';
-    }
-
-    return null;
+    return mapLocaleTag(navigator.language);
   }
 
   private isValidLocale(locale: string): boolean {
