@@ -1,9 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { WritableSignal, signal } from '@angular/core';
 import { Auth, User as FirebaseUser } from '@angular/fire/auth';
 import { Firestore, Timestamp } from '@angular/fire/firestore';
 import { AuthService, buildNewUserProfile } from './auth.service';
-import { TranslationService } from './translation.service';
+import { User, DEFAULT_USER_PREFERENCES } from '../../models';
+import { TranslationService, SupportedLocale } from './translation.service';
 import { ThemeService } from './theme.service';
 import { AccessibilityService } from './accessibility.service';
 import { NotificationService } from './notification.service';
@@ -20,7 +21,7 @@ describe('buildNewUserProfile', () => {
     }) as FirebaseUser;
 
   it('copies the full profile when every field is present', () => {
-    const profile = buildNewUserProfile(firebaseUser({}));
+    const profile = buildNewUserProfile(firebaseUser({}), 'en');
 
     expect(profile.email).toBe('someone@example.com');
     expect(profile.displayName).toBe('Someone');
@@ -31,16 +32,35 @@ describe('buildNewUserProfile', () => {
   it('omits photoURL entirely for a photo-less account', () => {
     // Firestore rejects undefined field values, so the key must be absent —
     // not present with an undefined value.
-    const profile = buildNewUserProfile(firebaseUser({ photoURL: null }));
+    const profile = buildNewUserProfile(firebaseUser({ photoURL: null }), 'en');
 
     expect('photoURL' in profile).toBeFalse();
   });
 
   it('defaults null email and display name', () => {
-    const profile = buildNewUserProfile(firebaseUser({ email: null, displayName: null }));
+    const profile = buildNewUserProfile(firebaseUser({ email: null, displayName: null }), 'en');
 
     expect(profile.email).toBe('');
     expect(profile.displayName).toBe('User');
+  });
+
+  it('seeds the language it is handed, leaving the other defaults alone', () => {
+    // The account is created in the language its device asked for, so a first
+    // login does not land in English and stay there. Which language that is
+    // belongs to the call sites — the create path hands over the device's own
+    // detection, the degraded fallback the locale already on screen.
+    const profile = buildNewUserProfile(firebaseUser({}), 'ja');
+
+    expect(profile.preferences.language).toBe('ja');
+    expect(profile.preferences).toEqual({ ...DEFAULT_USER_PREFERENCES, language: 'ja' });
+  });
+
+  it('leaves DEFAULT_USER_PREFERENCES itself untouched', () => {
+    buildNewUserProfile(firebaseUser({}), 'tc');
+
+    // The seed is a copy: the shared constant is the resolver-neutral fallback
+    // several other call sites spread, and one sign-in must not rewrite it.
+    expect(DEFAULT_USER_PREFERENCES.language).toBe('en');
   });
 });
 
@@ -48,25 +68,32 @@ describe('AuthService', () => {
   let service: AuthService;
   let mockAuth: jasmine.SpyObj<Auth>;
   let mockFirestore: jasmine.SpyObj<Firestore>;
+  let translation: {
+    syncFromDatabase: jasmine.Spy;
+    t: jasmine.Spy;
+    currentLocale: WritableSignal<SupportedLocale>;
+    detectedBrowserLocale: SupportedLocale | null;
+  };
 
   beforeEach(() => {
     mockAuth = jasmine.createSpyObj('Auth', ['onAuthStateChanged'], {
       currentUser: null
     });
     mockFirestore = jasmine.createSpyObj('Firestore', ['doc']);
+    translation = {
+      syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
+      t: jasmine.createSpy('t').and.callFake((k: string) => k),
+      currentLocale: signal<SupportedLocale>('en'),
+      // Detected by default; the heal specs below turn it off deliberately.
+      detectedBrowserLocale: 'en' as SupportedLocale | null
+    };
 
     TestBed.configureTestingModule({
       providers: [
         AuthService,
         { provide: Auth, useValue: mockAuth },
         { provide: Firestore, useValue: mockFirestore },
-        {
-          provide: TranslationService,
-          useValue: {
-            syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
-            t: jasmine.createSpy('t').and.callFake((k: string) => k)
-          }
-        },
+        { provide: TranslationService, useValue: translation },
         {
           provide: ThemeService,
           useValue: { init: jasmine.createSpy('init') }
@@ -211,6 +238,136 @@ describe('AuthService', () => {
       await expectAsync(
         service.clearStoredProviderApiKeys()
       ).toBeRejectedWithError('No authenticated user');
+    });
+  });
+
+  /**
+   * The Google account's language is the second link of the chain: OS/browser
+   * language first, the provider profile only when the browser named a
+   * language we do not ship, and 'en' when neither answers.
+   *
+   * It is applied as a heal after the profile exists rather than as a branch
+   * of the creation path, because the popup result and the auth-state listener
+   * race to create the document — whichever wins, the patch lands afterwards.
+   * Driven through the private seam directly: the sign-in methods it sits in
+   * call module-level @angular/fire functions that cannot be spied on, and the
+   * emulator smoke suite covers those.
+   */
+  describe('adopting the Google account language on a first sign-in', () => {
+    let updatePreferences: jasmine.Spy;
+
+    const created = (language: string): User =>
+      ({
+        id: 'user-1',
+        preferences: { ...DEFAULT_USER_PREFERENCES, language }
+      }) as User;
+
+    const heal = (
+      user: User,
+      additional: { isNewUser: boolean; profile?: Record<string, unknown> | null } | null
+    ): Promise<User> =>
+      (
+        service as unknown as {
+          healLanguageFromGoogleProfile: (
+            user: User,
+            additional: { isNewUser: boolean; profile?: Record<string, unknown> | null } | null
+          ) => Promise<User>;
+        }
+      ).healLanguageFromGoogleProfile(user, additional);
+
+    const googleSays = (locale: unknown, isNewUser = true) => ({
+      isNewUser,
+      profile: { locale } as Record<string, unknown>
+    });
+
+    beforeEach(() => {
+      updatePreferences = spyOn(service, 'updateUserPreferences').and.resolveTo();
+      translation.detectedBrowserLocale = null;
+    });
+
+    it('patches the profile to the Google language when nothing was detected', async () => {
+      const healed = await heal(created('en'), googleSays('ja-JP'));
+
+      expect(updatePreferences).toHaveBeenCalledWith({ language: 'ja' });
+      // Returned as well as written: the caller hands this profile back to
+      // whoever asked for the sign-in.
+      expect(healed.preferences.language).toBe('ja');
+    });
+
+    it('leaves a browser-detected language alone', async () => {
+      translation.detectedBrowserLocale = 'en';
+
+      const healed = await heal(created('en'), googleSays('ja-JP'));
+
+      // The device's own language outranks the account's; only an undetectable
+      // one hands the turn over.
+      expect(updatePreferences).not.toHaveBeenCalled();
+      expect(healed.preferences.language).toBe('en');
+    });
+
+    it('leaves the default alone when the Google language has no catalog', async () => {
+      await heal(created('en'), googleSays('fr-FR'));
+
+      expect(updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('ignores a returning user', async () => {
+      await heal(created('en'), googleSays('ja-JP', false));
+
+      expect(updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing when the Google language is already the profile language', async () => {
+      await heal(created('ja'), googleSays('ja'));
+
+      expect(updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('ignores a sign-in that carries no provider information at all', async () => {
+      await heal(created('en'), null);
+
+      expect(updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('ignores a provider profile with no locale key', async () => {
+      await heal(created('en'), { isNewUser: true, profile: {} });
+
+      expect(updatePreferences).not.toHaveBeenCalled();
+    });
+
+    it('does not wait for the write, so a stalled one cannot hang the sign-in', async () => {
+      // Offline, a Firestore write settles only on reconnect. LoginComponent
+      // navigates on the sign-in promise this heal is the tail of, so awaiting
+      // the write would leave a real, signed-in session on the login spinner
+      // for as long as the network is gone. This case times out if the await
+      // ever comes back.
+      updatePreferences.and.returnValue(new Promise<void>(() => undefined));
+
+      const healed = await heal(created('en'), googleSays('ja-JP'));
+
+      expect(updatePreferences).toHaveBeenCalledWith({ language: 'ja' });
+      // Optimistic: the caller is handed the language that is on its way to
+      // the document, not the one that was there before.
+      expect(healed.preferences.language).toBe('ja');
+    });
+
+    it('keeps the sign-in whole when the patch cannot be written', async () => {
+      spyOn(console, 'error');
+      updatePreferences.and.rejectWith(new Error('offline'));
+
+      const healed = await heal(created('en'), googleSays('ja-JP'));
+      // The rejection lands on the fired promise's own handler, after the
+      // caller already has its answer.
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // The account exists and the session is real; failing to adopt a
+      // language must not turn a completed sign-in into a rejected one — and
+      // an unhandled rejection here would fail the suite.
+      expect(healed.preferences.language).toBe('ja');
+      expect(console.error).toHaveBeenCalledWith(
+        '[Auth] Could not adopt the Google account language:',
+        jasmine.any(Error)
+      );
     });
   });
 
@@ -395,6 +552,25 @@ describe('AuthService', () => {
       // be loaded is the second, smaller defect on this path.
       expect(notifications.error).not.toHaveBeenCalled();
       expect(service.isLoading()).toBeFalse();
+    });
+
+    it('seeds the degraded fallback profile from the locale already on screen', async () => {
+      // The other buildNewUserProfile call site, and deliberately the other
+      // source: this profile is never written, and its whole job is to leave
+      // the UI in the language it is already showing — so it reads
+      // currentLocale() even where the device detected nothing. The create
+      // path reads detectedBrowserLocale instead; that half is pinned in the
+      // emulator smoke suite, the only place getOrCreateUser really runs.
+      translation.currentLocale.set('ja');
+      translation.detectedBrowserLocale = null;
+      signedInAs(UID);
+
+      const pending = listenerCallback()({ uid: UID } as FirebaseUser);
+      rejectRead(new Error('offline'));
+      await pending;
+
+      expect(service.profileDegraded()).toBeTrue();
+      expect(service.currentUser()!.preferences.language).toBe('ja');
     });
   });
 });

@@ -1,6 +1,10 @@
 # 72. Onboarding runs once, and never against a fallback profile
 
-**Status:** Accepted, implemented · **Date:** 2026-08-27 · **Issues:** #83
+**Status:** Accepted, implemented; the *No re-run from the UI* gap is closed by [0076](0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md) · **Date:** 2026-08-27 · **Issues:** #83
+
+Everything below about the **automatic** run stands: the gate, the once-per-
+account rule and the every-close-completes rule are unchanged. 0076 adds a
+deliberate replay beside them.
 
 Sits directly on top of
 [0052](0052-a-profile-read-may-only-write-to-the-session-that-started-it.md)'s
@@ -178,7 +182,9 @@ adding a transaction is still the one action worth offering.
   is the one thing an empty app cannot show by itself.
 - **No re-run from the UI.** Clearing `onboardingCompleted` on the user
   document is the only way to see the welcome again — see
-  [../onboarding.md](../onboarding.md) for the procedure.
+  [../onboarding.md](../onboarding.md) for the procedure. *Closed by*
+  [0076](0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md):
+  the About page replays it on request, and the automatic run is untouched.
 - **The dialog is not resumable.** Closing on pane 2 completes; there is no
   "continue where you left off".
 - **Eleven empty states still carry no action**, and most of them should not:

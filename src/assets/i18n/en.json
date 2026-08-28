@@ -1249,6 +1249,11 @@
     "donateDescription": "If you find this app helpful, consider supporting its development with a donation. Your contribution helps maintain and improve the application.",
     "donateButton": "Donate",
     "techStack": "Built With",
+    "welcome": {
+      "cardTitle": "Replay the welcome",
+      "cardDescription": "Missed something the first time, or just want to see it again? Replay the welcome and the three ways to record what you spend.",
+      "replayButton": "Replay welcome"
+    },
     "feedback": {
       "cardTitle": "Send feedback",
       "cardDescription": "Found a bug, have an idea, or just want to say something? Your message is stored with your account and mailed to the developer.",

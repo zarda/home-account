@@ -9,6 +9,7 @@ import { FeedbackDialogComponent } from './feedback-dialog/feedback-dialog.compo
 import { AuthService } from '../../core/services/auth.service';
 import { DateFormatService } from '../../core/services/date-format.service';
 import { FeedbackService } from '../../core/services/feedback.service';
+import { OnboardingService } from '../../core/services/onboarding.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { FeedbackEntry } from '../../models';
 import packageJson from '../../../../package.json';
@@ -18,6 +19,7 @@ describe('AboutComponent', () => {
   let fixture: ComponentFixture<AboutComponent>;
   let mockDialog: jasmine.SpyObj<MatDialog>;
   let mockFeedback: jasmine.SpyObj<FeedbackService>;
+  let mockOnboarding: jasmine.SpyObj<OnboardingService>;
 
   beforeEach(async () => {
     const translation = jasmine.createSpyObj<TranslationService>('TranslationService', ['t']);
@@ -32,6 +34,7 @@ describe('AboutComponent', () => {
     mockFeedback.delete.and.resolveTo();
     const dateFormat = jasmine.createSpyObj<DateFormatService>('DateFormatService', ['formatDate']);
     dateFormat.formatDate.and.returnValue('2026-08-15');
+    mockOnboarding = jasmine.createSpyObj<OnboardingService>('OnboardingService', ['show']);
 
     await TestBed.configureTestingModule({
       imports: [AboutComponent, NoopAnimationsModule],
@@ -40,6 +43,7 @@ describe('AboutComponent', () => {
         { provide: MatDialog, useValue: mockDialog },
         { provide: FeedbackService, useValue: mockFeedback },
         { provide: DateFormatService, useValue: dateFormat },
+        { provide: OnboardingService, useValue: mockOnboarding },
         { provide: AuthService, useValue: { userId: () => 'user-1' } },
       ],
     }).compileComponents();
@@ -94,6 +98,28 @@ describe('AboutComponent', () => {
     component.donationUrl = '';
     component.openDonateLink();
     expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The card is the unconditional replay path (ADR 0072 covers the
+   * first-run gate itself) — no shouldShow check on this button, since a
+   * user reaching for the card is deliberately asking to see it again.
+   */
+  describe('welcome replay card', () => {
+    it('renders with its translated replay button', () => {
+      fixture.detectChanges();
+      const card = fixture.nativeElement.querySelector('.welcome-card');
+      expect(card).toBeTruthy();
+      const button = card.querySelector('.welcome-button');
+      expect(button).toBeTruthy();
+      expect(button.textContent).toContain('about.welcome.replayButton');
+    });
+
+    it('replays the welcome from the card button', () => {
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('.welcome-button') as HTMLButtonElement).click();
+      expect(mockOnboarding.show).toHaveBeenCalled();
+    });
   });
 
   it('renders the feedback card with its open button', () => {

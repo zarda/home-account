@@ -1,7 +1,37 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
-import { TranslationService } from './translation.service';
+import { TranslationService, mapLocaleTag } from './translation.service';
 import { AppDirectionality } from './app-directionality';
+
+describe('mapLocaleTag', () => {
+  it('maps any Chinese tag to the Traditional Chinese catalog', () => {
+    expect(mapLocaleTag('zh-TW')).toBe('tc');
+    // Lower-cased and Simplified: the only Chinese catalog we ship is tc, and
+    // the match must not depend on the casing the tag arrives in — a browser
+    // says `zh-TW`, a Google profile says `zh-CN`.
+    expect(mapLocaleTag('zh-cn')).toBe('tc');
+  });
+
+  it('maps Japanese tags with and without a region', () => {
+    expect(mapLocaleTag('ja')).toBe('ja');
+    expect(mapLocaleTag('ja-JP')).toBe('ja');
+  });
+
+  it('maps a regional English tag to en', () => {
+    expect(mapLocaleTag('en-GB')).toBe('en');
+  });
+
+  it('returns null for a language we do not ship', () => {
+    // Null rather than 'en': the caller has to be able to tell "asked for
+    // English" from "asked for something we have no catalog for", because the
+    // second is what lets the Google account's language have a turn.
+    expect(mapLocaleTag('fr')).toBeNull();
+  });
+
+  it('returns null for an empty tag', () => {
+    expect(mapLocaleTag('')).toBeNull();
+  });
+});
 
 describe('TranslationService', () => {
   let service: TranslationService;
@@ -54,6 +84,44 @@ describe('TranslationService', () => {
     it('should have available languages', () => {
       expect(service.languages.length).toBe(3);
       expect(service.languages.map(l => l.code)).toEqual(['en', 'tc', 'ja']);
+    });
+  });
+
+  describe('detectedBrowserLocale', () => {
+    /**
+     * navigator.language is a prototype accessor, so the spy has to go on
+     * Navigator.prototype rather than on the instance.
+     */
+    const browserSays = (tag: string) =>
+      spyOnProperty(Object.getPrototypeOf(navigator) as Navigator, 'language', 'get')
+        .and.returnValue(tag);
+
+    it('is null before init runs', () => {
+      expect(service.detectedBrowserLocale).toBeNull();
+    });
+
+    it('records the language the browser asked for', async () => {
+      browserSays('ja-JP');
+
+      const promise = service.init();
+      httpMock.expectOne('/assets/i18n/ja.json').flush(mockTranslations);
+      await promise;
+
+      expect(service.detectedBrowserLocale).toBe('ja');
+      expect(service.currentLocale()).toBe('ja');
+    });
+
+    it('stays null when the browser names a language we do not ship', async () => {
+      browserSays('fr-FR');
+
+      const promise = service.init();
+      httpMock.expectOne('/assets/i18n/en.json').flush(mockTranslations);
+      await promise;
+
+      // The UI falls back to English, but nothing detected it — which is the
+      // distinction the Google-account fallback hangs on.
+      expect(service.currentLocale()).toBe('en');
+      expect(service.detectedBrowserLocale).toBeNull();
     });
   });
 
