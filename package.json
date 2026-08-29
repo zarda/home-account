@@ -1,6 +1,6 @@
 {
   "name": "home-account",
-  "version": "26.8.147",
+  "version": "26.8.148",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -46,23 +46,23 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/animations": "^22.0.2",
-    "@angular/cdk": "^22.0.2",
-    "@angular/common": "^22.0.2",
-    "@angular/compiler": "^22.0.2",
-    "@angular/core": "^22.0.2",
+    "@angular/animations": "^22.1.4",
+    "@angular/cdk": "^22.1.4",
+    "@angular/common": "^22.1.4",
+    "@angular/compiler": "^22.1.4",
+    "@angular/core": "^22.1.4",
     "@angular/fire": "^20.0.1",
-    "@angular/forms": "^22.0.2",
-    "@angular/material": "^22.0.2",
-    "@angular/platform-browser": "^22.0.2",
-    "@angular/router": "^22.0.2",
-    "@angular/service-worker": "^22.0.2",
+    "@angular/forms": "^22.1.4",
+    "@angular/material": "^22.1.4",
+    "@angular/platform-browser": "^22.1.4",
+    "@angular/router": "^22.1.4",
+    "@angular/service-worker": "^22.1.4",
     "@anthropic-ai/sdk": "^0.104.1",
-    "@capacitor-firebase/analytics": "^8.3.0",
-    "@capacitor-firebase/authentication": "^8.0.1",
-    "@capacitor/cli": "^8.0.1",
-    "@capacitor/core": "^8.0.1",
-    "@capacitor/ios": "^8.0.1",
+    "@capacitor-firebase/analytics": "^8.4.0",
+    "@capacitor-firebase/authentication": "^8.4.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "@google/generative-ai": "^0.24.1",
     "chart.js": "^4.5.1",
     "date-fns": "^4.1.0",
@@ -72,16 +72,16 @@
     "jspdf-autotable": "^5.0.2",
     "ng2-charts": "^10.0.0",
     "openai": "^4.96.0",
-    "pdfjs-dist": "^6.1.200",
+    "pdfjs-dist": "^6.3.289",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.16.2"
   },
   "devDependencies": {
-    "@angular/build": "^22.0.2",
-    "@angular/cli": "^22.0.2",
-    "@angular/compiler-cli": "^22.0.2",
-    "@angular/localize": "^22.0.2",
+    "@angular/build": "^22.1.6",
+    "@angular/cli": "^22.1.6",
+    "@angular/compiler-cli": "^22.1.4",
+    "@angular/localize": "^22.1.4",
     "@types/jasmine": "~5.1.0",
     "angular-eslint": "22.0.0",
     "autoprefixer": "^10.4.23",
@@ -98,5 +98,13 @@
     "tailwindcss": "^3.4.17",
     "typescript": "~6.0.3",
     "typescript-eslint": "8.61.0"
+  },
+  "overrides": {
+    "gaxios": {
+      "uuid": "^11.1.1"
+    },
+    "xcode": {
+      "uuid": "^11.1.1"
+    }
   }
 }
