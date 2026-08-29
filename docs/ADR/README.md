@@ -39,7 +39,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0032](0032-a-sweep-is-only-as-wide-as-its-greps.md) | A sweep is only as wide as its greps | Accepted; extends 0026 | 2026-08-10 |
 | [0033](0033-a-stored-figure-is-re-taken-only-when-its-input-moved.md) | A stored figure is re-taken only when its input moved, and its unit never moves under it | Accepted; amends 0027 | 2026-08-11 |
 | [0034](0034-a-correctness-read-enumerates-the-collection.md) | A correctness-bearing read enumerates the collection, never a listener's first emission | Accepted | 2026-08-11 |
-| [0035](0035-what-the-emulator-cannot-see-is-checked-from-the-files.md) | What the emulator cannot see is checked from the files | Accepted | 2026-08-12 |
+| [0035](0035-what-the-emulator-cannot-see-is-checked-from-the-files.md) | What the emulator cannot see is checked from the files | Accepted; the deploy gap closed by 0077 | 2026-08-12 |
 | [0036](0036-a-user-facing-string-lives-in-the-catalog.md) | A user-facing string lives in the catalog, and only English declines | Accepted | 2026-08-12 |
 | [0037](0037-an-error-body-is-a-failed-fetch.md) | An error body is a failed fetch, and an expired cache beats the constants | Accepted | 2026-08-12 |
 | [0038](0038-a-dead-guard-reads-exactly-like-a-live-one.md) | A dead guard reads exactly like a live one | Accepted | 2026-08-13 |
@@ -81,6 +81,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted | 2026-08-28 |
 | [0075](0075-a-successful-import-remembers-the-transactions-it-created.md) | A successful import remembers the transactions it created | Accepted; extends 0065 | 2026-08-28 |
 | [0076](0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md) | The welcome replays on request, and a first login speaks the browser's language | Accepted; reverses a gap of 0072 | 2026-08-28 |
+| [0077](0077-merges-deploy-what-they-changed.md) | Merges deploy what they changed | Accepted; closes a gap of 0035 | 2026-08-29 |
+| [0078](0078-the-version-is-the-year-the-month-and-a-count.md) | The version is the year, the month, and a count | Accepted | 2026-08-29 |
 
 ## What belongs here
 

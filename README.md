@@ -135,7 +135,9 @@ npm start
 ```bash
 # Web (PWA)
 npm run build:web          # Build for production
-firebase deploy            # Deploy to Firebase Hosting
+# Merging to main deploys automatically (hosting, rules, indexes — see
+# docs/deploy.md). Manual fallback:
+npx firebase deploy --only hosting,firestore,storage
 
 # iOS
 npm run build:ios          # Build and sync to iOS
@@ -205,11 +207,11 @@ The web app is a fully-featured Progressive Web App:
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
 | `npm run truncation:check` | Verify nothing under src/ declares text-overflow — G3, nothing truncates |
-| `firebase deploy` | Deploy web to Firebase Hosting |
+| `npx firebase deploy --only hosting,firestore,storage` | Manual web deploy — merges to `main` deploy automatically ([docs/deploy.md](docs/deploy.md)) |
 
 ## Continuous Integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the truncation check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
+GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions workspace build and tests, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the truncation check, the direction check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. On a push to `main`, a `changes` job classifies what the merge touched and a green pipeline fans out into deploys: `deploy-web` rebuilds against the real production config held in the `PROD_ENVIRONMENT_TS` secret and ships hosting, the Firestore rules and indexes, and the Storage rules, while `deploy-functions` ships the Cloud Function when `functions/` or `firebase.json` changed — docs-only merges deploy nothing, and [docs/deploy.md](docs/deploy.md) is the runbook. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 
@@ -253,6 +255,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, lint, the lint-guard
 | [docs/shortcuts.md](docs/shortcuts.md) | The two global keyboard shortcuts, the guards each stands down for, and the command palette they open |
 | [docs/rtl.md](docs/rtl.md) | Layout direction: where a locale's direction comes from, the ratchet that freezes the physical CSS left, and what still blocks an RTL locale |
 | [docs/locale-formatting.md](docs/locale-formatting.md) | Dates and numbers in the chosen language: the one formatting chokepoint, named styles over patterns, and what deliberately stays raw |
+| [docs/deploy.md](docs/deploy.md) | What deploys when: the change-gated CI deploys, the manual override, the service account and both secret inventories, the index-deletion policy, and the version scheme |
 | [docs/ADR/](docs/ADR/) | Architecture decision records: why things are the way they are, and what was rejected |
 | [docs/ui-audit/tools/](docs/ui-audit/tools/) | Screenshot harness for before/after evidence on UI PRs |
 
