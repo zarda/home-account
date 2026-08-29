@@ -3,7 +3,7 @@ import { Component, input, NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
-import { of, Subject, throwError } from 'rxjs';
+import { of, Subject, throwError, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { DashboardComponent } from './dashboard.component';
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
@@ -128,7 +128,7 @@ describe('DashboardComponent', () => {
     snackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']);
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     router.navigate.and.returnValue(Promise.resolve(true));
 
     await TestBed.configureTestingModule({

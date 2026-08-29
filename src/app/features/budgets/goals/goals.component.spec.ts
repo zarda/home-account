@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { of } from 'rxjs';
+import { of, EMPTY } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { Router } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
@@ -57,7 +57,7 @@ describe('GoalsComponent', () => {
     mockTranslation.t.and.callFake((key: string) => key);
 
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     router.navigate.and.resolveTo(true);
 
     await TestBed.configureTestingModule({
@@ -190,7 +190,7 @@ describe('GoalsComponent empty state CTA', () => {
     const mockTranslation = jasmine.createSpyObj('TranslationService', ['t']);
     mockTranslation.t.and.callFake((key: string) => key);
     const pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
-    const router = jasmine.createSpyObj('Router', ['navigate']);
+    const router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
 
     await TestBed.configureTestingModule({
       imports: [GoalsComponent, NoopAnimationsModule],

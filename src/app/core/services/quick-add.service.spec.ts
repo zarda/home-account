@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { Router } from '@angular/router';
+import { EMPTY } from 'rxjs';
 import { QuickAddService } from './quick-add.service';
 import { TransactionFormComponent } from '../../features/transactions/transaction-form/transaction-form.component';
 import { CameraCaptureComponent } from '../../features/transactions/camera-capture/camera-capture.component';
@@ -12,7 +13,7 @@ describe('QuickAddService', () => {
 
   beforeEach(() => {
     dialog = jasmine.createSpyObj('MatDialog', ['open']);
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
 
     TestBed.configureTestingModule({
       providers: [

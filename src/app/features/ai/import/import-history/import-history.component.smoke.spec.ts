@@ -18,7 +18,7 @@ import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { of } from 'rxjs';
+import { of, EMPTY } from 'rxjs';
 import { initializeApp, deleteApp, FirebaseApp } from '@angular/fire/app';
 import { getAuth, connectAuthEmulator, signInAnonymously, Auth } from '@angular/fire/auth';
 import {
@@ -140,7 +140,7 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
   });
 
   beforeEach(async () => {
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
 

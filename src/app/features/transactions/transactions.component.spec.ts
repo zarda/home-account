@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of, throwError, Subject } from 'rxjs';
+import { of, throwError, Subject, EMPTY } from 'rxjs';
 import { TransactionsComponent } from './transactions.component';
 import { TransactionService, TransactionMutation } from '../../core/services/transaction.service';
 import { TransactionWindowService } from '../../core/services/transaction-window.service';
@@ -110,7 +110,7 @@ describe('TransactionsComponent', () => {
       'openScanReceipt',
       'openImportPhotos',
     ]);
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     queryParams$ = new Subject<Record<string, string>>();
     routeSnapshotParams = {};
 

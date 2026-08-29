@@ -3,7 +3,7 @@ import { WritableSignal, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of } from 'rxjs';
+import { of, EMPTY } from 'rxjs';
 import { SearchAnswerHistoryComponent } from './search-answer-history.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -69,7 +69,7 @@ describe('SearchAnswerHistoryComponent', () => {
     analytics = jasmine.createSpyObj('AnalyticsService', ['trackSearchHistoryUsed']);
     nlSearch = jasmine.createSpyObj('NlSearchService', ['replayAggregate']);
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     router.navigate.and.resolveTo(true);
     matDialog = jasmine.createSpyObj('MatDialog', ['open']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'info', 'error']);

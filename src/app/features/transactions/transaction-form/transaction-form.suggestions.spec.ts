@@ -5,7 +5,7 @@ import { ReactiveFormsModule } from '@angular/forms';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
-import { of } from 'rxjs';
+import { of, EMPTY } from 'rxjs';
 import { TransactionFormComponent } from './transaction-form.component';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { GoalService } from '../../../core/services/goal.service';
@@ -113,7 +113,7 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: TranslationService, useValue: translation },
         { provide: AIStrategyService, useValue: strategy },
         { provide: AIImportService, useValue: jasmine.createSpyObj('AIImportService', ['importFromMultipleImages']) },
-        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
         { provide: MatDialogRef, useValue: dialogRef },

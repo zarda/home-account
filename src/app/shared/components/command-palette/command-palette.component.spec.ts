@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { Subject } from 'rxjs';
+import { Subject, EMPTY } from 'rxjs';
 
 import { CommandPaletteComponent } from './command-palette.component';
 import { AnnouncerService } from '../../../core/services/announcer.service';
@@ -49,7 +49,7 @@ describe('CommandPaletteComponent', () => {
     closed$ = new Subject<undefined>();
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close', 'afterClosed']);
     dialogRef.afterClosed.and.returnValue(closed$.asObservable());
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     quickAdd = jasmine.createSpyObj('QuickAddService', ['openAddTransaction', 'openScanReceipt']);
     announcer = jasmine.createSpyObj('AnnouncerService', ['announce']);
 

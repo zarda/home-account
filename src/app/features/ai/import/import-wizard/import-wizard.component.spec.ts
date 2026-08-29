@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, EMPTY } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
@@ -140,7 +140,7 @@ describe('ImportWizardComponent', () => {
 
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
-    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     mockDuplicateService = jasmine.createSpyObj('DuplicateDetectionService', [
       'findWithinBatchDuplicates',
     ]);
