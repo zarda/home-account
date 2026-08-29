@@ -1,4 +1,4 @@
-import { EnvironmentInjector, runInInjectionContext } from '@angular/core';
+import { DestroyRef, EnvironmentInjector, runInInjectionContext } from '@angular/core';
 import {
   Analytics,
   isSupported,
@@ -40,6 +40,22 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
   private supported: Promise<boolean> | null = null;
 
   /**
+   * Set once the owning injector is destroyed.
+   *
+   * isSupported() is a real IndexedDB round trip, and every await in this
+   * class resumes by re-entering DI through run(). In tests that resumption
+   * routinely lands after TestBed's destroyAfterEach destroys the injector;
+   * in the app it can land after teardown of whatever created this
+   * transport. Either way run() would throw NG0205 into a caller that can
+   * only console.warn it, so resolve() checks this flag before ever reaching
+   * run() again. setEnabled() and logEvent() also check it directly at their
+   * own call sites: resolve() already returns null on every disposed path,
+   * but the direct check keeps "run() is never entered once disposed"
+   * verifiable without tracing back through resolve().
+   */
+  private disposed = false;
+
+  /**
    * Mirrors the last value pushed through setEnabled. resolve() consults it on
    * every call so an enable that is still awaiting isSupported() when the user
    * switches back off cannot arm analytics as it completes. AnalyticsService
@@ -49,7 +65,17 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
    */
   private enabled = false;
 
-  constructor(private readonly injector: EnvironmentInjector) {}
+  constructor(private readonly injector: EnvironmentInjector) {
+    try {
+      injector.get(DestroyRef).onDestroy(() => {
+        this.disposed = true;
+      });
+    } catch {
+      // injector.get throws when the injector is already destroyed, so
+      // onDestroy would never fire; stand down immediately instead.
+      this.disposed = true;
+    }
+  }
 
   async setEnabled(enabled: boolean): Promise<void> {
     this.enabled = enabled;
@@ -58,7 +84,7 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
       // Nothing to switch off if the token was never resolved. Resolving it
       // here purely to disable it would create the very gtag load the toggle
       // exists to prevent.
-      if (this.analytics) {
+      if (this.analytics && !this.disposed) {
         const analytics = this.analytics;
         this.run(() => setAnalyticsCollectionEnabled(analytics, false));
       }
@@ -66,14 +92,14 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
     }
 
     const analytics = await this.resolve();
-    if (analytics && this.enabled) {
+    if (analytics && this.enabled && !this.disposed) {
       this.run(() => setAnalyticsCollectionEnabled(analytics, true));
     }
   }
 
   async logEvent(name: string, params: AnalyticsParams): Promise<void> {
     const analytics = await this.resolve();
-    if (!analytics || !this.enabled) {
+    if (!analytics || !this.enabled || this.disposed) {
       return;
     }
     this.run(() => logEvent(analytics, name, { ...params, ...pageFields() }));
@@ -99,30 +125,49 @@ export class WebAnalyticsTransport implements AnalyticsTransport {
    * produces console noise.
    */
   private async resolve(): Promise<Analytics | null> {
-    if (!this.enabled) {
+    if (this.disposed || !this.enabled) {
       return null;
     }
     if (this.resolved) {
       return this.analytics;
     }
-    if (!analyticsIsConfigured()) {
+    if (!this.isConfigured()) {
       this.resolved = true;
       return null;
     }
 
-    this.supported ??= this.run(() => isSupported());
+    this.supported ??= this.checkSupported();
     if (!(await this.supported)) {
       this.resolved = true;
       return null;
     }
-    // Re-check: the await above is exactly where a toggle-off can land.
-    if (!this.enabled) {
+    // Re-check: the await above is exactly where a toggle-off, or the
+    // injector's own teardown, can land.
+    if (this.disposed || !this.enabled) {
       return null;
     }
 
     this.analytics = this.run(() => this.injector.get(Analytics, null));
     this.resolved = true;
     return this.analytics;
+  }
+
+  /**
+   * Seam so a spec can pin the disposal contract without real Firebase
+   * config: CI's stub measurement id fails this check and short-circuits
+   * resolve() before the risky await below, which is what would otherwise
+   * make a naive regression spec pass vacuously in CI.
+   */
+  protected isConfigured(): boolean {
+    return analyticsIsConfigured();
+  }
+
+  /**
+   * Seam so a spec can control when isSupported() settles instead of forcing
+   * a real IndexedDB round trip.
+   */
+  protected checkSupported(): Promise<boolean> {
+    return this.run(() => isSupported());
   }
 
   /**
