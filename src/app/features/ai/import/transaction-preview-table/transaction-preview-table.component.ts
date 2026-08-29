@@ -318,9 +318,15 @@ export class TransactionPreviewTableComponent {
     return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
   }
 
-  /** Explains why a row is dated today rather than something read off the source. */
-  dateAssumedTooltip(): string {
-    return this.translationService.t('import.dateAssumedTooltip');
+  /**
+   * Explains why a row is dated today rather than something read off the
+   * source — the implausible wording when the row was read clearly and
+   * still cannot be right, the unreadable wording otherwise.
+   */
+  dateAssumedTooltip(row: CategorizedImportTransaction): string {
+    return this.translationService.t(
+      row.dateImplausible ? 'import.dateImplausibleTooltip' : 'import.dateAssumedTooltip'
+    );
   }
 
   /**
@@ -334,7 +340,7 @@ export class TransactionPreviewTableComponent {
     field: 'amount' | 'date'
   ): string {
     if (field === 'date' && transaction.dateAssumed) {
-      return this.dateAssumedTooltip();
+      return this.dateAssumedTooltip(transaction);
     }
     const percent = Math.round((transaction.fieldConfidence?.[field] ?? 0) * 100);
     return this.translationService.t(

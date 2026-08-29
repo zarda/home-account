@@ -386,6 +386,7 @@ export class AIImportService {
         ...(tx.period ? { period: tx.period } : {}),
         ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {}),
         ...(resolved.dateAssumed ? { dateAssumed: true } : {}),
+        ...(resolved.dateImplausible ? { dateImplausible: true } : {}),
       };
       return { ...row, ...this.currencySuggestionSlot(row) };
     });
@@ -667,7 +668,8 @@ export class AIImportService {
         ...(original.receiptCountry ? { receiptCountry: original.receiptCountry } : {}),
         ...(original.period ? { period: original.period } : {}),
         ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {}),
-        ...(resolved.dateAssumed ? { dateAssumed: true } : {})
+        ...(resolved.dateAssumed ? { dateAssumed: true } : {}),
+        ...(resolved.dateImplausible ? { dateImplausible: true } : {})
       };
       return { ...row, ...this.currencySuggestionSlot(row) };
     });
@@ -1123,7 +1125,8 @@ export class AIImportService {
         ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
         ...(t.period ? { period: t.period } : {}),
         ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {}),
-        ...(resolved.dateAssumed ? { dateAssumed: true } : {})
+        ...(resolved.dateAssumed ? { dateAssumed: true } : {}),
+        ...(resolved.dateImplausible ? { dateImplausible: true } : {})
       };
       return row;
     });

@@ -59,17 +59,31 @@ export interface ResolvedImportDate {
   dateConfidence?: number;
   /** Present when `date` is "now" rather than something read off the source. */
   dateAssumed?: true;
+  /**
+   * Present only when `dateAssumed` is set because the parsed value itself
+   * was beyond belief, not because it was unreadable.
+   */
+  dateImplausible?: true;
 }
+
+/** One day of grace before a parsed date counts as future — same allowance `receipt-text-parser`'s own future-date guard uses. */
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The one place an import row's date is read and, when it can't be trusted,
  * replaced with `now` so the transaction surfaces at the top of today's list
- * rather than being buried under a misread day.
+ * rather than being buried under a misread day. "Can't be trusted" covers
+ * three things: a value nothing can parse, one the reader graded below the
+ * bar, and — for graded rows only — one that parsed cleanly but lands more
+ * than a day ahead or more than ten calendar years back, because a confident
+ * misread buries the transaction exactly as well as an unconfident one.
  *
- * `undefined` confidence never substitutes: CSV and JSON rows have no reader
- * to grade them, the same rationale `needsVerification` uses for the preview
- * card. The threshold check is strict `<`, so a reading graded exactly
- * `VERIFY_FIELD_THRESHOLD` is kept. "Now" means `now` itself, never
+ * `undefined` confidence never substitutes — not here and not in the
+ * threshold check below: CSV and JSON rows have no reader to grade them, the
+ * same rationale `needsVerification` uses for the preview card. An ungated
+ * plausibility window would redate every row of a years-old CSV backup to
+ * today on re-import. The threshold check is strict `<`, so a reading graded
+ * exactly `VERIFY_FIELD_THRESHOLD` is kept. "Now" means `now` itself, never
  * `startOfDay(now)` — a parsed date lands at local midnight, so only the
  * actual instant sorts strictly above every other row dated today in a
  * newest-first list. `toCreateTransactionDTO` stays untouched (ADR 0059):
@@ -81,6 +95,14 @@ export function resolveImportDate(
 ): ResolvedImportDate {
   const parsed = parseDateInput(raw);
   if (parsed === null) return { date: now, dateConfidence: 0, dateAssumed: true };
+  const tenYearsAgo = new Date(now);
+  tenYearsAgo.setFullYear(now.getFullYear() - 10);
+  if (
+    confidence !== undefined &&
+    (parsed.getTime() > now.getTime() + DAY_MS || parsed.getTime() < tenYearsAgo.getTime())
+  ) {
+    return { date: now, dateConfidence: confidence, dateAssumed: true, dateImplausible: true };
+  }
   if (confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD) {
     return { date: now, dateConfidence: confidence, dateAssumed: true };
   }

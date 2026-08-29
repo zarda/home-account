@@ -883,12 +883,13 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     });
 
     it("the chip's icon carries the tooltip as its accessible name", () => {
-      component.transactions = [makeRow({ dateAssumed: true })];
+      const row = makeRow({ dateAssumed: true });
+      component.transactions = [row];
       component.categories = [];
       fixture.detectChanges();
 
       const icon = fixture.nativeElement.querySelector('.extra-chip.date-assumed mat-icon') as HTMLElement;
-      expect(icon.getAttribute('aria-label')).toBe(component.dateAssumedTooltip());
+      expect(icon.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
     });
 
     it('a marked row still shows the date verify flag, with the assumed wording', () => {
@@ -903,7 +904,24 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       const flag = fixture.nativeElement.querySelector('.date-chip .verify-flag') as HTMLElement;
       expect(flag).withContext('the low-confidence flag on the date chip still renders').not.toBeNull();
-      expect(flag.getAttribute('aria-label')).toBe(component.dateAssumedTooltip());
+      expect(flag.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
+    });
+
+    it('an implausible row shows the chip with the implausible wording and no verify flag', () => {
+      // Graded 0.9 — well clear of the verify threshold — because that is
+      // exactly the case the window exists for: needsVerification stays
+      // quiet, so the card chip is the only surface this row gets.
+      const row = makeRow({ dateAssumed: true, dateImplausible: true, fieldConfidence: { date: 0.9 } });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+
+      const icon = fixture.nativeElement.querySelector('.extra-chip.date-assumed mat-icon') as HTMLElement;
+      expect(icon.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
+      expect(component.dateAssumedTooltip(row)).toBe('import.dateImplausibleTooltip');
+
+      const flag = fixture.nativeElement.querySelector('.date-chip .verify-flag');
+      expect(flag).withContext('grade clears the threshold, so the date cell verify flag stays absent').toBeNull();
     });
   });
 });
