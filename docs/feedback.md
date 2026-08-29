@@ -123,7 +123,12 @@ One-time setup, in order:
    firebase functions:secrets:set FEEDBACK_EMAIL_TO
    ```
 
-3. Deploy rules and functions together, with or before the app release:
+3. Deploy rules and functions together, with or before the app release.
+   Since [ADR 0077](ADR/0077-merges-deploy-what-they-changed.md) both ride
+   CI: a merge touching `functions/` deploys the function, rules ride every
+   web deploy, and for a deploy no diff triggers — this one-time setup, or a
+   re-pin — dispatch the CI workflow with **deploy_functions** checked
+   ([deploy.md](deploy.md)). The local fallback:
 
    ```
    firebase deploy --only firestore:rules,functions
@@ -133,7 +138,7 @@ One-time setup, in order:
    rewritable** through the live catch-all — the deploy is what turns on
    validation and immutability, and the emulator cannot reveal that it has
    not happened (see [emulator-blind-spots.md](emulator-blind-spots.md)).
-   If the deploy complains about the functions SDK version, update
+   If a local deploy complains about the functions SDK version, update
    `firebase-tools` first.
 
 4. Send one production feedback entry and confirm the mail arrives; check
@@ -178,18 +183,23 @@ Everything below was hit in sequence on the first production deploy
   `secrets:set` prompt offering to "re-deploy the functions and destroy the
   stale version" patches only that one secret's binding: on the first deploy
   it left the service pinned to a destroyed `FEEDBACK_SMTP_USER` version and
-  new revisions refused to start. The repair — and the habit — is the full
-  `firebase deploy --only functions`, which re-pins every secret to its
-  latest live version.
+  new revisions refused to start. The repair — and the habit — is a full
+  `--only functions` deploy, which re-pins every secret to its latest live
+  version: dispatch the CI workflow with **deploy_functions** checked, or
+  run `firebase deploy --only functions` locally.
 - **A self-addressed mail skips the Inbox.** With `FEEDBACK_EMAIL_TO` equal
   to `FEEDBACK_SMTP_USER`, Gmail files the delivered mail under Sent and All
   Mail; search `[home-account] feedback:` before diagnosing a delivery
   failure. Pointing `FEEDBACK_EMAIL_TO` at a different mailbox, or a Gmail
   filter on that subject prefix, puts entries in an Inbox.
 - **None of this belongs to app releases.** Only a change under `functions/`
-  or a rotated secret needs a functions deploy; releases ship without one.
-  Always scope deploys with `--only` — a bare `firebase deploy` drags the
-  functions step into every release.
+  or a rotated secret needs a functions deploy; releases ship without one —
+  and since [ADR 0077](ADR/0077-merges-deploy-what-they-changed.md) the CI
+  change detection enforces that on its own, deploying functions only for
+  merges that touch `functions/` or `firebase.json`. The rotated-secret case
+  is the **deploy_functions** dispatch checkbox. Locally, always scope
+  deploys with `--only` — a bare `firebase deploy` drags the functions step
+  into every release.
 
 ## Testing, and the known gap
 

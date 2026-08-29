@@ -4,7 +4,19 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A plain dispatch runs CI only. The inputs exist for deploys that change
+  # detection cannot see — a redeploy of unchanged code, or the functions
+  # re-pin after a secret rotation (docs/feedback.md).
   workflow_dispatch:
+    inputs:
+      deploy_web:
+        description: Deploy hosting, rules and indexes after CI passes
+        type: boolean
+        default: false
+      deploy_functions:
+        description: Deploy functions after CI passes
+        type: boolean
+        default: false
 
 jobs:
   ci:
@@ -161,3 +173,252 @@ jobs:
 
       - name: Build (production)
         run: npm run build
+
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      functions: ${{ steps.filter.outputs.functions }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # The diff below needs the pre-push commit, which a depth-1 clone
+          # does not have.
+          fetch-depth: 0
+
+      # Deploys are gated on what a push to main actually changed. The
+      # detection fails open: when the previous commit cannot be resolved
+      # (first push, rewritten history), everything deploys — over-deploying
+      # re-releases identical content, under-deploying is the failure mode
+      # where merged rules protect nobody. A workflow_dispatch run deploys
+      # exactly what its inputs ask for; docs, iOS, workflow and markdown
+      # changes deploy nothing. The diff disables rename detection and path
+      # quoting: a rename collapses to its destination under git's defaults
+      # and a non-ASCII path arrives shell-quoted, and either would slip a
+      # file past the globs. The deploy jobs' stand-down checks mirror this
+      # case statement — the four must change together.
+      - name: Classify changed files
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "web=${{ inputs.deploy_web }}" >> "$GITHUB_OUTPUT"
+            echo "functions=${{ inputs.deploy_functions }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "web=false" >> "$GITHUB_OUTPUT"
+            echo "functions=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          before="${{ github.event.before }}"
+          if [ -z "$before" ] || ! git cat-file -e "$before" 2>/dev/null; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "functions=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          web=false
+          functions=false
+          while IFS= read -r f; do
+            case "$f" in
+              docs/*|ios/*|.github/*|*.md|.gitignore|LICENSE) ;;
+              functions/*) functions=true ;;
+              firebase.json) web=true; functions=true ;;
+              *) web=true ;;
+            esac
+          done < <(git -c core.quotePath=false diff --no-renames --name-only "$before" "${{ github.sha }}")
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "functions=$functions" >> "$GITHUB_OUTPUT"
+
+  deploy-web:
+    name: Deploy web (hosting, rules, indexes)
+    needs: [ci, changes]
+    # Deploys happen only from main: a push deploys what it changed, a
+    # workflow_dispatch deploys what its inputs ask for. On pull requests
+    # this job shows as skipped.
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    # Overlapping merges queue rather than interleave. The group orders runs
+    # by when their ci job finished, not by commit — the stand-down check
+    # below is what keeps an older commit from deploying over a newer one.
+    # The functions job uses its own group so a requested functions deploy
+    # is never the pending run this group discards.
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The ci job builds against stub config for lint/test purposes; that
+      # artifact must never be served. This job rebuilds from the real
+      # production config held in the PROD_ENVIRONMENT_TS secret. The .vscode
+      # stub is still required: tsconfig.app.json includes src/**/*.ts, so
+      # environment.ts is type-checked even though fileReplacements swaps it
+      # out of the bundle, and its re-export must resolve.
+      - name: Create production environment files
+        env:
+          PROD_ENVIRONMENT_TS: ${{ secrets.PROD_ENVIRONMENT_TS }}
+        run: |
+          if [ -z "$PROD_ENVIRONMENT_TS" ]; then
+            echo "The PROD_ENVIRONMENT_TS secret is not set" >&2
+            exit 1
+          fi
+          mkdir -p .vscode
+          cat > .vscode/environment.ts << 'EOF'
+          export const environment = {
+            production: false,
+            firebase: {
+              apiKey: 'ci-stub',
+              authDomain: 'ci-stub',
+              projectId: 'ci-stub',
+              storageBucket: 'ci-stub',
+              messagingSenderId: 'ci-stub',
+              appId: 'ci-stub',
+              measurementId: 'ci-stub'
+            },
+            donationUrlPaypal: ''
+          };
+          EOF
+          printf '%s' "$PROD_ENVIRONMENT_TS" > src/environments/environment.prod-local.ts
+
+      - name: Build (production)
+        run: npm run build:web
+
+      # A slow run can reach this point carrying a commit main has already
+      # moved past. If the newer commits change nothing this job deploys,
+      # proceeding is safe — the built output is identical. If they do, stand
+      # down: the newer commit's own run deploys them, and deploying here
+      # would publish stale content over it. The case statement mirrors the
+      # changes job's and the two must change together.
+      - name: Stand down if a newer commit changes what this job deploys
+        id: tip
+        run: |
+          git fetch --quiet --depth=1 origin main
+          tip=$(git rev-parse FETCH_HEAD)
+          proceed=true
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            while IFS= read -r f; do
+              case "$f" in
+                docs/*|ios/*|.github/*|*.md|.gitignore|LICENSE) ;;
+                functions/*) ;;
+                firebase.json) proceed=false ;;
+                *) proceed=false ;;
+              esac
+            done < <(git -c core.quotePath=false diff --no-renames --name-only "$GITHUB_SHA" "$tip")
+          fi
+          if [ "$proceed" = false ]; then
+            echo "main moved to $tip with web-relevant changes; leaving the deploy to that commit's run"
+          fi
+          echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
+
+      # Authentication happens after the build so the credential file never
+      # exists while npm scripts run. The action exports
+      # GOOGLE_APPLICATION_CREDENTIALS, which firebase-tools picks up.
+      - name: Authenticate to Google Cloud
+        if: steps.tip.outputs.proceed == 'true'
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # --non-interactive without --force: index additions apply, but the CLI
+      # declines index deletions and continues — deleting an index stays a
+      # deliberate local act with a human reading the list (see
+      # docs/emulator-blind-spots.md). Functions never deploy from here.
+      - name: Deploy
+        if: steps.tip.outputs.proceed == 'true'
+        run: npx firebase deploy --only hosting,firestore,storage --project home-accounter --non-interactive -m "$GITHUB_SHA"
+
+  deploy-functions:
+    name: Deploy functions
+    needs: [ci, changes]
+    # Fires when a merge touches functions/ or firebase.json, or when a
+    # dispatch asks for it — the secret-rotation re-pin involves no code
+    # change, so the dispatch input is the only path that covers it (see
+    # docs/feedback.md).
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    # Serialized against itself only; a shared group would let a newer web
+    # deploy discard a pending functions deploy.
+    concurrency:
+      group: deploy-functions
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      # The root install exists to provide firebase-tools at the
+      # lockfile-pinned version — the same CLI developers run locally,
+      # updated through reviewed Dependabot PRs rather than whatever @latest
+      # resolves to.
+      - name: Install dependencies
+        run: npm ci
+
+      # The same gate the ci job applies, kept here so a dispatch-triggered
+      # deploy is tested even though no PR ran. firebase.json's predeploy
+      # re-runs install and build during the deploy itself.
+      - name: Functions build & test
+        run: |
+          npm --prefix functions ci
+          npm --prefix functions test
+
+      # Same stand-down rule as deploy-web, judged against this job's own
+      # target: proceed unless main has moved past this commit with changes
+      # that touch the functions deploy. The case statement mirrors the
+      # changes job's and the two must change together.
+      - name: Stand down if a newer commit changes what this job deploys
+        id: tip
+        run: |
+          git fetch --quiet --depth=1 origin main
+          tip=$(git rev-parse FETCH_HEAD)
+          proceed=true
+          if [ "$tip" != "$GITHUB_SHA" ]; then
+            while IFS= read -r f; do
+              case "$f" in
+                docs/*|ios/*|.github/*|*.md|.gitignore|LICENSE) ;;
+                functions/*) proceed=false ;;
+                firebase.json) proceed=false ;;
+                *) ;;
+              esac
+            done < <(git -c core.quotePath=false diff --no-renames --name-only "$GITHUB_SHA" "$tip")
+          fi
+          if [ "$proceed" = false ]; then
+            echo "main moved to $tip with functions-relevant changes; leaving the deploy to that commit's run"
+          fi
+          echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud
+        if: steps.tip.outputs.proceed == 'true'
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # A full deploy re-pins every secret to its latest live version — the
+      # repair and the habit docs/feedback.md records. --only always; a bare
+      # deploy would drag every other target along.
+      - name: Deploy
+        if: steps.tip.outputs.proceed == 'true'
+        run: npx firebase deploy --only functions --project home-accounter --non-interactive
