@@ -35,6 +35,7 @@ import {
   Timestamp
 } from '@angular/fire/firestore';
 import { getStorage, connectStorageEmulator, Storage } from '@angular/fire/storage';
+import { MatDialog } from '@angular/material/dialog';
 import { routes } from '../../app.routes';
 import { AuthService } from '../../core/services/auth.service';
 import { CurrencyService } from '../../core/services/currency.service';
@@ -322,6 +323,91 @@ describe('Transaction overflow (emulator smoke test)', () => {
         .withContext(`paging root is .main-container, found .${found?.className}`)
         .toBeTrue();
 
+      harness.fixture.destroy();
+    },
+    SPEC_TIMEOUT
+  );
+
+  it(
+    'opens and highlights a months-old linked transaction from the tx param',
+    async () => {
+      mockAuth.setMockUser(createMockUser(uid));
+
+      const now = Timestamp.now();
+      const categoryRef = await addDoc(collection(firestore, `users/${uid}/categories`), {
+        userId: uid,
+        name: 'Shortcut Smoke Category',
+        icon: 'shopping_cart',
+        color: '#FF9800',
+        type: 'expense',
+        order: 0,
+        isActive: true,
+        isDefault: false
+      });
+
+      const oldRef = await addDoc(collection(firestore, `users/${uid}/transactions`), {
+        userId: uid,
+        type: 'expense',
+        categoryId: categoryRef.id,
+        // Five months back: outside the page's default this-month window and
+        // older than every filler row below.
+        date: Timestamp.fromMillis(now.toMillis() - 150 * 24 * 3600_000),
+        createdAt: now,
+        updatedAt: now,
+        isRecurring: false,
+        amount: 42,
+        currency: 'USD',
+        amountInBaseCurrency: 42,
+        exchangeRate: 1,
+        description: 'Shortcut target from five months back'
+      });
+
+      // More rows than TransactionWindowService.INITIAL_BATCH (50), all newer
+      // than the target, so its first date-desc page cannot hold it without
+      // the tx param widening the window past its own filters.
+      await Promise.all(
+        Array.from({ length: 55 }, (_, i) =>
+          addDoc(collection(firestore, `users/${uid}/transactions`), {
+            userId: uid,
+            type: 'expense',
+            categoryId: categoryRef.id,
+            date: Timestamp.fromMillis(now.toMillis() - (i + 1) * 3600_000),
+            createdAt: now,
+            updatedAt: now,
+            isRecurring: false,
+            amount: 6.4,
+            currency: 'USD',
+            amountInBaseCurrency: 6.4,
+            exchangeRate: 1,
+            description: `Shortcut filler ${i}`
+          })
+        )
+      );
+
+      const harness = await RouterTestingHarness.create();
+      await harness.navigateByUrl(`/transactions?tx=${oldRef.id}`);
+
+      await waitFor(
+        'the months-old linked transaction rendered with its edit dialog open',
+        () =>
+          document.body.querySelector(`[data-tx-id="${oldRef.id}"]`) !== null &&
+          document.querySelector('app-transaction-form') !== null,
+        () => harness.detectChanges()
+      );
+
+      expect(document.body.querySelector(`[data-tx-id="${oldRef.id}"]`))
+        .withContext('months-old target rendered in the list')
+        .not.toBeNull();
+      expect(document.querySelector('app-transaction-form'))
+        .withContext('edit dialog open on the linked transaction')
+        .not.toBeNull();
+
+      TestBed.inject(MatDialog).closeAll();
+      await waitFor(
+        'dialog closed',
+        () => document.querySelector('app-transaction-form') === null,
+        () => harness.detectChanges()
+      );
       harness.fixture.destroy();
     },
     SPEC_TIMEOUT

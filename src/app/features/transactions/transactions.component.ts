@@ -238,6 +238,19 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Check for a transaction to open (from the import-history shortcut).
+    // A one-shot snapshot read, deliberately not the re-firing
+    // route.queryParams subscription action=add uses below — replaying this
+    // on every later filter change would reopen the dialog behind the user.
+    // Read ahead of showAll/date below: the target may live outside any
+    // default date box, and jumpTo seeds through the active filters, so the
+    // window must carry none — tx forces show-all and skips the date
+    // pre-filter entirely.
+    this.pendingOpenTxId = this.route.snapshot.queryParamMap.get('tx');
+    if (this.pendingOpenTxId) {
+      this.showAll.set(true);
+    }
+
     // Check for showAll query param (from "View All" link)
     const showAllParam = this.route.snapshot.queryParamMap.get('showAll');
     if (showAllParam === 'true') {
@@ -248,19 +261,15 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     // The producer writes a local day key; new Date() would read it back as
     // UTC, pre-filtering to the neighbouring day west of UTC. parseDayKey is
     // the exact inverse, and returns null rather than an Invalid Date.
-    const dateParam = this.route.snapshot.queryParamMap.get('date');
-    if (dateParam) {
-      const date = parseDayKey(dateParam);
-      if (date) {
-        this.initialDate.set(date);
+    if (!this.pendingOpenTxId) {
+      const dateParam = this.route.snapshot.queryParamMap.get('date');
+      if (dateParam) {
+        const date = parseDayKey(dateParam);
+        if (date) {
+          this.initialDate.set(date);
+        }
       }
     }
-
-    // Check for a transaction to open (from the import-history shortcut).
-    // A one-shot snapshot read, deliberately not the re-firing
-    // route.queryParams subscription action=add uses below — replaying this
-    // on every later filter change would reopen the dialog behind the user.
-    this.pendingOpenTxId = this.route.snapshot.queryParamMap.get('tx');
 
     // Load categories (only once)
     this.categoriesSub = this.categoryService.loadCategories().subscribe();

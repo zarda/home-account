@@ -334,6 +334,21 @@ describe('TransactionsComponent', () => {
       expect(transactionService.getTransactionById).not.toHaveBeenCalled();
       expect(dialog.open).not.toHaveBeenCalled();
     }));
+
+    it('widens to all dates when arriving with a tx target', () => {
+      routeSnapshotParams = { tx: 'tx-9' };
+      const fixture = build();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.showAll()).toBeTrue();
+    });
+
+    it('the tx target wins over a date pre-filter', () => {
+      routeSnapshotParams = { tx: 'tx-9', date: '2026-08-01' };
+      const fixture = build();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.showAll()).toBeTrue();
+      expect(fixture.componentInstance.initialDate()).toBeUndefined();
+    });
   });
 
   it('onDateSortChange resets the window only when the direction changes', () => {
