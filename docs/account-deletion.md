@@ -6,7 +6,8 @@ the receipt objects in Storage, the device-local state keyed by the
 account, the user document, and finally the Firebase Auth user. There is no backend — the
 whole erasure is a client-side cascade run by `AccountDeletionService`
 (`src/app/core/services/account-deletion.service.ts`), because the security
-rules grant only the owner and the project deploys no Cloud Functions
+rules grant only the owner, and the project's one Cloud Function — the
+feedback mail sender — plays no part in it
 (see [ADR 0018](ADR/0018-account-deletion-is-a-client-side-cascade.md)).
 
 ## The flow, from the user's side

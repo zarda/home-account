@@ -1,6 +1,6 @@
 # 35. What the emulator cannot see is checked from the files
 
-**Status:** Accepted, implemented · **Date:** 2026-08-12 · **Issues:** #249, #250, #275
+**Status:** Accepted, implemented; the *checker proves the file, not the deployment* gap is closed by [0077](0077-merges-deploy-what-they-changed.md) · **Date:** 2026-08-12 · **Issues:** #249, #250, #275
 
 Reference documentation lives in [../emulator-blind-spots.md](../emulator-blind-spots.md).
 
