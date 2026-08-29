@@ -112,6 +112,16 @@ gcloud iam service-accounts add-iam-policy-binding \
   --member serviceAccount:github-deploy@home-accounter.iam.gserviceaccount.com \
   --role roles/iam.serviceAccountUser
 
+# The CLI also preflights ActAs on the App Engine default account, and its
+# Blaze check reads the Cloud Billing API — which must be enabled once, an
+# owner-level act that deliberately stays out of the deploy account's hands
+gcloud iam service-accounts add-iam-policy-binding \
+  home-accounter@appspot.gserviceaccount.com \
+  --project home-accounter \
+  --member serviceAccount:github-deploy@home-accounter.iam.gserviceaccount.com \
+  --role roles/iam.serviceAccountUser
+gcloud services enable cloudbilling.googleapis.com --project home-accounter
+
 # Key → GitHub secret (delete the key file immediately after)
 gcloud iam service-accounts keys create /tmp/github-deploy-key.json \
   --iam-account github-deploy@home-accounter.iam.gserviceaccount.com
@@ -127,12 +137,17 @@ API-enablement reads around them; if a first run 403s naming
 `serviceusage.services.get` or `.use`, grant
 `roles/serviceusage.serviceUsageViewer` / `Consumer` respectively. The
 functions set (`cloudfunctions.admin`, `secretmanager.viewer`,
-`iam.serviceAccountUser` on the compute default account) is confirmed by the
-first dispatched deploy, not in advance — a gen-2 deploy's 403 names the
-missing permission, so the procedure is: read the error, grant exactly what
-it names (likely candidates: `roles/artifactregistry.reader`,
-`roles/run.admin`), re-run the job. The first manual deploy went through the
-same iteration ([feedback.md](feedback.md), troubleshooting).
+`iam.serviceAccountUser`) is verified — and it took two rounds beyond the
+initial grants, exactly the iteration this section prescribes.
+firebase-tools 15.28 preflights `iam.serviceAccounts.ActAs` on the App
+Engine default account (`home-accounter@appspot.gserviceaccount.com`) even
+though the runtime account is the compute default, and its Blaze check
+needs the Cloud Billing API enabled once (15.20 checked neither, which is
+why the first dispatched deploy sailed through and the next CLI version did
+not). A future major may add another link; the procedure is unchanged: read
+the error, grant or enable exactly what it names, re-run the failed job.
+The first manual deploy went through the same iteration
+([feedback.md](feedback.md), troubleshooting).
 
 **Key rotation.** Service-account keys never expire, so rotation is a habit,
 not an event:
