@@ -264,7 +264,8 @@ where before the fabricated one arrived confident.
   producer, landed on today, marked — while a merely *doubtful* parseable one
   cannot be, because no producer on that lane populates a partial date grade
   for the helper to compare. Giving those prompts a per-field date confidence
-  is the change that would close it.
+  is the change that would close it. Closed by
+  [ADR 0079](0079-the-multi-photo-lanes-grade-the-dates-they-read.md), #341.
 - **A parseable date the model invented anyway sails through.** The
   architecture catches an empty string, an unparseable string and a graded-low
   reading. A model that ignores "never invent today's date" and answers with a
@@ -273,7 +274,9 @@ where before the fabricated one arrived confident.
   does.
 - **No absurd-year guard.** A confidently parsed `1907-04-02` is kept. The
   future-date guard exists in the regex parser only, and nothing anywhere reads
-  a date as implausible on its value alone.
+  a date as implausible on its value alone. Closed by
+  [ADR 0080](0080-an-impossible-date-lands-on-today-however-well-it-was-read.md),
+  #342.
 - **The form and the queue show no mark.** The form's user is editing the field
   live; the queue has no UI. Both are deliberate, and both mean the mark is a
   wizard-review artefact, not a property of the import.

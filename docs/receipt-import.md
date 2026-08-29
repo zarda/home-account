@@ -351,21 +351,31 @@ full record, including per-row errors, is on the Import History page.
 **A date the scan cannot vouch for lands on today, and the row says so.** The
 date is graded like the amount is, on the same 0.7 bar; what is new is what
 happens under it. `resolveImportDate` (`core/utils/import-dto.utils.ts`) is the
-one place that decides. A value nothing can parse, or one the reader graded
-below the bar, becomes *now* — the actual instant, so the row sorts above every
-other row dated today — and the review card carries a **Date set to today** chip
-saying why, in place of the percentage the verify tooltip would otherwise quote.
+one place that decides. A value nothing can parse, one the reader graded below
+the bar, or one read clearly that no plausible calendar contains — more than a
+day ahead, or more than ten years back, checked only on a graded row — becomes
+*now* — the actual instant, so the row sorts above every other row dated
+today — and the review card carries a **Date set to today** chip saying why,
+in place of the percentage the verify tooltip would otherwise quote; an
+implausible reading gets its own wording in that tooltip, distinct from an
+unreadable one, since the two are different doubts
+([ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)).
 A date nobody graded, a CSV cell or a backup row, is kept untouched: absent
-confidence means "nobody looked", not "the reader was unsure".
+confidence means "nobody looked", not "the reader was unsure" — and the same
+gate keeps a years-old backup from being redated to today on re-import.
 
 The asymmetry is the reason the value moves rather than only being flagged. A
 wrong date on today's row is one tap from being fixed; the same wrong date in
 2024 is hundreds of rows down the pager, inside no period anyone is watching, in
 a month whose total has already been read and believed. What makes it work is
 that the readers no longer invent a date to be doubted: the prompts ask for
-`""` where nothing is printed and say never to invent today's date, and every
-reader that patches a missing date grades it at zero instead of passing the
-model's own claim along. The decision, and what it rejected, is
+`""` where nothing is printed and say never to invent today's date — true of
+the multi-image lanes too, now that `multiImageReceipts` and `receiptItems`
+carry their own `dateConfidence`
+([ADR 0079](ADR/0079-the-multi-photo-lanes-grade-the-dates-they-read.md)) —
+and every reader that patches a missing date grades it at zero instead of
+passing the model's own claim along. The decision behind the original rule,
+and what it rejected, is
 [ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md).
 
 **An answer that ran out of room is read as far as it goes.** A model asked
@@ -443,11 +453,17 @@ order, one per success and nothing else. Import History turns that into a way
 back into the ledger: a **View transaction** button on a record that created
 exactly one, and a menu of positional entries (*Transaction 1*,
 *Transaction 2*) on a batch, since the record stores ids and has no description
-to label them with. Either opens `/transactions?tx=<id>`, which jumps the list
-to that transaction, highlights it and opens its edit dialog; a transaction
-that has since been deleted answers with a notice instead of a dialog, and a
-target outside the page's active filters opens without the list scrolling to
-it. Records written before the field existed, records where every row failed,
+to label them with. Either opens `/transactions?tx=<id>`, which widens the
+page to every date before its first filter is ever applied, jumps the window
+to that transaction, highlights it and opens its edit dialog — a target the
+default month filter would have missed now arrives the same way a current
+one does
+([ADR 0081](ADR/0081-the-history-shortcut-clears-the-filters-its-target-must-be-seen-through.md));
+a transaction that has since been deleted answers with a notice instead of a
+dialog. `tx` itself is stripped from the URL once read, so reloading the link
+or pressing Back to it cannot replay the jump
+([ADR 0082](ADR/0082-one-shot-query-params-leave-the-url-once-consumed.md)).
+Records written before the field existed, records where every row failed,
 and the in-form and queue doors — which write no success record at all — show
 no button. See
 [ADR 0075](ADR/0075-a-successful-import-remembers-the-transactions-it-created.md).

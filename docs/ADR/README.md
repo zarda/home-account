@@ -83,6 +83,11 @@ reverse — why a thing is the way it is, not how to use it.
 | [0076](0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md) | The welcome replays on request, and a first login speaks the browser's language | Accepted; reverses a gap of 0072 | 2026-08-28 |
 | [0077](0077-merges-deploy-what-they-changed.md) | Merges deploy what they changed | Accepted; closes a gap of 0035 | 2026-08-29 |
 | [0078](0078-the-version-is-the-year-the-month-and-a-count.md) | The version is the year, the month, and a count | Accepted | 2026-08-29 |
+| [0079](0079-the-multi-photo-lanes-grade-the-dates-they-read.md) | The multi-photo lanes grade the dates they read | Accepted | 2026-08-30 |
+| [0080](0080-an-impossible-date-lands-on-today-however-well-it-was-read.md) | An impossible date lands on today, however well it was read | Accepted | 2026-08-30 |
+| [0081](0081-the-history-shortcut-clears-the-filters-its-target-must-be-seen-through.md) | The history shortcut clears the filters its target must be seen through | Accepted | 2026-08-30 |
+| [0082](0082-one-shot-query-params-leave-the-url-once-consumed.md) | One-shot query params leave the URL once consumed | Accepted | 2026-08-30 |
+| [0083](0083-a-destroyed-injector-silences-the-analytics-transport.md) | A destroyed injector silences the analytics transport | Accepted | 2026-08-30 |
 
 ## What belongs here
 

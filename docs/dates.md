@@ -49,20 +49,32 @@ that round trip came to write local and read UTC.
 `parseDateInput` answers "is this a date". The wizard's review lanes and the
 offline queue have a second question — "is this date worth writing" — and
 `resolveImportDate` in `core/utils/import-dto.utils.ts` answers it. It calls
-`parseDateInput` and adds the confidence rule: a value nothing can parse, or one
-the reader graded below `VERIFY_FIELD_THRESHOLD`, resolves to `new Date()`, and
-the review step marks the row `dateAssumed`. A value nobody graded keeps its
-parsed date — absent confidence means nobody looked, not that the reader was
-unsure — and so does a value graded at or above the bar.
+`parseDateInput` and adds the confidence rule: a value nothing can parse, one
+the reader graded below `VERIFY_FIELD_THRESHOLD`, or — for a graded row only —
+one that parsed cleanly but lands more than a day ahead or more than ten
+calendar years back, resolves to `new Date()`, and the review step marks the
+row `dateAssumed` (the implausible case also marks `dateImplausible`, so the
+review tooltip can say which kind of doubt it is). A value nobody graded keeps
+its parsed date, however far off it reads — absent confidence means nobody
+looked, not that the reader was unsure, and the same gate applies to the
+plausibility check: an ungated window would redate every row of a years-old
+CSV backup to today on re-import. A graded value inside the plausible window
+and at or above the bar keeps its parsed date too.
 
 "Now" there is the instant, deliberately **not** `startOfDay(now)`: a parsed
 date lands at local midnight, so only the actual instant sorts strictly above
 every other row dated today in a newest-first list, which is the point of moving
-the row at all. The helper builds no window and computes no boundary; it chooses
-between a date `parseDateInput` returned and now, which is why it lives beside
-the mapper rather than in this module. See
-[ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) and
-[receipt-import.md](receipt-import.md).
+the row at all. The helper does now build a window and compute a boundary — a
+day ahead of `now`, ten calendar years behind it, the latter via
+`setFullYear` rather than a millisecond constant so leap years cannot drift
+it — but it is not this module's kind of window: there is no `DateWindow`, no
+calendar alignment, nothing a period selector could reuse. It still lives
+beside the mapper rather than in this module because what it decides is only
+ever "is this the date, or is this now," never a bound anything else compares
+against. See
+[ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md),
+[ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)
+and [receipt-import.md](receipt-import.md).
 
 ## Keys
 

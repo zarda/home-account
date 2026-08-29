@@ -83,6 +83,19 @@ checked in both directions: `stored-data.service.spec.ts` asserts every `?tab=`
 value appears in the target page's exported list, and `app.smoke.spec.ts`
 asserts each list still has as many entries as the strip it describes.
 
+The transactions page carries a different-shaped set of its own. `showAll`
+and `date` describe state and persist like `?tab=`/`?panel=` do. `tx` and
+`action` are one-shot actions instead — `tx` opens and highlights the
+transaction an import-history link names, `action=add` opens the quick-add
+dialog — and both strip themselves from the URL once consumed, navigating
+with `queryParamsHandling: 'merge'` and `replaceUrl: true` so a reload or a
+Back visit cannot replay them
+([ADR 0082](ADR/0082-one-shot-query-params-leave-the-url-once-consumed.md)).
+`tx` additionally clears the page's filters to all dates on arrival, because
+the transaction it names is exactly as likely to sit outside the default
+month as inside it
+([ADR 0081](ADR/0081-the-history-shortcut-clears-the-filters-its-target-must-be-seen-through.md)).
+
 ## Export, import and the danger zone
 
 The Data Management surface — full backup, CSV export, CSV/JSON restore,

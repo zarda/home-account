@@ -155,7 +155,9 @@ highlight; then the edit dialog.
   page's current date filter is not reachable under the server query, so the
   jump falls back to a plain top-of-list load: the dialog opens on the right
   transaction, and the list behind it does not scroll to it. Clearing the
-  filter first is the workaround, and nothing tells the user that.
+  filter first is the workaround, and nothing tells the user that. Closed by
+  [ADR 0081](0081-the-history-shortcut-clears-the-filters-its-target-must-be-seen-through.md),
+  #343.
 - **Records written before this field exists have no shortcut**, permanently.
   Nothing backfills them, and nothing could: the ids were never recorded.
 - **The `form` and `queue` doors still write no success record**, so nothing

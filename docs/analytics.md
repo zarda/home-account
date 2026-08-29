@@ -174,8 +174,9 @@ Notes:
   never activate; their destination reports instead. The layout route's empty
   path drops out of the name.
 - **Query parameters do not make a distinct screen.** `/transactions?showAll=`,
-  `?date=` and `?action=add` all report `transactions`, and the query string is
-  stripped from `page_location`.
+  `?date=`, `?action=add` and `?tx=` (a transaction id, stripped from the URL
+  once consumed) all report `transactions`, and the query string is stripped
+  from `page_location` regardless.
 - **`screen_class`** is the deepest activated component's element selector.
   Note this differs from what `@angular/fire`'s own `ScreenTrackingService`
   would produce: it reads the *top-level* activated route, which in this app is
@@ -203,8 +204,14 @@ Notes:
 - Analytics is skipped unless `environment.firebase.measurementId` looks like a
   real id (`G-` followed by the property code). The committed templates ship
   `YOUR_MEASUREMENT_ID` and CI writes `ci-stub`; both are non-empty, so the
-  check is on shape, not presence. This also makes the unit suite structurally
-  incapable of reaching Google.
+  check is on shape, not presence — and that shape gate is what keeps CI's
+  unit suite from reaching Google, not anything structural in the suite
+  itself. A developer running the same specs against a keyed local config
+  clears that gate; what still stops the SDK from loading there is that
+  TestBed's injector never provides a real `Analytics` token, and
+  `WebAnalyticsTransport` now disposes itself when that injector is torn
+  down rather than resuming into it
+  ([ADR 0083](ADR/0083-a-destroyed-injector-silences-the-analytics-transport.md)).
 - `ScreenTrackingService` from `@angular/fire` is **not** used: it injects
   `ComponentFactoryResolver`, removed in Angular 22, so resolving it throws.
   `@angular/fire` 20 is the newest release and still declares it.
@@ -236,6 +243,12 @@ CI has no iOS job. Every native change here is verified only by a local
 
 ### Known gaps
 
+- **The `NG0205` class of bug ADR 0083 fixed is only observable on a keyed
+  local machine.** CI's `ci-stub` measurement id fails `analyticsIsConfigured()`
+  and short-circuits before the code path that could ever race a destroyed
+  injector, so a green CI after a change near `WebAnalyticsTransport.resolve()`
+  proves nothing about it — only a spec seamed around the config check
+  (`analytics-transport.spec.ts`) or a run against a real `G-…` id can.
 - Web events fired while offline are dropped — gtag has no queue — while the
   iOS SDK persists and uploads them later. Offline sessions are therefore
   undercounted on web, and the two streams are not directly comparable for
