@@ -18,7 +18,7 @@
 // - The final spec deletes the Firebase app while its injector is alive
 //   (teardown is disabled) — no spec may run after it, hence random: false.
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
@@ -401,6 +401,13 @@ describe('Transaction overflow (emulator smoke test)', () => {
       expect(document.querySelector('app-transaction-form'))
         .withContext('edit dialog open on the linked transaction')
         .not.toBeNull();
+
+      // Real-router proof the strip navigation actually landed, not just that
+      // the component called it: a reload of this URL must not replay the
+      // shortcut.
+      const url = TestBed.inject(Router).url;
+      expect(url.startsWith('/transactions')).withContext(`still on the transactions page (${url})`).toBeTrue();
+      expect(url).withContext('tx stripped from the URL once consumed').not.toContain('tx=');
 
       TestBed.inject(MatDialog).closeAll();
       await waitFor(

@@ -1,6 +1,6 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
 import { of, throwError, Subject } from 'rxjs';
@@ -68,6 +68,7 @@ describe('TransactionsComponent', () => {
   let announcer: jasmine.SpyObj<AnnouncerService>;
   let dialog: jasmine.SpyObj<MatDialog>;
   let quickAdd: jasmine.SpyObj<QuickAddService>;
+  let router: jasmine.SpyObj<Router>;
   let queryParams$: Subject<Record<string, string>>;
   let routeSnapshotParams: Record<string, string>;
   let mutationSeq: number;
@@ -109,6 +110,7 @@ describe('TransactionsComponent', () => {
       'openScanReceipt',
       'openImportPhotos',
     ]);
+    router = jasmine.createSpyObj('Router', ['navigate']);
     queryParams$ = new Subject<Record<string, string>>();
     routeSnapshotParams = {};
 
@@ -140,6 +142,7 @@ describe('TransactionsComponent', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: QuickAddService, useValue: quickAdd },
         { provide: ActivatedRoute, useValue: activatedRoute },
+        { provide: Router, useValue: router },
       ],
     })
       .overrideComponent(TransactionsComponent, {
@@ -348,6 +351,53 @@ describe('TransactionsComponent', () => {
       fixture.detectChanges();
       expect(fixture.componentInstance.showAll()).toBeTrue();
       expect(fixture.componentInstance.initialDate()).toBeUndefined();
+    });
+  });
+
+  describe('stripping consumed params', () => {
+    it('strips tx from the URL once captured', () => {
+      routeSnapshotParams = { tx: 'tx-9' };
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(router.navigate).toHaveBeenCalledTimes(1);
+      expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({
+        relativeTo: TestBed.inject(ActivatedRoute),
+        queryParams: { tx: null, action: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      }));
+    });
+
+    it('strips action after scheduling the add dialog', fakeAsync(() => {
+      const fixture = build();
+      fixture.detectChanges();
+      queryParams$.next({ action: 'add' });
+      tick(100);
+
+      expect(quickAdd.openAddTransaction).toHaveBeenCalled();
+      expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({
+        queryParams: { tx: null, action: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      }));
+    }));
+
+    it('a clean reload opens nothing and strips nothing', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      queryParams$.next({});
+
+      expect(quickAdd.openAddTransaction).not.toHaveBeenCalled();
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+
+    it('leaves showAll and date alone', () => {
+      routeSnapshotParams = { showAll: 'true' };
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(router.navigate).not.toHaveBeenCalled();
     });
   });
 

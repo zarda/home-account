@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
@@ -71,6 +71,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private dialog = inject(MatDialog);
   private quickAdd = inject(QuickAddService);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private translationService = inject(TranslationService);
   private notifications = inject(NotificationService);
   private announcer = inject(AnnouncerService);
@@ -249,6 +250,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     this.pendingOpenTxId = this.route.snapshot.queryParamMap.get('tx');
     if (this.pendingOpenTxId) {
       this.showAll.set(true);
+      this.stripConsumedParams();
     }
 
     // Check for showAll query param (from "View All" link)
@@ -283,12 +285,26 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     this.route.queryParams.subscribe(params => {
       if (params['action'] === 'add') {
         setTimeout(() => this.openAddDialog(), 100);
+        this.stripConsumedParams();
       }
     });
   }
 
   ngOnDestroy(): void {
     this.categoriesSub?.unsubscribe();
+  }
+
+  // One-shot action params perform their action once; leaving them in the
+  // URL replays it on reload, and replaceUrl keeps Back pointing where the
+  // user came from rather than at the un-stripped URL. State-describing
+  // params (showAll, date) survive the merge untouched.
+  private stripConsumedParams(): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tx: null, action: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 
   onFiltersChanged(filters: TransactionFilters): void {
