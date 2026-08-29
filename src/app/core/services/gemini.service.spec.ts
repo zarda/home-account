@@ -898,12 +898,18 @@ describe('GeminiService', () => {
       expect(result[1].receiptTotal).toBeUndefined();
     });
 
-    it('zeroes the date confidence for an item with no date, and leaves it unset when it does', async () => {
+    it('grades the date confidence: zero with no date, forwarded verbatim when reported, unset when not', async () => {
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
         { description: 'Coffee', amount: 3.5, type: 'expense', currency: 'USD', positionInImage: 'top', confidence: 0.9 },
       ])));
       const noDate = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
       expect(noDate[0].dateConfidence).toBe(0);
+
+      visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
+        { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', positionInImage: 'middle', confidence: 0.95, dateConfidence: 0.4 },
+      ])));
+      const graded = await service.extractTransactionsFromMultipleImages(['data:image/jpeg;base64,one']);
+      expect(graded[0].dateConfidence).toBe(0.4);
 
       visionModel.generateContent.and.resolveTo(makeResult(JSON.stringify([
         { date: '2024-04-11', description: 'Onigiri', amount: 151, type: 'expense', currency: 'JPY', positionInImage: 'middle', confidence: 0.95 },

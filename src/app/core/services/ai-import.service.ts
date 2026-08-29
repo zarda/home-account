@@ -604,11 +604,11 @@ export class AIImportService {
   /**
    * Categorize multi-image extracted transactions, preserving image metadata.
    *
-   * Unlike the CSV/statement and strategy lanes, the producers here do grade
-   * a date reading — but only the missing case, patched to a
-   * fabricated `dateConfidence: 0`. The prompt still asks for no partial
-   * per-field date confidence, so resolveImportDate here only ever catches
-   * that fabricated zero or a date nothing can parse, never a merely doubtful but parseable date.
+   * The multi-image prompts now grade every row's date, not only the missing
+   * case — a missing date still gets the fabricated `dateConfidence: 0`, but a
+   * date that was read carries whatever grade the model gave it. So
+   * resolveImportDate below can catch a merely doubtful but parseable date on
+   * this lane too, not just that fabricated zero or a date nothing can parse.
    */
   private async categorizeMultiImageTransactions(
     transactions: MultiImageExtractedTransaction[],
