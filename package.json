@@ -1,6 +1,6 @@
 {
   "name": "home-account",
-  "version": "26.8.149",
+  "version": "26.8.150",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
