@@ -133,6 +133,14 @@ jobs:
       - name: Self-test the PROD_ENVIRONMENT_TS digest checker
         run: node scripts/check-prod-env.mjs --self-test
 
+      # deploy-web's index wait reaches the Firestore Admin API with a
+      # service-account token, so no job outside a deploy can exercise it for
+      # real. Its --self-test covers everything that can be proven offline:
+      # the state classification, the deadline math, the signed assertion, and
+      # the whole token-and-poll loop against a local stub server.
+      - name: Self-test the Firestore index wait
+        run: node scripts/wait-for-indexes.mjs --self-test
+
       # G3 in docs/ui-overflow.md: nothing in the app truncates. The script's
       # header always said it ran in CI; now it does. It reads the source, so
       # it catches the text-overflow added next month as well as the sites
@@ -213,8 +221,10 @@ jobs:
       # changes deploy nothing. The diff disables rename detection and path
       # quoting: a rename collapses to its destination under git's defaults
       # and a non-ASCII path arrives shell-quoted, and either would slip a
-      # file past the globs. The deploy jobs' stand-down checks mirror this
-      # case statement — the four must change together.
+      # file past the globs. The two deploy jobs' stand-down checks mirror
+      # this case statement, and the "What deploys when" table in
+      # docs/deploy.md states all three in prose — the three case statements
+      # and that table change together.
       - name: Classify changed files
         id: filter
         run: |
@@ -328,8 +338,10 @@ jobs:
       # moved past. If the newer commits change nothing this job deploys,
       # proceeding is safe — the built output is identical. If they do, stand
       # down: the newer commit's own run deploys them, and deploying here
-      # would publish stale content over it. The case statement mirrors the
-      # changes job's and the two must change together.
+      # would publish stale content over it. This case statement mirrors the
+      # changes job's classifier, as deploy-functions' does, and the "What
+      # deploys when" table in docs/deploy.md states all three in prose — the
+      # three case statements and that table change together.
       - name: Stand down if a newer commit changes what this job deploys
         id: tip
         run: |
@@ -367,6 +379,20 @@ jobs:
       - name: Deploy
         if: steps.tip.outputs.proceed == 'true'
         run: npx firebase deploy --only hosting,firestore,storage --project home-accounter --non-interactive -m "$GITHUB_SHA"
+
+      # Firestore builds composite indexes asynchronously: the deploy above
+      # returns as soon as the definitions are accepted, so this job could go
+      # green while the index a new query needs is still building and that
+      # query still throws failed-precondition. This polls the Firestore Admin
+      # API until every index is READY, which closes ADR 0077's index-wait gap
+      # — until now, watching the console until every entry read Enabled was
+      # the manual half of the release. The deploy has already happened when
+      # this runs, so red here means shipped but unverified, never "nothing
+      # was released".
+      - name: Wait for Firestore composite indexes
+        if: steps.tip.outputs.proceed == 'true'
+        timeout-minutes: 15
+        run: node scripts/wait-for-indexes.mjs
 
   deploy-functions:
     name: Deploy functions
@@ -413,8 +439,10 @@ jobs:
 
       # Same stand-down rule as deploy-web, judged against this job's own
       # target: proceed unless main has moved past this commit with changes
-      # that touch the functions deploy. The case statement mirrors the
-      # changes job's and the two must change together.
+      # that touch the functions deploy. This case statement mirrors the
+      # changes job's classifier, as deploy-web's does, and the "What deploys
+      # when" table in docs/deploy.md states all three in prose — the three
+      # case statements and that table change together.
       - name: Stand down if a newer commit changes what this job deploys
         id: tip
         run: |
