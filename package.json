@@ -21,6 +21,7 @@
     "prompts:check": "node scripts/check-prompts.mjs --self-test && node scripts/check-prompts.mjs",
     "indexes:check": "node scripts/check-firestore-indexes.mjs",
     "firebase-tools:check": "node scripts/check-firebase-tools-major.mjs --self-test && node scripts/check-firebase-tools-major.mjs",
+    "prod-env:check": "node scripts/check-prod-env.mjs --self-test && node scripts/check-prod-env.mjs",
     "truncation:check": "node scripts/check-truncation.mjs",
     "direction:check": "node scripts/check-direction.mjs --self-test && node scripts/check-direction.mjs",
     "cap:sync": "npx cap sync",

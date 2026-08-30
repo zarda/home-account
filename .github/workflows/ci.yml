@@ -124,6 +124,15 @@ jobs:
       - name: Check firebase-tools major version
         run: npm run firebase-tools:check
 
+      # The "Create local environment stubs" step above writes a ci-stub
+      # placeholder to the same path the real digest was taken from, so the
+      # compare half of prod-env:check would fail here by construction, on
+      # every run, not just a drifted secret. Only the checker's own logic
+      # is worth proving in this job; the real compare runs in deploy-web,
+      # against the actual PROD_ENVIRONMENT_TS secret.
+      - name: Self-test the PROD_ENVIRONMENT_TS digest checker
+        run: node scripts/check-prod-env.mjs --self-test
+
       # G3 in docs/ui-overflow.md: nothing in the app truncates. The script's
       # header always said it ran in CI; now it does. It reads the source, so
       # it catches the text-overflow added next month as well as the sites
@@ -300,6 +309,17 @@ jobs:
           };
           EOF
           printf '%s' "$PROD_ENVIRONMENT_TS" > src/environments/environment.prod-local.ts
+
+      # Nothing else can tell this secret apart from the committed digest
+      # taken the last time someone ran the sync ritual, so a drift here
+      # would otherwise ship silently. Runs before the production build so
+      # a mismatch fails in seconds, not after it. On mismatch: finish the
+      # ritual — edit the local file, `gh secret set PROD_ENVIRONMENT_TS <
+      # src/environments/environment.prod-local.ts`, `node
+      # scripts/check-prod-env.mjs --write`, commit the digest — then
+      # re-run.
+      - name: Verify PROD_ENVIRONMENT_TS matches the committed digest
+        run: node scripts/check-prod-env.mjs --self-test && node scripts/check-prod-env.mjs
 
       - name: Build (production)
         run: npm run build:web
