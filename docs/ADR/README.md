@@ -81,13 +81,18 @@ reverse — why a thing is the way it is, not how to use it.
 | [0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted | 2026-08-28 |
 | [0075](0075-a-successful-import-remembers-the-transactions-it-created.md) | A successful import remembers the transactions it created | Accepted; extends 0065 | 2026-08-28 |
 | [0076](0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md) | The welcome replays on request, and a first login speaks the browser's language | Accepted; reverses a gap of 0072 | 2026-08-28 |
-| [0077](0077-merges-deploy-what-they-changed.md) | Merges deploy what they changed | Accepted; closes a gap of 0035 | 2026-08-29 |
+| [0077](0077-merges-deploy-what-they-changed.md) | Merges deploy what they changed | Accepted; closes a gap of 0035; secret-drift gap closed by 0084, index-wait gap closed by 0087 | 2026-08-29 |
 | [0078](0078-the-version-is-the-year-the-month-and-a-count.md) | The version is the year, the month, and a count | Accepted | 2026-08-29 |
 | [0079](0079-the-multi-photo-lanes-grade-the-dates-they-read.md) | The multi-photo lanes grade the dates they read | Accepted; closes a gap of 0074 | 2026-08-30 |
 | [0080](0080-an-impossible-date-lands-on-today-however-well-it-was-read.md) | An impossible date lands on today, however well it was read | Accepted; closes a gap of 0074 | 2026-08-30 |
 | [0081](0081-the-history-shortcut-clears-the-filters-its-target-must-be-seen-through.md) | The history shortcut clears the filters its target must be seen through | Accepted; closes a gap of 0075 | 2026-08-30 |
 | [0082](0082-one-shot-query-params-leave-the-url-once-consumed.md) | One-shot query params leave the URL once consumed | Accepted | 2026-08-30 |
 | [0083](0083-a-destroyed-injector-silences-the-analytics-transport.md) | A destroyed injector silences the analytics transport | Accepted | 2026-08-30 |
+| [0084](0084-the-production-config-secret-answers-to-a-committed-digest.md) | The production config secret answers to a committed digest | Accepted; closes a gap of 0077 | 2026-08-31 |
+| [0085](0085-the-deploy-keys-rotation-is-an-issue-the-repo-opens-for-itself.md) | The deploy key's rotation is an issue the repo opens for itself | Accepted | 2026-08-31 |
+| [0086](0086-the-firebase-tools-major-stays-pinned-by-a-gate-not-a-habit.md) | The firebase-tools major stays pinned by a gate, not a habit | Accepted | 2026-08-31 |
+| [0087](0087-the-deploy-is-not-green-until-its-indexes-are-built.md) | The deploy is not green until its indexes are built | Accepted; closes a gap of 0077 | 2026-08-31 |
+| [0088](0088-the-smoke-harness-owns-the-noise-it-makes.md) | The smoke harness owns the noise it makes | Accepted | 2026-08-31 |
 
 ## What belongs here
 

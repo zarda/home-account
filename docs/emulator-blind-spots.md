@@ -64,12 +64,17 @@ firebase deploy --only firestore:rules
 ```
 
 Index builds on a populated collection are not instant — the deploy returns
-before they finish, so the Firebase console (Firestore → Indexes) shows each
-entry's build state, and every entry must read **Enabled** before the
-queries it serves stop erroring. That watch stays manual. The CLI may also
-offer to delete indexes that exist in the project but not in the file; the
-CI deploy declines that offer and continues, so a deletion only ever happens
-locally, with `--force`, after reading the list.
+before they finish, and every entry must be built before the queries it serves
+stop erroring. CI does that waiting: `deploy-web` runs
+`scripts/wait-for-indexes.mjs` after the deploy and fails when its bound is
+hit, so a red there means shipped but unverified rather than not shipped
+([deploy.md](deploy.md),
+[ADR 0087](ADR/0087-the-deploy-is-not-green-until-its-indexes-are-built.md)).
+The Firebase console (Firestore → Indexes) shows each entry's build state and
+is the fallback for reading it when that step is the one that failed. The CLI
+may also offer to delete indexes that exist in the project but not in the
+file; the CI deploy declines that offer and continues, so a deletion only ever
+happens locally, with `--force`, after reading the list.
 
 ## Drive the real call site (#250)
 
@@ -91,8 +96,8 @@ real serialization, real server stamps, live rules verdict.
 | Blind spot | What covers it | Where |
 |---|---|---|
 | Composite indexes not enforced | power-set check computed from the query builder | `npm run indexes:check`, in CI |
-| Index entries not deployed | the merge deploy + console shows every entry Enabled (manual) | `deploy-web` in CI, checklist above |
-| Rules edits not deployed | the merge deploy + a browser pass against the live project | `deploy-web` in CI, checklist above |
+| Index entries not deployed | the merge deploy + the CI wait that holds the run until every index is built | `deploy-web` in CI, `scripts/wait-for-indexes.mjs` |
+| Rules edits not deployed | the merge deploy + a browser pass against the live project (manual) | `deploy-web` in CI, checklist above |
 | Rules accept ≠ services send | one smoke case through the owning service per collection | `*.service.smoke.spec.ts` |
 | Query composes but needs an index | multi-equality cases note the limit in their doc block | `transaction-window.service.smoke.spec.ts` |
 
@@ -100,9 +105,10 @@ real serialization, real server stamps, live rules verdict.
 
 **A new server-side filter field?** Add it inside `buildTransactionWhere` and
 run `npm run indexes:check` — it will print the entries the file now needs.
-Regenerate the file — merging deploys it — and watch the console until every
-entry is Enabled. If the check passes without new entries, the regex did not
-see your field; fix the extraction before trusting the green.
+Regenerate the file — merging deploys it, and CI waits for the build, so the
+console is only there to read if that step goes red. If the check passes
+without new entries, the regex did not see your field; fix the extraction
+before trusting the green.
 
 **A new collection door, or a new predicate on an existing one?** Hand-built
 emulator cases first — accept and deny both sides — and then one case through
