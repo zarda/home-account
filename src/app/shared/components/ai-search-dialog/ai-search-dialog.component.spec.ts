@@ -4,7 +4,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
-import { of } from 'rxjs';
+import { of, EMPTY } from 'rxjs';
 import { AiSearchDialogComponent } from './ai-search-dialog.component';
 import { CategoryService } from '../../../core/services/category.service';
 import { CurrencyService } from '../../../core/services/currency.service';
@@ -50,7 +50,7 @@ describe('AiSearchDialogComponent', () => {
     analytics = jasmine.createSpyObj('AnalyticsService', ['trackSearchHistoryUsed']);
     nlSearch = jasmine.createSpyObj('NlSearchService', ['search', 'replayAggregate']);
     pendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply']);
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     router.navigate.and.resolveTo(true);
     dialogRef = jasmine.createSpyObj('MatDialogRef', ['close']);
     matDialog = jasmine.createSpyObj('MatDialog', ['open']);

@@ -66,8 +66,9 @@ describe('pageFields', () => {
   it('should strip the query string from page_location', () => {
     // gtag attaches the full URL to every hit on its own — a channel no
     // parameter allowlist covers. Today's query states are harmless
-    // (?showAll, ?date, ?action), but the first route to carry an id or a
-    // search term would leak it silently.
+    // (?showAll, ?date, ?action, ?tx — a transaction id, stripped from the
+    // URL once consumed), but the first route to carry a search term would
+    // leak it silently.
     const location = {
       origin: 'https://example.com',
       pathname: '/transactions',

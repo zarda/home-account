@@ -386,6 +386,7 @@ export class AIImportService {
         ...(tx.period ? { period: tx.period } : {}),
         ...(tx.isRecurring !== undefined ? { isRecurring: tx.isRecurring } : {}),
         ...(resolved.dateAssumed ? { dateAssumed: true } : {}),
+        ...(resolved.dateImplausible ? { dateImplausible: true } : {}),
       };
       return { ...row, ...this.currencySuggestionSlot(row) };
     });
@@ -604,11 +605,11 @@ export class AIImportService {
   /**
    * Categorize multi-image extracted transactions, preserving image metadata.
    *
-   * Unlike the CSV/statement and strategy lanes, the producers here do grade
-   * a date reading — but only the missing case, patched to a
-   * fabricated `dateConfidence: 0`. The prompt still asks for no partial
-   * per-field date confidence, so resolveImportDate here only ever catches
-   * that fabricated zero or a date nothing can parse, never a merely doubtful but parseable date.
+   * The multi-image prompts now grade every row's date, not only the missing
+   * case — a missing date still gets the fabricated `dateConfidence: 0`, but a
+   * date that was read carries whatever grade the model gave it. So
+   * resolveImportDate below can catch a merely doubtful but parseable date on
+   * this lane too, not just that fabricated zero or a date nothing can parse.
    */
   private async categorizeMultiImageTransactions(
     transactions: MultiImageExtractedTransaction[],
@@ -667,7 +668,8 @@ export class AIImportService {
         ...(original.receiptCountry ? { receiptCountry: original.receiptCountry } : {}),
         ...(original.period ? { period: original.period } : {}),
         ...(original.isRecurring !== undefined ? { isRecurring: original.isRecurring } : {}),
-        ...(resolved.dateAssumed ? { dateAssumed: true } : {})
+        ...(resolved.dateAssumed ? { dateAssumed: true } : {}),
+        ...(resolved.dateImplausible ? { dateImplausible: true } : {})
       };
       return { ...row, ...this.currencySuggestionSlot(row) };
     });
@@ -1123,7 +1125,8 @@ export class AIImportService {
         ...(t.receiptCountry ? { receiptCountry: t.receiptCountry } : {}),
         ...(t.period ? { period: t.period } : {}),
         ...(t.isRecurring !== undefined ? { isRecurring: t.isRecurring } : {}),
-        ...(resolved.dateAssumed ? { dateAssumed: true } : {})
+        ...(resolved.dateAssumed ? { dateAssumed: true } : {}),
+        ...(resolved.dateImplausible ? { dateImplausible: true } : {})
       };
       return row;
     });

@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { Router } from '@angular/router';
-import { of } from 'rxjs';
+import { of, EMPTY } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 import { Timestamp } from '@angular/fire/firestore';
@@ -87,7 +87,7 @@ describe('ImportHistoryComponent', () => {
     mockSnackBar = jasmine.createSpyObj('MatSnackBar', ['open']);
     mockAnnouncer = jasmine.createSpyObj('AnnouncerService', ['announce']);
     mockDialog = jasmine.createSpyObj('MatDialog', ['open']);
-    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
 
     await TestBed.configureTestingModule({
       imports: [ImportHistoryComponent, NoopAnimationsModule],
@@ -439,7 +439,7 @@ describe('ImportHistoryComponent transaction shortcut', () => {
     historyService.getImportHistory.and.returnValue(of([]));
     const translation = jasmine.createSpyObj('TranslationService', ['t']);
     translation.t.and.callFake((key: string) => key);
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
 
     await TestBed.configureTestingModule({
       imports: [ImportHistoryComponent, NoopAnimationsModule],

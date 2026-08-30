@@ -1135,6 +1135,7 @@
     "currencyFellBack": "Currency not read from the source — showing your base currency",
     "dateAssumed": "Date set to today",
     "dateAssumedTooltip": "The scanned date couldn't be read reliably, so this row is dated today — you can fix it after import.",
+    "dateImplausibleTooltip": "The scanned date is too far in the past or future to be right, so this row is dated today — you can fix it after import.",
     "setCurrency": "Change currency (currently {{currency}})",
     "setCurrencyForSelected": "Currency for selected",
     "removeLocation": "Remove suggested location",

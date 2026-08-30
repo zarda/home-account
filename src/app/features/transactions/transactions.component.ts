@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
@@ -71,6 +71,7 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   private dialog = inject(MatDialog);
   private quickAdd = inject(QuickAddService);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private translationService = inject(TranslationService);
   private notifications = inject(NotificationService);
   private announcer = inject(AnnouncerService);
@@ -238,6 +239,20 @@ export class TransactionsComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Check for a transaction to open (from the import-history shortcut).
+    // A one-shot snapshot read, deliberately not the re-firing
+    // route.queryParams subscription action=add uses below — replaying this
+    // on every later filter change would reopen the dialog behind the user.
+    // Read ahead of showAll/date below: the target may live outside any
+    // default date box, and jumpTo seeds through the active filters, so the
+    // window must carry none — tx forces show-all and skips the date
+    // pre-filter entirely.
+    this.pendingOpenTxId = this.route.snapshot.queryParamMap.get('tx');
+    if (this.pendingOpenTxId) {
+      this.showAll.set(true);
+      this.stripConsumedParams();
+    }
+
     // Check for showAll query param (from "View All" link)
     const showAllParam = this.route.snapshot.queryParamMap.get('showAll');
     if (showAllParam === 'true') {
@@ -248,19 +263,15 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     // The producer writes a local day key; new Date() would read it back as
     // UTC, pre-filtering to the neighbouring day west of UTC. parseDayKey is
     // the exact inverse, and returns null rather than an Invalid Date.
-    const dateParam = this.route.snapshot.queryParamMap.get('date');
-    if (dateParam) {
-      const date = parseDayKey(dateParam);
-      if (date) {
-        this.initialDate.set(date);
+    if (!this.pendingOpenTxId) {
+      const dateParam = this.route.snapshot.queryParamMap.get('date');
+      if (dateParam) {
+        const date = parseDayKey(dateParam);
+        if (date) {
+          this.initialDate.set(date);
+        }
       }
     }
-
-    // Check for a transaction to open (from the import-history shortcut).
-    // A one-shot snapshot read, deliberately not the re-firing
-    // route.queryParams subscription action=add uses below — replaying this
-    // on every later filter change would reopen the dialog behind the user.
-    this.pendingOpenTxId = this.route.snapshot.queryParamMap.get('tx');
 
     // Load categories (only once)
     this.categoriesSub = this.categoryService.loadCategories().subscribe();
@@ -274,12 +285,26 @@ export class TransactionsComponent implements OnInit, OnDestroy {
     this.route.queryParams.subscribe(params => {
       if (params['action'] === 'add') {
         setTimeout(() => this.openAddDialog(), 100);
+        this.stripConsumedParams();
       }
     });
   }
 
   ngOnDestroy(): void {
     this.categoriesSub?.unsubscribe();
+  }
+
+  // One-shot action params perform their action once; leaving them in the
+  // URL replays it on reload, and replaceUrl keeps Back pointing where the
+  // user came from rather than at the un-stripped URL. State-describing
+  // params (showAll, date) survive the merge untouched.
+  private stripConsumedParams(): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tx: null, action: null },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 
   onFiltersChanged(filters: TransactionFilters): void {

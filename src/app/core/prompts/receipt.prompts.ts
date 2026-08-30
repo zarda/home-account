@@ -268,11 +268,14 @@ For each UNIQUE transaction/line item found, extract:
 - imageIndex: which image this item appears in (0-based)
 - positionInImage: "top", "middle", or "bottom" based on vertical position
 - confidence: your confidence in the extraction accuracy (0.0 to 1.0)
+- dateConfidence: how clearly the date was legible, 0.0 to 1.0
 - merchant: store name (optional)
 - category: transaction category like Restaurants, Groceries, Shopping (optional)
 - details: full context for this item — quantity, size, flavor, discount, tax info (optional)
 - wasMerged: true if this item appeared in multiple images and was deduplicated
 - mergedFromImages: [0,1] if from multiple images (optional)
+
+Lower "dateConfidence" when the date is blurred, cut off, ambiguous or inferred rather than read. Use 0.0 for "dateConfidence" when no date is printed or legible — never invent today's date.
 
 For the LAST item of each receipt (receiptId group), include a "receiptDetails" field with the full receipt content reproduced line by line: all items with prices, discounts, subtotals, tax, service charges, payment method, change, etc. Keep the receipt's own language and script exactly as printed.
 ${RECEIPT_TOTAL_FIELD}
@@ -291,6 +294,7 @@ Return ONLY a valid JSON array (no markdown):
     "imageIndex": 0,
     "positionInImage": "middle",
     "confidence": 0.95,
+    "dateConfidence": 0.95,
     "merchant": "Store name",
     "details": "×1",
     "wasMerged": false,
@@ -331,9 +335,12 @@ FIELDS PER ITEM:
 - receiptId: Integer grouping items from the same receipt (1, 2, 3...)
 - positionInImage: "top", "middle", "bottom"
 - confidence: 0.0-1.0
+- dateConfidence: 0.0-1.0, how clearly the date was legible
 - category: Restaurants, Groceries, Coffee & Drinks, Fast Food, Shopping, Other (optional)
 - merchant: store name (optional)
 - details: quantity, size, flavor, discount if any (optional)
+
+Lower "dateConfidence" when the date is blurred, cut off, ambiguous or inferred rather than read. Use 0.0 for "dateConfidence" when no date is printed or legible — never invent today's date.
 
 For the LAST item of each receipt (receiptId group), include a "receiptDetails" field: reproduce the FULL receipt content line by line — all items with prices, discounts, tax, subtotals, service charges, payment method, change, etc. Keep the receipt's own language and script exactly as printed.
 ${RECEIPT_TOTAL_FIELD}
@@ -342,8 +349,8 @@ ${RECEIPT_COUNTRY_FIELD}
 
 Example:
 [
-  {"date":"2024-04-11","description":"<item name as printed>","amount":151,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"middle","confidence":0.95,"merchant":"<store name as printed>"},
-  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"bottom","confidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19","receiptTotal":481,"location":"<branch or address as printed, or empty>","country":"<ISO 3166-1 alpha-2 of the issuing country, or empty>"}
+  {"date":"2024-04-11","description":"<item name as printed>","amount":151,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"middle","confidence":0.95,"dateConfidence":0.95,"merchant":"<store name as printed>"},
+  {"date":"2024-04-11","description":"<item name as printed>","amount":330,"type":"expense","currency":"<ISO 4217 code>","receiptId":1,"positionInImage":"bottom","confidence":0.90,"dateConfidence":0.90,"merchant":"<store name as printed>","receiptDetails":"<item> ×1 — 151\\n<item> ×1 — 330\\n<subtotal line> 481\\n<tax line> 36\\n<total line> 481\\n<paid line> 500\\n<change line> 19","receiptTotal":481,"location":"<branch or address as printed, or empty>","country":"<ISO 3166-1 alpha-2 of the issuing country, or empty>"}
 ]
 
 Output ONLY JSON array. Nothing else.`,

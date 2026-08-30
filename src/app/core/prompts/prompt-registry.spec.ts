@@ -479,7 +479,7 @@ describe('prompt registry', () => {
 
     it('asks for the fields the consolidation pass reads back', () => {
       const prompt = render('multiImageReceipts');
-      for (const field of ['receiptId', 'imageIndex', 'positionInImage', 'confidence', 'wasMerged', 'mergedFromImages']) {
+      for (const field of ['receiptId', 'imageIndex', 'positionInImage', 'confidence', 'dateConfidence', 'wasMerged', 'mergedFromImages']) {
         expect(prompt).withContext(`missing ${field}`).toContain(`- ${field}`);
       }
     });
@@ -506,6 +506,12 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"country"');
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
+    });
+
+    it('never asks the model to default the date to today', () => {
+      const prompt = render('multiImageReceipts');
+      expect(prompt).toContain('never invent today');
+      expect(prompt).toContain('Use 0.0 for "dateConfidence"');
     });
 
     it('budgets one photo above what a long receipt actually costs', () => {
@@ -632,6 +638,13 @@ describe('prompt registry', () => {
       expect(prompt).toContain('"country"');
       expect(prompt).toContain('ISO 3166-1 alpha-2');
       expect(prompt).toContain('never a default');
+    });
+
+    it('never asks the model to default the date to today', () => {
+      const prompt = render('receiptItems');
+      expect(prompt).toContain('- dateConfidence');
+      expect(prompt).toContain('never invent today');
+      expect(prompt).toContain('Use 0.0 for "dateConfidence"');
     });
   });
 

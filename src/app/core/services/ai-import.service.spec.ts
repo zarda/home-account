@@ -1415,6 +1415,29 @@ describe('AIImportService', () => {
         jasmine.clock().uninstall();
       }
     });
+
+    it('a doubtful but parseable single-photo date lands on today, marked', async () => {
+      const now = new Date(2026, 7, 20, 9, 30);
+      jasmine.clock().install();
+      jasmine.clock().mockDate(now);
+      try {
+        // A real, parseable date the model itself graded as doubtful —
+        // distinct from the unparseable-date sibling above, which has no
+        // model grade to go on at all.
+        cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+          { date: '2024-06-01', description: 'Faded receipt', amount: 5, type: 'expense', currency: 'JPY',
+            imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, dateConfidence: 0.4 }
+        ]));
+
+        const result = await service.importFromMultipleImages([makeFile('a.png', 'image/png')]);
+
+        expect(+result.transactions[0].date).toBe(+now);
+        expect(result.transactions[0].dateAssumed).toBeTrue();
+        expect(result.transactions[0].fieldConfidence?.date).toBe(0.4);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
   });
 
   describe('importFromPDF', () => {

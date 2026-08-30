@@ -1063,6 +1063,7 @@
     "currencyFellBack": "通貨は読み取れませんでした — 基本通貨を表示しています",
     "dateAssumed": "日付を今日に設定済み",
     "dateAssumedTooltip": "スキャンした日付を確実に読み取れなかったため、この行は今日の日付になっています — インポート後に修正できます。",
+    "dateImplausibleTooltip": "スキャンした日付が過去や未来に大きくずれていて正しいとは考えられないため、この行は今日の日付になっています — インポート後に修正できます。",
     "setCurrency": "通貨を変更（現在 {{currency}}）",
     "setCurrencyForSelected": "選択した行の通貨",
     "removeLocation": "提案された場所を削除",

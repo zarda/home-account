@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal, NO_ERRORS_SCHEMA, WritableSignal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { of, Subject } from 'rxjs';
+import { of, Subject, EMPTY } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 
 import { REPORT_TABS, ReportsComponent } from './reports.component';
@@ -87,7 +87,7 @@ describe('ReportsComponent', () => {
     };
 
     mockPendingFilters = jasmine.createSpyObj('PendingFiltersService', ['apply', 'consume']);
-    mockRouter = jasmine.createSpyObj('Router', ['navigate']);
+    mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     mockRouter.navigate.and.returnValue(Promise.resolve(true));
 
     await TestBed.configureTestingModule({

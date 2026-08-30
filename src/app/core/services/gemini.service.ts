@@ -359,9 +359,14 @@ export class GeminiService extends CloudLLMProviderBase {
         receiptTotal: readReceiptTotal(t.receiptTotal),
         wasMerged: false,
         ...this.countrySlots(t.country, readPrintedLocation(t.location, t.merchant)),
-        // A missing date is patched with today's day-key above; nothing was
-        // claimed about that date, so nothing here claims a confidence for it.
-        ...(t.date ? {} : { dateConfidence: 0 }),
+        // A missing date is patched with today's day-key above, and that
+        // string parses just fine — so a claimed dateConfidence must not
+        // outlive the date it was claimed about. A date that was read keeps
+        // whatever grade the model reported; when it reported none, none is
+        // invented here either.
+        ...(t.date
+          ? (t.dateConfidence !== undefined ? { dateConfidence: t.dateConfidence } : {})
+          : { dateConfidence: 0 }),
       }));
     });
   }

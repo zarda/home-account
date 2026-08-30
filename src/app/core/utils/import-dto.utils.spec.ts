@@ -130,6 +130,7 @@ describe('resolveImportCurrency', () => {
  */
 describe('resolveImportDate', () => {
   const now = new Date(2026, 7, 20, 9, 30);
+  const DAY_MS = 24 * 60 * 60 * 1000;
 
   beforeEach(() => {
     jasmine.clock().install();
@@ -198,6 +199,67 @@ describe('resolveImportDate', () => {
     expect(+result.date).toBe(+parseDateInput('2026-08-12')!);
     expect(result.dateConfidence).toBe(0.7);
     expect(result.dateAssumed).toBeUndefined();
+  });
+
+  it('a graded date beyond tomorrow lands on today, marked implausible', () => {
+    const beyondTomorrow = new Date(+now + 2 * DAY_MS);
+    const result = resolveImportDate(beyondTomorrow, 0.9);
+
+    expect(+result.date).toBe(+now);
+    expect(result.dateConfidence).toBe(0.9);
+    expect(result.dateAssumed).toBeTrue();
+    expect(result.dateImplausible).toBeTrue();
+  });
+
+  it('a graded date older than ten years lands on today, marked implausible', () => {
+    const elevenYearsBack = new Date(now.getFullYear() - 11, now.getMonth(), now.getDate());
+    const result = resolveImportDate(elevenYearsBack, 0.9);
+
+    expect(+result.date).toBe(+now);
+    expect(result.dateConfidence).toBe(0.9);
+    expect(result.dateAssumed).toBeTrue();
+    expect(result.dateImplausible).toBeTrue();
+  });
+
+  it('tomorrow within the grace day is kept', () => {
+    const withinGrace = new Date(+now + 20 * 60 * 60 * 1000);
+    const result = resolveImportDate(withinGrace, 0.9);
+
+    expect(+result.date).toBe(+withinGrace);
+    expect(result.dateConfidence).toBe(0.9);
+    expect(result.dateAssumed).toBeUndefined();
+    expect(result.dateImplausible).toBeUndefined();
+  });
+
+  it('a nine-year-old graded date is kept', () => {
+    const nineYearsBack = new Date(now.getFullYear() - 9, now.getMonth(), now.getDate());
+    const result = resolveImportDate(nineYearsBack, 0.9);
+
+    expect(+result.date).toBe(+nineYearsBack);
+    expect(result.dateConfidence).toBe(0.9);
+    expect(result.dateAssumed).toBeUndefined();
+    expect(result.dateImplausible).toBeUndefined();
+  });
+
+  it('an ungraded absurd date is kept untouched', () => {
+    // The window must gate on a grade existing at all: CSV and JSON rows
+    // have no reader behind them, so an ungated window would redate every
+    // row of a years-old backup to today on re-import.
+    const elevenYearsBack = new Date(now.getFullYear() - 11, now.getMonth(), now.getDate());
+    const result = resolveImportDate(elevenYearsBack, undefined);
+
+    expect(+result.date).toBe(+elevenYearsBack);
+    expect('dateConfidence' in result).toBeFalse();
+    expect(result.dateAssumed).toBeUndefined();
+    expect(result.dateImplausible).toBeUndefined();
+  });
+
+  it("the implausible branch forwards the reader's grade", () => {
+    const elevenYearsBack = new Date(now.getFullYear() - 11, now.getMonth(), now.getDate());
+    const result = resolveImportDate(elevenYearsBack, 0.4);
+
+    expect(result.dateImplausible).toBeTrue();
+    expect(result.dateConfidence).toBe(0.4);
   });
 });
 

@@ -160,10 +160,10 @@
                 <span class="extra-chip date-assumed">
                   <mat-icon
                     class="verify-flag"
-                    [matTooltip]="dateAssumedTooltip()"
+                    [matTooltip]="dateAssumedTooltip(row)"
                     matTooltipPosition="above"
                     role="img"
-                    [attr.aria-label]="dateAssumedTooltip()"
+                    [attr.aria-label]="dateAssumedTooltip(row)"
                   >event</mat-icon>
                   <span class="extra-text">{{ 'import.dateAssumed' | translate }}</span>
                 </span>

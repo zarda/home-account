@@ -817,6 +817,116 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
+    'a confidently graded absurd date reaches the review step marked and is stored dated today',
+    async () => {
+      // Same single-receipt door as the doubted-date case above, but graded
+      // 0.9 — clear of the verify threshold, so needsVerification would stay
+      // quiet. The plausibility window, not the confidence check, is what
+      // has to catch this one. The amount is deliberately unlike any other
+      // fixture in this file: both this row and the doubted-date row above
+      // land dated "today" against the real wall clock, and a shared amount
+      // would trip duplicate detection's same-day-same-amount match.
+      const today = new Date();
+      const farFutureDate = new Date(today.getFullYear() + 2, today.getMonth(), today.getDate());
+      const parsedReceipt: ParsedReceipt = {
+        merchant: 'Time Traveler Diner',
+        amount: 61.3,
+        currency: 'USD',
+        date: farFutureDate,
+        suggestedCategory: 'other_expense',
+        confidence: 0.9,
+        fieldConfidence: { date: 0.9 }
+      };
+
+      const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
+        'CloudLLMProviderService',
+        [
+          'hasAnyCloudProvider',
+          'parseReceipt',
+          'initializeProviders',
+          'resetProviders',
+          'setOpenAIModel',
+          'setClaudeModel',
+          'availableProviders',
+          'providerStatus',
+          'resolveProvider'
+        ]
+      );
+      cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+      cloudLLMProvider.parseReceipt.and.resolveTo(parsedReceipt);
+      cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+      cloudLLMProvider.resetProviders.and.resolveTo(undefined);
+      cloudLLMProvider.availableProviders.and.returnValue([]);
+      cloudLLMProvider.providerStatus.and.returnValue({
+        gemini: false,
+        openai: false,
+        claude: false
+      });
+      cloudLLMProvider.resolveProvider.and.returnValue(null);
+
+      const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
+        'isOnline',
+        'registerBackgroundSync'
+      ]);
+      pwa.isOnline.and.returnValue(true);
+      pwa.registerBackgroundSync.and.resolveTo(true);
+
+      const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
+        'AnalyticsService',
+        ['trackAiAssistUsed']
+      );
+
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
+          { provide: PwaService, useValue: pwa },
+          { provide: AnalyticsService, useValue: analytics },
+          {
+            provide: CurrencyService,
+            useValue: { getExchangeRate: () => 1, ensureRatesLoaded: () => Promise.resolve() }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      // Earlier cases in this file already wrote rows of their own, so the
+      // confirm below is told apart by id rather than by count or field.
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      // Real clock: mocking it here would desync the Firebase SDK's own
+      // timers, so "today" is read back against the wall clock instead.
+      const testStart = Date.now();
+
+      const result = await importService.importFromImage(
+        new File([new Uint8Array([1])], 'timetravel.jpg', { type: 'image/jpeg' })
+      );
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].dateAssumed).toBeTrue();
+      expect(result.transactions[0].dateImplausible).toBeTrue();
+
+      const importHistory = await importService.confirmImport(
+        result.transactions,
+        'timetravel.jpg',
+        1234,
+        'image',
+        'receipt_image'
+      );
+      expect(importHistory.successCount).toBe(1);
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect((stored['date'] as Timestamp).toMillis()).toBeGreaterThanOrEqual(testStart);
+    },
+    30000
+  );
+
+  it(
     'the completed record names the transactions it created',
     async () => {
       // Only the real confirmImport path can prove this: the unit suite

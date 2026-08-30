@@ -36,12 +36,17 @@ needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
 also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
 files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries six more that are **review-step marks,
-not fields**: `currencyFellBack` (nobody read a currency, so the base currency
-is standing in), `dateAssumed` (the row's `date` is *now* rather than something
-read off the source, because `resolveImportDate` could not vouch for what
-arrived — see
+`CategorizedImportTransaction` carries seven more that are **review-step
+marks, not fields**: `currencyFellBack` (nobody read a currency, so the base
+currency is standing in), `dateAssumed` (the row's `date` is *now* rather than
+something read off the source, because `resolveImportDate` could not vouch
+for what arrived — see
 [ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md)),
+`dateImplausible` (set alongside `dateAssumed` when the source value was read
+clearly and was still beyond belief — more than a day ahead or ten years
+back — rather than unreadable; the one discriminator the review tooltip
+checks to pick its wording, see
+[ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)),
 `suggestedTags` (what was offered, so the confirm step can
 tell a removal from a row that never had any), `recurringMatch` (the rule
 this row looks like), `receiptCountry` (the country the reader concluded the

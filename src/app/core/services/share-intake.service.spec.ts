@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ApplicationRef, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
+import { EMPTY } from 'rxjs';
 
 import { ShareIntakeService, isAcceptedShare } from './share-intake.service';
 import { ShareStashStore, StashedShare } from './share-stash.store';
@@ -45,7 +46,7 @@ describe('ShareIntakeService', () => {
     nativeShare.completePendingShares.and.resolveTo(undefined);
     nativeShare.clearPendingShares.and.resolveTo(undefined);
 
-    router = jasmine.createSpyObj('Router', ['navigate']);
+    router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     router.navigate.and.resolveTo(true);
 
     userId = signal<string | null>(null);

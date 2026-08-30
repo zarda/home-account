@@ -18,7 +18,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { BehaviorSubject, Subject, of } from 'rxjs';
+import { BehaviorSubject, Subject, of, EMPTY } from 'rxjs';
 
 import { APP_BREAKPOINTS } from '../../core/layout/breakpoints';
 import { TransactionsComponent } from './transactions.component';
@@ -186,7 +186,7 @@ describe('Add affordance (transactions header FAB + bottom nav)', () => {
         },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
         { provide: MatDialog, useValue: dialog },
-        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         {
           provide: ActivatedRoute,
           useValue: {

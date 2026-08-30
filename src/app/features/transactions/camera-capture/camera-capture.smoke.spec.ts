@@ -12,6 +12,7 @@
 // Runs under `npm run smoke` alongside the emulator suites.
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { EMPTY } from 'rxjs';
 import { MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { CameraCaptureComponent } from './camera-capture.component';
@@ -75,7 +76,7 @@ describe('CameraCaptureComponent offline queue (smoke test)', () => {
         { provide: MatSnackBar, useValue: jasmine.createSpyObj('MatSnackBar', ['open']) },
         { provide: AnnouncerService, useValue: jasmine.createSpyObj('AnnouncerService', ['announce']) },
         { provide: MatDialogRef, useValue: dialogRef },
-        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate']) },
+        { provide: Router, useValue: jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY }) },
         {
           provide: DuplicateDetectionService,
           useValue: jasmine.createSpyObj('DuplicateDetectionService', ['checkDuplicates', 'markDuplicates']),

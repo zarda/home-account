@@ -165,6 +165,14 @@ export interface CategorizedImportTransaction {
    * buried under a misread day in the past is not.
    */
   dateAssumed?: boolean;
+  /**
+   * True alongside `dateAssumed` when the parsed value was read clearly and
+   * still cannot be right — more than a day ahead or more than ten calendar
+   * years back — rather than unreadable. Never written to a document, same
+   * as `dateAssumed`: the distinction is for the review step's tooltip,
+   * which needs to say "too far off" rather than "couldn't read it".
+   */
+  dateImplausible?: boolean;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
