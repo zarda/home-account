@@ -17,6 +17,8 @@ import { ClaudeService } from './claude.service';
 import { ProviderKeyService } from './provider-key.service';
 import { environment } from '../../../environments/environment';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * The three provider services, built by a real injector over the real graph.

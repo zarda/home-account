@@ -23,6 +23,8 @@ import { ReceiptQuotaService } from './receipt-quota.service';
 import { TransactionService } from './transaction.service';
 import { BudgetService } from './budget.service';
 import { Budget, Transaction } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for BudgetService.recalculateBudgetsForCategory

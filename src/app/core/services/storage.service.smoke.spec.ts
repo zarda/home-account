@@ -14,6 +14,8 @@ import {
   Storage
 } from '@angular/fire/storage';
 import { StorageService, MAX_RECEIPT_BYTES } from './storage.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for StorageService against the Firebase emulators.

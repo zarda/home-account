@@ -15,6 +15,8 @@ import {
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Enforcement tests for firestore.rules against the Firestore emulator.

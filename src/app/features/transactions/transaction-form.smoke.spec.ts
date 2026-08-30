@@ -34,6 +34,7 @@ import { AIStrategyService } from '../../core/services/ai-strategy.service';
 import { AIImportService } from '../../core/services/ai-import.service';
 import { ReceiptToNoteService } from '../../core/services/receipt-to-note.service';
 import { Transaction } from '../../models';
+import { silenceFirebaseWarnings } from '../../core/services/testing/silence-firebase-warnings';
 
 /**
  * Integration smoke test for the transaction form's tag and location fields
@@ -63,6 +64,7 @@ import { Transaction } from '../../models';
  */
 // Declaration order matters: the last spec tears the shared SDK down.
 jasmine.getEnv().configure({ random: false });
+silenceFirebaseWarnings();
 
 describe('TransactionFormComponent tags and location (emulator smoke test)', () => {
   const FIRESTORE_HOST = '127.0.0.1';

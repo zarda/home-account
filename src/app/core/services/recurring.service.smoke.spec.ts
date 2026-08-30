@@ -27,6 +27,8 @@ import { RecurringService, MAX_OCCURRENCES_PER_CLAIM } from './recurring.service
 import { addDays, dayKey, startOfDay } from '../utils/transaction-date.utils';
 import { prefillFromGroup } from '../utils/recurring-conversion.utils';
 import { StorableRecurringGroup } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the recurring catch-up loop against the Firestore

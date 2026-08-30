@@ -19,6 +19,8 @@ import { PwaService } from './pwa.service';
 import { NotificationService } from './notification.service';
 import { TranslationService } from './translation.service';
 import { AnalyticsService } from './analytics.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the offline-queue processor against the Firebase

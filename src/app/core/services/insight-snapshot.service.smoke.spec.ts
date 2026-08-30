@@ -23,6 +23,8 @@ import {
 } from '../utils/transaction-aggregation.utils';
 import { monthKeysBetween } from '../utils/transaction-date.utils';
 import { createRecurring, createTimestamp, createTransaction } from './testing/test-data';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Round-trip test for a real insight-snapshot document against the emulator.

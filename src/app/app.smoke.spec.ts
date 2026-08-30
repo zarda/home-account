@@ -49,10 +49,12 @@ import { CurrencyService } from './core/services/currency.service';
 import { MockAuthService, createMockUser } from './core/services/testing';
 import { BUDGET_TABS } from './features/budgets/budgets.component';
 import { REPORT_TABS } from './features/reports/reports.component';
+import { silenceFirebaseWarnings } from './core/services/testing/silence-firebase-warnings';
 
 // Declaration order matters here: the final spec shuts the shared Firebase
 // app down, so no spec may run after it. Random ordering would break that.
 jasmine.getEnv().configure({ random: false });
+silenceFirebaseWarnings();
 
 describe('App routes (emulator smoke test)', () => {
   const FIRESTORE_HOST = '127.0.0.1';

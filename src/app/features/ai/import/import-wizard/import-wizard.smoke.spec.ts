@@ -55,8 +55,10 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/services/gemini.service';
 import { DEFAULT_USER_PREFERENCES, ImportResult } from '../../../../models';
+import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
 jasmine.getEnv().configure({ random: false });
+silenceFirebaseWarnings();
 
 describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   let app: FirebaseApp;

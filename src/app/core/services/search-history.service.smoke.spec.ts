@@ -16,6 +16,8 @@ import { firstValueFrom } from 'rxjs';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { MAX_RECENT_SEARCHES, SearchHistoryService } from './search-history.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for SearchHistoryService against the Firestore

@@ -31,6 +31,8 @@ import { ReceiptQuotaService } from './receipt-quota.service';
 import { TranslationService } from './translation.service';
 import { ExportData } from './export.service';
 import { Category, InsightSnapshot, RecurringTransaction, Transaction } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for restoring a backup onto an account that still
