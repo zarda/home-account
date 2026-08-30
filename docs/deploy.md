@@ -149,8 +149,9 @@ the error, grant or enable exactly what it names, re-run the failed job.
 The first manual deploy went through the same iteration
 ([feedback.md](feedback.md), troubleshooting).
 
-**Key rotation.** Service-account keys never expire, so rotation is a habit,
-not an event:
+### Key rotation
+
+Service-account keys never expire, so rotation is a habit, not an event:
 
 ```bash
 gcloud iam service-accounts keys create /tmp/new-key.json \
@@ -162,6 +163,9 @@ gcloud iam service-accounts keys list \
 gcloud iam service-accounts keys delete <OLD_KEY_ID> \
   --iam-account github-deploy@home-accounter.iam.gserviceaccount.com
 ```
+
+A semi-annual reminder (Jan 1 / Jul 1) opens a GitHub issue for this via
+`rotation-reminder.yml`, and it can also be dispatched manually at any time.
 
 If key creation is ever refused (`iam.disableServiceAccountKeyCreation`),
 the path forward is Workload Identity Federation — the revisit condition
