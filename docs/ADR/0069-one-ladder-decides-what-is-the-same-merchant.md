@@ -109,6 +109,30 @@ raising it to protect `same-vendor` collapses recall (0.9 scores 0.372).
 
 The two-clause bar is what caught this. F1 alone would have shipped it.
 
+**Re-measured 2026-08-30 against `gemini-embedding-2`** (GA April 2026) — same
+corpus, same sweep, same bar, `baseline.json` still recording the original run:
+
+| decider | TP | FP | FN | TN | precision | recall | F1 |
+|---|---|---|---|---|---|---|---|
+| embedding @ 0.70 (best of sweep) | 33 | 14 | 2 | 12 | 70.2% | 94.3% | **80.5%** |
+
+F1 delta **+0.209** — and `same-vendor` falls further, **3/8** against the
+string ladder's 7/8. The newer model keeps every Latin-script merge from the
+first run, learns to separate `全聯福利中心` from `全家便利商店`, and adds five
+more: `Apple.com/Bill` with `Apple Store`, `Amazon Prime` with `Amazon.de`,
+`Verizon Wireless` with `Verizon Fios`, `Costco Gas` with `Costco Wholesale`,
+and `Delta Air Lines` with `Delta Dental`. The rest of the movement:
+`cjk-variant` 4/6 → 5/6, `processor-prefix` 5/8 → 6/8, `already-refused`
+4/4 → 3/4, `string-near` 4/8 → 3/8.
+
+Verdict unchanged: **declined** — and the second run sharpens the reason
+rather than merely repeating it. The regression is not a defect the next model
+fixes; semantic closeness *is* the failure mode, so a stronger model fails
+harder. The one lever neither run has tried: `gemini-embedding-2` dropped the
+fixed `taskType` parameter for free-form task instructions carried in the
+content itself, so "two products of one vendor are different things" is now an
+expressible objective. A third run is a probe edit, not an argument.
+
 ### The privacy constraint, which is binding regardless of the numbers
 
 [../insights.md](../insights.md) guarantees, with
@@ -193,9 +217,11 @@ the *probe* is unproblematic, and it changes nothing about the shipped promise.
   the answer. Every row carries a `family` and a `why` so a reviewer can
   disagree with one row rather than the number, and `--csv` runs the same
   metrics over a real export without recording an unreproducible baseline.
-- **Only one embedding model was measured.** A model whose objective separated
-  brand identity from semantic relatedness could plausibly clear the bar; the
-  retirement procedure in [../ai-models.md](../ai-models.md) does not cover this
+- **Both models measured are general-purpose embedders.** A model whose
+  objective separated brand identity from semantic relatedness could plausibly
+  clear the bar, and `gemini-embedding-2`'s task instructions are the first
+  interface that can even state that objective — untried above. The retirement
+  procedure in [../ai-models.md](../ai-models.md) still does not cover this
   file, because no embedding id ships.
 - **Embedding scores are not perfectly stable** across model versions, so a
   small future delta should be treated as noise until re-run.
