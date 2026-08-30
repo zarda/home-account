@@ -118,6 +118,12 @@ jobs:
       - name: Check Firestore composite indexes
         run: npm run indexes:check
 
+      # deploy-web's --non-interactive deploy (no --force) leans on firebase-tools
+      # declining index deletions instead of deploying blind. This keeps a
+      # Dependabot major bump from silently changing that contract underneath it.
+      - name: Check firebase-tools major version
+        run: npm run firebase-tools:check
+
       # G3 in docs/ui-overflow.md: nothing in the app truncates. The script's
       # header always said it ran in CI; now it does. It reads the source, so
       # it catches the text-overflow added next month as well as the sites
