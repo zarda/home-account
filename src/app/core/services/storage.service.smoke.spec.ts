@@ -10,10 +10,18 @@ import {
   connectStorageEmulator,
   ref,
   uploadBytes,
+  updateMetadata,
+  deleteObject,
   FirebaseStorage,
   Storage
 } from '@angular/fire/storage';
 import { StorageService, MAX_RECEIPT_BYTES } from './storage.service';
+import {
+  setDocumentAsOwner,
+  deleteDocumentAsOwner,
+  integerField,
+  timestampField
+} from './testing';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -212,5 +220,228 @@ describe('StorageService (emulator smoke test)', () => {
     await expectAsync(
       uploadBytes(suffixedRef, oversized, { contentType: 'image/jpeg' })
     ).toBeRejected();
+  });
+
+  describe('metadata updates', () => {
+    // The only door to storage.rules' `allow update` branch a test can open.
+    // The storage emulator routes every upload through `create` — an existing
+    // object at the path included — and leaves `update` to metadata writes
+    // alone, so no upload here reaches the branch production takes for every
+    // overwrite. These two cases stand in for it: that it exists at all, and
+    // that it is still scoped to the owner.
+    //
+    // The denial half needs a second account rather than a second path. The
+    // rule is only reached with a full `resource` when the object exists, so a
+    // write aimed at a stranger's empty path would be denied for the object
+    // being absent and would prove nothing about the owner check.
+    let strangerApp: FirebaseApp;
+    let strangerStorage: FirebaseStorage;
+
+    beforeAll(async () => {
+      strangerApp = initializeApp(
+        {
+          apiKey: 'fake-api-key',
+          projectId: 'demo-home-account',
+          storageBucket: 'demo-home-account.appspot.com'
+        },
+        `smoke-stranger-${Date.now()}`
+      );
+
+      const strangerAuth = getAuth(strangerApp);
+      connectAuthEmulator(strangerAuth, AUTH_URL, { disableWarnings: true });
+
+      strangerStorage = getStorage(strangerApp);
+      connectStorageEmulator(strangerStorage, STORAGE_HOST, STORAGE_PORT);
+
+      await signInAnonymously(strangerAuth);
+    });
+
+    afterAll(async () => {
+      await deleteApp(strangerApp).catch(() => undefined);
+    });
+
+    it('lets the owner update the metadata of their own receipt', async () => {
+      const name = 'smoke-metadata-owner';
+      await service.uploadReceipt(uid, name, imageFile());
+
+      await expectAsync(
+        updateMetadata(ref(storage, `users/${uid}/receipts/${name}`), {
+          customMetadata: { rotated: 'true' }
+        })
+      ).toBeResolved();
+    });
+
+    it('denies the same update to a different signed-in user', async () => {
+      const name = 'smoke-metadata-stranger';
+      await service.uploadReceipt(uid, name, imageFile());
+
+      await expectAsync(
+        updateMetadata(ref(strangerStorage, `users/${uid}/receipts/${name}`), {
+          customMetadata: { rotated: 'true' }
+        })
+      ).toBeRejectedWithError(/storage\/unauthorized/);
+    });
+  });
+});
+
+/**
+ * Enforcement tests for the receipt-image quota in storage.rules (#137).
+ *
+ * The quota used to live in the client alone, which fails open: a raw SDK
+ * client ignored the tier limit entirely. The rule reads the count the
+ * storage triggers maintain at users/{uid}/quota/receiptImages, so only the
+ * emulator — with firestore and storage running together, cross-service reads
+ * live — can show that it holds.
+ *
+ * A suite of its own with its own app and its own anonymous account: these
+ * cases put the account at its limit, and the suite above uploads freely as
+ * the account it signs in as. Specs run in random order, so sharing a uid
+ * would let one suite's quota state decide the other's outcomes.
+ *
+ * The triggers are not running here (the functions emulator is not part of
+ * the smoke run), so the quota document is seeded out of band through the
+ * emulator's owner credential — which is also the only way to write it, the
+ * rules denying every client write by design.
+ */
+describe('storage.rules receipt quota (emulator smoke test)', () => {
+  const STORAGE_HOST = '127.0.0.1';
+  const STORAGE_PORT = 9199;
+  const AUTH_URL = 'http://127.0.0.1:9099';
+
+  let app: FirebaseApp;
+  let storage: FirebaseStorage;
+  let uid: string;
+
+  const uploaded: string[] = [];
+  const receiptBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+
+  const quotaPath = () => `users/${uid}/quota/receiptImages`;
+
+  /** The document shape the triggers write. `limit: 0` means unlimited. */
+  const seedQuota = (count: number, limit: number) =>
+    setDocumentAsOwner(quotaPath(), {
+      count: integerField(count),
+      limit: integerField(limit),
+      updatedAt: timestampField()
+    });
+
+  const upload = (name: string) => {
+    uploaded.push(name);
+    return uploadBytes(ref(storage, `users/${uid}/receipts/${name}`), receiptBytes, {
+      contentType: 'image/jpeg'
+    });
+  };
+
+  /**
+   * The rule refused it, rather than merely: something went wrong. A bare
+   * rejection would let a downed emulator or a misconfigured bucket read as
+   * the quota holding, and these cases exist precisely to say it holds.
+   */
+  const expectDeniedByRules = (write: Promise<unknown>) =>
+    expectAsync(write).toBeRejectedWithError(/storage\/unauthorized/);
+
+  beforeAll(async () => {
+    app = initializeApp(
+      {
+        apiKey: 'fake-api-key',
+        projectId: 'demo-home-account',
+        storageBucket: 'demo-home-account.appspot.com'
+      },
+      `smoke-quota-${Date.now()}`
+    );
+
+    const auth = getAuth(app);
+    connectAuthEmulator(auth, AUTH_URL, { disableWarnings: true });
+
+    storage = getStorage(app);
+    connectStorageEmulator(storage, STORAGE_HOST, STORAGE_PORT);
+
+    const credential = await signInAnonymously(auth);
+    uid = credential.user.uid;
+  });
+
+  afterAll(async () => {
+    await deleteDocumentAsOwner(quotaPath()).catch(() => undefined);
+    await Promise.allSettled(
+      uploaded.map(name => deleteObject(ref(storage, `users/${uid}/receipts/${name}`)))
+    );
+    await deleteApp(app).catch(() => undefined);
+  });
+
+  it('allows an upload while the quota document does not exist yet', async () => {
+    // The triggers create the document on the first object event, so every
+    // account has a window with no document at all — and an account whose
+    // objects were all deleted goes back to having none. Denying here would
+    // lock every new user out of their first receipt.
+    await deleteDocumentAsOwner(quotaPath());
+
+    await expectAsync(upload('quota-bootstrap')).toBeResolved();
+  });
+
+  it('allows a new upload below the limit', async () => {
+    await seedQuota(3, 200);
+
+    await expectAsync(upload('quota-under-limit')).toBeResolved();
+  });
+
+  it('denies a new upload at the limit', async () => {
+    // The case the client-side check could not make: this rejection comes
+    // from the rule, with no app code in the path at all.
+    await seedQuota(200, 200);
+
+    await expectDeniedByRules(upload('quota-at-limit'));
+  });
+
+  it('denies a new upload past the limit', async () => {
+    // A count above the limit is reachable: the limit can be lowered, and a
+    // recount can land after several objects arrived.
+    await seedQuota(250, 200);
+
+    await expectDeniedByRules(upload('quota-over-limit'));
+  });
+
+  it('still allows overwriting an existing object at the limit', async () => {
+    // Replacing a receipt does not grow the count, so it must not consult
+    // the quota — otherwise an account at its limit could never re-shoot a
+    // blurred photo.
+    await seedQuota(3, 200);
+    await upload('quota-overwrite');
+
+    await seedQuota(200, 200);
+
+    await expectAsync(upload('quota-overwrite')).toBeResolved();
+  });
+
+  it('still allows deleting an object at the limit', async () => {
+    // Deleting is how an account gets back under its limit; a rule that
+    // blocked it would make the limit a trap with no way out.
+    await seedQuota(3, 200);
+    await upload('quota-delete');
+
+    await seedQuota(200, 200);
+
+    await expectAsync(
+      deleteObject(ref(storage, `users/${uid}/receipts/quota-delete`))
+    ).toBeResolved();
+  });
+
+  it('treats limit 0 as unlimited', async () => {
+    // The premium tier's sentinel, stored verbatim because neither JSON nor
+    // a rules expression carries an infinity. Read as a number it would deny
+    // every upload the paying accounts make.
+    await seedQuota(9999, 0);
+
+    await expectAsync(upload('quota-unlimited')).toBeResolved();
+  });
+
+  it('follows the document as it changes, with nothing cached', async () => {
+    // The rule reads the count per request. If anything memoised it, an
+    // account would stay blocked after deleting receipts until some opaque
+    // window expired.
+    await seedQuota(200, 200);
+    await expectDeniedByRules(upload('quota-rewritten'));
+
+    await seedQuota(1, 200);
+    await expectAsync(upload('quota-rewritten')).toBeResolved();
   });
 });

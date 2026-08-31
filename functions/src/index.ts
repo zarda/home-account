@@ -197,7 +197,10 @@ async function recountReceiptQuota(objectName: string | undefined): Promise<void
     const limits = await resolveTierLimits();
 
     // A full set, not a merge: the document states the result of one recount,
-    // so a stale field can never survive alongside a fresh count.
+    // so a stale field can never survive alongside a fresh count. storage.rules
+    // reads both fields off this document and denies when either is missing,
+    // so a partial write here would lock the account out of uploading rather
+    // than leave a stale figure behind.
     await quota.set({
       count: files.length,
       limit: limitForTier(tier, limits),
