@@ -245,6 +245,69 @@ describe('TransactionListComponent', () => {
       expect(spy).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * Both scroll corrections register an afterNextRender AFTER an await or an
+   * effect hop, so the component can be gone by the time they run. A
+   * registration on a destroyed injector throws NG0911 (registrations made
+   * while the view is alive are safe — Angular cancels those with it), which
+   * surfaced as intermittent teardown noise in the suite.
+   */
+  describe('post-destroy render guards', () => {
+    interface Internals {
+      maybeFetch(): Promise<void>;
+      scrollToTarget(id: string): void;
+    }
+    const internals = (c: TransactionListComponent) => c as unknown as Internals;
+
+    it('lands a page fetch quietly when the view was destroyed mid-flight', async () => {
+      windowSource.reachedEnd.set(false);
+
+      // The anchor is measured before the fetch, so the correction path is
+      // only entered when a row was measurable at that moment.
+      const rows = fixture.nativeElement.querySelectorAll('[data-tx-id]');
+      expect(rows.length).withContext('rows carry the anchor attribute').toBeGreaterThan(0);
+      expect(rows[0].getBoundingClientRect().bottom)
+        .withContext('the anchor row is measurable, so runAnchored keeps an anchorId')
+        .toBeGreaterThan(0);
+
+      let landFetch!: (added: number) => void;
+      windowSource.fetchNext.and.returnValues(
+        new Promise<number>((resolve) => { landFetch = resolve; }),
+        Promise.resolve(0)
+      );
+
+      const pending = internals(component).maybeFetch();
+      expect(windowSource.fetchNext)
+        .withContext('the near-edge check started a page fetch')
+        .toHaveBeenCalled();
+
+      // The user navigates away while the page is still in flight.
+      fixture.destroy();
+      landFetch(1);
+
+      await expectAsync(pending)
+        .withContext('the late fetch must not throw NG0911 out of its own promise chain')
+        .toBeResolved();
+    });
+
+    it('skips the scroll-into-view correction once the view is destroyed', () => {
+      fixture.destroy();
+
+      expect(() => internals(component).scrollToTarget(txns[0].id))
+        .withContext('registering after destroy would throw NG0911')
+        .not.toThrow();
+    });
+
+    it('still runs the scroll-into-view correction while the view is alive', () => {
+      internals(component).scrollToTarget(txns[0].id);
+      fixture.detectChanges();
+
+      expect(windowSource.clearScrollTarget)
+        .withContext('the guard must not short-circuit the live path')
+        .toHaveBeenCalled();
+    });
+  });
 });
 
 /**
