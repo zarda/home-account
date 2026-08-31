@@ -1288,6 +1288,10 @@
     "timeoutMinute": "1分後",
     "forgotPin": "PINをお忘れですか？サインアウトするとこのデバイスのPINが削除されます。データはそのまま残り、再サインイン後に新しいPINを設定できます。"
   },
+  "reminders": {
+    "billDue": "{{name}} は今日が支払日です",
+    "billDueIn": "{{name}} の支払日まであと {{count}} 日です"
+  },
   "insights": {
     "cadenceWeekly": "毎週",
     "cadenceBiweekly": "隔週",

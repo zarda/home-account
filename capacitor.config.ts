@@ -21,6 +21,12 @@ const config: CapacitorConfig = {
     FirebaseAuthentication: {
       skipNativeAuth: false,
       providers: ['google.com']
+    },
+    LocalNotifications: {
+      // Without this iOS suppresses any notification that arrives while the
+      // app is in the foreground — which is exactly when an open-app sweep
+      // raises one, so the whole feature would look silent on device.
+      presentationOptions: ['banner', 'sound']
     }
   }
 };

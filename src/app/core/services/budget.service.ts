@@ -71,7 +71,8 @@ export class BudgetService {
         budgetName: budget.name,
         percentUsed,
         remaining: Math.max(0, budget.amount - budget.spent),
-        severity
+        severity,
+        spentPeriod: budget.spentPeriod
       });
     }
 

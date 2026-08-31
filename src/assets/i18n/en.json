@@ -1360,6 +1360,13 @@
     "timeoutMinute": "1 minute",
     "forgotPin": "Forgot your PIN? Signing out clears it on this device — your data is safe, and you can set a new PIN after signing back in."
   },
+  "reminders": {
+    "billDue": "{{name}} is due today",
+    "billDueIn": {
+      "one": "{{name}} is due in {{count}} day",
+      "other": "{{name}} is due in {{count}} days"
+    }
+  },
   "insights": {
     "cadenceWeekly": "weekly",
     "cadenceBiweekly": "fortnightly",

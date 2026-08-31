@@ -1288,6 +1288,10 @@
     "timeoutMinute": "1 分鐘",
     "forgotPin": "忘記 PIN 碼？登出即可清除此裝置的 PIN 碼；您的資料不會遺失，重新登入後可設定新的 PIN 碼。"
   },
+  "reminders": {
+    "billDue": "{{name}} 今天到期",
+    "billDueIn": "{{name}} 將於 {{count}} 天後到期"
+  },
   "insights": {
     "cadenceWeekly": "每週",
     "cadenceBiweekly": "每兩週",

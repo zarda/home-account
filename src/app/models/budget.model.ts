@@ -49,6 +49,10 @@ export interface BudgetAlert {
   percentUsed: number;
   remaining: number;
   severity: BudgetAlertSeverity;
+  spentPeriod?: string;          // Carried from the budget so a consumer that
+                                 // must not repeat itself has a period to scope
+                                 // that decision to. Absent on docs written
+                                 // before the field existed.
 }
 
 export interface CreateBudgetDTO {
