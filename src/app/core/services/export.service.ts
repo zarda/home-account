@@ -1,4 +1,7 @@
 import { Injectable, inject } from '@angular/core';
+// Type only: the renderer itself still arrives through loadJsPdf's dynamic
+// import, so nothing here pulls jspdf into the initial bundle.
+import type { jsPDF } from 'jspdf';
 import { CategoryService } from './category.service';
 import { CurrencyService } from './currency.service';
 import { LocaleFormatService } from './locale-format.service';
@@ -18,6 +21,11 @@ import {
   MonthlyTotal
 } from '../../models';
 import { dayKey, parseDayKey } from '../utils/transaction-date.utils';
+import {
+  CategoryTypeTotal,
+  groupByCategoryAndType,
+  roundMoney,
+} from '../utils/transaction-aggregation.utils';
 import { parseCsvRows, toCsvText, unguardCsvCell } from '../utils/csv.utils';
 import { normalizeTags } from '../utils/tag.utils';
 import { locationSlot, toCreateTransactionDTO } from '../utils/import-dto.utils';
@@ -258,6 +266,200 @@ export class ExportService {
       import('jspdf-autotable'),
     ]);
     return { jsPDF, autoTable };
+  }
+
+  /**
+   * Per-category totals for the period, both sides of the ledger.
+   *
+   * Conversion goes through `amountInBase` — the write-time snapshot every
+   * other surface in the app reads — rather than a live `convert()`. The
+   * export dialog's own `toBaseCurrency` converts live and is a standing
+   * divergence; matching it here would make a legacy row total one way in
+   * this file and another way on every screen that shows the same period.
+   */
+  private categorySummaryTotals(
+    transactions: Transaction[],
+    baseCurrency: string
+  ): CategoryTypeTotal[] {
+    return groupByCategoryAndType(
+      transactions,
+      t => this.currencyService.amountInBase(t, baseCurrency)
+    );
+  }
+
+  /**
+   * One row per category and type, income included, in the account's base
+   * currency. Untruncated: this is the whole period, not a ranked top slice.
+   */
+  exportCategorySummaryCSV(transactions: Transaction[], baseCurrency: string): Blob {
+    const categories = this.categoryService.categories();
+    const headers = ['Type', 'Category', 'Amount', 'Currency', 'Transactions'];
+
+    const rows = this.categorySummaryTotals(transactions, baseCurrency).map(row => [
+      row.type,
+      this.getCategoryName(categories.find(c => c.id === row.categoryId)),
+      // Bare decimals, not formatCurrency: a symbol or a thousands separator
+      // fails csv.utils' NUMERIC test, the cell picks up the formula guard,
+      // and SUM() over the column returns 0 in every spreadsheet.
+      this.currencyService.formatAmount(row.total, baseCurrency),
+      baseCurrency,
+      row.count.toString()
+    ]);
+
+    return new Blob([toCsvText(headers, rows)], { type: 'text/csv;charset=utf-8;' });
+  }
+
+  /**
+   * Embed the CJK font and return the family every table must be styled with.
+   *
+   * Falls back to helvetica, which carries no CJK glyphs — an offline ja/tc
+   * user gets a readable Latin report rather than no report at all.
+   */
+  private async embedCJKFont(doc: jsPDF): Promise<string> {
+    const fontBase64 = await this.loadCJKFont();
+    if (!fontBase64) {
+      return 'helvetica';
+    }
+
+    try {
+      doc.addFileToVFS('NotoSansCJK-Regular.ttf', fontBase64);
+      doc.addFont('NotoSansCJK-Regular.ttf', 'NotoSansCJK', 'normal');
+      doc.setFont('NotoSansCJK');
+      return 'NotoSansCJK';
+    } catch (error) {
+      console.warn('Error adding CJK font to PDF:', error);
+      return 'helvetica';
+    }
+  }
+
+  /** Baseline below the last table autoTable drew. */
+  private afterLastTable(doc: jsPDF, fallback: number): number {
+    return (doc as unknown as { lastAutoTable?: { finalY: number } })
+      .lastAutoTable?.finalY ?? fallback;
+  }
+
+  /**
+   * Category summary as PDF.
+   *
+   * A separate builder rather than a mode of exportToPDF, which slices its
+   * category table to the ten largest rows and reorders the caller's array
+   * with an in-place sort. Neither is wanted here: the summary is the whole
+   * period, and the transactions handed in belong to the caller.
+   */
+  async exportCategorySummaryPDF(
+    transactions: Transaction[],
+    baseCurrency: string,
+    period: string
+  ): Promise<Blob> {
+    const { jsPDF, autoTable } = await this.loadJsPdf();
+    const doc = new jsPDF();
+    // Threaded into every table below. One table left on the default family
+    // renders as tofu for a ja or tc reader, and the offline spec only proves
+    // the fallback, never the threading.
+    const fontName = await this.embedCJKFont(doc);
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const categories = this.categoryService.categories();
+
+    doc.setFontSize(20);
+    doc.text(this.pdfT('categorySummaryTitle'), pageWidth / 2, 20, { align: 'center' });
+
+    doc.setFontSize(12);
+    doc.text(period, pageWidth / 2, 30, { align: 'center' });
+
+    const totals = this.categorySummaryTotals(transactions, baseCurrency);
+    const expenseRows = totals.filter(row => row.type === 'expense');
+    const incomeRows = totals.filter(row => row.type === 'income');
+    // Summed from the rounded rows rather than from the raw transactions, so
+    // the totals block agrees to the cent with the tables above it.
+    const sum = (rows: CategoryTypeTotal[]) =>
+      roundMoney(rows.reduce((running, row) => running + row.total, 0));
+    const expenseTotal = sum(expenseRows);
+    const incomeTotal = sum(incomeRows);
+
+    const body = (rows: CategoryTypeTotal[], total: number) => rows.map(row => [
+      this.getCategoryName(categories.find(c => c.id === row.categoryId)),
+      this.currencyService.formatCurrency(row.total, baseCurrency),
+      // A zero denominator is reachable: a period can hold rows that all
+      // convert to nothing.
+      total === 0 ? '0.0%' : `${((row.total / total) * 100).toFixed(1)}%`
+    ]);
+
+    let nextY = 45;
+
+    const section = (
+      heading: string,
+      percentHeading: string,
+      rows: CategoryTypeTotal[],
+      total: number
+    ): void => {
+      if (rows.length === 0) {
+        return;
+      }
+      // The summary is untruncated, so a heading can land at the foot of a
+      // page with no room for the table it introduces.
+      if (nextY > pageHeight - 40) {
+        doc.addPage();
+        nextY = 20;
+      }
+
+      doc.setFontSize(14);
+      doc.text(heading, 14, nextY);
+
+      autoTable(doc, {
+        startY: nextY + 5,
+        head: [[this.pdfT('category'), this.pdfT('amount'), percentHeading]],
+        body: body(rows, total),
+        theme: 'striped',
+        styles: { font: fontName, fontStyle: 'normal' },
+        headStyles: { fillColor: [63, 81, 181], font: fontName, fontStyle: 'normal' },
+        margin: { left: 14 }
+      });
+
+      nextY = this.afterLastTable(doc, nextY) + 15;
+    };
+
+    section(
+      this.pdfT('spendingByCategory'), this.pdfT('percentOfExpenses'),
+      expenseRows, expenseTotal
+    );
+    section(
+      this.pdfT('incomeByCategory'), this.pdfT('percentOfIncome'),
+      incomeRows, incomeTotal
+    );
+
+    if (nextY > pageHeight - 40) {
+      doc.addPage();
+      nextY = 20;
+    }
+
+    doc.setFontSize(14);
+    doc.text(this.pdfT('summary'), 14, nextY);
+
+    doc.setFontSize(11);
+    const money = (value: number) => this.currencyService.formatCurrency(value, baseCurrency);
+    doc.text(`${this.pdfT('totalIncome')}: ${money(incomeTotal)}`, 14, nextY + 10);
+    doc.text(`${this.pdfT('totalExpenses')}: ${money(expenseTotal)}`, 14, nextY + 17);
+    doc.text(`${this.pdfT('balance')}: ${money(roundMoney(incomeTotal - expenseTotal))}`, 14, nextY + 24);
+
+    this.stampPageFooters(doc, pageWidth, pageHeight);
+
+    return doc.output('blob');
+  }
+
+  /** Page number and generation date, centred at the foot of every page. */
+  private stampPageFooters(doc: jsPDF, pageWidth: number, pageHeight: number): void {
+    const pageCount = doc.getNumberOfPages();
+    const generatedDate = this.localeFormat.formatDate(new Date(), 'short');
+
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      const pageText = this.translationService.t('reports.pdf.pageOf', { current: i, total: pageCount });
+      const generatedText = this.translationService.t('reports.pdf.generatedOn', { date: generatedDate });
+      doc.text(`${pageText} | ${generatedText}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+    }
   }
 
   // Export report to PDF
