@@ -29,9 +29,19 @@ never ask, so a request that does not happen on that click never happens at all
 reminders it can never receive. A refusal therefore stores nothing, says why,
 and puts the switch back.
 
-Turning the switch off stores the opt-out without prompting. A granted opt-in
-sweeps immediately, so the first reminders arrive with the click rather than at
-whatever later moment the service's own effect would have reached.
+Turning the switch off stores the opt-out without prompting, and **retires
+whatever the operating system is still holding** before it stores anything. On
+the installed app that matters: a sweep may have booked a month of reminders
+ahead of time, no sweep runs once the preference is off to retire them, and
+without the cancel the switch would leave them arriving for weeks with nothing
+in the app able to stop them. Cancelling before the write rather than after it
+means a write that fails still leaves the user's "stop" acted on. Signing out
+cancels the same way, under the departing account — otherwise "Rent is due in
+3 days" fires on a device nobody is signed into, naming its bill.
+
+A granted opt-in sweeps immediately, so the first reminders arrive with the
+click rather than at whatever later moment the service's own effect would have
+reached.
 
 `enableReminders` on the user's `preferences` map is the stored value. Absent
 means off, and only a literal `true` counts as on — `firestore.rules` validates
@@ -130,6 +140,14 @@ than a failed sweep. An in-memory mirror of this session's deliveries bounds
 that to one repeat: the budget effect re-evaluates on change detection, so a
 storage that refuses writes would otherwise turn one alert into a stream.
 
+**A cancel takes its keys with it.** Scheduling marks a key delivered the
+moment the OS accepts it, so retiring the notification without retiring the
+entry would make the cancel one-way: turning reminders back on would never book
+that reminder again, and its day would pass in silence. Only the keys whose
+notification was actually cancelled are dropped — a reminder that already fired
+is no longer pending, so it is not among them, and its entry is exactly what
+stops the next sweep raising it a second time.
+
 **This log is per device, by design.** A shared one would let the first device
 to sweep silence every other, so a phone that swept in a drawer would cost you
 the reminder on the laptop you are actually using.
@@ -167,6 +185,9 @@ day, and the OS raises them whether or not the app is running.
   still stands**: cancelling needs none, and a reminder left pending by a
   permission revoked in iOS Settings would fire on the re-grant long after the
   rule behind it was edited away.
+- Switching reminders off and signing out run the same pass with nothing
+  produced, so everything pending goes. It is the only way out: a sweep is the
+  other caller, and no sweep runs while the preference is off.
 - `capacitor.config.ts` sets `LocalNotifications.presentationOptions` to
   `['banner', 'sound']`. Without it iOS suppresses any notification arriving
   while the app is in the foreground, which is exactly when an open-app sweep
@@ -187,6 +208,11 @@ convenience.
 - **Nothing checks the pending count against the 64 cap.** Scheduling only the
   nearest occurrence per rule bounds the pending set by the number of rules,
   which is a workaround rather than a measurement.
+- **A cancel whose key-drop cannot be written stays one-way.** Private-mode
+  Safari and a full quota throw on the write. The cancel itself still happens —
+  it is what the user asked for, and it is done before the log is touched — but
+  the entry survives, so turning reminders back on will not re-book that one.
+  Failing the opt-out instead would be the worse trade.
 - **A reminder is not retried.** If the device was off at 09:00, iOS delivers
   when it can; if the web page was closed, the immediate reminder is simply
   never raised and its key is never marked, so the next sweep will try again.

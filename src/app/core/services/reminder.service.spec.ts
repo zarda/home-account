@@ -784,6 +784,108 @@ describe('ReminderService', () => {
       expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id }] });
     });
 
+    it('re-books an ahead-of-time reminder that was cancelled while off', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+      const service = createService();
+      await sweep();
+      const [booked] = service.plugin.schedule.calls.mostRecent().args;
+      const id = booked.notifications[0].id;
+
+      // Off. Scheduling marked the key delivered, so retiring the notification
+      // without retiring the log entry would make the cancel one-way.
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+      await service.cancelScheduled();
+      expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id }] });
+
+      // On again, the toggle's own sweep.
+      service.plugin.getPending.and.resolveTo({ notifications: [] });
+      await service.sweep();
+
+      expect(service.plugin.schedule).toHaveBeenCalledTimes(2);
+      const [rebooked] = service.plugin.schedule.calls.mostRecent().args;
+      expect(rebooked.notifications.map(notification => notification.id)).toEqual([id]);
+    });
+
+    it('leaves a reminder that already fired suppressed across an off and on', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [
+        occurrence({ date: daysOut(0), remindDaysBefore: 0 }),
+        occurrence({ recurringId: 'rule-2', name: 'Gym', date: daysOut(10), remindDaysBefore: 3 }),
+      ];
+      const service = createService();
+      await sweep();
+
+      const [booked] = service.plugin.schedule.calls.mostRecent().args;
+      const pendingId = booked.notifications.find(n => n.schedule)?.id;
+      const firedId = booked.notifications.find(n => !n.schedule)?.id;
+      expect(pendingId).toBeDefined();
+      expect(firedId).toBeDefined();
+
+      // Only the ahead-of-time one is still pending: the immediate reminder was
+      // handed to the user the moment it was raised, and the log entry that
+      // stops it being raised again has to survive the cancel.
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id: pendingId as number, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+      await service.cancelScheduled();
+
+      service.plugin.getPending.and.resolveTo({ notifications: [] });
+      await service.sweep();
+
+      const [rebooked] = service.plugin.schedule.calls.mostRecent().args;
+      expect(rebooked.notifications.map(notification => notification.id)).toEqual([
+        pendingId as number,
+      ]);
+    });
+
+    it('re-books for an account signed back in after a sign-out cancelled it', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+      const service = createService();
+      await sweep();
+      const [booked] = service.plugin.schedule.calls.mostRecent().args;
+      const id = booked.notifications[0].id;
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+
+      // The sign-out cancels under the departing account, which the auth signal
+      // has already moved off; its keys are the ones that have to go.
+      currentUser.set(null);
+      await sweep();
+
+      service.plugin.getPending.and.resolveTo({ notifications: [] });
+      setPreferences({ enableReminders: true });
+      await sweep();
+
+      expect(service.plugin.schedule).toHaveBeenCalledTimes(2);
+      const [rebooked] = service.plugin.schedule.calls.mostRecent().args;
+      expect(rebooked.notifications.map(notification => notification.id)).toEqual([id]);
+    });
+
+    it('cancels even when the sent log refuses the write', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+      const service = createService();
+      await sweep();
+      const [booked] = service.plugin.schedule.calls.mostRecent().args;
+      const id = booked.notifications[0].id;
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+      const setItem = spyOn(Storage.prototype, 'setItem').and.throwError('QuotaExceededError');
+
+      await expectAsync(service.cancelScheduled()).toBeResolved();
+
+      // The cancel is what the user asked for, and the log is touched only
+      // once the operating system has accepted it.
+      expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id }] });
+      expect(service.plugin.cancel).toHaveBeenCalledBefore(setItem);
+    });
+
     it('retires nothing when a session opens on an account already signed in', async () => {
       isNative.and.returnValue(true);
       occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];

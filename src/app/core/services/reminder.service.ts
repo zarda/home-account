@@ -119,7 +119,7 @@ export class ReminderService {
         // departure, never the first account of a session: the sent log spares
         // an already-booked key from being scheduled again, so cancelling on
         // the way in would drop what an earlier session scheduled for good.
-        if (previous !== null) void this.cancelScheduled();
+        if (previous !== null) void this.cancelScheduledFor(previous);
       }
 
       if (enabled && userId) this.maybeSweepBills();
@@ -188,12 +188,26 @@ export class ReminderService {
    * scheduled bill reminders firing with no way in the app to stop them.
    */
   async cancelScheduled(): Promise<void> {
+    await this.cancelScheduledFor(this.auth.userId());
+  }
+
+  /**
+   * The account the retired reminders belong to is passed in rather than read:
+   * on a sign-out the auth signal has already moved off it, and dropping the
+   * keys under the wrong account would leave the departing one's reminders
+   * cancelled and still logged as delivered.
+   */
+  private async cancelScheduledFor(userId: string | null): Promise<void> {
     // Nothing is ever scheduled ahead of time on the web, and the plugin proxy
     // has no native half to ask.
     if (!Capacitor.isNativePlatform()) return;
 
     try {
-      await this.prunePending(new Set());
+      const cancelled = await this.prunePending(new Set());
+      // Strictly after the operating system has accepted the cancel: a key
+      // dropped for a notification that is in fact still pending would be
+      // scheduled a second time.
+      if (userId) this.forgetDelivered(userId, cancelled);
     } catch {
       // The plugin is absent from this binary, or the OS refused the call.
       // Reminders are a convenience and must never surface as a failure.
@@ -445,14 +459,49 @@ export class ReminderService {
     }
   }
 
-  /** Cancel everything pending but the ids in `produced`. Callers own the catch. */
-  private async prunePending(produced: Set<number>): Promise<void> {
+  /**
+   * Cancel everything pending but the ids in `produced`, reporting back what
+   * the operating system accepted a cancel for. Callers own the catch.
+   */
+  private async prunePending(produced: Set<number>): Promise<Set<number>> {
     const plugin = this.nativePlugin();
     const pending = await plugin.getPending();
     const stale = pending.notifications
       .filter(notification => !produced.has(notification.id))
       .map(notification => ({ id: notification.id }));
     if (stale.length > 0) await plugin.cancel({ notifications: stale });
+    return new Set(stale.map(notification => notification.id));
+  }
+
+  /**
+   * Drop the sent-log entries for the reminders just cancelled.
+   *
+   * Without this a cancel is one-way: the log would go on reporting them as
+   * delivered, so turning reminders back on would never book them again and
+   * the reminder day would pass in silence — the same bill, silently missed,
+   * for every rule that had been scheduled.
+   *
+   * Only the cancelled ids, never the whole log. A reminder that actually
+   * fired is no longer pending and so is not among them, and its entry is what
+   * stops the next sweep raising it a second time.
+   */
+  private forgetDelivered(userId: string, cancelled: Set<number>): void {
+    if (cancelled.size === 0) return;
+
+    for (const key of this.deliveredThisSession) {
+      if (cancelled.has(notificationId(key))) this.deliveredThisSession.delete(key);
+    }
+
+    const log = this.readSentLog(userId);
+    let dropped = false;
+    for (const key of Object.keys(log)) {
+      if (!cancelled.has(notificationId(key))) continue;
+      delete log[key];
+      dropped = true;
+    }
+    // Only when something actually went: an unreadable log reads as empty, and
+    // writing that back would clear the entries it could not see.
+    if (dropped) this.writeSentLog(userId, log);
   }
 
   private wasDelivered(userId: string, key: string): boolean {
