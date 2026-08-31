@@ -55,7 +55,7 @@ describe('ReminderSettingsComponent', () => {
 
     reminders = jasmine.createSpyObj<ReminderService>(
       'ReminderService',
-      ['requestPermission', 'sweep'],
+      ['requestPermission', 'sweep', 'cancelScheduled'],
       {
         // Derived through the real resolver, so the stub cannot drift from
         // what the service would report for the same account.
@@ -64,6 +64,7 @@ describe('ReminderSettingsComponent', () => {
     );
     reminders.requestPermission.and.resolveTo(true);
     reminders.sweep.and.resolveTo();
+    reminders.cancelScheduled.and.resolveTo();
 
     notifications = jasmine.createSpyObj('NotificationService', ['error']);
 
@@ -119,6 +120,7 @@ describe('ReminderSettingsComponent', () => {
       await flip(true);
 
       expect(reminders.sweep).toHaveBeenCalledTimes(1);
+      expect(reminders.cancelScheduled).not.toHaveBeenCalled();
     });
 
     it('should store nothing when permission is refused', async () => {
@@ -173,6 +175,25 @@ describe('ReminderSettingsComponent', () => {
       await flip(false);
 
       expect(reminders.sweep).not.toHaveBeenCalled();
+    });
+
+    it('should retire what the operating system is still holding', async () => {
+      await flip(false);
+
+      // Nothing sweeps once the preference is off, so a reminder already
+      // scheduled with the OS would otherwise keep firing for a month.
+      expect(reminders.cancelScheduled).toHaveBeenCalledTimes(1);
+      expect(reminders.cancelScheduled).toHaveBeenCalledBefore(
+        mockAuthService.updateUserPreferences
+      );
+    });
+
+    it('should retire them even when the write fails', async () => {
+      mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('offline')));
+
+      await flip(false);
+
+      expect(reminders.cancelScheduled).toHaveBeenCalledTimes(1);
     });
   });
 

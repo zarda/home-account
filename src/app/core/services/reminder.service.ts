@@ -108,10 +108,18 @@ export class ReminderService {
       const enabled = this.enabled();
 
       if (userId !== this.lastUserId) {
+        const previous = this.lastUserId;
         this.lastUserId = userId;
         this.lastSweptAt = 0;
         this.deliveredThisSession.clear();
         this.closeBillSweep();
+        // Signing out leaves that account's scheduled reminders booked with
+        // the operating system, naming its bills on a device nobody is signed
+        // into; a switch leaves them to fire for the wrong account. Only a
+        // departure, never the first account of a session: the sent log spares
+        // an already-booked key from being scheduled again, so cancelling on
+        // the way in would drop what an earlier session scheduled for good.
+        if (previous !== null) void this.cancelScheduled();
       }
 
       if (enabled && userId) this.maybeSweepBills();
@@ -164,9 +172,32 @@ export class ReminderService {
    * debounce is there to stop a flap between tabs reopening a listener, and
    * applying it to an explicit user action would make turning reminders on
    * within five minutes of an app-open sweep do nothing at all.
+   *
+   * It still stamps `lastSweptAt`, which is what stops the preference this
+   * click writes from sweeping a second time when it reaches the effect.
    */
   async sweep(): Promise<void> {
     await this.sweepBills();
+  }
+
+  /**
+   * Retire every reminder this device has pending.
+   *
+   * A sweep is the only other caller of the prune and no sweep runs while the
+   * preference is off, so without this an opt-out would leave up to a month of
+   * scheduled bill reminders firing with no way in the app to stop them.
+   */
+  async cancelScheduled(): Promise<void> {
+    // Nothing is ever scheduled ahead of time on the web, and the plugin proxy
+    // has no native half to ask.
+    if (!Capacitor.isNativePlatform()) return;
+
+    try {
+      await this.prunePending(new Set());
+    } catch {
+      // The plugin is absent from this binary, or the OS refused the call.
+      // Reminders are a convenience and must never surface as a failure.
+    }
   }
 
   private watchVisibility(): void {
@@ -406,17 +437,22 @@ export class ReminderService {
         // so anything still pending that this sweep did not produce is retired
         // — including the keys already delivered, whose pending notification
         // has not fired yet. This service is the only scheduler in the app.
-        const produced = new Set(reminders.map(reminder => notificationId(reminder.key)));
-        const pending = await plugin.getPending();
-        const stale = pending.notifications
-          .filter(notification => !produced.has(notification.id))
-          .map(notification => ({ id: notification.id }));
-        if (stale.length > 0) await plugin.cancel({ notifications: stale });
+        await this.prunePending(new Set(reminders.map(reminder => notificationId(reminder.key))));
       }
     } catch {
       // The plugin is absent from this binary, or the OS refused the call.
       // Reminders are a convenience and must never surface as a failure.
     }
+  }
+
+  /** Cancel everything pending but the ids in `produced`. Callers own the catch. */
+  private async prunePending(produced: Set<number>): Promise<void> {
+    const plugin = this.nativePlugin();
+    const pending = await plugin.getPending();
+    const stale = pending.notifications
+      .filter(notification => !produced.has(notification.id))
+      .map(notification => ({ id: notification.id }));
+    if (stale.length > 0) await plugin.cancel({ notifications: stale });
   }
 
   private wasDelivered(userId: string, key: string): boolean {

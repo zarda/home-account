@@ -35,6 +35,11 @@ export class ReminderSettingsComponent {
 
   async onEnabledChange(event: MatSlideToggleChange): Promise<void> {
     if (!event.checked) {
+      // Before the write, not after it: the operating system may be holding a
+      // month of bill reminders this device scheduled, no sweep runs once the
+      // preference is off to retire them, and a write that fails must still
+      // leave the user's "stop" acted on rather than firing for a month.
+      await this.reminders.cancelScheduled();
       await this.persist(false, event);
       return;
     }

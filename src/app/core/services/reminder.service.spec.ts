@@ -707,6 +707,104 @@ describe('ReminderService', () => {
     });
   });
 
+  describe('cancelScheduled', () => {
+    it('retires everything the operating system still holds', async () => {
+      isNative.and.returnValue(true);
+      const service = createService();
+      service.plugin.getPending.and.resolveTo({
+        notifications: [
+          { id: 11, title: 'app.title', body: 'reminders.billDueIn' },
+          { id: 22, title: 'app.title', body: 'reminders.billDueIn' },
+        ],
+      });
+
+      await service.cancelScheduled();
+
+      expect(service.plugin.cancel).toHaveBeenCalledWith({
+        notifications: [{ id: 11 }, { id: 22 }],
+      });
+    });
+
+    it('touches no plugin on the web, where nothing is ever scheduled', async () => {
+      const service = createService();
+
+      await expectAsync(service.cancelScheduled()).toBeResolved();
+
+      expect(service.plugin.getPending).not.toHaveBeenCalled();
+      expect(service.plugin.cancel).not.toHaveBeenCalled();
+    });
+
+    it('reports a plugin missing from the binary as no failure', async () => {
+      isNative.and.returnValue(true);
+      const service = createService();
+      service.plugin.getPending.and.rejectWith(new Error('not implemented'));
+
+      await expectAsync(service.cancelScheduled()).toBeResolved();
+    });
+
+    it('retires the departing account on sign-out', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+      const service = createService();
+      await sweep();
+
+      // The reminder booked above, still pending: on a signed-out device it
+      // would fire naming a bill nobody there has an account for.
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      const id = request.notifications[0].id;
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+
+      currentUser.set(null);
+      await sweep();
+
+      expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id }] });
+    });
+
+    it('retires the previous account on a switch', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+      const service = createService();
+      await sweep();
+
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      const id = request.notifications[0].id;
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+
+      currentUser.set(
+        createMockUser('user-2', {
+          preferences: { ...DEFAULT_USER_PREFERENCES, enableReminders: false },
+        })
+      );
+      await sweep();
+
+      expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id }] });
+    });
+
+    it('retires nothing when a session opens on an account already signed in', async () => {
+      isNative.and.returnValue(true);
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+      const booked = createService();
+      await sweep();
+      const [request] = booked.plugin.schedule.calls.mostRecent().args;
+      const id = request.notifications[0].id;
+
+      // The relaunch. The sent log spares an already-booked key from being
+      // scheduled again, so treating the first account of a session as a
+      // change would drop what the previous session scheduled for good.
+      const reopened = createService();
+      reopened.plugin.getPending.and.resolveTo({
+        notifications: [{ id, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+      await sweep();
+
+      expect(reopened.plugin.cancel).not.toHaveBeenCalled();
+    });
+  });
+
   describe('requestPermission', () => {
     it('asks the operating system on native', async () => {
       isNative.and.returnValue(true);
