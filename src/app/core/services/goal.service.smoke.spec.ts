@@ -18,6 +18,8 @@ import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { GoalService, GOAL_CONTRIBUTION_BELOW_ZERO } from './goal.service';
 import { Goal } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for GoalService against the emulators.

@@ -1,0 +1,45 @@
+name: Rotation reminder
+on:
+  schedule:
+    - cron: '0 9 1 1,7 *'
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open the rotation issue unless one is already open
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: 'Rotate the github-deploy service-account key'
+        run: |
+          if ! titles=$(gh issue list --state open --limit 100 --json title --jq '.[].title'); then
+            echo "Could not list open issues; refusing to risk a duplicate." >&2
+            exit 1
+          fi
+          if grep -Fxq "$TITLE" <<< "$titles"; then
+            echo "An open rotation issue already exists; nothing to do."
+            exit 0
+          fi
+          BODY=$(cat << 'EOF'
+          Semi-annual reminder to rotate the github-deploy service-account
+          key (`FIREBASE_SERVICE_ACCOUNT`) — keys never expire, so rotation
+          is the only compensating control.
+
+          - [ ] `gcloud iam service-accounts keys create /tmp/new-key.json --iam-account github-deploy@home-accounter.iam.gserviceaccount.com`
+          - [ ] `gh secret set FIREBASE_SERVICE_ACCOUNT < /tmp/new-key.json`
+          - [ ] `rm /tmp/new-key.json`
+          - [ ] `gcloud iam service-accounts keys list --iam-account github-deploy@home-accounter.iam.gserviceaccount.com`
+          - [ ] `gcloud iam service-accounts keys delete <OLD_KEY_ID> --iam-account github-deploy@home-accounter.iam.gserviceaccount.com`
+          - [ ] Confirm the rotation via the next merge to main, or a manual CI dispatch with a deploy input enabled
+
+          Full steps: https://github.com/zarda/home-account/blob/main/docs/deploy.md#key-rotation
+
+          If key creation is ever policy-blocked
+          (`iam.disableServiceAccountKeyCreation`), Workload Identity
+          Federation is the path forward.
+          EOF
+          )
+          gh issue create --title "$TITLE" --label security --body "$BODY"

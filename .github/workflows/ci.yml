@@ -118,6 +118,29 @@ jobs:
       - name: Check Firestore composite indexes
         run: npm run indexes:check
 
+      # deploy-web's --non-interactive deploy (no --force) leans on firebase-tools
+      # declining index deletions instead of deploying blind. This keeps a
+      # Dependabot major bump from silently changing that contract underneath it.
+      - name: Check firebase-tools major version
+        run: npm run firebase-tools:check
+
+      # The "Create local environment stubs" step above writes a ci-stub
+      # placeholder to the same path the real digest was taken from, so the
+      # compare half of prod-env:check would fail here by construction, on
+      # every run, not just a drifted secret. Only the checker's own logic
+      # is worth proving in this job; the real compare runs in deploy-web,
+      # against the actual PROD_ENVIRONMENT_TS secret.
+      - name: Self-test the PROD_ENVIRONMENT_TS digest checker
+        run: node scripts/check-prod-env.mjs --self-test
+
+      # deploy-web's index wait reaches the Firestore Admin API with a
+      # service-account token, so no job outside a deploy can exercise it for
+      # real. Its --self-test covers everything that can be proven offline:
+      # the state classification, the deadline math, the signed assertion, and
+      # the whole token-and-poll loop against a local stub server.
+      - name: Self-test the Firestore index wait
+        run: node scripts/wait-for-indexes.mjs --self-test
+
       # G3 in docs/ui-overflow.md: nothing in the app truncates. The script's
       # header always said it ran in CI; now it does. It reads the source, so
       # it catches the text-overflow added next month as well as the sites
@@ -198,8 +221,10 @@ jobs:
       # changes deploy nothing. The diff disables rename detection and path
       # quoting: a rename collapses to its destination under git's defaults
       # and a non-ASCII path arrives shell-quoted, and either would slip a
-      # file past the globs. The deploy jobs' stand-down checks mirror this
-      # case statement — the four must change together.
+      # file past the globs. The two deploy jobs' stand-down checks mirror
+      # this case statement, and the "What deploys when" table in
+      # docs/deploy.md states all three in prose — the three case statements
+      # and that table change together.
       - name: Classify changed files
         id: filter
         run: |
@@ -295,6 +320,17 @@ jobs:
           EOF
           printf '%s' "$PROD_ENVIRONMENT_TS" > src/environments/environment.prod-local.ts
 
+      # Nothing else can tell this secret apart from the committed digest
+      # taken the last time someone ran the sync ritual, so a drift here
+      # would otherwise ship silently. Runs before the production build so
+      # a mismatch fails in seconds, not after it. On mismatch: finish the
+      # ritual — edit the local file, `gh secret set PROD_ENVIRONMENT_TS <
+      # src/environments/environment.prod-local.ts`, `node
+      # scripts/check-prod-env.mjs --write`, commit the digest — then
+      # re-run.
+      - name: Verify PROD_ENVIRONMENT_TS matches the committed digest
+        run: node scripts/check-prod-env.mjs --self-test && node scripts/check-prod-env.mjs
+
       - name: Build (production)
         run: npm run build:web
 
@@ -302,8 +338,10 @@ jobs:
       # moved past. If the newer commits change nothing this job deploys,
       # proceeding is safe — the built output is identical. If they do, stand
       # down: the newer commit's own run deploys them, and deploying here
-      # would publish stale content over it. The case statement mirrors the
-      # changes job's and the two must change together.
+      # would publish stale content over it. This case statement mirrors the
+      # changes job's classifier, as deploy-functions' does, and the "What
+      # deploys when" table in docs/deploy.md states all three in prose — the
+      # three case statements and that table change together.
       - name: Stand down if a newer commit changes what this job deploys
         id: tip
         run: |
@@ -341,6 +379,20 @@ jobs:
       - name: Deploy
         if: steps.tip.outputs.proceed == 'true'
         run: npx firebase deploy --only hosting,firestore,storage --project home-accounter --non-interactive -m "$GITHUB_SHA"
+
+      # Firestore builds composite indexes asynchronously: the deploy above
+      # returns as soon as the definitions are accepted, so this job could go
+      # green while the index a new query needs is still building and that
+      # query still throws failed-precondition. This polls the Firestore Admin
+      # API until every index is READY, which closes ADR 0077's index-wait gap
+      # — until now, watching the console until every entry read Enabled was
+      # the manual half of the release. The deploy has already happened when
+      # this runs, so red here means shipped but unverified, never "nothing
+      # was released".
+      - name: Wait for Firestore composite indexes
+        if: steps.tip.outputs.proceed == 'true'
+        timeout-minutes: 15
+        run: node scripts/wait-for-indexes.mjs
 
   deploy-functions:
     name: Deploy functions
@@ -387,8 +439,10 @@ jobs:
 
       # Same stand-down rule as deploy-web, judged against this job's own
       # target: proceed unless main has moved past this commit with changes
-      # that touch the functions deploy. The case statement mirrors the
-      # changes job's and the two must change together.
+      # that touch the functions deploy. This case statement mirrors the
+      # changes job's classifier, as deploy-web's does, and the "What deploys
+      # when" table in docs/deploy.md states all three in prose — the three
+      # case statements and that table change together.
       - name: Stand down if a newer commit changes what this job deploys
         id: tip
         run: |

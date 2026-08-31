@@ -33,6 +33,8 @@ import { StorageService } from '../../../core/services/storage.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { Transaction } from '../../../models';
+import { silenceFirebaseWarnings } from '../../../core/services/testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * End-to-end smoke test for the search-answer history page against the

@@ -26,6 +26,8 @@ import { SecurityLogService } from './security-log.service';
 import { ThemeService } from './theme.service';
 import { TranslationService } from './translation.service';
 import { User, UserPreferences, usageAnalyticsEnabled } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the analytics opt-in against the Firebase

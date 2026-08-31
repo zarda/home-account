@@ -399,6 +399,10 @@ export class TransactionListComponent {
     }
 
     const added = await fetch();
+    // The page can land after the view is gone (navigation mid-fetch): the
+    // afterNextRender registration below would throw NG0911 on the destroyed
+    // injector, and there is no longer a scroll position to correct.
+    if (this.destroyRef.destroyed) return added;
     if (added === 0 || !anchorId) return added;
     const stableAnchorId = anchorId;
 
@@ -423,6 +427,10 @@ export class TransactionListComponent {
   }
 
   private scrollToTarget(id: string): void {
+    // Same hazard as the anchored correction: a target that arrives as the
+    // view tears down has nothing to scroll to, and registering on the dead
+    // injector throws NG0911.
+    if (this.destroyRef.destroyed) return;
     afterNextRender(
       () => {
         const el = this.host.nativeElement.querySelector<HTMLElement>(

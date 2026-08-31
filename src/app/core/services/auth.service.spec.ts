@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { WritableSignal, signal } from '@angular/core';
+import {
+  EnvironmentInjector,
+  WritableSignal,
+  createEnvironmentInjector,
+  signal
+} from '@angular/core';
 import { Auth, User as FirebaseUser } from '@angular/fire/auth';
 import { Firestore, Timestamp } from '@angular/fire/firestore';
 import { AuthService, buildNewUserProfile } from './auth.service';
@@ -79,6 +84,10 @@ describe('AuthService', () => {
     mockAuth = jasmine.createSpyObj('Auth', ['onAuthStateChanged'], {
       currentUser: null
     });
+    // The real SDK hands back the unsubscribe function, and the service holds
+    // on to it to release the listener with its injector; a spy left returning
+    // undefined would stand for an Auth that cannot be unsubscribed at all.
+    mockAuth.onAuthStateChanged.and.returnValue(() => undefined);
     mockFirestore = jasmine.createSpyObj('Firestore', ['doc']);
     translation = {
       syncFromDatabase: jasmine.createSpy('syncFromDatabase'),
@@ -571,6 +580,41 @@ describe('AuthService', () => {
 
       expect(service.profileDegraded()).toBeTrue();
       expect(service.currentUser()!.preferences.language).toBe('ja');
+    });
+  });
+
+  /**
+   * The listener outliving its own injector is what a whole smoke block had to
+   * work around: @angular/fire binds the callback to the injector active at the
+   * call, so an auth transition arriving after that injector is destroyed is
+   * delivered into a dead one — NG0205, thrown inside the SDK's own observer,
+   * which catches and logs it. The app builds a single long-lived service and
+   * never notices; tests build one per spec.
+   */
+  describe('auth-state listener disposal', () => {
+    // A child of the TestBed injector, so destroying it for one spec cannot
+    // reach the root injector the rest of the suite depends on. Same pattern
+    // as analytics-transport.spec.ts, for the same reason.
+    const childInjector = () =>
+      createEnvironmentInjector([AuthService], TestBed.inject(EnvironmentInjector));
+
+    it('releases the listener when the injector that registered it is destroyed', () => {
+      const unsubscribe = jasmine.createSpy('unsubscribe');
+      mockAuth.onAuthStateChanged.and.returnValue(unsubscribe);
+      const registrations = mockAuth.onAuthStateChanged.calls.count();
+      const injector = childInjector();
+
+      injector.get(AuthService);
+
+      // Exactly one listener for the instance, and it is still live: an
+      // unsubscribe called at construction would satisfy the assertion below
+      // while leaving the service deaf.
+      expect(mockAuth.onAuthStateChanged.calls.count()).toBe(registrations + 1);
+      expect(unsubscribe).not.toHaveBeenCalled();
+
+      injector.destroy();
+
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
     });
   });
 });

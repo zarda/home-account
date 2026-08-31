@@ -1,4 +1,4 @@
-import { Injectable, inject, signal, computed, EnvironmentInjector, runInInjectionContext, effect } from '@angular/core';
+import { Injectable, inject, signal, computed, DestroyRef, EnvironmentInjector, runInInjectionContext, effect } from '@angular/core';
 import {
   Auth,
   GoogleAuthProvider,
@@ -183,7 +183,7 @@ export class AuthService {
   private setupAuthStateListener(): void {
     // Run within injection context to prevent AngularFire warnings
     runInInjectionContext(this.injector, () => {
-      onAuthStateChanged(this.auth, async (firebaseUser) => {
+      const unsubscribe = onAuthStateChanged(this.auth, async (firebaseUser) => {
         this.firebaseUser.set(firebaseUser);
 
         if (firebaseUser) {
@@ -237,6 +237,19 @@ export class AuthService {
 
         this.isLoading.set(false);
       });
+
+      // The listener dies with the injector that registered it. @angular/fire
+      // binds the callback above to whatever injector was active at the call —
+      // this one — so a transition delivered after that injector is destroyed
+      // re-enters a dead one and throws NG0205 inside the SDK's own observer,
+      // which catches and logs it: errors printed, nothing failing. The app
+      // builds a single root-scoped service and would never notice; a suite
+      // builds one per spec, and one that outlived its injector spent a whole
+      // run printing into the log a real warning could have hidden behind.
+      // DestroyRef comes from `inject` rather than `injector.get` because this
+      // already runs inside that injector's context (ADR 0083 needed the
+      // try/catch shape only because its constructor does not).
+      inject(DestroyRef).onDestroy(() => unsubscribe());
     });
   }
 

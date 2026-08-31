@@ -20,6 +20,8 @@ import { AuthService } from './auth.service';
 import { CategoryService } from './category.service';
 import { TranslationService } from './translation.service';
 import { TransactionWindowService } from './transaction-window.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the transaction search path against the

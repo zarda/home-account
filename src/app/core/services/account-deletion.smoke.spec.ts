@@ -28,6 +28,8 @@ import { AuthService } from './auth.service';
 import { FirestoreService } from './firestore.service';
 import { StorageService } from './storage.service';
 import { SHARE_STASH_DB, SHARE_STASH_STORE, ShareStashStore } from './share-stash.store';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * End-to-end smoke test for the account-deletion cascade against the

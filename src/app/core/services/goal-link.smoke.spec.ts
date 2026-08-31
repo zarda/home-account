@@ -21,6 +21,8 @@ import { ReceiptQuotaService } from './receipt-quota.service';
 import { TransactionService, GOAL_LINK_INVALID } from './transaction.service';
 import { GoalService } from './goal.service';
 import { CreateTransactionDTO, Goal, Transaction } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for goal-linked transactions against the emulators.

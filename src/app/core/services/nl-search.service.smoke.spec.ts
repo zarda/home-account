@@ -30,6 +30,8 @@ import { TransactionService } from './transaction.service';
 import { StorageService } from './storage.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { Transaction } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the goal- and budget-aware smart search against

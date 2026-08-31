@@ -20,6 +20,8 @@ import { FeedbackService } from './feedback.service';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
 import { TranslationService } from './translation.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the per-entry feedback delete against the

@@ -30,6 +30,8 @@ import {
 } from '../utils/transaction-date.utils';
 import { buildTransactionWhere } from '../utils/transaction-query.utils';
 import { Transaction } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the shared period windows against the Firestore

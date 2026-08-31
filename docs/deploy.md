@@ -68,12 +68,28 @@ deploy jobs:
 | Secret | Holds | Refresh with |
 |---|---|---|
 | `FIREBASE_SERVICE_ACCOUNT` | the deploy service account's JSON key | the rotation commands below |
-| `PROD_ENVIRONMENT_TS` | the verbatim content of the gitignored `src/environments/environment.prod-local.ts` | `gh secret set PROD_ENVIRONMENT_TS < src/environments/environment.prod-local.ts` |
+| `PROD_ENVIRONMENT_TS` | the verbatim content of the gitignored `src/environments/environment.prod-local.ts` | the four-step ritual below |
 
-`PROD_ENVIRONMENT_TS` drifts silently: nothing can compare a GitHub secret
-to a gitignored file, so re-run that `gh secret set` after **every** edit to
-the local file, in the same breath. An unset or empty secret fails the
-deploy loudly; a stale one deploys old config with no signal at all.
+Nothing can compare a GitHub secret to a gitignored file, so the repo keeps a
+digest of one instead. Editing production config is four steps, all in the
+same breath:
+
+1. Edit `src/environments/environment.prod-local.ts`.
+2. `gh secret set PROD_ENVIRONMENT_TS < src/environments/environment.prod-local.ts`
+3. `node scripts/check-prod-env.mjs --write`
+4. Commit the resulting `src/environments/environment.prod-local.sha256`.
+
+`deploy-web` hashes the secret it just wrote and compares it against that
+committed digest *before* the production build, so a half-finished ritual
+fails in seconds instead of shipping old config silently
+([ADR 0084](ADR/0084-the-production-config-secret-answers-to-a-committed-digest.md)).
+Only sha256 digests are ever committed or printed — never a byte of the
+configuration — and the hash ignores a trailing newline, so the stored
+secret, the saved file and the deploy job's `printf` all agree.
+
+A deploy that lands between the `gh secret set` and the digest's merge fails
+that compare: finish the ritual and re-run the job. An unset or empty secret
+still fails the deploy loudly, as it always did.
 
 **GCP Secret Manager** holds the five `FEEDBACK_SMTP_*` / `FEEDBACK_EMAIL_TO`
 values the Cloud Function reads. They are not GitHub secrets, they never
@@ -149,8 +165,9 @@ the error, grant or enable exactly what it names, re-run the failed job.
 The first manual deploy went through the same iteration
 ([feedback.md](feedback.md), troubleshooting).
 
-**Key rotation.** Service-account keys never expire, so rotation is a habit,
-not an event:
+### Key rotation
+
+Service-account keys never expire, so rotation is a habit, not an event:
 
 ```bash
 gcloud iam service-accounts keys create /tmp/new-key.json \
@@ -163,26 +180,44 @@ gcloud iam service-accounts keys delete <OLD_KEY_ID> \
   --iam-account github-deploy@home-accounter.iam.gserviceaccount.com
 ```
 
+A semi-annual reminder (Jan 1 / Jul 1) opens a GitHub issue for this via
+`rotation-reminder.yml`, and it can also be dispatched manually at any time.
+
 If key creation is ever refused (`iam.disableServiceAccountKeyCreation`),
 the path forward is Workload Identity Federation — the revisit condition
 ADR 0077 records.
 
 ## Index deletions never happen from CI
 
-The CI deploy runs `--non-interactive` without `--force`. In that mode
-(verified against the pinned firebase-tools 15.20.0) index **additions**
-apply, while indexes that exist in the project but not in the file are
-logged, declined, and left standing — the deployment continues. Deleting an
-index is a local, deliberate act:
+The CI deploy runs `--non-interactive` without `--force`. In that mode index
+**additions** apply, while indexes that exist in the project but not in the
+file are logged, declined, and left standing — the deployment continues. That
+contract was last re-read at firebase-tools 15.28.2 (`lib/firestore/api.js`),
+and the major is held there by `scripts/check-firebase-tools-major.mjs`, which
+fails CI when the lockfile's resolved major is anything but 15 and prints
+what to re-verify before the pin is raised
+([ADR 0086](ADR/0086-the-firebase-tools-major-stays-pinned-by-a-gate-not-a-habit.md)).
+Deleting an index is a local, deliberate act:
 
 ```bash
 npx firebase deploy --only firestore:indexes --project home-accounter --force
 ```
 
-and only after reading the deletion list the CLI prints. The console watch
-also stays human: a deploy returns before index builds finish, so after any
-merge that adds entries, watch Firestore → Indexes until every entry reads
-**Enabled** ([emulator-blind-spots.md](emulator-blind-spots.md)).
+and only after reading the deletion list the CLI prints.
+
+## The index wait
+
+A deploy returns before Firestore finishes building the indexes it just
+accepted, so `deploy-web` runs `scripts/wait-for-indexes.mjs` straight after
+the deploy: it polls the Firestore Admin API every 15 seconds for up to ten
+minutes and fails the job if anything is still building when the bound is
+hit. **Red there means shipped but unverified** — the release already
+happened, nothing needs rolling back, and the recovery is to re-run the job
+once the indexes are built, because re-deploying identical content is safe.
+The Firebase console (Firestore → Indexes, every entry **Enabled**) is the
+fallback for reading state when that step is the one that failed
+([emulator-blind-spots.md](emulator-blind-spots.md),
+[ADR 0087](ADR/0087-the-deploy-is-not-green-until-its-indexes-are-built.md)).
 
 ## Manual fallback
 
@@ -197,6 +232,10 @@ npx firebase deploy --only functions --project home-accounter
 
 Always `--only`. A bare `firebase deploy` drags every target into one
 release, which is exactly what the classification exists to prevent.
+
+No CI wait runs on this path: after a local deploy that adds indexes, watch
+Firestore → Indexes in the console yourself until every entry reads
+**Enabled**.
 
 ## Versioning
 
@@ -218,7 +257,10 @@ Kept here because it is also the anything-looks-wrong checklist:
    re-run the failed job.
 2. Firebase console: Hosting release history shows the merge sha as the
    release message; Firestore → Rules and Storage → Rules show fresh release
-   timestamps; Firestore → Indexes shows every entry **Enabled**.
+   timestamps. Index builds are CI's job now — the *Wait for Firestore
+   composite indexes* step holds the run until every one is ready — so
+   Firestore → Indexes is the fallback to read when that step is the one that
+   went red.
 3. https://home-accounter.web.app loads; hard-reload once (the service
    worker serves the cached shell until it updates); About shows the new
    version; one signed-in read and write works.

@@ -21,6 +21,8 @@ import { AuthService } from './auth.service';
 import { MAX_SEARCH_ANSWERS, SearchAnswerHistoryService } from './search-answer-history.service';
 import { createTransaction } from './testing/test-data';
 import { AggregateAnswer, SearchAnswerRecord, SearchRecord } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for SearchAnswerHistoryService against the Firestore

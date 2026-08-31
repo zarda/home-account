@@ -22,6 +22,8 @@ import {
   UNCATEGORIZED_CATEGORY_CONFIDENCE,
   UNRESOLVED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * The on-device category seam against the catalog the app actually builds.

@@ -34,6 +34,8 @@ import { BudgetService } from './budget.service';
 import { ReceiptQuotaService } from './receipt-quota.service';
 import { TransactionService, RECEIPT_ATTACH_FAILED } from './transaction.service';
 import { Transaction } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for multi-image receipts against the emulators:

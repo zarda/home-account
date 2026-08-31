@@ -15,6 +15,8 @@ import {
   Timestamp
 } from '@angular/fire/firestore';
 import { FirestoreService, PageQueryOptions, PageResult } from './firestore.service';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 interface PageDoc {
   id: string;

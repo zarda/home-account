@@ -36,8 +36,10 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ImportHistory } from '../../../../models';
+import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
 jasmine.getEnv().configure({ random: false });
+silenceFirebaseWarnings();
 
 describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', () => {
   const FIRESTORE_HOST = '127.0.0.1';

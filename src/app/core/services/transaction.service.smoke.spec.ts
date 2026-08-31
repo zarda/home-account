@@ -24,6 +24,8 @@ import { ReceiptQuotaService } from './receipt-quota.service';
 import { TransactionService } from './transaction.service';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import { Transaction } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the two range readers of TransactionService

@@ -26,6 +26,8 @@ import { SecurityLogService } from './security-log.service';
 import { NotificationService } from './notification.service';
 import { PwaService } from './pwa.service';
 import { DEFAULT_USER_PREFERENCES } from '../../models';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for AuthService against the auth and Firestore

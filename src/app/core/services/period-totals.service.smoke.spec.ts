@@ -23,6 +23,8 @@ import { TransactionWindowService, MAX_WINDOW } from './transaction-window.servi
 import { Transaction } from '../../models';
 import { sumByType } from '../utils/transaction-aggregation.utils';
 import { endOfDay } from '../utils/transaction-date.utils';
+import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
+silenceFirebaseWarnings();
 
 /**
  * Integration smoke test for the period-totals sweep against the Firestore
