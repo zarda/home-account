@@ -458,19 +458,7 @@ describe('AuthService (emulator smoke test)', () => {
           { provide: Auth, useValue: auth },
           { provide: Firestore, useValue: firestore },
           ...stubProviders()
-        ],
-        // Keep each spec's module (and its injector) alive for the rest of the
-        // block. AuthService's auth-state listener is registered through
-        // @angular/fire, which binds the callback to the injector that was
-        // active at the call, and the service never unsubscribes it — so every
-        // spec here leaves a listener on the shared `auth` for good. Under the
-        // default teardown the first spec's injector is destroyed the moment it
-        // finishes, and the sign-out/sign-in the second spec performs then
-        // delivers into that dead injector: four NG0205s, thrown inside the
-        // SDK's own observer (which swallows them, so nothing fails and the
-        // whole run just prints errors). This is the only block that both
-        // outlives an injector and moves the auth state afterwards.
-        teardown: { destroyAfterEach: false }
+        ]
       });
     });
 
