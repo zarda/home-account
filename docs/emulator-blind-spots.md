@@ -18,6 +18,10 @@ Editing either file changes nothing in production until it is deployed, so a
 fix that looks green locally can stay broken for every real user — and a rules
 tightening that was never deployed protects nothing.
 
+**The storage emulator does not split create from update.** Production routes
+an overwrite through `update`; the emulator routes *every* upload through
+`create` ([below](#the-storage-emulators-create-only-uploads-137)).
+
 The reasoning and the rejected alternatives are in
 [ADR 0035](ADR/0035-what-the-emulator-cannot-see-is-checked-from-the-files.md).
 
@@ -76,6 +80,49 @@ may also offer to delete indexes that exist in the project but not in the
 file; the CI deploy declines that offer and continues, so a deletion only ever
 happens locally, with `--force`, after reading the list.
 
+## The storage emulator's create-only uploads (#137)
+
+Cloud Storage decides between the `create` and `update` rule branches on
+whether an object already exists at the path. The storage emulator does not:
+`StorageLayer.uploadObject` validates every upload as
+`RulesetOperationMethod.CREATE`
+(`node_modules/firebase-tools/lib/emulator/storage/files.js:154`), and hands
+the object being replaced in as `resource`. So in the emulator, an overwrite is
+a `create` with a non-null `resource`; in production it is an `update`.
+
+That is one blind spot with two faces, and the receipt quota
+([receipt-quota.md](receipt-quota.md),
+[ADR 0094](ADR/0094-the-receipt-quota-is-recounted-from-the-bucket-it-limits.md))
+hit both.
+
+**The `create` branch needs a clause that is inert in production.** The quota
+must not be consulted for an overwrite — replacing a blurred photo does not
+grow the count — so the rule reads:
+
+```
+allow create: if …
+  && (resource != null || underReceiptQuota(userId));
+```
+
+In production `create` implies `resource == null`, so that first clause can
+never be what decides the verdict. It is there so the emulator agrees with
+production about overwrites, and so the exemption is reachable by a test at
+all. Deleting it as dead code would break every overwrite case in the smoke
+suite while changing nothing about what ships.
+
+**The `update` branch cannot be reached by an upload at all.** No test that
+uploads bytes will ever exercise the branch production takes for every
+overwrite. `storage.service.smoke.spec.ts` covers it indirectly through
+`updateMetadata()` — which the emulator does route through `update` — proving
+that the branch exists and is still scoped to the owner. That is deliberate,
+not an oversight, and it is why the quota's runbook carries a named post-deploy
+check that an overwrite at the limit succeeds against the live project.
+
+The denial half of the metadata case needs a **second signed-in account**, not
+a second path: the rule is only reached with a full `resource` when the object
+exists, so a write aimed at a stranger's empty path would be denied for the
+object being absent and would prove nothing about the owner check.
+
 ## Drive the real call site (#250)
 
 The rules smoke suite hand-builds its documents, which proves what the rules
@@ -99,6 +146,7 @@ real serialization, real server stamps, live rules verdict.
 | Index entries not deployed | the merge deploy + the CI wait that holds the run until every index is built | `deploy-web` in CI, `scripts/wait-for-indexes.mjs` |
 | Rules edits not deployed | the merge deploy + a browser pass against the live project (manual) | `deploy-web` in CI, checklist above |
 | Rules accept ≠ services send | one smoke case through the owning service per collection | `*.service.smoke.spec.ts` |
+| Storage `update` unreachable by upload | a metadata-update case, plus a named post-deploy check on the live project | `storage.service.smoke.spec.ts`, [receipt-quota.md](receipt-quota.md) |
 | Query composes but needs an index | multi-equality cases note the limit in their doc block | `transaction-window.service.smoke.spec.ts` |
 
 ## When you add another one
@@ -115,6 +163,13 @@ emulator cases first — accept and deny both sides — and then one case throug
 the service that owns the write, with the payload the service really builds.
 If the service's payload cannot satisfy the rule you wrote, the rule is wrong
 in a way only that case will ever show.
+
+**A new predicate on a storage path?** Decide which branch production takes
+before writing the rule, because the emulator will tell you `create` whatever
+the answer is. If the predicate should differ between a new object and an
+overwrite, the `create` branch needs the `resource != null` exemption to stay
+honest locally, the `update` branch needs a metadata case standing in for it,
+and the real behaviour needs a written post-deploy check.
 
 **A new correctness-bearing query anywhere else?** The emulator will serve it
 unindexed. If it composes more than one equality filter with an order-by, it

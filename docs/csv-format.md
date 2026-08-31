@@ -68,6 +68,53 @@ than replaces. See [backup-restore.md](backup-restore.md).
 For a full-fidelity copy, use **Data Management → Export full backup** (JSON),
 which carries the whole document, categories included.
 
+## The category summary
+
+A third file, and a different shape: **one row per category and side of the
+ledger**, not one row per transaction. Reports → Export offers it as its own
+format beside CSV, PDF and JSON, alongside a PDF of the same figures.
+
+```
+Type, Category, Amount, Currency, Transactions
+```
+
+| | |
+|---|---|
+| `Type` | `income` or `expense` — a category carrying both yields **two rows**, never a netted one |
+| `Category` | the translated category name, as everywhere else |
+| `Amount` | the period total, a bare decimal so `SUM()` works on the column |
+| `Currency` | always the account's base currency, repeated on every row |
+| `Transactions` | how many rows are behind the total |
+
+Expenses come first as a block, then income, each side largest-first — the
+order does not reshuffle on a month where income happens to outweigh spending.
+The file is **untruncated**: it is the whole period, not a ranked top slice.
+
+**Amounts are in the base currency, converted the way the rest of the app
+converts.** Each transaction contributes its write-time `amountInBaseCurrency`
+snapshot where it has one, so the summary agrees with the figures on screen for
+the same period rather than re-converting history at today's rates.
+
+**It does not import.** Nothing about it round-trips: the totals are not
+transactions, and the importer has no `category` probe in any case. Export
+detailed if you intend to import again.
+
+### `summary` and `summary-csv` are different things
+
+Two unrelated things in this codebase are called summary, and the next person
+to touch either will want this stated plainly:
+
+| Name | What it is |
+|---|---|
+| `ExportOptions.format: 'summary'` | the **five-column, per-transaction** CSV described under [The two formats](#the-two-formats) — lossy, one row per transaction, and what the "Summary CSV" column of the table above refers to |
+| the export dialog's `'summary-csv'` | the **per-category totals** file described in this section |
+
+They share four letters and nothing else. Merging them, or teaching one option
+to produce the other, silently changes what an existing export writes.
+[ADR 0093](ADR/0093-the-summary-export-names-both-sides-of-the-ledger.md) has
+the reasoning behind the category summary, including why it is a separate PDF
+builder rather than a mode of the existing one.
+
 ## Quoting and formula guarding
 
 Every cell goes through one escaper. Two rules beyond RFC 4180 quoting:
