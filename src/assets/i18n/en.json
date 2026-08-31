@@ -333,6 +333,8 @@
     "csvDescription": "Spreadsheet format, great for Excel or Google Sheets",
     "pdfDescription": "Formatted report with charts and summary",
     "jsonDescription": "Full data export for backup purposes",
+    "summaryCsvDescription": "Totals per category as a spreadsheet",
+    "summaryPdfDescription": "Totals per category as a printable report",
     "transactionsLabel": "{{count}} transactions",
     "selectMonth": "Select Month",
     "selectYear": "Select Year",

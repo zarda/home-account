@@ -327,6 +327,8 @@
     "csvDescription": "試算表格式，適用於 Excel 或 Google 試算表",
     "pdfDescription": "含圖表和摘要的格式化報表",
     "jsonDescription": "完整資料匯出，用於備份",
+    "summaryCsvDescription": "各類別合計，試算表格式",
+    "summaryPdfDescription": "各類別合計，可列印報表",
     "transactionsLabel": "{{count}} 筆交易",
     "selectMonth": "選擇月份",
     "selectYear": "選擇年份",

@@ -327,6 +327,8 @@
     "csvDescription": "スプレッドシート形式、Excel や Google スプレッドシートに最適",
     "pdfDescription": "グラフとサマリー付きのフォーマット済みレポート",
     "jsonDescription": "バックアップ用の完全なデータエクスポート",
+    "summaryCsvDescription": "カテゴリ別の合計をスプレッドシート形式で",
+    "summaryPdfDescription": "カテゴリ別の合計を印刷用レポートで",
     "transactionsLabel": "{{count}} 件の取引",
     "selectMonth": "月を選択",
     "selectYear": "年を選択",

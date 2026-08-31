@@ -17,7 +17,9 @@ import { dayKey } from '../../../core/utils/transaction-date.utils';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
 
-type ExportFormat = 'csv' | 'pdf' | 'json';
+// 'summary-csv'/'summary-pdf' are per-category totals. Unrelated to
+// ExportOptions.format: 'summary', which is a lossy per-transaction row set.
+type ExportFormat = 'csv' | 'pdf' | 'json' | 'summary-csv' | 'summary-pdf';
 
 interface ExportDialogData {
   transactions: Transaction[];
@@ -76,6 +78,18 @@ export class ExportDialogComponent {
         description: this.translationService.t('reports.jsonDescription'),
         icon: 'code',
       },
+      {
+        value: 'summary-csv' as ExportFormat,
+        label: 'CSV',
+        description: this.translationService.t('reports.summaryCsvDescription'),
+        icon: 'summarize',
+      },
+      {
+        value: 'summary-pdf' as ExportFormat,
+        label: 'PDF',
+        description: this.translationService.t('reports.summaryPdfDescription'),
+        icon: 'analytics',
+      },
     ];
   }
 
@@ -107,6 +121,12 @@ export class ExportDialogComponent {
           break;
         case 'json':
           success = await this.exportJSON(dateStr);
+          break;
+        case 'summary-csv':
+          success = await this.exportCategorySummaryCSV(dateStr);
+          break;
+        case 'summary-pdf':
+          success = await this.exportCategorySummaryPDF(dateStr);
           break;
       }
 
@@ -191,6 +211,29 @@ export class ExportDialogComponent {
     return this.exportService.downloadBlobWithPicker(
       blob,
       `backup-${dateStr}.json`
+    );
+  }
+
+  private async exportCategorySummaryCSV(dateStr: string): Promise<boolean> {
+    const blob = this.exportService.exportCategorySummaryCSV(
+      this.data.transactions,
+      this.data.currency
+    );
+    return this.exportService.downloadBlobWithPicker(
+      blob,
+      `category-summary-${dateStr}.csv`
+    );
+  }
+
+  private async exportCategorySummaryPDF(dateStr: string): Promise<boolean> {
+    const blob = await this.exportService.exportCategorySummaryPDF(
+      this.data.transactions,
+      this.data.currency,
+      this.dateRangeLabel
+    );
+    return this.exportService.downloadBlobWithPicker(
+      blob,
+      `category-summary-${dateStr}.pdf`
     );
   }
 
