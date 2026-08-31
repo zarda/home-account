@@ -13,6 +13,7 @@ import { GeminiService } from '../../../core/services/gemini.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { SecurityLogService } from '../../../core/services/security-log.service';
+import { ReminderService } from '../../../core/services/reminder.service';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
@@ -26,6 +27,7 @@ describe('ProfileSettingsComponent', () => {
   let mockAnnouncer: jasmine.SpyObj<AnnouncerService>;
   let mockTransactionService: jasmine.SpyObj<TransactionService>;
   let mockSecurityLog: jasmine.SpyObj<SecurityLogService>;
+  let mockReminders: jasmine.SpyObj<ReminderService>;
 
   const mockUser = {
     displayName: 'Test User',
@@ -75,6 +77,10 @@ describe('ProfileSettingsComponent', () => {
     mockSecurityLog = jasmine.createSpyObj('SecurityLogService', ['watchRecent', 'record']);
     mockSecurityLog.watchRecent.and.returnValue(of([]));
 
+    mockReminders = jasmine.createSpyObj('ReminderService', ['requestPermission', 'sweep'], {
+      enabled: signal(false),
+    });
+
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
@@ -88,7 +94,10 @@ describe('ProfileSettingsComponent', () => {
         { provide: TransactionService, useValue: mockTransactionService },
         // Stubbed so the embedded activity list does not pull Firestore into
         // this spec; SecurityActivityComponent has its own.
-        { provide: SecurityLogService, useValue: mockSecurityLog }
+        { provide: SecurityLogService, useValue: mockSecurityLog },
+        // Same reason: the reminders toggle would otherwise drag
+        // BudgetService and Firestore in behind it.
+        { provide: ReminderService, useValue: mockReminders }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();

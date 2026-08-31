@@ -21,6 +21,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { SecurityActivityComponent } from '../security-activity/security-activity.component';
 import { SecuritySettingsComponent } from '../security-settings/security-settings.component';
 import { AnalyticsSettingsComponent } from '../analytics-settings/analytics-settings.component';
+import { ReminderSettingsComponent } from '../reminder-settings/reminder-settings.component';
 import { AccessibilitySettingsComponent } from '../accessibility-settings/accessibility-settings.component';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 
@@ -40,6 +41,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
     SecurityActivityComponent,
     SecuritySettingsComponent,
     AnalyticsSettingsComponent,
+    ReminderSettingsComponent,
     AccessibilitySettingsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
