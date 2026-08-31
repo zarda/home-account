@@ -390,6 +390,30 @@ describe('RecurringService', () => {
       expect('endDate' in (data as Record<string, unknown>)).toBeFalse();
     });
 
+    it('stores the reminder lead time when one is set', async () => {
+      await service.createRecurring({ ...dto, remindDaysBefore: 3 });
+
+      const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
+      expect((data as Record<string, unknown>)['remindDaysBefore']).toBe(3);
+    });
+
+    it('writes no reminder lead time when none is set', async () => {
+      await service.createRecurring(dto);
+
+      const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
+      expect('remindDaysBefore' in (data as Record<string, unknown>)).toBeFalse();
+    });
+
+    // Zero is "remind me on the day", not "no reminder". The truthiness
+    // spread the end date uses reads it as the second and drops it, which is
+    // exactly the lead time a bill due today needs.
+    it('stores a zero reminder lead time', async () => {
+      await service.createRecurring({ ...dto, remindDaysBefore: 0 });
+
+      const [, data] = mockFirestoreService.addDocument.calls.mostRecent().args;
+      expect((data as Record<string, unknown>)['remindDaysBefore']).toBe(0);
+    });
+
     it('should reset isLoading after completion', async () => {
       await service.createRecurring(dto);
       expect(service.isLoading()).toBeFalse();
@@ -443,6 +467,36 @@ describe('RecurringService', () => {
       const endDate = (data as Record<string, unknown>)['endDate'] as FieldValue;
       expect(endDate).toBeDefined();
       expect(endDate.isEqual(deleteField())).toBeTrue();
+    });
+
+    it('should map a reminder lead time when provided', async () => {
+      await service.updateRecurring('rec1', { remindDaysBefore: 7 });
+
+      const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      expect((data as Record<string, unknown>)['remindDaysBefore']).toBe(7);
+    });
+
+    it('should map a zero reminder lead time', async () => {
+      await service.updateRecurring('rec1', { remindDaysBefore: 0 });
+
+      const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      expect((data as Record<string, unknown>)['remindDaysBefore']).toBe(0);
+    });
+
+    it('should delete the stored reminder lead time when remindDaysBefore is null', async () => {
+      await service.updateRecurring('rec1', { remindDaysBefore: null });
+
+      const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      const lead = (data as Record<string, unknown>)['remindDaysBefore'] as FieldValue;
+      expect(lead).toBeDefined();
+      expect(lead.isEqual(deleteField())).toBeTrue();
+    });
+
+    it('should leave the stored reminder lead time alone when it is not supplied', async () => {
+      await service.updateRecurring('rec1', { name: 'New name' });
+
+      const [, data] = mockFirestoreService.updateDocument.calls.mostRecent().args;
+      expect('remindDaysBefore' in (data as Record<string, unknown>)).toBeFalse();
     });
 
     it('should recalculate next occurrence when frequency changes and current record exists', async () => {
@@ -1305,6 +1359,46 @@ describe('RecurringService', () => {
           expect(occurrences[i].date.getTime()).toBeGreaterThanOrEqual(occurrences[i - 1].date.getTime());
         }
         expect(occurrences[0].recurringId).toBe('daily');
+        done();
+      });
+    });
+
+    // The occurrence carries the rule's lead so a consumer can decide when to
+    // warn without joining back to the rule collection. Zero is a lead like
+    // any other and must survive the trip.
+    it('carries the rule reminder lead time onto every occurrence', (done) => {
+      mockFirestoreService.subscribeToCollection.and.returnValue(of([
+        createRecurring({
+          id: 'reminded',
+          frequency: { type: 'daily', interval: 1 },
+          nextOccurrence: Timestamp.fromDate(new Date(Date.now() + 1 * DAY)),
+          remindDaysBefore: 0
+        })
+      ]));
+
+      service.getNextOccurrences(5).subscribe(occurrences => {
+        expect(occurrences.length).toBeGreaterThan(0);
+        for (const occurrence of occurrences) {
+          expect(occurrence.remindDaysBefore).toBe(0);
+        }
+        done();
+      });
+    });
+
+    it('leaves the lead time off occurrences of a rule without one', (done) => {
+      mockFirestoreService.subscribeToCollection.and.returnValue(of([
+        createRecurring({
+          id: 'unreminded',
+          frequency: { type: 'daily', interval: 1 },
+          nextOccurrence: Timestamp.fromDate(new Date(Date.now() + 1 * DAY))
+        })
+      ]));
+
+      service.getNextOccurrences(5).subscribe(occurrences => {
+        expect(occurrences.length).toBeGreaterThan(0);
+        for (const occurrence of occurrences) {
+          expect('remindDaysBefore' in occurrence).toBeFalse();
+        }
         done();
       });
     });

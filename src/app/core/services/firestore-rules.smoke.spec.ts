@@ -877,6 +877,54 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts a reminder lead time', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: 3 })),
+        'reminder lead'
+      );
+    });
+
+    // Zero is "remind me on the day" — a lead like any other, and the one a
+    // rule with no notice at all shares a shape with.
+    it('accepts a zero reminder lead time', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: 0 })),
+        'zero reminder lead'
+      );
+    });
+
+    it('rejects a fractional reminder lead time', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: 2.5 })),
+        'fractional reminder lead'
+      );
+    });
+
+    it('rejects a negative reminder lead time', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: -1 })),
+        'negative reminder lead'
+      );
+    });
+
+    it('accepts adding a reminder lead time to an existing rule', async () => {
+      const p = path('recurring');
+      await setDoc(doc(firestore, p), validRecurring());
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { remindDaysBefore: 7 }),
+        'reminder lead added'
+      );
+    });
+
+    it('accepts clearing the reminder lead time', async () => {
+      const p = path('recurring');
+      await setDoc(doc(firestore, p), validRecurring({ remindDaysBefore: 3 }));
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { remindDaysBefore: deleteField() }),
+        'reminder lead deletion'
+      );
+    });
+
     it('accepts clearing the optional endDate', async () => {
       const p = path('recurring');
       await setDoc(doc(firestore, p), validRecurring({ endDate: Timestamp.now() }));

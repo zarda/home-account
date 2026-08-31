@@ -278,9 +278,14 @@ service cloud.firestore {
         && f.interval >= 1;
     }
 
+    // No upper bound on the reminder lead: the ceiling is a product choice
+    // the picker and the service make, and one written here would deny the
+    // restore of any rule an earlier build let through.
     function recurringOptionalsValid(d) {
       return (!('endDate' in d) || d.endDate is timestamp)
         && (!('lastProcessed' in d) || d.lastProcessed is timestamp)
+        && (!('remindDaysBefore' in d)
+            || (d.remindDaysBefore is int && d.remindDaysBefore >= 0))
         && (!('createdAt' in d) || d.createdAt is timestamp)
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }

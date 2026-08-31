@@ -294,6 +294,11 @@ export class BackupRestoreService {
           frequency: rule.frequency,
           startDate: toDate(rule.startDate),
           ...(rule.endDate ? { endDate: toDate(rule.endDate) } : {}),
+          // `!= null`, not truthiness: a lead of zero means "on the day", and
+          // a field left off this list is dropped from the restore in silence.
+          ...(rule.remindDaysBefore != null
+            ? { remindDaysBefore: rule.remindDaysBefore }
+            : {}),
           // A paused rule must come back paused: catch-up runs unprompted on
           // every dashboard load, so restoring one as active starts posting
           // money the user stopped.

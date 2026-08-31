@@ -30,8 +30,13 @@ import { parseDayKey } from './transaction-date.utils';
  * computation notice a rule change.
  */
 
-/** What the recurring form dialog accepts as initial values. */
-export type RecurringPrefill = Omit<CreateRecurringDTO, 'endDate'>;
+/**
+ * What the recurring form dialog accepts as initial values. The detector has
+ * neither an end date nor a reminder lead to offer, and `populateFromPrefill`
+ * reads no such field — both stay out of the shape rather than being advertised
+ * and then dropped.
+ */
+export type RecurringPrefill = Omit<CreateRecurringDTO, 'endDate' | 'remindDaysBefore'>;
 
 /**
  * The rules engine has no biweekly or quarterly type; both express as

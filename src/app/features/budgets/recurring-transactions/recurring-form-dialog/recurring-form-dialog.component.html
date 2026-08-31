@@ -156,6 +156,17 @@
         <mat-icon matPrefix>event_busy</mat-icon>
       </mat-form-field>
     }
+
+    <!-- Reminder -->
+    <mat-form-field appearance="outline">
+      <mat-label>{{ 'settings.reminder' | translate }}</mat-label>
+      <mat-select [(ngModel)]="remindDaysBefore">
+        @for (option of reminderOptions; track option.value) {
+          <mat-option [value]="option.value">{{ option.label }}</mat-option>
+        }
+      </mat-select>
+      <mat-icon matPrefix>notifications</mat-icon>
+    </mat-form-field>
   </div>
 </mat-dialog-content>
 
