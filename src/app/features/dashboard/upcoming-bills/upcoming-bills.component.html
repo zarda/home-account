@@ -1,0 +1,68 @@
+<mat-card class="card">
+  <!-- Header -->
+  <div class="card-header">
+    <h3 class="card-title">{{ 'dashboard.upcomingBills' | translate }}</h3>
+    <a routerLink="/budgets" [queryParams]="{ tab: 'recurring' }" class="view-all-link">
+      {{ 'dashboard.viewAll' | translate }}
+      <mat-icon class="view-all-icon">chevron_right</mat-icon>
+    </a>
+  </div>
+
+  <!-- Content -->
+  <div class="card-content">
+    @if (days().length === 0) {
+      <div class="empty-container">
+        <app-empty-state
+          icon="event_repeat"
+          size="sm"
+          [title]="'dashboard.noUpcomingBills' | translate"
+          [description]="'dashboard.noUpcomingBillsHint' | translate"
+        />
+      </div>
+    } @else {
+      <div class="day-list">
+        @for (day of days(); track day.key) {
+          <div class="day-group">
+            <h4 class="day-header">{{ day.date | localeDate:'long' }}</h4>
+            <!-- A rule advances by at least a day each step, so its id is
+                 unique inside one day group. -->
+            @for (occurrence of day.occurrences; track occurrence.recurringId) {
+              <div class="bill-row">
+                <div
+                  class="bill-icon"
+                  [style.background-color]="getCategoryColor(occurrence.categoryId) + '20'"
+                >
+                  <mat-icon [style.color]="getCategoryColor(occurrence.categoryId)">
+                    {{ getCategoryIcon(occurrence.categoryId) }}
+                  </mat-icon>
+                </div>
+                <div class="bill-text">
+                  <span class="bill-name">{{ occurrence.name }}</span>
+                  <span class="bill-category">{{ getCategoryName(occurrence.categoryId) }}</span>
+                </div>
+                <app-amount-display
+                  [amount]="occurrence.type === 'expense' ? -occurrence.amount : occurrence.amount"
+                  [currency]="occurrence.currency"
+                  [type]="occurrence.type"
+                  size="sm"
+                />
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="net-footer">
+        <span class="net-label">{{ 'dashboard.upcomingNet' | translate }}</span>
+        <app-amount-display
+          [amount]="net()"
+          [currency]="baseCurrency()"
+          [type]="net() >= 0 ? 'income' : 'expense'"
+          [showSign]="true"
+          [bold]="true"
+          size="sm"
+        />
+      </div>
+    }
+  </div>
+</mat-card>

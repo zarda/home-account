@@ -14,8 +14,8 @@ import { RecurringService } from '../../core/services/recurring.service';
 import { InsightSnapshotService } from '../../core/services/insight-snapshot.service';
 import { TranslationService } from '../../core/services/translation.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
-import { Transaction, Category, CategoryTotal, RAG_TIER_CONFIGS, effectiveRagLevel, baseCurrencyOf} from '../../models';
-import { sumByType } from '../../core/utils/transaction-aggregation.utils';
+import { Transaction, Category, CategoryTotal, RecurringOccurrence, RAG_TIER_CONFIGS, effectiveRagLevel, baseCurrencyOf} from '../../models';
+import { roundMoney, sumByType } from '../../core/utils/transaction-aggregation.utils';
 import {
   DateWindow,
   clampWindowToNow,
@@ -25,6 +25,7 @@ import {
 import { FinancialSummaryComponent } from './financial-summary/financial-summary.component';
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
+import { UpcomingBillsComponent } from './upcoming-bills/upcoming-bills.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
@@ -37,6 +38,14 @@ import {
   defaultPeriodSelection,
 } from '../../shared/components/period-selector/period-selector.component';
 
+/**
+ * How far ahead the upcoming-bills card looks. A fortnight is short enough
+ * that everything in it is close enough to act on, and it is deliberately
+ * independent of the selected period: the card answers "what is about to
+ * move", not "what happened in the window I am looking at".
+ */
+const UPCOMING_WINDOW_DAYS = 14;
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -47,6 +56,7 @@ import {
     FinancialSummaryComponent,
     SpendingChartComponent,
     RecentTransactionsComponent,
+    UpcomingBillsComponent,
     BudgetProgressComponent,
     BudgetAlertBannerComponent,
     AiSummaryComponent,
@@ -176,6 +186,26 @@ export class DashboardComponent implements OnInit {
   activeBudgets = this.budgetService.activeBudgets;
   activeGoals = this.goalService.activeGoals;
 
+  // Scheduled money for the next UPCOMING_WINDOW_DAYS. Occurrences dated
+  // before today are kept: they are due but not yet posted, and dropping them
+  // would hide money about to move on exactly the occasion — a failed
+  // catch-up — when the user most needs to see it (ADR 0091).
+  upcomingOccurrences = signal<RecurringOccurrence[]>([]);
+
+  // Live conversion, unlike every other total on this page: a scheduled
+  // occurrence has not been written yet, so there is no amountInBaseCurrency
+  // snapshot to prefer. Same idiom as the reports forecast, which projects
+  // the same stream.
+  upcomingNet = computed(() => {
+    const baseCurrency = this.baseCurrency();
+    const net = this.upcomingOccurrences().reduce((sum, occurrence) => {
+      const amount = this.currencyService.convert(
+        occurrence.amount, occurrence.currency, baseCurrency);
+      return occurrence.type === 'income' ? sum + amount : sum - amount;
+    }, 0);
+    return roundMoney(net);
+  });
+
   constructor() {
     // Loading state is owned by the getByDateRange subscription callbacks in
     // loadData(): the first snapshot (or error) of the published window is
@@ -223,6 +253,14 @@ export class DashboardComponent implements OnInit {
     this.categoryService.loadCategories()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+
+    // The upcoming window is anchored to today, not to the selected period,
+    // so it belongs here beside budgets rather than in loadData() — and, like
+    // them, it is an onSnapshot that never completes, so a period change must
+    // not stack a second listener on it.
+    this.recurringService.getNextOccurrences(UPCOMING_WINDOW_DAYS)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(occurrences => this.upcomingOccurrences.set(occurrences));
 
     this.loadData();
     // Post recurring occurrences that came due since the app was last open.

@@ -96,7 +96,11 @@
     "addFirstTransaction": "Add your first transaction to get started",
     "addExpensesToSeeBreakdown": "Start adding expenses to see your spending breakdown",
     "vsPreviousPeriod": "vs previous period",
-    "viewCategoryTransactions": "View {{category}} transactions"
+    "viewCategoryTransactions": "View {{category}} transactions",
+    "upcomingBills": "Upcoming Bills",
+    "upcomingNet": "Scheduled net",
+    "noUpcomingBills": "Nothing scheduled",
+    "noUpcomingBillsHint": "Recurring income and bills coming due appear here. Create a rule under Budget → Recurring."
   },
   "transactions": {
     "title": "Transactions",

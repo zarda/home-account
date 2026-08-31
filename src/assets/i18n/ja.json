@@ -96,7 +96,11 @@
     "addFirstTransaction": "最初の取引を追加してください",
     "addExpensesToSeeBreakdown": "支出を追加すると内訳が表示されます",
     "vsPreviousPeriod": "前期比",
-    "viewCategoryTransactions": "{{category}}の取引を表示"
+    "viewCategoryTransactions": "{{category}}の取引を表示",
+    "upcomingBills": "今後の予定",
+    "upcomingNet": "予定の増減",
+    "noUpcomingBills": "予定はありません",
+    "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。"
   },
   "transactions": {
     "title": "取引履歴",

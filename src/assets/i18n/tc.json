@@ -96,7 +96,11 @@
     "addFirstTransaction": "新增您的第一筆交易",
     "addExpensesToSeeBreakdown": "開始新增支出以查看支出明細",
     "vsPreviousPeriod": "與上期相比",
-    "viewCategoryTransactions": "查看{{category}}的交易"
+    "viewCategoryTransactions": "查看{{category}}的交易",
+    "upcomingBills": "近期排程",
+    "upcomingNet": "排定淨額",
+    "noUpcomingBills": "沒有排定項目",
+    "noUpcomingBillsHint": "即將到期的定期收入與支出會顯示於此。請在預算 → 定期建立規則。"
   },
   "transactions": {
     "title": "交易紀錄",

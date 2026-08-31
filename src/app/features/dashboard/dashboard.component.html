@@ -58,6 +58,14 @@
         [categories]="categoriesMap()"
       />
 
+      <app-upcoming-bills
+        class="area-upcoming"
+        [occurrences]="upcomingOccurrences()"
+        [categories]="categoriesMap()"
+        [baseCurrency]="baseCurrency()"
+        [net]="upcomingNet()"
+      />
+
       @if (activeBudgets().length > 0) {
         <app-budget-progress
           class="area-budgets"
