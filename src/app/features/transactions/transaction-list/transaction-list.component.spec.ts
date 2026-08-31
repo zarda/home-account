@@ -257,6 +257,7 @@ describe('TransactionListComponent', () => {
     interface Internals {
       maybeFetch(): Promise<void>;
       scrollToTarget(id: string): void;
+      isNearEdge(edge: 'top' | 'bottom'): boolean;
     }
     const internals = (c: TransactionListComponent) => c as unknown as Internals;
 
@@ -271,9 +272,20 @@ describe('TransactionListComponent', () => {
         .withContext('the anchor row is measurable, so runAnchored keeps an anchorId')
         .toBeGreaterThan(0);
 
+      // The real edge check reads sentinel geometry, which shifts with the
+      // runner's viewport and fonts — near on one machine, out of margin on
+      // another. The guard under test sits past that check, so the check is
+      // pinned: the bottom edge stays "near" and the loop ends on its own
+      // added === 0 break below.
+      spyOn(internals(component), 'isNearEdge').and.callFake(
+        (edge: 'top' | 'bottom') => edge === 'bottom'
+      );
+
       let landFetch!: (added: number) => void;
       windowSource.fetchNext.and.returnValues(
         new Promise<number>((resolve) => { landFetch = resolve; }),
+        // Consumed by the loop's post-destroy iteration: the pinned edge
+        // check keeps it asking, the empty page ends it.
         Promise.resolve(0)
       );
 
