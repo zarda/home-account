@@ -3,6 +3,7 @@ import {
   bucketByMonthAndCategory,
   finiteOrNull,
   fnv1a32,
+  groupByCategoryAndType,
   groupExpensesByCategory,
   groupExpensesByCategoryWithCounts,
   groupExpensesByCountry,
@@ -28,11 +29,11 @@ describe('transaction-aggregation.utils', () => {
     });
   }
 
-  function income(amount: number, date?: Date): Transaction {
+  function income(amount: number, categoryId = 'employment_salary', date?: Date): Transaction {
     return createTransaction({
       type: 'income',
       amount,
-      categoryId: 'employment_salary',
+      categoryId,
       ...(date ? { date: createTimestamp(date) } : {}),
     });
   }
@@ -123,6 +124,73 @@ describe('transaction-aggregation.utils', () => {
         { categoryId: 'transport', total: 80, count: 1 },
         { categoryId: 'food', total: 50, count: 2 },
       ]);
+    });
+  });
+
+  describe('groupByCategoryAndType', () => {
+    it('returns both sides of the ledger, not expenses alone', () => {
+      const result = groupByCategoryAndType(
+        [expense(30, 'food'), income(500, 'employment_salary')], toBase);
+
+      expect(result).toEqual([
+        { categoryId: 'food', type: 'expense', total: 30, count: 1 },
+        { categoryId: 'employment_salary', type: 'income', total: 500, count: 1 },
+      ]);
+    });
+
+    it('yields two rows for a category used on both sides rather than netting them', () => {
+      const result = groupByCategoryAndType(
+        [expense(80, 'other'), income(80, 'other')], toBase);
+
+      // Netted, an equal month would read as no activity at all.
+      expect(result).toEqual([
+        { categoryId: 'other', type: 'expense', total: 80, count: 1 },
+        { categoryId: 'other', type: 'income', total: 80, count: 1 },
+      ]);
+    });
+
+    it('sums the rows behind each category and type', () => {
+      const result = groupByCategoryAndType([
+        expense(30, 'food'), expense(20, 'food'), income(100, 'gifts'), income(50, 'gifts'),
+      ], toBase);
+
+      expect(result).toEqual([
+        { categoryId: 'food', type: 'expense', total: 50, count: 2 },
+        { categoryId: 'gifts', type: 'income', total: 150, count: 2 },
+      ]);
+    });
+
+    it('blocks expenses first, then income, each side largest-first', () => {
+      // The largest row overall is income: side wins over magnitude, or the
+      // two tables the summary export builds would interleave.
+      const result = groupByCategoryAndType([
+        expense(10, 'zoo'), income(5, 'busking'), expense(30, 'music'),
+        income(900, 'salary'),
+      ], toBase);
+
+      expect(result.map(r => [r.type, r.categoryId])).toEqual([
+        ['expense', 'music'], ['expense', 'zoo'],
+        ['income', 'salary'], ['income', 'busking'],
+      ]);
+    });
+
+    it('breaks ties by category id on each side independently', () => {
+      const result = groupByCategoryAndType([
+        expense(10, 'zoo'), expense(10, 'art'), income(7, 'yield'), income(7, 'bonus'),
+      ], toBase);
+
+      expect(result.map(r => r.categoryId)).toEqual(['art', 'zoo', 'bonus', 'yield']);
+    });
+
+    it('rounds each total to cents', () => {
+      const result = groupByCategoryAndType(
+        [expense(0.1, 'food'), expense(0.2, 'food')], toBase);
+
+      expect(result[0].total).toBe(0.3);
+    });
+
+    it('returns an empty list for no transactions', () => {
+      expect(groupByCategoryAndType([], toBase)).toEqual([]);
     });
   });
 

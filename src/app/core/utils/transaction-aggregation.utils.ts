@@ -33,6 +33,14 @@ export interface CategoryTotalWithCount extends CategoryTotal {
   count: number;
 }
 
+/** One category's total on one side of the ledger, and the rows behind it. */
+export interface CategoryTypeTotal {
+  categoryId: string;
+  type: 'income' | 'expense';
+  total: number;
+  count: number;
+}
+
 /** Expense total for one ISO 3166-1 alpha-2 country, and the rows behind it. */
 export interface CountryTotal {
   country: string;
@@ -164,6 +172,50 @@ export function groupExpensesByCategoryWithCounts(
       count: entry.count,
     }))
     .sort((a, b) => b.total - a.total || compareIds(a.categoryId, b.categoryId));
+}
+
+/**
+ * Totals per category *and* side of the ledger — the one grouping here that
+ * keeps income. Named for filtering nothing: every neighbouring
+ * `groupExpensesBy*` drops income silently, and a summary that inherited that
+ * would report a salary category as simply absent.
+ *
+ * A category carrying both an expense and an income yields two rows rather
+ * than a netted one. `other` is a real category on both sides, and netting it
+ * would make a month of equal flows read as no activity at all.
+ *
+ * Expenses come first as a block, then income, each side largest-first — the
+ * order must not reshuffle on the month income happens to outweigh spending.
+ */
+export function groupByCategoryAndType(
+  transactions: Transaction[],
+  toBase: ToBase,
+): CategoryTypeTotal[] {
+  const totals = new Map<string, CategoryTypeTotal>();
+
+  for (const transaction of transactions) {
+    const key = `${transaction.type}|${transaction.categoryId}`;
+    const entry = totals.get(key) ?? {
+      categoryId: transaction.categoryId,
+      type: transaction.type,
+      total: 0,
+      count: 0,
+    };
+    entry.total += toBase(transaction);
+    entry.count += 1;
+    totals.set(key, entry);
+  }
+
+  return [...totals.values()]
+    .map(entry => ({ ...entry, total: roundMoney(entry.total) }))
+    .sort((a, b) =>
+      sideRank(a) - sideRank(b)
+      || b.total - a.total
+      || compareIds(a.categoryId, b.categoryId));
+}
+
+function sideRank(row: CategoryTypeTotal): number {
+  return row.type === 'expense' ? 0 : 1;
 }
 
 /**
