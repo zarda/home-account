@@ -92,7 +92,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0085](0085-the-deploy-keys-rotation-is-an-issue-the-repo-opens-for-itself.md) | The deploy key's rotation is an issue the repo opens for itself | Accepted | 2026-08-31 |
 | [0086](0086-the-firebase-tools-major-stays-pinned-by-a-gate-not-a-habit.md) | The firebase-tools major stays pinned by a gate, not a habit | Accepted | 2026-08-31 |
 | [0087](0087-the-deploy-is-not-green-until-its-indexes-are-built.md) | The deploy is not green until its indexes are built | Accepted; closes a gap of 0077 | 2026-08-31 |
-| [0088](0088-the-smoke-harness-owns-the-noise-it-makes.md) | The smoke harness owns the noise it makes | Accepted | 2026-08-31 |
+| [0088](0088-the-smoke-harness-owns-the-noise-it-makes.md) | The smoke harness owns the noise it makes | Accepted; root-cause gap closed by 0089 | 2026-08-31 |
+| [0089](0089-the-auth-listener-dies-with-the-injector-that-registered-it.md) | The auth listener dies with the injector that registered it | Accepted; closes a gap of 0088 | 2026-08-31 |
 
 ## What belongs here
 

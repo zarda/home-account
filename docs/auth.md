@@ -39,7 +39,8 @@ clearing `profileDegraded`. If that read throws, it installs a fallback
 profile built from the Firebase user and raises `profileDegraded` with a
 notification. With no user, it clears both. Every branch ends by settling
 `isLoading`, which `waitForAuthLoading` in the route guards waits on for up to
-ten seconds.
+ten seconds. The listener is released when the injector that registered it is
+destroyed, as [ADR 0089](ADR/0089-the-auth-listener-dies-with-the-injector-that-registered-it.md) records.
 
 ## The degraded profile
 
