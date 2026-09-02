@@ -188,13 +188,29 @@
   @apply text-gray-900 dark:text-gray-100;
 }
 
+// The note is a control now, not a decoration, so the gap belongs to the
+// button around the glyph — 32px like the row's own actions button, which is
+// as small as an inline target in a table cell gets without disappearing.
+.note-button {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-inline-start: 4px;
+  vertical-align: middle;
+}
+
 .note-icon {
   font-size: var(--text-sm) !important;
   width: 1em !important;
   height: 1em !important;
   @apply text-gray-400 dark:text-gray-500;
-  margin-left: 4px;
-  vertical-align: middle;
+}
+
+.note-button:hover .note-icon {
+  @apply text-primary-600 dark:text-primary-400;
 }
 
 .receipt-icon-link {

@@ -56,6 +56,12 @@
             <mat-icon>more_vert</mat-icon>
           </button>
           <mat-menu #mobileMenu="matMenu">
+            @if (transaction.note) {
+              <button mat-menu-item (click)="openNote(transaction)">
+                <mat-icon>notes</mat-icon>
+                <span>{{ 'transactions.viewNote' | translate }}</span>
+              </button>
+            }
             <button mat-menu-item (click)="edit.emit(transaction)">
               <mat-icon>edit</mat-icon>
               <span>{{ 'common.edit' | translate }}</span>
@@ -157,7 +163,16 @@
             </span>
           }
           @if (transaction.note) {
-            <mat-icon class="note-icon" [matTooltip]="transaction.note">notes</mat-icon>
+            <button
+              mat-icon-button
+              type="button"
+              class="note-button"
+              [matTooltip]="transaction.note"
+              [attr.aria-label]="'transactions.viewNote' | translate"
+              (click)="$event.stopPropagation(); openNote(transaction)"
+            >
+              <mat-icon class="note-icon">notes</mat-icon>
+            </button>
           }
           @if (transaction.receiptUrl) {
             <a
@@ -216,6 +231,12 @@
             <mat-icon>more_vert</mat-icon>
           </button>
           <mat-menu #menu="matMenu">
+            @if (transaction.note) {
+              <button mat-menu-item (click)="openNote(transaction)">
+                <mat-icon>notes</mat-icon>
+                <span>{{ 'transactions.viewNote' | translate }}</span>
+              </button>
+            }
             <button mat-menu-item (click)="edit.emit(transaction)">
               <mat-icon>edit</mat-icon>
               <span>{{ 'common.edit' | translate }}</span>

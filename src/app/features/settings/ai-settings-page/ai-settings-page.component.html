@@ -369,6 +369,20 @@
                   }
                 </mat-select>
               </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>{{ 'settings.translationProvider' | translate }}</mat-label>
+                <mat-select [(ngModel)]="llmProviderPreferences.translation" (selectionChange)="onProviderPreferenceChange()">
+                  @for (provider of allProviders; track provider.value) {
+                    <mat-option [value]="provider.value" [disabled]="!isProviderAvailable(provider.value)">
+                      {{ provider.label }}
+                      @if (isProviderAvailable(provider.value)) {
+                        <mat-icon class="option-status">check_circle</mat-icon>
+                      }
+                    </mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
             </div>
           </mat-card-content>
         </mat-card>

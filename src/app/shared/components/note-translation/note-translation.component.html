@@ -9,6 +9,7 @@
         </p>
         <p class="translated-text">{{ result.text }}</p>
         <button
+          #showOriginalButton
           mat-button
           type="button"
           class="show-original-button"
@@ -19,11 +20,18 @@
       </div>
     } @else if (errorKey(); as key) {
       <p class="translation-error" role="alert">{{ key | translate }}</p>
-      <button mat-button type="button" class="retry-button" (click)="translateNote()">
+      <button
+        #retryButton
+        mat-button
+        type="button"
+        class="retry-button"
+        (click)="translateNote()"
+      >
         {{ 'noteTranslation.retry' | translate }}
       </button>
     } @else {
       <button
+        #translateButton
         mat-button
         type="button"
         class="translate-button"

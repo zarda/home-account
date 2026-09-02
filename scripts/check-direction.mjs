@@ -132,7 +132,7 @@ const BASELINE = {
   'src/app/features/transactions/camera-capture/camera-capture.component.scss': 3,
   'src/app/features/transactions/transaction-filters/transaction-filters.component.scss': 6,
   'src/app/features/transactions/transaction-form/transaction-form.component.scss': 13,
-  'src/app/features/transactions/transaction-list/transaction-list.component.scss': 5,
+  'src/app/features/transactions/transaction-list/transaction-list.component.scss': 4,
   'src/app/shared/components/ai-search-dialog/ai-search-dialog.component.scss': 1,
   'src/app/shared/components/stat-card/stat-card.component.scss': 1,
   'src/app/shared/components/transaction-row/transaction-row.component.scss': 7,

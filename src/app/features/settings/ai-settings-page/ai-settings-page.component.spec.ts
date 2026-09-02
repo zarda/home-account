@@ -16,6 +16,7 @@ import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { ProviderKeyService } from '../../../core/services/provider-key.service';
 import { AnnouncerService } from '../../../core/services/announcer.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { DEFAULT_LLM_PROVIDER_PREFERENCES } from '../../../models';
 
 describe('AiSettingsPageComponent', () => {
   let component: AiSettingsPageComponent;
@@ -375,6 +376,53 @@ describe('AiSettingsPageComponent', () => {
 
       expect(component.keysLoaded()).toBe(false);
       expect(notifications.error).toHaveBeenCalled();
+    });
+  });
+
+  describe('provider preferences', () => {
+    /**
+     * The card is gated on more than one configured provider, and the gate is
+     * a computed over a plain method call — it settles on the first read, so
+     * the count has to be true before the component is ever rendered.
+     */
+    function withProvidersConfigured(): ComponentFixture<AiSettingsPageComponent> {
+      cloudLLMProviderMock.isProviderAvailable.and.returnValue(true);
+      const configured = TestBed.createComponent(AiSettingsPageComponent);
+      configured.detectChanges();
+      return configured;
+    }
+
+    it('offers a provider for note translation alongside the other four', () => {
+      const configured = withProvidersConfigured();
+
+      const labels = Array.from(
+        configured.nativeElement.querySelectorAll('.provider-preferences-grid mat-label'),
+        (el: Element) => el.textContent!.trim()
+      );
+
+      expect(labels).toContain('settings.translationProvider');
+      expect(labels.length).withContext('one select per feature that calls a model').toBe(5);
+    });
+
+    it('saves the chosen translation provider', async () => {
+      component.llmProviderPreferences.translation = 'claude';
+
+      await component.onProviderPreferenceChange();
+
+      expect(authServiceMock.updateUserPreferences).toHaveBeenCalledWith({
+        llmProviderPreferences: jasmine.objectContaining({ translation: 'claude' }),
+      });
+    });
+
+    it('never hands a select the shared defaults to write into', () => {
+      // Until ngOnInit replaces it the field holds whatever the initialiser
+      // gave it, and [(ngModel)] writes straight through. Aliasing the
+      // constant made every later default assertion in the bundle read
+      // whatever a select on this page last chose.
+      const fresh = TestBed.createComponent(AiSettingsPageComponent).componentInstance;
+
+      expect(fresh.llmProviderPreferences).not.toBe(DEFAULT_LLM_PROVIDER_PREFERENCES);
+      expect(fresh.llmProviderPreferences).toEqual(DEFAULT_LLM_PROVIDER_PREFERENCES);
     });
   });
 

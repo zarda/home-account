@@ -137,6 +137,67 @@ describe('NoteTranslationComponent', () => {
     expect(component.showingTranslation()).toBeTrue();
   });
 
+  it('moves focus onto Show original when the panel replaces the button', async () => {
+    fixture.detectChanges();
+    const button = query('.translate-button') as HTMLButtonElement;
+    button.focus();
+
+    button.click();
+    await settle();
+
+    // The button the click landed on is gone by the time the answer arrives,
+    // so without this focus is on <body> and the keyboard has to walk the
+    // whole surface again to reach the note.
+    expect(document.activeElement).toBe(query('.show-original-button'));
+  });
+
+  it('hands focus back to Translate when the original returns', async () => {
+    fixture.detectChanges();
+    (query('.translate-button') as HTMLButtonElement).click();
+    await settle();
+
+    (query('.show-original-button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(query('.translate-button'));
+  });
+
+  it('leaves focus alone when the reader moved it away while the model answered', async () => {
+    const pending = pendingTranslation();
+    fixture.detectChanges();
+    const button = query('.translate-button') as HTMLButtonElement;
+    button.focus();
+
+    button.click();
+    await settle();
+
+    // The edit form's textarea, standing outside this component: the note goes
+    // on being typed while the request runs, and an answer that yanked the
+    // caret out of it would lose the keystrokes aimed at it next.
+    const outside = document.createElement('input');
+    document.body.appendChild(outside);
+    outside.focus();
+
+    pending.resolve(answer);
+    await settle();
+
+    const focused = document.activeElement;
+    outside.remove();
+    expect(focused).toBe(outside);
+  });
+
+  it('moves focus onto Retry when the failure replaces the button', async () => {
+    translate.and.rejectWith(new Error('offline'));
+    fixture.detectChanges();
+    const button = query('.translate-button') as HTMLButtonElement;
+    button.focus();
+
+    button.click();
+    await settle();
+
+    expect(document.activeElement).toBe(query('.retry-button'));
+  });
+
   it('shows the failure the service names and retries on demand', async () => {
     const failure = new Error('429 too many requests');
     failureKey.and.returnValue('noteTranslation.failedRateLimited');
