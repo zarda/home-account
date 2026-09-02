@@ -1318,6 +1318,22 @@
     "billDueIn": "{{name}} の支払日まであと {{count}} 日です",
     "recapReady": "週次サマリーの準備ができました"
   },
+  "recap": {
+    "title": "週次サマリー",
+    "spent": "支出",
+    "upVsLastWeek": "前の週より{{percent}}%多い",
+    "downVsLastWeek": "前の週より{{percent}}%少ない",
+    "flat": "前の週とほぼ同じ",
+    "noComparison": "比較できる前の週がありません",
+    "topCategories": "主な内訳",
+    "budgetsOver": "しきい値を超えた予算が{{count}}件",
+    "budgetsOnTrack": "すべての予算が範囲内です",
+    "billsDue": "今後7日間に{{count}}件の支払い予定",
+    "narrativeLoading": "今週のまとめを作成しています…",
+    "narrativeUnavailable": "この週のまとめはありません。",
+    "seeTransactions": "先週の取引を見る",
+    "announcement": "週次サマリー：先週の支出は{{amount}}でした。{{change}}。"
+  },
   "insights": {
     "cadenceWeekly": "毎週",
     "cadenceBiweekly": "隔週",

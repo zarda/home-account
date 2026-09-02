@@ -28,6 +28,7 @@ import { RecentTransactionsComponent } from './recent-transactions/recent-transa
 import { UpcomingBillsComponent } from './upcoming-bills/upcoming-bills.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
+import { WeeklyRecapComponent } from './weekly-recap/weekly-recap.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
@@ -59,6 +60,7 @@ const UPCOMING_WINDOW_DAYS = 14;
     UpcomingBillsComponent,
     BudgetProgressComponent,
     BudgetAlertBannerComponent,
+    WeeklyRecapComponent,
     AiSummaryComponent,
     LoadingSpinnerComponent,
     TranslatePipe
@@ -184,6 +186,9 @@ export class DashboardComponent implements OnInit {
 
   // Budget data
   activeBudgets = this.budgetService.activeBudgets;
+  // The banner injects BudgetService and reads this for itself; the recap card
+  // is dumb like the rest of the page's children and takes it as an input.
+  budgetAlerts = this.budgetService.budgetAlerts;
   activeGoals = this.goalService.activeGoals;
 
   // Scheduled money for the next UPCOMING_WINDOW_DAYS. Occurrences dated

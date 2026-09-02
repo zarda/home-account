@@ -1,0 +1,98 @@
+@if (week(); as figures) {
+  <mat-card class="card recap-card" role="region" [attr.aria-labelledby]="'weekly-recap-title'">
+    <!-- Header -->
+    <div class="card-header">
+      <div class="header-text">
+        <h3 class="card-title" id="weekly-recap-title">{{ 'recap.title' | translate }}</h3>
+        <span class="recap-range">{{ range() }}</span>
+      </div>
+      <button
+        mat-icon-button
+        class="recap-dismiss"
+        (click)="dismiss()"
+        [attr.aria-label]="'common.close' | translate"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+
+    <!-- Content -->
+    <div class="card-content">
+      <div class="spend-row">
+        <span class="spend-label">{{ 'recap.spent' | translate }}</span>
+        <app-amount-display
+          class="recap-spend"
+          [amount]="figures.spend"
+          [currency]="baseCurrency()"
+          type="expense"
+          size="lg"
+          [bold]="true"
+        />
+        <span
+          class="recap-delta"
+          [class.delta-up]="trend() === 'up'"
+          [class.delta-down]="trend() === 'down'"
+          >{{ deltaLabel() }}</span
+        >
+      </div>
+
+      @if (figures.topCategories.length > 0) {
+        <div class="category-section">
+          <span class="section-label">{{ 'recap.topCategories' | translate }}</span>
+          <ul class="category-chips">
+            @for (category of figures.topCategories; track category.categoryId) {
+              <li class="recap-category">
+                <span class="chip-name">{{ categoryName(category.categoryId) }}</span>
+                <app-amount-display
+                  [amount]="category.total"
+                  [currency]="baseCurrency()"
+                  type="expense"
+                  size="sm"
+                />
+              </li>
+            }
+          </ul>
+        </div>
+      }
+
+      <p class="fact recap-budgets">{{ budgetsLabel() }}</p>
+
+      <div class="fact recap-bills">
+        <span class="fact-text">{{ billsLabel() }}</span>
+        <app-amount-display
+          [amount]="billsDueNet()"
+          [currency]="baseCurrency()"
+          [type]="billsDueNet() >= 0 ? 'income' : 'expense'"
+          [showSign]="true"
+          size="sm"
+        />
+      </div>
+
+      <!-- The narrative is optional everywhere: no provider, a failed request
+           or an account with grounding off all leave the card whole. -->
+      @if (recap.narrativeStatus() === 'loading') {
+        <p class="narrative recap-narrative narrative-quiet">
+          {{ 'recap.narrativeLoading' | translate }}
+        </p>
+      } @else if (recap.narrativeStatus() === 'failed') {
+        <p class="narrative recap-narrative narrative-quiet">
+          {{ 'recap.narrativeUnavailable' | translate }}
+        </p>
+      } @else if (recap.narrative()) {
+        <p class="narrative recap-narrative">{{ recap.narrative() }}</p>
+      }
+    </div>
+
+    <div class="card-footer">
+      <button
+        mat-button
+        type="button"
+        class="recap-see-transactions"
+        (click)="seeTransactions()"
+      >
+        {{ 'recap.seeTransactions' | translate }}
+        <mat-icon class="footer-icon">chevron_right</mat-icon>
+      </button>
+    </div>
+  </mat-card>
+}

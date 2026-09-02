@@ -1318,6 +1318,22 @@
     "billDueIn": "{{name}} 將於 {{count}} 天後到期",
     "recapReady": "您的每週摘要已準備好"
   },
+  "recap": {
+    "title": "每週摘要",
+    "spent": "支出",
+    "upVsLastWeek": "比前一週多 {{percent}}%",
+    "downVsLastWeek": "比前一週少 {{percent}}%",
+    "flat": "與前一週差不多",
+    "noComparison": "沒有可比較的前一週",
+    "topCategories": "主要花費",
+    "budgetsOver": "有 {{count}} 個預算超出門檻",
+    "budgetsOnTrack": "所有預算都在範圍內",
+    "billsDue": "未來 7 天有 {{count}} 筆帳單到期",
+    "narrativeLoading": "正在整理本週摘要…",
+    "narrativeUnavailable": "本週沒有摘要。",
+    "seeTransactions": "查看上週的交易",
+    "announcement": "每週摘要：您上週花費 {{amount}}。{{change}}。"
+  },
   "insights": {
     "cadenceWeekly": "每週",
     "cadenceBiweekly": "每兩週",

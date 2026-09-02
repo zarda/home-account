@@ -1393,6 +1393,28 @@
     },
     "recapReady": "Your weekly recap is ready"
   },
+  "recap": {
+    "title": "Weekly recap",
+    "spent": "Spent",
+    "upVsLastWeek": "Up {{percent}}% on the week before",
+    "downVsLastWeek": "Down {{percent}}% on the week before",
+    "flat": "Level with the week before",
+    "noComparison": "No week before to compare with",
+    "topCategories": "Where it went",
+    "budgetsOver": {
+      "one": "{{count}} budget over its threshold",
+      "other": "{{count}} budgets over their thresholds"
+    },
+    "budgetsOnTrack": "Every budget still on track",
+    "billsDue": {
+      "one": "{{count}} bill due in the next 7 days",
+      "other": "{{count}} bills due in the next 7 days"
+    },
+    "narrativeLoading": "Writing up the week\u2026",
+    "narrativeUnavailable": "No write-up for this week.",
+    "seeTransactions": "See last week's transactions",
+    "announcement": "Weekly recap: you spent {{amount}} last week. {{change}}."
+  },
   "insights": {
     "cadenceWeekly": "weekly",
     "cadenceBiweekly": "fortnightly",
