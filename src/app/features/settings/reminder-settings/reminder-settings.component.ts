@@ -36,11 +36,17 @@ export class ReminderSettingsComponent {
   async onEnabledChange(event: MatSlideToggleChange): Promise<void> {
     if (!event.checked) {
       // Before the write, not after it: the operating system may be holding a
-      // month of bill reminders this device scheduled, no sweep runs once the
-      // preference is off to retire them, and a write that fails must still
-      // leave the user's "stop" acted on rather than firing for a month.
+      // month of bill reminders this device scheduled, and a write that fails
+      // must still leave the user's "stop" acted on rather than firing for a
+      // month.
       await this.reminders.cancelScheduled();
-      await this.persist(false, event);
+      if (!(await this.persist(false, event))) return;
+
+      // The recap nudge rides the same pending set the cancel above just
+      // emptied, so an account keeping the recap needs it re-booked; the
+      // sweep does that from the stored preferences, and cancels outright
+      // when neither is left on.
+      void this.reminders.sweep();
       return;
     }
 

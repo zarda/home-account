@@ -14,6 +14,7 @@ import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { GeminiService } from './gemini.service';
 import { OpenAIService } from './openai.service';
 import { ClaudeService } from './claude.service';
+import { NoteTranslationService } from './note-translation.service';
 import { ProviderKeyService } from './provider-key.service';
 import { environment } from '../../../environments/environment';
 import { DEFAULT_TEXT_MODEL, DEFAULT_VISION_MODEL } from '../config/ai-models';
@@ -181,6 +182,30 @@ describe('cloud LLM providers (emulator smoke test)', () => {
       expect(provider.isAvailableSignal()).toBeFalse();
     }
     expect(facade.hasAnyCloudProvider()).toBeFalse();
+  });
+
+  it('offers the note translation on every real adapter', async () => {
+    // The lens calls this through the façade on whichever provider is
+    // configured. It is implemented once in the shared base, so a provider
+    // that stopped extending it — or an interface method left unimplemented
+    // behind a cast — would still satisfy every double in the unit specs.
+    for (const provider of [gemini, openai, claude]) {
+      expect(typeof provider.translateText).toBe('function');
+    }
+
+    // Nothing is configured here, so the façade has no provider to resolve
+    // and says so rather than answering with an untranslated note.
+    await expectAsync(facade.translateText('おにぎり 150')).toBeRejectedWithError(
+      /No cloud AI provider available for translation/
+    );
+
+    // The lens's own service over the same real graph: it is root-provided and
+    // reads the façade, TranslationService and the signed-in user in field
+    // initializers, so a construction it cannot survive would take the note
+    // panel down at the first render rather than at a request. With no key
+    // configured it agrees with the façade — the button is offered disabled
+    // and names the fix, instead of failing once per note.
+    expect(TestBed.inject(NoteTranslationService).available()).toBeFalse();
   });
 
   it('keeps the model switches reachable through the façade', () => {

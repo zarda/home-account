@@ -127,6 +127,20 @@ export interface CSVColumnMapping {
   hasHeader: boolean;
 }
 
+/**
+ * A note as another language reads it, and the language it was written in.
+ *
+ * `sourceLanguage` is named in the *target* language, because it is shown to
+ * the person reading the translation — "Japanese" under an English UI. It is
+ * the model's own reading of the note rather than a tag anything can be
+ * filtered by, and neither field is ever written back to the transaction: the
+ * translation is a view of a note, not a second copy of it.
+ */
+export interface NoteTranslation {
+  text: string;
+  sourceLanguage: string;
+}
+
 /** True when an error message indicates a rate limit / quota exhaustion. */
 export function isRateLimitMessage(message: string): boolean {
   const lower = message.toLowerCase();
@@ -250,4 +264,15 @@ export interface CloudLLMProviderAdapter {
     baseCurrency: string,
     period?: string
   ): Promise<string>;
+
+  // Translation
+  /**
+   * Read a stored note back in the app's own language.
+   *
+   * Takes the note's text rather than the transaction, for the reason the
+   * pattern narrative takes a pre-built context: this is the one operation
+   * whose input is a string the user typed, and nothing else on the record has
+   * any business travelling with it.
+   */
+  translateText(text: string): Promise<NoteTranslation>;
 }

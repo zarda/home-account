@@ -10,6 +10,15 @@
   <!-- Budget threshold alerts: inline + dismissible, not a standing snackbar -->
   <app-budget-alert-banner />
 
+  <!-- Last week, above the grid rather than in it: the recap's window is
+       fixed, while every card below follows the selected period. -->
+  <app-weekly-recap
+    [alerts]="budgetAlerts()"
+    [upcoming]="upcomingOccurrences()"
+    [baseCurrency]="baseCurrency()"
+    [categories]="categoriesMap()"
+  />
+
   @if (showInitialSpinner()) {
     <app-loading-spinner [message]="'dashboard.loadingData' | translate" />
   } @else {

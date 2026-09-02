@@ -70,7 +70,9 @@
         "pdf_import",
         "search",
         "summary",
-        "narrative"
+        "narrative",
+        "translation",
+        "recap"
       ]
     }
   },

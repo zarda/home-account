@@ -100,8 +100,10 @@ export class AiSettingsPageComponent implements OnInit {
    */
   keysLoaded = signal<boolean>(false);
 
-  // Provider preferences
-  llmProviderPreferences: LLMProviderPreferences = DEFAULT_LLM_PROVIDER_PREFERENCES;
+  // Provider preferences. A copy, never the constant itself: [(ngModel)] on
+  // the selects below writes through this field, and the shared default is
+  // what every unconfigured account starts from.
+  llmProviderPreferences: LLMProviderPreferences = { ...DEFAULT_LLM_PROVIDER_PREFERENCES };
 
   // Testing state for each provider
   isTestingGemini = signal(false);

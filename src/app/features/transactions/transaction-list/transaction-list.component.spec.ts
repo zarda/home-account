@@ -17,6 +17,7 @@ import { CategoryHelperService } from '../../../core/services/category-helper.se
 import { TranslationService } from '../../../core/services/translation.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { QuickAddService } from '../../../core/services/quick-add.service';
+import { NoteDialogComponent } from '../note-dialog/note-dialog.component';
 import { Transaction } from '../../../models';
 import { createTransaction, createUser } from '../../../core/services/testing';
 
@@ -334,9 +335,33 @@ describe('TransactionListComponent mobile row wiring', () => {
   let dialog: jasmine.SpyObj<MatDialog>;
 
   const txns: Transaction[] = [
-    createTransaction({ id: 'a', amount: 30, description: 'Banana' }),
+    createTransaction({
+      id: 'a',
+      amount: 30,
+      description: 'Banana',
+      note: 'Ripe by Friday\nfrom the corner stall',
+    }),
     createTransaction({ id: 'b', amount: 10, description: 'Apple' }),
   ];
+
+  /** Menu content is only instantiated once the overlay is open. */
+  function menuItems(): HTMLElement[] {
+    return Array.from(
+      document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel button[mat-menu-item]')
+    );
+  }
+
+  function menuLabels(): string[] {
+    return menuItems().map(item => item.textContent!.trim());
+  }
+
+  function openRowMenu(index: number): void {
+    const triggers: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.row-menu-btn')
+    );
+    triggers[index].click();
+    fixture.detectChanges();
+  }
 
   beforeEach(async () => {
     const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
@@ -406,5 +431,176 @@ describe('TransactionListComponent mobile row wiring', () => {
     row.triggerEventHandler('edit', txns[0]);
 
     expect(editSpy).toHaveBeenCalledWith(txns[0]);
+  });
+
+  // The tooltip the desktop table hangs the note on has no touch equivalent,
+  // so on a phone the trailing menu is the only way to the note at all.
+  it('offers the note in the trailing menu of a row that has one', () => {
+    openRowMenu(0);
+
+    expect(menuLabels().some(label => label.includes('transactions.viewNote')))
+      .withContext('the phone route to the note')
+      .toBeTrue();
+  });
+
+  it('leaves the note entry out of a row with nothing to read', () => {
+    openRowMenu(1);
+
+    expect(menuLabels().some(label => label.includes('transactions.viewNote'))).toBeFalse();
+  });
+
+  it('opens the note dialog from the trailing menu', () => {
+    openRowMenu(0);
+    menuItems().find(item => item.textContent!.includes('transactions.viewNote'))!.click();
+
+    expect(dialog.open).toHaveBeenCalledWith(
+      NoteDialogComponent,
+      jasmine.objectContaining({
+        data: { note: 'Ripe by Friday\nfrom the corner stall', description: 'Banana' },
+      })
+    );
+  });
+});
+
+/**
+ * The desktop table renders only above the breakpoint, and Karma's context
+ * iframe sits just under it, so this suite pins the observer to "desktop" the
+ * way the mobile suite above pins it the other way. What it covers is the
+ * note's two desktop doors — the icon in the description cell and the actions
+ * menu — and the one thing both must not do: open the editor instead.
+ */
+describe('TransactionListComponent desktop note doors', () => {
+  let component: TransactionListComponent;
+  let fixture: ComponentFixture<TransactionListComponent>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+
+  const withNote = createTransaction({
+    id: 'a',
+    amount: 30,
+    description: 'Banana',
+    note: 'Ripe by Friday\nfrom the corner stall',
+  });
+  const withoutNote = createTransaction({ id: 'b', amount: 10, description: 'Apple' });
+  const txns: Transaction[] = [withNote, withoutNote];
+
+  function noteButton(): HTMLElement | null {
+    return fixture.nativeElement.querySelector('.note-button');
+  }
+
+  function menuItems(): HTMLElement[] {
+    return Array.from(
+      document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel button[mat-menu-item]')
+    );
+  }
+
+  function openActionsMenu(index: number): void {
+    const triggers: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.action-btn')
+    );
+    triggers[index].click();
+    fixture.detectChanges();
+  }
+
+  beforeEach(async () => {
+    const currency = jasmine.createSpyObj('CurrencyService', ['formatCurrency', 'amountInBase']);
+    currency.amountInBase.and.callFake(
+      (t: { amount: number; amountInBaseCurrency?: number }) => t.amountInBaseCurrency ?? t.amount
+    );
+    currency.formatCurrency.and.callFake((a: number, c: string) => `${c} ${a}`);
+    const dateFormat = jasmine.createSpyObj('DateFormatService', ['formatDate', 'formatRelativeDate']);
+    dateFormat.formatDate.and.returnValue('date');
+    dateFormat.formatRelativeDate.and.returnValue('rel');
+    const categoryHelper = jasmine.createSpyObj('CategoryHelperService', [
+      'getCategoryName', 'getCategoryIcon', 'getCategoryColor',
+    ]);
+    categoryHelper.getCategoryName.and.returnValue('Cat');
+    categoryHelper.getCategoryIcon.and.returnValue('icon');
+    categoryHelper.getCategoryColor.and.returnValue('#000');
+    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    translation.t.and.callFake((k: string) => k);
+    dialog = jasmine.createSpyObj('MatDialog', ['open']);
+
+    await TestBed.configureTestingModule({
+      imports: [TransactionListComponent, NoopAnimationsModule],
+      providers: [
+        { provide: TransactionWindowService, useValue: createMockWindowSource() },
+        { provide: BreakpointObserver, useValue: { observe: () => of({ matches: true, breakpoints: {} }) } },
+        { provide: CurrencyService, useValue: currency },
+        { provide: AuthService, useValue: { currentUser: signal(createUser()) } },
+        { provide: DateFormatService, useValue: dateFormat },
+        { provide: CategoryHelperService, useValue: categoryHelper },
+        { provide: TranslationService, useValue: translation },
+        { provide: MatDialog, useValue: dialog },
+        { provide: QuickAddService, useValue: jasmine.createSpyObj('QuickAddService', ['openAddTransaction']) },
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(TransactionListComponent);
+    component = fixture.componentInstance;
+    fixture.componentRef.setInput('transactions', txns);
+    fixture.detectChanges();
+  });
+
+  it('makes the note a control a keyboard can reach, named for what it does', () => {
+    const button = noteButton();
+
+    expect(button).withContext('the note icon was a decoration nothing could open').not.toBeNull();
+    expect(button!.tagName).toBe('BUTTON');
+    // Its visible content is one glyph, so the name has to come from the label.
+    expect(button!.getAttribute('aria-label')).toBe('transactions.viewNote');
+  });
+
+  it('shows no note control on a row that has no note', () => {
+    expect(fixture.nativeElement.querySelectorAll('.note-button').length).toBe(1);
+  });
+
+  it('opens the note dialog with the note and the row it belongs to', () => {
+    noteButton()!.click();
+
+    expect(dialog.open).toHaveBeenCalledWith(
+      NoteDialogComponent,
+      jasmine.objectContaining({
+        width: '480px',
+        maxWidth: '95vw',
+        data: { note: 'Ripe by Friday\nfrom the corner stall', description: 'Banana' },
+      })
+    );
+  });
+
+  it('does not open the editor behind the note dialog', () => {
+    const editSpy = jasmine.createSpy('edit');
+    component.edit.subscribe(editSpy);
+
+    // The button sits inside the row's own click target, so without
+    // stopPropagation the editor opens under the dialog every time.
+    noteButton()!.click();
+
+    expect(editSpy).not.toHaveBeenCalled();
+  });
+
+  it('still opens the editor when the row itself is clicked', () => {
+    const editSpy = jasmine.createSpy('edit');
+    component.edit.subscribe(editSpy);
+
+    (fixture.nativeElement.querySelector('tr.table-row') as HTMLElement).click();
+
+    expect(editSpy).toHaveBeenCalledWith(withNote);
+  });
+
+  it('offers the note in the actions menu of a row that has one', () => {
+    openActionsMenu(0);
+
+    const item = menuItems().find(el => el.textContent!.includes('transactions.viewNote'));
+    expect(item).withContext('the menu route to the note').toBeDefined();
+
+    item!.click();
+
+    expect(dialog.open).toHaveBeenCalledWith(NoteDialogComponent, jasmine.any(Object));
+  });
+
+  it('leaves the note entry out of a row with nothing to read', () => {
+    openActionsMenu(1);
+
+    expect(menuItems().some(el => el.textContent!.includes('transactions.viewNote'))).toBeFalse();
   });
 });

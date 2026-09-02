@@ -239,6 +239,24 @@ Prose is never stored. Model output cannot be regenerated identically, and stori
 it would make the snapshot feature's "identical when regenerated" criterion
 impossible to assert.
 
+### The weekly recap borrows this prompt
+
+The dashboard's weekly recap writes up its week through the same
+`patternNarrative` prompt, under the same two gates: a configured provider,
+and `effectiveRagLevel(prefs) !== 'off'`. Its context follows the same
+allowlist rule — the week's dates, the base currency, the totals and counts,
+the change against the week before, and the leading categories by locally
+resolved name. Nothing a person typed, no transaction id, no individual date,
+and deliberately not the live budget and bill lines the card also shows.
+
+The one difference is the cache. The recap's paragraph is generated **once per
+week per device** and kept in `localStorage`, keyed on the week, a hash of the
+context, the locale and the answering provider — so a figure that moves is a
+new key rather than a stale hit, and the card is not paying for a rewrite
+every time a live line changes. Closing the gate blanks the paragraph on
+screen; the cached entry is left standing rather than cleared.
+[weekly-recap.md](weekly-recap.md) is the rest of that feature.
+
 ## Adding a detector
 
 1. Write a pure function in `src/app/core/utils/`, taking `toBase` and a window,

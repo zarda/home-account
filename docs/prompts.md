@@ -58,6 +58,8 @@ The country works the same way. `COUNTRY_FIELD` asks for an ISO 3166-1 alpha-2 c
 
 The same rule applies to examples. Demonstrate the *shape* with placeholders (`"<item name as printed>"`) rather than a real receipt in one language, and say explicitly that the receipt's own script must be reproduced.
 
+`translateNote` is where that rule bites hardest, because the obvious prompt names the languages it can translate into — and that list would be a ceiling on the app's own locales, extended by hand every time one was added. It names none: the target language arrives as the same `languageInstruction` sentence every user-facing prompt already carries, and the source language comes back from the model as a name rather than a tag, written in the target language because it is shown to whoever is reading the translation. The prompt asks for a reproduction rather than a rendition — every line, in order, nothing summarised, merged, omitted or added, with numbers, currency symbols, dates and codes left exactly as written — because a note is a list of lines and a model left to its own judgement writes the gist of it, which reads well and loses the third item. The answer is JSON (`{"translation", "sourceLanguage"}`) for the same reason: prose would have to be told where the note ends and the commentary begins. Nothing is written back to the transaction; the translation is a view of a note, not a second copy of it.
+
 A list the user owns is not a list in source. `suggestTags` asks the model to tag a row using only the tags this account already uses, and that vocabulary is rendered at request time — from the last six months of transactions and from tag memory, one `- tag` per line — so `categorization.prompts.ts` names no tag at all and no build ships an opinion about what people tag things with. The answer is filtered back down to the same list by `applyTagSuggestions`, so an invented, translated or respelled tag is dropped rather than created. An account with no tags gets no request: there is nothing to choose from, and a prompt that had to supply the candidates itself would be exactly the hand-written list this rule forbids.
 
 ### Registered in TypeScript, not JSON
@@ -83,6 +85,7 @@ A list the user owns is not a list in source. `suggestTags` asks the model to ta
 | `patternNarrative` | insights | claude, gemini, openai | 1.17.93 | Describe already-detected spending patterns in prose, without recalculating |
 | `financialAdvice` | insights | claude, gemini, openai | 1.17.93 | Two or three sentences of advice over the period totals |
 | `searchQuery` | search | claude, gemini, openai | 1.17.93 | A natural-language question → a structured filter or aggregate command |
+| `translateNote` | translation | claude, gemini, openai | 26.9.152 | A stored note → the same note in the app's language, line for line, plus the language it was written in |
 
 <!-- prompt-registry:end -->
 

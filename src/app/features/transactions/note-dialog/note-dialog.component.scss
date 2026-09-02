@@ -1,0 +1,28 @@
+.note-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-block-start: 16px;
+}
+
+.note-subtitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.note-text {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  text-align: start;
+
+  // The note's own line structure is the content — a receipt written line by
+  // line is unreadable as one paragraph — and nothing clips it: this dialog
+  // exists because the list could only ever hint at the note
+  // (docs/ui-overflow.md).
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

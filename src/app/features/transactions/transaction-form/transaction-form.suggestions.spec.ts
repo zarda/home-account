@@ -1,5 +1,6 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatDialog, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
@@ -23,6 +24,8 @@ import { GroundingHistoryService } from '../../../core/services/grounding-histor
 import { TagMemoryService } from '../../../core/services/tag-memory.service';
 import { TagSuggestionService } from '../../../core/services/tag-suggestion.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { NoteTranslationService } from '../../../core/services/note-translation.service';
+import { NoteTranslationComponent } from '../../../shared/components/note-translation/note-translation.component';
 import { Category, User } from '../../../models';
 import { createCategory, createUser } from '../../../core/services/testing';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../core/services/receipt-attempt.service';
@@ -122,6 +125,17 @@ describe('TransactionFormComponent suggestion chips', () => {
         { provide: ReceiptToNoteService, useValue: jasmine.createSpyObj('ReceiptToNoteService', ['convertReceiptToNote']) },
         { provide: AnalyticsService, useValue: jasmine.createSpyObj('AnalyticsService', ['trackTransactionAdd', 'trackAiAssistUsed']) },
         { provide: TagSuggestionService, useValue: tagSuggestions },
+        // The lens under the note field is the real component; its service is
+        // not, because the real one builds the cloud-LLM graph and there is no
+        // Firestore here to build it from.
+        {
+          provide: NoteTranslationService,
+          useValue: jasmine.createSpyObj<NoteTranslationService>(
+            'NoteTranslationService',
+            ['translate', 'failureKey'],
+            { available: signal(false) }
+          ),
+        },
         { provide: GroundingHistoryService, useValue: groundingHistory },
         { provide: TagMemoryService, useValue: tagMemory },
         // The form door's attempt handle; the real service reaches Firestore.
@@ -237,6 +251,48 @@ describe('TransactionFormComponent suggestion chips', () => {
       // stop; role=status is what announces it instead.
       expect(chip.tagName).not.toBe('BUTTON');
       expect(chip.getAttribute('role')).toBe('status');
+    });
+  });
+
+  /**
+   * The translation lens under the note field. Same reason the chips are
+   * asserted here: this is the only spec that renders the real template, so
+   * nothing else can see whether the lens is mounted at all — or whether it
+   * is reading the note being typed rather than the one the dialog opened
+   * with, which is the difference between translating a receipt and
+   * translating whatever was there before the user replaced it.
+   */
+  describe('the note translation lens', () => {
+    function lens(fixture: ComponentFixture<TransactionFormComponent>) {
+      return fixture.debugElement.query(By.directive(NoteTranslationComponent));
+    }
+
+    function noteField(fixture: ComponentFixture<TransactionFormComponent>): Element {
+      const textarea = fixture.nativeElement.querySelector(
+        'textarea[formControlName="note"]'
+      ) as HTMLElement;
+      return textarea.closest('mat-form-field')!;
+    }
+
+    it('sits directly beneath the note field', () => {
+      const fixture = build();
+
+      expect(lens(fixture)).withContext('the lens is mounted').not.toBeNull();
+      expect(noteField(fixture).nextElementSibling)
+        .withContext('beneath the field, not inside it')
+        .toBe(lens(fixture).nativeElement);
+    });
+
+    it('reads the note as it is typed', () => {
+      const fixture = build();
+      const mounted = () => (lens(fixture).componentInstance as NoteTranslationComponent).note();
+
+      expect(mounted()).toBe('');
+
+      fixture.componentInstance.form.get('note')!.setValue('おにぎり 150');
+      fixture.detectChanges();
+
+      expect(mounted()).toBe('おにぎり 150');
     });
   });
 });

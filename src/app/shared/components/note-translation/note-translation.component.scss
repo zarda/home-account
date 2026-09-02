@@ -1,0 +1,53 @@
+:host {
+  display: block;
+}
+
+.note-translation {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.translate-button mat-icon {
+  margin-inline-end: 4px;
+}
+
+.no-provider-hint,
+.translation-error,
+.translation-marker {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-align: start;
+}
+
+.translation-error {
+  color: var(--color-error);
+}
+
+.translation-panel {
+  inline-size: 100%;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding-block: 8px;
+  padding-inline: 12px;
+}
+
+.translated-text {
+  margin-block: 4px 0;
+  font-size: var(--text-sm);
+  text-align: start;
+
+  // The note's own line structure is the content: a receipt read line by line
+  // is unreadable as one paragraph. Nothing truncates it either — a
+  // translation the reader cannot finish is worse than the note they could
+  // not read (docs/ui-overflow.md).
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.show-original-button {
+  margin-block-start: 4px;
+  margin-inline-start: -8px;
+}

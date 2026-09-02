@@ -159,6 +159,7 @@
     "saveChanges": "変更を保存",
     "receipt": "レシート",
     "viewReceipt": "レシートを表示",
+    "viewNote": "メモを表示",
     "resultCountAnnouncement": "{{count}}件の取引を表示しています",
     "resultWithTotalsAnnouncement": "{{countText}}。{{totalsText}}",
     "totalsAnnouncement": "総支出は{{spent}}、純残高は{{net}}です。",
@@ -549,6 +550,10 @@
     "reminderNotificationsDescription": "支払日が近づいたとき、予算の上限に近づいたときに通知します。設定は端末ごとに行います。",
     "reminderNotificationsEnable": "リマインダーを送る",
     "reminderNotificationsPermissionDenied": "通知がブロックされています。ここから再度許可を求めることはできません。まずブラウザまたは端末の設定で通知を許可してください。",
+    "weeklyRecap": "週次サマリー",
+    "weeklyRecapDescription": "先週の支出を振り返ります。新しい週になるとダッシュボードに表示され、閉じるまで消えません。iOS では、月曜日の朝に通知でお知らせします。",
+    "weeklyRecapEnable": "週次サマリーを表示する",
+    "weeklyRecapNoNotifications": "通知がオフのため、月曜日のお知らせは届きません。サマリーはダッシュボードに表示されます。",
     "create": "作成",
     "geminiApiKey": "AI機能 (Gemini)",
     "geminiApiKeyHint": "Google Gemini APIキーを入力すると、レシートスキャンや支出分析などのAI機能が利用できます。",
@@ -571,6 +576,7 @@
     "insightsHint": "支出サマリーと財務アドバイスを生成するために使用",
     "searchProvider": "スマート検索",
     "searchHint": "自然言語での取引検索を解釈するために使用",
+    "translationProvider": "メモの翻訳",
     "aiSettings": "AI処理",
     "aiSettingsDescription": "AIによるレシートスキャンとオフライン処理の設定",
     "aiMode": "処理モード",
@@ -930,6 +936,19 @@
     "offlineFallback": "オフラインのため、キーワード検索を表示しています。",
     "noProviderFallback": "AIプロバイダーが設定されていません — キーワード検索を表示します。設定 → AI処理 でAPIキーを追加してください。",
     "errorFallback": "質問を解釈できなかったため、キーワード検索を表示しています。"
+  },
+  "noteTranslation": {
+    "translate": "翻訳",
+    "translating": "翻訳中...",
+    "showOriginal": "原文を表示",
+    "marker": "{{language}}から翻訳",
+    "noProvider": "翻訳にはAIプロバイダーが必要です。設定 → AI処理 でAPIキーを追加してください。",
+    "retry": "再試行",
+    "failed": "このメモを翻訳できませんでした。もう一度お試しください。",
+    "failedKey": "翻訳を利用できません：APIキーが無効です。設定 → AI処理 をご確認ください。",
+    "failedRateLimited": "AIサービスが混み合っています（利用上限に到達）。1分ほど待ってから再試行してください。",
+    "failedOffline": "翻訳には接続が必要です。ネットワークを確認して再試行してください。",
+    "failedIncomplete": "翻訳が途中で切れています。もう一度お試しください。"
   },
   "import": {
     "title": "スマートインポート",
@@ -1300,7 +1319,24 @@
   },
   "reminders": {
     "billDue": "{{name}} は今日が支払日です",
-    "billDueIn": "{{name}} の支払日まであと {{count}} 日です"
+    "billDueIn": "{{name}} の支払日まであと {{count}} 日です",
+    "recapReady": "週次サマリーの準備ができました"
+  },
+  "recap": {
+    "title": "週次サマリー",
+    "spent": "支出",
+    "upVsLastWeek": "前の週より{{percent}}%多い",
+    "downVsLastWeek": "前の週より{{percent}}%少ない",
+    "flat": "前の週とほぼ同じ",
+    "noComparison": "比較できる前の週がありません",
+    "topCategories": "主な内訳",
+    "budgetsOver": "しきい値を超えた予算が{{count}}件",
+    "budgetsOnTrack": "すべての予算が範囲内です",
+    "billsDue": "今後7日間に{{count}}件の支払い予定",
+    "narrativeLoading": "今週のまとめを作成しています…",
+    "narrativeUnavailable": "この週のまとめはありません。",
+    "seeTransactions": "先週の取引を見る",
+    "announcement": "週次サマリー：先週の支出は{{amount}}でした。{{change}}。"
   },
   "insights": {
     "cadenceWeekly": "毎週",

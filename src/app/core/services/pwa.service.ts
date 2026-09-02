@@ -179,11 +179,6 @@ export class PwaService {
         // Trigger offline queue sync (will be handled by offline-queue service)
         window.dispatchEvent(new CustomEvent('sync-offline-queue'));
         break;
-
-      case 'CHECK_MODEL_UPDATES':
-        // Trigger model update check (will be handled by model-loader service)
-        window.dispatchEvent(new CustomEvent('check-model-updates'));
-        break;
     }
   }
 

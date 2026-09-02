@@ -1,0 +1,17 @@
+<app-dialog-header titleKey="transactions.note" icon="notes" (closed)="close()" />
+
+<mat-dialog-content class="note-content">
+  <p class="note-subtitle">{{ data.description }}</p>
+
+  @if (!showingTranslation()) {
+    <p class="note-text">{{ data.note }}</p>
+  }
+
+  <app-note-translation [note]="data.note" [(showingTranslation)]="showingTranslation" />
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" class="close-button" (click)="close()">
+    {{ 'common.close' | translate }}
+  </button>
+</mat-dialog-actions>

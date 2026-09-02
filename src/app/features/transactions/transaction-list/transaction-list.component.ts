@@ -42,6 +42,7 @@ import { EmptyStateComponent } from '../../../shared/components/empty-state/empt
 import { TransactionRowComponent } from '../../../shared/components/transaction-row/transaction-row.component';
 import { CategoryChipComponent } from '../../../shared/components/category-chip/category-chip.component';
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { NoteDialogComponent, NoteDialogData } from '../note-dialog/note-dialog.component';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../shared/pipes/location-label.pipe';
 import { AmountDisplayComponent } from '../../../shared/components/amount-display/amount-display.component';
@@ -261,6 +262,24 @@ export class TransactionListComponent {
 
   formatRelativeDate(date: Date | Timestamp): string {
     return this.dateFormatService.formatRelativeDate(date);
+  }
+
+  /**
+   * Open the note at full length.
+   *
+   * One handler behind three doors — the icon in the description cell, the
+   * desktop actions menu and the phone's trailing menu — because the note is
+   * the same note from all three and only the tooltip was ever desktop-only.
+   */
+  openNote(transaction: Transaction): void {
+    this.dialog.open(NoteDialogComponent, {
+      width: '480px',
+      maxWidth: '95vw',
+      data: {
+        note: transaction.note ?? '',
+        description: transaction.description,
+      } as NoteDialogData,
+    });
   }
 
   confirmDelete(transaction: Transaction): void {

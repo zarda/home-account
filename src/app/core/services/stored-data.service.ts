@@ -162,6 +162,8 @@ export const NOT_A_RECORD_KIND: Readonly<Record<string, string>> = {
   appLock: 'Device-local: the lock credential never leaves this device.',
   offlineQueue: 'Device-local: queued receipts drain into transactions on reconnect.',
   shareStash: 'Device-local: files shared into the app await import on this device.',
+  reminders: 'Device-local: the log of what this device has already raised.',
+  weeklyRecap: 'Device-local: the recap week this device has already shown.',
   userDoc: 'The profile document itself, managed from Settings.',
   authUser: 'The Firebase Auth user, not a collection of records.'
 };

@@ -28,6 +28,8 @@ import { AuthService } from './auth.service';
 import { FirestoreService } from './firestore.service';
 import { StorageService } from './storage.service';
 import { SHARE_STASH_DB, SHARE_STASH_STORE, ShareStashStore } from './share-stash.store';
+import { reminderSentStorageKey } from './reminder.service';
+import { weeklyRecapStorageKeys } from '../utils/weekly-recap.utils';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -253,6 +255,12 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     });
   }
 
+  /** Every localStorage key the cascade's device-local steps own, for one uid. */
+  function deviceKeys(userId: string): string[] {
+    const recap = weeklyRecapStorageKeys(userId);
+    return [reminderSentStorageKey(userId), recap.dismissed, recap.narrative];
+  }
+
   async function uploadReceipt(): Promise<string> {
     const file = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'receipt.png', {
       type: 'image/png'
@@ -318,6 +326,16 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     });
     stashDb.close();
 
+    // The two localStorage-only steps, seeded for this account and for a
+    // second one: erasure is per-uid, so the other account's device state has
+    // to survive a cascade run beside it.
+    const OTHER_UID = 'smoke-del-other';
+    const mine = deviceKeys(uid);
+    const theirs = deviceKeys(OTHER_UID);
+    for (const key of [...mine, ...theirs]) {
+      localStorage.setItem(key, 'seeded');
+    }
+
     const report = await service.deleteAccount();
 
     expect(report.failed).toEqual([]);
@@ -352,6 +370,14 @@ describe('AccountDeletionService (emulator smoke test)', () => {
     const stashAfter = await openDB(SHARE_STASH_DB);
     expect(await stashAfter.count(SHARE_STASH_STORE)).toBe(0);
     stashAfter.close();
+
+    for (const key of mine) {
+      expect(localStorage.getItem(key)).withContext(`${key} should be gone`).toBeNull();
+    }
+    for (const key of theirs) {
+      expect(localStorage.getItem(key)).withContext(`${key} should survive`).toBe('seeded');
+      localStorage.removeItem(key);
+    }
 
     // The step the cascade invoked above, run for real now that the
     // owner-only reads are done: the emulator accepts deleting this

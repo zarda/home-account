@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { NO_ERRORS_SCHEMA, Signal, signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of } from 'rxjs';
 
@@ -14,6 +14,7 @@ import { NotificationService } from '../../../core/services/notification.service
 import { TransactionService } from '../../../core/services/transaction.service';
 import { SecurityLogService } from '../../../core/services/security-log.service';
 import { ReminderService } from '../../../core/services/reminder.service';
+import { WeeklyRecapService } from '../../../core/services/weekly-recap.service';
 
 describe('ProfileSettingsComponent', () => {
   let component: ProfileSettingsComponent;
@@ -28,6 +29,7 @@ describe('ProfileSettingsComponent', () => {
   let mockTransactionService: jasmine.SpyObj<TransactionService>;
   let mockSecurityLog: jasmine.SpyObj<SecurityLogService>;
   let mockReminders: jasmine.SpyObj<ReminderService>;
+  let mockRecap: { enabled: Signal<boolean> };
 
   const mockUser = {
     displayName: 'Test User',
@@ -81,6 +83,8 @@ describe('ProfileSettingsComponent', () => {
       enabled: signal(false),
     });
 
+    mockRecap = { enabled: signal(false) };
+
     await TestBed.configureTestingModule({
       imports: [ProfileSettingsComponent, NoopAnimationsModule],
       providers: [
@@ -97,7 +101,10 @@ describe('ProfileSettingsComponent', () => {
         { provide: SecurityLogService, useValue: mockSecurityLog },
         // Same reason: the reminders toggle would otherwise drag
         // BudgetService and Firestore in behind it.
-        { provide: ReminderService, useValue: mockReminders }
+        { provide: ReminderService, useValue: mockReminders },
+        // And the recap toggle its own two queries. The service is stubbed
+        // rather than the component, so the real switch still renders here.
+        { provide: WeeklyRecapService, useValue: mockRecap }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     }).compileComponents();
@@ -109,6 +116,14 @@ describe('ProfileSettingsComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('should mount the weekly recap opt-in beside the reminders one', () => {
+    const recap: HTMLElement = fixture.nativeElement.querySelector('app-weekly-recap-settings');
+
+    // NO_ERRORS_SCHEMA renders an unknown element as an empty tag, so the
+    // switch inside it is what says the component was actually imported.
+    expect(recap.querySelector('button[role="switch"]')).toBeTruthy();
   });
 
   describe('initialization', () => {

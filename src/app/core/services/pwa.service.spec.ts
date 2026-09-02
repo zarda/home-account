@@ -256,19 +256,25 @@ describe('PwaService', () => {
       expect(s.cacheSize()).toEqual(size);
     });
 
-    it('re-dispatches sync and model-update signals', () => {
+    it('re-dispatches the sync signal', () => {
       const s = make();
       const events: string[] = [];
       const onSync = () => events.push('sync');
-      const onModel = () => events.push('model');
       window.addEventListener('sync-offline-queue', onSync);
-      window.addEventListener('check-model-updates', onModel);
       const handler = (s as unknown as { handleServiceWorkerMessage: Handler }).handleServiceWorkerMessage.bind(s);
       handler({ type: 'SYNC_OFFLINE_QUEUE' });
-      handler({ type: 'CHECK_MODEL_UPDATES' });
       window.removeEventListener('sync-offline-queue', onSync);
+      expect(events).toEqual(['sync']);
+    });
+
+    it('ignores CHECK_MODEL_UPDATES messages', () => {
+      const s = make();
+      const onModel = jasmine.createSpy('onModel');
+      window.addEventListener('check-model-updates', onModel);
+      const handler = (s as unknown as { handleServiceWorkerMessage: Handler }).handleServiceWorkerMessage.bind(s);
+      handler({ type: 'CHECK_MODEL_UPDATES' });
       window.removeEventListener('check-model-updates', onModel);
-      expect(events).toEqual(['sync', 'model']);
+      expect(onModel).not.toHaveBeenCalled();
     });
   });
 

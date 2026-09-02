@@ -1574,6 +1574,45 @@ describe('firestore.rules (emulator smoke test)', () => {
       );
     });
 
+    it('accepts the dotted update the weekly-recap toggle writes', async () => {
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), { 'preferences.enableWeeklyRecap': true }),
+        'enableWeeklyRecap dotted update'
+      );
+    });
+
+    it('accepts the whole provider map the note-translation picker writes', async () => {
+      // The shape the picker really sends: it hands updateUserPreferences the
+      // entire llmProviderPreferences object, which becomes one dotted update
+      // of that field carrying every feature's provider, not just the one the
+      // user touched. Proven rather than assumed — the picker writes through
+      // updateDoc and a rule that refused a nested map would fail silently.
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), {
+          'preferences.llmProviderPreferences': {
+            receiptScanning: 'gemini',
+            categorization: 'gemini',
+            insights: 'gemini',
+            search: 'gemini',
+            translation: 'claude',
+          },
+        }),
+        'llmProviderPreferences dotted update'
+      );
+    });
+
+    it('accepts a dotted update reaching one provider field two levels down', async () => {
+      // No caller writes this today. It is here so the rules are known to be
+      // indifferent to the depth of the path rather than to the one depth the
+      // app happens to use.
+      await expectAllowed(
+        updateDoc(doc(firestore, `users/${uid}`), {
+          'preferences.llmProviderPreferences.translation': 'claude',
+        }),
+        'translation provider dotted update'
+      );
+    });
+
     it('accepts the dotted update that closes the first-run welcome', async () => {
       await expectAllowed(
         updateDoc(doc(firestore, `users/${uid}`), { 'preferences.onboardingCompleted': true }),

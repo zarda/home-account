@@ -11,6 +11,7 @@ import { SpendingChartComponent } from './spending-chart/spending-chart.componen
 import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
 import { UpcomingBillsComponent } from './upcoming-bills/upcoming-bills.component';
+import { WeeklyRecapComponent } from './weekly-recap/weekly-recap.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
@@ -57,6 +58,16 @@ class UpcomingBillsStubComponent {
   categories = input<Map<string, Category>>(new Map());
   baseCurrency = input<string>('USD');
   net = input<number>(0);
+}
+
+// Same for the weekly recap card. The real one injects WeeklyRecapService,
+// which reaches Firestore, so it is swapped out here rather than provided for.
+@Component({ selector: 'app-weekly-recap', standalone: true, template: '' })
+class WeeklyRecapStubComponent {
+  alerts = input<BudgetAlert[]>([]);
+  upcoming = input<RecurringOccurrence[]>([]);
+  baseCurrency = input<string>('USD');
+  categories = input<Map<string, Category>>(new Map());
 }
 
 describe('DashboardComponent', () => {
@@ -824,10 +835,15 @@ describe('DashboardComponent', () => {
               AiSummaryComponent,
               LoadingSpinnerComponent,
               BudgetAlertBannerComponent,
+              WeeklyRecapComponent,
             ],
           },
           add: {
-            imports: [FinancialSummaryStubComponent, UpcomingBillsStubComponent],
+            imports: [
+              FinancialSummaryStubComponent,
+              UpcomingBillsStubComponent,
+              WeeklyRecapStubComponent,
+            ],
             schemas: [NO_ERRORS_SCHEMA],
           },
         })
@@ -885,6 +901,40 @@ describe('DashboardComponent', () => {
       // other money computed on the page, catch a binding pointed elsewhere.
       expect(stub.baseCurrency()).toBe('JPY');
       expect(stub.net()).toBe(-1200);
+    });
+
+    it('binds the alerts, the upcoming window, base currency and categories to app-weekly-recap', () => {
+      const rent: RecurringOccurrence = {
+        recurringId: 'r1',
+        name: 'Rent',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        categoryId: 'food',
+        date: new Date(2026, 8, 1),
+      };
+      const alert: BudgetAlert = {
+        budgetId: 'b1',
+        budgetName: 'Groceries',
+        percentUsed: 120,
+        remaining: 0,
+        severity: 'exceeded',
+      };
+      recurringService.getNextOccurrences.and.returnValue(of([rent]));
+      budgetService.budgetAlerts.set([alert]);
+      authService.currentUser.set(
+        createUser({ preferences: { baseCurrency: 'JPY' } as User['preferences'] }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      const stub = fixture.debugElement.query(By.directive(WeeklyRecapStubComponent))
+        ?.componentInstance as WeeklyRecapStubComponent;
+      expect(stub).withContext('app-weekly-recap rendered').toBeTruthy();
+      expect(stub.alerts()).toEqual([alert]);
+      expect(stub.upcoming()).toEqual([rent]);
+      expect(stub.baseCurrency()).toBe('JPY');
+      expect(stub.categories().get('food')).toBeTruthy();
     });
   });
 });

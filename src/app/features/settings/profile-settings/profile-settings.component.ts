@@ -22,6 +22,7 @@ import { SecurityActivityComponent } from '../security-activity/security-activit
 import { SecuritySettingsComponent } from '../security-settings/security-settings.component';
 import { AnalyticsSettingsComponent } from '../analytics-settings/analytics-settings.component';
 import { ReminderSettingsComponent } from '../reminder-settings/reminder-settings.component';
+import { WeeklyRecapSettingsComponent } from '../weekly-recap-settings/weekly-recap-settings.component';
 import { AccessibilitySettingsComponent } from '../accessibility-settings/accessibility-settings.component';
 import { AnalyticsService } from '../../../core/services/analytics.service';
 
@@ -42,6 +43,7 @@ import { AnalyticsService } from '../../../core/services/analytics.service';
     SecuritySettingsComponent,
     AnalyticsSettingsComponent,
     ReminderSettingsComponent,
+    WeeklyRecapSettingsComponent,
     AccessibilitySettingsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -7,7 +7,7 @@ import { CurrencyService } from './currency.service';
 import { TranslationService } from './translation.service';
 import { Category, MonthlyTotal } from '../../models';
 import { createCategory } from './testing/test-data';
-import { JSON_ONLY_PREAMBLE, renderPrompt } from '../prompts';
+import { JSON_ONLY_PREAMBLE, languageInstruction, renderPrompt } from '../prompts';
 import { environment } from '../../../environments/environment';
 
 /**
@@ -230,6 +230,41 @@ describe('provider prompt parity', () => {
     });
   });
 
+  describe('translateText', () => {
+    const answer = JSON.stringify({
+      translation: 'Rice ball 150\nTotal 480',
+      sourceLanguage: 'Japanese',
+    });
+
+    beforeEach(async () => {
+      geminiTextModel.generateContent.and.resolveTo({
+        response: { text: () => answer, candidates: [{ finishReason: 'STOP' }] },
+      });
+      openaiClient.responses.create.and.resolveTo({ output_text: answer });
+      claudeClient.messages.create.and.resolveTo({
+        content: [{ type: 'text', text: answer }],
+      });
+
+      await gemini.translateText('おにぎり 150\n合計 480');
+      await openai.translateText('おにぎり 150\n合計 480');
+      await claude.translateText('おにぎり 150\n合計 480');
+    });
+
+    it('sends byte-identical text from all three providers', () => {
+      expect(openaiPrompt()).toBe(geminiPrompt());
+      expect(claudePrompt()).toBe(geminiPrompt());
+    });
+
+    it('gives every provider the language instruction', () => {
+      // The sentence is the whole target-language mechanism here: a provider
+      // that dropped it would answer in the note's own language and the lens
+      // would show the note back unchanged.
+      for (const prompt of [geminiPrompt(), openaiPrompt(), claudePrompt()]) {
+        expect(prompt).toContain('Respond in English.');
+      }
+    });
+  });
+
   describe('interpretSearchQuery', () => {
     const context = {
       today: '2026-07-24',
@@ -363,7 +398,7 @@ describe('provider prompt parity', () => {
     });
   });
 
-  // #263. The registry declares a temperature for all thirteen prompts, but a
+  // #263. The registry declares a temperature for all fourteen prompts, but a
   // seam can only carry what the transport accepts, and the three differ.
   describe('the declared temperature', () => {
     const rows = [{ description: 'X', amount: 1, date: new Date('2026-07-01') }];
@@ -412,6 +447,33 @@ describe('provider prompt parity', () => {
 
     it('is omitted for OpenAI, because the GPT-5 Responses API rejects it', async () => {
       await categorizeEverywhere();
+      expect('temperature' in openaiEnvelope()).toBeFalse();
+    });
+
+    it('carries a declared zero, which a truthiness check would drop', async () => {
+      // translateNote is the first prompt to declare 0. `temperature:
+      // rendered.temperature ?? ...` or an `if (rendered.temperature)` reads
+      // as working code and would silently send the transport's default.
+      const declaredZero = renderPrompt('translateNote', {
+        text: 'おにぎり 150',
+        languageInstruction: languageInstruction('en'),
+      }).temperature;
+      expect(declaredZero).toBe(0);
+
+      claude.setModel('claude-haiku-4-5');
+      const answer = JSON.stringify({ translation: 'Rice ball 150', sourceLanguage: 'Japanese' });
+      geminiTextModel.generateContent.and.resolveTo({
+        response: { text: () => answer, candidates: [{ finishReason: 'STOP' }] },
+      });
+      openaiClient.responses.create.and.resolveTo({ output_text: answer });
+      claudeClient.messages.create.and.resolveTo({ content: [{ type: 'text', text: answer }] });
+
+      await gemini.translateText('おにぎり 150');
+      await openai.translateText('おにぎり 150');
+      await claude.translateText('おにぎり 150');
+
+      expect(geminiEnvelope()['temperature']).toBe(declaredZero);
+      expect(claudeEnvelope()['temperature']).toBe(declaredZero);
       expect('temperature' in openaiEnvelope()).toBeFalse();
     });
 

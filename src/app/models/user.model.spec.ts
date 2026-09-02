@@ -1,5 +1,6 @@
 import {
   DEFAULT_FONT_SCALE,
+  DEFAULT_LLM_PROVIDER_PREFERENCES,
   DEFAULT_USER_PREFERENCES,
   RAG_INSIGHTS_LEVELS,
   RAG_TIER_CONFIGS,
@@ -15,6 +16,7 @@ import {
   remindersEnabled,
   subscriptionTier,
   usageAnalyticsEnabled,
+  weeklyRecapEnabled,
 } from './user.model';
 
 describe('effectiveRagLevel', () => {
@@ -166,6 +168,36 @@ describe('remindersEnabled', () => {
   });
 });
 
+describe('weeklyRecapEnabled', () => {
+  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    ...DEFAULT_USER_PREFERENCES,
+    ...overrides,
+  });
+
+  it('should be off for missing preferences', () => {
+    expect(weeklyRecapEnabled(undefined)).toBeFalse();
+    expect(weeklyRecapEnabled(null)).toBeFalse();
+  });
+
+  it('should be off when the field is absent', () => {
+    expect(weeklyRecapEnabled(prefs({}))).toBeFalse();
+  });
+
+  it('should be on only for a stored true', () => {
+    expect(weeklyRecapEnabled(prefs({ enableWeeklyRecap: true }))).toBeTrue();
+  });
+
+  it('should require exactly true, tolerating junk', () => {
+    expect(weeklyRecapEnabled(prefs({ enableWeeklyRecap: false }))).toBeFalse();
+    const corrupt = prefs({ enableWeeklyRecap: 'yes' as unknown as boolean });
+    expect(weeklyRecapEnabled(corrupt)).toBeFalse();
+  });
+
+  it('should stay out of the defaults', () => {
+    expect('enableWeeklyRecap' in DEFAULT_USER_PREFERENCES).toBeFalse();
+  });
+});
+
 describe('usageAnalyticsEnabled', () => {
   const user = (overrides: Partial<User> = {}): User =>
     ({ id: 'u1', preferences: { ...DEFAULT_USER_PREFERENCES }, ...overrides }) as User;
@@ -308,5 +340,14 @@ describe('RAG tier configs', () => {
     expect(RAG_TIER_CONFIGS.deep).toEqual({
       topExpenses: 20, anomalies: 10, categoryDeltas: 10, baselineWindowMonths: 12,
     });
+  });
+});
+
+describe('default LLM provider preferences', () => {
+  it('should name a provider for every routed feature', () => {
+    // A stored preferences object saved before a feature existed has no key
+    // for it, and both read sites spread these defaults over what was stored —
+    // so a feature missing here routes to undefined rather than to a provider.
+    expect(DEFAULT_LLM_PROVIDER_PREFERENCES.translation).toBe('gemini');
   });
 });

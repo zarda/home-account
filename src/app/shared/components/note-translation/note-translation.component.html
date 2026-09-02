@@ -1,0 +1,49 @@
+@if (hasNote()) {
+  <div class="note-translation">
+    @if (isLoading()) {
+      <app-loading-spinner size="sm" [message]="'noteTranslation.translating' | translate" />
+    } @else if (shownTranslation(); as result) {
+      <div class="translation-panel" role="status">
+        <p class="translation-marker">
+          {{ 'noteTranslation.marker' | translate: { language: result.sourceLanguage } }}
+        </p>
+        <p class="translated-text">{{ result.text }}</p>
+        <button
+          #showOriginalButton
+          mat-button
+          type="button"
+          class="show-original-button"
+          (click)="showOriginal()"
+        >
+          {{ 'noteTranslation.showOriginal' | translate }}
+        </button>
+      </div>
+    } @else if (errorKey(); as key) {
+      <p class="translation-error" role="alert">{{ key | translate }}</p>
+      <button
+        #retryButton
+        mat-button
+        type="button"
+        class="retry-button"
+        (click)="translateNote()"
+      >
+        {{ 'noteTranslation.retry' | translate }}
+      </button>
+    } @else {
+      <button
+        #translateButton
+        mat-button
+        type="button"
+        class="translate-button"
+        [disabled]="!available()"
+        (click)="translateNote()"
+      >
+        <mat-icon>translate</mat-icon>
+        {{ 'noteTranslation.translate' | translate }}
+      </button>
+      @if (!available()) {
+        <p class="no-provider-hint">{{ 'noteTranslation.noProvider' | translate }}</p>
+      }
+    }
+  </div>
+}

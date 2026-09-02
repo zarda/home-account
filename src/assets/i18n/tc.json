@@ -159,6 +159,7 @@
     "saveChanges": "儲存變更",
     "receipt": "收據",
     "viewReceipt": "查看收據",
+    "viewNote": "查看備註",
     "resultCountAnnouncement": "顯示 {{count}} 筆交易",
     "resultWithTotalsAnnouncement": "{{countText}}。{{totalsText}}",
     "totalsAnnouncement": "總支出 {{spent}}，淨餘額 {{net}}。",
@@ -513,6 +514,10 @@
     "reminderNotificationsDescription": "帳單即將到期或預算接近上限時通知你。每部裝置需分別設定。",
     "reminderNotificationsEnable": "傳送提醒",
     "reminderNotificationsPermissionDenied": "通知已被封鎖。此開關無法再次要求，請先在瀏覽器或裝置設定中允許通知。",
+    "weeklyRecap": "每週摘要",
+    "weeklyRecapDescription": "回顧上週的支出。進入新的一週後會顯示在儀表板上，直到你關閉為止。在 iOS 上，星期一早上會以通知提醒你。",
+    "weeklyRecapEnable": "顯示每週摘要",
+    "weeklyRecapNoNotifications": "通知已關閉，因此不會收到星期一的提醒。摘要仍會顯示在儀表板上。",
     "create": "建立",
     "noRecurring": "沒有定期交易",
     "noRecurringDescription": "設定定期交易以自動追蹤固定收入和支出。",
@@ -571,6 +576,7 @@
     "insightsHint": "用於生成支出摘要和財務建議",
     "searchProvider": "智慧搜尋",
     "searchHint": "用於理解自然語言的交易搜尋",
+    "translationProvider": "備註翻譯",
     "aiSettings": "AI 處理",
     "aiSettingsDescription": "設定 AI 收據掃描及離線處理功能",
     "aiMode": "處理模式",
@@ -930,6 +936,19 @@
     "offlineFallback": "目前離線，改以關鍵字搜尋顯示。",
     "noProviderFallback": "尚未設定 AI 供應商 — 改以一般關鍵字搜尋。請在「設定 → AI 處理」中新增 API 金鑰。",
     "errorFallback": "無法解讀問題，改以關鍵字搜尋顯示。"
+  },
+  "noteTranslation": {
+    "translate": "翻譯",
+    "translating": "翻譯中...",
+    "showOriginal": "顯示原文",
+    "marker": "自{{language}}翻譯",
+    "noProvider": "翻譯需要 AI 供應商。請在「設定 → AI 處理」中新增 API 金鑰。",
+    "retry": "再試一次",
+    "failed": "無法翻譯這則備註，請重試。",
+    "failedKey": "無法翻譯：API 金鑰無效。請檢查「設定 → AI 處理」。",
+    "failedRateLimited": "AI 服務目前忙碌中（已達用量上限），請稍候一分鐘再試。",
+    "failedOffline": "翻譯需要網路連線，請檢查連線後再試。",
+    "failedIncomplete": "翻譯結果被截斷，請重試。"
   },
   "import": {
     "title": "智慧匯入",
@@ -1300,7 +1319,24 @@
   },
   "reminders": {
     "billDue": "{{name}} 今天到期",
-    "billDueIn": "{{name}} 將於 {{count}} 天後到期"
+    "billDueIn": "{{name}} 將於 {{count}} 天後到期",
+    "recapReady": "您的每週摘要已準備好"
+  },
+  "recap": {
+    "title": "每週摘要",
+    "spent": "支出",
+    "upVsLastWeek": "比前一週多 {{percent}}%",
+    "downVsLastWeek": "比前一週少 {{percent}}%",
+    "flat": "與前一週差不多",
+    "noComparison": "沒有可比較的前一週",
+    "topCategories": "主要花費",
+    "budgetsOver": "有 {{count}} 個預算超出門檻",
+    "budgetsOnTrack": "所有預算都在範圍內",
+    "billsDue": "未來 7 天有 {{count}} 筆帳單到期",
+    "narrativeLoading": "正在整理本週摘要…",
+    "narrativeUnavailable": "本週沒有摘要。",
+    "seeTransactions": "查看上週的交易",
+    "announcement": "每週摘要：您上週花費 {{amount}}。{{change}}。"
   },
   "insights": {
     "cadenceWeekly": "每週",

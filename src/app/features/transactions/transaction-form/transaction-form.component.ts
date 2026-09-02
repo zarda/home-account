@@ -60,6 +60,7 @@ import {
 } from '../../../models';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../shared/components/dialog-header/dialog-header.component';
+import { NoteTranslationComponent } from '../../../shared/components/note-translation/note-translation.component';
 import { CameraCaptureComponent } from '../camera-capture/camera-capture.component';
 import { compressImage } from '../../../shared/utils/image-compression';
 import { countryForCoordinates, currencyForCountry } from '../../../core/utils/country-bounds';
@@ -89,6 +90,7 @@ interface DialogData {
   imports: [
     LoadingSpinnerComponent,
     DialogHeaderComponent,
+    NoteTranslationComponent,
     CommonModule,
     ReactiveFormsModule,
     MatDialogModule,
@@ -276,6 +278,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   // The form's current currency, mirrored into a signal (the categoryIdSignal
   // pattern) so goal option labels can react to it under OnPush.
   private formCurrency = signal<string>('');
+
+  /**
+   * The note as it currently stands, for the lens beneath the field. Mirrored
+   * the same way the currency is: the lens takes a signal, and reading the
+   * control from the template would not re-run under OnPush.
+   */
+  readonly noteValue = signal<string>('');
+
   private goalsSub?: Subscription;
 
   /**
@@ -527,6 +537,14 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.form.get('currency')?.valueChanges.subscribe((currency) => {
       this.formCurrency.set(currency || '');
     });
+
+    // Seeded from the control rather than from the transaction: on edit the
+    // lens has to offer a translation of the stored note before anything is
+    // typed, and valueChanges alone never fires for the value it started with.
+    this.noteValue.set(this.form.get('note')!.value ?? '');
+    this.form.get('note')!.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(note => this.noteValue.set(note ?? ''));
 
     // Watch for type changes
     this.form.get('type')?.valueChanges.subscribe((type) => {

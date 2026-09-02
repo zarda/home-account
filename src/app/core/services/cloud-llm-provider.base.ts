@@ -23,6 +23,7 @@ import {
   renderPreviousPeriodSection,
   renderPrompt,
 } from '../prompts';
+import { AI_ANSWER_INCOMPLETE } from '../utils/ai-error.utils';
 import {
   applyCategorizations,
   buildCategoryPromptCatalog,
@@ -52,6 +53,7 @@ import {
   CloudLLMProviderAdapter,
   ExtractedTransaction,
   MultiImageExtractedTransaction,
+  NoteTranslation,
   ParsedReceipt,
   PreviousPeriodData,
   ProviderCapabilities,
@@ -800,6 +802,51 @@ export abstract class CloudLLMProviderBase implements CloudLLMProviderAdapter {
         'Keep tracking your expenses to better understand your spending patterns.'
       );
     });
+  }
+
+  // ---------------------------------------------- translation
+
+  /**
+   * Read a note back in the app's own language.
+   *
+   * Bookkeeping like the narrative's — busy while it runs, and the failure
+   * reaches the caller as the provider threw it — because the answer is a lens
+   * over one note the user is looking at, not a step in a pipeline: the caller
+   * shows the failure beside the note it asked about, and a message left in
+   * `lastError` would be reported later against an unrelated request.
+   *
+   * A cut-off answer is refused rather than salvaged. The receipt paths keep
+   * the rows that arrived whole because a row is self-contained; a translation
+   * cut short is a shorter note, and nothing on screen would tell the reader
+   * that the lines they cannot read any more were dropped rather than absent.
+   */
+  async translateText(text: string): Promise<NoteTranslation> {
+    this.assertTextTransport();
+
+    this.isProcessing.set(true);
+    try {
+      const rendered = renderPrompt('translateNote', {
+        text,
+        languageInstruction: this.getLanguageInstruction(),
+      });
+      const response = await this.sendText('translateNote', rendered);
+      if (response.truncated) {
+        throw new Error(AI_ANSWER_INCOMPLETE);
+      }
+
+      const parsed = JSON.parse(this.extractJson(response.text));
+      if (typeof parsed?.translation !== 'string' || parsed.translation.trim() === '') {
+        throw new Error(AI_ANSWER_INCOMPLETE);
+      }
+      return {
+        text: parsed.translation,
+        // The source language is what the answer is labelled with, so an
+        // absent one costs a label rather than the translation.
+        sourceLanguage: typeof parsed.sourceLanguage === 'string' ? parsed.sourceLanguage : '',
+      };
+    } finally {
+      this.isProcessing.set(false);
+    }
   }
 
   /**

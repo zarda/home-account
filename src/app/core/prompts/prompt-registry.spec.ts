@@ -103,6 +103,10 @@ const SAMPLE_INPUT: { [K in PromptId]: Parameters<(typeof PROMPTS)[K]['render']>
       }],
     } satisfies SearchQueryContext,
   },
+  translateNote: {
+    text: 'セブン-イレブン\nおにぎり 150\n合計 480',
+    languageInstruction: languageInstruction('en'),
+  },
 };
 
 function render(id: PromptId): string {
@@ -118,7 +122,9 @@ describe('prompt registry', () => {
     expect(PROMPT_IDS.length).toBeGreaterThan(0);
     for (const id of PROMPT_IDS) {
       expect(PROMPTS[id].since).toMatch(/^\d+\.\d+\.\d+$/);
-      expect(PROMPTS[id].feature).toMatch(/^(receiptScanning|categorization|insights|search)$/);
+      expect(PROMPTS[id].feature).toMatch(
+        /^(receiptScanning|categorization|insights|search|translation)$/
+      );
     }
   });
 
@@ -151,7 +157,7 @@ describe('prompt registry', () => {
   });
 
   it('never lists a run of country codes, in any prompt', () => {
-    // Covers all thirteen registered prompts, the five receipt ones
+    // Covers all fourteen registered prompts, the five receipt ones
     // included — their own describe blocks below assert the country field
     // exists, not this tripwire, so this loop is the only place a
     // categorization, search or insights prompt growing the same mistake
@@ -449,6 +455,43 @@ describe('prompt registry', () => {
 
       expect(prompt).not.toContain('Valid goalId values');
       expect(prompt).not.toContain('Valid budgetId values');
+    });
+  });
+
+  describe('translateNote', () => {
+    it('embeds the note exactly as it was stored', () => {
+      const prompt = render('translateNote');
+      expect(prompt).toContain('セブン-イレブン');
+      expect(prompt).toContain('おにぎり 150');
+    });
+
+    it('names the target language through the shared sentence, never a list', () => {
+      // The one sentence every other user-facing prompt uses. A prompt that
+      // spelled out the languages it can translate into would be a ceiling on
+      // the app's own locales, and the next one added would have to be added
+      // here too.
+      const prompt = renderPrompt('translateNote', {
+        text: '메모',
+        languageInstruction: languageInstruction('ja'),
+      }).user;
+      expect(prompt).toContain('Respond in Japanese (日本語).');
+      expect(prompt).not.toMatch(COUNTRY_CODE_RUN);
+    });
+
+    it('asks for a reproduction rather than a retelling', () => {
+      // A note is a list of lines. A model left to its own judgement writes
+      // the gist of it, which reads well and loses the third item.
+      const prompt = render('translateNote');
+      expect(prompt).toContain('Reproduce every line, in the order it was written');
+      expect(prompt).toContain('Never summarise, merge, omit or add a line');
+      expect(prompt).toContain('Keep numbers, currency symbols, dates and codes exactly as written');
+    });
+
+    it('pins the JSON answer to the two fields the lens reads', () => {
+      const prompt = render('translateNote');
+      expect(prompt).toContain('"translation"');
+      expect(prompt).toContain('"sourceLanguage"');
+      expect(prompt).toContain('Answer with ONLY this JSON object');
     });
   });
 

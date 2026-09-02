@@ -171,7 +171,20 @@ describe('ReminderSettingsComponent', () => {
       });
     });
 
-    it('should not sweep on the way out', async () => {
+    it('should sweep after the opt-out is stored, never before it', async () => {
+      await flip(false);
+
+      // The recap nudge rides the same sweep, so an account keeping the recap
+      // has just had it retired by the cancel above; sweeping now re-books it
+      // with the click rather than five minutes later. A sweep before the
+      // write would read the preference this click is replacing.
+      expect(reminders.sweep).toHaveBeenCalledTimes(1);
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalledBefore(reminders.sweep);
+    });
+
+    it('should not sweep when the opt-out fails to store', async () => {
+      mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('offline')));
+
       await flip(false);
 
       expect(reminders.sweep).not.toHaveBeenCalled();
@@ -180,8 +193,10 @@ describe('ReminderSettingsComponent', () => {
     it('should retire what the operating system is still holding', async () => {
       await flip(false);
 
-      // Nothing sweeps once the preference is off, so a reminder already
-      // scheduled with the OS would otherwise keep firing for a month.
+      // Before the write, because only a stored opt-out is swept for: a write
+      // that fails takes its sweep with it, and a cancel waiting behind it
+      // would leave a month of scheduled reminders firing with the user's
+      // "stop" unacted on.
       expect(reminders.cancelScheduled).toHaveBeenCalledTimes(1);
       expect(reminders.cancelScheduled).toHaveBeenCalledBefore(
         mockAuthService.updateUserPreferences

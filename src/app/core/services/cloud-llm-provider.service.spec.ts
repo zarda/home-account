@@ -28,6 +28,7 @@ function makeProviderSpy(name: string): jasmine.SpyObj<GeminiService> {
     'interpretSearchQuery',
     'generateSpendingSummary',
     'getFinancialAdvice',
+    'translateText',
   ]);
   spy.isAvailableSignal.and.returnValue(false);
   spy.isAvailable.and.returnValue(false);
@@ -260,6 +261,7 @@ describe('CloudLLMProviderService', () => {
     it('returns the user-configured provider per feature', () => {
       const prefs: LLMProviderPreferences = {
         receiptScanning: 'openai', categorization: 'claude', insights: 'gemini', search: 'claude',
+        translation: 'openai',
       };
       auth.currentUser.and.returnValue(createMockUser('u', {
         preferences: { ...createMockUser().preferences, llmProviderPreferences: prefs },
@@ -280,6 +282,7 @@ describe('CloudLLMProviderService', () => {
         preferences: { ...createMockUser().preferences, llmProviderPreferences: legacyPrefs },
       }));
       expect(service.getPreferredProvider('search')).toBe('gemini');
+      expect(service.getPreferredProvider('translation')).toBe('gemini');
       expect(service.getPreferredProvider('insights')).toBe('openai');
     });
   });
@@ -295,6 +298,7 @@ describe('CloudLLMProviderService', () => {
       (claude as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
       const prefs: LLMProviderPreferences = {
         receiptScanning: 'gemini', categorization: 'gemini', insights: 'gemini', search: 'claude',
+        translation: 'gemini',
       };
       auth.currentUser.and.returnValue(createMockUser('u', {
         preferences: { ...createMockUser().preferences, llmProviderPreferences: prefs },
@@ -365,6 +369,7 @@ describe('CloudLLMProviderService', () => {
       const base = createMockUser().preferences;
       const prefs: LLMProviderPreferences = {
         receiptScanning: 'gemini', categorization: 'gemini', insights: 'gemini', search: 'gemini',
+        translation: 'gemini',
         [feature]: provider,
       };
       auth.currentUser.and.returnValue(createMockUser('u', {
@@ -441,7 +446,7 @@ describe('CloudLLMProviderService', () => {
       auth.currentUser.and.returnValue(createMockUser('u', {
         preferences: {
           ...createMockUser().preferences,
-          llmProviderPreferences: { receiptScanning: 'claude', categorization: 'gemini', insights: 'gemini', search: 'gemini' },
+          llmProviderPreferences: { receiptScanning: 'claude', categorization: 'gemini', insights: 'gemini', search: 'gemini', translation: 'gemini' },
         },
       }));
       await service.parseReceipt('img');
@@ -628,6 +633,45 @@ describe('CloudLLMProviderService', () => {
       (claude as unknown as jasmine.SpyObj<GeminiService>).getFinancialAdvice.and.resolveTo('c');
       await service.getFinancialAdvice(summary, 'USD');
       expect((claude as unknown as jasmine.SpyObj<GeminiService>).getFinancialAdvice).toHaveBeenCalled();
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Translation delegation
+  // ----------------------------------------------------------------
+  describe('translateText', () => {
+    const translated = { text: 'Rice ball 150', sourceLanguage: 'Japanese' };
+
+    it('routes to the provider preferred for translation', async () => {
+      gemini.isAvailableSignal.and.returnValue(true);
+      (claude as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
+      const prefs: LLMProviderPreferences = {
+        receiptScanning: 'gemini', categorization: 'gemini', insights: 'gemini', search: 'gemini',
+        translation: 'claude',
+      };
+      auth.currentUser.and.returnValue(createMockUser('u', {
+        preferences: { ...createMockUser().preferences, llmProviderPreferences: prefs },
+      }));
+      (claude as unknown as jasmine.SpyObj<GeminiService>).translateText.and.resolveTo(translated);
+
+      const result = await service.translateText('おにぎり 150');
+
+      expect(result).toBe(translated);
+      expect((claude as unknown as jasmine.SpyObj<GeminiService>).translateText)
+        .toHaveBeenCalledWith('おにぎり 150');
+      expect(gemini.translateText).not.toHaveBeenCalled();
+    });
+
+    it('falls back through the provider order when the preferred one is down', async () => {
+      (openai as unknown as jasmine.SpyObj<GeminiService>).isAvailableSignal.and.returnValue(true);
+      (openai as unknown as jasmine.SpyObj<GeminiService>).translateText.and.resolveTo(translated);
+
+      expect(await service.translateText('おにぎり 150')).toBe(translated);
+    });
+
+    it('throws when no provider is available', async () => {
+      await expectAsync(service.translateText('おにぎり 150'))
+        .toBeRejectedWithError(/No cloud AI provider available for translation/);
     });
   });
 

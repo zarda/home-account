@@ -36,6 +36,8 @@ feedback mail sender — plays no part in it
 | appLock | Device PIN record + attempt state | `AppLockService.clearCredential()` |
 | offlineQueue | Queued receipt images + sync log (IndexedDB) | `OfflineQueueService.clearAll()` |
 | shareStash | Files shared into the app, still awaiting import (IndexedDB on web, the App Group container on iOS) | `ShareIntakeService.clearAll()` |
+| reminders | The log of which reminders this device has already raised (`localStorage`) | `clearReminderDeviceState(uid)` |
+| weeklyRecap | The recap week this device dismissed, and the narrative cached for it (`localStorage`) | `clearWeeklyRecapDeviceState(uid)` |
 | transactions | `users/{uid}/transactions` **and every receipt object in Storage** (swept per row) | `TransactionService.deleteAllTransactions()` |
 | categories | `users/{uid}/categories` | `CategoryService.deleteAll()` |
 | budgets | `users/{uid}/budgets` | `BudgetService.deleteAll()` |
@@ -61,10 +63,14 @@ transaction sweep owns the Storage cleanup.
 
 - **Reauthentication first.** Discovering a stale session after the data is
   gone would strand a dead but undeletable account.
-- **Device-local state while signed in.** Both stores resolve the current
-  uid; after sign-out they cannot find their rows. Failures here report but
-  do not block — an orphaned local record is junk on one device, not
-  retained account data.
+- **Device-local state while signed in.** Every one of those steps resolves
+  the current uid; after sign-out they cannot find their rows. Failures here
+  report but do not block — an orphaned local record is junk on one device,
+  not retained account data. The two `localStorage` steps go through pure
+  exported helpers rather than their services: injecting `ReminderService` or
+  `WeeklyRecapService` would drag their sweep effects, the notifications
+  plugin and the budget and recurring graphs into an erasure whose whole job
+  there is removing one key.
 - **`securityEvents` last of the subcollections.** While earlier steps can
   still fail, the sign-in log is the record worth keeping.
 - **The user document after every subcollection**, since deleting it does

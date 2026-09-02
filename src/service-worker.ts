@@ -302,20 +302,4 @@ async function syncOfflineQueue(): Promise<void> {
   }
 }
 
-// Periodic background sync for model updates (when supported)
-// Note: 'periodicsync' event is not in standard TypeScript types yet
-self.addEventListener('periodicsync', ((event: Event & { tag?: string; waitUntil?: (promise: Promise<void>) => void }) => {
-  if (event.tag === 'update-models' && event.waitUntil) {
-    event.waitUntil(updateModels());
-  }
-}) as EventListener);
-
-async function updateModels(): Promise<void> {
-  // Check for model updates
-  const clients = await self.clients.matchAll();
-  for (const client of clients) {
-    client.postMessage({ type: 'CHECK_MODEL_UPDATES' });
-  }
-}
-
 export {};
