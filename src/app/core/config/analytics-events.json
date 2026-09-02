@@ -71,7 +71,8 @@
         "search",
         "summary",
         "narrative",
-        "translation"
+        "translation",
+        "recap"
       ]
     }
   },

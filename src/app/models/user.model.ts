@@ -98,6 +98,10 @@ export interface UserPreferences {
                                   // per-device: the OS permission and the sent
                                   // log both live on the device, so this asks
                                   // for reminders rather than guaranteeing them.
+  enableWeeklyRecap?: boolean;    // Absent = off. Asks for the weekly recap; the
+                                  // week already dismissed and the narrative
+                                  // generated for it are per-device, so each
+                                  // device gets its own look at the same week.
   onboardingCompleted?: boolean;  // Absent = not yet completed; the first-run welcome is offered.
 }
 
@@ -155,6 +159,11 @@ export function reducedMotionRequested(prefs: UserPreferences | null | undefined
 /** Whether the account asked for budget and bill reminders. Absent means off. */
 export function remindersEnabled(prefs: UserPreferences | null | undefined): boolean {
   return prefs?.enableReminders === true;
+}
+
+/** Whether the account asked for the weekly spending recap. Absent means off. */
+export function weeklyRecapEnabled(prefs: UserPreferences | null | undefined): boolean {
+  return prefs?.enableWeeklyRecap === true;
 }
 
 /** The account's tier. No subscription record means the free tier. */

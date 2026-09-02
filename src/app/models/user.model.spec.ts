@@ -16,6 +16,7 @@ import {
   remindersEnabled,
   subscriptionTier,
   usageAnalyticsEnabled,
+  weeklyRecapEnabled,
 } from './user.model';
 
 describe('effectiveRagLevel', () => {
@@ -164,6 +165,36 @@ describe('remindersEnabled', () => {
 
   it('should stay out of the defaults', () => {
     expect('enableReminders' in DEFAULT_USER_PREFERENCES).toBeFalse();
+  });
+});
+
+describe('weeklyRecapEnabled', () => {
+  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    ...DEFAULT_USER_PREFERENCES,
+    ...overrides,
+  });
+
+  it('should be off for missing preferences', () => {
+    expect(weeklyRecapEnabled(undefined)).toBeFalse();
+    expect(weeklyRecapEnabled(null)).toBeFalse();
+  });
+
+  it('should be off when the field is absent', () => {
+    expect(weeklyRecapEnabled(prefs({}))).toBeFalse();
+  });
+
+  it('should be on only for a stored true', () => {
+    expect(weeklyRecapEnabled(prefs({ enableWeeklyRecap: true }))).toBeTrue();
+  });
+
+  it('should require exactly true, tolerating junk', () => {
+    expect(weeklyRecapEnabled(prefs({ enableWeeklyRecap: false }))).toBeFalse();
+    const corrupt = prefs({ enableWeeklyRecap: 'yes' as unknown as boolean });
+    expect(weeklyRecapEnabled(corrupt)).toBeFalse();
+  });
+
+  it('should stay out of the defaults', () => {
+    expect('enableWeeklyRecap' in DEFAULT_USER_PREFERENCES).toBeFalse();
   });
 });
 

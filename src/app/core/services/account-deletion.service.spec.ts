@@ -19,6 +19,8 @@ import { FeedbackService } from './feedback.service';
 import { SecurityLogService } from './security-log.service';
 import { ShareIntakeService } from './share-intake.service';
 import { FirestoreService } from './firestore.service';
+import { reminderSentStorageKey } from './reminder.service';
+import { weeklyRecapStorageKeys } from '../utils/weekly-recap.utils';
 
 describe('AccountDeletionService', () => {
   let service: AccountDeletionService;
@@ -127,6 +129,16 @@ describe('AccountDeletionService', () => {
     service = TestBed.inject(AccountDeletionService);
   });
 
+  afterEach(() => {
+    // The device-local cases seed real keys, and one that outlives its spec
+    // would answer another file's read.
+    for (const userId of ['user123', 'user456']) {
+      localStorage.removeItem(reminderSentStorageKey(userId));
+      localStorage.removeItem(weeklyRecapStorageKeys(userId).dismissed);
+      localStorage.removeItem(weeklyRecapStorageKeys(userId).narrative);
+    }
+  });
+
   it('reports ok and deletes the auth user on a clean run', async () => {
     const report = await service.deleteAccount();
 
@@ -219,6 +231,33 @@ describe('AccountDeletionService', () => {
     expect(report.ok).toBeFalse();
     expect(report.failed.map(f => f.step)).toEqual(['shareStash']);
     expect(mockAuth.deleteFirebaseUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops this device\'s reminder and recap state for the erased account only', async () => {
+    const other = 'user456';
+    const keys = [
+      reminderSentStorageKey('user123'),
+      weeklyRecapStorageKeys('user123').dismissed,
+      weeklyRecapStorageKeys('user123').narrative
+    ];
+    const survivors = [
+      reminderSentStorageKey(other),
+      weeklyRecapStorageKeys(other).dismissed,
+      weeklyRecapStorageKeys(other).narrative
+    ];
+    for (const key of [...keys, ...survivors]) {
+      localStorage.setItem(key, 'x');
+    }
+
+    const report = await service.deleteAccount();
+
+    expect(report.ok).toBeTrue();
+    for (const key of keys) {
+      expect(localStorage.getItem(key)).withContext(`${key} should be gone`).toBeNull();
+    }
+    for (const key of survivors) {
+      expect(localStorage.getItem(key)).withContext(`${key} should survive`).toBe('x');
+    }
   });
 
   it('can be re-run after a partial failure', async () => {

@@ -18,6 +18,8 @@ import { FeedbackService } from './feedback.service';
 import { SecurityLogService } from './security-log.service';
 import { ShareIntakeService } from './share-intake.service';
 import { FirestoreService } from './firestore.service';
+import { clearReminderDeviceState } from './reminder.service';
+import { clearWeeklyRecapDeviceState } from '../utils/weekly-recap.utils';
 
 /**
  * Every step the cascade can report a failure for, in execution order.
@@ -31,6 +33,8 @@ export const DELETION_STEPS = [
   'appLock',
   'offlineQueue',
   'shareStash',
+  'reminders',
+  'weeklyRecap',
   'transactions',
   'categories',
   'budgets',
@@ -114,6 +118,11 @@ export class AccountDeletionService {
     await this.attempt('appLock', () => this.appLock.clearCredential(), failed);
     await this.attempt('offlineQueue', () => this.offlineQueue.clearAll(), failed);
     await this.attempt('shareStash', () => this.shareIntake.clearAll(), failed);
+    // Through the two pure helpers rather than their services: both own
+    // effects that would have to be constructed — and would then be watching
+    // the session — for a step that only removes a key this uid owns.
+    await this.attempt('reminders', () => clearReminderDeviceState(userId), failed);
+    await this.attempt('weeklyRecap', () => clearWeeklyRecapDeviceState(userId), failed);
 
     // The cloud cascade runs every step even after one fails, so a retry has
     // less left to do. securityEvents goes last of the subcollections — while

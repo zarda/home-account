@@ -26,6 +26,24 @@ export function reminderSentStorageKey(userId: string): string {
   return `home-account.reminders.sent.${userId}`;
 }
 
+/**
+ * Drop that record — what account deletion erases on this device.
+ *
+ * Pure and exported rather than a method, so the cascade can clear the log
+ * without injecting this service and dragging the sweep effects, the plugin
+ * and the budget and recurring graphs into an erasure. The in-memory mirror
+ * needs nothing from here: the user-switch effect empties it when the session
+ * the deletion ends signs out.
+ */
+export function clearReminderDeviceState(userId: string): void {
+  try {
+    localStorage.removeItem(reminderSentStorageKey(userId));
+  } catch {
+    // A store that refuses removal refuses reads too, so nothing is left
+    // behind that a later session could act on.
+  }
+}
+
 /** Shortest gap between two bill sweeps. */
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
