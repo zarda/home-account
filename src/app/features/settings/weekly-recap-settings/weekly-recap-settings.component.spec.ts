@@ -3,21 +3,24 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatSlideToggle, MatSlideToggleChange } from '@angular/material/slide-toggle';
 import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { Capacitor } from '@capacitor/core';
 
-import { ReminderSettingsComponent } from './reminder-settings.component';
+import { WeeklyRecapSettingsComponent } from './weekly-recap-settings.component';
 import { AuthService } from '../../../core/services/auth.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { ReminderService } from '../../../core/services/reminder.service';
 import { TranslationService } from '../../../core/services/translation.service';
-import { User, UserPreferences, remindersEnabled } from '../../../models';
+import { WeeklyRecapService } from '../../../core/services/weekly-recap.service';
+import { User, UserPreferences, weeklyRecapEnabled } from '../../../models';
 
-describe('ReminderSettingsComponent', () => {
-  let fixture: ComponentFixture<ReminderSettingsComponent>;
-  let component: ReminderSettingsComponent;
+describe('WeeklyRecapSettingsComponent', () => {
+  let fixture: ComponentFixture<WeeklyRecapSettingsComponent>;
+  let component: WeeklyRecapSettingsComponent;
   let currentUser: ReturnType<typeof signal<User | null>>;
   let mockAuthService: jasmine.SpyObj<AuthService>;
   let reminders: jasmine.SpyObj<ReminderService>;
   let notifications: jasmine.SpyObj<NotificationService>;
+  let isNative: jasmine.Spy<() => boolean>;
 
   const userWith = (preferences: Partial<UserPreferences>): User =>
     ({ id: 'user-1', preferences }) as User;
@@ -53,33 +56,40 @@ describe('ReminderSettingsComponent', () => {
     });
     mockAuthService.updateUserPreferences.and.returnValue(Promise.resolve());
 
-    reminders = jasmine.createSpyObj<ReminderService>(
-      'ReminderService',
-      ['requestPermission', 'sweep', 'cancelScheduled'],
-      {
-        // Derived through the real resolver, so the stub cannot drift from
-        // what the service would report for the same account.
-        enabled: computed(() => remindersEnabled(currentUser()?.preferences)),
-      }
-    );
+    reminders = jasmine.createSpyObj<ReminderService>('ReminderService', [
+      'requestPermission',
+      'sweep',
+      'cancelScheduled',
+    ]);
     reminders.requestPermission.and.resolveTo(true);
     reminders.sweep.and.resolveTo();
-    reminders.cancelScheduled.and.resolveTo();
 
-    notifications = jasmine.createSpyObj('NotificationService', ['error']);
+    notifications = jasmine.createSpyObj('NotificationService', ['error', 'info']);
+
+    // The web is the default the other tests read against: nothing is ever
+    // delivered ahead of time there, so nothing is ever asked for either.
+    isNative = spyOn(Capacitor, 'isNativePlatform').and.returnValue(false);
 
     await TestBed.configureTestingModule({
-      imports: [ReminderSettingsComponent, NoopAnimationsModule],
+      imports: [WeeklyRecapSettingsComponent, NoopAnimationsModule],
       providers: [
         { provide: AuthService, useValue: mockAuthService },
         { provide: NotificationService, useValue: notifications },
         { provide: ReminderService, useValue: reminders },
         { provide: TranslationService, useValue: { t: (key: string) => key } },
+        {
+          provide: WeeklyRecapService,
+          useValue: {
+            // Derived through the real resolver, so the stub cannot drift
+            // from what the service would report for the same account.
+            enabled: computed(() => weeklyRecapEnabled(currentUser()?.preferences)),
+          },
+        },
       ],
       schemas: [NO_ERRORS_SCHEMA],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(ReminderSettingsComponent);
+    fixture = TestBed.createComponent(WeeklyRecapSettingsComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   });
@@ -90,75 +100,79 @@ describe('ReminderSettingsComponent', () => {
   });
 
   it('should read the stored opt-in', () => {
-    currentUser.set(userWith({ enableReminders: true }));
+    currentUser.set(userWith({ enableWeeklyRecap: true }));
     fixture.detectChanges();
 
     expect(component.enabled()).toBeTrue();
   });
 
-  describe('turning reminders on', () => {
-    it('should ask the operating system before storing anything', async () => {
-      // The prompt only appears inside a user gesture, and sweeps never ask,
-      // so a permission request that does not happen here never happens.
+  describe('turning the recap on', () => {
+    it('should not spend the browser prompt on a notification the web never raises', async () => {
       await flip(true);
 
+      expect(reminders.requestPermission).not.toHaveBeenCalled();
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
+        enableWeeklyRecap: true,
+      });
+    });
+
+    it('should ask the operating system before storing anything on a device', async () => {
+      isNative.and.returnValue(true);
+
+      await flip(true);
+
+      // The prompt only appears inside a user gesture, and sweeps never ask,
+      // so a permission request that does not happen here never happens.
       expect(reminders.requestPermission).toHaveBeenCalledTimes(1);
       expect(reminders.requestPermission).toHaveBeenCalledBefore(
         mockAuthService.updateUserPreferences
       );
     });
 
-    it('should store only the touched key once permission is granted', async () => {
+    it('should store only the touched key', async () => {
       await flip(true);
 
       expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
-        enableReminders: true,
+        enableWeeklyRecap: true,
       });
     });
 
-    it('should sweep so the first reminders arrive with the click', async () => {
+    it('should sweep so the nudge is booked with the click', async () => {
       await flip(true);
 
       expect(reminders.sweep).toHaveBeenCalledTimes(1);
-      expect(reminders.cancelScheduled).not.toHaveBeenCalled();
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalledBefore(reminders.sweep);
     });
 
-    it('should store nothing when permission is refused', async () => {
+    it('should store the opt-in even when the device refuses notifications', async () => {
+      isNative.and.returnValue(true);
       reminders.requestPermission.and.resolveTo(false);
 
       await flip(true);
 
-      expect(mockAuthService.updateUserPreferences).not.toHaveBeenCalled();
-      expect(reminders.sweep).not.toHaveBeenCalled();
-      expect(component.enabled()).toBeFalse();
+      // The card is the recap; the nudge only points at it, so a refusal
+      // costs the Monday notification and nothing else.
+      expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
+        enableWeeklyRecap: true,
+      });
+      expect(toggle().checked).toBeTrue();
+      expect(reminders.sweep).toHaveBeenCalledTimes(1);
     });
 
-    it('should spring the switch back when permission is refused', async () => {
+    it('should say what a refusal costs', async () => {
+      isNative.and.returnValue(true);
       reminders.requestPermission.and.resolveTo(false);
 
       await flip(true);
 
-      // The bound expression never changed value, so change detection has no
-      // reason to rewrite the DOM — leaving a switch that reads as on for a
-      // setting that was never stored unless the component turns it back.
-      expect(toggle().checked).toBeFalse();
-      expect(switchEl().getAttribute('aria-checked')).toBe('false');
-    });
-
-    it('should explain that a refusal will not be asked about again', async () => {
-      reminders.requestPermission.and.resolveTo(false);
-
-      await flip(true);
-
-      expect(notifications.error).toHaveBeenCalledWith(
-        'settings.reminderNotificationsPermissionDenied'
-      );
+      expect(notifications.info).toHaveBeenCalledWith('settings.weeklyRecapNoNotifications');
+      expect(notifications.error).not.toHaveBeenCalled();
     });
   });
 
-  describe('turning reminders off', () => {
+  describe('turning the recap off', () => {
     beforeEach(() => {
-      currentUser.set(userWith({ enableReminders: true }));
+      currentUser.set(userWith({ enableWeeklyRecap: true }));
       fixture.detectChanges();
     });
 
@@ -167,48 +181,19 @@ describe('ReminderSettingsComponent', () => {
 
       expect(reminders.requestPermission).not.toHaveBeenCalled();
       expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
-        enableReminders: false,
+        enableWeeklyRecap: false,
       });
     });
 
-    it('should sweep after the opt-out is stored, never before it', async () => {
+    it('should sweep so the nudge is retired with the click', async () => {
       await flip(false);
 
-      // The recap nudge rides the same sweep, so an account keeping the recap
-      // has just had it retired by the cancel above; sweeping now re-books it
-      // with the click rather than five minutes later. A sweep before the
-      // write would read the preference this click is replacing.
+      // The sweep is the only thing here that touches what the operating
+      // system holds: an outright cancel would also retire the bill
+      // reminders of an account that never switched those off.
       expect(reminders.sweep).toHaveBeenCalledTimes(1);
+      expect(reminders.cancelScheduled).not.toHaveBeenCalled();
       expect(mockAuthService.updateUserPreferences).toHaveBeenCalledBefore(reminders.sweep);
-    });
-
-    it('should not sweep when the opt-out fails to store', async () => {
-      mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('offline')));
-
-      await flip(false);
-
-      expect(reminders.sweep).not.toHaveBeenCalled();
-    });
-
-    it('should retire what the operating system is still holding', async () => {
-      await flip(false);
-
-      // Before the write, because only a stored opt-out is swept for: a write
-      // that fails takes its sweep with it, and a cancel waiting behind it
-      // would leave a month of scheduled reminders firing with the user's
-      // "stop" unacted on.
-      expect(reminders.cancelScheduled).toHaveBeenCalledTimes(1);
-      expect(reminders.cancelScheduled).toHaveBeenCalledBefore(
-        mockAuthService.updateUserPreferences
-      );
-    });
-
-    it('should retire them even when the write fails', async () => {
-      mockAuthService.updateUserPreferences.and.returnValue(Promise.reject(new Error('offline')));
-
-      await flip(false);
-
-      expect(reminders.cancelScheduled).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -220,8 +205,11 @@ describe('ReminderSettingsComponent', () => {
     it('should report the failure and leave the stored value showing', async () => {
       await flip(true);
 
+      // The bound expression never changed value, so change detection has no
+      // reason to rewrite the DOM — leaving a switch that reads as on for a
+      // setting that was never stored unless the component turns it back.
       expect(notifications.error).toHaveBeenCalledWith('common.error');
-      expect(component.enabled()).toBeFalse();
+      expect(toggle().checked).toBeFalse();
       expect(switchEl().getAttribute('aria-checked')).toBe('false');
     });
 
@@ -230,6 +218,15 @@ describe('ReminderSettingsComponent', () => {
 
       expect(reminders.sweep).not.toHaveBeenCalled();
     });
+
+    it('should say nothing about notifications on top of the failure', async () => {
+      isNative.and.returnValue(true);
+      reminders.requestPermission.and.resolveTo(false);
+
+      await flip(true);
+
+      expect(notifications.info).not.toHaveBeenCalled();
+    });
   });
 
   it('should drive the handler from the switch itself', async () => {
@@ -237,6 +234,8 @@ describe('ReminderSettingsComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(reminders.requestPermission).toHaveBeenCalledTimes(1);
+    expect(mockAuthService.updateUserPreferences).toHaveBeenCalledWith({
+      enableWeeklyRecap: true,
+    });
   });
 });

@@ -1,0 +1,14 @@
+<div class="weekly-recap-settings">
+  <span class="section-label" id="weekly-recap-label">{{ 'settings.weeklyRecap' | translate }}</span>
+  <p class="section-description">{{ 'settings.weeklyRecapDescription' | translate }}</p>
+
+  <div class="setting-row">
+    <mat-slide-toggle
+      [checked]="enabled()"
+      (change)="onEnabledChange($event)"
+      aria-labelledby="weekly-recap-label"
+    >
+      {{ 'settings.weeklyRecapEnable' | translate }}
+    </mat-slide-toggle>
+  </div>
+</div>
