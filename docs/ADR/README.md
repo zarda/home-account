@@ -99,6 +99,10 @@ reverse — why a thing is the way it is, not how to use it.
 | [0092](0092-a-reminder-fires-once-and-the-record-of-it-lives-on-the-device.md) | A reminder fires once, and the record of it lives on the device | Accepted | 2026-09-01 |
 | [0093](0093-the-summary-export-names-both-sides-of-the-ledger.md) | The summary export names both sides of the ledger | Accepted | 2026-09-01 |
 | [0094](0094-the-receipt-quota-is-recounted-from-the-bucket-it-limits.md) | The receipt quota is recounted from the bucket it limits | Accepted | 2026-09-01 |
+| [0095](0095-a-translation-is-a-lens-never-a-write.md) | A translation is a lens, never a write | Accepted | 2026-09-02 |
+| [0096](0096-the-weekly-recap-is-composed-on-open-and-nudged-ahead.md) | The weekly recap is composed on open, and nudged ahead | Accepted | 2026-09-02 |
+| [0097](0097-the-model-update-signal-is-removed-not-wired.md) | The model-update signal is removed, not wired | Accepted; applies 0048 to a signal of 0019 | 2026-09-02 |
+| [0098](0098-the-browser-journeys-are-a-driven-protocol-not-a-suite.md) | The browser journeys are a driven protocol, not a suite | Accepted | 2026-09-02 |
 
 ## What belongs here
 

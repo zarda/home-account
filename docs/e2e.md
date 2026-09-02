@@ -98,6 +98,32 @@ for (const url of sources) {
 hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the build
 ```
 
+## Panes and viewports
+
+Some browsers are driven inside an embedded pane rather than a full window,
+and a pane behaves differently enough to cost a run before it is understood.
+None of these is a property of the app; all four have produced a false
+failure.
+
+- **Pointer input can stall under viewport emulation, and stay stalled.** With
+  an emulated width in force, clicks stop landing and go on not landing until
+  the page is reloaded. So run the phone journey at the pane's **own** width
+  when it is already narrow enough, and reload before concluding that a
+  control does nothing.
+- **A screenshot can freeze under a scaled emulation** — the image that comes
+  back is the one from before the last interaction, which reads exactly like a
+  control that did nothing. Confirm against the page's text, not the picture.
+- **A desktop-only door needs a pane genuinely wide enough for the table.**
+  The list swaps to the table at `min-width: 768px`, so below that the row's
+  note icon does not exist and journey 2 silently becomes journey 4.
+- **A network log may record same-origin requests only.** A provider call goes
+  to a third-party host and can be missing from the log entirely, so its
+  absence proves nothing. The translated text on screen is the proof the
+  provider answered.
+
+The console's own quirk is check 3 above: entries persist across reloads, so
+only the difference counts.
+
 ## What a run may touch
 
 Three writes are authorised. Each is put back before the run ends, and the
@@ -184,7 +210,8 @@ for the same answer.
 A 390px-wide viewport (device emulation, or a window narrowed to 390 CSS
 pixels). Below `min-width: 768px` the table is replaced by the mobile row
 list, and the note is reached through the row's trailing overflow menu →
-**View note**.
+**View note**. Prefer a genuinely narrow window to emulation where the choice
+exists — see [Panes and viewports](#panes-and-viewports).
 
 **Pass:** the dialog fits — with it open, in the console:
 

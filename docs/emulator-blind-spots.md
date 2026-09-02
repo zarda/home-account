@@ -138,6 +138,34 @@ payloads. `search-answer-history.service.smoke.spec.ts` ("records a dateless
 filter interpretation through the real rules") is the pattern — real service,
 real serialization, real server stamps, live rules verdict.
 
+## The browser, the session and the wire
+
+The suite renders nothing and crosses no page boundary. It proves what the
+rules accept and what a query returns; it cannot show a person walking from
+the list into a dialog into a form, with the real overlay stack on top of it,
+under a real signed-in session against real rows.
+
+Four things only a driven browser pass sees:
+
+- **the router crossing**, with the dialogs and menus that ride on top of it —
+  a control that exists at one width and not another, focus landing where it
+  should, a panel that fits a 390px dialog or does not;
+- **a real session**, rather than a hand-built uid: the deployed rules
+  deciding a write the app actually issues, read back on the next load;
+- **real data** — the account's own rows, in the scripts and currencies they
+  were written in, at whatever length they happen to be;
+- **the wire** — a real prompt to a real provider under a real key, and the
+  answer parsed by the real client. Every layer in this repo is built to avoid
+  exactly that.
+
+That pass is a **protocol, not a gate**. The journeys are written down in
+[e2e.md](e2e.md) and driven by hand twice per branch, with screenshots
+attached to the pull request; nothing runs in CI and nothing goes red.
+[ADR 0098](ADR/0098-the-browser-journeys-are-a-driven-protocol-not-a-suite.md)
+records why it is not automated and the conditions under which it should be.
+A step that could be a spec belongs in a spec — cheaper, repeatable, and it
+actually runs.
+
 ## Summary
 
 | Blind spot | What covers it | Where |
@@ -148,6 +176,7 @@ real serialization, real server stamps, live rules verdict.
 | Rules accept ≠ services send | one smoke case through the owning service per collection | `*.service.smoke.spec.ts` |
 | Storage `update` unreachable by upload | a metadata-update case, plus a named post-deploy check on the live project | `storage.service.smoke.spec.ts`, [receipt-quota.md](receipt-quota.md) |
 | Query composes but needs an index | multi-equality cases note the limit in their doc block | `transaction-window.service.smoke.spec.ts` |
+| Nothing renders, and no journey crosses a page | the driven browser journeys — a protocol, not a gate | [e2e.md](e2e.md), by hand, twice per branch |
 
 ## When you add another one
 

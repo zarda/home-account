@@ -35,9 +35,11 @@ about its door. Adding a step to the cascade and nothing else breaks the suite.
 | Security activity | `securityEvents` | Settings → Preferences |
 | Feedback | `feedback` | the About page |
 
-Deliberately absent, and why: the app lock credential and the offline receipt
-queue are device-local rather than account data; the user document is the
-profile itself; the Firebase Auth user is not a collection of records. Receipt
+Deliberately absent, and why: the app lock credential, the offline receipt
+queue, the share stash, the log of which reminders this device has already
+raised, and the recap week this device has already dismissed are all
+device-local rather than account data; the user document is the profile
+itself; the Firebase Auth user is not a collection of records. Receipt
 images are Storage objects swept by the transactions step rather than a record
 kind of their own, so the image manager stays in the Data Management section
 below the index.

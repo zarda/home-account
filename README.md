@@ -18,8 +18,8 @@ This project demonstrates modern Angular development practices with a focus on:
 
 ## Features
 
-- **Dashboard** - Financial overview with income/expense summary and spending charts
-- **Transactions** - Multi-currency support with filtering, tags, and location tracking; typo-tolerant search with saved and recent searches, plus insight quick-filter chips (unusual amounts, new and top categories) computed locally from your data
+- **Dashboard** - Financial overview with income/expense summary and spending charts, plus an opt-in weekly recap: last week's spending, where it went, and what is still due, once a week until you close it — with a Monday notification on the installed app and an optional AI write-up — see [docs/weekly-recap.md](docs/weekly-recap.md)
+- **Transactions** - Multi-currency support with filtering, tags, and location tracking; typo-tolerant search with saved and recent searches, plus insight quick-filter chips (unusual amounts, new and top categories) computed locally from your data. A note kept in a receipt's own script can be shown translated into your language on demand — the stored note is never touched and the translation is never saved — see [docs/translation-lens.md](docs/translation-lens.md)
 - **Smart Search** - Ask questions in plain language from the app header ("how much did I spend on groceries last month"); the AI only translates the question into filters or an aggregate operation — every number shown is computed locally from your transactions, and it degrades to keyword search offline
 - **Budgets** - Period-based budget limits with recurring transactions management
 - **Reports** - Financial analytics with CSV and PDF export
@@ -224,6 +224,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/ai-models.md](docs/ai-models.md) | The model catalog and its defaults, how a stored choice outranks them, and the procedure for retiring a model |
 | [docs/insights.md](docs/insights.md) | Spending-pattern detectors, monthly snapshots, card contract, privacy boundary |
 | [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
+| [docs/translation-lens.md](docs/translation-lens.md) | Reading a stored note in your own language: where the controls are, what is sent, the session cache, the failure classes, and what is never written |
 | [docs/receipt-import.md](docs/receipt-import.md) | What bounds receipt scanning, which engine runs, where the amount comes from, and the offline queue |
 | [docs/receipt-quota.md](docs/receipt-quota.md) | The receipt-image quota: the trigger-owned count, how the limit is resolved, what the rules allow, and the fail-open windows |
 | [docs/model-probe/](docs/model-probe/README.md) | Manual probe: the real receipt prompt against a real model, compared to a recorded baseline |
@@ -233,6 +234,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/ui-overflow.md](docs/ui-overflow.md) | What the app does when content does not fit: the five layout invariants, and where each is enforced |
 | [docs/recurring.md](docs/recurring.md) | Recurring rules: frequencies, the clamp and the anchor, the catch-up engine, pause/resume, the reminder lead, the Upcoming card, and the validity floor |
 | [docs/reminders.md](docs/reminders.md) | Bill and budget reminders: the opt-in, when a sweep runs, the per-device dedup keys, and the web/native delivery split |
+| [docs/weekly-recap.md](docs/weekly-recap.md) | The weekly recap: the opt-in, which week and its key, where the figures come from, the card's lifetime, the Monday nudge, the narrative gate, and the device-local state |
 | [docs/smart-search.md](docs/smart-search.md) | Natural-language search: one interpretation call, local aggregation, keyword fallback, and the persisted answer history |
 | [docs/account-deletion.md](docs/account-deletion.md) | Account deletion: the client-side cascade, its ordering, partial-failure semantics, and the rules it needed |
 | [docs/share-import.md](docs/share-import.md) | Share-sheet import: the web share target and its minimal service worker, and the iOS Share Extension handoff |
@@ -248,7 +250,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/one-shot-reads.md](docs/one-shot-reads.md) | Reads that must see the whole collection: which values may never come from a listener's first emission, and which must be answered by the server |
 | [docs/data.md](docs/data.md) | The stored-data hub: every kind of record, where each is managed, and what the counts do and do not mean |
 | [docs/feedback.md](docs/feedback.md) | In-app feedback: the stored record, its About-page door, and the mail that leaves from a Cloud Function |
-| [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, and the checks that stand in |
+| [docs/emulator-blind-spots.md](docs/emulator-blind-spots.md) | What the emulator suite cannot check: composite indexes, deployed rules and indexes, the browser layer, and the checks that stand in |
+| [docs/e2e.md](docs/e2e.md) | The browser journey protocol: the checks before every run, the writes a run may make and how they are put back, the journeys and their passes |
 | [docs/i18n.md](docs/i18n.md) | The translation catalog: which language a session speaks and where a new account's comes from, plural entries that only English carries, the checker's three scans, and what still escapes them |
 | [docs/exchange-rates.md](docs/exchange-rates.md) | Where the exchange-rate table comes from: the fallback ladder from live fetch to device cache to constants, and what each rung stamps |
 | [docs/auth.md](docs/auth.md) | The session lifecycle: the auth-state listener, the degraded fallback profile and its retry, and the identity check every write across an await makes |

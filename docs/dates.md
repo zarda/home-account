@@ -170,13 +170,22 @@ consecutive periods cannot overlap or leave a gap.
   millisecond past the end.
 - `recurring.service.smoke.spec.ts` — the forecast horizon against a stored
   `Timestamp`, seeded late on the last day the chart draws.
+- `weekly-recap.utils.spec.ts` and `weekly-recap.service.spec.ts` — the week
+  the recap speaks about, its Monday key, and the 09:00 nudge moment. The
+  recapped week is derived by stepping back from the current one, so at offset
+  0 the step and the boundary agree by coincidence; the two non-UTC zones are
+  what tell them apart ([weekly-recap.md](weekly-recap.md)).
+- `weekly-recap.smoke.spec.ts` — those bounds against stored `Timestamp`s,
+  seeded on the first and last milliseconds of the recapped week and one
+  millisecond outside each.
 - The `test:dates` include list is the enumeration of unit specs whose
   assertions depend on the zone, and `test:smoke:dates` is the same statement
-  for the emulator suite — `period-window`, `transaction.service` and
-  `recurring.service`, run under `TZ=America/New_York` and `TZ=Asia/Tokyo`
-  inside one `emulators:exec` by `npm run smoke:dates` (ADR 0050). Anything
-  asserting a calendar day or a window bound belongs in one of the two lists;
-  a spec left out of both is only ever run at one offset.
+  for the emulator suite — `period-window`, `transaction.service`,
+  `recurring.service`, `reminder.service` and `weekly-recap`, run under
+  `TZ=America/New_York` and `TZ=Asia/Tokyo` inside one `emulators:exec` by
+  `npm run smoke:dates` (ADR 0050). Anything asserting a calendar day or a
+  window bound belongs in one of the two lists; a spec left out of both is
+  only ever run at one offset.
 
 ### The audit greps
 
