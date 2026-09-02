@@ -931,6 +931,19 @@
     "noProviderFallback": "尚未設定 AI 供應商 — 改以一般關鍵字搜尋。請在「設定 → AI 處理」中新增 API 金鑰。",
     "errorFallback": "無法解讀問題，改以關鍵字搜尋顯示。"
   },
+  "noteTranslation": {
+    "translate": "翻譯",
+    "translating": "翻譯中...",
+    "showOriginal": "顯示原文",
+    "marker": "自{{language}}翻譯",
+    "noProvider": "翻譯需要 AI 供應商。請在「設定 → AI 處理」中新增 API 金鑰。",
+    "retry": "再試一次",
+    "failed": "無法翻譯這則備註，請重試。",
+    "failedKey": "無法翻譯：API 金鑰無效。請檢查「設定 → AI 處理」。",
+    "failedRateLimited": "AI 服務目前忙碌中（已達用量上限），請稍候一分鐘再試。",
+    "failedOffline": "翻譯需要網路連線，請檢查連線後再試。",
+    "failedIncomplete": "翻譯結果被截斷，請重試。"
+  },
   "import": {
     "title": "智慧匯入",
     "smartImport": "AI 智慧匯入",

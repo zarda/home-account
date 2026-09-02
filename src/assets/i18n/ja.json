@@ -931,6 +931,19 @@
     "noProviderFallback": "AIプロバイダーが設定されていません — キーワード検索を表示します。設定 → AI処理 でAPIキーを追加してください。",
     "errorFallback": "質問を解釈できなかったため、キーワード検索を表示しています。"
   },
+  "noteTranslation": {
+    "translate": "翻訳",
+    "translating": "翻訳中...",
+    "showOriginal": "原文を表示",
+    "marker": "{{language}}から翻訳",
+    "noProvider": "翻訳にはAIプロバイダーが必要です。設定 → AI処理 でAPIキーを追加してください。",
+    "retry": "再試行",
+    "failed": "このメモを翻訳できませんでした。もう一度お試しください。",
+    "failedKey": "翻訳を利用できません：APIキーが無効です。設定 → AI処理 をご確認ください。",
+    "failedRateLimited": "AIサービスが混み合っています（利用上限に到達）。1分ほど待ってから再試行してください。",
+    "failedOffline": "翻訳には接続が必要です。ネットワークを確認して再試行してください。",
+    "failedIncomplete": "翻訳が途中で切れています。もう一度お試しください。"
+  },
   "import": {
     "title": "スマートインポート",
     "smartImport": "AIスマートインポート",

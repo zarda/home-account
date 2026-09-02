@@ -96,7 +96,7 @@ and `duration` arrived in 1.27.140.
 | `budget_create` | A budget was created from the budgets page. | — | `src/app/features/budgets/budget-form/budget-form.component.ts` | 1.16.91 |
 | `budget_exceeded_viewed` | The dashboard budget-alert banner became visible, once per appearance. | `severity` | `src/app/features/dashboard/budget-alert-banner/budget-alert-banner.component.ts` | 1.16.91 |
 | `report_view` | A report tab was shown, including the one the page opens on. | `report_type` | `src/app/features/reports/reports.component.ts` | 1.16.91 |
-| `ai_assist_used` | An AI feature issued a real provider request (cache hits and local fallbacks excluded). | `feature` | `src/app/core/services/ai-import.service.ts`, `src/app/core/services/nl-search.service.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/dashboard/ai-summary/ai-summary.component.ts`, `src/app/features/reports/insights/insight-narrative/insight-narrative.component.ts` | 1.16.91 |
+| `ai_assist_used` | An AI feature issued a real provider request (cache hits and local fallbacks excluded). | `feature` | `src/app/core/services/ai-import.service.ts`, `src/app/core/services/nl-search.service.ts`, `src/app/core/services/note-translation.service.ts`, `src/app/features/transactions/transaction-form/transaction-form.component.ts`, `src/app/features/dashboard/ai-summary/ai-summary.component.ts`, `src/app/features/reports/insights/insight-narrative/insight-narrative.component.ts` | 1.16.91 |
 | `settings_change` | A tracked preference was saved from profile settings. | `setting` | `src/app/features/settings/profile-settings/profile-settings.component.ts`, `src/app/features/settings/accessibility-settings/accessibility-settings.component.ts` | 1.16.91 |
 | `search_history_used` | A stored search record was reopened, refreshed or applied. Never fires for collapsing one. | `action` | `src/app/features/ai/search-history/search-answer-history.component.ts`, `src/app/shared/components/ai-search-dialog/ai-search-dialog.component.ts` | 1.23.116 |
 <!-- analytics-registry:end -->
@@ -119,7 +119,7 @@ and `duration` arrived in 1.27.140.
 | `duration` | `under_5s`, `5s_to_15s`, `15s_to_60s`, `over_60s`, `none` (nothing was timed) |
 | `severity` | `warning`, `critical`, `exceeded` |
 | `report_type` | `spending_analysis`, `category_breakdown`, `monthly_comparison`, `insights`, `forecast` |
-| `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative` |
+| `feature` | `receipt_scan`, `categorization`, `pdf_import`, `search`, `summary`, `narrative`, `translation` (a note read back in the UI language — the note itself is never sent here) |
 | `setting` | `theme`, `language`, `currency`, `font_scale`, `high_contrast`, `reduced_motion` |
 | `action` | `reopen` (a stored answer's card was shown again), `refresh` (its figures were recomputed locally), `apply` (a stored filter's scope was re-applied to the transactions list) — the question itself is never sent |
 

@@ -976,6 +976,19 @@
     "noProviderFallback": "No AI provider is configured — showing a plain keyword search instead. Add an API key in Settings → AI Processing.",
     "errorFallback": "Couldn't interpret the question — showing a plain keyword search instead."
   },
+  "noteTranslation": {
+    "translate": "Translate",
+    "translating": "Translating...",
+    "showOriginal": "Show original",
+    "marker": "Translated from {{language}}",
+    "noProvider": "Translation needs an AI provider. Add an API key in Settings → AI Processing.",
+    "retry": "Try again",
+    "failed": "Could not translate this note. Please try again.",
+    "failedKey": "Translation unavailable: invalid API key. Please check Settings → AI Processing.",
+    "failedRateLimited": "The AI service is busy right now (rate limit reached). Please try again in a minute.",
+    "failedOffline": "Translation needs a connection. Check your network and try again.",
+    "failedIncomplete": "The translation came back cut short. Please try again."
+  },
   "import": {
     "title": "Smart Import",
     "smartImport": "AI-Powered Import",
