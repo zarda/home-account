@@ -1315,7 +1315,8 @@
   },
   "reminders": {
     "billDue": "{{name}} は今日が支払日です",
-    "billDueIn": "{{name}} の支払日まであと {{count}} 日です"
+    "billDueIn": "{{name}} の支払日まであと {{count}} 日です",
+    "recapReady": "週次サマリーの準備ができました"
   },
   "insights": {
     "cadenceWeekly": "毎週",

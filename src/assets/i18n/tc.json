@@ -1315,7 +1315,8 @@
   },
   "reminders": {
     "billDue": "{{name}} 今天到期",
-    "billDueIn": "{{name}} 將於 {{count}} 天後到期"
+    "billDueIn": "{{name}} 將於 {{count}} 天後到期",
+    "recapReady": "您的每週摘要已準備好"
   },
   "insights": {
     "cadenceWeekly": "每週",

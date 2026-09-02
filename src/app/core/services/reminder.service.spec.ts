@@ -2,9 +2,13 @@ import { TestBed } from '@angular/core/testing';
 import { computed, signal } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import type { LocalNotificationsPlugin } from '@capacitor/local-notifications';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 
-import { ReminderService, reminderSentStorageKey } from './reminder.service';
+import {
+  ReminderService,
+  clearReminderDeviceState,
+  reminderSentStorageKey,
+} from './reminder.service';
 import { AuthService } from './auth.service';
 import { BudgetService } from './budget.service';
 import { RecurringService } from './recurring.service';
@@ -19,6 +23,10 @@ import {
   UserPreferences,
 } from '../../models';
 import { addDays, startOfDay } from '../utils/transaction-date.utils';
+import {
+  clearWeeklyRecapDeviceState,
+  writeDismissedRecapWeek,
+} from '../utils/weekly-recap.utils';
 
 const USER_ID = 'user-1';
 
@@ -140,6 +148,7 @@ describe('ReminderService', () => {
     jasmine.clock().mockDate(NOW);
     now = new Date();
     localStorage.removeItem(reminderSentStorageKey(USER_ID));
+    clearWeeklyRecapDeviceState(USER_ID);
 
     currentUser = signal<User | null>(null);
     budgetAlerts = signal<BudgetAlert[]>([]);
@@ -176,6 +185,7 @@ describe('ReminderService', () => {
 
   afterEach(() => {
     localStorage.removeItem(reminderSentStorageKey(USER_ID));
+    clearWeeklyRecapDeviceState(USER_ID);
     jasmine.clock().uninstall();
   });
 
@@ -438,6 +448,176 @@ describe('ReminderService', () => {
 
       expect(service.webNotifications.length).toBe(1);
     });
+
+    it('books nothing when a listener an earlier pass left open resolves after both preferences go off', async () => {
+      isNative.and.returnValue(true);
+      const waiting = new Subject<RecurringOccurrence[]>();
+      recurring.getNextOccurrences.and.returnValue(waiting);
+      const service = createService();
+      await sweep();
+      expect(waiting.observed).toBeTrue();
+
+      // Cancelling pending notifications never touches a listener a previous
+      // pass opened; only a late snapshot proves whether it was closed too.
+      setPreferences({ enableReminders: false, enableWeeklyRecap: false });
+      await service.sweep();
+      waiting.next([occurrence({ date: daysOut(0), remindDaysBefore: 0 })]);
+      await settle();
+
+      expect(service.plugin.schedule).not.toHaveBeenCalled();
+      expect(readSentLog()).toEqual({});
+    });
+  });
+
+  describe('the weekly recap nudge', () => {
+    /** 09:00 on the Monday after NOW, which is a Tuesday. */
+    const NEXT_MONDAY_NINE = new Date(2026, 8, 7, 9, 0, 0);
+
+    /** The week that Monday's nudge announces: the one it opens is not over. */
+    const ANNOUNCED_WEEK = '2026-08-31';
+
+    beforeEach(() => isNative.and.returnValue(true));
+
+    it('schedules one for the next Monday at 09:00', async () => {
+      setPreferences({ enableReminders: true, enableWeeklyRecap: true });
+      const service = createService();
+
+      await sweep();
+
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.length).toBe(1);
+      expect(request.notifications[0].body).toBe('reminders.recapReady');
+      expect(request.notifications[0].schedule?.at as Date).toEqual(NEXT_MONDAY_NINE);
+      expect(Object.keys(readSentLog())).toEqual(['recap|2026-09-07']);
+    });
+
+    it('produces the same notification for the next sweep to spare', async () => {
+      setPreferences({ enableWeeklyRecap: true });
+      const service = createService();
+      await sweep();
+      const [booked] = service.plugin.schedule.calls.mostRecent().args;
+      const id = booked.notifications[0].id;
+
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id, title: 'app.title', body: 'reminders.recapReady' }],
+      });
+      jasmine.clock().tick(5 * 60_000);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      // Produced, not queued: the key is already delivered, so it is not
+      // scheduled a second time — but the stale-cancel still has to see it.
+      expect(service.plugin.schedule).toHaveBeenCalledTimes(1);
+      expect(service.plugin.cancel).not.toHaveBeenCalled();
+    });
+
+    it('books one without opening the recurring listener when reminders are off', async () => {
+      setPreferences({ enableReminders: false, enableWeeklyRecap: true });
+      occurrences = [occurrence({ date: daysOut(0), remindDaysBefore: 0 })];
+      const service = createService();
+
+      await sweep();
+
+      expect(recurring.getNextOccurrences).not.toHaveBeenCalled();
+      const [request] = service.plugin.schedule.calls.mostRecent().args;
+      expect(request.notifications.length).toBe(1);
+      expect(request.notifications[0].schedule?.at as Date).toEqual(NEXT_MONDAY_NINE);
+    });
+
+    it('sweeps on a visibility change for a recap-only account', async () => {
+      setPreferences({ enableWeeklyRecap: true });
+      const service = createService();
+      await sweep();
+      const swept = service.plugin.getPending.calls.count();
+
+      jasmine.clock().tick(5 * 60_000);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      expect(service.plugin.getPending.calls.count()).toBeGreaterThan(swept);
+    });
+
+    it('says nothing about a week this device has already dismissed', async () => {
+      writeDismissedRecapWeek(USER_ID, ANNOUNCED_WEEK);
+      setPreferences({ enableWeeklyRecap: true });
+      const service = createService();
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id: 4242, title: 'app.title', body: 'reminders.recapReady' }],
+      });
+
+      await sweep();
+
+      expect(service.plugin.schedule).not.toHaveBeenCalled();
+      // Dismissing after the nudge was booked has to retire it too, or it
+      // announces a card the user has already put away.
+      expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id: 4242 }] });
+    });
+
+    it('announces this Monday from before nine and the next one from after', async () => {
+      jasmine.clock().mockDate(new Date(2026, 8, 7, 8, 59, 0));
+      setPreferences({ enableWeeklyRecap: true });
+      const early = createService();
+      await sweep();
+
+      const [beforeNine] = early.plugin.schedule.calls.mostRecent().args;
+      expect(beforeNine.notifications[0].schedule?.at as Date).toEqual(NEXT_MONDAY_NINE);
+
+      // A second device-day, past the moment: the week that Monday opened is
+      // still running, so there is nothing to recap until the one after it.
+      localStorage.removeItem(reminderSentStorageKey(USER_ID));
+      jasmine.clock().mockDate(new Date(2026, 8, 7, 9, 1, 0));
+      const late = createService();
+      await sweep();
+
+      const [afterNine] = late.plugin.schedule.calls.mostRecent().args;
+      expect(afterNine.notifications[0].schedule?.at as Date).toEqual(
+        new Date(2026, 8, 14, 9, 0, 0)
+      );
+    });
+
+    it('is never raised on the web, where nothing can be scheduled', async () => {
+      isNative.and.returnValue(false);
+      setPreferences({ enableWeeklyRecap: true });
+      const service = createService();
+
+      await sweep();
+
+      expect(service.webNotifications).toEqual([]);
+      expect(service.plugin.schedule).not.toHaveBeenCalled();
+      expect(readSentLog()).toEqual({});
+    });
+
+    it('drops a listener the previous bill pass left open', async () => {
+      const waiting = new Subject<RecurringOccurrence[]>();
+      recurring.getNextOccurrences.and.returnValue(waiting);
+      setPreferences({ enableReminders: true, enableWeeklyRecap: true });
+      createService();
+      await sweep();
+      expect(waiting.observed).toBeTrue();
+
+      // Reminders off while that first snapshot is still on its way: a pass
+      // that produces no bills must not leave one able to deliver them.
+      jasmine.clock().tick(5 * 60_000);
+      setPreferences({ enableReminders: false, enableWeeklyRecap: true });
+      await sweep();
+
+      expect(waiting.observed).toBeFalse();
+    });
+
+    it('retires everything and books nothing once both preferences are off', async () => {
+      setPreferences({ enableReminders: false, enableWeeklyRecap: false });
+      occurrences = [occurrence({ date: daysOut(0), remindDaysBefore: 0 })];
+      const service = createService();
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id: 4242, title: 'app.title', body: 'reminders.recapReady' }],
+      });
+
+      await service.sweep();
+
+      expect(recurring.getNextOccurrences).not.toHaveBeenCalled();
+      expect(service.plugin.schedule).not.toHaveBeenCalled();
+      expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id: 4242 }] });
+    });
   });
 
   describe('the sent log', () => {
@@ -485,6 +665,17 @@ describe('ReminderService', () => {
       await sweep();
 
       expect(service.webNotifications.length).toBe(1);
+    });
+
+    it('is emptied by the erasure the account-deletion cascade runs', async () => {
+      occurrences = [occurrence({ date: daysOut(3), remindDaysBefore: 3 })];
+      createService();
+      await sweep();
+      expect(Object.keys(readSentLog())).toEqual(['bill|rule-1|2026-09-04|3']);
+
+      clearReminderDeviceState(USER_ID);
+
+      expect(readSentLog()).toEqual({});
     });
 
     it('survives a storage that refuses the write without repeating itself', async () => {
@@ -657,6 +848,72 @@ describe('ReminderService', () => {
       const [rebooked] = service.plugin.schedule.calls.mostRecent().args;
       expect(rebooked.notifications[0].schedule?.at as Date).toEqual(new Date(2026, 8, 4, 9, 0, 0));
       expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id: staleId }] });
+    });
+
+    it('drops the key of a reminder the sweep retired, so a restored rule re-books', async () => {
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+      const service = createService();
+      await sweep();
+      const [booked] = service.plugin.schedule.calls.mostRecent().args;
+      const id = booked.notifications[0].id;
+
+      // The rule is edited away, so the sweep stops producing its key and the
+      // pending notification is retired.
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+      occurrences = [];
+      jasmine.clock().tick(5 * 60_000);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+      expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id }] });
+
+      // Restored: scheduling marked the key delivered, so a cancel that left
+      // the entry behind would let the reminder day pass in silence.
+      service.plugin.getPending.and.resolveTo({ notifications: [] });
+      occurrences = [occurrence({ date: daysOut(10), remindDaysBefore: 3 })];
+      jasmine.clock().tick(5 * 60_000);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      expect(service.plugin.schedule).toHaveBeenCalledTimes(2);
+      const [rebooked] = service.plugin.schedule.calls.mostRecent().args;
+      expect(rebooked.notifications.map(notification => notification.id)).toEqual([id]);
+    });
+
+    it('keeps the key of a reminder that already fired', async () => {
+      const both = (): RecurringOccurrence[] => [
+        occurrence({ date: daysOut(0), remindDaysBefore: 0 }),
+        occurrence({ recurringId: 'rule-2', name: 'Gym', date: daysOut(10), remindDaysBefore: 3 }),
+      ];
+      occurrences = both();
+      const service = createService();
+      await sweep();
+
+      const [booked] = service.plugin.schedule.calls.mostRecent().args;
+      const pendingId = booked.notifications.find(n => n.schedule)?.id as number;
+      const firedId = booked.notifications.find(n => !n.schedule)?.id as number;
+
+      // Only the ahead-of-time one is still pending: the immediate reminder was
+      // handed to the user the moment it was raised, so the prune cannot reach
+      // it and the entry that stops it repeating has to survive.
+      service.plugin.getPending.and.resolveTo({
+        notifications: [{ id: pendingId, title: 'app.title', body: 'reminders.billDueIn' }],
+      });
+      occurrences = [];
+      jasmine.clock().tick(5 * 60_000);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      service.plugin.getPending.and.resolveTo({ notifications: [] });
+      occurrences = both();
+      jasmine.clock().tick(5 * 60_000);
+      document.dispatchEvent(new Event('visibilitychange'));
+      await settle();
+
+      const [rebooked] = service.plugin.schedule.calls.mostRecent().args;
+      expect(rebooked.notifications.map(notification => notification.id)).toEqual([pendingId]);
+      expect(rebooked.notifications.map(notification => notification.id)).not.toContain(firedId);
     });
 
     it('stays inert when the operating system has not granted permission', async () => {

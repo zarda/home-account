@@ -1390,7 +1390,8 @@
     "billDueIn": {
       "one": "{{name}} is due in {{count}} day",
       "other": "{{name}} is due in {{count}} days"
-    }
+    },
+    "recapReady": "Your weekly recap is ready"
   },
   "insights": {
     "cadenceWeekly": "weekly",

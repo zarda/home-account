@@ -14,11 +14,17 @@ import { TranslationService } from './translation.service';
 import { fnv1a32 } from '../utils/transaction-aggregation.utils';
 import { addDays, dayKey, startOfDay, wholeDaysBetween } from '../utils/transaction-date.utils';
 import {
+  nextRecapMoment,
+  readDismissedRecapWeek,
+  recapKeyAnnouncedBy,
+} from '../utils/weekly-recap.utils';
+import {
   BudgetAlert,
   BudgetAlertSeverity,
   MAX_REMINDER_LEAD_DAYS,
   RecurringOccurrence,
   remindersEnabled,
+  weeklyRecapEnabled,
 } from '../../models';
 
 /** Where this device records what it has already raised, per account. */
@@ -91,7 +97,8 @@ function notificationId(key: string): number {
 }
 
 /**
- * Local notifications for budget thresholds and bills about to fall due.
+ * Local notifications for budget thresholds, bills about to fall due, and the
+ * Monday nudge that last week's recap is ready.
  *
  * Named for what it raises, not how: NotificationService is the snackbar
  * wrapper. Delivery is a strict platform split — the installed iOS app has no
@@ -117,13 +124,20 @@ export class ReminderService {
 
   readonly enabled = computed(() => remindersEnabled(this.auth.currentUser()?.preferences));
 
+  readonly recapEnabled = computed(() => weeklyRecapEnabled(this.auth.currentUser()?.preferences));
+
   constructor() {
     // Neither gate holds until the account document has loaded, so a cold
     // start and a signed-out session sweep nothing and open no listener.
     // Switching accounts drops the previous one's sent keys with it.
+    //
+    // Both preferences are read on every run rather than short-circuited: an
+    // effect only re-runs for the signals it actually read, so a gate that
+    // stopped at `enabled` would not notice the recap being switched on.
     effect(() => {
       const userId = this.auth.userId();
       const enabled = this.enabled();
+      const recapEnabled = this.recapEnabled();
 
       if (userId !== this.lastUserId) {
         const previous = this.lastUserId;
@@ -140,7 +154,7 @@ export class ReminderService {
         if (previous !== null) void this.cancelScheduledFor(previous);
       }
 
-      if (enabled && userId) this.maybeSweepBills();
+      if ((enabled || recapEnabled) && userId) this.maybeSweepBills();
     });
 
     // An effect rather than a getBudgets() subscription: owning one would make
@@ -184,18 +198,30 @@ export class ReminderService {
   }
 
   /**
-   * One bill pass, run now.
+   * One pass, run now: make what the operating system holds match what the
+   * preferences ask for.
    *
-   * The settings toggle's, and deliberately outside the debounce below: that
-   * debounce is there to stop a flap between tabs reopening a listener, and
-   * applying it to an explicit user action would make turning reminders on
-   * within five minutes of an app-open sweep do nothing at all.
+   * The settings toggles' entry point, and deliberately outside the debounce
+   * below: that debounce is there to stop a flap between tabs reopening a
+   * listener, and applying it to an explicit user action would make turning a
+   * preference on within five minutes of an app-open sweep do nothing at all.
    *
-   * It still stamps `lastSweptAt`, which is what stops the preference this
-   * click writes from sweeping a second time when it reaches the effect.
+   * A pass with both preferences off retires everything rather than producing
+   * an empty set through the sweep, which would otherwise open a listener and
+   * book bills for an account that asked for neither.
+   *
+   * The sweep still stamps `lastSweptAt`, which is what stops the preference
+   * this click writes from sweeping a second time when it reaches the effect.
    */
   async sweep(): Promise<void> {
-    await this.sweepBills();
+    if (this.enabled() || this.recapEnabled()) {
+      await this.sweepBills();
+      return;
+    }
+    // A listener an earlier pass left open would still deliver its first
+    // snapshot after this cancel and book bills the cancel just retired.
+    this.closeBillSweep();
+    await this.cancelScheduledFor(this.auth.userId());
   }
 
   /**
@@ -239,7 +265,7 @@ export class ReminderService {
     // both the installed iOS app and the web build.
     const onVisibilityChange = (): void => {
       if (document.hidden) return;
-      if (this.enabled() && this.auth.userId()) this.maybeSweepBills();
+      if ((this.enabled() || this.recapEnabled()) && this.auth.userId()) this.maybeSweepBills();
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -267,6 +293,19 @@ export class ReminderService {
     const userId = this.auth.userId();
     if (!userId) return Promise.resolve();
 
+    // Before either path: a listener an earlier pass left waiting for its
+    // first snapshot would otherwise deliver bills for a preference that has
+    // been switched off since it opened.
+    this.closeBillSweep();
+
+    const nudge = this.recapNudge(userId);
+
+    // An account that asked for the recap and not for reminders never reaches
+    // the listener below: it would refresh the shared recurringTransactions
+    // signal from a background path, and read a month of occurrences, for a
+    // pass that cannot produce a single bill.
+    if (!this.enabled()) return this.deliver(userId, nudge, true);
+
     // getNextOccurrences opens a listener that never completes; take(1) closes
     // it once the first snapshot has been read.
     //
@@ -276,7 +315,6 @@ export class ReminderService {
     // it — unlike the freshenSpent recalculations a getBudgets() subscription
     // would make this service a second writer of — and nothing here may grow
     // one.
-    this.closeBillSweep();
     return new Promise<void>(resolve => {
       let delivering = false;
       this.billSweep = this.recurringService
@@ -285,7 +323,7 @@ export class ReminderService {
         .subscribe({
           next: occurrences => {
             delivering = true;
-            void this.deliverBills(userId, occurrences).then(
+            void this.deliverBills(userId, occurrences, nudge).then(
               () => resolve(),
               () => resolve()
             );
@@ -305,9 +343,34 @@ export class ReminderService {
     this.billSweep = null;
   }
 
+  /**
+   * The recap's nudge, or nothing at all.
+   *
+   * Always ahead of time, never an immediate: it announces a card, and one
+   * raised as the app is opened would name a week the user is already looking
+   * at. `deliverWeb` skips anything carrying `at`, so the web build produces
+   * it and never raises it — the card is what a browser gets.
+   */
+  private recapNudge(userId: string): PreparedReminder[] {
+    if (!this.recapEnabled()) return [];
+
+    const at = nextRecapMoment(this.now());
+    // A week dismissed on this device before the nudge was due has nothing
+    // left to announce. Producing nothing also retires an already-booked one,
+    // since the stale-cancel spares only what this pass produced.
+    if (readDismissedRecapWeek(userId) === recapKeyAnnouncedBy(at)) return [];
+
+    // The nudge day, not the recapped week: one notification per Monday, and
+    // the same key on every sweep until it fires.
+    return [
+      { key: `recap|${dayKey(at)}`, body: this.translation.t('reminders.recapReady'), at },
+    ];
+  }
+
   private async deliverBills(
     userId: string,
-    occurrences: RecurringOccurrence[]
+    occurrences: RecurringOccurrence[],
+    nudge: PreparedReminder[]
   ): Promise<void> {
     const today = startOfDay(this.now());
     const reminders: PreparedReminder[] = [];
@@ -357,7 +420,9 @@ export class ReminderService {
       });
     }
 
-    await this.deliver(userId, reminders, true);
+    // One delivery for the whole pass: the nudge has to be in the produced set
+    // the stale-cancel below spares, or every sweep would retire it.
+    await this.deliver(userId, [...reminders, ...nudge], true);
   }
 
   private async deliverBudgetAlerts(userId: string, alerts: BudgetAlert[]): Promise<void> {
@@ -469,7 +534,15 @@ export class ReminderService {
         // so anything still pending that this sweep did not produce is retired
         // — including the keys already delivered, whose pending notification
         // has not fired yet. This service is the only scheduler in the app.
-        await this.prunePending(new Set(reminders.map(reminder => notificationId(reminder.key))));
+        //
+        // Their log entries go with them, strictly after the operating system
+        // has accepted the cancel: without that the cancel is one-way, and a
+        // rule edited away and restored, or a recap switched off and on inside
+        // a week, would never be booked again.
+        const cancelled = await this.prunePending(
+          new Set(reminders.map(reminder => notificationId(reminder.key)))
+        );
+        this.forgetDelivered(userId, cancelled);
       }
     } catch {
       // The plugin is absent from this binary, or the OS refused the call.
