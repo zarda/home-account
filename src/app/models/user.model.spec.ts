@@ -1,5 +1,6 @@
 import {
   DEFAULT_FONT_SCALE,
+  DEFAULT_LLM_PROVIDER_PREFERENCES,
   DEFAULT_USER_PREFERENCES,
   RAG_INSIGHTS_LEVELS,
   RAG_TIER_CONFIGS,
@@ -308,5 +309,14 @@ describe('RAG tier configs', () => {
     expect(RAG_TIER_CONFIGS.deep).toEqual({
       topExpenses: 20, anomalies: 10, categoryDeltas: 10, baselineWindowMonths: 12,
     });
+  });
+});
+
+describe('default LLM provider preferences', () => {
+  it('should name a provider for every routed feature', () => {
+    // A stored preferences object saved before a feature existed has no key
+    // for it, and both read sites spread these defaults over what was stored —
+    // so a feature missing here routes to undefined rather than to a provider.
+    expect(DEFAULT_LLM_PROVIDER_PREFERENCES.translation).toBe('gemini');
   });
 });

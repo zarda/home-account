@@ -875,4 +875,67 @@ describe('CloudLLMProviderBase', () => {
       expect(rows[1].location).toEqual({ name: '서울 강남구', country: 'KR' });
     });
   });
+
+  describe('translateText', () => {
+    const answer = (translation: string, sourceLanguage = 'Japanese') =>
+      JSON.stringify({ translation, sourceLanguage });
+
+    it('sends the note and the app language through the registered prompt', async () => {
+      provider.response = { text: answer('Rice ball 150'), truncated: false };
+
+      await provider.translateText('おにぎり 150');
+
+      expect(provider.sent).toEqual(['translateNote']);
+      expect(provider.renderedSent[0].user).toContain('おにぎり 150');
+      expect(provider.renderedSent[0].user).toContain('Respond in English.');
+    });
+
+    it('reads the translation and the language it was written in', async () => {
+      provider.response = { text: answer('Rice ball 150\nTotal 480'), truncated: false };
+
+      const translated = await provider.translateText('おにぎり 150\n合計 480');
+
+      expect(translated.text).toBe('Rice ball 150\nTotal 480');
+      expect(translated.sourceLanguage).toBe('Japanese');
+    });
+
+    it('reads a fenced answer', async () => {
+      provider.response = {
+        text: `\`\`\`json\n${answer('Rice ball 150')}\n\`\`\``,
+        truncated: false,
+      };
+
+      expect((await provider.translateText('おにぎり 150')).text).toBe('Rice ball 150');
+    });
+
+    it('refuses a cut-off answer instead of showing what arrived', async () => {
+      // Every other salvage keeps the rows that arrived whole. A translation
+      // has no rows: what arrives is a shorter note the reader cannot check
+      // against the original, which is a wrong translation rather than a
+      // partial one.
+      provider.response = { text: answer('Rice ball 150'), truncated: true };
+
+      await expectAsync(provider.translateText('おにぎり 150')).toBeRejectedWithError(
+        AI_ANSWER_INCOMPLETE
+      );
+    });
+
+    it('refuses an answer with no translation in it', async () => {
+      provider.response = { text: '{"sourceLanguage":"Japanese"}', truncated: false };
+
+      await expectAsync(provider.translateText('おにぎり 150')).toBeRejectedWithError(
+        AI_ANSWER_INCOMPLETE
+      );
+    });
+
+    it('stops processing whether it answered or threw', async () => {
+      provider.response = { text: answer('Rice ball 150'), truncated: false };
+      await provider.translateText('おにぎり 150');
+      expect(provider.isProcessing()).toBeFalse();
+
+      provider.failWith = new Error('model unavailable');
+      await expectAsync(provider.translateText('おにぎり 150')).toBeRejected();
+      expect(provider.isProcessing()).toBeFalse();
+    });
+  });
 });

@@ -183,6 +183,22 @@ describe('cloud LLM providers (emulator smoke test)', () => {
     expect(facade.hasAnyCloudProvider()).toBeFalse();
   });
 
+  it('offers the note translation on every real adapter', async () => {
+    // The lens calls this through the façade on whichever provider is
+    // configured. It is implemented once in the shared base, so a provider
+    // that stopped extending it — or an interface method left unimplemented
+    // behind a cast — would still satisfy every double in the unit specs.
+    for (const provider of [gemini, openai, claude]) {
+      expect(typeof provider.translateText).toBe('function');
+    }
+
+    // Nothing is configured here, so the façade has no provider to resolve
+    // and says so rather than answering with an untranslated note.
+    await expectAsync(facade.translateText('おにぎり 150')).toBeRejectedWithError(
+      /No cloud AI provider available for translation/
+    );
+  });
+
   it('keeps the model switches reachable through the façade', () => {
     // setModel is not on the adapter interface — only these two façade
     // methods call it, so nothing else would fail to compile if it went.

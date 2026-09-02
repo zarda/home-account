@@ -54,11 +54,17 @@ export interface LegacyProviderApiKeys {
   claudeApiKey?: string;
 }
 
+/**
+ * Which provider serves each feature. The keys are AIFeatureType, which
+ * CloudLLMProviderService indexes this map by directly — a key spelled
+ * differently there resolves to undefined rather than to a provider.
+ */
 export interface LLMProviderPreferences {
   receiptScanning: LLMProvider;
   categorization: LLMProvider;
   insights: LLMProvider;
   search: LLMProvider;
+  translation: LLMProvider;
 }
 
 export const DEFAULT_LLM_PROVIDER_PREFERENCES: LLMProviderPreferences = {
@@ -66,6 +72,7 @@ export const DEFAULT_LLM_PROVIDER_PREFERENCES: LLMProviderPreferences = {
   categorization: 'gemini',
   insights: 'gemini',
   search: 'gemini',
+  translation: 'gemini',
 };
 
 export interface UserPreferences {

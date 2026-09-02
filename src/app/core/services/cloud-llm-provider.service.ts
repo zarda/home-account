@@ -5,9 +5,14 @@ import { ClaudeService } from './claude.service';
 import { AuthService } from './auth.service';
 import { ProviderKeyService } from './provider-key.service';
 import { LLMProvider, LLMProviderPreferences, DEFAULT_LLM_PROVIDER_PREFERENCES, Category, Transaction, Budget, Goal, MonthlyTotal, SearchIntent, SearchQueryContext } from '../../models';
-import { AIRequestOptions, CloudLLMProviderAdapter, TagSuggestionRow } from './llm-provider.interface';
+import { AIRequestOptions, CloudLLMProviderAdapter, NoteTranslation, TagSuggestionRow } from './llm-provider.interface';
 
-export type AIFeatureType = 'receiptScanning' | 'categorization' | 'insights' | 'search';
+export type AIFeatureType =
+  | 'receiptScanning'
+  | 'categorization'
+  | 'insights'
+  | 'search'
+  | 'translation';
 
 interface ProviderStatus {
   gemini: boolean;
@@ -390,6 +395,19 @@ export class CloudLLMProviderService {
     period?: string
   ): Promise<string> {
     return this.resolve('insights').getFinancialAdvice(summary, baseCurrency, period);
+  }
+
+  // ---------------------------------------------- translation
+
+  /**
+   * Read a note back in the app's own language.
+   *
+   * Takes the text rather than the transaction, so the only thing that can
+   * reach a model is the note the user asked about. The answer is shown and
+   * discarded; nothing here writes it back.
+   */
+  async translateText(text: string): Promise<NoteTranslation> {
+    return this.resolve('translation').translateText(text);
   }
 
 

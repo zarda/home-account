@@ -4,3 +4,4 @@ export * from './categorization.prompts';
 export * from './insights.prompts';
 export * from './receipt.prompts';
 export * from './search.prompts';
+export * from './translation.prompts';

@@ -18,6 +18,7 @@ import {
   renderStatementTransactions,
 } from './receipt.prompts';
 import { renderSearchQuery } from './search.prompts';
+import { renderTranslateNote } from './translation.prompts';
 
 /**
  * Every prompt the app sends to a model, in one place.
@@ -47,7 +48,7 @@ export interface PromptDefinition<I = never> {
   /** Version this prompt id first shipped in. Mirrored in docs/prompts.md. */
   since: string;
   /** Which capability the prompt belongs to, matching AIFeatureType. */
-  feature: 'receiptScanning' | 'categorization' | 'insights' | 'search';
+  feature: 'receiptScanning' | 'categorization' | 'insights' | 'search' | 'translation';
   render: (input: I) => RenderedPrompt;
 }
 
@@ -116,6 +117,11 @@ export const PROMPTS = {
     since: '1.17.93',
     feature: 'search',
     render: renderSearchQuery,
+  },
+  translateNote: {
+    since: '26.9.152',
+    feature: 'translation',
+    render: renderTranslateNote,
   },
 } as const;
 
