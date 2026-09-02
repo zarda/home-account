@@ -9,6 +9,7 @@ import { ExportService } from '../../../core/services/export.service';
 import { TranslationService } from '../../../core/services/translation.service';
 import { CurrencyService } from '../../../core/services/currency.service';
 import { Transaction, Category } from '../../../models';
+import { dayKey } from '../../../core/utils/transaction-date.utils';
 
 describe('ExportDialogComponent', () => {
   let component: ExportDialogComponent;
@@ -63,12 +64,18 @@ describe('ExportDialogComponent', () => {
       'exportToCSV',
       'exportToPDF',
       'exportToJSON',
+      'exportCategorySummaryCSV',
+      'exportCategorySummaryPDF',
       'downloadBlob'
     ]);
 
     mockExportService.exportToCSV.and.returnValue(new Blob(['test'], { type: 'text/csv' }));
     mockExportService.exportToJSON.and.returnValue(new Blob(['{}'], { type: 'application/json' }));
     mockExportService.exportToPDF.and.returnValue(Promise.resolve(new Blob(['pdf'], { type: 'application/pdf' })));
+    mockExportService.exportCategorySummaryCSV.and.returnValue(new Blob(['summary'], { type: 'text/csv' }));
+    mockExportService.exportCategorySummaryPDF.and.returnValue(
+      Promise.resolve(new Blob(['summary-pdf'], { type: 'application/pdf' }))
+    );
     mockExportService.downloadBlobWithPicker = jasmine.createSpy('downloadBlobWithPicker').and.returnValue(Promise.resolve(true));
 
     mockTranslationService = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
@@ -76,7 +83,9 @@ describe('ExportDialogComponent', () => {
       const translations: Record<string, string> = {
         'reports.csvDescription': 'Export as spreadsheet',
         'reports.pdfDescription': 'PDF Report',
-        'reports.jsonDescription': 'JSON Backup'
+        'reports.jsonDescription': 'JSON Backup',
+        'reports.summaryCsvDescription': 'Category totals as spreadsheet',
+        'reports.summaryPdfDescription': 'Category totals as report'
       };
       return translations[key] || key;
     });
@@ -133,8 +142,8 @@ describe('ExportDialogComponent', () => {
   });
 
   describe('format options', () => {
-    it('should have 3 format options', () => {
-      expect(component.formatOptions.length).toBe(3);
+    it('should have 5 format options', () => {
+      expect(component.formatOptions.length).toBe(5);
     });
 
     it('should include CSV option', () => {
@@ -153,6 +162,20 @@ describe('ExportDialogComponent', () => {
       const json = component.formatOptions.find(o => o.value === 'json');
       expect(json).toBeDefined();
       expect(json?.label).toBe('JSON');
+    });
+
+    it('should include category summary CSV option', () => {
+      const summary = component.formatOptions.find(o => o.value === 'summary-csv');
+      expect(summary?.label).toBe('CSV');
+      expect(summary?.icon).toBe('summarize');
+      expect(summary?.description).toBe('Category totals as spreadsheet');
+    });
+
+    it('should include category summary PDF option', () => {
+      const summary = component.formatOptions.find(o => o.value === 'summary-pdf');
+      expect(summary?.label).toBe('PDF');
+      expect(summary?.icon).toBe('analytics');
+      expect(summary?.description).toBe('Category totals as report');
     });
   });
 
@@ -182,6 +205,38 @@ describe('ExportDialogComponent', () => {
       expect(mockExportService.exportToPDF).toHaveBeenCalled();
       expect(mockExportService.downloadBlobWithPicker).toHaveBeenCalled();
       expect(mockDialogRef.close).toHaveBeenCalledWith(true);
+    });
+
+    it('should export the category summary CSV in the base currency', async () => {
+      component.selectedFormat = 'summary-csv';
+      await component.export();
+
+      expect(mockExportService.exportCategorySummaryCSV)
+        .toHaveBeenCalledWith(mockTransactions, 'USD');
+      expect(mockExportService.downloadBlobWithPicker)
+        .toHaveBeenCalledWith(jasmine.any(Blob), `category-summary-${dayKey(new Date())}.csv`);
+      expect(mockDialogRef.close).toHaveBeenCalledWith(true);
+    });
+
+    it('should pass the period label to the category summary PDF', async () => {
+      component.selectedFormat = 'summary-pdf';
+      await component.export();
+
+      expect(mockExportService.exportCategorySummaryPDF)
+        .toHaveBeenCalledWith(mockTransactions, 'USD', component.dateRangeLabel);
+      expect(mockExportService.downloadBlobWithPicker)
+        .toHaveBeenCalledWith(jasmine.any(Blob), `category-summary-${dayKey(new Date())}.pdf`);
+      expect(mockDialogRef.close).toHaveBeenCalledWith(true);
+    });
+
+    it('should keep the dialog open when the save picker is cancelled', async () => {
+      mockExportService.downloadBlobWithPicker.and.returnValue(Promise.resolve(false));
+
+      component.selectedFormat = 'summary-csv';
+      await component.export();
+
+      expect(mockDialogRef.close).not.toHaveBeenCalled();
+      expect(component.isExporting()).toBeFalse();
     });
 
     it('should set isExporting to false after completion', async () => {

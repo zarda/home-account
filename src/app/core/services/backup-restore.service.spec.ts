@@ -455,6 +455,37 @@ describe('BackupRestoreService', () => {
     });
   });
 
+  // A field missing from the restore's own list is dropped in silence: the
+  // export carries the whole document, so only this side can lose it.
+  describe('the reminder lead time', () => {
+    it('brings a rule back with its lead time', async () => {
+      await service.restore(backup({
+        recurring: [recurringRule({ id: 'r-lead', remindDaysBefore: 3 })],
+      }));
+
+      const dto = recurring.createRecurring.calls.mostRecent().args[0];
+      expect(dto.remindDaysBefore).toBe(3);
+    });
+
+    // Zero means "on the day", and a truthiness spread reads it as no
+    // reminder at all.
+    it('brings back a zero lead time', async () => {
+      await service.restore(backup({
+        recurring: [recurringRule({ id: 'r-same-day', remindDaysBefore: 0 })],
+      }));
+
+      const dto = recurring.createRecurring.calls.mostRecent().args[0];
+      expect(dto.remindDaysBefore).toBe(0);
+    });
+
+    it('sends none for a rule saved without one', async () => {
+      await service.restore(backup({ recurring: [recurringRule({ id: 'r-silent' })] }));
+
+      const dto = recurring.createRecurring.calls.mostRecent().args[0];
+      expect('remindDaysBefore' in dto).toBeFalse();
+    });
+  });
+
   // Restoring the same file twice is supposed to be a no-op, but the rules
   // demand a strictly higher revision on every snapshot rewrite, so the second
   // run reported every month as skipped in the one flow built to be idempotent.

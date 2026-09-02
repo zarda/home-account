@@ -16,7 +16,7 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category, baseCurrencyOf} from '../../../../models';
+import { RecurringTransaction, CreateRecurringDTO, FrequencyType, Category, MAX_REMINDER_LEAD_DAYS, baseCurrencyOf} from '../../../../models';
 import { RecurringPrefill } from '../../../../core/utils/recurring-conversion.utils';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { DialogHeaderComponent } from '../../../../shared/components/dialog-header/dialog-header.component';
@@ -76,6 +76,7 @@ export class RecurringFormDialogComponent implements OnInit {
   startDate: Date = new Date();
   endDate: Date | null = null;
   hasEndDate = false;
+  remindDaysBefore: number | null = null;
 
   // Options - computed for translation
   get frequencyOptions(): { value: FrequencyType; label: string }[] {
@@ -100,6 +101,28 @@ export class RecurringFormDialogComponent implements OnInit {
   }
 
   daysOfMonth = Array.from({ length: 31 }, (_, i) => i + 1);
+
+  reminderLeadDays = [0, 1, 2, 3, 7, 14, MAX_REMINDER_LEAD_DAYS];
+
+  // Off carries null, the value updateRecurring reads as "remove the stored
+  // lead"; every other entry is a number of days, zero included.
+  get reminderOptions(): { value: number | null; label: string }[] {
+    return [
+      { value: null, label: this.translationService.t('settings.reminderOff') },
+      ...this.reminderLeadDays.map(days => ({ value: days, label: this.reminderLabel(days) })),
+    ];
+  }
+
+  // One key per grammatical shape rather than a count run through a plural
+  // rule: only en.json pluralizes, so a shared key reads "1 days before" in
+  // every other locale.
+  private reminderLabel(days: number): string {
+    const t = this.translationService.t.bind(this.translationService);
+    if (days === 0) return t('settings.reminderSameDay');
+    return days === 1
+      ? t('settings.reminderDayBefore')
+      : t('settings.reminderDaysBefore', { n: days });
+  }
 
   currencies = this.currencyService.currencies;
   categories = signal<Category[]>([]);
@@ -204,6 +227,7 @@ export class RecurringFormDialogComponent implements OnInit {
     this.dayOfWeek = recurring.frequency.dayOfWeek ?? null;
     this.dayOfMonth = recurring.frequency.dayOfMonth ?? 1;
     this.startDate = recurring.startDate.toDate();
+    this.remindDaysBefore = recurring.remindDaysBefore ?? null;
     if (recurring.endDate) {
       this.hasEndDate = true;
       this.endDate = recurring.endDate.toDate();
@@ -266,6 +290,13 @@ export class RecurringFormDialogComponent implements OnInit {
         ? { endDate: this.endDate }
         : this.isEdit
           ? { endDate: null }
+          : {}),
+      // Same shape as the end date, and for the same reason: an edit that
+      // cleared the reminder has to say so, a create simply says nothing.
+      ...(this.remindDaysBefore !== null
+        ? { remindDaysBefore: this.remindDaysBefore }
+        : this.isEdit
+          ? { remindDaysBefore: null }
           : {}),
     };
 

@@ -12,6 +12,7 @@ import {
   effectiveRagLevel,
   highContrastEnabled,
   reducedMotionRequested,
+  remindersEnabled,
   subscriptionTier,
   usageAnalyticsEnabled,
 } from './user.model';
@@ -132,6 +133,36 @@ describe('reducedMotionRequested', () => {
     expect(reducedMotionRequested(prefs({ reducedMotion: false }))).toBeFalse();
     const corrupt = prefs({ reducedMotion: 'yes' as unknown as boolean });
     expect(reducedMotionRequested(corrupt)).toBeFalse();
+  });
+});
+
+describe('remindersEnabled', () => {
+  const prefs = (overrides: Partial<UserPreferences>): UserPreferences => ({
+    ...DEFAULT_USER_PREFERENCES,
+    ...overrides,
+  });
+
+  it('should be off for missing preferences', () => {
+    expect(remindersEnabled(undefined)).toBeFalse();
+    expect(remindersEnabled(null)).toBeFalse();
+  });
+
+  it('should be off when the field is absent', () => {
+    expect(remindersEnabled(prefs({}))).toBeFalse();
+  });
+
+  it('should be on only for a stored true', () => {
+    expect(remindersEnabled(prefs({ enableReminders: true }))).toBeTrue();
+  });
+
+  it('should require exactly true, tolerating junk', () => {
+    expect(remindersEnabled(prefs({ enableReminders: false }))).toBeFalse();
+    const corrupt = prefs({ enableReminders: 'yes' as unknown as boolean });
+    expect(remindersEnabled(corrupt)).toBeFalse();
+  });
+
+  it('should stay out of the defaults', () => {
+    expect('enableReminders' in DEFAULT_USER_PREFERENCES).toBeFalse();
   });
 });
 

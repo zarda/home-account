@@ -225,12 +225,14 @@ GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions worksp
 | [docs/insights.md](docs/insights.md) | Spending-pattern detectors, monthly snapshots, card contract, privacy boundary |
 | [docs/rag-insights.md](docs/rag-insights.md) | Detail-grounded AI insights: levels, privacy trade-off, preference storage |
 | [docs/receipt-import.md](docs/receipt-import.md) | What bounds receipt scanning, which engine runs, where the amount comes from, and the offline queue |
+| [docs/receipt-quota.md](docs/receipt-quota.md) | The receipt-image quota: the trigger-owned count, how the limit is resolved, what the rules allow, and the fail-open windows |
 | [docs/model-probe/](docs/model-probe/README.md) | Manual probe: the real receipt prompt against a real model, compared to a recorded baseline |
 | [docs/merchant-match-probe/](docs/merchant-match-probe/README.md) | Manual probe: whether embedding merchant text beats the string threshold, and the recorded answer |
 | [docs/remote-config.md](docs/remote-config.md) | Firebase Remote Config parameters and defaults |
 | [docs/storage-cors-setup.md](docs/storage-cors-setup.md) | One-time Cloud Storage CORS setup for in-browser receipt reads |
 | [docs/ui-overflow.md](docs/ui-overflow.md) | What the app does when content does not fit: the five layout invariants, and where each is enforced |
-| [docs/recurring.md](docs/recurring.md) | Recurring rules: frequencies, the clamp and the anchor, the catch-up engine, pause/resume, and the validity floor |
+| [docs/recurring.md](docs/recurring.md) | Recurring rules: frequencies, the clamp and the anchor, the catch-up engine, pause/resume, the reminder lead, the Upcoming card, and the validity floor |
+| [docs/reminders.md](docs/reminders.md) | Bill and budget reminders: the opt-in, when a sweep runs, the per-device dedup keys, and the web/native delivery split |
 | [docs/smart-search.md](docs/smart-search.md) | Natural-language search: one interpretation call, local aggregation, keyword fallback, and the persisted answer history |
 | [docs/account-deletion.md](docs/account-deletion.md) | Account deletion: the client-side cascade, its ordering, partial-failure semantics, and the rules it needed |
 | [docs/share-import.md](docs/share-import.md) | Share-sheet import: the web share target and its minimal service worker, and the iOS Share Extension handoff |

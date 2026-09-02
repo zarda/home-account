@@ -1,0 +1,14 @@
+<div class="reminder-settings">
+  <span class="section-label" id="reminder-notifications-label">{{ 'settings.reminderNotifications' | translate }}</span>
+  <p class="section-description">{{ 'settings.reminderNotificationsDescription' | translate }}</p>
+
+  <div class="setting-row">
+    <mat-slide-toggle
+      [checked]="enabled()"
+      (change)="onEnabledChange($event)"
+      aria-labelledby="reminder-notifications-label"
+    >
+      {{ 'settings.reminderNotificationsEnable' | translate }}
+    </mat-slide-toggle>
+  </div>
+</div>

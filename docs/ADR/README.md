@@ -95,6 +95,10 @@ reverse — why a thing is the way it is, not how to use it.
 | [0088](0088-the-smoke-harness-owns-the-noise-it-makes.md) | The smoke harness owns the noise it makes | Accepted; root-cause gap closed by 0089, NG0911 follow-up closed by 0090 | 2026-08-31 |
 | [0089](0089-the-auth-listener-dies-with-the-injector-that-registered-it.md) | The auth listener dies with the injector that registered it | Accepted; closes a gap of 0088 | 2026-08-31 |
 | [0090](0090-a-render-callback-is-registered-only-while-the-view-can-run-it.md) | A render callback is registered only while the view can run it | Accepted; follow-up to 0088 | 2026-08-31 |
+| [0091](0091-the-upcoming-card-reads-the-live-schedule-not-the-ledger.md) | The upcoming card reads the live schedule, not the ledger | Accepted | 2026-09-01 |
+| [0092](0092-a-reminder-fires-once-and-the-record-of-it-lives-on-the-device.md) | A reminder fires once, and the record of it lives on the device | Accepted | 2026-09-01 |
+| [0093](0093-the-summary-export-names-both-sides-of-the-ledger.md) | The summary export names both sides of the ledger | Accepted | 2026-09-01 |
+| [0094](0094-the-receipt-quota-is-recounted-from-the-bucket-it-limits.md) | The receipt quota is recounted from the bucket it limits | Accepted | 2026-09-01 |
 
 ## What belongs here
 

@@ -32,6 +32,7 @@ import { AccessibilityService } from './core/services/accessibility.service';
 import { AppDirectionality } from './core/services/app-directionality';
 import { OfflineQueueProcessorService } from './core/services/offline-queue-processor.service';
 import { AppLockService } from './core/services/app-lock.service';
+import { ReminderService } from './core/services/reminder.service';
 import { ShareIntakeService } from './core/services/share-intake.service';
 import { AnalyticsService } from './core/services/analytics.service';
 import { GlobalErrorHandler } from './core/services/global-error-handler';
@@ -250,6 +251,13 @@ export const appConfig: ApplicationConfig = {
       // Construct the lock service before the first guarded navigation so a
       // cold start cannot slip past the lock while it is still initializing.
       inject(AppLockService).init();
+    }),
+    provideAppInitializer(() => {
+      // Construct the reminder service at startup so the app-open sweep and
+      // the visibilitychange handler exist without a page having to reach
+      // them. It stays inert — no listener, no notification — until an
+      // account whose preference is switched on has loaded.
+      inject(ReminderService);
     }),
     provideAppInitializer(() => {
       // Construct the service at startup so screen views follow the stored

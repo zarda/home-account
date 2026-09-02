@@ -87,6 +87,10 @@ export interface UserPreferences {
   fontScale?: number;             // UI text scale; absent or off-list = default.
   highContrast?: boolean;         // Absent = off.
   reducedMotion?: boolean;        // Absent = off.
+  enableReminders?: boolean;      // Absent = off. Local notifications only, and
+                                  // per-device: the OS permission and the sent
+                                  // log both live on the device, so this asks
+                                  // for reminders rather than guaranteeing them.
   onboardingCompleted?: boolean;  // Absent = not yet completed; the first-run welcome is offered.
 }
 
@@ -139,6 +143,11 @@ export function highContrastEnabled(prefs: UserPreferences | null | undefined): 
 /** Whether the account asked to reduce interface motion. Absent means off. */
 export function reducedMotionRequested(prefs: UserPreferences | null | undefined): boolean {
   return prefs?.reducedMotion === true;
+}
+
+/** Whether the account asked for budget and bill reminders. Absent means off. */
+export function remindersEnabled(prefs: UserPreferences | null | undefined): boolean {
+  return prefs?.enableReminders === true;
 }
 
 /** The account's tier. No subscription record means the free tier. */

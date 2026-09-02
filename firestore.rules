@@ -278,9 +278,14 @@ service cloud.firestore {
         && f.interval >= 1;
     }
 
+    // No upper bound on the reminder lead: the ceiling is a product choice
+    // the picker and the service make, and one written here would deny the
+    // restore of any rule an earlier build let through.
     function recurringOptionalsValid(d) {
       return (!('endDate' in d) || d.endDate is timestamp)
         && (!('lastProcessed' in d) || d.lastProcessed is timestamp)
+        && (!('remindDaysBefore' in d)
+            || (d.remindDaysBefore is int && d.remindDaysBefore >= 0))
         && (!('createdAt' in d) || d.createdAt is timestamp)
         && (!('updatedAt' in d) || d.updatedAt is timestamp);
     }
@@ -861,6 +866,21 @@ service cloud.firestore {
         allow delete: if isOwner(userId);
       }
 
+      // The authoritative receipt-image quota, written only by the storage
+      // triggers through the Admin SDK — which bypasses rules, so no allow
+      // here has to admit them. The owner may read the figure enforced
+      // against them; nothing client-side may write it, or the limit would
+      // be a number the client picks and the quota would be back to failing
+      // open. storage.rules reads this document across services.
+      //
+      // 'quota' is carved out of the catch-all below. Without that entry this
+      // `write: if false` is decorative: rules are additive and the catch-all
+      // grants the owner writes to any subcollection it does not name.
+      match /quota/{quotaId} {
+        allow read: if isOwner(userId);
+        allow write: if false;
+      }
+
       // Any other subcollections under user, including ones added later.
       // Rules are additive — an allow here cannot be narrowed by the blocks
       // above — so every validated collection must be carved out, or its
@@ -870,7 +890,8 @@ service cloud.firestore {
         allow write: if isOwner(userId) && !(subcollection in [
           'transactions', 'budgets', 'categories', 'goals',
           'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-          'insightSnapshots', 'categoryMemory', 'tagMemory', 'searchAnswers', 'feedback'
+          'insightSnapshots', 'categoryMemory', 'tagMemory', 'searchAnswers', 'feedback',
+          'quota'
         ]);
       }
     }

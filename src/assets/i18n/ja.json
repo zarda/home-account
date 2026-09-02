@@ -96,7 +96,11 @@
     "addFirstTransaction": "最初の取引を追加してください",
     "addExpensesToSeeBreakdown": "支出を追加すると内訳が表示されます",
     "vsPreviousPeriod": "前期比",
-    "viewCategoryTransactions": "{{category}}の取引を表示"
+    "viewCategoryTransactions": "{{category}}の取引を表示",
+    "upcomingBills": "今後の予定",
+    "upcomingNet": "予定の増減",
+    "noUpcomingBills": "予定はありません",
+    "noUpcomingBillsHint": "まもなく予定されている定期収入や支払いがここに表示されます。予算 → 定期でルールを作成してください。"
   },
   "transactions": {
     "title": "取引履歴",
@@ -323,6 +327,8 @@
     "csvDescription": "スプレッドシート形式、Excel や Google スプレッドシートに最適",
     "pdfDescription": "グラフとサマリー付きのフォーマット済みレポート",
     "jsonDescription": "バックアップ用の完全なデータエクスポート",
+    "summaryCsvDescription": "カテゴリ別の合計をスプレッドシート形式で",
+    "summaryPdfDescription": "カテゴリ別の合計を印刷用レポートで",
     "transactionsLabel": "{{count}} 件の取引",
     "selectMonth": "月を選択",
     "selectYear": "年を選択",
@@ -334,9 +340,13 @@
       "balance": "残高",
       "totalTransactions": "取引件数",
       "spendingByCategory": "カテゴリ別支出",
+      "incomeByCategory": "カテゴリ別収入",
+      "categorySummaryTitle": "カテゴリ別サマリー",
       "category": "カテゴリ",
       "amount": "金額",
       "percentOfTotal": "割合",
+      "percentOfExpenses": "支出割合",
+      "percentOfIncome": "収入割合",
       "transactions": "取引明細",
       "date": "日付",
       "type": "種類",
@@ -530,6 +540,15 @@
     "duration": "有効期間",
     "addEndDate": "終了日を追加",
     "removeEndDate": "終了日を削除",
+    "reminder": "リマインダー",
+    "reminderOff": "オフ",
+    "reminderSameDay": "当日",
+    "reminderDayBefore": "1日前",
+    "reminderDaysBefore": "{{n}}日前",
+    "reminderNotifications": "支払いと予算のリマインダー",
+    "reminderNotificationsDescription": "支払日が近づいたとき、予算の上限に近づいたときに通知します。設定は端末ごとに行います。",
+    "reminderNotificationsEnable": "リマインダーを送る",
+    "reminderNotificationsPermissionDenied": "通知がブロックされています。ここから再度許可を求めることはできません。まずブラウザまたは端末の設定で通知を許可してください。",
     "create": "作成",
     "geminiApiKey": "AI機能 (Gemini)",
     "geminiApiKeyHint": "Google Gemini APIキーを入力すると、レシートスキャンや支出分析などのAI機能が利用できます。",
@@ -1278,6 +1297,10 @@
     "disclaimer": "PINはデバイスごとに設定され、アプリへのアクセスを制限します。保存されたデータの暗号化は行いません。",
     "timeoutMinute": "1分後",
     "forgotPin": "PINをお忘れですか？サインアウトするとこのデバイスのPINが削除されます。データはそのまま残り、再サインイン後に新しいPINを設定できます。"
+  },
+  "reminders": {
+    "billDue": "{{name}} は今日が支払日です",
+    "billDueIn": "{{name}} の支払日まであと {{count}} 日です"
   },
   "insights": {
     "cadenceWeekly": "毎週",

@@ -44,6 +44,7 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
     'recent'
+    'upcoming'
     'chart'
     'insights'
     'budgets';
@@ -60,7 +61,7 @@
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
     grid-template-areas:
       'chart    recent'
-      'insights recent'
+      'insights upcoming'
       'insights budgets';
     align-items: start;
   }
@@ -76,6 +77,10 @@
 
 .area-recent {
   grid-area: recent;
+}
+
+.area-upcoming {
+  grid-area: upcoming;
 }
 
 .area-budgets {

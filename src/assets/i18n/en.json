@@ -96,7 +96,11 @@
     "addFirstTransaction": "Add your first transaction to get started",
     "addExpensesToSeeBreakdown": "Start adding expenses to see your spending breakdown",
     "vsPreviousPeriod": "vs previous period",
-    "viewCategoryTransactions": "View {{category}} transactions"
+    "viewCategoryTransactions": "View {{category}} transactions",
+    "upcomingBills": "Upcoming Bills",
+    "upcomingNet": "Scheduled net",
+    "noUpcomingBills": "Nothing scheduled",
+    "noUpcomingBillsHint": "Recurring income and bills coming due appear here. Create a rule under Budget → Recurring."
   },
   "transactions": {
     "title": "Transactions",
@@ -329,6 +333,8 @@
     "csvDescription": "Spreadsheet format, great for Excel or Google Sheets",
     "pdfDescription": "Formatted report with charts and summary",
     "jsonDescription": "Full data export for backup purposes",
+    "summaryCsvDescription": "Totals per category as a spreadsheet",
+    "summaryPdfDescription": "Totals per category as a printable report",
     "transactionsLabel": "{{count}} transactions",
     "selectMonth": "Select Month",
     "selectYear": "Select Year",
@@ -340,9 +346,13 @@
       "balance": "Balance",
       "totalTransactions": "Total Transactions",
       "spendingByCategory": "Spending by Category",
+      "incomeByCategory": "Income by Category",
+      "categorySummaryTitle": "Category Summary",
       "category": "Category",
       "amount": "Amount",
       "percentOfTotal": "% of Total",
+      "percentOfExpenses": "% of Expenses",
+      "percentOfIncome": "% of Income",
       "transactions": "Transactions",
       "date": "Date",
       "type": "Type",
@@ -536,6 +546,15 @@
     "duration": "Duration",
     "addEndDate": "Add end date",
     "removeEndDate": "Remove end date",
+    "reminder": "Reminder",
+    "reminderOff": "Off",
+    "reminderSameDay": "On the day",
+    "reminderDayBefore": "1 day before",
+    "reminderDaysBefore": "{{n}} days before",
+    "reminderNotifications": "Bill and budget reminders",
+    "reminderNotificationsDescription": "Get a notification when a bill is coming up or a budget is close to its limit. Each device is set up separately.",
+    "reminderNotificationsEnable": "Send reminders",
+    "reminderNotificationsPermissionDenied": "Notifications are blocked. This switch cannot ask again — allow notifications in your browser or device settings first.",
     "create": "Create",
     "noRecurring": "No Recurring Transactions",
     "noRecurringDescription": "Set up recurring transactions to automatically track regular income and expenses.",
@@ -1350,6 +1369,13 @@
     "disclaimer": "The PIN is set per device and controls access to the app. It does not encrypt your stored data.",
     "timeoutMinute": "1 minute",
     "forgotPin": "Forgot your PIN? Signing out clears it on this device — your data is safe, and you can set a new PIN after signing back in."
+  },
+  "reminders": {
+    "billDue": "{{name}} is due today",
+    "billDueIn": {
+      "one": "{{name}} is due in {{count}} day",
+      "other": "{{name}} is due in {{count}} days"
+    }
   },
   "insights": {
     "cadenceWeekly": "weekly",

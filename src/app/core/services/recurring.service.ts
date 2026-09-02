@@ -206,6 +206,12 @@ export class RecurringService {
         ...(data.endDate
           ? { endDate: this.firestoreService.dateToTimestamp(data.endDate) }
           : {}),
+        // Tested against null and not for truthiness, unlike the end date
+        // above: zero is the lead that means "on the day", and the truthy
+        // form stores it as no reminder at all.
+        ...(data.remindDaysBefore != null
+          ? { remindDaysBefore: data.remindDaysBefore }
+          : {}),
         nextOccurrence: this.firestoreService.dateToTimestamp(nextOccurrence),
         isActive: options?.isActive ?? true,
         createdAt: this.firestoreService.getTimestamp(),
@@ -244,8 +250,9 @@ export class RecurringService {
         this.validateFrequency(data.frequency);
       }
 
-      const updateData: Partial<Omit<RecurringTransaction, 'endDate'>> & {
+      const updateData: Partial<Omit<RecurringTransaction, 'endDate' | 'remindDaysBefore'>> & {
         endDate?: Timestamp | FieldValue;
+        remindDaysBefore?: number | FieldValue;
       } = {};
 
       if (data.name !== undefined) updateData.name = data.name;
@@ -266,6 +273,14 @@ export class RecurringService {
         updateData.endDate = data.endDate === null
           ? deleteField()
           : this.firestoreService.dateToTimestamp(data.endDate);
+      }
+
+      if (data.remindDaysBefore !== undefined) {
+        // null expresses "no reminder"; zero is a lead time the user picked,
+        // so the two cannot share a branch.
+        updateData.remindDaysBefore = data.remindDaysBefore === null
+          ? deleteField()
+          : data.remindDaysBefore;
       }
 
       // Recalculate next occurrence only when frequency or start date
@@ -596,7 +611,9 @@ export class RecurringService {
               amount: r.amount,
               currency: r.currency,
               categoryId: r.categoryId,
-              date: new Date(nextDate)
+              date: new Date(nextDate),
+              // `!= null` because zero is a lead time, not an absent one
+              ...(r.remindDaysBefore != null ? { remindDaysBefore: r.remindDaysBefore } : {})
             });
 
             const next = this.calculateNextOccurrenceFromDate(

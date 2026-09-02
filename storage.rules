@@ -3,19 +3,73 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    // The per-user receipt-image quota, read across services from the
+    // document the storage triggers maintain (functions/src/index.ts).
+    //
+    // Three things this has to get right, none of them visible in the
+    // expression itself:
+    //   - a missing document is the bootstrap case. The triggers create it on
+    //     the first object event, so every account has a window with none,
+    //     and an account that deletes all its receipts goes back to having
+    //     none. Failing open there is deliberate: the alternative locks every
+    //     new user out of their first receipt.
+    //   - `limit == 0` is the "unlimited" sentinel the premium tier carries.
+    //     It is stored verbatim because neither JSON nor a rules expression
+    //     carries an infinity; compared as a number it would deny every
+    //     upload a paying account makes.
+    //   - the repeated get() of one path costs one billed read. Rules serve
+    //     the rest from a per-evaluation cache.
+    //   - a document that exists must carry both fields. Reading an absent
+    //     field errors, and an erroring rule denies — so a half-written
+    //     document locks the account out of uploading entirely. What keeps
+    //     that unreachable is the trigger that owns this path
+    //     (functions/src/index.ts): it writes the whole document with set()
+    //     and never a merge. Changing it to a partial update breaks this.
+    function underReceiptQuota(userId) {
+      return !firestore.exists(/databases/(default)/documents/users/$(userId)/quota/receiptImages)
+        || firestore.get(/databases/(default)/documents/users/$(userId)/quota/receiptImages).data.limit == 0
+        || firestore.get(/databases/(default)/documents/users/$(userId)/quota/receiptImages).data.count
+             < firestore.get(/databases/(default)/documents/users/$(userId)/quota/receiptImages).data.limit;
+    }
+
     // Receipt images, scoped to the owning user.
     // Path: users/{userId}/receipts/{transactionId}
     match /users/{userId}/receipts/{fileName} {
       // Only the owner may read their receipts.
       allow read: if request.auth != null && request.auth.uid == userId;
 
-      // Only the owner may upload, limited to images up to 2 MB.
-      allow write: if request.auth != null
+      // A new object consumes quota. Until this rule existed the limit was
+      // enforced in the client alone and so failed open — a raw SDK client
+      // ignored it entirely.
+      //
+      // `resource != null` is what says "an object is already here", and it
+      // is load-bearing only in the emulator: Cloud Storage splits create
+      // from update on exactly that condition, but the storage emulator
+      // routes every upload through `create` and hands the object being
+      // replaced in as `resource`. Without this the overwrite exemption
+      // below could not be exercised by any test we can run.
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size <= 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && (resource != null || underReceiptQuota(userId));
+
+      // Overwriting an existing slot does not grow the count, so it must not
+      // consult the quota: an account at its limit still has to be able to
+      // re-shoot a blurred photo. Size and type still apply.
+      //
+      // No test can reach this branch by uploading: the storage emulator
+      // routes every upload through `create`, existing object or not, and
+      // leaves `update` to metadata writes alone. Production takes this branch
+      // for every overwrite, so the smoke suite pins it through
+      // updateMetadata() instead — indirect on purpose, not by oversight.
+      allow update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.size <= 2 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
 
-      // Only the owner may delete their receipts.
+      // Only the owner may delete their receipts. Never quota-checked —
+      // deleting is how an account gets back under its limit.
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
 

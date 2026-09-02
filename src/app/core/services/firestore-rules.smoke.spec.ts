@@ -15,6 +15,12 @@ import {
   Firestore,
   Timestamp
 } from '@angular/fire/firestore';
+import {
+  setDocumentAsOwner,
+  deleteDocumentAsOwner,
+  integerField,
+  timestampField
+} from './testing';
 import { silenceFirebaseWarnings } from './testing/silence-firebase-warnings';
 silenceFirebaseWarnings();
 
@@ -43,13 +49,23 @@ describe('firestore.rules (emulator smoke test)', () => {
   let uid: string;
   let otherUid: string;
 
-  /** Resolves true when the write was allowed, false on permission-denied. */
+  /**
+   * Resolves true when the write was allowed, false on permission-denied.
+   *
+   * Anything else rethrows. Swallowing every rejection would let an emulator
+   * that is down, or a path typo, answer "denied" for its own reasons, and
+   * every case below would report the rules holding without having reached
+   * them.
+   */
   async function allowed(write: Promise<unknown>): Promise<boolean> {
     try {
       await write;
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if ((error as { code?: string }).code === 'permission-denied') {
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -874,6 +890,54 @@ describe('firestore.rules (emulator smoke test)', () => {
           lastProcessed: Timestamp.now()
         }),
         'occurrence claim'
+      );
+    });
+
+    it('accepts a reminder lead time', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: 3 })),
+        'reminder lead'
+      );
+    });
+
+    // Zero is "remind me on the day" — a lead like any other, and the one a
+    // rule with no notice at all shares a shape with.
+    it('accepts a zero reminder lead time', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: 0 })),
+        'zero reminder lead'
+      );
+    });
+
+    it('rejects a fractional reminder lead time', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: 2.5 })),
+        'fractional reminder lead'
+      );
+    });
+
+    it('rejects a negative reminder lead time', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('recurring')), validRecurring({ remindDaysBefore: -1 })),
+        'negative reminder lead'
+      );
+    });
+
+    it('accepts adding a reminder lead time to an existing rule', async () => {
+      const p = path('recurring');
+      await setDoc(doc(firestore, p), validRecurring());
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { remindDaysBefore: 7 }),
+        'reminder lead added'
+      );
+    });
+
+    it('accepts clearing the reminder lead time', async () => {
+      const p = path('recurring');
+      await setDoc(doc(firestore, p), validRecurring({ remindDaysBefore: 3 }));
+      await expectAllowed(
+        updateDoc(doc(firestore, p), { remindDaysBefore: deleteField() }),
+        'reminder lead deletion'
       );
     });
 
@@ -1989,6 +2053,81 @@ describe('firestore.rules (emulator smoke test)', () => {
     });
   });
 
+  describe('receipt image quota', () => {
+    // Written only by the storage triggers, through the Admin SDK, which
+    // bypasses rules. The owner may read the figure enforced against them;
+    // no client may write it, or the limit would be a number the client
+    // picks. Seeded here through the emulator's owner credential, since the
+    // rules under test are exactly what stops the SDK from doing it.
+    const quotaPath = (owner = uid) => `users/${owner}/quota/receiptImages`;
+
+    const seed = (owner = uid) =>
+      setDocumentAsOwner(quotaPath(owner), {
+        count: integerField(7),
+        limit: integerField(200),
+        updatedAt: timestampField()
+      });
+
+    // Seeded through a door the rules cannot close, so nothing here removes
+    // itself: both accounts' documents are swept by hand, the stranger's
+    // included — it belongs to a uid no other case owns.
+    afterAll(async () => {
+      await deleteDocumentAsOwner(quotaPath()).catch(() => undefined);
+      await deleteDocumentAsOwner(quotaPath(otherUid)).catch(() => undefined);
+    });
+
+    it('lets the owner read the count enforced against them', async () => {
+      await seed();
+      const snapshot = await getDoc(doc(firestore, quotaPath()));
+
+      expect(snapshot.exists()).toBe(true);
+      expect(snapshot.get('count')).toBe(7);
+      expect(snapshot.get('limit')).toBe(200);
+    });
+
+    it("denies reading another user's count", async () => {
+      await seed(otherUid);
+      await expectDenied(getDoc(doc(firestore, quotaPath(otherUid))), "stranger's quota read");
+    });
+
+    it('denies a client create', async () => {
+      await deleteDocumentAsOwner(quotaPath());
+      await expectDenied(
+        setDoc(doc(firestore, quotaPath()), {
+          count: 0,
+          limit: 0,
+          updatedAt: Timestamp.now()
+        }),
+        'client create of the quota document'
+      );
+    });
+
+    it('denies a client update', async () => {
+      await seed();
+      await expectDenied(
+        updateDoc(doc(firestore, quotaPath()), { count: 0 }),
+        'client update of the count'
+      );
+    });
+
+    it('denies raising the limit', async () => {
+      // The whole point of moving the figure server-side: a client that can
+      // rewrite its own ceiling is not subject to one.
+      await seed();
+      await expectDenied(
+        updateDoc(doc(firestore, quotaPath()), { limit: 0 }),
+        'client raising its own limit'
+      );
+    });
+
+    it('denies a client delete', async () => {
+      // Deleting is as good as raising the limit — a missing document is the
+      // bootstrap case, which storage.rules deliberately fails open on.
+      await seed();
+      await expectDenied(deleteDoc(doc(firestore, quotaPath())), 'client delete of the quota');
+    });
+  });
+
   describe('catch-all carve-out', () => {
     // Rules are additive, so the catch-all must exclude every validated
     // collection. Without the exclusion list these writes succeed and every
@@ -1996,7 +2135,8 @@ describe('firestore.rules (emulator smoke test)', () => {
     const validated = [
       'transactions', 'budgets', 'categories', 'goals',
       'recurring', 'savedSearches', 'imports', 'securityEvents', 'secrets',
-      'insightSnapshots', 'categoryMemory', 'tagMemory', 'searchAnswers', 'feedback'
+      'insightSnapshots', 'categoryMemory', 'tagMemory', 'searchAnswers', 'feedback',
+      'quota'
     ];
 
     for (const collection of validated) {

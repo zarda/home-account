@@ -96,7 +96,11 @@
     "addFirstTransaction": "新增您的第一筆交易",
     "addExpensesToSeeBreakdown": "開始新增支出以查看支出明細",
     "vsPreviousPeriod": "與上期相比",
-    "viewCategoryTransactions": "查看{{category}}的交易"
+    "viewCategoryTransactions": "查看{{category}}的交易",
+    "upcomingBills": "近期排程",
+    "upcomingNet": "排定淨額",
+    "noUpcomingBills": "沒有排定項目",
+    "noUpcomingBillsHint": "即將到期的定期收入與支出會顯示於此。請在預算 → 定期建立規則。"
   },
   "transactions": {
     "title": "交易紀錄",
@@ -323,6 +327,8 @@
     "csvDescription": "試算表格式，適用於 Excel 或 Google 試算表",
     "pdfDescription": "含圖表和摘要的格式化報表",
     "jsonDescription": "完整資料匯出，用於備份",
+    "summaryCsvDescription": "各類別合計，試算表格式",
+    "summaryPdfDescription": "各類別合計，可列印報表",
     "transactionsLabel": "{{count}} 筆交易",
     "selectMonth": "選擇月份",
     "selectYear": "選擇年份",
@@ -334,9 +340,13 @@
       "balance": "餘額",
       "totalTransactions": "交易筆數",
       "spendingByCategory": "各類別支出",
+      "incomeByCategory": "各類別收入",
+      "categorySummaryTitle": "類別摘要",
       "category": "類別",
       "amount": "金額",
       "percentOfTotal": "佔比",
+      "percentOfExpenses": "佔支出比",
+      "percentOfIncome": "佔收入比",
       "transactions": "交易明細",
       "date": "日期",
       "type": "類型",
@@ -494,6 +504,15 @@
     "duration": "期間",
     "addEndDate": "新增結束日期",
     "removeEndDate": "移除結束日期",
+    "reminder": "提醒",
+    "reminderOff": "關閉",
+    "reminderSameDay": "當天",
+    "reminderDayBefore": "1 天前",
+    "reminderDaysBefore": "{{n}} 天前",
+    "reminderNotifications": "帳單與預算提醒",
+    "reminderNotificationsDescription": "帳單即將到期或預算接近上限時通知你。每部裝置需分別設定。",
+    "reminderNotificationsEnable": "傳送提醒",
+    "reminderNotificationsPermissionDenied": "通知已被封鎖。此開關無法再次要求，請先在瀏覽器或裝置設定中允許通知。",
     "create": "建立",
     "noRecurring": "沒有定期交易",
     "noRecurringDescription": "設定定期交易以自動追蹤固定收入和支出。",
@@ -1278,6 +1297,10 @@
     "disclaimer": "PIN 碼以裝置為單位設定，用於限制應用程式存取，並不會加密您儲存的資料。",
     "timeoutMinute": "1 分鐘",
     "forgotPin": "忘記 PIN 碼？登出即可清除此裝置的 PIN 碼；您的資料不會遺失，重新登入後可設定新的 PIN 碼。"
+  },
+  "reminders": {
+    "billDue": "{{name}} 今天到期",
+    "billDueIn": "{{name}} 將於 {{count}} 天後到期"
   },
   "insights": {
     "cadenceWeekly": "每週",

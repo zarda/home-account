@@ -23,6 +23,7 @@ you need when creating a rule, reading what it posted, or changing the engine.
 | `frequency` | the schedule (below) |
 | `startDate` | the first occurrence, and the day the schedule is measured from |
 | `endDate` | optional; omitted means indefinite |
+| `remindDaysBefore` | optional lead for a reminder; absent means none, `0` means on the day ([below](#reminders)) |
 | `nextOccurrence` | the pointer: the next date not yet posted |
 | `lastProcessed` | when the engine last posted for this rule |
 | `isActive` | false while paused |
@@ -279,6 +280,66 @@ refuse. It is a toggle with nowhere to show an error, and a rule already saved
 with an unusable interval has to stay recoverable — see
 [ADR 0014](ADR/0014-recurrence-guards-and-anchors.md).
 
+## Reminders
+
+A rule can ask to be warned about before it pays. `remindDaysBefore` is the
+lead, in whole days:
+
+| Stored value | Meaning |
+|---|---|
+| absent | no reminder |
+| `0` | on the day the occurrence falls due |
+| `n` | `n` days before it |
+
+The form offers **Off** plus a fixed ladder — same day, 1, 2, 3, 7, 14 and 30
+days — and stores `null` for Off, which an edit writes as an explicit removal.
+The ladder is a product choice: `firestore.rules` accepts any non-negative
+whole number and deliberately sets **no ceiling**, because a bound written
+there would refuse the restore of a rule any earlier build allowed. The service
+that reads the field rounds and clamps it instead.
+
+**Zero is a real lead, so every mapping site tests `!= null` rather than
+truthiness.** The end date beside it can use the truthy form — no legitimate
+end date is falsy — but a lead of zero is exactly what a bill due today needs,
+and the truthy form would store it as no reminder at all. That applies to
+create, update, the occurrence list and the backup restore alike; in the
+restore's field list a dropped field is dropped in silence.
+
+The lead is carried onto each `RecurringOccurrence` so a consumer deciding when
+to warn needs no join back to the recurring collection. What is done with it —
+the sweeps, the per-device dedup, the platform split — is
+[reminders.md](reminders.md), and the reasoning is
+[ADR 0092](ADR/0092-a-reminder-fires-once-and-the-record-of-it-lives-on-the-device.md).
+
+A reminder is a notification, not a posting. It changes nothing about when the
+rule pays; the catch-up engine above is the only thing that writes
+transactions.
+
+## The Upcoming card
+
+The dashboard shows what the active rules will move over the **next fortnight**,
+grouped by local day, with the window's net underneath. The window is anchored
+to today and is deliberately independent of the period selector — the card
+answers "what is about to move", not "what happened in the window I am looking
+at".
+
+Two behaviours are deliberate and worth knowing:
+
+- **Occurrences dated before today are shown, not hidden.** They are due but
+  not yet posted. Hiding them would conceal money about to move on precisely
+  the occasion the user most needs to see it — a catch-up that has not run or
+  has failed. The brief flicker when catch-up posts one, moving it out of the
+  card and into Recent Transactions, is the cheaper of the two failures.
+- **Row amounts stay in each rule's own currency; only the net converts.** A
+  scheduled occurrence has not been written, so it carries no base-currency
+  snapshot to prefer, and a converted figure beside an amount the user typed
+  reads as a wrong number. The net has to add unlike currencies up, so it
+  converts at today's rate — the one figure on the dashboard that is not a
+  write-time snapshot.
+
+[ADR 0091](ADR/0091-the-upcoming-card-reads-the-live-schedule-not-the-ledger.md)
+has the rest, including why the subscription lives outside `loadData()`.
+
 ## What makes a rule valid
 
 An interval below 1 does not describe a schedule: it asks for a date no further on
@@ -333,9 +394,11 @@ covers the rest of what a restore carries verbatim.
 - **A rule that stopped paying before this version may hold an unreadable
   pointer** and will never be found due. Pause it and resume it: that rewrites the
   pointer from today.
-- **There is no upcoming-bills screen.** The card in Budgets → Recurring shows the
-  next date for an active rule; beyond that, a schedule is only visible once it
-  has posted.
+- **The Upcoming card has no lower bound on how far back an overdue row
+  reaches.** A rule that stopped paying long ago holds a pointer from then, and
+  its occurrence appears in the card at that old date — the three gaps above
+  are how a rule gets into that state. The card makes the condition visible
+  rather than causing it.
 - **Editing a rule that names no day of month pins it to a day.** The dialog's
   day-of-month field cannot be cleared and pre-fills with the 1st, so saving that
   form changes the schedule to the 1st unless you set the day you meant.

@@ -1,0 +1,143 @@
+// Card chrome is the dashboard's shared card anatomy, matched to
+// recent-transactions so the two cards sit side by side without drifting.
+.card {
+  border-radius: var(--radius-lg);
+  height: 100%;
+  overflow: hidden;
+  min-width: 0; // Allow card to shrink in grid
+  width: 100%; // Ensure it respects grid constraints
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+}
+
+.card-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  @apply text-gray-900 dark:text-gray-100;
+  margin: 0;
+}
+
+.view-all-link {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  @apply text-indigo-600 dark:text-indigo-400;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.view-all-link:hover {
+  @apply text-indigo-700 dark:text-indigo-300;
+}
+
+.view-all-icon {
+  font-size: var(--text-lg);
+  width: 1em;
+  height: 1em;
+}
+
+.card-content {
+  padding: 0;
+}
+
+.empty-container {
+  padding: 24px 16px;
+}
+
+.day-list {
+  padding: 0 0 8px;
+}
+
+.day-header {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  @apply text-gray-500 dark:text-gray-400;
+  margin: 0;
+  padding: 8px 16px 4px;
+}
+
+// Nothing here truncates (docs/ui-overflow.md): a shortened rule name or
+// amount reads as a different bill, so both wrap and the row grows instead.
+.bill-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  min-height: 44px;
+}
+
+.bill-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  mat-icon {
+    font-size: var(--text-lg);
+    width: 1em;
+    height: 1em;
+  }
+}
+
+.bill-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bill-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  @apply text-gray-900 dark:text-gray-100;
+}
+
+.bill-category {
+  font-size: var(--text-xs);
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+app-amount-display {
+  flex-shrink: 0;
+  text-align: end;
+}
+
+.net-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-block-start: 1px solid var(--surface-muted);
+}
+
+.net-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  @apply text-gray-600 dark:text-gray-300;
+}
+
+@media (max-width: 480px) {
+  .card-header {
+    padding: 14px 14px 10px;
+  }
+
+  .day-header,
+  .bill-row,
+  .net-footer {
+    padding-inline: 14px;
+  }
+}

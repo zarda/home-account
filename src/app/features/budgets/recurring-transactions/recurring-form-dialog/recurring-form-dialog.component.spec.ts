@@ -13,7 +13,7 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { TranslationService } from '../../../../core/services/translation.service';
-import { Category, RecurringTransaction } from '../../../../models';
+import { Category, MAX_REMINDER_LEAD_DAYS, RecurringTransaction } from '../../../../models';
 
 describe('RecurringFormDialogComponent', () => {
   let component: RecurringFormDialogComponent;
@@ -490,6 +490,131 @@ describe('RecurringFormDialogComponent', () => {
       const result = mockDialogRef.close.calls.mostRecent().args[0] as Record<string, unknown>;
       expect('endDate' in result).toBeTrue();
       expect(result['endDate']).toBeNull();
+    });
+  });
+
+  describe('reminder lead time', () => {
+    const recurringWithReminder = {
+      id: 'rec1',
+      name: 'Test',
+      type: 'expense',
+      amount: 100,
+      currency: 'USD',
+      categoryId: 'cat1',
+      description: '',
+      frequency: { type: 'monthly', interval: 1 },
+      startDate: Timestamp.fromDate(new Date(2024, 0, 1)),
+      remindDaysBefore: 3,
+      isActive: true
+    } as RecurringTransaction;
+
+    async function createEditComponent(
+      recurring: RecurringTransaction
+    ): Promise<RecurringFormDialogComponent> {
+      await TestBed.resetTestingModule();
+      await TestBed.configureTestingModule({
+        imports: [RecurringFormDialogComponent, NoopAnimationsModule],
+        providers: [
+          { provide: MatDialogRef, useValue: mockDialogRef },
+          { provide: MAT_DIALOG_DATA, useValue: { recurring } },
+          { provide: AuthService, useValue: mockAuthService },
+          { provide: CategoryService, useValue: mockCategoryService },
+          { provide: CurrencyService, useValue: mockCurrencyService },
+          { provide: TranslationService, useValue: mockTranslationService }
+        ],
+        schemas: [NO_ERRORS_SCHEMA]
+      })
+        .overrideComponent(RecurringFormDialogComponent, {
+          set: { template: '<div></div>' }
+        })
+        .compileComponents();
+
+      const editFixture = TestBed.createComponent(RecurringFormDialogComponent);
+      editFixture.detectChanges();
+      return editFixture.componentInstance;
+    }
+
+    it('offers Off, the day itself and the leads up to the ceiling', () => {
+      expect(component.reminderOptions.map(option => option.value))
+        .toEqual([null, 0, 1, 2, 3, 7, 14, MAX_REMINDER_LEAD_DAYS]);
+    });
+
+    // One key per grammatical shape, not a count through a plural rule: only
+    // en.json pluralizes, so a single counted key reads "1 days before" in the
+    // other locales while i18n:check still resolves it. The mock returns an
+    // unmapped key unchanged, so a label is the key the branch picked.
+    it('picks a distinct label key and params per lead shape', () => {
+      mockTranslationService.t.calls.reset();
+
+      const labelFor = new Map(
+        component.reminderOptions.map(option => [option.value, option.label])
+      );
+
+      expect(labelFor.get(0)).toBe('settings.reminderSameDay');
+      expect(labelFor.get(1)).toBe('settings.reminderDayBefore');
+      expect(labelFor.get(7)).toBe('settings.reminderDaysBefore');
+
+      expect(mockTranslationService.t).toHaveBeenCalledWith('settings.reminderSameDay');
+      expect(mockTranslationService.t).toHaveBeenCalledWith('settings.reminderDayBefore');
+      expect(mockTranslationService.t)
+        .toHaveBeenCalledWith('settings.reminderDaysBefore', { n: 7 });
+    });
+
+    it('defaults a new rule to no reminder', () => {
+      expect(component.remindDaysBefore).toBeNull();
+    });
+
+    it('omits the lead time when creating without one', () => {
+      component.name = 'Test';
+      component.amount = 100;
+      component.categoryId = 'cat1';
+
+      component.save();
+
+      const result = mockDialogRef.close.calls.mostRecent().args[0] as Record<string, unknown>;
+      expect('remindDaysBefore' in result).toBeFalse();
+    });
+
+    it('emits the picked lead time', () => {
+      component.name = 'Test';
+      component.amount = 100;
+      component.categoryId = 'cat1';
+      component.remindDaysBefore = 7;
+
+      component.save();
+
+      const result = mockDialogRef.close.calls.mostRecent().args[0] as Record<string, unknown>;
+      expect(result['remindDaysBefore']).toBe(7);
+    });
+
+    // Zero is a lead time the user picked, not an empty field.
+    it('emits a zero lead time', () => {
+      component.name = 'Test';
+      component.amount = 100;
+      component.categoryId = 'cat1';
+      component.remindDaysBefore = 0;
+
+      component.save();
+
+      const result = mockDialogRef.close.calls.mostRecent().args[0] as Record<string, unknown>;
+      expect(result['remindDaysBefore']).toBe(0);
+    });
+
+    it('reads the stored lead time into the form when editing', async () => {
+      const editComponent = await createEditComponent(recurringWithReminder);
+
+      expect(editComponent.remindDaysBefore).toBe(3);
+    });
+
+    it('sends the lead time as null when it is cleared in edit mode', async () => {
+      const editComponent = await createEditComponent(recurringWithReminder);
+      editComponent.remindDaysBefore = null;
+
+      editComponent.save();
+
+      const result = mockDialogRef.close.calls.mostRecent().args[0] as Record<string, unknown>;
+      expect('remindDaysBefore' in result).toBeTrue();
+      expect(result['remindDaysBefore']).toBeNull();
     });
   });
 

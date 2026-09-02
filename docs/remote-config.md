@@ -16,6 +16,26 @@ The single source of truth for keys and defaults is
 [`RemoteConfigService`](../src/app/core/services/remote-config.service.ts).
 Keep this table in sync when parameters change.
 
+**These two keys have a second consumer.** Since the receipt quota moved
+server-side, the Cloud Storage triggers in `functions/src/index.ts`
+(`onReceiptImageFinalized` and `onReceiptImageDeleted`) read the same two
+parameters through the Remote Config **admin** API and write the resolved
+limit into a function-owned Firestore document that `storage.rules` enforces
+on every upload; `functions/src/receipt-quota.ts` holds the key constants and
+the pure per-tier limit resolution the triggers call. The parameters
+themselves are unchanged; what changed is who acts on them. Two things
+follow:
+
+- **The key strings are duplicated in `functions/src/receipt-quota.ts` and must
+  stay identical to the client's.** Two halves reading different keys would
+  disagree about who is over the limit.
+- **The server half reads `defaultValue` only.** Conditional values resolve
+  against a client's context (app, platform, audience), which a trigger does
+  not have; a limit set only as a conditional value reaches the client and not
+  the enforcement. Its fallbacks are 200 and 0, matching the in-app defaults.
+
+[receipt-quota.md](receipt-quota.md) is the reference for the quota itself.
+
 ## How it works
 
 - `provideRemoteConfig` is registered in `app.config.ts`; all fetch
@@ -66,6 +86,11 @@ serves until someone publishes the parameter.
   user document (`subscription.tier`), written only by a trusted backend
   once billing exists. Remote Config decides what each tier *gets*
   (limits, flags) — never which tier a user is.
-- **Security-critical enforcement**: like the rest of the receipt quota,
-  these values are enforced client-side; a modified client can ignore
-  them.
+- **Security-critical enforcement**, unless something trusted reads the value
+  too. A parameter read only by the client is a suggestion: every client can
+  read all parameters, and a modified one can ignore any of them. The receipt
+  limits used to be exactly that; they are now resolved server-side as well and
+  enforced by `storage.rules` ([receipt-quota.md](receipt-quota.md)), and the
+  client-side reading survives only as a UX courtesy — it keeps the UI from
+  offering an upload that would be refused. A new limit that must actually hold
+  needs a trusted reader of its own; putting it here is not one.

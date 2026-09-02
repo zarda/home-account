@@ -10,6 +10,7 @@ import { FinancialSummaryComponent } from './financial-summary/financial-summary
 import { SpendingChartComponent } from './spending-chart/spending-chart.component';
 import { BudgetAlertBannerComponent } from './budget-alert-banner/budget-alert-banner.component';
 import { RecentTransactionsComponent } from './recent-transactions/recent-transactions.component';
+import { UpcomingBillsComponent } from './upcoming-bills/upcoming-bills.component';
 import { BudgetProgressComponent } from './budget-progress/budget-progress.component';
 import { AiSummaryComponent } from './ai-summary/ai-summary.component';
 import { LoadingSpinnerComponent } from '../../shared/components/loading-spinner/loading-spinner.component';
@@ -24,7 +25,7 @@ import { InsightSnapshotService } from '../../core/services/insight-snapshot.ser
 import { TranslationService } from '../../core/services/translation.service';
 import { AnnouncerService } from '../../core/services/announcer.service';
 import { PendingFiltersService } from '../../core/services/pending-filters.service';
-import { BudgetAlert, Transaction, User } from '../../models';
+import { BudgetAlert, Category, RecurringOccurrence, Transaction, User } from '../../models';
 import { createTransaction, createCategory, createUser } from '../../core/services/testing';
 import {
   PeriodSelection,
@@ -48,6 +49,16 @@ class FinancialSummaryStubComponent {
   previousExpenses = input<number | null>(null);
 }
 
+// Stands in for the real upcoming-bills card when the real dashboard template
+// is rendered, capturing exactly what the template binds to each input.
+@Component({ selector: 'app-upcoming-bills', standalone: true, template: '' })
+class UpcomingBillsStubComponent {
+  occurrences = input<RecurringOccurrence[]>([]);
+  categories = input<Map<string, Category>>(new Map());
+  baseCurrency = input<string>('USD');
+  net = input<number>(0);
+}
+
 describe('DashboardComponent', () => {
   let transactionService: {
     transactions: ReturnType<typeof signal<Transaction[]>>;
@@ -65,7 +76,10 @@ describe('DashboardComponent', () => {
   };
   let goalService: { activeGoals: ReturnType<typeof signal<unknown[]>>; getGoals: jasmine.Spy };
   let categoryService: { categories: ReturnType<typeof signal<unknown[]>>; loadCategories: jasmine.Spy };
-  let recurringService: { catchUpRecurringTransactions: jasmine.Spy };
+  let recurringService: {
+    catchUpRecurringTransactions: jasmine.Spy;
+    getNextOccurrences: jasmine.Spy;
+  };
   let insightSnapshotService: { generateClosedMonths: jasmine.Spy };
   let authService: { currentUser: ReturnType<typeof signal<User | null>> };
   let currencyService: jasmine.SpyObj<CurrencyService>;
@@ -108,6 +122,7 @@ describe('DashboardComponent', () => {
       catchUpRecurringTransactions: jasmine
         .createSpy('catchUpRecurringTransactions')
         .and.returnValue(Promise.resolve([])),
+      getNextOccurrences: jasmine.createSpy('getNextOccurrences').and.returnValue(of([])),
     };
     // Root-provided, so without this the real service is constructed and its
     // Firestore injection fails.
@@ -549,6 +564,81 @@ describe('DashboardComponent', () => {
     });
   });
 
+  describe('upcoming bills', () => {
+    function occurrence(overrides: Partial<RecurringOccurrence> = {}): RecurringOccurrence {
+      return {
+        recurringId: 'r1',
+        name: 'Rent',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        categoryId: 'food',
+        date: new Date(2026, 8, 1),
+        ...overrides,
+      };
+    }
+
+    it('opens the occurrence window once, not again on each period change', () => {
+      const fixture = build();
+      fixture.detectChanges();
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+      fixture.componentInstance.onPeriodSelection(defaultPeriodSelection());
+
+      expect(recurringService.getNextOccurrences).toHaveBeenCalledTimes(1);
+      expect(recurringService.getNextOccurrences).toHaveBeenCalledWith(14);
+    });
+
+    it('stops listening to occurrence emissions once the component is destroyed', () => {
+      const occurrences$ = new Subject<RecurringOccurrence[]>();
+      recurringService.getNextOccurrences.and.returnValue(occurrences$);
+      const fixture = build();
+      fixture.detectChanges();
+      expect(occurrences$.observed).toBeTrue();
+
+      fixture.destroy();
+      expect(occurrences$.observed).toBeFalse();
+    });
+
+    it('publishes the occurrences the card renders', () => {
+      const rent = occurrence();
+      recurringService.getNextOccurrences.and.returnValue(of([rent]));
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.upcomingOccurrences()).toEqual([rent]);
+    });
+
+    // A scheduled occurrence has no write-time base-currency snapshot, so the
+    // net is the one figure on this card that must be converted live — and it
+    // has to add unlike currencies with income on the positive side.
+    it('converts each occurrence to base currency and signs income positive', () => {
+      currencyService.convert.and.callFake(
+        (amount: number, from: string) => (from === 'JPY' ? amount / 100 : amount));
+      recurringService.getNextOccurrences.and.returnValue(of([
+        occurrence({ recurringId: 'r1', type: 'expense', amount: 1200, currency: 'USD' }),
+        occurrence({ recurringId: 'r2', type: 'income', amount: 380000, currency: 'JPY' }),
+      ]));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.upcomingNet()).toBe(2600);
+      expect(currencyService.convert).toHaveBeenCalledWith(380000, 'JPY', 'USD');
+    });
+
+    it('rounds the net at the fold boundary', () => {
+      recurringService.getNextOccurrences.and.returnValue(of([
+        occurrence({ recurringId: 'r1', type: 'expense', amount: 0.1 }),
+        occurrence({ recurringId: 'r2', type: 'expense', amount: 0.2 }),
+      ]));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.upcomingNet()).toBe(-0.3);
+    });
+  });
+
   describe('budget alerts', () => {
     const warningAlert: BudgetAlert = {
       budgetId: 'b1',
@@ -697,13 +787,13 @@ describe('DashboardComponent', () => {
     });
   });
 
-  describe('financial summary bindings (real template)', () => {
+  describe('child bindings (real template)', () => {
     beforeEach(async () => {
       // The shared TestBed above blanks the template, so it cannot catch the
-      // [previousIncome]/[previousExpenses] bindings being swapped or
-      // dropped. Re-configure to render the REAL dashboard template, with
-      // the summary component swapped for an input-capturing stub and the
-      // remaining heavy children left to NO_ERRORS_SCHEMA.
+      // [previousIncome]/[previousExpenses] or upcoming-bills bindings being
+      // swapped or dropped. Re-configure to render the REAL dashboard
+      // template, with those two components swapped for input-capturing stubs
+      // and the remaining heavy children left to NO_ERRORS_SCHEMA.
       TestBed.resetTestingModule();
       await TestBed.configureTestingModule({
         imports: [DashboardComponent],
@@ -729,13 +819,17 @@ describe('DashboardComponent', () => {
               FinancialSummaryComponent,
               SpendingChartComponent,
               RecentTransactionsComponent,
+              UpcomingBillsComponent,
               BudgetProgressComponent,
               AiSummaryComponent,
               LoadingSpinnerComponent,
               BudgetAlertBannerComponent,
             ],
           },
-          add: { imports: [FinancialSummaryStubComponent], schemas: [NO_ERRORS_SCHEMA] },
+          add: {
+            imports: [FinancialSummaryStubComponent, UpcomingBillsStubComponent],
+            schemas: [NO_ERRORS_SCHEMA],
+          },
         })
         .compileComponents();
     });
@@ -763,6 +857,34 @@ describe('DashboardComponent', () => {
       // period bindings that drive the delta chips.
       expect(stub.previousIncome()).toBe(1234);
       expect(stub.previousExpenses()).toBe(567);
+    });
+
+    it('binds the window occurrences, categories, base currency and net to app-upcoming-bills', () => {
+      const rent: RecurringOccurrence = {
+        recurringId: 'r1',
+        name: 'Rent',
+        type: 'expense',
+        amount: 1200,
+        currency: 'USD',
+        categoryId: 'food',
+        date: new Date(2026, 8, 1),
+      };
+      recurringService.getNextOccurrences.and.returnValue(of([rent]));
+      authService.currentUser.set(
+        createUser({ preferences: { baseCurrency: 'JPY' } as User['preferences'] }));
+
+      const fixture = build();
+      fixture.detectChanges();
+
+      const stub = fixture.debugElement.query(By.directive(UpcomingBillsStubComponent))
+        ?.componentInstance as UpcomingBillsStubComponent;
+      expect(stub).withContext('app-upcoming-bills rendered').toBeTruthy();
+      expect(stub.occurrences()).toEqual([rent]);
+      expect(stub.categories().get('food')).toBeTruthy();
+      // A currency other than the USD fallback, and a net distinct from every
+      // other money computed on the page, catch a binding pointed elsewhere.
+      expect(stub.baseCurrency()).toBe('JPY');
+      expect(stub.net()).toBe(-1200);
     });
   });
 });
