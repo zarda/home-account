@@ -230,7 +230,7 @@
 
           <!-- Anything the source suggested beyond the core fields, each
                droppable in one tap -->
-          @if (row.location || row.tags?.length || row.recurringMatch || row.currencySuggestion || showsDateChip(row)) {
+          @if (row.location || row.receiptCountry || row.tags?.length || row.recurringMatch || row.currencySuggestion || showsDateChip(row)) {
             <div class="card-extras">
               <!-- The date question: Keep is the chip's body, and the change
                    button opens the same picker the date button does. -->
@@ -263,6 +263,17 @@
                     <mat-icon>close</mat-icon>
                   </button>
                 </span>
+              } @else if (row.receiptCountry) {
+                <!-- No printed address, but the mapper writes the concluded
+                     country as the location all the same: shown and
+                     removable like one, or it lands unseen. -->
+                <span class="extra-chip country-chip">
+                  <mat-icon aria-hidden="true">place</mat-icon>
+                  <span class="extra-text">{{ receiptCountryText(row) }}</span>
+                  <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </span>
               }
               @if (row.currencySuggestion) {
                 <span class="extra-chip currency-offer">
@@ -287,17 +298,19 @@
             </div>
           }
 
-          <!-- Notes Section - compact inline -->
-          @if (row.notes) {
+          <!-- Notes Section - compact inline. Typed into a draft and filed on
+               blur through replaceRow, never onto the row itself. -->
+          @if (showsNotes(row)) {
             <div class="notes-section">
               <mat-icon class="notes-icon">sticky_note_2</mat-icon>
               <textarea
                 class="notes-input"
-                [(ngModel)]="row.notes"
-                (blur)="updateNotes()"
+                [ngModel]="notesText(row)"
+                (ngModelChange)="updateNotesDraft(row, $event)"
+                (blur)="commitNotes(row)"
                 [placeholder]="'import.notesPlaceholder' | translate"
                 [attr.aria-label]="'import.notes' | translate"
-                [attr.rows]="getRowCount(row.notes)"
+                [attr.rows]="getRowCount(row)"
               ></textarea>
             </div>
           } @else {

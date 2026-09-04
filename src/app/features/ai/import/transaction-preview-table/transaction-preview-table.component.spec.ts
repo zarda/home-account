@@ -10,6 +10,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
+import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -1648,6 +1649,188 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(emitted[0].map(t => t.dateReviewed)).toEqual([true, true]);
       expect(keepAll()).toBeNull();
       expect(questionChips().length).toBe(0);
+    });
+  });
+  /**
+   * A country the reader concluded without a printed address is written as
+   * the row's location by the mapper, so the card has to show it and let it
+   * go — through the same removal the location chip already has.
+   */
+  describe('a country nobody could see', () => {
+    const countryChip = () =>
+      fixture.nativeElement.querySelector('.extra-chip.country-chip') as HTMLElement | null;
+
+    it('renders the receipt country as a chip, and its remove control clears both marks', () => {
+      const row = makeRow({ receiptCountry: 'KR' });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      const chip = countryChip();
+      expect(chip).withContext('the country the mapper would write is on the card').not.toBeNull();
+      expect(chip!.querySelector('.extra-text')?.textContent?.trim()).toBe('South Korea');
+      expect(chip!.querySelector('mat-icon')?.textContent?.trim()).toBe('place');
+      const remove = chip!.querySelector('.extra-remove') as HTMLElement;
+      expect(remove.getAttribute('aria-label')).toBe('import.removeLocation');
+
+      remove.click();
+      fixture.detectChanges();
+
+      const next = emitted[0][0];
+      expect(next).not.toBe(row);
+      expect(next.location).toBeUndefined();
+      expect(next.receiptCountry).toBeUndefined();
+      expect(row.receiptCountry).withContext('the input object is untouched').toBe('KR');
+      // The consequence, at the chokepoint: nothing left for locationSlot to
+      // rebuild a location from.
+      expect('location' in toCreateTransactionDTO(next, 'USD')).toBeFalse();
+      expect(countryChip()).withContext('the chip goes with the marks').toBeNull();
+    });
+
+    it('does not render the country beside a printed address that already carries it', () => {
+      component.transactions = [makeRow({ location: { name: 'Myeongdong', country: 'KR' }, receiptCountry: 'KR' })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      expect(countryChip()).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.extra-chip').length).withContext('the address chip alone').toBe(1);
+    });
+  });
+
+  /**
+   * Notes go through the real textarea: the input event ngModel listens to,
+   * then the blur that files the note. The old textarea wrote straight onto
+   * the @Input() object, and could not be opened on a row without a note.
+   */
+  describe('notes on the card', () => {
+    const addButton = () => fixture.nativeElement.querySelector('.add-notes-btn') as HTMLButtonElement | null;
+    const textarea = () => fixture.nativeElement.querySelector('.notes-input') as HTMLTextAreaElement | null;
+
+    function render(row: CategorizedImportTransaction): void {
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    function type(text: string): void {
+      const box = textarea()!;
+      box.value = text;
+      box.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    }
+
+    function leave(): void {
+      textarea()!.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+    }
+
+    it('opens a focused, empty textarea on a row without notes', async () => {
+      render(makeRow());
+      expect(textarea()).withContext('nothing to edit yet').toBeNull();
+
+      addButton()!.click();
+      fixture.detectChanges();
+
+      const box = textarea();
+      expect(box).withContext('the textarea replaces the button').not.toBeNull();
+      expect(box!.value).toBe('');
+      expect(addButton()).toBeNull();
+      // The focus hook runs in the tick the zone fires once it is empty, and
+      // NgModel writes its first value through a microtask of its own — so
+      // unlike the description input, the textarea is focused one microtask
+      // after detectChanges returns rather than inside it.
+      await fixture.whenStable();
+      expect(document.activeElement).withContext('the tap that opened it starts the typing').toBe(box);
+    });
+
+    it('files what was typed on a new row, and leaves the input object untouched', async () => {
+      const row = makeRow();
+      render(row);
+      const emitted = emissions();
+
+      addButton()!.click();
+      fixture.detectChanges();
+      type('  two croissants  ');
+      expect(emitted.length).withContext('typing alone files nothing').toBe(0);
+      leave();
+
+      expect(emitted.length).toBe(1);
+      const next = emitted[0][0];
+      expect(next).withContext('a new row, not the one the parent holds').not.toBe(row);
+      expect(next.notes).withContext('trimmed').toBe('two croissants');
+      expect('notes' in row).withContext('the input object is untouched').toBeFalse();
+      expect(textarea()).withContext('the note stays open to read').not.toBeNull();
+      await fixture.whenStable();
+      expect(textarea()!.value).withContext('and shows what was filed').toBe('two croissants');
+    });
+
+    it('files no note at all when the text is cleared', async () => {
+      const row = makeRow({ notes: 'keep the receipt' });
+      render(row);
+      await fixture.whenStable();
+      expect(textarea()!.value).toBe('keep the receipt');
+      const emitted = emissions();
+
+      type('   ');
+      leave();
+
+      const next = emitted[0][0];
+      expect(next.notes).toBeUndefined();
+      expect(row.notes).withContext('the input object is untouched').toBe('keep the receipt');
+      // The confirm step's own rename, then the chokepoint: an absent note is
+      // no `note` key, where '' would have been a key holding nothing.
+      expect('note' in toCreateTransactionDTO({ ...next, note: next.notes }, 'USD')).toBeFalse();
+    });
+
+    it('still edits a row that came with notes', async () => {
+      const row = makeRow({ notes: 'a' });
+      render(row);
+      await fixture.whenStable();
+      expect(addButton()).withContext('a row with notes opens straight into the editor').toBeNull();
+      const emitted = emissions();
+
+      type('b');
+      leave();
+
+      expect(emitted[0][0].notes).toBe('b');
+      expect(row.notes).withContext('the input object is untouched').toBe('a');
+    });
+
+    it('files nothing for a blur that changed nothing', () => {
+      // Leaving an untouched editor, or typing the note the row already has:
+      // neither is a change, so neither replaces the row.
+      render(makeRow({ notes: 'a' }));
+      const emitted = emissions();
+
+      leave();
+      type('a');
+      leave();
+
+      expect(emitted.length).toBe(0);
+    });
+
+    it('opens notes on one row at a time', () => {
+      component.transactions = [makeRow({ id: 'a' }), makeRow({ id: 'b' })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelectorAll('.add-notes-btn')[1] as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelectorAll('.notes-input').length).toBe(1);
+      expect(fixture.nativeElement.querySelector('[data-row-id="b"] .notes-input')).not.toBeNull();
+    });
+
+    it('grows with the draft as it is typed', () => {
+      render(makeRow());
+      addButton()!.click();
+      fixture.detectChanges();
+      expect(textarea()!.getAttribute('rows')).toBe('1');
+
+      type('items\nsecond line\nthird');
+
+      expect(textarea()!.getAttribute('rows')).toBe('3');
     });
   });
 });

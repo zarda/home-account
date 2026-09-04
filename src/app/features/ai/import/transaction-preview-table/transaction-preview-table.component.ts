@@ -283,6 +283,15 @@ export class TransactionPreviewTableComponent {
     this.replaceRow(transaction, { location: undefined, receiptCountry: undefined });
   }
 
+  /**
+   * The country the reader concluded when no address was printed. The mapper
+   * writes it as the row's location (0068), so the card shows it the way it
+   * shows one, and the location's own remove is what clears it.
+   */
+  receiptCountryText(row: CategorizedImportTransaction): string {
+    return row.receiptCountry ? countryDisplayName(row.receiptCountry, this.localeFormat.locale) : '';
+  }
+
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
     this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
   }
@@ -631,16 +640,57 @@ export class TransactionPreviewTableComponent {
     return this.translationService.t('import.editAmount', { amount: this.formatAmount(row) });
   }
 
-  updateNotes(): void {
-    this.emitChanges();
+  /**
+   * Which rows have their notes editor open, and what has been typed into it
+   * so far — by row id, for the reason `editing` gives: filing the note
+   * replaces the row, and state carried on the object would be dropped by the
+   * commit that reads it. The draft lives here and not on the row because the
+   * row is the parent's object: the old textarea wrote straight onto it, so a
+   * note typed during an in-flight import could change what was written for
+   * a row not yet processed.
+   */
+  private notesOpen = new Set<string>();
+  private draftNotes = new Map<string, string>();
+
+  // Plain methods, for the reason selectedCount gives.
+  showsNotes(row: CategorizedImportTransaction): boolean {
+    return !!row.notes || this.notesOpen.has(row.id);
   }
 
-  initNotes(transaction: CategorizedImportTransaction): void {
-    transaction.notes = '';
-    // Focus will happen naturally since the textarea appears via @if
+  /** What the editor shows: the draft while one is being typed, else the row's own note. */
+  notesText(row: CategorizedImportTransaction): string {
+    return this.draftNotes.get(row.id) ?? row.notes ?? '';
   }
 
-  getRowCount(notes: string): number {
+  /** Open the editor on a row without notes and put the caret in it, as startEdit does. */
+  initNotes(row: CategorizedImportTransaction): void {
+    this.notesOpen.add(row.id);
+    this.cdr.markForCheck();
+    this.focusWhenRendered(`[data-row-id="${CSS.escape(row.id)}"] .notes-input`);
+  }
+
+  updateNotesDraft(row: CategorizedImportTransaction, text: string): void {
+    this.draftNotes.set(row.id, text);
+  }
+
+  /**
+   * File the note when the editor is left. An emptied note is absent rather
+   * than '': the mapper writes `note` on truthiness, and '' would be a key
+   * holding nothing. Nothing typed, or the note the row already had, is not
+   * a change and replaces nothing.
+   */
+  commitNotes(row: CategorizedImportTransaction): void {
+    const draft = this.draftNotes.get(row.id);
+    this.draftNotes.delete(row.id);
+    if (draft === undefined) return;
+    const notes = draft.trim() || undefined;
+    if (notes === row.notes) return;
+    this.replaceRow(row, { notes });
+  }
+
+  /** One row per line of what is shown, so the box grows as the reviewer types. */
+  getRowCount(row: CategorizedImportTransaction): number {
+    const notes = this.notesText(row);
     if (!notes) return 1;
     const lineCount = notes.split('\n').length;
     return Math.min(Math.max(lineCount, 1), 20);

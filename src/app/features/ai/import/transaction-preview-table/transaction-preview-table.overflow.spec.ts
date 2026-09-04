@@ -80,6 +80,10 @@ class PreviewOverflowProbeComponent {
       isDuplicate: false,
       selected: true,
       currencySuggestion: { code: 'EUR', reason: 'session' },
+      // A country the reader concluded with no printed address renders as a
+      // chip of its own, and r2 is the row with no location to stand in front
+      // of it.
+      receiptCountry: 'KR',
     },
   ];
 }
@@ -222,8 +226,8 @@ describe('overflow guard: the import review card', () => {
     const extras = el('.card-extras');
     const chips = Array.from(host.querySelectorAll<HTMLElement>('.extra-chip'));
     expect(chips.length)
-      .withContext('r1\'s assumed-date question, two currency offers (r1 with-country, r2 country-less), location plus three tags, and r2\'s not-today question')
-      .toBe(8);
+      .withContext('r1\'s assumed-date question, two currency offers (r1 with-country, r2 country-less), location plus three tags, r2\'s not-today question and r2\'s receipt country')
+      .toBe(9);
     for (const chip of chips) {
       const remove = chip.querySelector('.extra-remove') as HTMLElement;
       expect(withinWidthOf(clip, chip))
