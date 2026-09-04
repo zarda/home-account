@@ -1,12 +1,15 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MatDatepicker } from '@angular/material/datepicker';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -377,6 +380,84 @@ describe('TransactionPreviewTableComponent', () => {
     it('reports the confidence as a percentage in the tooltip', () => {
       const t = row({ fieldConfidence: { amount: 0.42 } });
       expect(component.verificationTooltip(t, 'amount')).toContain('42');
+    });
+  });
+
+  describe('the date button\'s name', () => {
+    const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}) => ({
+      ...createMockTransactions()[0],
+      ...overrides,
+    });
+    const formatted = (row: CategorizedImportTransaction) =>
+      TestBed.inject(LocaleFormatService).formatDate(row.date);
+
+    it('says only how to change the date on a row nobody doubts', () => {
+      // Same shape as currencyChipLabel: the mark leads the name only when
+      // there is one, so a plain CSV row is not announced as suspect.
+      const row = makeRow();
+      expect(component.dateChipLabel(row)).toBe(`import.changeDate:{"date":"${formatted(row)}"}`);
+    });
+
+    it('leads with the not-today wording for a receipt row dated another day', () => {
+      const row = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
+      component.dateAttentionIds = new Set(['receipt']);
+      expect(component.dateChipLabel(row)).toBe(
+        `import.dateNotTodayTooltip:{"date":"${formatted(row)}"}. import.changeDate:{"date":"${formatted(row)}"}`
+      );
+    });
+
+    it('stays quiet about another day on a row outside the attention set', () => {
+      const row = makeRow({ id: 'statement', date: new Date(2026, 5, 1) });
+      expect(component.dateNotToday(row)).toBeFalse();
+      expect(component.dateChipLabel(row)).toBe(`import.changeDate:{"date":"${formatted(row)}"}`);
+    });
+
+    it('keeps the percent wording for a low grade that was not assumed', () => {
+      // The resolver assumes every grade under the bar, so this row cannot
+      // come out of it — but a row that got here some other way must not
+      // wear a blank name.
+      const row = makeRow({ fieldConfidence: { date: 0.3 } });
+      expect(component.dateTooltip(row)).toBe('import.verifyDate:{"percent":30}');
+    });
+
+    it('names the keep button by the reason and by the date it keeps', () => {
+      const row = makeRow({ dateAssumed: true });
+      expect(component.keepDateLabel(row)).toBe(`import.dateAssumedTooltip. import.keepDate:{"date":"${formatted(row)}"}`);
+      expect(component.dateChipText(row)).toBe('import.dateAssumedKeep');
+    });
+
+    it('drops the reason\'s own stop before the join adds one', () => {
+      // The three date tooltips are sentences with a terminator of their
+      // own — "." in en, "。" in ja and tc — and the join puts one between
+      // the reason and the action, so a flagged row's name would end its
+      // reason "here.. Change" or "。. 日付". dateReviewed and the percent
+      // wording carry no stop and keep the plain ". " join the cases above
+      // pin; the echoing stub returns bare keys, so these two are stood in
+      // for with real sentences.
+      const sentences: Record<string, string> = {
+        'import.dateAssumedTooltip': 'This row is dated today — keep it or change it here.',
+        'import.dateNotTodayTooltip': 'このレシートの日付は今日ではありません。',
+      };
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(
+        (key: string, params?: Record<string, string | number>) =>
+          sentences[key] ?? (params ? `${key}:${JSON.stringify(params)}` : key)
+      );
+
+      const assumed = makeRow({ dateAssumed: true });
+      expect(component.dateChipLabel(assumed))
+        .toBe(`This row is dated today — keep it or change it here. import.changeDate:{"date":"${formatted(assumed)}"}`);
+      const receipt = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
+      component.dateAttentionIds = new Set(['receipt']);
+      expect(component.keepDateLabel(receipt))
+        .toBe(`このレシートの日付は今日ではありません. import.keepDate:{"date":"${formatted(receipt)}"}`);
+    });
+
+    it('asks a not-today row to keep the day it is dated, and flags its button', () => {
+      const row = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
+      component.dateAttentionIds = new Set(['receipt']);
+      expect(component.dateChipText(row)).toBe(`import.dateNotTodayKeep:{"date":"${formatted(row)}"}`);
+      expect(component.dateNotToday(row)).withContext('the class the button wears').toBeTrue();
+      expect(component.dateFlagged(row)).withContext('the flag icon the button shows').toBeTrue();
     });
   });
 
@@ -791,7 +872,15 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
       providers: [
-        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        {
+          // Echoes the key and its params, as the first describe does, so a
+          // label that carries the formatted date can be asserted whole.
+          provide: TranslationService,
+          useValue: {
+            t: (key: string, params?: Record<string, string | number>) =>
+              params ? `${key}:${JSON.stringify(params)}` : key,
+          },
+        },
         {
           provide: CurrencyService,
           useValue: {
@@ -870,58 +959,283 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(currencySession.remember).not.toHaveBeenCalled();
   });
 
-  describe('the date-assumed chip', () => {
-    it('renders the date-assumed chip only when the row carries the mark', () => {
-      component.transactions = [
-        makeRow({ id: 'marked', dateAssumed: true }),
-        makeRow({ id: 'unmarked' }),
-      ];
-      component.categories = [];
-      fixture.detectChanges();
+  /**
+   * The touch picker renders in the CDK overlay container, outside the
+   * fixture, so a test that opened it closes it again — or the next test
+   * finds a stray dialog in the document.
+   */
+  describe('the date on the card', () => {
+    const formatted = (row: CategorizedImportTransaction) =>
+      TestBed.inject(LocaleFormatService).formatDate(row.date);
+    const dateButton = () => fixture.nativeElement.querySelector('button.date-chip') as HTMLButtonElement;
+    const questionChips = () =>
+      fixture.nativeElement.querySelectorAll('.extra-chip.date-check') as NodeListOf<HTMLElement>;
+    const openDialog = () => document.querySelector('.mat-datepicker-content [role="dialog"]');
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
 
-      expect(fixture.nativeElement.querySelectorAll('.extra-chip.date-assumed').length).toBe(1);
+    function render(rows: CategorizedImportTransaction[], attention: string[] = []): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.dateAttentionIds = new Set(attention);
+      fixture.detectChanges();
+    }
+
+    afterEach(() => {
+      for (const picker of fixture.debugElement.queryAll(By.directive(MatDatepicker))) {
+        (picker.componentInstance as MatDatepicker<Date>).close();
+      }
+      expect(document.querySelector('.mat-datepicker-content'))
+        .withContext('no picker left open for the next test')
+        .toBeNull();
     });
 
-    it("the chip's icon carries the tooltip as its accessible name", () => {
-      const row = makeRow({ dateAssumed: true });
-      component.transactions = [row];
-      component.categories = [];
-      fixture.detectChanges();
+    it('renders the date as a button named by its mark and then by what a tap does', () => {
+      // The ordinary assumed row: resolveImportDate marks dateAssumed for the
+      // same low reading that trips needsVerification. The flag still
+      // renders, but a button's aria-label replaces its content, so the
+      // flag is decorative and the wording rides on the name instead.
+      const row = makeRow({ id: 'r1', dateAssumed: true, fieldConfidence: { date: 0.3 } });
+      render([row]);
 
-      const icon = fixture.nativeElement.querySelector('.extra-chip.date-assumed mat-icon') as HTMLElement;
-      expect(icon.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
+      const button = dateButton();
+      expect(button.id).toBe('date-chip-r1');
+      expect(button.getAttribute('aria-label'))
+        .toBe(`import.dateAssumedTooltip. import.changeDate:{"date":"${formatted(row)}"}`);
+      const flag = button.querySelector('.verify-flag');
+      expect(flag).withContext('the low-confidence flag on the date button still renders').not.toBeNull();
+      expect(flag?.getAttribute('aria-hidden')).withContext('but is decorative').toBe('true');
     });
 
-    it('a marked row still shows the date verify flag, with the assumed wording', () => {
-      // The row also carries a low date confidence — the ordinary case,
-      // since resolveImportDate marks dateAssumed for the same low reading
-      // that trips needsVerification. The flag itself keeps rendering
-      // exactly as it always did; only its wording changes.
+    it('opens the touch picker from the button, and the dialog is named after the button', () => {
+      render([makeRow({ id: 'r1' })]);
+
+      dateButton().click();
+      fixture.detectChanges();
+
+      const dialog = openDialog();
+      expect(dialog).withContext('the touch dialog is in the document').not.toBeNull();
+      // The dialog takes its name from the anchor input's own aria-labelledby;
+      // a bare input outside a form field has no other label to hand it.
+      expect(dialog?.getAttribute('aria-labelledby')).toBe('date-chip-r1');
+    });
+
+    it('names a reviewed row\'s button by the check, shows the check, and asks nothing', () => {
+      const row = makeRow({ dateReviewed: true });
+      render([row]);
+
+      expect(dateButton().getAttribute('aria-label'))
+        .toBe(`import.dateReviewed. import.changeDate:{"date":"${formatted(row)}"}`);
+      expect(dateButton().querySelector('mat-icon')?.textContent?.trim()).toBe('check');
+      expect(questionChips().length).toBe(0);
+    });
+
+    it('picking a day emits a new row dated that day, with the marks and the date grade gone', () => {
+      const row = makeRow({ dateAssumed: true, dateImplausible: true, fieldConfidence: { amount: 0.5, date: 0.3 } });
+      render([row]);
+      const emitted = emissions();
+      const picked = new Date(2026, 5, 3);
+
+      component.updateDate(row, picked);
+
+      const next = emitted[0][0];
+      expect(next).not.toBe(row);
+      expect(next.date).toBe(picked);
+      expect(next.dateReviewed).toBeTrue();
+      expect(next.dateAssumed).toBeUndefined();
+      expect(next.dateImplausible).toBeUndefined();
+      expect(next.fieldConfidence).withContext('the amount grade stays; the object is exactly what remains').toEqual({ amount: 0.5 });
+    });
+
+    it('drops the grade altogether when the date was the only field graded', () => {
       const row = makeRow({ dateAssumed: true, fieldConfidence: { date: 0.3 } });
-      component.transactions = [row];
-      component.categories = [];
-      fixture.detectChanges();
+      render([row]);
+      const emitted = emissions();
 
-      const flag = fixture.nativeElement.querySelector('.date-chip .verify-flag') as HTMLElement;
-      expect(flag).withContext('the low-confidence flag on the date chip still renders').not.toBeNull();
-      expect(flag.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
+      component.updateDate(row, new Date(2026, 5, 3));
+
+      expect(emitted[0][0].fieldConfidence).toBeUndefined();
     });
 
-    it('an implausible row shows the chip with the implausible wording and no verify flag', () => {
+    it('ignores a cleared picker', () => {
+      // The input emits null when its text is cleared; a row cannot be dated nothing.
+      const row = makeRow();
+      render([row]);
+      const emitted = emissions();
+
+      component.updateDate(row, null);
+
+      expect(emitted.length).toBe(0);
+    });
+
+    it('keeping the date answers the question without changing the date', () => {
+      const row = makeRow({ dateAssumed: true, dateImplausible: true, fieldConfidence: { amount: 0.5, date: 0.3 } });
+      render([row]);
+      const emitted = emissions();
+
+      component.keepDate(row);
+
+      const next = emitted[0][0];
+      expect(next.date).toBe(row.date);
+      expect(next.dateReviewed).toBeTrue();
+      expect(next.dateAssumed).toBeUndefined();
+      expect(next.dateImplausible).toBeUndefined();
+      expect(next.fieldConfidence).toEqual({ amount: 0.5 });
+    });
+
+    it('asks about an assumed date on any batch, and about another day only for a receipt row', () => {
+      render([makeRow({ id: 'assumed', dateAssumed: true }), makeRow({ id: 'old', date: yesterday() })]);
+      expect(questionChips().length).withContext('attention off: only the assumed row is asked').toBe(1);
+
+      // Through setInput, the way the wizard's binding reaches it: the
+      // component is OnPush, and a property assigned on the instance does
+      // not mark its view, so detectChanges alone would leave the DOM as is.
+      fixture.componentRef.setInput('dateAttentionIds', new Set(['old']));
+      fixture.detectChanges();
+      expect(questionChips().length).withContext('attention on: the not-today row is asked too').toBe(2);
+    });
+
+    it('renders the question only while the row carries the mark', () => {
+      render([makeRow({ id: 'marked', dateAssumed: true }), makeRow({ id: 'unmarked' })]);
+
+      expect(questionChips().length).toBe(1);
+    });
+
+    it('renders the keep button with the reason and the keep wording in its name', () => {
+      const row = makeRow({ dateAssumed: true });
+      render([row]);
+
+      const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement;
+      // Reason, then action: the name is more than the tooltip, so `toContain`.
+      expect(keep.getAttribute('aria-label')).toContain(component.dateAssumedTooltip(row));
+      expect(keep.getAttribute('aria-label')).toContain('import.keepDate');
+    });
+
+    it('an implausible row is asked with the implausible wording and wears no verify flag', () => {
       // Graded 0.9 — well clear of the verify threshold — because that is
       // exactly the case the window exists for: needsVerification stays
-      // quiet, so the card chip is the only surface this row gets.
+      // quiet, so the question chip is the only surface this row gets.
       const row = makeRow({ dateAssumed: true, dateImplausible: true, fieldConfidence: { date: 0.9 } });
-      component.transactions = [row];
-      component.categories = [];
+      render([row]);
+
+      const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement;
+      expect(keep.getAttribute('aria-label')).toContain(component.dateAssumedTooltip(row));
+      expect(component.dateAssumedTooltip(row)).toBe('import.dateImplausibleTooltip');
+      expect(dateButton().querySelector('.verify-flag'))
+        .withContext('grade clears the threshold, so the date button wears no flag')
+        .toBeNull();
+      expect(dateButton().getAttribute('aria-label'))
+        .withContext('the mark still rides on the button name')
+        .toMatch(/^import\.dateImplausibleTooltip\. /);
+    });
+
+    it('clicking keep answers through keepDate, and the question goes', () => {
+      const row = makeRow({ dateAssumed: true });
+      render([row]);
+      const emitted = emissions();
+
+      (fixture.nativeElement.querySelector('.date-check .extra-accept') as HTMLElement).click();
       fixture.detectChanges();
 
-      const icon = fixture.nativeElement.querySelector('.extra-chip.date-assumed mat-icon') as HTMLElement;
-      expect(icon.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
-      expect(component.dateAssumedTooltip(row)).toBe('import.dateImplausibleTooltip');
+      expect(emitted[0][0].dateReviewed).toBeTrue();
+      expect(questionChips().length).toBe(0);
+      expect(dateButton().querySelector('mat-icon')?.textContent?.trim()).toBe('check');
+    });
 
-      const flag = fixture.nativeElement.querySelector('.date-chip .verify-flag');
-      expect(flag).withContext('grade clears the threshold, so the date cell verify flag stays absent').toBeNull();
+    it('the change button on the question opens the same picker', () => {
+      render([makeRow({ id: 'r1', dateAssumed: true })]);
+
+      (fixture.nativeElement.querySelector('.date-check .extra-change') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(openDialog()?.getAttribute('aria-labelledby')).toBe('date-chip-r1');
+    });
+
+    it('opens the picker on the row\'s own day, and a picked day comes back through dateChange', () => {
+      // The anchor's [value] is what the calendar opens on; without it the
+      // dialog opens on today's month, and a June receipt corrected in
+      // September starts three months from its own day. June 2026 is a
+      // month no later run can be in, so a today cell showing would mean
+      // the calendar ignored the row. The emission is the (dateChange) wire
+      // to updateDate, which every other case here calls directly.
+      const row = makeRow({
+        id: 'r1',
+        date: new Date(2026, 5, 10),
+        dateAssumed: true,
+        dateImplausible: true,
+        fieldConfidence: { amount: 0.5, date: 0.3 },
+      });
+      render([row]);
+      const emitted = emissions();
+      const dayOf = (cell: Element | null) =>
+        cell?.querySelector('.mat-calendar-body-cell-content')?.textContent?.trim();
+
+      dateButton().click();
+      fixture.detectChanges();
+
+      expect(dayOf(document.querySelector('.mat-calendar-body-active')))
+        .withContext('the calendar opens on the row\'s own day')
+        .toBe('10');
+      expect(document.querySelector('.mat-calendar-body-today'))
+        .withContext('and on the row\'s own month, not this one')
+        .toBeNull();
+
+      const third = Array.from(document.querySelectorAll<HTMLElement>('.mat-calendar-body-cell'))
+        .find(cell => dayOf(cell) === '3') as HTMLElement;
+      third.click();
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      const next = emitted[0][0];
+      expect(next.date).toEqual(new Date(2026, 5, 3));
+      expect(next.dateReviewed).toBeTrue();
+      expect(next.dateAssumed).toBeUndefined();
+      expect(next.dateImplausible).toBeUndefined();
+      expect(next.fieldConfidence).toEqual({ amount: 0.5 });
+      expect(openDialog()).withContext('a touch dialog with no actions closes on the pick').toBeNull();
+    });
+
+    it('says it opens a dialog rather than wearing a menu caret', () => {
+      // A caret says "menu": the currency chip is one and keeps it, the
+      // date opens a modal dialog and says so on aria-haspopup.
+      render([makeRow()]);
+
+      expect(dateButton().getAttribute('aria-haspopup')).toBe('dialog');
+      expect(dateButton().querySelector('.chip-caret')).withContext('no caret on the date').toBeNull();
+      expect(fixture.nativeElement.querySelector('.currency-chip .chip-caret'))
+        .withContext('the menu keeps its caret')
+        .not.toBeNull();
+    });
+
+    it('asks about another day only on a row that will be imported', () => {
+      // An unselected row is not a question: nothing about it reaches the
+      // import, and needsDateAnswer already keeps the chip — the Keep that
+      // answers — off such a row, so an amber mark and its "keep it, or
+      // pick another day" wording would point at a control that is not
+      // there.
+      const row = makeRow({ id: 'old', date: yesterday(), selected: false });
+      render([row], ['old']);
+
+      expect(dateButton().classList.contains('not-today')).withContext('no mark while unselected').toBeFalse();
+      expect(dateButton().querySelector('.verify-flag')).withContext('no flag while unselected').toBeNull();
+      expect(dateButton().getAttribute('aria-label'))
+        .withContext('nothing leads the name while unselected')
+        .toBe(`import.changeDate:{"date":"${formatted(row)}"}`);
+      expect(questionChips().length).withContext('no question while unselected').toBe(0);
+
+      (fixture.nativeElement.querySelector('.card-select input[type="checkbox"]') as HTMLInputElement).click();
+      fixture.detectChanges();
+
+      expect(dateButton().classList.contains('not-today')).withContext('selected: the mark').toBeTrue();
+      expect(dateButton().querySelector('.verify-flag')?.textContent?.trim())
+        .withContext('selected: the flag')
+        .toBe('error_outline');
+      expect(questionChips().length).withContext('selected: the question').toBe(1);
+      expect(fixture.nativeElement.querySelector('.date-check .extra-text')?.textContent?.trim())
+        .toBe(`import.dateNotTodayKeep:{"date":"${formatted(row)}"}`);
     });
   });
 });

@@ -173,6 +173,14 @@ export interface CategorizedImportTransaction {
    * which needs to say "too far off" rather than "couldn't read it".
    */
   dateImplausible?: boolean;
+  /**
+   * A review-step mark like `dateAssumed`, never written to a document: the
+   * reviewer answered the date question — kept the date, or picked one.
+   * Every date answer on the card sets it while clearing `dateAssumed`,
+   * `dateImplausible` and the date's grade, so an answered row stops looking
+   * flagged and is not asked again.
+   */
+  dateReviewed?: true;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)

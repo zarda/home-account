@@ -4,6 +4,8 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
 import { FormsModule } from '@angular/forms';
 import {
   Category,
@@ -18,6 +20,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
+import { datedToday, needsDateAnswer, withoutFieldConfidence } from '../../../../core/utils/import-review.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -35,6 +38,8 @@ import { EmptyStateComponent } from '../../../../shared/components/empty-state/e
     MatIconModule,
     MatButtonModule,
     MatMenuModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
     FormsModule,
     CategorySuggestionComponent,
     MatTooltipModule,
@@ -55,6 +60,15 @@ export class TransactionPreviewTableComponent {
 
   @Input() transactions: CategorizedImportTransaction[] = [];
   @Input() categories: Category[] = [];
+  /**
+   * The rows a receipt reader produced, by id: the ones whose date is a
+   * question the reviewer answers (`needsDateAnswer`). The wizard fills it.
+   * Per row rather than per batch, because the dropzone accepts a mixed pick
+   * and `processFiles` concatenates the photo batch's rows with every CSV and
+   * PDF row into one array — a batch-wide bit would turn each historical CSV
+   * row into a question the moment one photo rode along.
+   */
+  @Input() dateAttentionIds: ReadonlySet<string> = new Set();
   @Output() transactionsUpdated = new EventEmitter<CategorizedImportTransaction[]>();
   @Output() selectionChanged = new EventEmitter<Set<string>>();
 
@@ -347,6 +361,128 @@ export class TransactionPreviewTableComponent {
       field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate',
       { percent }
     );
+  }
+
+  private attention(row: CategorizedImportTransaction): boolean {
+    return this.dateAttentionIds.has(row.id);
+  }
+
+  /**
+   * A receipt row dated on another day, still unanswered — and selected:
+   * a row that will not be imported is not a question, and the chip that
+   * answers one (needsDateAnswer) never renders for an unselected row, so
+   * the mark would point at a Keep that is not there.
+   */
+  dateNotToday(row: CategorizedImportTransaction): boolean {
+    return this.attention(row) && row.selected && !row.dateReviewed && !datedToday(row.date);
+  }
+
+  /**
+   * Whether the date button wears a flag: a grade under the bar, or a
+   * receipt day that is not today. An assumed date with a clear grade wears
+   * none — the question chip is that row's surface, and the wording still
+   * rides on the button's name.
+   */
+  dateFlagged(row: CategorizedImportTransaction): boolean {
+    return this.needsVerification(row, 'date') || this.dateNotToday(row);
+  }
+
+  /**
+   * An assumed date is asked about on every batch — the chip's Keep is the
+   * only way to settle it — and gated only under attention; a date on
+   * another day is asked about only under attention at all.
+   */
+  showsDateChip(row: CategorizedImportTransaction): boolean {
+    return (!!row.dateAssumed && !row.dateReviewed) || needsDateAnswer(row, this.attention(row));
+  }
+
+  /**
+   * Why the date is marked, in the reviewer's words: checked, once they
+   * answered (so the check icon has a name); for an assumed or graded date,
+   * the wording verificationTooltip already chooses; otherwise the receipt
+   * was dated another day. Empty for a row nobody doubts.
+   */
+  dateTooltip(row: CategorizedImportTransaction): string {
+    if (row.dateReviewed) {
+      return this.translationService.t('import.dateReviewed');
+    }
+    if (row.dateAssumed || this.needsVerification(row, 'date')) {
+      return this.verificationTooltip(row, 'date');
+    }
+    if (this.dateNotToday(row)) {
+      return this.translationService.t('import.dateNotTodayTooltip', { date: this.formattedDate(row) });
+    }
+    return '';
+  }
+
+  changeDateLabel(row: CategorizedImportTransaction): string {
+    return this.translationService.t('import.changeDate', { date: this.formattedDate(row) });
+  }
+
+  /** The mark leads the button's name, exactly as currencyChipLabel does. */
+  dateChipLabel(row: CategorizedImportTransaction): string {
+    return this.withReason(this.dateTooltip(row), this.changeDateLabel(row));
+  }
+
+  dateChipText(row: CategorizedImportTransaction): string {
+    return row.dateAssumed
+      ? this.translationService.t('import.dateAssumedKeep')
+      : this.translationService.t('import.dateNotTodayKeep', { date: this.formattedDate(row) });
+  }
+
+  /** The keep button's name says why the row is asked and what it keeps; the visible text says neither fully. */
+  keepDateLabel(row: CategorizedImportTransaction): string {
+    return this.withReason(
+      this.dateTooltip(row),
+      this.translationService.t('import.keepDate', { date: this.formattedDate(row) })
+    );
+  }
+
+  /**
+   * Reason, then action, joined the way currencyChipLabel joins them. The
+   * three date tooltips are sentences with a stop of their own — "." in
+   * en, "。" in ja and tc — so the reason's terminator goes before the join
+   * adds one, or a flagged row is read out "here.. Change". dateReviewed
+   * and the percent wording carry no stop and join as they are.
+   */
+  private withReason(reason: string, label: string): string {
+    return reason ? `${reason.replace(/\s*[.。]?\s*$/, '')}. ${label}` : label;
+  }
+
+  /**
+   * What every date answer settles, in one place so a picked day, Keep and
+   * the bulk Keep cannot drift: the marks go, the date's grade goes (absent
+   * is the reading needsVerification already gives a row nobody doubts) and
+   * the row is marked answered. With the marks left standing,
+   * needsVerification and the assumed tooltip would keep a kept row amber
+   * after the reviewer had answered.
+   */
+  private dateAnswered(row: CategorizedImportTransaction): Partial<CategorizedImportTransaction> {
+    return {
+      dateReviewed: true,
+      dateAssumed: undefined,
+      dateImplausible: undefined,
+      fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'date'),
+    };
+  }
+
+  /** `null` is what the picker emits for a cleared input; a row cannot be dated nothing. */
+  updateDate(row: CategorizedImportTransaction, value: Date | null): void {
+    if (!value) return;
+    this.replaceRow(row, { ...this.dateAnswered(row), date: value });
+  }
+
+  /**
+   * The only answer for a date that is already right: the picker's
+   * dateChange does not fire when the same day is picked again, so nothing
+   * else settles such a row.
+   */
+  keepDate(row: CategorizedImportTransaction): void {
+    this.replaceRow(row, this.dateAnswered(row));
+  }
+
+  private formattedDate(row: CategorizedImportTransaction): string {
+    return this.localeFormat.formatDate(row.date);
   }
 
   updateNotes(): void {

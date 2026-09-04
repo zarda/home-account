@@ -195,32 +195,15 @@
   flex-wrap: wrap;
 }
 
-.date-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--text-xs);
-  color: var(--text-muted, #666);
-  padding: 3px 9px;
-  background: var(--surface-hover, #eee);
-  border-radius: var(--radius-sm);
-}
-
-.date-chip mat-icon {
-  font-size: var(--text-sm);
-  width: 1em;
-  height: 1em;
-}
-
-// The date chip's look, worn by a control: the currency is the one field the
-// source can get wrong without saying so, so it reads as data and edits as a
-// menu.
+// Chips that read as data and edit in place: the date opens a picker, the
+// currency a menu. They are the two fields the source can get wrong without
+// saying so.
+.date-chip,
 .currency-chip {
   display: inline-flex;
   align-items: center;
   // 40px tap target, the accessible minimum; the chip's weight stays light.
   min-height: 40px;
-  gap: 2px;
   font-size: var(--text-xs);
   font-family: inherit;
   color: var(--text-muted, #666);
@@ -229,15 +212,31 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
 
-  &.fell-back {
-    border-color: var(--color-warning);
+.date-chip {
+  gap: 4px;
+
+  mat-icon {
+    font-size: var(--text-sm);
+    width: 1em;
+    height: 1em;
   }
+}
 
+.currency-chip {
+  gap: 2px;
+
+  // The caret is the menu's sign, and only the currency opens one: the date
+  // opens a modal dialog and says so on its aria-haspopup.
   .chip-caret {
     font-size: 18px;
     width: 18px;
     height: 18px;
+  }
+
+  &.fell-back {
+    border-color: var(--color-warning);
   }
 }
 
@@ -370,12 +369,13 @@
   }
 }
 
-// Worn like currency-chip's own fell-back: the same warning border for the
-// same reason — the source didn't give a usable value, so this row got a
-// guess instead. Unlike fell-back, this chip only ever exists in this one
-// state (it renders or it doesn't), so the border needs no transparent
-// placeholder in the base rule to guard against a toggle-time layout shift.
-.extra-chip.date-assumed {
+// Worn like currency-chip's own fell-back: the same warning border, because
+// either the source gave no usable date and this row got a guess, or it gave
+// a day that is not today and the reviewer has to say which it is. Unlike
+// fell-back, this chip only ever exists in this one state (it renders or it
+// doesn't), so the border needs no transparent placeholder in the base rule
+// to guard against a toggle-time layout shift.
+.extra-chip.date-check {
   border: 1px solid var(--color-warning);
 }
 
@@ -613,6 +613,21 @@
   flex-shrink: 0;
 }
 
-.date-chip.needs-verify {
+.date-chip.needs-verify,
+.date-chip.not-today {
   color: var(--color-warning);
+}
+
+// Answered: the reviewer kept or picked the day, and the button says so
+// rather than going back to looking untouched.
+.date-chip.reviewed {
+  color: var(--color-success);
+}
+
+// The picker renders through the CDK overlay container, never inside its
+// host, so hiding the host changes nothing about opening it; the anchor
+// input exists only because a datepicker needs one to open from.
+.picker-anchor,
+mat-datepicker {
+  display: none;
 }

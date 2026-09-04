@@ -293,6 +293,14 @@ describe('toCreateTransactionDTO and the review flags', () => {
     );
     expect('dateAssumed' in dto).toBeFalse();
   });
+
+  it('never forwards dateReviewed — it is a review-step mark, not a field', () => {
+    const dto = toCreateTransactionDTO(
+      { amount: 5, date: new Date(2026, 0, 1), dateReviewed: true } as never,
+      'USD'
+    );
+    expect('dateReviewed' in dto).toBeFalse();
+  });
 });
 
 describe('locationSlot', () => {

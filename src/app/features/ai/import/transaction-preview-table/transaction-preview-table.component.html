@@ -82,20 +82,31 @@
           <!-- Middle: Date, Type, Category -->
           <div class="card-bottom-row">
             <div class="meta-info">
-              <span class="date-chip" [class.needs-verify]="needsVerification(row, 'date')">
-                @if (needsVerification(row, 'date')) {
+              <button
+                type="button"
+                class="date-chip"
+                aria-haspopup="dialog"
+                [id]="'date-chip-' + row.id"
+                [class.needs-verify]="needsVerification(row, 'date')"
+                [class.not-today]="dateNotToday(row)"
+                [class.reviewed]="row.dateReviewed"
+                [attr.aria-label]="dateChipLabel(row)"
+                (click)="datePicker.open()"
+              >
+                @if (row.dateReviewed) {
+                  <mat-icon aria-hidden="true">check</mat-icon>
+                } @else if (dateFlagged(row)) {
                   <mat-icon
                     class="verify-flag"
-                    [matTooltip]="verificationTooltip(row, 'date')"
+                    [matTooltip]="dateTooltip(row)"
                     matTooltipPosition="above"
-                    role="img"
-                    [attr.aria-label]="verificationTooltip(row, 'date')"
+                    aria-hidden="true"
                   >error_outline</mat-icon>
                 } @else {
-                  <mat-icon>calendar_today</mat-icon>
+                  <mat-icon aria-hidden="true">calendar_today</mat-icon>
                 }
                 {{ row.date | localeDate }}
-              </span>
+              </button>
               <button
                 type="button"
                 class="currency-chip"
@@ -140,6 +151,23 @@
                 {{ row.type === 'income' ? ('common.income' | translate) : ('common.expense' | translate) }}
               </button>
             </div>
+            <!-- Hidden, and kept out of the meta row rather than relying on
+                 that alone: its `gap: 6px` would count an empty host as a
+                 zero-width item the moment the hiding slipped, doubling the
+                 space between the date and the currency. touchUi because the
+                 anchor has no box for a dropdown to hang off; the anchor's
+                 own aria-labelledby is what names the touch dialog — a bare
+                 input outside a form field has no other label to hand it. -->
+            <input
+              class="picker-anchor"
+              [matDatepicker]="datePicker"
+              [value]="row.date"
+              (dateChange)="updateDate(row, $event.value)"
+              tabindex="-1"
+              aria-hidden="true"
+              [attr.aria-labelledby]="'date-chip-' + row.id"
+            >
+            <mat-datepicker #datePicker touchUi></mat-datepicker>
             <div class="category-section">
               <app-category-suggestion
                 [suggestedCategoryId]="row.suggestedCategoryId"
@@ -152,20 +180,19 @@
 
           <!-- Anything the source suggested beyond the core fields, each
                droppable in one tap -->
-          @if (row.location || row.tags?.length || row.recurringMatch || row.currencySuggestion || row.dateAssumed) {
+          @if (row.location || row.tags?.length || row.recurringMatch || row.currencySuggestion || showsDateChip(row)) {
             <div class="card-extras">
-              <!-- Non-dismissible: there is no date editor on this card, so
-                   there is nothing for a remove button to clear. -->
-              @if (row.dateAssumed) {
-                <span class="extra-chip date-assumed">
-                  <mat-icon
-                    class="verify-flag"
-                    [matTooltip]="dateAssumedTooltip(row)"
-                    matTooltipPosition="above"
-                    role="img"
-                    [attr.aria-label]="dateAssumedTooltip(row)"
-                  >event</mat-icon>
-                  <span class="extra-text">{{ 'import.dateAssumed' | translate }}</span>
+              <!-- The date question: Keep is the chip's body, and the change
+                   button opens the same picker the date button does. -->
+              @if (showsDateChip(row)) {
+                <span class="extra-chip date-check">
+                  <button type="button" class="extra-accept" [attr.aria-label]="keepDateLabel(row)" [matTooltip]="dateTooltip(row)" matTooltipPosition="above" (click)="keepDate(row)">
+                    <mat-icon aria-hidden="true">event</mat-icon>
+                    <span class="extra-text">{{ dateChipText(row) }}</span>
+                  </button>
+                  <button type="button" class="extra-remove extra-change" [attr.aria-label]="changeDateLabel(row)" (click)="datePicker.open()">
+                    <mat-icon>edit_calendar</mat-icon>
+                  </button>
                 </span>
               }
               @if (row.recurringMatch; as match) {
@@ -199,7 +226,7 @@
                 </span>
               }
               @for (tag of row.tags ?? []; track tag) {
-                <span class="extra-chip">
+                <span class="extra-chip tag-chip">
                   <mat-icon aria-hidden="true">label</mat-icon>
                   <span class="extra-text">{{ tag }}</span>
                   <button type="button" class="extra-remove" [attr.aria-label]="'import.removeTag' | translate: { tag }" (click)="removeTag(row, tag)">
