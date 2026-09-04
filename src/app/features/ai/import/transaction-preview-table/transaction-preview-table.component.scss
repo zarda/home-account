@@ -155,10 +155,61 @@
 }
 
 
+// The two fields that read as plain text and edit in place. The trigger has
+// to look like the text it stands for, so it gives up every button style it
+// arrives with and takes the type around it; the dotted underline is the only
+// sign it is a control, which is why it is drawn at all times rather than
+// revealed on a pointer — this card is reached from the camera, and a touch
+// device has neither :hover nor :focus-visible to reveal it with. Muted off
+// the text's own colour rather than a border token, so it reads the same
+// against the description's grey and the amount's income green or expense
+// red, in either theme, and darkening it to currentColor on hover and focus
+// moves nothing below by a pixel.
+.inline-edit {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-block-end: 1px dotted color-mix(in srgb, currentColor 35%, transparent);
+  padding: 0;
+  // 40px tap target, the accessible minimum the chips below meet too.
+  min-block-size: 40px;
+  display: inline-flex;
+  align-items: center;
+  cursor: text;
+  text-align: start;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+}
+
+.inline-edit:hover,
+.inline-edit:focus-visible {
+  border-block-end-color: currentColor;
+}
+
+.inline-input {
+  font: inherit;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+// Wide enough for a grouped figure and no wider: the description beside it
+// gives up whatever room this takes.
+.amount-input {
+  inline-size: 7em;
+  text-align: end;
+}
+
 // The description is what the reviewer checks each parsed row against before
-// committing the import, so it is the last thing that may be shortened.
+// committing the import, so it is the last thing that may be shortened. It
+// keeps the line of its own it had as a span — the badges above it must not
+// flow onto it — which is why it is not the inline-flex the amount trigger
+// is. Flex rather than block centres the text in the 40px the tap target
+// asks for, and fit-content stops the box (and the underline that marks it
+// as a control) from running the width of the column past a short name.
 .description-text {
-  display: block;
+  display: flex;
+  inline-size: fit-content;
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary, #222);

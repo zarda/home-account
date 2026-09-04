@@ -43,6 +43,7 @@
     @for (row of transactions; track row.id) {
       <div
         class="transaction-card"
+        [attr.data-row-id]="row.id"
         [class.duplicate]="row.isDuplicate"
         [class.selected]="row.selected"
       >
@@ -69,7 +70,26 @@
                   {{ 'import.receiptPhotoBadge' | translate:{ receipt: row.imageMetadata!.receiptId!, photos: receiptPhotos(row) } }}
                 </span>
               }
-              <span class="description-text">{{ row.description }}</span>
+              <!-- Read where it is written: the trigger swaps itself for the
+                   input, and every exit from the input goes back through it. -->
+              @if (isEditing(row, 'description')) {
+                <input
+                  class="inline-input description-input"
+                  type="text"
+                  [value]="row.description"
+                  (keydown.enter)="commitDescription(row, $event)"
+                  (keydown.escape)="cancelEdit(row)"
+                  (blur)="commitDescription(row, $event)"
+                  [attr.aria-label]="'common.description' | translate"
+                >
+              } @else {
+                <button
+                  type="button"
+                  class="description-text inline-edit"
+                  [attr.aria-label]="editDescriptionLabel(row)"
+                  (click)="startEdit(row, 'description')"
+                >{{ row.description }}</button>
+              }
             </div>
             <div class="amount-section" [class.income]="row.type === 'income'" [class.expense]="row.type === 'expense'">
               @if (needsVerification(row, 'amount')) {
@@ -81,7 +101,31 @@
                   [attr.aria-label]="verificationTooltip(row, 'amount')"
                 >error_outline</mat-icon>
               }
-              <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
+              @if (isEditing(row, 'amount')) {
+                <!-- The sign stays outside the field: `type` owns it, the
+                     toggle below is what changes it, and a minus typed here
+                     would flip a row where nothing said it had. -->
+                <span class="amount-sign" aria-hidden="true">{{ row.type === 'income' ? '+' : '-' }}</span>
+                <input
+                  class="inline-input amount-input"
+                  type="text"
+                  inputmode="decimal"
+                  [value]="row.amount"
+                  (keydown.enter)="commitAmount(row, $event)"
+                  (keydown.escape)="cancelEdit(row)"
+                  (blur)="commitAmount(row, $event)"
+                  [attr.aria-label]="'common.amount' | translate"
+                >
+              } @else {
+                <button
+                  type="button"
+                  class="inline-edit"
+                  [attr.aria-label]="editAmountLabel(row)"
+                  (click)="startEdit(row, 'amount')"
+                >
+                  <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
+                </button>
+              }
             </div>
           </div>
 

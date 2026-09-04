@@ -1,4 +1,16 @@
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  DestroyRef,
+  ElementRef,
+  EventEmitter,
+  Injector,
+  Input,
+  Output,
+  afterNextRender,
+  inject,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
@@ -20,7 +32,8 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
-import { datedToday, needsDateAnswer, withoutFieldConfidence } from '../../../../core/utils/import-review.utils';
+import { datedToday, needsDateAnswer, parseAmountInput, withoutFieldConfidence } from '../../../../core/utils/import-review.utils';
+import { isImeComposition } from '../../../../core/utils/keyboard.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -57,6 +70,10 @@ export class TransactionPreviewTableComponent {
   private currencyService = inject(CurrencyService);
   private currencySession = inject(CurrencyChoiceSessionService);
   private localeFormat = inject(LocaleFormatService);
+  private injector = inject(Injector);
+  private destroyRef = inject(DestroyRef);
+  private host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private cdr = inject(ChangeDetectorRef);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
   @Input() categories: Category[] = [];
@@ -507,6 +524,111 @@ export class TransactionPreviewTableComponent {
 
   private formattedDate(row: CategorizedImportTransaction): string {
     return this.localeFormat.formatDate(row.date);
+  }
+
+  /**
+   * Which field a row is being edited in, by row id — never a flag on the row
+   * itself, because committing an edit replaces the row and would drop the
+   * state the commit is still reading. Keyed the way fellBackEligible is, and
+   * surviving replaceRow for the same reason.
+   */
+  private editing = new Map<string, 'amount' | 'description'>();
+
+  // A plain method rather than a computed, for the reason selectedCount gives.
+  isEditing(row: CategorizedImportTransaction, field: 'amount' | 'description'): boolean {
+    return this.editing.get(row.id) === field;
+  }
+
+  /**
+   * Open the editor on a field and put the caret in it, so the tap that asked
+   * to edit is also the tap that starts typing.
+   */
+  startEdit(row: CategorizedImportTransaction, field: 'amount' | 'description'): void {
+    this.editing.set(row.id, field);
+    this.cdr.markForCheck();
+    this.focusWhenRendered(`[data-row-id="${CSS.escape(row.id)}"] .inline-input`);
+  }
+
+  /**
+   * Focus the element a swap is about to put on the card. The target does not
+   * exist until the swap has rendered, which is what afterNextRender waits
+   * for; a registration on a destroyed injector throws NG0911, which is what
+   * the guard is for. The card's own data-row-id scopes the query, because
+   * there is one of every editor per row inside the @for.
+   */
+  private focusWhenRendered(selector: string): void {
+    if (this.destroyRef.destroyed) return;
+    afterNextRender(
+      () => this.host.nativeElement.querySelector<HTMLElement>(selector)?.focus(),
+      { injector: this.injector }
+    );
+  }
+
+  /**
+   * Close the editor, leaving the row as it was. Clearing the state is the
+   * first thing every exit does: the input goes with it, and the blur that
+   * departure fires reaches the same commit handler, which reads the cleared
+   * state as "nothing is being edited" and stands down.
+   *
+   * A key that ends the edit hands focus back to the trigger that replaces
+   * the input, so a keyboard reviewer walking down the batch is not dropped
+   * at the document root by every correction — and the trigger they land on
+   * names the value as it now stands. A blur is the one exit that does not:
+   * focus is already going somewhere the reviewer chose, and pulling it back
+   * would trap them in the row.
+   */
+  private closeEdit(row: CategorizedImportTransaction, restoreFocus: boolean): void {
+    const field = this.editing.get(row.id);
+    this.editing.delete(row.id);
+    this.cdr.markForCheck();
+    if (restoreFocus && field) {
+      this.focusWhenRendered(`[data-row-id="${CSS.escape(row.id)}"] .${field}-section .inline-edit`);
+    }
+  }
+
+  cancelEdit(row: CategorizedImportTransaction): void {
+    this.closeEdit(row, true);
+  }
+
+  commitDescription(row: CategorizedImportTransaction, event: Event): void {
+    if (!this.editing.has(row.id)) return;
+    // ja and tc type through an IME, where Enter confirms the conversion
+    // rather than finishing the line — the same guard the saved-search label
+    // carries. The amount takes it too: an IME left in Japanese mode composes
+    // digits as well, and that Enter would end the edit mid-figure.
+    if (isImeComposition(event)) return;
+    const description = (event.target as HTMLInputElement).value.trim();
+    this.closeEdit(row, event.type === 'keydown');
+    // An emptied field is a reviewer starting over, not one asking for a row
+    // that reads as nothing in the list.
+    if (!description || description === row.description) return;
+    this.replaceRow(row, { description });
+  }
+
+  /**
+   * A hand-typed amount settles the figure: the grade goes with it, the same
+   * rule a date answer follows. Anything unreadable — or the figure already
+   * shown — closes the editor and changes nothing.
+   */
+  commitAmount(row: CategorizedImportTransaction, event: Event): void {
+    if (!this.editing.has(row.id)) return;
+    if (isImeComposition(event)) return;
+    const amount = parseAmountInput((event.target as HTMLInputElement).value);
+    this.closeEdit(row, event.type === 'keydown');
+    if (amount === null || amount === row.amount) return;
+    this.replaceRow(row, {
+      amount,
+      fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'amount'),
+    });
+  }
+
+  /** The trigger's name has to carry the value, which its own content states without saying what it is. */
+  editDescriptionLabel(row: CategorizedImportTransaction): string {
+    return this.translationService.t('import.editDescription', { description: row.description });
+  }
+
+  editAmountLabel(row: CategorizedImportTransaction): string {
+    return this.translationService.t('import.editAmount', { amount: this.formatAmount(row) });
   }
 
   updateNotes(): void {

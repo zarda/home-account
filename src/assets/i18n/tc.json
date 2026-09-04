@@ -1110,6 +1110,8 @@
     "datesToCheck": "繼續前請先確認 {{count}} 個日期",
     "datesToCheckTitle": "待確認的日期",
     "keepAllDates": "保留所有日期",
+    "editDescription": "編輯說明（{{description}}）",
+    "editAmount": "編輯金額（目前 {{amount}}）",
     "setCurrency": "變更貨幣（目前 {{currency}}）",
     "setCurrencyForSelected": "所選項目的貨幣",
     "removeLocation": "移除建議的地點",

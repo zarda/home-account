@@ -1185,6 +1185,8 @@
     },
     "datesToCheckTitle": "Dates to check",
     "keepAllDates": "Keep all dates",
+    "editDescription": "Edit description ({{description}})",
+    "editAmount": "Edit amount (currently {{amount}})",
     "setCurrency": "Change currency (currently {{currency}})",
     "setCurrencyForSelected": "Currency for selected",
     "removeLocation": "Remove suggested location",

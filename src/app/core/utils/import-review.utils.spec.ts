@@ -1,4 +1,4 @@
-import { datedToday, needsDateAnswer, withoutFieldConfidence } from './import-review.utils';
+import { datedToday, needsDateAnswer, parseAmountInput, withoutFieldConfidence } from './import-review.utils';
 import { CategorizedImportTransaction } from '../../models';
 
 /**
@@ -107,6 +107,62 @@ describe('import-review.utils', () => {
 
     it('leaves a confidently read date of today alone', () => {
       expect(needsDateAnswer(row({ fieldConfidence: { date: 0.95 } }), true, now)).toBeFalse();
+    });
+  });
+
+  describe('parseAmountInput', () => {
+    it('reads an English-grouped amount', () => {
+      expect(parseAmountInput('1,234.50')).toBe(1234.5);
+    });
+
+    it('ignores a currency symbol the reviewer left in place', () => {
+      // The field is seeded from the row's own number, but a reviewer
+      // retyping an amount off a receipt types what is printed on it.
+      expect(parseAmountInput('¥538')).toBe(538);
+    });
+
+    it('reads a lone comma as the decimal mark', () => {
+      expect(parseAmountInput('12,5')).toBe(12.5);
+    });
+
+    it('reads a European-grouped amount', () => {
+      // The comma is the decimal mark here, which makes every dot a group
+      // separator — the same string English grouping spells "1234.50".
+      expect(parseAmountInput('1.234,50')).toBe(1234.5);
+    });
+
+    it('never takes a sign from the text — type owns it', () => {
+      // The type toggle is the only control that decides income or expense;
+      // a minus typed into the amount would otherwise flip a row silently.
+      expect(parseAmountInput('-42')).toBe(42);
+    });
+
+    it('reads the full-width digits an IME leaves in the field', () => {
+      // ja and tc reviewers type with the IME on, and the receipts this
+      // editor exists for are routinely Japanese. Stripping to ASCII threw
+      // the whole figure away, so the editor closed on an unchanged amount
+      // with nothing to say the correction had been dropped.
+      expect(parseAmountInput('１２３')).toBe(123);
+      expect(parseAmountInput('１，２３４．５０')).toBe(1234.5);
+    });
+
+    it('refuses anything that is not a positive number', () => {
+      expect(parseAmountInput('')).toBeNull();
+      expect(parseAmountInput('abc')).toBeNull();
+      expect(parseAmountInput('0')).toBeNull();
+      expect(parseAmountInput('0.00')).toBeNull();
+    });
+
+    it('cancels rather than reading a prefix off grouping it cannot place', () => {
+      // `parseFloat` stops at the second separator and hands back what it
+      // read so far, so each of these used to come back a plausible figure
+      // that was not the one typed: the German "1.234.567" as 1.234, the
+      // lakh-grouped "1,23,456" as 1.23456. On a money field a cancel leaves
+      // the amount and its verify flag standing; a wrong number files
+      // silently and takes the flag with it.
+      expect(parseAmountInput('1.234.567')).toBeNull();
+      expect(parseAmountInput('1,23,456')).toBeNull();
+      expect(parseAmountInput('1,2,3')).toBeNull();
     });
   });
 });

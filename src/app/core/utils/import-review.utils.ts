@@ -2,8 +2,8 @@ import { CategorizedImportTransaction, FieldConfidence } from '../../models';
 import { dayKey } from './transaction-date.utils';
 
 /**
- * The review step's date question, kept pure so the card that asks it and
- * the wizard that gates Continue and Import on the answer cannot disagree.
+ * The review step's corrections, kept pure so the card that offers them and
+ * the wizard that gates Continue and Import on the answers cannot disagree.
  */
 
 /**
@@ -50,4 +50,48 @@ export function needsDateAnswer(
   now = new Date()
 ): boolean {
   return attention && row.selected && !row.dateReviewed && (!!row.dateAssumed || !datedToday(row.date, now));
+}
+
+/**
+ * A hand-typed amount, or `null` when nothing usable was typed.
+ *
+ * The reviewer is retyping a figure off a receipt, so the field takes what a
+ * receipt prints: a currency symbol, spaces, and either grouping convention.
+ * Full-width forms come first, because ja and tc reviewers type with the IME
+ * on and `\d` is ASCII: without the fold "１２３" strips to nothing and the
+ * correction is dropped without a word, on the locales whose receipts this
+ * editor was built for. A comma is a group separator only where a group can
+ * be — exactly three digits and then a boundary; otherwise it is the decimal
+ * mark, which makes every dot in the same string a separator (that is what
+ * tells "1.234,50" apart from "1,234.50"). `Number.parseFloat`, not
+ * `Number`: `Number('')` is 0, and an emptied field is a cancel rather than
+ * a free amount.
+ *
+ * What the shape does not read, it refuses. `parseFloat` takes a prefix and
+ * stops, so "1.234.567" would come back 1.234 and the lakh-grouped
+ * "1,23,456" 1.23456 — plausible figures nobody typed, written onto a money
+ * field whose verify flag the same commit drops. A cancel leaves both
+ * standing.
+ *
+ * The sign never comes from the text. `type` owns income against expense and
+ * the toggle beside the amount is the only control that changes it, so a
+ * minus typed here would flip a row where nothing said it had.
+ */
+export function parseAmountInput(raw: string): number | null {
+  const cleaned = raw
+    // The full-width ASCII block, folded whole: the digits, the comma, the
+    // dot and the minus all sit in it at a fixed 0xFEE0 offset.
+    .replace(/[！-～]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/[^\d.,-]/g, '');
+  const ungrouped = cleaned.replace(/,(?=\d{3}(?!\d))/g, '');
+  // Either every comma was a group separator or none was. One removed and
+  // another left behind is grouped by neither convention — "1,23,456" — and
+  // the survivor would otherwise be read as a decimal mark.
+  if (ungrouped !== cleaned && ungrouped.includes(',')) return null;
+  const normalized = ungrouped.includes(',')
+    ? ungrouped.replace(/\./g, '').replace(/,/g, '.')
+    : ungrouped;
+  if (!/^-?\d*\.?\d+$/.test(normalized)) return null;
+  const value = Math.abs(Number.parseFloat(normalized));
+  return Number.isFinite(value) && value > 0 ? value : null;
 }

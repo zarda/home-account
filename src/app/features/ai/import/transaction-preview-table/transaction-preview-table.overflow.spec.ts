@@ -406,6 +406,59 @@ describe('overflow guard: the import review card', () => {
     expect(gap).withContext('date and currency chips 6px apart, nothing between them').toBeCloseTo(6, 0);
   });
 
+  it('puts the description and the amount on controls without widening the card', () => {
+    // Both were spans; as triggers they have to meet the same 40px floor the
+    // chips meet and stay inside the clip — the description while wrapped to
+    // several lines, the amount while `appFitText` is still holding every
+    // digit of ¥1,234,567 on one.
+    const description = el('.description-section .inline-edit');
+    const amount = el('.amount-section .inline-edit');
+    for (const [name, trigger] of [['description', description], ['amount', amount]] as const) {
+      expect(trigger.tagName).withContext(`${name} is a control`).toBe('BUTTON');
+      expect(trigger.getBoundingClientRect().height)
+        .withContext(`${name} trigger tap target`)
+        .toBeGreaterThanOrEqual(40);
+      expect(withinWidthOf(clip, trigger)).withContext(`${name} trigger inside the clip`).toBeTrue();
+    }
+  });
+
+  it('marks both triggers as controls without waiting for a pointer', () => {
+    // Receipt import is the touch-first flow — the camera hands straight over
+    // to this card — and a touch device has neither :hover nor
+    // :focus-visible. Revealing the underline on those alone left the two
+    // fields pixel-identical to the spans they replaced on the very device
+    // the card is used on, while the chips beside them read as chips.
+    for (const selector of ['.description-section .inline-edit', '.amount-section .inline-edit']) {
+      const style = getComputedStyle(el(selector));
+      expect(style.borderBlockEndStyle).withContext(`${selector} underline`).toBe('dotted');
+      expect(style.borderBlockEndColor)
+        .withContext(`${selector} underline is visible before anything is hovered`)
+        .not.toBe('rgba(0, 0, 0, 0)');
+    }
+  });
+
+  it('keeps the card inside its 288px with either editor open', () => {
+    // The description editor is a full-width input and the amount editor a
+    // fixed 7em one on the row that already carries the widest figure this
+    // fixture has; either could push the top row past the card's edge.
+    for (const selector of ['.description-section .inline-edit', '.amount-section .inline-edit']) {
+      el(selector).click();
+      fixture.detectChanges();
+
+      const box = host.querySelector('.transaction-card .inline-input') as HTMLElement;
+      expect(box).withContext(`${selector} opened an input`).not.toBeNull();
+      expect(withinWidthOf(clip, box)).withContext(`${selector}'s input inside the clip`).toBeTrue();
+      expect(card.scrollWidth)
+        .withContext(`nothing hiding past the card's right edge while editing via ${selector}`)
+        .toBeLessThanOrEqual(card.clientWidth + 1);
+
+      // Escape rather than leaving it open: the next pass needs the other
+      // trigger back, and one row edits one field at a time.
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+    }
+  });
+
   it('never lets one chip\'s tap target reach into the row below', () => {
     // The chips wrap at 288px, and a hit box 14px taller than its chip is
     // exactly how a tap on the bottom edge of one tag ends up removing the

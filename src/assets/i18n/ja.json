@@ -1110,6 +1110,8 @@
     "datesToCheck": "続行する前に{{count}}件の日付を確認してください",
     "datesToCheckTitle": "確認が必要な日付",
     "keepAllDates": "すべての日付をそのままにする",
+    "editDescription": "説明を編集（{{description}}）",
+    "editAmount": "金額を編集（現在 {{amount}}）",
     "setCurrency": "通貨を変更（現在 {{currency}}）",
     "setCurrencyForSelected": "選択した行の通貨",
     "removeLocation": "提案された場所を削除",

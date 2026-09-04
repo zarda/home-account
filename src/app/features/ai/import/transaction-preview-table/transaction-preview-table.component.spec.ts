@@ -470,9 +470,13 @@ describe('TransactionPreviewTableComponent', () => {
       day.setDate(day.getDate() - 1);
       return day;
     };
+    // Every row is dated deliberately: the fixture's own dates are half of
+    // what the count means, and rows that all inherit one stale day would
+    // read the same whether the predicate looked at the date or not.
     const rows = (): CategorizedImportTransaction[] => [
       { ...createMockTransactions()[0], id: 'asked', date: yesterday(), fieldConfidence: { amount: 0.5, date: 0.9 } },
-      { ...createMockTransactions()[0], id: 'assumed', dateAssumed: true, dateImplausible: true, fieldConfidence: { date: 0.3 } },
+      { ...createMockTransactions()[0], id: 'assumed', date: new Date(), dateAssumed: true, dateImplausible: true, fieldConfidence: { date: 0.3 } },
+      { ...createMockTransactions()[0], id: 'today', date: new Date() },
       { ...createMockTransactions()[0], id: 'unselected', date: yesterday(), selected: false },
       { ...createMockTransactions()[0], id: 'answered', date: yesterday(), dateReviewed: true },
       { ...createMockTransactions()[0], id: 'outside', date: yesterday() },
@@ -480,10 +484,13 @@ describe('TransactionPreviewTableComponent', () => {
 
     beforeEach(() => {
       component.transactions = rows();
-      component.dateAttentionIds = new Set(['asked', 'assumed', 'unselected', 'answered']);
+      component.dateAttentionIds = new Set(['asked', 'assumed', 'today', 'unselected', 'answered']);
     });
 
     it('counts the selected rows under attention still owing an answer', () => {
+      // Two of the three attention rows that are selected and unanswered:
+      // the one dated yesterday and the assumed one. The third is dated
+      // today and was read, so nobody is being asked about it.
       expect(component.unansweredCount()).toBe(2);
     });
 
@@ -513,10 +520,12 @@ describe('TransactionPreviewTableComponent', () => {
       expect(assumed.dateAssumed).toBeUndefined();
       expect(assumed.dateImplausible).toBeUndefined();
       expect(assumed.fieldConfidence).withContext('the date was the only grade').toBeUndefined();
-      // Untouched by identity: not selected, already answered, outside attention.
-      expect(byId.get('unselected')).toBe(before[2]);
-      expect(byId.get('answered')).toBe(before[3]);
-      expect(byId.get('outside')).toBe(before[4]);
+      // Untouched by identity: dated today, not selected, already answered,
+      // outside attention.
+      expect(byId.get('today')).toBe(before[2]);
+      expect(byId.get('unselected')).toBe(before[3]);
+      expect(byId.get('answered')).toBe(before[4]);
+      expect(byId.get('outside')).toBe(before[5]);
       expect(component.unansweredCount()).toBe(0);
     });
   });
@@ -1299,6 +1308,302 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     });
   });
 
+  /**
+   * The description and the amount are read where they are written, so these
+   * cases go through the real controls: a trigger that swaps itself for an
+   * input, and the input's own Enter, Escape and blur.
+   */
+  describe('editing the description and the amount', () => {
+    const trigger = (field: 'description' | 'amount') =>
+      fixture.nativeElement.querySelector(
+        field === 'description' ? '.description-section .inline-edit' : '.amount-section .inline-edit'
+      ) as HTMLButtonElement;
+    const input = (field: 'description' | 'amount') =>
+      fixture.nativeElement.querySelector(`.${field}-input`) as HTMLInputElement | null;
+
+    function render(row: CategorizedImportTransaction): void {
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    /** Typing, then the key that ends the edit. */
+    function type(field: 'description' | 'amount', text: string, key = 'Enter'): void {
+      const box = input(field)!;
+      box.value = text;
+      box.dispatchEvent(new KeyboardEvent('keydown', { key }));
+    }
+
+    it('swaps the description for a focused input holding what it said', () => {
+      render(makeRow());
+
+      trigger('description').click();
+      fixture.detectChanges();
+
+      const box = input('description')!;
+      expect(box.value).toBe('Coffee Shop');
+      expect(document.activeElement)
+        .withContext('the input takes the tap that opened it, so typing starts straight away')
+        .toBe(box);
+      expect(trigger('description')).withContext('the trigger is gone while editing').toBeNull();
+    });
+
+    it('commits a new description on Enter, by identity, and puts the text back', () => {
+      const row = makeRow();
+      render(row);
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      type('description', '  Kissaten Ueshima  ');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0][0]).withContext('a new row, not the one the parent holds').not.toBe(row);
+      expect(emitted[0][0].description).withContext('trimmed').toBe('Kissaten Ueshima');
+      expect(row.description).withContext('the input object is untouched').toBe('Coffee Shop');
+      expect(input('description')).withContext('the editor closes on commit').toBeNull();
+      expect(trigger('description').textContent?.trim()).toBe('Kissaten Ueshima');
+    });
+
+    it('does not commit a second time on the blur that follows Enter', () => {
+      // Enter removes the input, and the blur it takes with it arrives at the
+      // same handler: without the guard the row is replaced twice, and Task
+      // 5's duplicate re-check would run on a row that changed nothing.
+      // replaceRow's own indexOf is the second line of defence here — the row
+      // this listener still closes over is no longer in the list — so the
+      // guard itself is pinned by the Escape and cancel cases below, where
+      // the row is still there for a stray blur to overwrite.
+      render(makeRow());
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      const box = input('description')!;
+      box.value = 'Kissaten';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      box.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+    });
+
+    it('leaves the row alone on Escape, and on the blur Escape takes with it', () => {
+      const row = makeRow();
+      render(row);
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      const box = input('description')!;
+      box.value = 'Something else';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      // The departing input blurs into the same commit handler while the row
+      // is still in the list, so nothing but the cleared state stands between
+      // that blur and filing the text the reviewer just abandoned.
+      box.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(input('description')).withContext('the editor closes on Escape too').toBeNull();
+      expect(trigger('description').textContent?.trim()).toBe('Coffee Shop');
+    });
+
+    it('treats an emptied description as a cancel', () => {
+      // A row with no description reads as nothing at all in the list; the
+      // reviewer who cleared the field meant to start over, not to erase it.
+      render(makeRow());
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      type('description', '   ');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(trigger('description').textContent?.trim()).toBe('Coffee Shop');
+    });
+
+    it('emits nothing when the description comes back the same', () => {
+      render(makeRow());
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      type('description', 'Coffee Shop');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+    });
+
+    it('leaves the Enter that confirms an IME composition to the composition', () => {
+      // ja and tc type through an IME, where the first Enter accepts the
+      // conversion: committing on it would file half of the word the
+      // reviewer was writing. Same guard the saved-search label carries.
+      render(makeRow());
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      const box = input('description')!;
+      box.value = '喫茶';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(input('description')).withContext('still editing').not.toBeNull();
+    });
+
+    it('names the amount trigger by the figure it is showing', () => {
+      render(makeRow({ amount: 538, currency: 'JPY' }));
+
+      expect(trigger('amount').getAttribute('aria-label'))
+        .toBe('import.editAmount:{"amount":"JPY 538"}');
+    });
+
+    it('commits a typed amount and stops doubting the figure', () => {
+      // An amount the reviewer typed is nobody's doubt any more — the same
+      // rule the date answer follows.
+      const row = makeRow({ amount: 5.5, fieldConfidence: { amount: 0.4, date: 0.3 } });
+      render(row);
+      expect(fixture.nativeElement.querySelector('.amount-section .verify-flag'))
+        .withContext('the amount starts flagged')
+        .not.toBeNull();
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1,234.50');
+      fixture.detectChanges();
+
+      expect(emitted[0][0].amount).toBe(1234.5);
+      expect(emitted[0][0]).not.toBe(row);
+      expect(row.amount).withContext('the input object is untouched').toBe(5.5);
+      expect(emitted[0][0].fieldConfidence)
+        .withContext('only the amount\'s grade goes; the object is exactly what remains')
+        .toEqual({ date: 0.3 });
+      expect(fixture.nativeElement.querySelector('.amount-section .verify-flag'))
+        .withContext('and the flag with it')
+        .toBeNull();
+    });
+
+    it('keeps the amount and its grade when nothing usable was typed', () => {
+      const row = makeRow({ amount: 5.5, fieldConfidence: { amount: 0.4 } });
+      render(row);
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', 'abc');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(component.transactions[0].amount).toBe(5.5);
+      expect(component.transactions[0].fieldConfidence).toEqual({ amount: 0.4 });
+      expect(fixture.nativeElement.querySelector('.amount-section .verify-flag'))
+        .withContext('still flagged, because nothing was answered')
+        .not.toBeNull();
+    });
+
+    it('emits nothing when the amount comes back the same', () => {
+      render(makeRow({ amount: 1234.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1,234.50');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+    });
+
+    it('takes no sign from the amount field — the type toggle owns it', () => {
+      const row = makeRow({ amount: 5.5, type: 'expense' });
+      render(row);
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '-42');
+      fixture.detectChanges();
+
+      expect(emitted[0][0].amount).toBe(42);
+      expect(emitted[0][0].type).toBe('expense');
+    });
+
+    it('leaves the amount alone on Escape, and on the blur Escape takes with it', () => {
+      const row = makeRow({ amount: 5.5, fieldConfidence: { amount: 0.4 } });
+      render(row);
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      const box = input('amount')!;
+      box.value = '99';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      box.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(component.transactions[0].amount).toBe(5.5);
+      expect(component.transactions[0].fieldConfidence)
+        .withContext('an abandoned edit settles nothing, so the grade stays')
+        .toEqual({ amount: 0.4 });
+    });
+
+    it('leaves the Enter that confirms an IME composition alone in the amount too', () => {
+      // A reviewer who left the IME in Japanese mode composes digits through
+      // it as well, and that first Enter is the one that confirms the
+      // conversion — committing on it takes the field away mid-figure.
+      render(makeRow({ amount: 5.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      const box = input('amount')!;
+      box.value = '１２３';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(input('amount')).withContext('still editing').not.toBeNull();
+    });
+
+    it('hands focus back to the trigger the editor replaced', () => {
+      // Opening an editor takes focus; closing one has to give it back, or a
+      // keyboard reviewer is dropped at the document root by every correction
+      // and has to walk the whole wizard again to reach the next row.
+      render(makeRow());
+
+      trigger('description').click();
+      fixture.detectChanges();
+      type('description', 'Kissaten');
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('after a commit').toBe(trigger('description'));
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '99', 'Escape');
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('after a cancel').toBe(trigger('amount'));
+    });
+
+    it('edits one row at a time', () => {
+      // The state is a map keyed by row id, so an edit opened on one row must
+      // not open an input on every other card in the batch.
+      component.transactions = [makeRow({ id: 'a' }), makeRow({ id: 'b', description: 'Bakery' })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelectorAll('.description-section .inline-edit')[1] as HTMLElement).click();
+      fixture.detectChanges();
+
+      const boxes = fixture.nativeElement.querySelectorAll('.description-input') as NodeListOf<HTMLInputElement>;
+      expect(boxes.length).toBe(1);
+      expect(boxes[0].value).toBe('Bakery');
+    });
+  });
+
   describe('the bulk keep on the header', () => {
     const keepAll = () => fixture.nativeElement.querySelector('button.keep-dates') as HTMLButtonElement | null;
     const questionChips = () =>
@@ -1310,7 +1615,10 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     };
 
     it('appears only with something to answer', () => {
-      component.transactions = [makeRow({ id: 'old', date: yesterday() }), makeRow({ id: 'today' })];
+      // Dated today on purpose: makeRow's own default is a 2024 day, so a row
+      // named for today has to be given one or it is a second not-today row
+      // and proves nothing about the ones that are asked.
+      component.transactions = [makeRow({ id: 'old', date: yesterday() }), makeRow({ id: 'today', date: new Date() })];
       component.categories = [];
       fixture.detectChanges();
       expect(keepAll()).withContext('attention off: nothing is asked').toBeNull();
@@ -1319,6 +1627,9 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       fixture.componentRef.setInput('dateAttentionIds', new Set(['old', 'today']));
       fixture.detectChanges();
       expect(keepAll()).withContext('attention on: the not-today row is asked').not.toBeNull();
+      expect(component.unansweredCount())
+        .withContext('and only that row — today\'s is not a question')
+        .toBe(1);
       expect(keepAll()!.textContent).toContain('import.keepAllDates');
     });
 
