@@ -52,10 +52,11 @@ lsof -a -p $(pgrep -f 'ng serve' | head -1) -d cwd
 Then confirm the *served bundle* carries the branch's code, by looking for
 something the branch added rather than trusting the checkout. For the note
 translation and weekly recap surfaces that is the note button on a
-Transactions row and the weekly-recap switch in Settings → Profile; for
-another branch it is whatever that branch added. A stale `.angular/cache`, or
-a server started before the checkout switched, shows yesterday's app with
-today's confidence.
+Transactions row and the weekly-recap switch in Settings → Profile; for the
+import review corrections it is the date button and the *keep it?* question
+chip on a scanned row's review card; for another branch it is whatever that
+branch added. A stale `.angular/cache`, or a server started before the
+checkout switched, shows yesterday's app with today's confidence.
 
 **2. The running bundle names the expected project.** Fetch every script the
 page actually loaded and read the project id out of it:
@@ -102,8 +103,8 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full window,
 and a pane behaves differently enough to cost a run before it is understood.
-None of these is a property of the app; all four have produced a false
-failure.
+None of these is a property of the app; four of the five have produced a
+false failure, and the fifth stops a run before it starts.
 
 - **Pointer input can stall under viewport emulation, and stay stalled.** With
   an emulated width in force, clicks stop landing and go on not landing until
@@ -120,6 +121,12 @@ failure.
   to a third-party host and can be missing from the log entirely, so its
   absence proves nothing. The translated text on screen is the proof the
   provider answered.
+- **A pane may have no way to open a file.** The import journeys start by
+  handing the wizard a receipt, and a pane with no file picker cannot open
+  one — the dropzone's own click leads nowhere. Hand the file to the
+  dropzone's hidden input from the page console instead; the recipe is under
+  [Fixtures](#fixtures). Where the browser can open a file directly, do that
+  on the same input.
 
 The console's own quirk is check 3 above: entries persist across reloads, so
 only the difference counts.
@@ -127,13 +134,21 @@ only the difference counts.
 ## What a run may touch
 
 Three writes are authorised. Each is put back before the run ends, and the
-restore is *confirmed on screen*, not assumed.
+restore is *confirmed on screen*, not assumed. A fourth action writes nothing
+at all and is listed with them because it still costs the account a real
+provider call.
 
 | Action | What it writes | How it is put back |
 |---|---|---|
 | Translating a note | Nothing. A provider call under the account's own key; the answer lives in the component and the service's in-memory cache, and both are gone on reload | Nothing to undo |
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
+| Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
+
+The failed-attempt record is written only by the attempt's `failed` and the
+import's own record only by `confirmImport`, so an extraction left
+unconfirmed leaves nothing behind — which is why the import journeys end by
+reading Import History and the Transactions list and finding them unchanged.
 
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
@@ -153,6 +168,50 @@ per account document, so they are not undone by switching the preference off:
 a dismissal left behind opens the user's next real week already dismissed, and
 a narrative left cached serves them the write-up this run paid for.
 
+## Fixtures
+
+The import journeys need a receipt, and a real one carries a real merchant, a
+real card and a real day. The repo renders its own instead:
+
+```bash
+node docs/model-probe/render.mjs
+```
+
+One PNG per case lands in `docs/model-probe/receipts/`. They are derived and
+gitignored (`docs/model-probe/.gitignore`), so none of them is ever
+committed; the markup they come from is. Rendering borrows the Chromium the
+screenshot harness already installed under `docs/ui-audit/tools`, so the
+folder needs nothing of its own.
+
+The journeys below use `receipts/jp.png`: a Japanese convenience-store
+receipt printed **2026年8月14日**, total **¥538**. A past day read confidently
+and graded high is exactly the case nothing flagged before this branch — the
+row arrives dated August 14th, sure of itself, and used to be imported that
+way without a word. `cropped.png` is the second case when one is wanted: the
+same long receipt cut off mid-item, with no printed total, so the amount is
+summed from the items and stamped with the review grade that fires the amount
+flag.
+
+`jp.png` prints its shop's address, so its row carries a location of its own;
+the country-only chip needs a receipt with no address on it and does not
+appear in this run.
+
+**Feeding the dropzone.** From the page console, with `B64` from
+`base64 -i docs/model-probe/receipts/jp.png`:
+
+```js
+const bytes = Uint8Array.from(atob(B64), c => c.charCodeAt(0));
+const file = new File([bytes], 'jp.png', { type: 'image/png' });
+const dt = new DataTransfer(); dt.items.add(file);
+const input = document.querySelector('app-file-dropzone input[type=file]');
+input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+```
+
+The dropzone reads `input.files` on `change`
+(`FileDropzoneComponent.onFileSelect`), and `.png` is among the wizard's
+accepted types, so this is the same path the file picker takes. Where the
+browser can open a file directly, use it on that same input.
+
 ## The journeys
 
 | # | Journey | What only a real browser can show | Screenshots |
@@ -164,6 +223,9 @@ a narrative left cached serves them the write-up this run paid for.
 | 5 | The lens in the edit form | The router crossing from list to form, and the lens resetting under a live control | `05-form-lens.png`, `05-form-translated.png`, `05-form-reset.png` |
 | 6 | Weekly recap | A real preference write, and the card reading real last-week rows through the deployed rules | `06-recap-desktop.png`, `06-recap-phone.png` |
 | 7 | Translation provider select | The preference surviving a reload as a real document read | `07-provider-select.png` |
+| 8 | Review: a receipt dated before today | A real receipt read by the real provider, and the date question that holds Continue | `08-date-question.png`, `08-date-kept.png`, `08-date-picker.png` |
+| 9 | Review: inline corrections | The card's editors under a real pointer, and the duplicate re-check a correction fires | `09-inline-edits.png` |
+| 10 | Review at phone width | The review card at 390px with a question standing and an editor open | `10-review-phone.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -275,6 +337,105 @@ original value.
 **Precondition:** the Provider Preferences card only renders when more than
 one provider is configured. With a single key there is nothing to choose and
 the journey is skipped rather than faked.
+
+### 8. Review: a receipt dated before today
+
+Open the wizard: the Add menu's **Import photos**, or `/import/file` typed in.
+The route is a child of the layout route, a page of its own — `/ai` is the
+sibling settings page, not a parent of it.
+
+Feed `jp.png` to the dropzone as [Fixtures](#fixtures) describes → *What are
+these images?* appears with **Receipts** already chosen (a statement would
+keep one row per line instead of collapsing the receipt into one transaction)
+→ **Process with AI** → the processing step runs against the real provider →
+**Continue** → Review.
+
+**Pass:** the row's date button is amber, reading *Aug 14, 2026* — the date in
+the app's own language — with the warning glyph in place of the calendar one
+and no caret: it opens a modal picker and says so on `aria-haspopup="dialog"`,
+while the currency chip beside it is the one that wears a caret for its menu.
+The question chip *Dated Aug 14, 2026 — keep it?* sits in the card's extras,
+bordered amber; hover the flag or the chip's Keep half and the reason reads
+*This receipt is dated Aug 14, 2026, not today. A wrong day files it where you
+will not see it — keep it, or pick another day.* Below the card the hint
+*Check 1 date before continuing* stands where Continue is disabled.
+
+Tap **Keep**: the chip goes, the date button turns green and swaps the glyph
+for a check, its name now leading with *Date checked*, the hint goes, and
+Continue enables. The header's **Keep all dates** answers every row still
+asked in one tap; it is there only while a question is, so on a single
+receipt it leaves with the first Keep.
+
+On a re-run, take the picker first: the chip's calendar button — and the date
+button itself — opens the touch picker on August 2026 with the 14th active.
+Pick today: the button reads today's date, checked, and the question is
+settled the same way Keep settles it, because a picked day and a kept day
+clear the same marks.
+
+Three shots: the question standing, the row after Keep, the picker open.
+
+The confirm step has a *Dates to check* card for the same count, but it is
+reachable only through the camera hand-off's non-linear stepper. A run that
+starts at the dropzone never sees it, and its absence is not a failure.
+
+### 9. Review: inline corrections
+
+The same review, on the same row. Every editor here is a trigger that swaps
+itself for an input and swaps back on the way out, so nothing is committed by
+the act of opening one.
+
+- **The amount.** Tap it → the field opens with the caret already in it and
+  the sign left outside, where the type toggle owns it → type `540` → Enter →
+  the row reads *-¥540*, an amount flag beside it is gone (a hand-typed
+  figure settles the reading), and focus is back on the amount trigger, which
+  now names the new value. Escape leaves the figure alone.
+- **The description.** Tap it → edit → Enter. An emptied field is a reviewer
+  starting over, not a row that reads as nothing: it closes and changes
+  nothing.
+- **The category.** The chip beside the currency opens the category menu →
+  pick another → the chip's icon, name and confidence dot all follow the
+  choice, the dot going green because the reviewer's own pick is the confident
+  one.
+- **Notes.** The **Notes** button under the card opens a textarea with the
+  caret in it; type, then click away — the note is filed on the way out, not
+  keystroke by keystroke.
+
+An edit to the date, amount, type or description sends that row back through
+the duplicate check. A verdict of *Duplicate* deselects the row and the
+badge's × (*Not a duplicate — import it*) overrules it; a re-check that cannot
+reach history says so once, in a snackbar — *Couldn't re-check for duplicates
+— the earlier verdict stands.* Neither is guaranteed with a one-receipt
+fixture against a real account: they are what to recognise if they appear, not
+part of the pass.
+
+Leave by the review step's **Back**, then the wizard's own back arrow to
+Transactions. The processing step behind the review offers Continue and
+nothing else once it has succeeded, so the stepper's header is the only way
+further back — and neither route imports anything.
+
+**Pass:** every correction shows on the card, and nothing reached the account
+— Transactions is unchanged and `/import/history` has no new run. Import is
+never pressed.
+
+One shot: the card carrying the corrections.
+
+### 10. Review at phone width
+
+390px, or the pane's own width where it is already narrower — see
+[Panes and viewports](#panes-and-viewports). The same review, with the
+question chip standing and an editor open.
+
+**Pass:** nothing spills sideways. With the editor open, in the console:
+
+```js
+document.documentElement.scrollWidth === document.documentElement.clientWidth;
+```
+
+`true`. Below about 342px the date and currency chips stop sharing a line and
+stack one per line; that is the meta row wrapping as it is built to, not a
+failure. The chips and the editors keep their 40px tap targets at every width.
+
+One shot: the review card, question chip and open editor together.
 
 ## Evidence
 
