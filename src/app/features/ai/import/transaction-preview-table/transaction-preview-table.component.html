@@ -10,6 +10,12 @@
       </mat-checkbox>
     </div>
     <div class="header-right">
+      @if (unansweredCount() > 0) {
+        <button type="button" class="keep-dates" (click)="keepAllDates()">
+          <mat-icon aria-hidden="true">event</mat-icon>
+          <span>{{ 'import.keepAllDates' | translate }}</span>
+        </button>
+      }
       @if (selectedCount() > 0) {
         <button type="button" class="bulk-currency" [matMenuTriggerFor]="bulkCurrencyMenu">
           <mat-icon aria-hidden="true">attach_money</mat-icon>

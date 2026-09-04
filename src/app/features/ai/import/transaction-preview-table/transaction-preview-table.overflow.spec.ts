@@ -308,6 +308,10 @@ describe('overflow guard: the import review card', () => {
     expect(el('.bulk-currency').getBoundingClientRect().height)
       .withContext('bulk currency button tap target')
       .toBeGreaterThanOrEqual(40);
+    // Rendered because r2 is a selected receipt row dated another day.
+    expect(el('.keep-dates').getBoundingClientRect().height)
+      .withContext('keep all dates button tap target')
+      .toBeGreaterThanOrEqual(40);
 
     // The first `.extra-remove` in the strip is the date question's change
     // button now; it carries both classes, so it wears exactly this box.
@@ -470,6 +474,9 @@ describe('overflow guard: the import review card', () => {
       .toBeLessThanOrEqual(header.clientWidth + 1);
     expect(withinWidthOf(clip, el('.bulk-currency')))
       .withContext('bulk currency button inside the clip')
+      .toBeTrue();
+    expect(withinWidthOf(clip, el('.keep-dates')))
+      .withContext('keep all dates button inside the clip')
       .toBeTrue();
     expect(withinWidthOf(clip, el('.selected-badge')))
       .withContext('count badge inside the clip')

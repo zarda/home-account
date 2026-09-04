@@ -461,6 +461,66 @@ describe('TransactionPreviewTableComponent', () => {
     });
   });
 
+  describe('the bulk date answer', () => {
+    // A trip's worth of receipts are all dated on their own days, and the
+    // dates are usually right: one Keep for every row still asked, settled
+    // exactly the way the single Keep settles a row.
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+    const rows = (): CategorizedImportTransaction[] => [
+      { ...createMockTransactions()[0], id: 'asked', date: yesterday(), fieldConfidence: { amount: 0.5, date: 0.9 } },
+      { ...createMockTransactions()[0], id: 'assumed', dateAssumed: true, dateImplausible: true, fieldConfidence: { date: 0.3 } },
+      { ...createMockTransactions()[0], id: 'unselected', date: yesterday(), selected: false },
+      { ...createMockTransactions()[0], id: 'answered', date: yesterday(), dateReviewed: true },
+      { ...createMockTransactions()[0], id: 'outside', date: yesterday() },
+    ];
+
+    beforeEach(() => {
+      component.transactions = rows();
+      component.dateAttentionIds = new Set(['asked', 'assumed', 'unselected', 'answered']);
+    });
+
+    it('counts the selected rows under attention still owing an answer', () => {
+      expect(component.unansweredCount()).toBe(2);
+    });
+
+    it('counts nothing outside the attention set', () => {
+      // A CSV batch is never asked, so its header offers no bulk Keep.
+      component.dateAttentionIds = new Set();
+      expect(component.unansweredCount()).toBe(0);
+    });
+
+    it('keeps exactly the rows still asked, and leaves every other row by identity', () => {
+      const before = component.transactions;
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.keepAllDates();
+
+      expect(emitted.length).toBe(1);
+      const byId = new Map(emitted[0].map(t => [t.id, t]));
+      const asked = byId.get('asked')!;
+      expect(asked.date).withContext('kept, not moved').toBe(before[0].date);
+      expect(asked.dateReviewed).toBeTrue();
+      expect(asked.dateAssumed).toBeUndefined();
+      expect(asked.dateImplausible).toBeUndefined();
+      expect(asked.fieldConfidence).withContext('only the date\'s grade goes').toEqual({ amount: 0.5 });
+      const assumed = byId.get('assumed')!;
+      expect(assumed.dateReviewed).toBeTrue();
+      expect(assumed.dateAssumed).toBeUndefined();
+      expect(assumed.dateImplausible).toBeUndefined();
+      expect(assumed.fieldConfidence).withContext('the date was the only grade').toBeUndefined();
+      // Untouched by identity: not selected, already answered, outside attention.
+      expect(byId.get('unselected')).toBe(before[2]);
+      expect(byId.get('answered')).toBe(before[3]);
+      expect(byId.get('outside')).toBe(before[4]);
+      expect(component.unansweredCount()).toBe(0);
+    });
+  });
+
   describe('row edits', () => {
     const rows = () => [
       {
@@ -1236,6 +1296,47 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(questionChips().length).withContext('selected: the question').toBe(1);
       expect(fixture.nativeElement.querySelector('.date-check .extra-text')?.textContent?.trim())
         .toBe(`import.dateNotTodayKeep:{"date":"${formatted(row)}"}`);
+    });
+  });
+
+  describe('the bulk keep on the header', () => {
+    const keepAll = () => fixture.nativeElement.querySelector('button.keep-dates') as HTMLButtonElement | null;
+    const questionChips = () =>
+      fixture.nativeElement.querySelectorAll('.extra-chip.date-check') as NodeListOf<HTMLElement>;
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+
+    it('appears only with something to answer', () => {
+      component.transactions = [makeRow({ id: 'old', date: yesterday() }), makeRow({ id: 'today' })];
+      component.categories = [];
+      fixture.detectChanges();
+      expect(keepAll()).withContext('attention off: nothing is asked').toBeNull();
+
+      // setInput, not an instance assignment: the component is OnPush.
+      fixture.componentRef.setInput('dateAttentionIds', new Set(['old', 'today']));
+      fixture.detectChanges();
+      expect(keepAll()).withContext('attention on: the not-today row is asked').not.toBeNull();
+      expect(keepAll()!.textContent).toContain('import.keepAllDates');
+    });
+
+    it('clicking it answers every row still asked, and the button goes with the questions', () => {
+      component.transactions = [makeRow({ id: 'old', date: yesterday() }), makeRow({ id: 'assumed', dateAssumed: true })];
+      component.categories = [];
+      component.dateAttentionIds = new Set(['old', 'assumed']);
+      fixture.detectChanges();
+      expect(questionChips().length).toBe(2);
+      const emitted = emissions();
+
+      keepAll()!.click();
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.dateReviewed)).toEqual([true, true]);
+      expect(keepAll()).toBeNull();
+      expect(questionChips().length).toBe(0);
     });
   });
 });

@@ -1179,6 +1179,12 @@
     "keepDate": "Keep {{date}}",
     "changeDate": "Change date (currently {{date}}) — tap to pick another day",
     "dateReviewed": "Date checked",
+    "datesToCheck": {
+      "one": "Check 1 date before continuing",
+      "other": "Check {{count}} dates before continuing"
+    },
+    "datesToCheckTitle": "Dates to check",
+    "keepAllDates": "Keep all dates",
     "setCurrency": "Change currency (currently {{currency}})",
     "setCurrencyForSelected": "Currency for selected",
     "removeLocation": "Remove suggested location",

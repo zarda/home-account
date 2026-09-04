@@ -33,6 +33,7 @@ import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/r
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
+import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
 
 @Component({
   selector: 'app-import-wizard',
@@ -116,6 +117,18 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   );
   extractedTransactions = signal<CategorizedImportTransaction[]>([]);
   selectedTransactionIds = signal<Set<string>>(new Set());
+  /**
+   * The rows a receipt reader produced, by id: the ones whose date is a
+   * question the reviewer answers before Continue and Import enable
+   * (needsDateAnswer). Per row, not a batch bit — one dropzone pick can put
+   * a photo and a CSV in the same batch, and the CSV's historical rows are
+   * never a question. Statement screenshots stay out for the same reason a
+   * CSV does: every row of one is dated in the past, and a question on each
+   * would train the reviewer to answer without looking. Rebuilt per batch;
+   * the partial-import recovery keeps it, because a failed row keeps its id
+   * and still owes its answer unless it already gave one.
+   */
+  receiptRowIds = signal<ReadonlySet<string>>(new Set());
   duplicateChecks = signal<DuplicateCheck[]>([]);
   processingError = signal<string | null>(null);
   /** Set when the app raised the error itself and can say it in the user's language. */
@@ -168,7 +181,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     !this.processingError() &&
     this.selectedFiles().length > 0
   );
-  reviewComplete = computed(() => this.selectedTransactionIds().size > 0);
+  /**
+   * Selected receipt rows still owing a date answer. "Today" is read at
+   * recompute time, so a review left open across midnight is judged
+   * against the day it was opened on until a row changes — accepted, since
+   * every answer changes a row.
+   */
+  unansweredDates = computed(() => {
+    const ids = this.receiptRowIds();
+    return this.extractedTransactions().filter(t => needsDateAnswer(t, ids.has(t.id))).length;
+  });
+  // The linear stepper refuses next() on an incomplete step. The camera
+  // hand-off's stepper is not linear and lets the header jump straight to
+  // Confirm, which is why the Import button carries the same guard itself.
+  reviewComplete = computed(() =>
+    this.selectedTransactionIds().size > 0 && this.unansweredDates() === 0
+  );
 
   selectedCount = computed(() => {
     return this.extractedTransactions().filter(t => t.selected).length;
@@ -293,6 +321,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // Populate the transactions
         this.extractedTransactions.set(result.transactions);
         this.duplicateChecks.set(result.duplicates);
+        // This door only ever carries receipts.
+        this.receiptRowIds.set(new Set(result.transactions.map(t => t.id)));
 
         // Auto-select non-duplicates
         const nonDuplicateIds = new Set(
@@ -338,6 +368,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.processingError.set(null);
     this.answerIncomplete.set(false);
     this.extractedTransactions.set([]);
+    this.receiptRowIds.set(new Set());
     this.processedBatches = [];
     this.imageDiagnostics = null;
 
@@ -370,6 +401,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         }
         this.extractedTransactions.update(txns => [...txns, ...result.transactions]);
         this.duplicateChecks.update(checks => [...checks, ...result.duplicates]);
+        if (this.imageKind() === 'receipt') {
+          this.receiptRowIds.set(new Set(result.transactions.map(t => t.id)));
+        }
         this.processedBatches.push({
           source: result.source,
           fileType: result.fileType,

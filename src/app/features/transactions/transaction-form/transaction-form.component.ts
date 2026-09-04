@@ -67,6 +67,7 @@ import { countryForCoordinates, currencyForCountry } from '../../../core/utils/c
 import { locationSlot } from '../../../core/utils/import-dto.utils';
 import { countryDisplayName, currencyReasonKey, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
 import { readCountryCode } from '../../../core/utils/receipt-extraction.utils';
+import { datedToday } from '../../../core/utils/import-review.utils';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
@@ -231,6 +232,18 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
   /** How clearly the scan read the amount and date, when it could say. */
   scanFieldConfidence = signal<FieldConfidence | null>(null);
+
+  /**
+   * The date the last scan put in the field, held until the user moves the
+   * date to another day or the scan is undone. A scanned date on another
+   * day than today is flagged beside the field (shouldVerifyField) and
+   * nothing more: the field is already under the user's hand, so the
+   * import review's gate would only be in the way here. Not resolved the
+   * way the import path resolves its dates — a doubted reading lands here
+   * as read and only a missing date falls to now — so a scanned date can
+   * be both doubted and not today.
+   */
+  scanDate = signal<Date | null>(null);
 
   /**
    * A currency the receipt did not state, offered from the ladder in
@@ -569,6 +582,12 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       }
     });
 
+    // A date moved to another day is the user's own answer about the day,
+    // and the scan's claim ends there; the same day re-entered is not.
+    this.form.get('date')!.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(value => this.onDateEdited(value));
+
     // Setup AI category suggestion
     this.setupCategorySuggestion();
   }
@@ -859,12 +878,17 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
 
       // Auto-fill form with extracted data
       this.ensureCurrencyListed(primary.currency);
+      const scannedDate = primary.date || new Date();
       this.form.patchValue({
         amount: primary.amount > 0 ? primary.amount : '',
         currency: primary.currency || this.form.get('currency')?.value,
         description: primary.description || '',
-        date: primary.date || new Date(),
+        date: scannedDate,
       });
+      // After the patch, not before: the patch fires onDateEdited through
+      // valueChanges, and the day it carries is this scan's own, not the
+      // user moving the date.
+      this.scanDate.set(scannedDate);
 
       // The itemized receipt body is assembled upstream, which already falls
       // back to the item lines when the model reproduced no receipt text.
@@ -928,6 +952,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       // the previous scan made no longer describes anything on the form.
       this.filledByScan = false;
       this.scanFieldConfidence.set(null);
+      this.scanDate.set(null);
       this.suggestedCurrency.set(null);
       this.suggestedCoordinates.set(null);
       this.scanCurrencyFellBack = false;
@@ -1084,24 +1109,57 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   /**
-   * True when the scan was unsure enough about a field to be worth a look.
+   * True when a field is worth a second look: the scan was unsure enough
+   * about it, or — for the date — it read a day other than today.
    *
    * This form has no review step — a scanned value goes straight into a field
    * the user is about to submit — so the flag has to live beside the input
    * itself, the way the import preview flags its own rows.
    */
   shouldVerifyField(field: 'amount' | 'date'): boolean {
+    return this.readerDoubts(field) || (field === 'date' && this.scanDateOnAnotherDay() !== null);
+  }
+
+  private readerDoubts(field: 'amount' | 'date'): boolean {
     const confidence = this.scanFieldConfidence()?.[field];
     return confidence !== undefined && confidence < VERIFY_FIELD_THRESHOLD;
   }
 
-  /** Why a field is flagged, phrased as the import preview phrases it. */
+  /** The scanned date still standing in the field, when it is on another day than today. */
+  private scanDateOnAnotherDay(): Date | null {
+    const scanned = this.scanDate();
+    return scanned && !datedToday(scanned) ? scanned : null;
+  }
+
+  /**
+   * Why a field is flagged, phrased as the import preview phrases it. For
+   * the date, the reader's own doubt is the stronger claim and leads; the
+   * not-today sentence follows it, or stands alone when the reading was
+   * clear.
+   */
   verifyFieldTooltip(field: 'amount' | 'date'): string {
     const percent = Math.round((this.scanFieldConfidence()?.[field] ?? 0) * 100);
-    return this.translationService.t(
+    const doubt = this.translationService.t(
       field === 'amount' ? 'import.verifyAmount' : 'import.verifyDate',
       { percent }
     );
+    const anotherDay = field === 'date' ? this.scanDateOnAnotherDay() : null;
+    if (!anotherDay) {
+      return doubt;
+    }
+    const notToday = this.translationService.t('import.dateNotTodayTooltip', {
+      date: this.localeFormat.formatDate(anotherDay),
+    });
+    return this.readerDoubts(field) ? `${doubt}. ${notToday}` : notToday;
+  }
+
+  private onDateEdited(value: unknown): void {
+    const scanned = this.scanDate();
+    if (!scanned) return;
+    const date = parseDateInput(value);
+    if (date && dayKey(date) !== dayKey(scanned)) {
+      this.scanDate.set(null);
+    }
   }
 
   /**
@@ -1163,6 +1221,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
       this.filledByScan = false;
       this.scanError.set(null);
       this.scanFieldConfidence.set(null);
+      this.scanDate.set(null);
       this.suggestedCurrency.set(null);
       this.scanCurrencyFellBack = false;
       // The prefilled address's country claim dies with the scan that made

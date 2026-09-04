@@ -211,6 +211,86 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   );
 
   it(
+    'holds Continue and Import until a receipt dated before today is answered',
+    async () => {
+      // The gate's whole user-visible surface. The unit spec overrides the
+      // template with a bare div, so this is the only place that can say the
+      // two buttons are held, that the hint and the confirm card reach a
+      // screen, and that answering the date releases both. Confirm is
+      // reachable with the question still open because a camera handoff runs
+      // the stepper non-linear — which is why Import carries a guard of its
+      // own rather than leaning on the review step being incomplete.
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'july-receipt.jpg',
+        fileSize: 1234,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'Corner Store',
+            amount: 12.5,
+            currency: 'USD',
+            date: new Date('2026-07-01'),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const continueButton = () =>
+        host.querySelector<HTMLButtonElement>('.review-step .action-button')!;
+      const importButton = () =>
+        host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
+
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(continueButton().disabled).toBeTrue();
+      expect(host.querySelector('.dates-hint')).not.toBeNull();
+
+      // The stepper header reaches Confirm from here with the question open.
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(
+        host.querySelector('.confirm-step .dates-card .card-value')?.textContent?.trim()
+      ).toBe('1');
+      expect(importButton().disabled).toBeTrue();
+
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      host.querySelector<HTMLButtonElement>('.keep-dates')!.click();
+      fixture.detectChanges();
+
+      expect(host.querySelector('.dates-hint')).toBeNull();
+      expect(continueButton().disabled).toBeFalse();
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(host.querySelector('.confirm-step .dates-card')).toBeNull();
+      expect(importButton().disabled).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
     'says on the review step when the reader ran out of room mid-answer',
     async () => {
       // The rows are real and reviewable; what is missing is whatever came

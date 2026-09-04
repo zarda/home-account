@@ -248,7 +248,10 @@
   font-weight: 600;
 }
 
-.bulk-currency {
+// The header's two bulk actions wear one look: the currency for a batch of
+// photos from one trip, and Keep for the dates a trip's receipts carry.
+.bulk-currency,
+.keep-dates {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -270,7 +273,8 @@
   }
 }
 
-.bulk-currency:hover {
+.bulk-currency:hover,
+.keep-dates:hover {
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 

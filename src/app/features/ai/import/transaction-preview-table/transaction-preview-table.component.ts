@@ -481,6 +481,30 @@ export class TransactionPreviewTableComponent {
     this.replaceRow(row, this.dateAnswered(row));
   }
 
+  /**
+   * Selected receipt rows still owing a date answer — what the header's
+   * bulk Keep is for. A plain method for the reason selectedCount gives:
+   * both the rows and the attention set are plain @Input()s.
+   */
+  unansweredCount(): number {
+    return this.transactions.filter(t => needsDateAnswer(t, this.attention(t))).length;
+  }
+
+  /**
+   * Keep for every row still asked: a trip's worth of receipts are all
+   * dated on their own days, and the dates are usually right. Exactly the
+   * rows needsDateAnswer names, each settled the way the single Keep
+   * settles it, so a bulk-kept assumed row does not stay amber; every other
+   * row keeps its identity, the way applyCurrencyToSelected leaves the
+   * unselected ones.
+   */
+  keepAllDates(): void {
+    this.transactions = this.transactions.map(t =>
+      needsDateAnswer(t, this.attention(t)) ? { ...t, ...this.dateAnswered(t) } : t
+    );
+    this.emitChanges();
+  }
+
   private formattedDate(row: CategorizedImportTransaction): string {
     return this.localeFormat.formatDate(row.date);
   }

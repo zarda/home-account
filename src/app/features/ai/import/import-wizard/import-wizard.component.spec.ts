@@ -334,6 +334,171 @@ describe('ImportWizardComponent', () => {
     });
   });
 
+  describe('the date question', () => {
+    // Only a receipt reader's rows are asked about their date, and the set
+    // is per row: one dropzone pick can put a photo and a CSV in the same
+    // batch, and the CSV's historical rows are never a question. Whether
+    // Continue and Import actually hold is a DOM matter for the smoke spec;
+    // this suite overrides the template with a bare div.
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+    const png = (name = 'r.png') => new File([''], name, { type: 'image/png' });
+    const csv = () => new File(['a,b'], 'rows.csv', { type: 'text/csv' });
+    const receiptRows = (): CategorizedImportTransaction[] => [
+      { ...mockTransactions[0], id: 'photo1', date: yesterday() },
+      { ...mockTransactions[1], id: 'photo2', date: yesterday() },
+    ];
+    const receiptResult = (): ImportResult => ({
+      ...mockImportResult, source: 'image', fileType: 'receipt_image', transactions: receiptRows(),
+    });
+    const statementResult = (): ImportResult => ({
+      ...mockImportResult, source: 'image', fileType: 'screenshot', transactions: receiptRows(),
+    });
+
+    it('holds every handed-over row on the camera hand-off', fakeAsync(() => {
+      // That door only ever carries receipts.
+      history.replaceState({ importResult: receiptResult(), fromCamera: true }, '');
+      try {
+        const cameraFixture = TestBed.createComponent(ImportWizardComponent);
+        cameraFixture.detectChanges();
+        // ngAfterViewInit defers the hand-off by a macrotask.
+        tick();
+
+        expect(cameraFixture.componentInstance.receiptRowIds()).toEqual(new Set(['photo1', 'photo2']));
+      } finally {
+        history.replaceState({}, '');
+      }
+    }));
+
+    it('holds the image batch\'s rows for the receipt kind', async () => {
+      mockImportService.importFromMultipleImages.and.resolveTo(receiptResult());
+      component.onFilesSelected([png()]);
+
+      await component.processFiles();
+
+      expect(component.receiptRowIds()).toEqual(new Set(['photo1', 'photo2']));
+    });
+
+    it('holds nothing for the statement kind, even after a receipt batch ran', async () => {
+      // Every row of a statement is dated in the past by nature; asking
+      // about each one would train the reviewer to answer without looking.
+      // The set is rebuilt per batch, so the receipt batch this re-pick
+      // replaces does not leave its ids behind.
+      mockImportService.importFromMultipleImages.and.resolveTo(receiptResult());
+      mockImportService.importFromStatementImages.and.resolveTo(statementResult());
+      component.onFilesSelected([png()]);
+      await component.processFiles();
+      expect(component.receiptRowIds().size).withContext('the receipt batch first').toBe(2);
+
+      component.imageKind.set('statement');
+      component.onFilesSelected([png('stmt.png')]);
+      await component.processFiles();
+
+      expect(component.receiptRowIds()).toEqual(new Set());
+    });
+
+    it('holds nothing for a CSV', async () => {
+      mockImportService.importFromFile.and.resolveTo({ ...mockImportResult, transactions: receiptRows() });
+      component.onFilesSelected([csv()]);
+
+      await component.processFiles();
+
+      expect(component.receiptRowIds()).toEqual(new Set());
+    });
+
+    it('holds only the photo\'s rows when a receipt photo and a CSV share one batch', async () => {
+      mockImportService.importFromMultipleImages.and.resolveTo({
+        ...receiptResult(), transactions: [{ ...mockTransactions[0], id: 'photo1', date: yesterday() }],
+      });
+      mockImportService.importFromFile.and.resolveTo({
+        ...mockImportResult, transactions: [{ ...mockTransactions[1], id: 'csv1', date: yesterday() }],
+      });
+      component.onFilesSelected([png(), csv()]);
+
+      await component.processFiles();
+
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['photo1', 'csv1']);
+      expect(component.receiptRowIds()).toEqual(new Set(['photo1']));
+      // The CSV's row is dated yesterday too, and is not asked.
+      expect(component.unansweredDates()).toBe(1);
+    });
+
+    it('counts only selected, unanswered rows inside the set', () => {
+      component.extractedTransactions.set([
+        { ...mockTransactions[0], id: 'asked', date: yesterday() },
+        { ...mockTransactions[0], id: 'assumed', dateAssumed: true },
+        { ...mockTransactions[0], id: 'unselected', date: yesterday(), selected: false },
+        { ...mockTransactions[0], id: 'answered', date: yesterday(), dateReviewed: true },
+        { ...mockTransactions[0], id: 'today' },
+        { ...mockTransactions[0], id: 'outside', date: yesterday() },
+      ]);
+      component.receiptRowIds.set(new Set(['asked', 'assumed', 'unselected', 'answered', 'today']));
+
+      expect(component.unansweredDates()).toBe(2);
+    });
+
+    it('holds the review step until every question is answered', () => {
+      const rows = [{ ...mockTransactions[0], id: 'asked', date: yesterday() }];
+      component.extractedTransactions.set(rows);
+      component.selectedTransactionIds.set(new Set(['asked']));
+      component.receiptRowIds.set(new Set(['asked']));
+
+      expect(component.unansweredDates()).toBe(1);
+      expect(component.reviewComplete()).toBeFalse();
+
+      // The card answers through the same event every other edit rides.
+      component.onTransactionsUpdated(rows.map(t => ({ ...t, dateReviewed: true as const })));
+
+      expect(component.unansweredDates()).toBe(0);
+      expect(component.reviewComplete()).toBeTrue();
+    });
+
+    it('never gates a statement batch, whatever its rows are dated', async () => {
+      mockImportService.importFromStatementImages.and.resolveTo(statementResult());
+      component.imageKind.set('statement');
+      component.onFilesSelected([png('stmt.png')]);
+
+      await component.processFiles();
+
+      expect(component.selectedCount()).toBe(2);
+      expect(component.unansweredDates()).toBe(0);
+      expect(component.reviewComplete()).toBeTrue();
+    });
+
+    it('keeps the set through a partial import, so a failed receipt row is still asked', fakeAsync(() => {
+      // The failed rows keep their ids and come back to the review step;
+      // a receipt row among them still owes its answer unless it gave one.
+      component.selectedFiles.set([png()]);
+      component.extractedTransactions.set([
+        { ...mockTransactions[0], id: 'saved', date: yesterday(), dateReviewed: true },
+        { ...mockTransactions[0], id: 'failed', date: yesterday(), dateReviewed: true },
+      ]);
+      component.receiptRowIds.set(new Set(['saved', 'failed']));
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'image' as const, fileType: 'receipt_image' as const,
+        fileName: 'r.png', fileSize: 10,
+        transactionCount: 2, successCount: 1, skippedCount: 0, errorCount: 1,
+        totalIncome: 0, totalExpenses: 5, duplicatesSkipped: 0,
+        status: 'partial' as const,
+        errors: [{ row: 2, message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+      }));
+
+      component.confirmImport();
+      tick();
+
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['failed']);
+      expect(component.receiptRowIds()).toEqual(new Set(['saved', 'failed']));
+      expect(component.unansweredDates()).withContext('already answered, so not asked again').toBe(0);
+      // The set still names the row: stripped of its answer, it is asked again.
+      component.onTransactionsUpdated([{ ...mockTransactions[0], id: 'failed', date: yesterday() }]);
+      expect(component.unansweredDates()).toBe(1);
+    }));
+  });
+
   describe('selectedCount', () => {
     it('should count selected transactions', () => {
       component.extractedTransactions.set(mockTransactions);
