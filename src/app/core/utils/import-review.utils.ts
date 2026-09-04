@@ -53,6 +53,28 @@ export function needsDateAnswer(
 }
 
 /**
+ * Two sentences of an accessible name, in the order they are spoken.
+ *
+ * The reasons a row is flagged are whole sentences with a stop of their own
+ * — "." in en, "。" in ja and tc — so the leading one gives its terminator up
+ * before the join adds one, or a flagged row is read out "here.. Change".
+ * The join itself is a Latin ". " in every locale: it separates two
+ * announcements rather than punctuating one sentence, and it is what makes a
+ * reader pause between them whatever language it is speaking. Either half
+ * may be empty — a row nobody doubts has no reason to lead with — and an
+ * empty half is not announced at all.
+ *
+ * Shared rather than repeated: the review card names four controls this way
+ * and the transaction form one, and the first two spellings of the join had
+ * already drifted apart.
+ */
+export function joinSentences(lead: string, next: string): string {
+  if (!lead) return next;
+  if (!next) return lead;
+  return `${lead.replace(/\s*[.。]?\s*$/, '')}. ${next}`;
+}
+
+/**
  * A hand-typed amount, or `null` when nothing usable was typed.
  *
  * The reviewer is retyping a figure off a receipt, so the field takes what a
@@ -91,7 +113,11 @@ export function parseAmountInput(raw: string): number | null {
   const normalized = ungrouped.includes(',')
     ? ungrouped.replace(/\./g, '').replace(/,/g, '.')
     : ungrouped;
-  if (!/^-?\d*\.?\d+$/.test(normalized)) return null;
+  // A separator with nothing after it is a whole number: the editor commits
+  // on blur as well as on Enter, so a reviewer who types the whole part,
+  // pauses on the decimal mark and taps the next card sends "12." here — and
+  // refusing it now holds the editor open on a figure that was readable.
+  if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null;
   const value = Math.abs(Number.parseFloat(normalized));
   return Number.isFinite(value) && value > 0 ? value : null;
 }

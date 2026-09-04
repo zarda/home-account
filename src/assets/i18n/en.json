@@ -1189,6 +1189,7 @@
     "keepAllDates": "Keep all dates",
     "editDescription": "Edit description ({{description}})",
     "editAmount": "Edit amount (currently {{amount}})",
+    "amountNotANumber": "That is not an amount — enter digits, for example 1234.50",
     "setCurrency": "Change currency (currently {{currency}})",
     "setCurrencyForSelected": "Currency for selected",
     "removeLocation": "Remove suggested location",

@@ -1114,6 +1114,7 @@
     "keepAllDates": "すべての日付をそのままにする",
     "editDescription": "説明を編集（{{description}}）",
     "editAmount": "金額を編集（現在 {{amount}}）",
+    "amountNotANumber": "金額として読み取れません — 数字で入力してください（例: 1234.50）",
     "setCurrency": "通貨を変更（現在 {{currency}}）",
     "setCurrencyForSelected": "選択した行の通貨",
     "removeLocation": "提案された場所を削除",

@@ -67,7 +67,7 @@ import { countryForCoordinates, currencyForCountry } from '../../../core/utils/c
 import { locationSlot } from '../../../core/utils/import-dto.utils';
 import { countryDisplayName, currencyReasonKey, localeRegion, suggestCurrency } from '../../../core/utils/currency-suggestion.utils';
 import { readCountryCode } from '../../../core/utils/receipt-extraction.utils';
-import { datedToday } from '../../../core/utils/import-review.utils';
+import { datedToday, joinSentences } from '../../../core/utils/import-review.utils';
 import { CurrencyChoiceSessionService } from '../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { normalizeTag, normalizeTags } from '../../../core/utils/tag.utils';
@@ -1003,15 +1003,17 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     // the ladder was always going to ignore in favour of the receipt.
     const receiptSpeaks = !!currencyForCountry(readCountryCode(primary.receiptCountry));
     const attached = this.locationCoords();
-    const datedToday = this.isDatedToday();
+    // Not `datedToday`: that name belongs to the imported helper this file
+    // also uses, and to the suggestCurrency field set below.
+    const fieldIsToday = this.isDatedToday();
     let positionCountry: string | undefined;
 
     if (!receiptSpeaks) {
-      const coords = attached ?? (datedToday ? await this.currentCoordinates() : null);
+      const coords = attached ?? (fieldIsToday ? await this.currentCoordinates() : null);
       if (coords) {
         // A fix fetched for the currency is also where this receipt was paid
         // — when it is from today. Offered, never attached (#314).
-        if (!attached && datedToday) {
+        if (!attached && fieldIsToday) {
           this.suggestedCoordinates.set(coords);
         }
         positionCountry = countryForCoordinates(coords.lat, coords.lng) ?? undefined;
@@ -1021,7 +1023,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     this.suggestedCurrency.set(suggestCurrency({
       receiptCountry: primary.receiptCountry,
       positionCountry,
-      datedToday: attached !== null || datedToday,
+      datedToday: attached !== null || fieldIsToday,
       sessionCurrency: this.currencySession.current() ?? undefined,
       localeRegion: localeRegion(),
       currentCurrency: String(this.form.get('currency')?.value ?? ''),
@@ -1150,7 +1152,7 @@ export class TransactionFormComponent implements OnInit, AfterViewInit, OnDestro
     const notToday = this.translationService.t('import.dateNotTodayTooltip', {
       date: this.localeFormat.formatDate(anotherDay),
     });
-    return this.readerDoubts(field) ? `${doubt}. ${notToday}` : notToday;
+    return this.readerDoubts(field) ? joinSentences(doubt, notToday) : notToday;
   }
 
   private onDateEdited(value: unknown): void {

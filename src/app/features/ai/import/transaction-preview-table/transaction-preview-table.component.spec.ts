@@ -3,6 +3,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { MatDatepicker } from '@angular/material/datepicker';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { CategorizedImportTransaction } from '../../../../models';
@@ -1216,6 +1217,68 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(dateButton().querySelector('mat-icon')?.textContent?.trim()).toBe('check');
     });
 
+    it('hands focus to the date button when Keep takes the question away', () => {
+      // Keep is the most-tapped control in the review and it removes the
+      // chip it sits on. A focused element that leaves the DOM drops focus
+      // at the document root, so a reviewer answering a batch of receipts
+      // from the keyboard is thrown out of the list on every answer — the
+      // same fall closeEdit was fixed for. The date button is where the
+      // answer landed and it names the day as it now stands.
+      render([makeRow({ id: 'r1', dateAssumed: true })]);
+      const keep = fixture.nativeElement.querySelector('.date-check .extra-accept') as HTMLElement;
+      keep.focus();
+
+      keep.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#date-chip-r1'));
+    });
+
+    it('hands focus to the date button when a day is picked from the question', () => {
+      // The picker restores focus to whatever held it when the dialog
+      // opened — here the question's own calendar button, which the answer
+      // unmounts a moment later, so the restore lands on a detached node.
+      render([makeRow({ id: 'r1', date: new Date(2026, 5, 10), dateAssumed: true })]);
+      const change = fixture.nativeElement.querySelector('.date-check .extra-change') as HTMLElement;
+      change.focus();
+      change.click();
+      fixture.detectChanges();
+
+      const third = Array.from(document.querySelectorAll<HTMLElement>('.mat-calendar-body-cell'))
+        .find(cell => cell.querySelector('.mat-calendar-body-cell-content')?.textContent?.trim() === '3')!;
+      third.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#date-chip-r1'));
+    });
+
+    it('marks exactly the asked rows that are dated another day, and no others', () => {
+      // The mark and the question are one predicate: needsDateAnswer, plus
+      // "and not today" for the rows it asks about because the date is
+      // assumed. Spelling the conjuncts out a second time is what let the
+      // `selected` guard go missing from one of them once already, so what
+      // is pinned here is the agreement, not the wording.
+      const rows = [
+        makeRow({ id: 'asked', date: yesterday() }),
+        makeRow({ id: 'unselected', date: yesterday(), selected: false }),
+        makeRow({ id: 'answered', date: yesterday(), dateReviewed: true }),
+        makeRow({ id: 'assumed', date: new Date(), dateAssumed: true }),
+        makeRow({ id: 'today', date: new Date() }),
+        makeRow({ id: 'outside', date: yesterday() }),
+      ];
+      const attention = new Set(['asked', 'unselected', 'answered', 'assumed', 'today']);
+      render(rows, [...attention]);
+
+      expect(rows.filter(row => component.dateNotToday(row)).map(row => row.id))
+        .withContext('only the selected, unanswered, attended row dated another day')
+        .toEqual(['asked']);
+      for (const row of rows) {
+        expect(component.dateNotToday(row) && !needsDateAnswer(row, attention.has(row.id)))
+          .withContext(`${row.id} is marked but not asked`)
+          .toBeFalse();
+      }
+    });
+
     it('the change button on the question opens the same picker', () => {
       render([makeRow({ id: 'r1', dateAssumed: true })]);
 
@@ -1590,6 +1653,64 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(document.activeElement).withContext('after a cancel').toBe(trigger('amount'));
     });
 
+    it('holds the amount editor open and says why when the figure cannot be read', () => {
+      // Closing on an unreadable figure filed the old amount and said
+      // nothing: the reviewer saw the editor shut, assumed the correction
+      // took, and the row went in at the number they had just retyped over.
+      render(makeRow({ amount: 5.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1.234.567');
+      fixture.detectChanges();
+
+      const box = input('amount')!;
+      expect(box).withContext('the editor stays open on what was typed').not.toBeNull();
+      expect(box.value).withContext('and keeps it, to be corrected rather than retyped').toBe('1.234.567');
+      expect(box.getAttribute('aria-invalid')).toBe('true');
+      expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
+        .toBe('import.amountNotANumber');
+      expect(box.getAttribute('aria-describedby'))
+        .withContext('the hint names the field it belongs to')
+        .toBe(fixture.nativeElement.querySelector('.amount-error')?.id);
+      expect(emitted.length).withContext('nothing is filed').toBe(0);
+    });
+
+    it('takes the correction that follows a refused figure', () => {
+      render(makeRow({ amount: 5.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1.234.567');
+      fixture.detectChanges();
+      type('amount', '1234.56');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0][0].amount).toBe(1234.56);
+      expect(input('amount')).withContext('a figure it could read closes the editor').toBeNull();
+      expect(fixture.nativeElement.querySelector('.amount-error')).toBeNull();
+    });
+
+    it('Escape still abandons a refused figure', () => {
+      render(makeRow({ amount: 5.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', 'abc');
+      fixture.detectChanges();
+      type('amount', 'abc', 'Escape');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(input('amount')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.amount-error')).toBeNull();
+      expect(document.activeElement).withContext('and the trigger takes focus back').toBe(trigger('amount'));
+    });
+
     it('edits one row at a time', () => {
       // The state is a map keyed by row id, so an edit opened on one row must
       // not open an input on every other card in the batch.
@@ -1650,6 +1771,36 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(emitted[0].map(t => t.dateReviewed)).toEqual([true, true]);
       expect(keepAll()).toBeNull();
       expect(questionChips().length).toBe(0);
+    });
+
+    it('hands focus to the first row\'s date button, which it has just answered', () => {
+      // The button answers every question and then removes itself, so it
+      // takes focus down with it unless the answer puts focus somewhere.
+      component.transactions = [makeRow({ id: 'old', date: yesterday() }), makeRow({ id: 'older', date: yesterday() })];
+      component.categories = [];
+      component.dateAttentionIds = new Set(['old', 'older']);
+      fixture.detectChanges();
+      const button = keepAll()!;
+      button.focus();
+
+      button.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#date-chip-old'));
+    });
+
+    it('falls back to the select-all checkbox when no row is left to land on', () => {
+      // The header outlives the list, and focus has to have somewhere to go
+      // even when there is no card under it.
+      component.transactions = [];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.keepAllDates();
+      fixture.detectChanges();
+
+      expect(document.activeElement)
+        .toBe(fixture.nativeElement.querySelector('.header-left input[type="checkbox"]'));
     });
   });
   /**
@@ -1811,6 +1962,70 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(emitted.length).toBe(0);
     });
 
+    it('closes an editor that was opened by accident and never typed into', () => {
+      // Opening one is a single tap on a crowded card. Without this the tap
+      // cannot be taken back: an empty box sits on that row for the rest of
+      // the review, and there is nothing to press to be rid of it.
+      render(makeRow());
+      addButton()!.click();
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      leave();
+
+      expect(emitted.length).withContext('nothing typed, nothing filed').toBe(0);
+      expect(textarea()).toBeNull();
+      expect(addButton()).withContext('the button comes back').not.toBeNull();
+    });
+
+    it('closes an editor whose draft was typed and then emptied again', () => {
+      render(makeRow());
+      addButton()!.click();
+      fixture.detectChanges();
+
+      type('   ');
+      leave();
+
+      expect(textarea()).toBeNull();
+      expect(addButton()).not.toBeNull();
+    });
+
+    it('Escape drops the draft, closes the editor and hands the button its focus back', async () => {
+      // The same exit the description and amount editors have: a reviewer
+      // who starts a note and thinks better of it leaves nothing behind,
+      // and is not dropped at the document root for changing their mind.
+      render(makeRow());
+      addButton()!.click();
+      fixture.detectChanges();
+      type('half a thought');
+      const emitted = emissions();
+
+      textarea()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(emitted.length).withContext('a cancel files nothing').toBe(0);
+      expect(textarea()).toBeNull();
+      expect(document.activeElement).toBe(addButton());
+    });
+
+    it('Escape on a row that came with notes puts its own note back', async () => {
+      // The row's note is what the editor is showing, so there is no
+      // button to go back to and nothing to close — only the draft goes.
+      const row = makeRow({ notes: 'keep the receipt' });
+      render(row);
+      await fixture.whenStable();
+      const emitted = emissions();
+
+      type('scribble');
+      textarea()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(emitted.length).toBe(0);
+      expect(textarea()!.value).toBe('keep the receipt');
+    });
+
     it('opens notes on one row at a time', () => {
       component.transactions = [makeRow({ id: 'a' }), makeRow({ id: 'b' })];
       component.categories = [];
@@ -1904,6 +2119,42 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(document.activeElement)
         .toBe(fixture.nativeElement.querySelector('[data-row-id="txn1"] .description-text'));
+    });
+
+    it('falls back to the date button when the description editor holds the row', () => {
+      // The overrule is reachable while the description is being corrected,
+      // and the trigger it usually hands focus to is not on the card then:
+      // a selector that matches nothing leaves focus at the document root
+      // just as surely as no selector at all.
+      component.transactions = [makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false })];
+      component.categories = [];
+      fixture.detectChanges();
+      component.startEdit(component.transactions[0], 'description');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.description-text'))
+        .withContext('the trigger is gone while the editor is open')
+        .toBeNull();
+
+      clearButtons()[0].click();
+      fixture.detectChanges();
+
+      expect(document.activeElement)
+        .toBe(fixture.nativeElement.querySelector('[data-row-id="txn1"] .date-chip'));
+    });
+
+    it('says what it is by sight as well as by name', () => {
+      // import.recheckFailed tells the reviewer to use "Not a duplicate",
+      // and this is it: an icon-only × whose name lived only in aria-label,
+      // so the instruction named a control nobody could find by looking.
+      component.transactions = [makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      const tooltip = fixture.debugElement.query(By.css('.duplicate-clear')).injector.get(MatTooltip);
+      expect(tooltip.message).toBe('import.notADuplicate');
+      expect(clearButtons()[0].getAttribute('aria-label'))
+        .withContext('one key, so the two names cannot drift')
+        .toBe(tooltip.message);
     });
 
     it('a row that comes back selected joins the date gate if its date needs an answer', () => {

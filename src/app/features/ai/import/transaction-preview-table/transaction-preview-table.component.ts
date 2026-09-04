@@ -32,7 +32,13 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
-import { datedToday, needsDateAnswer, parseAmountInput, withoutFieldConfidence } from '../../../../core/utils/import-review.utils';
+import {
+  datedToday,
+  joinSentences,
+  needsDateAnswer,
+  parseAmountInput,
+  withoutFieldConfidence,
+} from '../../../../core/utils/import-review.utils';
 import { isImeComposition } from '../../../../core/utils/keyboard.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
@@ -271,7 +277,7 @@ export class TransactionPreviewTableComponent {
    */
   currencyChipLabel(row: CategorizedImportTransaction): string {
     const label = this.translationService.t('import.setCurrency', { currency: row.currency });
-    return row.currencyFellBack ? `${this.currencyFellBackTooltip()}. ${label}` : label;
+    return joinSentences(row.currencyFellBack ? this.currencyFellBackTooltip() : '', label);
   }
 
   /**
@@ -286,7 +292,13 @@ export class TransactionPreviewTableComponent {
     // The button goes with the badge, and a focused element that leaves the
     // DOM drops focus at the document root; the description trigger beneath
     // is the row's nearest control, the one the editors' exits hand back to.
-    this.focusWhenRendered(`[data-row-id="${CSS.escape(transaction.id)}"] .description-text`);
+    // Unless that row's description is being edited, in which case the
+    // trigger is not on the card at all and the date button below it is the
+    // next control down.
+    this.focusWhenRendered(
+      this.inRow(transaction, '.description-text'),
+      this.inRow(transaction, '.date-chip')
+    );
   }
 
   // `tags` is spread only when non-empty, so an emptied list is exactly "not
@@ -342,7 +354,10 @@ export class TransactionPreviewTableComponent {
   /** The accept button's name says what it does and why; the visible text alone says neither fully. */
   currencyOfferLabel(row: CategorizedImportTransaction): string {
     const code = row.currencySuggestion?.code ?? '';
-    return `${this.translationService.t('import.acceptCurrencySuggestion', { currency: code })}. ${this.currencyOfferReason(row)}`;
+    return joinSentences(
+      this.translationService.t('import.acceptCurrencySuggestion', { currency: code }),
+      this.currencyOfferReason(row)
+    );
   }
 
   private reasonLabel(reason: CurrencySuggestionReason): string {
@@ -409,13 +424,19 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * A receipt row dated on another day, still unanswered — and selected:
-   * a row that will not be imported is not a question, and the chip that
-   * answers one (needsDateAnswer) never renders for an unselected row, so
-   * the mark would point at a Keep that is not there.
+   * A receipt row dated on another day, and still asked about.
+   *
+   * The mark is the question minus the rows asked for the other reason — an
+   * assumed date reads as today — so it is written that way rather than
+   * restating needsDateAnswer's conjuncts. Spelling them out a second time
+   * is what let the `selected` guard go missing from one of the two, and a
+   * mark on a row with no Keep beside it points at a control that is not
+   * there. One `now` for both readings, so a run that straddles midnight
+   * cannot read the row two ways in one call.
    */
   dateNotToday(row: CategorizedImportTransaction): boolean {
-    return this.attention(row) && row.selected && !row.dateReviewed && !datedToday(row.date);
+    const now = new Date();
+    return needsDateAnswer(row, this.attention(row), now) && !datedToday(row.date, now);
   }
 
   /**
@@ -462,7 +483,7 @@ export class TransactionPreviewTableComponent {
 
   /** The mark leads the button's name, exactly as currencyChipLabel does. */
   dateChipLabel(row: CategorizedImportTransaction): string {
-    return this.withReason(this.dateTooltip(row), this.changeDateLabel(row));
+    return joinSentences(this.dateTooltip(row), this.changeDateLabel(row));
   }
 
   dateChipText(row: CategorizedImportTransaction): string {
@@ -473,21 +494,10 @@ export class TransactionPreviewTableComponent {
 
   /** The keep button's name says why the row is asked and what it keeps; the visible text says neither fully. */
   keepDateLabel(row: CategorizedImportTransaction): string {
-    return this.withReason(
+    return joinSentences(
       this.dateTooltip(row),
       this.translationService.t('import.keepDate', { date: this.formattedDate(row) })
     );
-  }
-
-  /**
-   * Reason, then action, joined the way currencyChipLabel joins them. The
-   * three date tooltips are sentences with a stop of their own — "." in
-   * en, "。" in ja and tc — so the reason's terminator goes before the join
-   * adds one, or a flagged row is read out "here.. Change". dateReviewed
-   * and the percent wording carry no stop and join as they are.
-   */
-  private withReason(reason: string, label: string): string {
-    return reason ? `${reason.replace(/\s*[.。]?\s*$/, '')}. ${label}` : label;
   }
 
   /**
@@ -511,6 +521,7 @@ export class TransactionPreviewTableComponent {
   updateDate(row: CategorizedImportTransaction, value: Date | null): void {
     if (!value) return;
     this.replaceRow(row, { ...this.dateAnswered(row), date: value });
+    this.focusAnsweredDate(row);
   }
 
   /**
@@ -520,6 +531,19 @@ export class TransactionPreviewTableComponent {
    */
   keepDate(row: CategorizedImportTransaction): void {
     this.replaceRow(row, this.dateAnswered(row));
+    this.focusAnsweredDate(row);
+  }
+
+  /**
+   * The date button, after an answer that took the question chip away with
+   * the control that was pressed — Keep, or the chip's own calendar button,
+   * which the picker hands focus back to a moment before the chip unmounts.
+   * The button is where the answer landed, it stays on the card, and it now
+   * names the day as it stands. Harmless when the picker was opened from
+   * the button itself: that is the same element.
+   */
+  private focusAnsweredDate(row: CategorizedImportTransaction): void {
+    this.focusWhenRendered(this.inRow(row, '.date-chip'));
   }
 
   /**
@@ -544,6 +568,15 @@ export class TransactionPreviewTableComponent {
       needsDateAnswer(t, this.attention(t)) ? { ...t, ...this.dateAnswered(t) } : t
     );
     this.emitChanges();
+    // The button removes itself with the last question it answered, so it
+    // takes focus to the document root unless the answer puts it somewhere.
+    // The first row's date button is the top of what was just answered; an
+    // empty list has none, and the header's own checkbox outlives it.
+    const first = this.transactions[0];
+    this.focusWhenRendered(
+      ...(first ? [this.inRow(first, '.date-chip')] : []),
+      '.header-left input[type="checkbox"]'
+    );
   }
 
   private formattedDate(row: CategorizedImportTransaction): string {
@@ -569,23 +602,44 @@ export class TransactionPreviewTableComponent {
    */
   startEdit(row: CategorizedImportTransaction, field: 'amount' | 'description'): void {
     this.editing.set(row.id, field);
+    this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
-    this.focusWhenRendered(`[data-row-id="${CSS.escape(row.id)}"] .inline-input`);
+    this.focusWhenRendered(this.inRow(row, '.inline-input'));
   }
 
   /**
-   * Focus the element a swap is about to put on the card. The target does not
-   * exist until the swap has rendered, which is what afterNextRender waits
-   * for; a registration on a destroyed injector throws NG0911, which is what
-   * the guard is for. The card's own data-row-id scopes the query, because
-   * there is one of every editor per row inside the @for.
+   * Focus the first of these that a swap is about to put on the card. The
+   * target does not exist until the swap has rendered, which is what
+   * afterNextRender waits for; a registration on a destroyed injector throws
+   * NG0911, which is what the guard is for.
+   *
+   * Several selectors rather than one because a control's usual landing
+   * place is not always on the card: the overrule's is absent while that
+   * row's description is being edited, and the header's bulk Keep may have
+   * no card left beneath it at all. A selector that matches nothing drops
+   * focus at the document root exactly as no call would, so the fallbacks
+   * are the point — and they belong here rather than in a second focus path,
+   * which would be a second thing to keep in step with the swaps.
    */
-  private focusWhenRendered(selector: string): void {
+  private focusWhenRendered(...selectors: string[]): void {
     if (this.destroyRef.destroyed) return;
     afterNextRender(
-      () => this.host.nativeElement.querySelector<HTMLElement>(selector)?.focus(),
+      () => {
+        for (const selector of selectors) {
+          const target = this.host.nativeElement.querySelector<HTMLElement>(selector);
+          if (target) {
+            target.focus();
+            return;
+          }
+        }
+      },
       { injector: this.injector }
     );
+  }
+
+  /** Scoped to one card: there is one of every control per row inside the @for. */
+  private inRow(row: CategorizedImportTransaction, selector: string): string {
+    return `[data-row-id="${CSS.escape(row.id)}"] ${selector}`;
   }
 
   /**
@@ -604,9 +658,10 @@ export class TransactionPreviewTableComponent {
   private closeEdit(row: CategorizedImportTransaction, restoreFocus: boolean): void {
     const field = this.editing.get(row.id);
     this.editing.delete(row.id);
+    this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
     if (restoreFocus && field) {
-      this.focusWhenRendered(`[data-row-id="${CSS.escape(row.id)}"] .${field}-section .inline-edit`);
+      this.focusWhenRendered(this.inRow(row, `.${field}-section .inline-edit`));
     }
   }
 
@@ -630,16 +685,38 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
+   * Which rows' amount editors are holding a figure that could not be read,
+   * by row id for the reason `editing` gives. Read through a method because
+   * AOT rejects a private member in a template where JIT lets one through.
+   */
+  private amountRejected = new Set<string>();
+
+  amountUnreadable(row: CategorizedImportTransaction): boolean {
+    return this.amountRejected.has(row.id);
+  }
+
+  /**
    * A hand-typed amount settles the figure: the grade goes with it, the same
-   * rule a date answer follows. Anything unreadable — or the figure already
-   * shown — closes the editor and changes nothing.
+   * rule a date answer follows. The figure already shown closes the editor
+   * and changes nothing.
+   *
+   * A figure parseAmountInput cannot read keeps the editor open and says so.
+   * Closing on it looked to the reviewer exactly like a commit — the editor
+   * shut, the old amount stood, and the row went to import at a number they
+   * believed they had just replaced. Escape is still the way out, and it is
+   * the only way the old figure is kept deliberately.
    */
   commitAmount(row: CategorizedImportTransaction, event: Event): void {
     if (!this.editing.has(row.id)) return;
     if (isImeComposition(event)) return;
     const amount = parseAmountInput((event.target as HTMLInputElement).value);
+    if (amount === null) {
+      this.amountRejected.add(row.id);
+      this.cdr.markForCheck();
+      return;
+    }
     this.closeEdit(row, event.type === 'keydown');
-    if (amount === null || amount === row.amount) return;
+    if (amount === row.amount) return;
     this.replaceRow(row, {
       amount,
       fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'amount'),
@@ -681,7 +758,7 @@ export class TransactionPreviewTableComponent {
   initNotes(row: CategorizedImportTransaction): void {
     this.notesOpen.add(row.id);
     this.cdr.markForCheck();
-    this.focusWhenRendered(`[data-row-id="${CSS.escape(row.id)}"] .notes-input`);
+    this.focusWhenRendered(this.inRow(row, '.notes-input'));
   }
 
   updateNotesDraft(row: CategorizedImportTransaction, text: string): void {
@@ -693,14 +770,35 @@ export class TransactionPreviewTableComponent {
    * than '': the mapper writes `note` on truthiness, and '' would be a key
    * holding nothing. Nothing typed, or the note the row already had, is not
    * a change and replaces nothing.
+   *
+   * An editor left with nothing in it also closes. Opening one is a single
+   * tap on a crowded card, and without this that tap could not be taken
+   * back: `notesOpen` was only ever added to, so an empty box stayed on the
+   * row for the rest of the review with nothing to press to be rid of it.
    */
   commitNotes(row: CategorizedImportTransaction): void {
     const draft = this.draftNotes.get(row.id);
     this.draftNotes.delete(row.id);
-    if (draft === undefined) return;
-    const notes = draft.trim() || undefined;
-    if (notes === row.notes) return;
+    const notes = draft?.trim() || undefined;
+    if (!notes) {
+      this.notesOpen.delete(row.id);
+      this.cdr.markForCheck();
+    }
+    if (draft === undefined || notes === row.notes) return;
     this.replaceRow(row, { notes });
+  }
+
+  /**
+   * Abandon the draft, the way Escape abandons the description and the
+   * amount. A row that came with a note keeps its editor — the note is what
+   * the editor is showing, and there is no button to go back to — so only
+   * the draft goes and the row's own note is written back into the box.
+   */
+  cancelNotes(row: CategorizedImportTransaction): void {
+    this.draftNotes.delete(row.id);
+    this.notesOpen.delete(row.id);
+    this.cdr.markForCheck();
+    this.focusWhenRendered(this.inRow(row, '.add-notes-btn'));
   }
 
   /** One row per line of what is shown, so the box grows as the reviewer types. */

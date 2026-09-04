@@ -1114,6 +1114,7 @@
     "keepAllDates": "保留所有日期",
     "editDescription": "編輯說明（{{description}}）",
     "editAmount": "編輯金額（目前 {{amount}}）",
+    "amountNotANumber": "這不是金額 — 請輸入數字，例如 1234.50",
     "setCurrency": "變更貨幣（目前 {{currency}}）",
     "setCurrencyForSelected": "所選項目的貨幣",
     "removeLocation": "移除建議的地點",

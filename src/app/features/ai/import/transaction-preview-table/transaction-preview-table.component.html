@@ -62,10 +62,15 @@
                 <span class="duplicate-badge">
                   <mat-icon>content_copy</mat-icon>
                   {{ 'import.duplicate' | translate }}
+                  <!-- import.recheckFailed tells the reviewer to use "Not a
+                       duplicate", so the name has to be findable by sight
+                       too: the glyph alone says nothing about what it does. -->
                   <button
                     type="button"
                     class="duplicate-clear"
                     [attr.aria-label]="'import.notADuplicate' | translate"
+                    [matTooltip]="'import.notADuplicate' | translate"
+                    matTooltipPosition="above"
                     (click)="clearDuplicate(row)"
                   >
                     <mat-icon>close</mat-icon>
@@ -123,7 +128,17 @@
                   (keydown.escape)="cancelEdit(row)"
                   (blur)="commitAmount(row, $event)"
                   [attr.aria-label]="'common.amount' | translate"
+                  [attr.aria-invalid]="amountUnreadable(row) ? 'true' : null"
+                  [attr.aria-describedby]="amountUnreadable(row) ? 'amount-error-' + row.id : null"
                 >
+                @if (amountUnreadable(row)) {
+                  <!-- role="alert" because the commit that refused the figure
+                       is often a blur, and by then the reviewer is looking at
+                       the next card. -->
+                  <span class="amount-error" role="alert" [id]="'amount-error-' + row.id">
+                    {{ 'import.amountNotANumber' | translate }}
+                  </span>
+                }
               } @else {
                 <button
                   type="button"
@@ -315,6 +330,7 @@
                 class="notes-input"
                 [ngModel]="notesText(row)"
                 (ngModelChange)="updateNotesDraft(row, $event)"
+                (keydown.escape)="cancelNotes(row)"
                 (blur)="commitNotes(row)"
                 [placeholder]="'import.notesPlaceholder' | translate"
                 [attr.aria-label]="'import.notes' | translate"

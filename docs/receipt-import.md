@@ -29,9 +29,10 @@ straight into a field you are about to submit. Where the model reports low
 confidence in the total or the date, that field is flagged in place, on the
 same 0.7 bar the import wizard's preview table uses. The form also flags a
 scanned date that reads as **any day but today**, however sure the reader was
-of it — the flag clears as soon as you edit the field. Where the reader was
-also unsure, its doubt is the first sentence of the tooltip and the not-today
-note follows.
+of it — the flag clears once you move the date to a different **day**, since
+re-entering the day that was scanned is not an answer to it. Where the reader
+was also unsure, its doubt is the first sentence of the tooltip and the
+not-today note follows.
 
 The form's date is only ever flagged, never replaced or blocked: the wizard's
 review step re-dates a date it cannot vouch for and **lets you change it

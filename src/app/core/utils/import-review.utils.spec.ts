@@ -1,4 +1,4 @@
-import { datedToday, needsDateAnswer, parseAmountInput, withoutFieldConfidence } from './import-review.utils';
+import { datedToday, joinSentences, needsDateAnswer, parseAmountInput, withoutFieldConfidence } from './import-review.utils';
 import { CategorizedImportTransaction } from '../../models';
 
 /**
@@ -110,6 +110,39 @@ describe('import-review.utils', () => {
     });
   });
 
+  describe('joinSentences', () => {
+    it('drops the leading sentence\'s own stop before adding one', () => {
+      expect(joinSentences('This receipt is dated another day.', 'Change date'))
+        .toBe('This receipt is dated another day. Change date');
+    });
+
+    it('drops a CJK stop too, so ja and tc are not read out with two', () => {
+      // The reasons are whole sentences in every catalog, and ja and tc end
+      // them with 。 A joiner that only knew the Latin stop left the name as
+      // "…ください。. 日付を変更" — two terminators, both spoken.
+      expect(joinSentences('別の日を選んでください。', '日付を変更'))
+        .toBe('別の日を選んでください. 日付を変更');
+    });
+
+    it('takes trailing whitespace with the stop', () => {
+      expect(joinSentences('Read off the receipt . ', 'Use KRW')).toBe('Read off the receipt. Use KRW');
+    });
+
+    it('adds a stop to a sentence that carries none', () => {
+      expect(joinSentences('import.currencyFellBack', 'import.setCurrency'))
+        .toBe('import.currencyFellBack. import.setCurrency');
+    });
+
+    it('is the trailing half alone when there is no reason to lead with', () => {
+      // A row nobody doubts is not announced as suspect.
+      expect(joinSentences('', 'Change date')).toBe('Change date');
+    });
+
+    it('leaves a lone leading sentence exactly as it is', () => {
+      expect(joinSentences('Dated another day.', '')).toBe('Dated another day.');
+    });
+  });
+
   describe('parseAmountInput', () => {
     it('reads an English-grouped amount', () => {
       expect(parseAmountInput('1,234.50')).toBe(1234.5);
@@ -144,6 +177,14 @@ describe('import-review.utils', () => {
       // with nothing to say the correction had been dropped.
       expect(parseAmountInput('１２３')).toBe(123);
       expect(parseAmountInput('１，２３４．５０')).toBe(1234.5);
+    });
+
+    it('reads a figure the reviewer paused on at the decimal mark', () => {
+      // Both conventions, because the editor commits on blur as well as on
+      // Enter: a reviewer who types the whole part, stops at the separator
+      // and taps the next card would otherwise have the edit refused.
+      expect(parseAmountInput('12.')).toBe(12);
+      expect(parseAmountInput('12,')).toBe(12);
     });
 
     it('refuses anything that is not a positive number', () => {
