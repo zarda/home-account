@@ -185,7 +185,13 @@ export interface CategorizedImportTransaction {
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)
   isDuplicate: boolean;
-  duplicateOf?: string;            // Existing transaction ID
+  /**
+   * The stored transaction the row matched, from the check's
+   * `existingTransactionId`, when the verdict came from history. A
+   * within-batch verdict leaves it unset: the earlier row it repeats is a
+   * batch row id, not a document.
+   */
+  duplicateOf?: string;
   selected: boolean;               // For UI checkbox
   imageMetadata?: ImagePositionMetadata;  // Multi-image position data
   // Optional transaction fields the source answered; absent means nobody
@@ -218,9 +224,15 @@ export interface DuplicateCheck {
    * posted for the rule this row was *offered*. Detection runs before the card
    * can accept or decline, so the flag keys on the match, not on the link, and
    * `markDuplicates` deselects the row like any other duplicate; declining the
-   * link afterwards does not re-run detection.
+   * link afterwards does not re-run detection, while an edit to the row's
+   * date, amount, type or description does.
    */
   matchType: 'exact' | 'likely' | 'possible' | 'within_batch' | 'recurring_occurrence' | 'none';
+  /**
+   * What the row matched: a stored transaction's document id for every
+   * history match type, the earlier batch row's id for `within_batch`, and
+   * unset for `none`. Only the document id reaches the row's `duplicateOf`.
+   */
   existingTransactionId?: string;
   confidence: number;
 }

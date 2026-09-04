@@ -991,6 +991,8 @@
     "duplicatesFound": "發現 {{count}} 筆可能的重複項目",
     "duplicatesDescription": "這些交易與現有紀錄相似",
     "duplicate": "重複",
+    "notADuplicate": "不是重複項目 — 匯入",
+    "recheckFailed": "無法重新檢查重複項目 — 先前的判定維持不變。若您確定，請使用「不是重複項目」。",
     "excludeDuplicates": "排除重複項目",
     "includeDuplicates": "包含重複項目",
     "matchExact": "完全相符",

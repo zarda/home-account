@@ -141,17 +141,50 @@
   font-weight: 600;
   letter-spacing: 0.3px;
   text-transform: uppercase;
-  padding: 2px 7px;
+  // The overrule button at the end sets the height and pads that side.
+  padding-block: 0;
+  padding-inline: 7px 2px;
   border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--color-warning) 15%, transparent);
   color: var(--color-warning-text);
   margin-bottom: 4px;
-}
 
-.duplicate-badge mat-icon {
-  font-size: var(--text-xs);
-  width: 1em;
-  height: 1em;
+  mat-icon {
+    font-size: var(--text-xs);
+    width: 1em;
+    height: 1em;
+  }
+
+  // The overrule rides the badge, on the top row, where a 40px box has the
+  // room the chips in .card-extras do not. A box of its own rather than
+  // .extra-remove's ::after overhang: the description trigger sits directly
+  // beneath the badge, and a hit area hanging below the glyph would land on
+  // it. Nested, not beside: its glyph rule ties the badge's own on
+  // specificity otherwise, and would win or lose on source order alone.
+  .duplicate-clear {
+    min-block-size: 40px;
+    min-inline-size: 40px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
+    }
+  }
 }
 
 

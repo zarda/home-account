@@ -378,7 +378,7 @@
             mat-flat-button
             color="primary"
             class="action-button import-button"
-            [disabled]="isImporting() || selectedCount() === 0 || unansweredDates() > 0"
+            [disabled]="isImporting() || rechecksInFlight() > 0 || selectedCount() === 0 || unansweredDates() > 0"
             (click)="confirmImport()"
           >
             @if (isImporting()) {

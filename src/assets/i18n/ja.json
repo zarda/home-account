@@ -991,6 +991,8 @@
     "duplicatesFound": "{{count}}件の重複の可能性があります",
     "duplicatesDescription": "これらの取引は既存の記録と類似しています",
     "duplicate": "重複",
+    "notADuplicate": "重複ではない — インポートする",
+    "recheckFailed": "重複の再確認ができませんでした — 以前の判定がそのまま残ります。判断に自信があれば「重複ではない」をお使いください。",
     "excludeDuplicates": "重複を除外",
     "includeDuplicates": "重複を含める",
     "matchExact": "完全一致",

@@ -77,7 +77,10 @@ class PreviewOverflowProbeComponent {
       type: 'expense',
       suggestedCategoryId: 'food',
       categoryConfidence: 0.8,
-      isDuplicate: false,
+      // Flagged, so the overrule renders on this row: the badge and its
+      // button sit on the top row above the description trigger, and the
+      // two are measured apart.
+      isDuplicate: true,
       selected: true,
       currencySuggestion: { code: 'EUR', reason: 'session' },
       // A country the reader concluded with no printed address renders as a
@@ -424,6 +427,38 @@ describe('overflow guard: the import review card', () => {
         .toBeGreaterThanOrEqual(40);
       expect(withinWidthOf(clip, trigger)).withContext(`${name} trigger inside the clip`).toBeTrue();
     }
+  });
+
+  it('puts the overrule on the badge as a 40px control that stays clear of the description', () => {
+    // The badge is on the top row, where the height exists, so the button
+    // reaches 40px with a box of its own. It is the one control on the card
+    // without an ::after overhang, and on purpose: a hit area hanging 10px
+    // below a 20px glyph here would land on the description trigger beneath
+    // the badge — which is why the two boxes are measured apart directly.
+    // The strip's row-below probe never sees this button; it is not in
+    // `.card-extras`.
+    const clear = host.querySelector('[data-row-id="r2"] .duplicate-clear') as HTMLElement;
+    expect(clear).withContext('r2 is the flagged row').not.toBeNull();
+    expect(getComputedStyle(clear, '::after').content)
+      .withContext('the box is the whole hit area')
+      .toBe('none');
+    // The badge sizes its own glyph, and the overrule's rule is nested under
+    // it on purpose: at equal specificity a reorder alone would hand this
+    // glyph the badge's size.
+    expect(getComputedStyle(clear.querySelector('mat-icon')!).fontSize)
+      .withContext('the overrule\'s glyph keeps its own size')
+      .toBe('16px');
+    const box = clear.getBoundingClientRect();
+    expect(box.height).withContext('overrule tap target height').toBeGreaterThanOrEqual(40);
+    expect(box.width).withContext('overrule tap target width').toBeGreaterThanOrEqual(40);
+    expect(withinWidthOf(clip, clear)).withContext('overrule inside the clip').toBeTrue();
+
+    const description = (host.querySelector('[data-row-id="r2"] .description-text') as HTMLElement).getBoundingClientRect();
+    const overlapX = Math.min(box.right, description.right) - Math.max(box.left, description.left);
+    const overlapY = Math.min(box.bottom, description.bottom) - Math.max(box.top, description.top);
+    expect(Math.min(overlapX, overlapY))
+      .withContext('the overrule and the description trigger are disjoint')
+      .toBeLessThanOrEqual(0.5);
   });
 
   it('marks both triggers as controls without waiting for a pointer', () => {

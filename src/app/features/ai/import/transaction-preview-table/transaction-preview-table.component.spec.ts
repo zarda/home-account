@@ -11,6 +11,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
+import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -1831,6 +1832,100 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       type('items\nsecond line\nthird');
 
       expect(textarea()!.getAttribute('rows')).toBe('3');
+    });
+  });
+
+  /**
+   * The duplicate verdict was decided inside the import doors, on inputs the
+   * reviewer could not change; the badge now carries the overrule. The card's
+   * side of it is one replaced row — the wizard reads the flag's true → false
+   * off the emission — so what is pinned here is the control and the row it
+   * emits.
+   */
+  describe('the duplicate verdict on the card', () => {
+    const clearButtons = () =>
+      fixture.nativeElement.querySelectorAll('.duplicate-clear') as NodeListOf<HTMLButtonElement>;
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+
+    it('renders the overrule only on a flagged row, on the badge, named for what it does', () => {
+      component.transactions = [
+        makeRow({ id: 'flagged', isDuplicate: true, duplicateOf: 'stored-1', selected: false }),
+        makeRow({ id: 'clean' }),
+      ];
+      component.categories = [];
+      fixture.detectChanges();
+
+      expect(clearButtons().length).toBe(1);
+      const button = clearButtons()[0];
+      expect(button.closest('[data-row-id]')?.getAttribute('data-row-id')).toBe('flagged');
+      expect(button.closest('.duplicate-badge')).withContext('on the badge it answers').not.toBeNull();
+      expect(button.getAttribute('aria-label')).toBe('import.notADuplicate');
+      expect(button.querySelector('mat-icon')?.textContent?.trim()).toBe('close');
+    });
+
+    it('clicking it emits the row unflagged and selected, by a new identity', () => {
+      const row = makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      clearButtons()[0].click();
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      const next = emitted[0][0];
+      expect(next).withContext('a new row, not the one the parent holds').not.toBe(row);
+      expect(next.isDuplicate).toBeFalse();
+      expect(next.duplicateOf).toBeUndefined();
+      expect(next.selected).toBeTrue();
+      expect(row.isDuplicate).withContext('the input object is untouched').toBeTrue();
+      expect(row.selected).toBeFalse();
+      expect(clearButtons().length).withContext('the badge goes with the verdict').toBe(0);
+    });
+
+    it('hands focus to the description trigger the badge sat above', () => {
+      // The button leaves the DOM with the badge it rides on, and a focused
+      // element that is removed drops focus at the document root — the same
+      // fall the editors' exits guard against, answered the same way.
+      component.transactions = [makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false })];
+      component.categories = [];
+      fixture.detectChanges();
+      const button = clearButtons()[0];
+      button.focus();
+      expect(document.activeElement).withContext('the overrule has focus while it is pressed').toBe(button);
+
+      button.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement)
+        .toBe(fixture.nativeElement.querySelector('[data-row-id="txn1"] .description-text'));
+    });
+
+    it('a row that comes back selected joins the date gate if its date needs an answer', () => {
+      // needsDateAnswer reads `selected`: a deselected duplicate dated on
+      // another day was never a question, and the overrule is what makes it
+      // one.
+      const row = makeRow({ id: 'old', date: yesterday(), isDuplicate: true, duplicateOf: 'stored-1', selected: false });
+      component.transactions = [row];
+      component.categories = [];
+      component.dateAttentionIds = new Set(['old']);
+      fixture.detectChanges();
+      expect(component.unansweredCount()).withContext('not asked while deselected').toBe(0);
+      const emitted = emissions();
+
+      clearButtons()[0].click();
+      fixture.detectChanges();
+
+      expect(needsDateAnswer(emitted[0][0], true)).toBeTrue();
+      expect(component.unansweredCount()).toBe(1);
+      expect(fixture.nativeElement.querySelector('.extra-chip.date-check'))
+        .withContext('the question renders on the row now')
+        .not.toBeNull();
     });
   });
 });

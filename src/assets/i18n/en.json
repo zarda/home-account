@@ -1038,6 +1038,8 @@
     },
     "duplicatesDescription": "These transactions may already exist in your account. They are deselected by default.",
     "duplicate": "Duplicate",
+    "notADuplicate": "Not a duplicate — import it",
+    "recheckFailed": "Couldn't re-check for duplicates — the earlier verdict stands. Use 'Not a duplicate' if you know better.",
     "excludeDuplicates": "Exclude all duplicates",
     "includeDuplicates": "Include anyway",
     "matchExact": "Exact match",

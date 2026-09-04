@@ -274,6 +274,21 @@ export class TransactionPreviewTableComponent {
     return row.currencyFellBack ? `${this.currencyFellBackTooltip()}. ${label}` : label;
   }
 
+  /**
+   * The reviewer's overrule of a duplicate verdict. The verdict was decided
+   * inside the import doors, on inputs the reviewer could not change, and it
+   * was what deselected the row — so the overrule selects it again. The
+   * wizard reads the flag's true → false off this emission and keeps the row
+   * clear through later re-checks until the row itself is edited.
+   */
+  clearDuplicate(transaction: CategorizedImportTransaction): void {
+    this.replaceRow(transaction, { isDuplicate: false, duplicateOf: undefined, selected: true });
+    // The button goes with the badge, and a focused element that leaves the
+    // DOM drops focus at the document root; the description trigger beneath
+    // is the row's nearest control, the one the editors' exits hand back to.
+    this.focusWhenRendered(`[data-row-id="${CSS.escape(transaction.id)}"] .description-text`);
+  }
+
   // `tags` is spread only when non-empty, so an emptied list is exactly "not
   // written". The location is no longer that simple: since 0068 the mapper
   // rebuilds one from `receiptCountry` when the row carries no location, so

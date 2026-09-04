@@ -130,6 +130,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    */
   receiptRowIds = signal<ReadonlySet<string>>(new Set());
   duplicateChecks = signal<DuplicateCheck[]>([]);
+  /**
+   * Rows whose duplicate verdict the reviewer overruled, kept clear through
+   * later re-checks: the within-batch pass regenerates its verdicts from the
+   * rows alone, so without this an overruled twin would be flagged again the
+   * moment any other row was edited. A row leaves the set when it is itself
+   * edited — its own change reopens the question.
+   */
+  private overruled = new Set<string>();
+  /**
+   * The re-check each row is waiting on, so an answer that arrives after a
+   * newer one for the same row is dropped — per row, not per call: one
+   * token for the whole call would discard row A's fresh verdict whenever
+   * row B was edited before A's check came back.
+   */
+  private recheckStamp = new Map<string, number>();
+  private recheckSeq = 0;
   processingError = signal<string | null>(null);
   /** Set when the app raised the error itself and can say it in the user's language. */
   processingErrorKey = signal<string | null>(null);
@@ -143,6 +159,14 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    */
   answerIncomplete = signal(false);
   isImporting = signal(false);
+  /**
+   * Re-checks still waiting on their stored-history read. Import waits on
+   * it: confirmImport snapshots the rows the moment it is pressed, and an
+   * edit followed straight by Import would ship a row whose fresh verdict
+   * had not landed. One Firestore window query, so the wait is a moment
+   * and gets no copy of its own.
+   */
+  readonly rechecksInFlight = signal(0);
   importProgress = signal(0);
   importStatus = signal('');
 
@@ -249,7 +273,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         transaction: txns.find(t => t.id === check.transactionId)!,
         check
       }))
-      .filter(info => info.transaction);
+      // The row's own flag, as duplicatesSkipped reads it: a verdict the
+      // reviewer overruled leaves the panel on the same emission.
+      .filter(info => info.transaction && info.transaction.isDuplicate);
   });
 
   private t(key: string, params?: Record<string, string | number>): string {
@@ -369,6 +395,14 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.answerIncomplete.set(false);
     this.extractedTransactions.set([]);
     this.receiptRowIds.set(new Set());
+    // The checks go with the rows: each batch below appends its own, and
+    // without this a re-pick's would pile on the last batch's. The overrule
+    // set and the stamps go too — a re-check still in flight belongs to rows
+    // that are gone, and neither its answer nor an overrule kept from them
+    // may reach the batch that replaces them.
+    this.duplicateChecks.set([]);
+    this.overruled.clear();
+    this.recheckStamp.clear();
     this.processedBatches = [];
     this.imageDiagnostics = null;
 
@@ -468,8 +502,129 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  /**
+   * The card's edits: every row again, an edited row by a new identity.
+   *
+   * Detection ran inside the import doors, on inputs the reviewer could not
+   * change, so a row whose date, amount, type or description differs from
+   * the row it replaces is checked again; a flag that went from true to
+   * false is the reviewer's overrule. Only ids present before and after are
+   * compared — a first population is not a change. Dates compare by instant
+   * under Object.is: a JSON-door row can carry an Invalid Date, and
+   * NaN !== NaN would make it "changed" on every emission. Currency, notes,
+   * category, tags, location, the rule link and selection are not detection
+   * inputs and trigger nothing.
+   */
   onTransactionsUpdated(transactions: CategorizedImportTransaction[]): void {
+    const before = new Map(this.extractedTransactions().map(t => [t.id, t]));
+    const changed = new Set<string>();
+    const overrules = new Set<string>();
+    for (const row of transactions) {
+      const prev = before.get(row.id);
+      if (!prev) continue;
+      if (
+        !Object.is(+prev.date, +row.date) ||
+        prev.amount !== row.amount ||
+        prev.type !== row.type ||
+        prev.description !== row.description
+      ) {
+        changed.add(row.id);
+      }
+      if (prev.isDuplicate && !row.isDuplicate) {
+        overrules.add(row.id);
+      }
+    }
     this.extractedTransactions.set(transactions);
+    if (overrules.size > 0) {
+      for (const id of overrules) this.overruled.add(id);
+      // The check entry follows the row: a re-check folds the standing
+      // entries in with the fresh ones, and a stale "duplicate" here would
+      // put the flag straight back.
+      this.duplicateChecks.update(checks => checks.map(c =>
+        overrules.has(c.transactionId)
+          ? { transactionId: c.transactionId, isDuplicate: false, matchType: 'none' as const, confidence: 0 }
+          : c
+      ));
+    }
+    for (const id of changed) this.overruled.delete(id);
+    if (changed.size > 0) {
+      void this.recheckDuplicates(changed);
+    }
+  }
+
+  /**
+   * Fresh verdicts for the rows in `ids`, folded into the standing ones.
+   *
+   * The stored-history read is the one await, and rechecksInFlight covers
+   * it from before the read to after the rows are rewritten. A refusal, a
+   * network fault or an answer that is not an array keeps the standing
+   * verdicts — the last honest answer — and says so once. Silent was the
+   * first design; it left the reviewer trusting a verdict nobody had
+   * refreshed on the very row they were about to import, when the overrule
+   * on the badge is theirs if they know better. A failure whose every stamp
+   * a later edit superseded says nothing: that edit's own call answers for
+   * the row.
+   *
+   * What comes back is applied only for the rows whose stamp this call
+   * still holds. The read answers one check per row, so an empty applied
+   * set means every stamp was superseded, or the batch replaced, and there
+   * is nothing to rewrite. Then, against the rows as they are now, the
+   * within-batch pass is run again from nothing — its verdicts derive from
+   * the rows alone, so the standing ones are dropped rather than merged;
+   * kept, a twin entry for a row the pass no longer flags would win by id
+   * — minus the rows the reviewer overruled. A row is rewritten only when
+   * its verdict changed; an unchanged verdict leaves the row, and the
+   * reviewer's own selection of it, alone. A twin gets no duplicateOf, as
+   * processFiles gives it none: the check names a batch row, not a document.
+   */
+  private async recheckDuplicates(ids: Set<string>): Promise<void> {
+    const seq = ++this.recheckSeq;
+    for (const id of ids) this.recheckStamp.set(id, seq);
+    const changed = this.extractedTransactions().filter(t => ids.has(t.id));
+    const standing = (id: string) => this.recheckStamp.get(id) === seq;
+    this.rechecksInFlight.update(n => n + 1);
+    try {
+      let stored: DuplicateCheck[] | undefined;
+      try {
+        stored = await this.duplicateService.checkDuplicates(changed);
+      } catch {
+        stored = undefined;
+      }
+      if (!Array.isArray(stored)) {
+        if ([...ids].some(standing)) {
+          this.notifications.info(this.t('import.recheckFailed'));
+        }
+        return;
+      }
+
+      const applied = stored.filter(c => standing(c.transactionId));
+      if (applied.length === 0) return;
+      const appliedIds = new Set(applied.map(c => c.transactionId));
+      const rows = this.extractedTransactions();
+      const storedOnly = [
+        ...this.duplicateChecks().filter(c =>
+          c.matchType !== 'within_batch' && !appliedIds.has(c.transactionId)
+        ),
+        ...applied,
+      ];
+      const withinBatch = this.duplicateService
+        .findWithinBatchDuplicates(rows, storedOnly)
+        .filter(c => !this.overruled.has(c.transactionId));
+      const merged = [...storedOnly, ...withinBatch];
+      const byId = new Map(merged.map(c => [c.transactionId, c]));
+      const reconciled = rows.map(row => {
+        const check = byId.get(row.id);
+        const flagged = check?.isDuplicate ?? false;
+        if (flagged === row.isDuplicate) return row;
+        const duplicateOf = check?.matchType === 'within_batch' ? undefined : check?.existingTransactionId;
+        return { ...row, isDuplicate: flagged, duplicateOf, selected: !flagged };
+      });
+      this.duplicateChecks.set(merged);
+      this.extractedTransactions.set(reconciled);
+      this.updateSelectedIds();
+    } finally {
+      this.rechecksInFlight.update(n => n - 1);
+    }
   }
 
   onSelectionChanged(selectedIds: Set<string>): void {
