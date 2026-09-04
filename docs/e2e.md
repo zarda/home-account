@@ -196,21 +196,35 @@ flag.
 the country-only chip needs a receipt with no address on it and does not
 appear in this run.
 
-**Feeding the dropzone.** From the page console, with `B64` from
-`base64 -i docs/model-probe/receipts/jp.png`:
+**Feeding the dropzone.** The wizard needs a `File` on the dropzone's hidden
+input. Two ways to put one there, both from the page console.
+
+Serve the PNG over HTTP from a scratch folder outside the repo and fetch it —
+this is what the first run used, and it is the better one. Any static server
+will do provided it answers the dev origin with CORS (`Access-Control-Allow-
+Origin`); a plain `python3 -m http.server` does not, so give it the header or
+use a server that does.
 
 ```js
-const bytes = Uint8Array.from(atob(B64), c => c.charCodeAt(0));
-const file = new File([bytes], 'jp.png', { type: 'image/png' });
+const blob = await (await fetch('http://127.0.0.1:8123/jp.png')).blob();
+const file = new File([blob], 'jp.png', { type: 'image/png' });
 const dt = new DataTransfer(); dt.items.add(file);
 const input = document.querySelector('app-file-dropzone input[type=file]');
 input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
 ```
 
-The dropzone reads `input.files` on `change`
+Or paste the bytes, with `B64` from `base64 -i docs/model-probe/receipts/jp.png`
+and `Uint8Array.from(atob(B64), c => c.charCodeAt(0))` in place of the blob.
+It needs no server and it is the fallback rather than the default: a
+megabyte-scale literal is slow through a console and can be truncated without
+saying so.
+
+Either way the dropzone reads `input.files` on `change`
 (`FileDropzoneComponent.onFileSelect`), and `.png` is among the wizard's
 accepted types, so this is the same path the file picker takes. Where the
-browser can open a file directly, use it on that same input.
+browser can open a file directly, use it on that same input. Nothing here
+writes to the repo — the fixture is gitignored and the scratch copy lives
+outside it.
 
 ## The journeys
 
@@ -378,6 +392,25 @@ The confirm step has a *Dates to check* card for the same count, but it is
 reachable only through the camera hand-off's non-linear stepper. A run that
 starts at the dropzone never sees it, and its absence is not a failure.
 
+**When the provider is down.** This has already happened once: the model
+answered 503 twice across every feature, and the wizard classified it
+correctly — the error-server card, *Service Unavailable*, the
+temporary-unavailability copy, Try Again and Back. That is an upstream
+outage, not a branch defect, and it blocks the journey rather than failing it.
+
+The rest of the journey can still be driven without the wire, by handing the
+wizard a result through the camera hand-off door it already reads on entry
+(`history.replaceState` with the hand-off state, then reload) — the same door
+the smoke spec uses, driving the real card in a real browser. Everything below
+the extraction was proved that way on the first run: the button, the question
+chip, the hint, both disabled states, the seeded picker, Keep, and the
+editors.
+
+What that substitute does **not** prove is the one thing only this journey
+can: a real prompt, a real key, a real answer parsed by the real client, and a
+real receipt's date arriving on the card. Record the run as blocked, and
+re-run journey 8 in full on the final pass, when the model answers.
+
 ### 9. Review: inline corrections
 
 The same review, on the same row. Every editor here is a trigger that swaps
@@ -431,9 +464,11 @@ question chip standing and an editor open.
 document.documentElement.scrollWidth === document.documentElement.clientWidth;
 ```
 
-`true`. Below about 342px the date and currency chips stop sharing a line and
-stack one per line; that is the meta row wrapping as it is built to, not a
-failure. The chips and the editors keep their 40px tap targets at every width.
+`true`. At phone width the date and currency chips do not share a line — they
+stack one per line, as observed at 375px, and the type toggle wraps with them.
+That is the meta row wrapping as it is built to, not a failure; no threshold
+for it is pinned anywhere, so do not read one off a single run. The chips and
+the editors keep their 40px tap targets at every width.
 
 One shot: the review card, question chip and open editor together.
 

@@ -1,10 +1,23 @@
 # 62. The review step can correct every field the import writes
 
-**Status:** Accepted, implemented · **Date:** 2026-08-22 · **Issues:** #316
+**Status:** Accepted, implemented; amended by
+[0099](0099-the-review-step-edits-what-it-shows.md) · **Date:** 2026-08-22 ·
+**Issues:** #316
 
 Builds on the row shapes and the single mapper of
 [0059](0059-one-mapper-builds-every-imported-transaction.md). Reference
 documentation lives in [../import-fields.md](../import-fields.md).
+
+**Amended by [0099](0099-the-review-step-edits-what-it-shows.md).** This
+record's title was ahead of its code: what shipped here was the currency —
+the chip menu, the fallback marker, the offer and its remove control — while
+the date, the amount and the description stayed read-only spans, which is to
+say that none of the three graded fields could be corrected. 0099 makes them
+editable on the card, on this record's own terms: the chip-not-dialog width
+argument stands, every edit still goes through `replaceRow` and lands before
+0059's mapper, and an edit now clears the `fieldConfidence` entry that
+`replaceRow`'s comment here already described as "state an edit is supposed to
+clear".
 
 ## Context
 

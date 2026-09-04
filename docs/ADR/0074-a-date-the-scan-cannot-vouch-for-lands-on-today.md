@@ -1,6 +1,9 @@
 # 74. A date the scan cannot vouch for lands on today
 
-**Status:** Accepted, implemented · **Date:** 2026-08-28
+**Status:** Accepted, implemented; amended by
+[0099](0099-the-review-step-edits-what-it-shows.md); amended by
+[0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md)
+· **Date:** 2026-08-28
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md).
 
@@ -13,6 +16,20 @@ standing. The mark it adds obeys
 names its fields, so a mark cannot reach a document", to which
 [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) opened the
 one deliberate exception.
+
+**Amended by [0099](0099-the-review-step-edits-what-it-shows.md) and
+[0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md).**
+The rule below is unchanged — a date the scan cannot vouch for still lands on
+the instant, still marked — but two of its consequences are not. 0099 gives
+the card a date editor, which retires this record's "It is **not**
+dismissible: there is no date editor on that card, so a remove control would
+have nothing to clear": the chip is now a question with a Keep and a picker,
+and answering it clears `dateAssumed`, `dateImplausible` and the date's grade
+together. 0100 closes the gap this record could not see at all — a date the
+reader was *confident* about and simply got wrong — by making any non-today
+date on a receipt row a question that must be answered before the import
+moves. The in-form lane's "flag, never substitute" reasoning is carried
+forward by both.
 
 ## Context
 

@@ -71,9 +71,21 @@ it — but it is not this module's kind of window: there is no `DateWindow`, no
 calendar alignment, nothing a period selector could reuse. It still lives
 beside the mapper rather than in this module because what it decides is only
 ever "is this the date, or is this now," never a bound anything else compares
-against. See
-[ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md),
-[ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)
+against.
+
+What the helper decides is no longer the last word on the row. The review card
+**lets the reviewer answer** rather than only marking: the resolved date is a
+button that opens a picker seeded on the row's own day, and a receipt row
+dated on any day but today is a question that must be answered — kept as read,
+or re-dated — before Continue and Import will move. The answer clears the
+marks and the grade the resolver set, and `datedToday(date, now)` in
+`core/utils/import-review.utils.ts` is what "today" means for that question:
+the local calendar day through `dayKey`, so a day picked today counts as
+today even though the resolver's own substitution is the instant.
+
+See [ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md),
+[ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md),
+[ADR 0100](ADR/0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md)
 and [receipt-import.md](receipt-import.md).
 
 ## Keys

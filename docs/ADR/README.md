@@ -66,7 +66,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0059](0059-one-mapper-builds-every-imported-transaction.md) | One mapper builds every imported transaction | Accepted; amends 0011 | 2026-08-20 |
 | [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) | A confirmed import keeps its photos and names its source | Accepted | 2026-08-20 |
 | [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted | 2026-08-21 |
-| [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted | 2026-08-22 |
+| [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted; amended by 0099 | 2026-08-22 |
 | [0063](0063-an-import-suggests-only-what-the-account-already-knows.md) | An import suggests only what the account already knows | Accepted | 2026-08-22 |
 | [0064](0064-the-country-comes-off-the-paper-before-the-phone.md) | The country comes off the paper before it comes off the phone | Accepted; amended by 0068 | 2026-08-23 |
 | [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted | 2026-08-23 |
@@ -78,7 +78,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0071](0071-direction-comes-from-the-locale-and-physical-css-is-frozen.md) | Direction comes from the locale, and physical CSS is frozen | Accepted | 2026-08-27 |
 | [0072](0072-onboarding-runs-once-and-never-against-a-fallback-profile.md) | Onboarding runs once, and never against a fallback profile | Accepted; re-run door added by 0076 | 2026-08-27 |
 | [0073](0073-shortcuts-live-in-the-shell-and-the-palette-reads-the-sidebars-list.md) | Shortcuts live in the shell, and the palette reads the sidebar's list | Accepted | 2026-08-27 |
-| [0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted | 2026-08-28 |
+| [0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted; amended by 0099; amended by 0100 | 2026-08-28 |
 | [0075](0075-a-successful-import-remembers-the-transactions-it-created.md) | A successful import remembers the transactions it created | Accepted; extends 0065 | 2026-08-28 |
 | [0076](0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md) | The welcome replays on request, and a first login speaks the browser's language | Accepted; reverses a gap of 0072 | 2026-08-28 |
 | [0077](0077-merges-deploy-what-they-changed.md) | Merges deploy what they changed | Accepted; closes a gap of 0035; secret-drift gap closed by 0084, index-wait gap closed by 0087 | 2026-08-29 |
@@ -103,6 +103,9 @@ reverse — why a thing is the way it is, not how to use it.
 | [0096](0096-the-weekly-recap-is-composed-on-open-and-nudged-ahead.md) | The weekly recap is composed on open, and nudged ahead | Accepted | 2026-09-02 |
 | [0097](0097-the-model-update-signal-is-removed-not-wired.md) | The model-update signal is removed, not wired | Accepted; applies 0048 to a signal of 0019 | 2026-09-02 |
 | [0098](0098-the-browser-journeys-are-a-driven-protocol-not-a-suite.md) | The browser journeys are a driven protocol, not a suite | Accepted | 2026-09-02 |
+| [0099](0099-the-review-step-edits-what-it-shows.md) | The review step edits what it shows | Accepted; amends 0062, 0074 | 2026-09-04 |
+| [0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md) | A receipt dated before today is a question the reviewer answers | Accepted; closes a gap of 0074 | 2026-09-04 |
+| [0101](0101-a-corrected-row-is-checked-for-duplicates-again.md) | A corrected row is checked for duplicates again | Accepted; extends 0063 | 2026-09-04 |
 
 ## What belongs here
 

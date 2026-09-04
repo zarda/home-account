@@ -27,10 +27,16 @@ on-device pipeline needs no key.
 The in-form path has no review step, so a value the model was unsure of goes
 straight into a field you are about to submit. Where the model reports low
 confidence in the total or the date, that field is flagged in place, on the
-same 0.7 bar the import wizard's preview table uses. The form's date is only
-flagged, never replaced: the wizard's review step re-dates a date it cannot
-vouch for (see *Failure surfacing*), and a field you are looking at and about
-to submit is the one place that would be the wrong thing to do.
+same 0.7 bar the import wizard's preview table uses. The form also flags a
+scanned date that reads as **any day but today**, however sure the reader was
+of it — the flag clears as soon as you edit the field. Where the reader was
+also unsure, its doubt is the first sentence of the tooltip and the not-today
+note follows.
+
+The form's date is only ever flagged, never replaced or blocked: the wizard's
+review step re-dates a date it cannot vouch for and **lets you change it
+there** (see *Failure surfacing*), and a field you are looking at and about to
+submit is the one place either of those would be the wrong thing to do.
 
 ## Where the amount comes from
 
@@ -355,10 +361,10 @@ one place that decides. A value nothing can parse, one the reader graded below
 the bar, or one read clearly that no plausible calendar contains — more than a
 day ahead, or more than ten years back, checked only on a graded row — becomes
 *now* — the actual instant, so the row sorts above every other row dated
-today — and the review card carries a **Date set to today** chip saying why,
-in place of the percentage the verify tooltip would otherwise quote; an
-implausible reading gets its own wording in that tooltip, distinct from an
-unreadable one, since the two are different doubts
+today — and the review card asks about it, in place of the percentage the
+verify tooltip would otherwise quote; an implausible reading gets its own
+wording in that tooltip, distinct from an unreadable one, since the two are
+different doubts
 ([ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)).
 A date nobody graded, a CSV cell or a backup row, is kept untouched: absent
 confidence means "nobody looked", not "the reader was unsure" — and the same
@@ -377,6 +383,43 @@ and every reader that patches a missing date grades it at zero instead of
 passing the model's own claim along. The decision behind the original rule,
 and what it rejected, is
 [ADR 0074](ADR/0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md).
+
+**On the review step the date is a question, not a notice.** A selected
+receipt row dated on any day but today — whether it was read that way or
+assumed onto today by the rule above — carries a question chip, *Dated {date}
+— keep it?*, with two halves: **Keep** accepts the day, and the calendar
+button opens a picker already on the row's own month and day. The date beside
+the row is a button that opens the same picker. Answering either way clears
+`dateAssumed`, `dateImplausible` and the date's grade together and turns the
+button green, so the row is asked once and not again. **Keep all dates** in the
+card header answers every outstanding row at once, and is on screen only while
+a question is.
+
+Until every asked row is answered, **Continue and Import are both disabled**
+and a hint counts what is outstanding; the confirm step carries the same count
+on a *Dates to check* card, for a reviewer who arrived through the camera
+hand-off's non-linear stepper. Only receipt rows are asked, and attention is
+tracked per row rather than per drop — one dropped pick can mix a photo with a
+CSV, and a CSV of last year's transactions is dated in the past by
+construction. Statements, bank PDFs, CSV and JSON rows are never asked. The
+reasoning, and the alternatives, are in
+[ADR 0100](ADR/0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md);
+the editor those answers run through is
+[ADR 0099](ADR/0099-the-review-step-edits-what-it-shows.md).
+
+**A corrected row is checked for duplicates again.** Detection used to run once
+inside the import doors, before the review step rendered, so its verdict was
+decided on a date the reviewer could not reach — two receipts whose dates were
+both unreadable collapsed onto today and the second was deselected as a
+within-batch twin of the first. An edit to a row's date, amount, type or
+description now sends that row back through the check, against both the ledger
+and the rest of the batch; a verdict can be overruled per row from the badge's
+**Not a duplicate — import it**, and Import waits while a re-check is in
+flight. A check that cannot reach history keeps the standing verdict and says
+so once, rather than leaving a flag standing with no explanation. Currency,
+notes, category, tags and the rule link are not detection inputs and change
+nothing. See
+[ADR 0101](ADR/0101-a-corrected-row-is-checked-for-duplicates-again.md).
 
 **An answer that ran out of room is read as far as it goes.** A model asked
 for several photos at once answers with one JSON row per line item, and the

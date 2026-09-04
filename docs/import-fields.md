@@ -36,7 +36,7 @@ needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
 also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
 files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries seven more that are **review-step
+`CategorizedImportTransaction` carries eight more that are **review-step
 marks, not fields**: `currencyFellBack` (nobody read a currency, so the base
 currency is standing in), `dateAssumed` (the row's `date` is *now* rather than
 something read off the source, because `resolveImportDate` could not vouch
@@ -47,6 +47,11 @@ clearly and was still beyond belief — more than a day ahead or ten years
 back — rather than unreadable; the one discriminator the review tooltip
 checks to pick its wording, see
 [ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)),
+`dateReviewed` (a human answered the date question — set by Keep, by a picked
+day and by the bulk Keep, each of which clears `dateAssumed`,
+`dateImplausible` and the date's grade in the same move, so an answered row
+stops looking flagged and is not asked again; see
+[ADR 0100](ADR/0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md)),
 `suggestedTags` (what was offered, so the confirm step can
 tell a removal from a row that never had any), `recurringMatch` (the rule
 this row looks like), `receiptCountry` (the country the reader concluded the
@@ -146,6 +151,46 @@ and counts it in `receiptsSkipped` on the history record — never in
 `errorCount`, whose rows the wizard re-offers for a second confirm. An upload
 failure (`RECEIPT_ATTACH_FAILED`) still fails the row.
 
+## What the review step corrects
+
+The review card is the editor for the row, not a preview of it. Every value a
+source *read* has a control that changes it in place, and every value the
+import *offered* has a control that removes it — that split is the rule, and
+it is what step 6 below asks you to decide for a new field.
+
+Three things follow from a correction, and they are not the same three for
+every field: what grade or mark the answer clears, whether duplicate detection
+runs again, and whether anything is remembered past the wizard.
+
+| Field | Control | What a correction clears | Detection re-runs | Remembered |
+|---|---|---|---|---|
+| Date | the date button opens a modal picker seeded on the row's own day; the question chip's **Keep** accepts it as read | `dateAssumed`, `dateImplausible` and `fieldConfidence.date`; sets `dateReviewed` | yes | no |
+| Amount | inline editor — Enter or blur commits, Escape cancels | `fieldConfidence.amount` | yes | no |
+| Type | the income/expense toggle | nothing | yes | no |
+| Description | inline editor, same commit rules; an emptied field is a cancel | nothing | yes | it becomes the key the category is remembered under |
+| Currency | the chip's menu | `currencyFellBack` and the standing `currencySuggestion` | no | no |
+| Category | the suggestion chip's menu | nothing — the confidence dot follows the pick and reads as the reviewer's own | no | yes, per merchant, at confirm |
+| Notes | the **Notes** button opens a textarea; it files on the way out | nothing | no | no |
+| Tags | a remove control on each chip | the tag | no | yes, kept and removed both, per merchant |
+| Location / country | a remove control on the chip | `location` and `receiptCountry` together | no | no |
+| Recurring rule | the offer's checkbox | sets or restores `recurringId` and `isRecurring` | no | no |
+| Duplicate verdict | the badge's **Not a duplicate — import it** | `isDuplicate` and `duplicateOf`, reselects the row, and marks it overruled for the rest of the batch | it *is* the overrule | no |
+
+Two mechanics are worth knowing before you add a control here. Every edit goes
+through `replaceRow`, which writes a **new row identity** rather than mutating
+the `@Input()` object — a component reading the old object would otherwise go
+on displaying it, which is exactly how the category chip once cached the
+model's first guess for the life of the card. And the country chip's remove
+clears the mark as well as the slot: clearing `location` alone would let
+`receiptCountry` rebuild the country the reviewer just dismissed.
+
+The decisions are
+[ADR 0099](ADR/0099-the-review-step-edits-what-it-shows.md) for the editors,
+[ADR 0100](ADR/0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md)
+for the date question and the gate it puts on Continue and Import, and
+[ADR 0101](ADR/0101-a-corrected-row-is-checked-for-duplicates-again.md) for the
+re-check.
+
 ## Suggestions, and what removing one means
 
 Three things on a row are offered rather than taken from a file, and all three
@@ -186,6 +231,13 @@ are forgotten as soon as the wizard closes.
 4. Do **not** touch the confirm step or `parseImportedData` — if you had to,
    the mapper stopped being the chokepoint.
 5. Update the matrix above and `csv-format.md`'s tables.
-6. If the value is a suggestion rather than something a source read, render it
-   in the card's extras area with a remove control, and decide whether a
-   removal is remembered — tags are, and nothing else is.
+6. Give it a control on the review card, and which control depends on where
+   the value came from. A value a source **read** gets an editor that changes
+   it in place — a chip that opens a picker or a menu, or an inline trigger
+   that swaps for an input — and, if the value is graded, the edit clears its
+   `fieldConfidence` entry through `withoutFieldConfidence`. A value the import
+   **suggested** gets a remove control in the card's extras area instead, and
+   you decide whether a removal is remembered — tags are, and nothing else is.
+   Either way the change goes through `replaceRow`, never onto the `@Input()`
+   object, and you add a row to *What the review step corrects* above saying
+   whether detection re-runs on it.
