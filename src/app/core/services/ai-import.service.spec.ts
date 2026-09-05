@@ -15,6 +15,7 @@ import {
   UNRESOLVED_CATEGORY_CONFIDENCE,
 } from '../utils/categorization.utils';
 import { parseDateInput } from '../utils/transaction-date.utils';
+import { datedToday } from '../utils/import-review.utils';
 import { CloudLLMProviderService } from './cloud-llm-provider.service';
 import { ExportService } from './export.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
@@ -1903,6 +1904,38 @@ describe('AIImportService', () => {
       expect(result.transactions[0].amount).toBe(5000);
       expect(result.transactions[1].amount).toBe(1200);
       expect(result.transactions[1].suggestedCategoryId).toBe('other_expense');
+      // The stored Timestamp a stringified backup carries, read as the instant
+      // it names and left unmarked; the row that carries no date at all lands
+      // on today wearing the mark that lets the card ask about it.
+      expect(result.transactions[0].date.getTime()).toBe(1700000000000);
+      expect('dateAssumed' in result.transactions[0]).toBeFalse();
+      expect(datedToday(result.transactions[1].date)).toBeTrue();
+      expect(result.transactions[1].dateAssumed).toBeTrue();
+    });
+
+    it('resolves a backup date the way every other import door does', async () => {
+      const backup = {
+        transactions: [
+          { description: 'ISO', amount: -5, type: 'expense', date: '2024-03-05' },
+          { description: 'Junk', amount: -6, type: 'expense', date: 'not a date' },
+          // Older than the resolver's ten-year window, which is confidence
+          // gated: nobody graded a backup's own dates, so an ancient file
+          // re-imports as itself instead of collapsing onto today.
+          { description: 'Ancient', amount: -7, type: 'expense', date: { seconds: 1400000000 } }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      const [iso, junk, ancient] = result.transactions;
+      expect(iso.date.getTime()).toBe(new Date(2024, 2, 5).getTime());
+      expect('dateAssumed' in iso).toBeFalse();
+      expect(datedToday(junk.date)).toBeTrue();
+      expect(junk.dateAssumed).toBeTrue();
+      expect(ancient.date.getTime()).toBe(1400000000000);
+      expect('dateAssumed' in ancient).toBeFalse();
+      expect('dateImplausible' in ancient).toBeFalse();
     });
 
     it('carries the optional fields a backup row holds', async () => {

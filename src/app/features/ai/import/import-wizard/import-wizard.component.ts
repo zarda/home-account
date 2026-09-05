@@ -548,10 +548,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * the row it replaces is checked again; a flag that went from true to
    * false is the reviewer's overrule. Only ids present before and after are
    * compared — a first population is not a change. Dates compare by instant
-   * under Object.is: a JSON-door row can carry an Invalid Date, and
-   * NaN !== NaN would make it "changed" on every emission. Currency, notes,
-   * category, tags, location, the rule link and selection are not detection
-   * inputs and trigger nothing.
+   * under Object.is: no door produces an Invalid Date any more, and the guard
+   * stays so a future one cannot make a row "changed" on every emission,
+   * which NaN !== NaN would. Currency, notes, category, tags, location, the
+   * rule link and selection are not detection inputs and trigger nothing.
    */
   onTransactionsUpdated(transactions: CategorizedImportTransaction[]): void {
     const before = new Map(this.extractedTransactions().map(t => [t.id, t]));

@@ -259,6 +259,39 @@ describe('transaction-date.utils', () => {
       expect(parseDateInput('2026-02-31')).toBeNull();
       expect(new Date('2026-02-31').getMonth()).toBe(2);
     });
+
+    it('reads the Timestamp map a stringified backup carries', () => {
+      // An absolute instant, asserted as one: a { seconds } value names the
+      // same moment in every zone, and this file runs under three of them.
+      expect(parseDateInput({ seconds: 1700000000 })!.getTime()).toBe(1700000000000);
+    });
+
+    it('adds the whole milliseconds of the nanoseconds field', () => {
+      expect(parseDateInput({ seconds: 1700000000, nanoseconds: 500000000 })!.getTime())
+        .toBe(1700000000500);
+      // Sub-millisecond precision is dropped, never rounded up past the second.
+      expect(parseDateInput({ seconds: 1700000000, nanoseconds: 999999 })!.getTime())
+        .toBe(1700000000000);
+    });
+
+    it('ignores a nanoseconds field that is not a number', () => {
+      // A hand-edited backup. The seconds are what date the row; a junk
+      // sub-second part must not turn the whole instant into NaN.
+      expect(parseDateInput({ seconds: 1700000000, nanoseconds: 'x' })!.getTime())
+        .toBe(1700000000000);
+      expect(parseDateInput({ seconds: 1700000000, nanoseconds: null })!.getTime())
+        .toBe(1700000000000);
+    });
+
+    it('returns null for every other object', () => {
+      expect(parseDateInput({ seconds: 'x' })).toBeNull();
+      expect(parseDateInput({})).toBeNull();
+      expect(parseDateInput({ foo: 1 })).toBeNull();
+      expect(parseDateInput(null)).toBeNull();
+      // Beyond the range a Date can hold: null rather than an Invalid Date,
+      // which no caller of this function is prepared to carry.
+      expect(parseDateInput({ seconds: 1e15 })).toBeNull();
+    });
   });
 
   describe('clampToEndOfToday', () => {

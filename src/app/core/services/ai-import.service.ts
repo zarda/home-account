@@ -1064,30 +1064,40 @@ export class AIImportService {
 
       const baseCurrency = baseCurrencyOf(this.authService.currentUser());
       const categorized: CategorizedImportTransaction[] = data.transactions.map(
-        (t: Record<string, unknown>) => ({
-          id: nextImportRowId('json'),
-          description: t['description'] as string || 'Unknown',
-          amount: Math.abs(t['amount'] as number || 0),
-          ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
-          date: t['date']
-            ? new Date((t['date'] as { seconds: number }).seconds * 1000)
-            : new Date(),
-          type: (t['type'] as 'income' | 'expense') || 'expense',
-          suggestedCategoryId: (t['categoryId'] as string) || 'other_expense',
-          categoryConfidence: 1.0, // From backup, category is known
-          isDuplicate: false,
-          selected: true,
-          // A backup row carries what its transaction held; anything absent
-          // or malformed stays absent rather than being defaulted.
-          ...(t['note'] ? { notes: t['note'] as string } : {}),
-          ...(Array.isArray(t['tags']) && t['tags'].length ? { tags: t['tags'] as string[] } : {}),
-          // Gated on a name until 0068, which silently dropped a location
-          // that carried only a country -- exactly what a backup taken after
-          // that change holds for a receipt that printed no address.
-          ...locationSlotFrom(t['location'] as TransactionLocation | undefined),
-          ...(isBudgetPeriod(t['period']) ? { period: t['period'] } : {}),
-          ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {})
-        })
+        (t: Record<string, unknown>) => {
+          // The same resolver every other door runs its date through, and with
+          // no confidence because nobody graded these: a backup's dates are
+          // facts it recorded, not readings off paper. Ungraded means the
+          // plausibility window is skipped, so a years-old file re-imports as
+          // itself, while an absent or unreadable value still lands on today
+          // carrying the mark the review card asks its question from. Reading
+          // `.seconds` here by hand was what left that row silently dated
+          // today, and a `date` of any other shape an Invalid Date.
+          const resolved = resolveImportDate(t['date']);
+          return {
+            id: nextImportRowId('json'),
+            description: t['description'] as string || 'Unknown',
+            amount: Math.abs(t['amount'] as number || 0),
+            ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
+            date: resolved.date,
+            type: (t['type'] as 'income' | 'expense') || 'expense',
+            suggestedCategoryId: (t['categoryId'] as string) || 'other_expense',
+            categoryConfidence: 1.0, // From backup, category is known
+            isDuplicate: false,
+            selected: true,
+            // A backup row carries what its transaction held; anything absent
+            // or malformed stays absent rather than being defaulted.
+            ...(t['note'] ? { notes: t['note'] as string } : {}),
+            ...(Array.isArray(t['tags']) && t['tags'].length ? { tags: t['tags'] as string[] } : {}),
+            // Gated on a name until 0068, which silently dropped a location
+            // that carried only a country -- exactly what a backup taken after
+            // that change holds for a receipt that printed no address.
+            ...locationSlotFrom(t['location'] as TransactionLocation | undefined),
+            ...(isBudgetPeriod(t['period']) ? { period: t['period'] } : {}),
+            ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {}),
+            ...(resolved.dateAssumed ? { dateAssumed: true } : {})
+          };
+        }
       );
 
       this.processingStatus.set('Checking for duplicates...');
