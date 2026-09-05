@@ -46,9 +46,10 @@ that round trip came to write local and read UTC.
 
 ### An import door resolves a date before it writes one
 
-`parseDateInput` answers "is this a date". The wizard's review lanes and the
-offline queue have a second question — "is this date worth writing" — and
-`resolveImportDate` in `core/utils/import-dto.utils.ts` answers it. It calls
+`parseDateInput` answers "is this a date". Every wizard door — the receipt
+lanes, the CSV parse and the JSON backup file alike — and the offline queue
+have a second question, "is this date worth writing", and `resolveImportDate`
+in `core/utils/import-dto.utils.ts` answers it. It calls
 `parseDateInput` and adds the confidence rule: a value nothing can parse, one
 the reader graded below `VERIFY_FIELD_THRESHOLD`, or — for a graded row only —
 one that parsed cleanly but lands more than a day ahead or more than ten
@@ -96,12 +97,21 @@ and [receipt-import.md](receipt-import.md).
 | `monthKey(date)` | `2026-08` | Same |
 | `parseDayKey(value)` | `Date \| null` | Exact inverse of `dayKey`; rejects `2026-02-31` |
 | `parseMonthKey(key)` | `{ year, month } \| null` | `month` is 0-11, to match `Date` |
-| `parseDateInput(value)` | `Date \| null` | For untrusted input: model JSON, CSV cells, queued rows |
+| `parseDateInput(value)` | `Date \| null` | For untrusted input: model JSON, CSV cells, queued rows, and the `{ seconds, nanoseconds }` map a backup file carries |
 
 `parseDayKey` rejects a well-shaped date that does not exist rather than
 falling through to the platform, which does not reject it either —
 `new Date('2026-02-31')` is 3 March in V8. Having recognised the format, a date
 the receipt never named is better reported than quietly moved.
+
+`parseDateInput` reads one object shape besides a `Date`: `{ seconds,
+nanoseconds }`, which is what a Firestore Timestamp becomes once a backup has
+been through `JSON.stringify` — no `toDate` left on it, and the shape a
+restored row's date arrives in. Only a finite numeric `seconds` makes that
+reading, so nothing else object-shaped starts answering; the sub-second part
+is dropped to whole milliseconds and ignored entirely when it is not a number,
+because a hand-edited field must not turn an instant `seconds` states plainly
+into NaN. An out-of-range `seconds` is null rather than an Invalid Date.
 
 ## Windows
 

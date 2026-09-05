@@ -589,8 +589,11 @@ Transactions is unchanged and `/import/history` has no new run.
 
 **Precondition:** the list behind the tag field is the account's own
 vocabulary — the tags on its transactions from the last six months, plus
-what the tag memory remembers — and it is empty when the account's grounding
-level is `off` ([rag-insights.md](rag-insights.md)). A bare field still
+what the tag memory remembers, plus the tags the batch itself arrived with.
+The first of those three is empty while the account's grounding level is
+`off` ([rag-insights.md](rag-insights.md)), which leaves only what the memory
+has learned — nothing, on an account that has never kept a suggested tag, and
+that is how the list came back empty on the first run. A bare field still
 takes a typed tag, so the tag half of the journey stands either way; the
 list half is recorded as skipped rather than faked. **No country** is
 likewise there only while the row has a country: if this receipt's row

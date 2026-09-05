@@ -72,13 +72,13 @@ reverse — why a thing is the way it is, not how to use it.
 | [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted | 2026-08-23 |
 | [0066](0066-an-answers-budget-follows-its-question.md) | An answer's budget follows its question, and a cut-off answer is read as far as it goes | Accepted | 2026-08-24 |
 | [0067](0067-a-photo-is-made-to-fit-and-never-costs-its-transaction.md) | A receipt photo is made to fit, and never costs its transaction | Accepted | 2026-08-25 |
-| [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted | 2026-08-26 |
+| [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted; gap closed by 0102 | 2026-08-26 |
 | [0069](0069-one-ladder-decides-what-is-the-same-merchant.md) | One ladder decides what is the same merchant, and it stays a string ladder | Accepted | 2026-08-26 |
 | [0070](0070-accessibility-preferences-ride-the-account-and-land-on-the-root.md) | Accessibility preferences ride the account, and land on the root | Accepted | 2026-08-27 |
 | [0071](0071-direction-comes-from-the-locale-and-physical-css-is-frozen.md) | Direction comes from the locale, and physical CSS is frozen | Accepted | 2026-08-27 |
 | [0072](0072-onboarding-runs-once-and-never-against-a-fallback-profile.md) | Onboarding runs once, and never against a fallback profile | Accepted; re-run door added by 0076 | 2026-08-27 |
 | [0073](0073-shortcuts-live-in-the-shell-and-the-palette-reads-the-sidebars-list.md) | Shortcuts live in the shell, and the palette reads the sidebar's list | Accepted | 2026-08-27 |
-| [0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted; amended by 0099; amended by 0100 | 2026-08-28 |
+| [0074](0074-a-date-the-scan-cannot-vouch-for-lands-on-today.md) | A date the scan cannot vouch for lands on today | Accepted; amended by 0099; amended by 0100; amended for #374 | 2026-08-28 |
 | [0075](0075-a-successful-import-remembers-the-transactions-it-created.md) | A successful import remembers the transactions it created | Accepted; extends 0065 | 2026-08-28 |
 | [0076](0076-the-welcome-replays-on-request-and-a-first-login-speaks-the-browsers-language.md) | The welcome replays on request, and a first login speaks the browser's language | Accepted; reverses a gap of 0072 | 2026-08-28 |
 | [0077](0077-merges-deploy-what-they-changed.md) | Merges deploy what they changed | Accepted; closes a gap of 0035; secret-drift gap closed by 0084, index-wait gap closed by 0087 | 2026-08-29 |
@@ -106,6 +106,8 @@ reverse — why a thing is the way it is, not how to use it.
 | [0099](0099-the-review-step-edits-what-it-shows.md) | The review step edits what it shows | Accepted; amends 0062, 0074 | 2026-09-04 |
 | [0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md) | A receipt dated before today is a question the reviewer answers | Accepted; closes a gap of 0074 | 2026-09-04 |
 | [0101](0101-a-corrected-row-is-checked-for-duplicates-again.md) | A corrected row is checked for duplicates again | Accepted; extends 0063 | 2026-09-04 |
+| [0102](0102-the-review-card-adds-a-tag-and-edits-a-location.md) | The review card adds a tag and edits a location | Accepted; closes a gap of 0068; extends 0099 | 2026-09-06 |
+| [0103](0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md) | The review step adds a row, and the wizard is sealed while it writes | Accepted; extends 0100 | 2026-09-06 |
 
 ## What belongs here
 

@@ -198,6 +198,7 @@ The transactions filter gains a country, server-side.
   rates have since moved is therefore reported at today's rates.
 - **A country still cannot be edited by hand.** It arrives from a scan or a
   coordinate; the Location field edits the name only. Removing the location is
-  the only way to remove a country.
+  the only way to remove a country. Closed by
+  [ADR 0102](0102-the-review-card-adds-a-tag-and-edits-a-location.md), #370.
 - **Nothing exports it.** The CSV contract is unchanged by choice, so a country
   reaches a spreadsheet only through the JSON backup.

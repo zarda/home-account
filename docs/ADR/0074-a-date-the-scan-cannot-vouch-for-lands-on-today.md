@@ -2,7 +2,8 @@
 
 **Status:** Accepted, implemented; amended by
 [0099](0099-the-review-step-edits-what-it-shows.md); amended by
-[0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md)
+[0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md);
+amended for #374 (2026-09-06)
 · **Date:** 2026-08-28
 
 Reference documentation lives in [../receipt-import.md](../receipt-import.md).
@@ -30,6 +31,24 @@ reader was *confident* about and simply got wrong — by making any non-today
 date on a receipt row a question that must be answered before the import
 moves. The in-form lane's "flag, never substitute" reasoning is carried
 forward by both.
+
+**Amended for #374 (2026-09-06): the one door that never called the resolver
+now does.** This record's rule was written for the doors that read a date off
+paper, and the wizard's JSON backup door built its own instead — reading
+`.seconds` off the value by hand and falling back to `new Date()` when there
+was nothing to read. A backup row whose date was absent or any other shape
+therefore landed silently on today with no mark, which is the exact state this
+record exists to make visible, and any other object shape produced an Invalid
+Date the review step then carried. That door now goes through
+`resolveImportDate` like every other, and **with no confidence**: nobody graded
+a backup's dates — they are facts the app recorded, not readings off paper — so
+an unreadable or absent value lands on today carrying `dateAssumed`, and a
+readable one is kept whatever its age, because the plausibility window this
+record's amendments added applies to graded rows only. A years-old backup
+re-imports as itself. `parseDateInput` learned the shape that made the
+hand-rolled read necessary in the first place: the `{ seconds, nanoseconds }`
+map a Firestore Timestamp serialises to once a backup has been through
+`JSON.stringify`, with no `toDate` left on it.
 
 ## Context
 
