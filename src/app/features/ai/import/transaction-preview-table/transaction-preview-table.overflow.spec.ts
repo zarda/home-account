@@ -646,6 +646,27 @@ describe('overflow guard: the import review card', () => {
       .toBeGreaterThan(Number(weightOf(other)));
   });
 
+  it('carries the add-a-row control under the list, inside the 288px', () => {
+    // One control for the whole card rather than one per row: it adds a row,
+    // it does not edit one, so it is not in `.card-extras` and takes its 40px
+    // in its own box the way the strip's triggers do.
+    const add = el('.add-row');
+    expect(host.querySelectorAll('.add-row').length).withContext('one for the list').toBe(1);
+    expect(add.getBoundingClientRect().height)
+      .withContext('add a row tap target')
+      .toBeGreaterThanOrEqual(40);
+    expect(withinWidthOf(clip, add)).withContext('add a row inside the clip').toBeTrue();
+
+    // Under the list, and outside the scroller the rows sit in: the list caps
+    // at 70dvh, so a control inside it is one a reviewer with twenty rows has
+    // to scroll to find — and the truncation notice points straight at it.
+    const list = host.querySelector('.transactions-list') as HTMLElement;
+    expect(list.contains(add)).withContext('not inside the rows\' scroller').toBeFalse();
+    expect(add.getBoundingClientRect().top)
+      .withContext('under the list rather than inside a card')
+      .toBeGreaterThanOrEqual(list.getBoundingClientRect().bottom - 1);
+  });
+
   it('keeps the bulk currency button and the count badge on the header', () => {
     // The button only appears once something is selected, which is exactly
     // when the header line is at its longest. Unwrapped, it shoved the count

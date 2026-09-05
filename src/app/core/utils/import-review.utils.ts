@@ -53,6 +53,87 @@ export function needsDateAnswer(
 }
 
 /**
+ * A row the reviewer is about to type, for the items a reader that ran out
+ * of room never got to.
+ *
+ * It takes the day and the currency of the row it follows, because that is
+ * what it is missing from: the receipts of one trip are dated together and
+ * priced in one currency, and the account's base is the wrong guess for both
+ * the moment the batch is foreign. The fallbacks are for the row that
+ * follows nothing.
+ *
+ * Everything a reader would have produced is absent rather than blank: no
+ * `imageMetadata` (there is no photo of it, so the planner attaches none),
+ * no grade, and none of the review-step marks. An absent grade is the
+ * "nobody doubts it" shape `needsVerification` already reads, and a mark
+ * here would flag a row nobody could have misread. `categoryConfidence` is
+ * 0 for the same reason it is on any row nothing suggested a category for:
+ * the card offers `other_expense` as the guess it is.
+ *
+ * The date is a copy. Sharing the neighbour's `Date` object would leave the
+ * picker on one row moving the other, since the picker writes a new object
+ * but nothing stops a caller reading the old one.
+ */
+export function blankImportRow(
+  id: string,
+  after: CategorizedImportTransaction | undefined,
+  fallbackCurrency: string
+): CategorizedImportTransaction {
+  return {
+    id,
+    description: '',
+    amount: 0,
+    currency: after?.currency ?? fallbackCurrency,
+    date: after ? new Date(after.date) : new Date(),
+    type: 'expense',
+    suggestedCategoryId: 'other_expense',
+    categoryConfidence: 0,
+    isDuplicate: false,
+    selected: true,
+  };
+}
+
+/**
+ * Whether the row has no amount an import could ship.
+ *
+ * Read as "not more than zero" rather than "is zero", so every unusable
+ * figure is one case: the 0 a blank row is born with, the 0 a blank or
+ * unreadable CSV cell becomes, the NaN a truthy non-number in a model's
+ * answer parses to, and a negative figure, which `type` — not the sign —
+ * is what states here.
+ *
+ * The card's placeholder and its trigger's name read this too: a row held
+ * back for a gap nothing on it shows is a hunt through the list.
+ */
+export function amountIsUnfilled(row: CategorizedImportTransaction): boolean {
+  return !(row.amount > 0);
+}
+
+/**
+ * Whether the row has no description an import could ship.
+ *
+ * A description of nothing but spaces is nothing: the card trims what is
+ * typed, but a quoted "   " cell reaches it untrimmed, and the write files
+ * an empty one under a name of its own. Trimmed here for the same reason
+ * the amount is read the wide way — and the card's placeholder and its
+ * trigger's name read this same predicate, or the three disagree over a row
+ * whose trigger renders collapsing whitespace with nothing to press on.
+ */
+export function descriptionIsUnfilled(row: CategorizedImportTransaction): boolean {
+  return row.description.trim() === '';
+}
+
+/**
+ * Whether this row is still short of what an import needs from it.
+ *
+ * Deselected rows are ignored, the rule `needsDateAnswer` follows: a row
+ * that is not going to be imported cannot hold Continue.
+ */
+export function rowIsUnfilled(row: CategorizedImportTransaction): boolean {
+  return row.selected && (amountIsUnfilled(row) || descriptionIsUnfilled(row));
+}
+
+/**
  * Two sentences of an accessible name, in the order they are spoken.
  *
  * The reasons a row is flagged are whole sentences with a stop of their own

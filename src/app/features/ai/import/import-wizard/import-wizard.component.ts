@@ -33,7 +33,7 @@ import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/r
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
-import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { needsDateAnswer, rowIsUnfilled } from '../../../../core/utils/import-review.utils';
 
 @Component({
   selector: 'app-import-wizard',
@@ -222,12 +222,31 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     const ids = this.receiptRowIds();
     return this.extractedTransactions().filter(t => needsDateAnswer(t, ids.has(t.id))).length;
   });
+  /**
+   * Selected rows still short of an amount or a description — a row the
+   * reviewer added and has not finished typing, and a row from any door
+   * that arrived without one. Held here rather than at the write, which
+   * refuses a non-positive amount mid-import with a row number the reviewer
+   * has to go back and find, and files an empty description under a name of
+   * its own — so what lands is not a nameless row but a mis-named one, past
+   * review. This holds Continue and Import exactly as the date question does.
+   */
+  unfilledRows = computed(() => this.extractedTransactions().filter(rowIsUnfilled).length);
   // The linear stepper refuses next() on an incomplete step. The camera
   // hand-off's stepper is not linear and lets the header jump straight to
   // Confirm, which is why the Import button carries the same guard itself.
   reviewComplete = computed(() =>
-    this.selectedTransactionIds().size > 0 && this.unansweredDates() === 0
+    this.selectedTransactionIds().size > 0 && this.unansweredDates() === 0 && this.unfilledRows() === 0
   );
+
+  /**
+   * What the review card denominates a hand-added row in when there is no
+   * row above it to copy a currency from. A field rather than a computed:
+   * the route's guard has signed the user in before this component is
+   * constructed, and the account's base currency does not change under an
+   * open wizard.
+   */
+  readonly baseCurrency = this.importService.baseCurrency();
 
   selectedCount = computed(() => {
     return this.extractedTransactions().filter(t => t.selected).length;

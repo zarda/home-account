@@ -34,12 +34,16 @@ import { LocaleFormatService } from '../../../../core/services/locale-format.ser
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
 import { countryOptions } from '../../../../core/utils/country-options.utils';
 import {
+  amountIsUnfilled,
+  blankImportRow,
   datedToday,
+  descriptionIsUnfilled,
   joinSentences,
   needsDateAnswer,
   parseAmountInput,
   withoutFieldConfidence,
 } from '../../../../core/utils/import-review.utils';
+import { nextImportRowId } from '../../../../core/utils/import-row-id.utils';
 import { isImeComposition } from '../../../../core/utils/keyboard.utils';
 import { normalizeTag } from '../../../../core/utils/tag.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
@@ -123,6 +127,13 @@ export class TransactionPreviewTableComponent {
    * takes anything typed into it.
    */
   @Input() tagVocabulary: readonly string[] = [];
+  /**
+   * What a hand-added row is denominated in when there is no row above it to
+   * copy a currency from — the account's base, which the wizard reads. Empty
+   * only in a test that never adds one; the curated picker's first code
+   * stands in then.
+   */
+  @Input() defaultCurrency = '';
   @Output() transactionsUpdated = new EventEmitter<CategorizedImportTransaction[]>();
   @Output() selectionChanged = new EventEmitter<Set<string>>();
 
@@ -884,13 +895,33 @@ export class TransactionPreviewTableComponent {
     });
   }
 
-  /** The trigger's name has to carry the value, which its own content states without saying what it is. */
+  /**
+   * The gate's own readings of the two fields it holds an import for, bound
+   * as fields because the template cannot reach an imported function. The
+   * placeholder, the trigger's name and the wizard's count must all come
+   * from here: a truthiness test beside a trimmed gate leaves a row of
+   * spaces counted as unfilled and shown as filled, on a trigger with no
+   * width to press on.
+   */
+  readonly amountIsUnfilled = amountIsUnfilled;
+  readonly descriptionIsUnfilled = descriptionIsUnfilled;
+
+  /**
+   * The triggers' names have to carry their values, which their own content
+   * states without saying what it is — and a field nothing has been written
+   * into has no value to carry, so the name says what the placeholder in it
+   * says rather than naming an empty string or a formatted zero.
+   */
   editDescriptionLabel(row: CategorizedImportTransaction): string {
-    return this.translationService.t('import.editDescription', { description: row.description });
+    return descriptionIsUnfilled(row)
+      ? this.translationService.t('import.addDescription')
+      : this.translationService.t('import.editDescription', { description: row.description });
   }
 
   editAmountLabel(row: CategorizedImportTransaction): string {
-    return this.translationService.t('import.editAmount', { amount: this.formatAmount(row) });
+    return amountIsUnfilled(row)
+      ? this.translationService.t('import.addAmount')
+      : this.translationService.t('import.editAmount', { amount: this.formatAmount(row) });
   }
 
   /**
@@ -968,6 +999,41 @@ export class TransactionPreviewTableComponent {
     if (!notes) return 1;
     const lineCount = notes.split('\n').length;
     return Math.min(Math.max(lineCount, 1), 20);
+  }
+
+  /**
+   * A blank row at the end of the list, for what the reader never reached.
+   *
+   * The notice above the list tells the reviewer to add whatever the answer
+   * was cut short of; this is the control that lets them, and it belongs to
+   * the list rather than to any row — appended at the end, never spliced in
+   * after the row it took its day and currency from, because the list is in
+   * the order the source gave it and a row nobody read has no place in that
+   * order.
+   *
+   * The editor is seeded before the row is emitted, because the emission is
+   * what the parent renders the row from: the state that decides whether it
+   * comes up as an input rather than an empty trigger has to be in place by
+   * then. `focusWhenRendered` waits for whichever pass renders it, so the
+   * tap that added the row is the tap that starts typing.
+   *
+   * The row goes onto the card's own list as well, the way every edit here
+   * does — the parent owns the array, but the card must not be rendering a
+   * list the reviewer has already added to.
+   */
+  addRow(): void {
+    const row = blankImportRow(
+      nextImportRowId('manual'),
+      this.transactions.at(-1),
+      // The picker's first code covers a card given no base currency at all,
+      // which is a test's shape rather than the wizard's.
+      this.defaultCurrency || this.currencies[0]?.code || 'USD'
+    );
+    this.editing.set(row.id, 'description');
+    this.transactions = [...this.transactions, row];
+    this.emitChanges();
+    this.cdr.markForCheck();
+    this.focusWhenRendered(this.inRow(row, '.inline-input'));
   }
 
   private emitChanges(): void {

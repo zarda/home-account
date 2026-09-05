@@ -436,8 +436,10 @@
   color: var(--text-secondary);
 }
 
-/* Review Step - receipt rows still owing a date answer hold Continue */
-.dates-hint {
+/* Review Step - a receipt row still owing a date answer, or a row short of
+   an amount or a description, holds Continue; the two hints wear one look */
+.dates-hint,
+.rows-hint {
   margin: 16px 0 0;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
@@ -531,7 +533,8 @@
 }
 
 .skipped-card mat-icon,
-.dates-card mat-icon {
+.dates-card mat-icon,
+.rows-card mat-icon {
   background: color-mix(in srgb, var(--color-warning) 10%, transparent);
   color: var(--color-warning);
 }
@@ -602,7 +605,8 @@
 }
 
 .skipped-card .card-value,
-.dates-card .card-value {
+.dates-card .card-value,
+.rows-card .card-value {
   color: var(--color-warning);
 }
 

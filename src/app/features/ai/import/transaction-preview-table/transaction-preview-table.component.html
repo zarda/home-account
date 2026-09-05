@@ -96,12 +96,21 @@
                   [attr.aria-label]="'common.description' | translate"
                 >
               } @else {
+                <!-- Nothing, or nothing but spaces, is a control with no
+                     width to press on: the placeholder is what says the row
+                     is still unfilled, and it answers the same predicate the
+                     gate holds Continue on rather than a truthiness test
+                     that reads a quoted "   " cell as filled. -->
                 <button
                   type="button"
                   class="description-text inline-edit"
                   [attr.aria-label]="editDescriptionLabel(row)"
                   (click)="startEdit(row, 'description')"
-                >{{ row.description }}</button>
+                >@if (descriptionIsUnfilled(row)) {
+                    <span class="placeholder">{{ 'import.addDescription' | translate }}</span>
+                  } @else {
+                    {{ row.description }}
+                  }</button>
               }
             </div>
             <div class="amount-section" [class.income]="row.type === 'income'" [class.expense]="row.type === 'expense'">
@@ -140,13 +149,23 @@
                   </span>
                 }
               } @else {
+                <!-- An unusable figure arrives from every door, not only from
+                     Add a row: a blank CSV cell, a missing total, a refund
+                     that cancels its charge. Such a row carries no verify
+                     flag — that reads a grade these rows have none of — so
+                     without the placeholder it reads as an ordinary -$0.00
+                     and the count in the hint has nothing to find it by. -->
                 <button
                   type="button"
                   class="inline-edit"
                   [attr.aria-label]="editAmountLabel(row)"
                   (click)="startEdit(row, 'amount')"
                 >
-                  <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
+                  @if (amountIsUnfilled(row)) {
+                    <span class="placeholder">{{ 'import.addAmount' | translate }}</span>
+                  } @else {
+                    <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
+                  }
                 </button>
               }
             </div>
@@ -430,6 +449,17 @@
         </div>
       </div>
     }
+  </div>
+
+  <!-- Under the whole list rather than in a row: it adds a row, it does not
+       edit one, so it is neither an `.extra-add` nor inside the scroller the
+       rows sit in — a control the reviewer has to scroll a batch of twenty to
+       reach is a control the truncation notice points at in vain. -->
+  <div class="list-footer">
+    <button type="button" class="add-row" (click)="addRow()">
+      <mat-icon aria-hidden="true">add</mat-icon>
+      <span>{{ 'import.addRow' | translate }}</span>
+    </button>
   </div>
 
   @if (transactions.length === 0) {

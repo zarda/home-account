@@ -1728,6 +1728,44 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(boxes.length).toBe(1);
       expect(boxes[0].value).toBe('Bakery');
     });
+
+    it('shows a description of nothing but spaces as unfilled, on a box that can be pressed', () => {
+      // A quoted "   " cell survives the CSV reader untrimmed, and the gate
+      // counts such a row as unfilled. A truthiness test here would render
+      // the spaces instead: `.description-text` is fit-content over
+      // collapsed whitespace, so the trigger would be about zero-width and
+      // the reviewer's only escape from the gate would be deselecting.
+      render(makeRow({ description: '   ' }));
+
+      const box = trigger('description');
+      expect(box.querySelector('.placeholder')?.textContent?.trim()).toBe('import.addDescription');
+      expect(box.getAttribute('aria-label'))
+        .withContext('the name says what the placeholder says, not a run of spaces')
+        .toBe('import.addDescription');
+      expect(box.getBoundingClientRect().width).withContext('a box to press on').toBeGreaterThan(0);
+    });
+
+    it('shows an amount that is not positive as unfilled, on both the trigger and its name', () => {
+      // Not only a hand-added row: a blank or unreadable CSV cell, a missing
+      // total and a refund that cancels its charge all reach the card as 0,
+      // with no grade for the verify flag to read. Left as a formatted zero
+      // it is an ordinary card the hint's count cannot point at.
+      render(makeRow({ amount: 0 }));
+
+      const box = trigger('amount');
+      expect(box.querySelector('.placeholder')?.textContent?.trim()).toBe('import.addAmount');
+      expect(box.querySelector('.amount-text')).withContext('no figure stands in its place').toBeNull();
+      expect(box.getAttribute('aria-label')).toBe('import.addAmount');
+    });
+
+    it('leaves a figure it could ship reading as itself', () => {
+      render(makeRow({ amount: 5.5 }));
+
+      const box = trigger('amount');
+      expect(box.querySelector('.placeholder')).toBeNull();
+      expect(box.querySelector('.amount-text')?.textContent?.trim()).toBe('-USD 5.5');
+      expect(box.getAttribute('aria-label')).toBe('import.editAmount:{"amount":"USD 5.5"}');
+    });
   });
 
   describe('the bulk keep on the header', () => {
@@ -2599,6 +2637,129 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       render(makeRow({ location: { country: 'KR' } }));
 
       expect(addTrigger()).toBeNull();
+    });
+  });
+
+  /**
+   * The reader that ran out of room leaves items off the end of the list, and
+   * the notice above tells the reviewer to add them. This is the control that
+   * lets them. It sits under the whole list rather than in a row: it adds a
+   * row, it does not edit one.
+   */
+  describe('adding a row by hand', () => {
+    const addButton = () => fixture.nativeElement.querySelector('.add-row') as HTMLButtonElement | null;
+    const descriptionInput = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .description-input`) as HTMLInputElement | null;
+    const placeholder = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .description-text .placeholder`) as HTMLElement | null;
+
+    function render(rows: CategorizedImportTransaction[], defaultCurrency = 'USD'): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.defaultCurrency = defaultCurrency;
+      fixture.detectChanges();
+    }
+
+    /** The parent, which is what puts the emitted array back on the card. */
+    function bindParent(): void {
+      component.transactionsUpdated.subscribe(rows => (component.transactions = rows));
+    }
+
+    function selections(): Set<string>[] {
+      const emitted: Set<string>[] = [];
+      component.selectionChanged.subscribe(ids => emitted.push(ids));
+      return emitted;
+    }
+
+    it('appends a blank row dated and denominated like the one above it', () => {
+      const previous = makeRow({ currency: 'KRW', date: new Date(2026, 5, 14, 9, 0) });
+      const given = [previous];
+      render(given);
+      const emitted = emissions();
+
+      addButton()!.click();
+
+      expect(emitted.length).toBe(1);
+      // The array the parent still holds, not the card's field, which the
+      // card reassigns: a push onto the input would pass against that one.
+      expect(given.length).withContext('never mutates the @Input() array').toBe(1);
+      expect(emitted[0]).withContext('a new array, as every other edit emits').not.toBe(given);
+      expect(emitted[0].length).toBe(2);
+      const added = emitted[0][1];
+      expect(added.id).toMatch(/^manual_/);
+      expect(added.description).toBe('');
+      expect(added.amount).toBe(0);
+      expect(added.currency).withContext('the trip\'s currency, not the account\'s').toBe('KRW');
+      expect(added.date.getTime()).toBe(previous.date.getTime());
+      expect(added.selected).toBeTrue();
+    });
+
+    it('falls back to the currency the wizard passes when there is no row above it', () => {
+      // The card renders its empty state at the same time; the control is
+      // under the list rather than inside it, so it is still there.
+      render([], 'JPY');
+      const emitted = emissions();
+
+      expect(addButton()).withContext('offered on an empty list too').not.toBeNull();
+      addButton()!.click();
+
+      expect(emitted[0][0].currency).toBe('JPY');
+    });
+
+    it('opens the new row in its description editor, with the caret already in it', () => {
+      // Seeded before the emission, so the row renders as an input the
+      // moment the parent binds it — the tap that added the row is the tap
+      // that starts typing, exactly as every other editor on this card.
+      render([makeRow()]);
+      const emitted = emissions();
+      bindParent();
+
+      addButton()!.click();
+      const added = emitted[0][1];
+      expect(component.isEditing(added, 'description'))
+        .withContext('in edit mode before the parent has re-bound anything')
+        .toBeTrue();
+
+      fixture.detectChanges();
+
+      const input = descriptionInput(added.id);
+      expect(input).withContext('the row rendered as an editor').not.toBeNull();
+      expect(document.activeElement).toBe(input);
+    });
+
+    it('reports the new row selected alongside the rows already chosen', () => {
+      // Import counts the selection, not the array: a row added and left out
+      // of it would be typed into and then silently dropped.
+      render([makeRow({ id: 'kept' }), makeRow({ id: 'left-out', selected: false })]);
+      const emitted = emissions();
+      const selected = selections();
+
+      addButton()!.click();
+
+      expect(selected.length).toBe(1);
+      expect(selected[0]).toEqual(new Set(['kept', emitted[0][2].id]));
+    });
+
+    it('mints an id of its own for every row added', () => {
+      render([makeRow()]);
+      const emitted = emissions();
+      bindParent();
+
+      addButton()!.click();
+      fixture.detectChanges();
+      addButton()!.click();
+
+      expect(emitted[1].length).toBe(3);
+      expect(emitted[1][2].id).not.toBe(emitted[1][1].id);
+    });
+
+    it('shows a blank description as waiting to be filled, and a typed one as itself', () => {
+      // Both halves of a hand-added row say so; the amount's own placeholder
+      // is pinned in the editors' describe, with the whitespace case.
+      render([makeRow({ id: 'blank', description: '' }), makeRow({ id: 'filled', description: 'Coffee' })]);
+
+      expect(placeholder('blank')?.textContent?.trim()).toBe('import.addDescription');
+      expect(placeholder('filled')).withContext('nothing missing here').toBeNull();
     });
   });
 });

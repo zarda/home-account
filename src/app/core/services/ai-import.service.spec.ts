@@ -893,6 +893,23 @@ describe('AIImportService', () => {
     });
   });
 
+  describe('the account\'s base currency', () => {
+    it('reports what the account files in', () => {
+      // The review card's hand-added rows need a currency before any row
+      // exists to copy one from, and the expression the import doors already
+      // read is the one that answers it.
+      authService.currentUser.and.returnValue({ preferences: { baseCurrency: 'KRW' } } as never);
+
+      expect(service.baseCurrency()).toBe('KRW');
+    });
+
+    it('falls back to USD with no account signed in', () => {
+      (authService.currentUser as jasmine.Spy).and.returnValue(null);
+
+      expect(service.baseCurrency()).toBe('USD');
+    });
+  });
+
   describe('the tag vocabulary', () => {
     /** Only the tags matter here; the rest is the shape the card holds. */
     const taggedRows = (...tags: string[][]): CategorizedImportTransaction[] =>

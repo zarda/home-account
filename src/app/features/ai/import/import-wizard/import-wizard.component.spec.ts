@@ -91,7 +91,7 @@ describe('ImportWizardComponent', () => {
   };
 
   beforeEach(async () => {
-    mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary'], {
+    mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary', 'baseCurrency'], {
       isProcessing: signal(false),
       processingStatus: signal(''),
       processingProgress: signal(0)
@@ -109,6 +109,9 @@ describe('ImportWizardComponent', () => {
     // Resolved, never bare: the refresh below is a void-ed `.then`, and a bare
     // spy answers undefined, which throws inside a promise nobody is holding.
     mockImportService.tagVocabulary.and.resolveTo([]);
+    // Read once, in a field initializer, so it has to answer before the
+    // component is constructed rather than at the first template read.
+    mockImportService.baseCurrency.and.returnValue('USD');
     mockImportService.parseAIError.and.callFake((error: unknown) => ({
       message: error instanceof Error ? error.message : String(error),
       type: 'unknown',
@@ -508,6 +511,52 @@ describe('ImportWizardComponent', () => {
       component.onTransactionsUpdated([{ ...mockTransactions[0], id: 'failed', date: yesterday() }]);
       expect(component.unansweredDates()).toBe(1);
     }));
+  });
+
+  describe('the rows still to fill in', () => {
+    // The twin of the date question: a count over the same rows, holding the
+    // same two buttons. Whether Continue and Import actually hold is a DOM
+    // matter for the smoke spec; this suite overrides the template away.
+    const blank = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      ...mockTransactions[0], id: 'manual_1', description: '', amount: 0, ...overrides,
+    });
+
+    it('counts a selected row with no amount, and one with no description', () => {
+      component.extractedTransactions.set([
+        blank({ id: 'nothing' }),
+        blank({ id: 'no-amount', description: 'Bread' }),
+        blank({ id: 'no-description', amount: 4 }),
+        blank({ id: 'whitespace', description: '   ', amount: 4 }),
+        { ...mockTransactions[0], id: 'filled' },
+      ]);
+
+      expect(component.unfilledRows()).toBe(4);
+    });
+
+    it('ignores a row the reviewer left out', () => {
+      component.extractedTransactions.set([blank({ id: 'left-out', selected: false })]);
+
+      expect(component.unfilledRows()).toBe(0);
+    });
+
+    it('holds the review step until the row the reviewer added is filled in', () => {
+      component.extractedTransactions.set([blank()]);
+      component.selectedTransactionIds.set(new Set(['manual_1']));
+
+      expect(component.unfilledRows()).toBe(1);
+      expect(component.reviewComplete()).toBeFalse();
+
+      // The card fills it through the same event every other edit rides.
+      component.onTransactionsUpdated([blank({ description: 'Bread', amount: 4 })]);
+
+      expect(component.unfilledRows()).toBe(0);
+      expect(component.reviewComplete()).toBeTrue();
+    });
+
+    it('reads the base currency once, for the card to denominate a blank row in', () => {
+      expect(component.baseCurrency).toBe('USD');
+      expect(mockImportService.baseCurrency).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('selectedCount', () => {

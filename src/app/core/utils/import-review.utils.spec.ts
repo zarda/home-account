@@ -1,4 +1,12 @@
-import { datedToday, joinSentences, needsDateAnswer, parseAmountInput, withoutFieldConfidence } from './import-review.utils';
+import {
+  blankImportRow,
+  datedToday,
+  joinSentences,
+  needsDateAnswer,
+  parseAmountInput,
+  rowIsUnfilled,
+  withoutFieldConfidence,
+} from './import-review.utils';
 import { CategorizedImportTransaction } from '../../models';
 
 /**
@@ -107,6 +115,130 @@ describe('import-review.utils', () => {
 
     it('leaves a confidently read date of today alone', () => {
       expect(needsDateAnswer(row({ fieldConfidence: { date: 0.95 } }), true, now)).toBeFalse();
+    });
+  });
+
+  describe('blankImportRow', () => {
+    const neighbour = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Coffee',
+      amount: 5,
+      currency: 'KRW',
+      date: new Date(2026, 5, 14, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('takes the date and the currency of the row it follows', () => {
+      // A row the reviewer adds belongs to the receipt above it: the trip's
+      // currency and the day that receipt was issued, not today in the
+      // account's base.
+      const previous = neighbour();
+      const row = blankImportRow('manual_1', previous, 'USD');
+
+      expect(row.date.getTime()).toBe(previous.date.getTime());
+      expect(row.currency).toBe('KRW');
+    });
+
+    it('falls back to today and the fallback currency on an empty list', () => {
+      const row = blankImportRow('manual_1', undefined, 'JPY');
+
+      expect(datedToday(row.date)).toBeTrue();
+      expect(row.currency).toBe('JPY');
+    });
+
+    it('carries nothing a reader would have produced', () => {
+      // No photo to attach, nothing read and so nothing graded: an absent
+      // grade is the "nobody doubts it" shape needsVerification already
+      // reads, and a mark would flag a row nobody could have misread.
+      const row = blankImportRow('manual_1', neighbour({
+        imageMetadata: {
+          imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1,
+        },
+        fieldConfidence: { amount: 0.2, date: 0.3 },
+        dateAssumed: true,
+        currencyFellBack: true,
+        tags: ['coffee'],
+        location: { name: 'Myeongdong' },
+      }), 'USD');
+
+      expect(row.imageMetadata).toBeUndefined();
+      expect(row.fieldConfidence).toBeUndefined();
+      expect(row.dateAssumed).toBeUndefined();
+      expect(row.currencyFellBack).toBeUndefined();
+      expect(row.tags).toBeUndefined();
+      expect(row.location).toBeUndefined();
+    });
+
+    it('starts empty, selected, and nobody\'s duplicate', () => {
+      const row = blankImportRow('manual_1', undefined, 'USD');
+
+      expect(row.id).toBe('manual_1');
+      expect(row.description).toBe('');
+      expect(row.amount).toBe(0);
+      expect(row.type).toBe('expense');
+      expect(row.suggestedCategoryId).toBe('other_expense');
+      expect(row.categoryConfidence)
+        .withContext('nothing suggested the category, so the card offers it as a guess')
+        .toBe(0);
+      expect(row.isDuplicate).toBeFalse();
+      expect(row.selected).toBeTrue();
+    });
+
+    it('keeps its own date object, so an edit to one row cannot move another', () => {
+      const previous = neighbour();
+      const row = blankImportRow('manual_1', previous, 'USD');
+
+      expect(row.date).not.toBe(previous.date);
+    });
+  });
+
+  describe('rowIsUnfilled', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Coffee',
+      amount: 5,
+      currency: 'USD',
+      date: new Date(2026, 5, 15, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('is false for a row that carries both an amount and a description', () => {
+      expect(rowIsUnfilled(row())).toBeFalse();
+    });
+
+    it('is true while the amount is still nothing', () => {
+      // The figure a blank row is born with, and the one no import may ship.
+      expect(rowIsUnfilled(row({ amount: 0 }))).toBeTrue();
+    });
+
+    it('is true for any other figure an import could not ship', () => {
+      // The reading is "not more than zero", not "is zero", which `=== 0`
+      // would satisfy for the case above and for nothing here: NaN is what a
+      // truthy non-number in a model's answer parses to, and a negative
+      // figure is a sign `type` — not the amount — is what states.
+      expect(rowIsUnfilled(row({ amount: NaN }))).toBeTrue();
+      expect(rowIsUnfilled(row({ amount: -5 }))).toBeTrue();
+    });
+
+    it('is true for a description that is blank or only whitespace', () => {
+      expect(rowIsUnfilled(row({ description: '' }))).toBeTrue();
+      expect(rowIsUnfilled(row({ description: '   ' }))).toBeTrue();
+    });
+
+    it('ignores a row the reviewer left out', () => {
+      // A deselected row is not going to be imported, so nothing about it
+      // holds Continue — the same rule needsDateAnswer follows.
+      expect(rowIsUnfilled(row({ selected: false, amount: 0, description: '' }))).toBeFalse();
     });
   });
 

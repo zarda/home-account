@@ -64,6 +64,49 @@
   overflow-y: auto;
 }
 
+// The list's own control, outside the scroller above so it does not walk off
+// the bottom of a long batch. It reads as the open slot at the end of the
+// list — the dashed border the strip's add triggers and the notes button
+// already use for exactly that — and takes its 40px in its own box.
+.list-footer {
+  display: flex;
+  padding: 0 10px 10px;
+}
+
+.add-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-block-size: 40px;
+  padding-block: 4px;
+  padding-inline: 12px;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-muted, #666);
+  background: none;
+  border: 1px dashed var(--border-primary, rgba(0, 0, 0, 0.16));
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  mat-icon {
+    font-size: var(--text-sm);
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
+}
+
+.add-row:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+:host-context(.dark-theme) .add-row:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
 .transaction-card {
   display: flex;
   align-items: flex-start;
@@ -280,6 +323,18 @@
 
 .amount-section.expense {
   color: var(--color-expense-text);
+}
+
+// What stands in either trigger before anything has been written into the
+// field. Muted and unweighted against the description's own 600 and the
+// amount's 700, so a row still to be filled in reads as a gap rather than as
+// a transaction called "Add a description" for "Add an amount". It sits
+// after the two rules above because it has to out-cascade the income and
+// expense colours they set at the same specificity.
+.description-text .placeholder,
+.amount-section .placeholder {
+  font-weight: 400;
+  color: var(--text-muted, #666);
 }
 
 .card-bottom-row {

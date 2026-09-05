@@ -256,6 +256,7 @@
           [categories]="categories()"
           [dateAttentionIds]="receiptRowIds()"
           [tagVocabulary]="tagVocabulary()"
+          [defaultCurrency]="baseCurrency"
           (transactionsUpdated)="onTransactionsUpdated($event)"
           (selectionChanged)="onSelectionChanged($event)"
         ></app-transaction-preview-table>
@@ -268,6 +269,14 @@
           </p>
         }
 
+        <!-- And why else: a row above carries no amount or no description —
+             the one the reviewer just added, or one that arrived that way. -->
+        @if (unfilledRows() > 0) {
+          <p class="rows-hint" role="status">
+            {{ 'import.rowsToFill' | translate:{ count: unfilledRows() } }}
+          </p>
+        }
+
         <div class="step-actions">
           <button mat-stroked-button (click)="stepper.previous()">
             <mat-icon>arrow_back</mat-icon>
@@ -277,7 +286,7 @@
             mat-flat-button
             color="primary"
             class="action-button"
-            [disabled]="selectedCount() === 0 || unansweredDates() > 0"
+            [disabled]="selectedCount() === 0 || unansweredDates() > 0 || unfilledRows() > 0"
             (click)="stepper.next()"
           >
             {{ 'common.continue' | translate }}
@@ -339,6 +348,15 @@
               </div>
             </div>
           }
+          @if (unfilledRows() > 0) {
+            <div class="summary-card rows-card">
+              <mat-icon>edit_note</mat-icon>
+              <div class="card-content">
+                <span class="card-value">{{ unfilledRows() }}</span>
+                <span class="card-label">{{ 'import.rowsToFillTitle' | translate }}</span>
+              </div>
+            </div>
+          }
           @if (hasMultiImageData()) {
             <div class="summary-card multi-image-card">
               <mat-icon>photo_library</mat-icon>
@@ -379,7 +397,7 @@
             mat-flat-button
             color="primary"
             class="action-button import-button"
-            [disabled]="isImporting() || rechecksInFlight() > 0 || selectedCount() === 0 || unansweredDates() > 0"
+            [disabled]="isImporting() || rechecksInFlight() > 0 || selectedCount() === 0 || unansweredDates() > 0 || unfilledRows() > 0"
             (click)="confirmImport()"
           >
             @if (isImporting()) {

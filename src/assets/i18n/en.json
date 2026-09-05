@@ -1186,6 +1186,11 @@
       "other": "Check {{count}} dates before continuing"
     },
     "datesToCheckTitle": "Dates to check",
+    "rowsToFill": {
+      "one": "Fill in 1 row before continuing",
+      "other": "Fill in {{count}} rows before continuing"
+    },
+    "rowsToFillTitle": "Rows to fill in",
     "keepAllDates": "Keep all dates",
     "editDescription": "Edit description ({{description}})",
     "editAmount": "Edit amount (currently {{amount}})",
@@ -1204,6 +1209,9 @@
     "removeTag": "Remove tag {{tag}}",
     "addTag": "Add tag",
     "newTag": "New tag",
+    "addRow": "Add a row",
+    "addDescription": "Add a description",
+    "addAmount": "Add an amount",
     "addLocation": "Add location",
     "addPlaceName": "Add a place name",
     "editPlaceName": "Edit place name ({{name}})",
@@ -1220,7 +1228,7 @@
     "errorProcessingFailed": "Could not process the image. Please try again.",
     "errorInvalidKey": "Your AI API key is invalid or expired. Update it in Settings → AI Processing.",
     "errorAnswerIncomplete": "The reader ran out of room before it finished this receipt. Try again, or with fewer photos at a time.",
-    "warningAnswerIncomplete": "The reader ran out of room mid-receipt, so items after the break are missing. Check the amounts below and add anything that is not here."
+    "warningAnswerIncomplete": "The reader ran out of room mid-receipt, so items after the break are missing. Check the amounts below, and add anything that is not here — Add a row under the list starts a blank one."
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",

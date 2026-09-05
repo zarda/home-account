@@ -731,6 +731,18 @@ export class AIImportService {
   }
 
   /**
+   * What this account files in, for a row no door produced: the review card
+   * denominates a hand-added row in it when there is no row above to copy a
+   * currency from, so the row the reviewer types cannot land in a currency
+   * the batch beside it never used. The doors here take the same reading
+   * inline, mid-map; this exists because the card is outside this service
+   * and must not reach past it into the auth session for it.
+   */
+  baseCurrency(): string {
+    return baseCurrencyOf(this.authService.currentUser());
+  }
+
+  /**
    * Every tag this account already files by, for the card's own add control:
    * what the memory remembers, what the recent window carries, and what the
    * batch itself arrived with.
