@@ -4,6 +4,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatStepper } from '@angular/material/stepper';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
@@ -1174,6 +1175,51 @@ describe('ImportWizardComponent', () => {
       await component.confirmImport();
 
       expect(mockImportService.confirmImport.calls.mostRecent().args[6]).toBeUndefined();
+    });
+  });
+
+  describe('the return to review after a partial import', () => {
+    // The template is blanked here, so there is no real stepper and no
+    // header to click; that the header itself refuses the move is the
+    // smoke suite's case. What is testable here is the ordering the seal
+    // forces: every step carries [editable]="!isImporting()", and the CDK's
+    // selectedIndex setter takes a backward move only onto an editable step
+    // (stepper.mjs: `index >= this.selectedIndex || steps[index].editable`).
+    // The unlock is a binding, so it reaches the step at the next render and
+    // a set in the same task would be dropped, stranding the failed rows.
+    function stubStepper(at: number): { selectedIndex: number } {
+      const stepper = { selectedIndex: at };
+      component.stepper = stepper as unknown as MatStepper;
+      return stepper;
+    }
+
+    it('unlocks the steps before it moves back onto Review', () => {
+      const stepper = stubStepper(3);
+      component.isImporting.set(true);
+
+      component['returnToReview']();
+
+      // Synchronously, not after an await: an await would let the
+      // scheduler's own tick run the render hook first and the assertion
+      // would pass whatever the order.
+      expect(component.isImporting()).toBeFalse();
+      expect(stepper.selectedIndex).toBe(3);
+
+      fixture.detectChanges();
+
+      expect(stepper.selectedIndex).toBe(2);
+    });
+
+    it('leaves the stepper alone once the wizard is destroyed', () => {
+      const stepper = stubStepper(3);
+      component.isImporting.set(true);
+      fixture.destroy();
+
+      // Registering a render hook on a destroyed injector throws NG0911,
+      // and by this point the partial-import toast is already out: the
+      // throw would surface as an unhandled error and nothing else.
+      expect(() => component['returnToReview']()).not.toThrow();
+      expect(stepper.selectedIndex).toBe(3);
     });
   });
 

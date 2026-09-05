@@ -35,7 +35,7 @@
   <!-- Stepper -->
   <mat-stepper [linear]="!fromCamera" #stepper class="modern-stepper">
     <!-- Step 1: Upload -->
-    <mat-step [completed]="uploadComplete()">
+    <mat-step [completed]="uploadComplete()" [editable]="!isImporting()">
       <ng-template matStepLabel>{{ 'import.uploadStep' | translate }}</ng-template>
 
       <div class="step-content upload-step">
@@ -102,7 +102,7 @@
     </mat-step>
 
     <!-- Step 2: Processing -->
-    <mat-step [completed]="processingComplete()">
+    <mat-step [completed]="processingComplete()" [editable]="!isImporting()">
       <ng-template matStepLabel>{{ 'import.processingStep' | translate }}</ng-template>
 
       <div class="step-content processing-step">
@@ -227,7 +227,7 @@
     </mat-step>
 
     <!-- Step 3: Review -->
-    <mat-step [completed]="reviewComplete()">
+    <mat-step [completed]="reviewComplete()" [editable]="!isImporting()">
       <ng-template matStepLabel>{{ 'import.reviewStep' | translate }}</ng-template>
 
       <div class="step-content review-step">
@@ -297,7 +297,7 @@
     </mat-step>
 
     <!-- Step 4: Confirm -->
-    <mat-step>
+    <mat-step [editable]="!isImporting()">
       <ng-template matStepLabel>{{ 'import.confirmStep' | translate }}</ng-template>
 
       <div class="step-content confirm-step">

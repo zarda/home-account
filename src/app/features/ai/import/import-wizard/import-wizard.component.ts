@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -67,6 +67,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private shareIntake = inject(ShareIntakeService);
   private destroyRef = inject(DestroyRef);
+  private injector = inject(Injector);
 
   @ViewChild('stepper') stepper!: MatStepper;
 
@@ -759,7 +760,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // The service iterates the selected subset and numbers its per-row
       // errors against it (1-based); snapshot the same subset now so those
       // numbers can be mapped back to rows. Safe to take before the await:
-      // the review UI is unreachable while isImporting disables the stepper.
+      // every step is [editable]="!isImporting()", and the CDK stepper
+      // refuses a move back onto a step that is not editable, so the review
+      // UI cannot be reached and edited while the write is in flight.
       const submitted = this.extractedTransactions().filter(t => t.selected);
       // The receipt attempt's provenance rides the record for image batches;
       // a CSV-only batch has none, and an absent slot means nobody looked.
@@ -820,9 +823,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           total: result.successCount + result.errorCount,
         }));
 
-        if (this.stepper) {
-          this.stepper.selectedIndex = 2;
-        }
+        this.returnToReview();
         return;
       }
 
@@ -852,6 +853,32 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     } finally {
       this.isImporting.set(false);
     }
+  }
+
+  /**
+   * Put the failed rows back on the review step.
+   *
+   * Every step is editable only while nothing is being written, and the CDK
+   * stepper takes a backward move only onto an editable step. The unlock is
+   * a template binding, so it reaches the step at the next render and not
+   * before: setting the index in the same task as the unlock would be
+   * refused silently, stranding the rows on Confirm with no way back. The
+   * finally's own set(false) that follows is then a no-op.
+   *
+   * Registering a render hook on a destroyed injector throws NG0911, which
+   * is what the guard is for.
+   */
+  private returnToReview(): void {
+    this.isImporting.set(false);
+    if (this.destroyRef.destroyed) return;
+    afterNextRender(
+      () => {
+        if (this.stepper) {
+          this.stepper.selectedIndex = 2;
+        }
+      },
+      { injector: this.injector }
+    );
   }
 
   goBack(): void {
