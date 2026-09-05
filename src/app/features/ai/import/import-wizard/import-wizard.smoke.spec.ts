@@ -63,9 +63,12 @@ import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
+import { TranslationService } from '../../../../core/services/translation.service';
 import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/services/gemini.service';
-import { DEFAULT_USER_PREFERENCES, ImportResult } from '../../../../models';
-import { parseDateInput } from '../../../../core/utils/transaction-date.utils';
+import { DEFAULT_USER_PREFERENCES, ImportHistory, ImportResult } from '../../../../models';
+import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
+import { countryDisplayName } from '../../../../core/utils/currency-suggestion.utils';
 import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
@@ -96,7 +99,7 @@ async function until(
 }
 
 /**
- * The single-receipt seam the three review-correction cases share: the cloud
+ * The single-receipt seam the review-correction cases share: the cloud
  * provider (the only thing with no local emulator), the two services it is
  * always stubbed alongside, and the exchange-rate fetch. Everything the import
  * itself does — the strategy, the categorization fallback, duplicate
@@ -106,11 +109,17 @@ async function until(
  * render the review step: the card asks for the whole currency picker at
  * construction and formats every row's amount from its template, so the
  * narrow { getExchangeRate, ensureRatesLoaded } stub throws before a row can
- * be corrected. One copy, so the widening cannot drift between the three.
+ * be corrected. One copy, so the widening cannot drift between them.
  * The rate stays 1, which keeps the JPY rows off the network without touching
  * the figures under test — nothing here converts.
+ *
+ * A case that reads no receipt at all — one that hands over a payload built
+ * the way the capture dialog builds it, or one that opens a backup — passes
+ * nothing: it still needs the card's currency picker and it still must not
+ * let a real provider reach the network, but there is no answer to stub, and
+ * a receipt invented to fill the parameter would read as one under test.
  */
-function stubReceiptSeams(parsed: ParsedReceipt): void {
+function stubReceiptSeams(parsed?: ParsedReceipt): void {
   const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
     'CloudLLMProviderService',
     [
@@ -126,7 +135,9 @@ function stubReceiptSeams(parsed: ParsedReceipt): void {
     ]
   );
   cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
-  cloudLLMProvider.parseReceipt.and.resolveTo(parsed);
+  if (parsed) {
+    cloudLLMProvider.parseReceipt.and.resolveTo(parsed);
+  }
   cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
   cloudLLMProvider.resetProviders.and.resolveTo(undefined);
   cloudLLMProvider.availableProviders.and.returnValue([]);
@@ -1531,6 +1542,554 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       await deleteDoc(seeded);
 
       history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a tag added and a location edited on the review card are what the import writes, and the tag is remembered',
+    async () => {
+      // The card's own suite drives these two controls against a stubbed
+      // parent and can only say what the card emitted. This is the rest of
+      // the path: the wizard's `[tagVocabulary]` binding, which only this
+      // case pins — the card's suite sets that input by hand and the wizard's
+      // own spec blanks its template — reaching the field the reviewer types
+      // into, and the tag and the corrected place travelling through the
+      // wizard's own confirm into a document written under the real rules,
+      // and into the memory the next import answers from.
+      //
+      // Nothing is extracted here: the payload is built exactly as the
+      // capture dialog hands one over.
+      stubReceiptSeams();
+
+      // The vocabulary offered is what this account already files by, and
+      // only a RAG level above 'off' lets the grounding read the window it
+      // comes from.
+      mockAuth.setMockUser(
+        createMockUser(uid, {
+          preferences: { ...DEFAULT_USER_PREFERENCES, ragInsightsLevel: 'standard' }
+        })
+      );
+
+      const localeFormat = TestBed.inject(LocaleFormatService);
+      // The wizard's own confirm ends in router.navigate, and provideRouter([])
+      // has nowhere to send it.
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'dogenzaka.jpg',
+        fileSize: 1234,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'セブン-イレブン',
+            amount: 542,
+            currency: 'JPY',
+            // Today and read clearly, so no date answer is owed and the gate
+            // the earlier case covers is out of this one's way.
+            date: new Date(),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true,
+            location: { name: '道玄坂1-2-3', country: 'JP' }
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const card = fixture.debugElement.query(By.directive(TransactionPreviewTableComponent))
+        .componentInstance as TransactionPreviewTableComponent;
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      // The vocabulary read is not awaited by the wizard — the field takes a
+      // hand-typed tag before it answers — so the list fills a moment later.
+      await until(fixture, () => component.tagVocabulary().length > 0);
+      const list = host.querySelector<HTMLDataListElement>('datalist')!;
+      expect(Array.from(list.options).map(option => option.value))
+        .withContext('the card offers exactly what the wizard read')
+        .toEqual([...component.tagVocabulary()]);
+      expect(component.tagVocabulary())
+        .withContext('what the confirms earlier in this file filed under this account')
+        .toContain('coffee');
+
+      host.querySelector<HTMLButtonElement>('.tag-add')!.click();
+      fixture.detectChanges();
+      const tagInput = host.querySelector<HTMLInputElement>('.tag-input')!;
+      expect(tagInput.getAttribute('list'))
+        .withContext('the field is pointed at that list')
+        .toBe(card.vocabularyListId);
+      tagInput.value = 'lunch';
+      tagInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      expect(host.querySelector('.tag-chip .extra-text')?.textContent?.trim()).toBe('lunch');
+
+      host.querySelector<HTMLButtonElement>('.place-name')!.click();
+      fixture.detectChanges();
+      const placeInput = host.querySelector<HTMLInputElement>('.place-input')!;
+      expect(placeInput.value).withContext('the editor starts from what was printed').toBe('道玄坂1-2-3');
+      placeInput.value = 'Seven-Eleven Dogenzaka';
+      placeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      expect(host.querySelector('.place-name .extra-text')?.textContent?.trim())
+        .toBe('Seven-Eleven Dogenzaka');
+
+      const korea = countryDisplayName('KR', localeFormat.locale);
+      host.querySelector<HTMLButtonElement>('.extra-country')!.click();
+      fixture.detectChanges();
+      const option = Array.from(
+        document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item')
+      ).find(item => item.textContent?.trim() === korea);
+      expect(option).withContext(`the picker offers ${korea}`).toBeDefined();
+      option!.click();
+      fixture.detectChanges();
+
+      expect(host.querySelector('.extra-country .country-name')?.textContent?.trim()).toBe(korea);
+      expect(component.rechecksInFlight())
+        .withContext('a tag and a place are not detection inputs')
+        .toBe(0);
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect(stored['amount']).toBe(542);
+      expect(stored['tags']).toEqual(['lunch']);
+      expect(stored['location']).toEqual({ name: 'Seven-Eleven Dogenzaka', country: 'KR' });
+      // The concluded-country mark is review bookkeeping and the picked
+      // country replaced it; the document carries the answer, not the working.
+      expect('receiptCountry' in stored).toBeFalse();
+
+      // What the confirm remembered about the merchant, read back through the
+      // rules that had to accept it (tagMemoryValid).
+      const memory = await getDocs(collection(firestore, `users/${uid}/tagMemory`));
+      const remembered = memory.docs
+        .map(d => d.data())
+        .filter(d => ((d['tags'] as string[] | undefined) ?? []).includes('lunch'));
+      expect(remembered.length).toBe(1);
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a row added by hand holds Continue until it is filled in, and is written once it is',
+    async () => {
+      // The unfilled-row gate's whole user-visible surface, which only this
+      // suite can reach: the wizard's unit spec overrides the template with a
+      // bare div, so `.rows-hint`, `.rows-card` and the two [disabled]
+      // expressions are pinned by nothing else. Confirm is reachable with the
+      // row still empty because a camera handoff runs the stepper non-linear —
+      // which is why Import carries a guard of its own rather than leaning on
+      // the review step being incomplete.
+      //
+      // The photo is what tells the two rows apart at the write: the plan
+      // attaches it to the row that came from it, and a hand-added row has no
+      // imageMetadata for the planner to match.
+      stubReceiptSeams();
+      TestBed.configureTestingModule({
+        providers: [
+          // The quota check reads Remote Config, which has no emulator.
+          {
+            provide: ReceiptQuotaService,
+            useValue: { canAddImages: async () => true, noteImagesAdded: () => undefined }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const photo = new File([new Uint8Array([1, 2, 3])], 'seven.jpg', { type: 'image/jpeg' });
+      const scannedOn = new Date();
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'seven.jpg',
+        fileSize: photo.size,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        sourceFiles: [photo],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'セブン-イレブン',
+            amount: 543,
+            currency: 'JPY',
+            date: scannedOn,
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true,
+            imageMetadata: {
+              imageIndex: 0,
+              imageId: 'image_0',
+              positionInImage: 'top',
+              confidenceScore: 0.9,
+              receiptId: 1
+            }
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      const continueButton = () =>
+        host.querySelector<HTMLButtonElement>('.review-step .action-button')!;
+      const importButton = () =>
+        host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
+
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(continueButton().disabled).withContext('the scanned row is complete').toBeFalse();
+
+      host.querySelector<HTMLButtonElement>('.add-row')!.click();
+      fixture.detectChanges();
+
+      expect(cards().length).toBe(2);
+      expect(document.activeElement)
+        .withContext('the tap that added the row starts the typing')
+        .toBe(cards()[1].querySelector('.inline-input'));
+      expect(component.unfilledRows()).toBe(1);
+      expect(host.querySelector('.rows-hint')).not.toBeNull();
+      expect(continueButton().disabled).toBeTrue();
+
+      // The stepper header reaches Confirm from here with the row still empty.
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(
+        host.querySelector('.confirm-step .rows-card .card-value')?.textContent?.trim()
+      ).toBe('1');
+      expect(importButton().disabled).toBeTrue();
+
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+
+      // The trip to Confirm took focus off the field, and a departing editor
+      // commits what is in it — nothing — so the row is back to its
+      // placeholder and the reviewer opens it again to type.
+      expect(cards()[1].querySelector('.inline-input'))
+        .withContext('the editor closed behind the reviewer')
+        .toBeNull();
+      cards()[1].querySelector<HTMLButtonElement>('.description-section .inline-edit')!.click();
+      fixture.detectChanges();
+
+      const description = cards()[1].querySelector<HTMLInputElement>('.inline-input')!;
+      description.value = 'Bottled water';
+      description.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      cards()[1].querySelector<HTMLButtonElement>('.amount-section .inline-edit')!.click();
+      fixture.detectChanges();
+      const amount = cards()[1].querySelector<HTMLInputElement>('.amount-input')!;
+      amount.value = '544';
+      amount.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      // Both are detection inputs, so a re-check is in flight behind them.
+      // Import waits on it; so does this, because a verdict landing
+      // mid-confirm would rewrite the rows being submitted.
+      await until(fixture, () => component.rechecksInFlight() === 0);
+
+      expect(component.unfilledRows()).toBe(0);
+      expect(host.querySelector('.rows-hint')).toBeNull();
+      expect(continueButton().disabled).toBeFalse();
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(host.querySelector('.confirm-step .rows-card')).toBeNull();
+      expect(importButton().disabled).toBeFalse();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.map(d => d['amount']).sort())
+        .withContext('the scan and the row the reviewer typed')
+        .toEqual([543, 544]);
+      const added = landed.find(d => d['amount'] === 544)!;
+      const scanned = landed.find(d => d['amount'] === 543)!;
+      expect(added['description']).toBe('Bottled water');
+      // It takes the day and the currency of the row it follows, which is the
+      // scan's — the account's base is USD.
+      expect(added['currency']).toBe('JPY');
+      expect(dayKey((added['date'] as Timestamp).toDate())).toBe(dayKey(scannedOn));
+      expect('receiptUrl' in added).withContext('no photo of a row nobody scanned').toBeFalse();
+      expect('receiptUrls' in added).toBeFalse();
+      expect('receiptCount' in added).toBeFalse();
+      expect(typeof scanned['receiptUrl'])
+        .withContext('the photo went to the row that came from it')
+        .toBe('string');
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'the stepper header cannot leave Confirm while the import writes, and the wizard returns to Review when a row fails',
+    async () => {
+      // The seal, against the real Material stepper. The wizard's unit spec
+      // blanks the template, so it can only prove the order the unlock and
+      // the move back happen in — no header exists there to refuse a press.
+      // Both ways in are pressed here, because they are not the same code
+      // path: a click calls the step's own select, while Enter selects the
+      // key manager's active item.
+      stubReceiptSeams();
+
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'sealed.jpg',
+        fileSize: 1234,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'セブン-イレブン',
+            amount: 545,
+            currency: 'JPY',
+            date: new Date(),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const steps = () => component.stepper.steps.toArray();
+      const headers = () => Array.from(host.querySelectorAll<HTMLElement>('.mat-step-header'));
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+
+      // Held open by hand, so the whole seal can be pressed on while the
+      // write is genuinely in flight. Nothing is written: the case is about
+      // what the wizard does with the record it gets back.
+      let settle!: (record: ImportHistory) => void;
+      const pending = new Promise<ImportHistory>(resolve => { settle = resolve; });
+      spyOn(TestBed.inject(AIImportService), 'confirmImport').and.returnValue(pending);
+
+      void component.confirmImport();
+      fixture.detectChanges();
+
+      expect(component.isImporting()).toBeTrue();
+      expect(steps().every(step => !step.editable))
+        .withContext('every step is sealed, not just the one behind')
+        .toBeTrue();
+
+      headers()[2].click();
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex)
+        .withContext('the header refuses the move onto a sealed step')
+        .toBe(3);
+
+      // The keyboard is a second path, not the same one: the CDK selects the
+      // key manager's *active* item on Enter and reads `event.keyCode`, and a
+      // refused click never moves that item — so a bare Enter here would
+      // re-select the step already showing and pass with the seal gone.
+      headers()[3].focus();
+      headers()[3].dispatchEvent(new KeyboardEvent('keydown', { keyCode: 37, bubbles: true }));
+      fixture.detectChanges();
+      expect(document.activeElement)
+        .withContext('the arrow moved the active item onto Review')
+        .toBe(headers()[2]);
+
+      headers()[2].dispatchEvent(new KeyboardEvent('keydown', { keyCode: 13, bubbles: true }));
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex).toBe(3);
+
+      // The one row submitted, refused: the record the confirm hands back on
+      // a partial write, in the shape the wizard reads it in.
+      settle({
+        id: 'sealed-partial',
+        userId: uid,
+        importedAt: Timestamp.now(),
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'sealed.jpg',
+        fileSize: 1234,
+        transactionCount: 1,
+        successCount: 0,
+        skippedCount: 0,
+        errorCount: 1,
+        totalIncome: 0,
+        totalExpenses: 0,
+        status: 'partial',
+        errors: [{ row: 1, message: 'refused' }],
+        duplicatesSkipped: 0
+      });
+
+      // The move back is deferred past the unlock's own render, because the
+      // stepper would refuse it in the same task — which is exactly what the
+      // presses above just demonstrated.
+      await until(fixture, () => component.stepper.selectedIndex === 2);
+
+      expect(component.isImporting()).toBeFalse();
+      expect(steps().every(step => step.editable)).toBeTrue();
+      expect(component.extractedTransactions().length).toBe(1);
+      expect(component.extractedTransactions()[0].amount).toBe(545);
+      expect(host.querySelectorAll('.transaction-card').length)
+        .withContext('the refused row is back on the card to correct')
+        .toBe(1);
+      expect(host.textContent ?? '').toContain('セブン-イレブン');
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a backup row without a readable date reaches the review step marked, and a dated one keeps its day',
+    async () => {
+      // The JSON door through the wizard, with the real checkDuplicates
+      // behind it. The service's own suite reads the rows it returns; this is
+      // the review step those rows land on — the question chip on the row the
+      // backup dated nothing, and no chip on the row it dated, which is the
+      // half a silent `.seconds` read used to get wrong in the other
+      // direction.
+      //
+      // The file is handed to onFilesSelected, the share hand-off's own
+      // entry: the dropzone's accepted types exclude JSON, so a backup never
+      // arrives through it.
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      const localeFormat = TestBed.inject(LocaleFormatService);
+      const translation = TestBed.inject(TranslationService);
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      // 2024-08-14 in UTC. Asserted through dayKey against the same instant,
+      // so the case does not depend on the runner's zone.
+      const printedSeconds = 1723593600;
+      const printed = new Date(printedSeconds * 1000);
+      component.onFilesSelected([
+        new File(
+          [JSON.stringify({
+            transactions: [
+              { description: 'Rent', amount: -545, type: 'expense', date: { seconds: printedSeconds } },
+              { description: 'Deposit', amount: 545, type: 'income' }
+            ]
+          })],
+          'backup.json',
+          { type: 'application/json' }
+        )
+      ]);
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 2);
+
+      // The stepper is linear with no handoff and nothing has moved it, and
+      // Material renders every unselected step inert. Steps 0 and 1 are
+      // complete by now — files were selected, rows exist.
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      const rows = component.extractedTransactions();
+      const cards = Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      expect(cards.length).toBe(2);
+      expect(rows[0].description).toBe('Rent');
+      expect(rows[1].description).toBe('Deposit');
+
+      expect(rows[0].dateAssumed).toBeUndefined();
+      expect(dayKey(rows[0].date)).toBe(dayKey(printed));
+      expect(cards[0].querySelector('.extra-chip.date-check'))
+        .withContext('nothing to ask about a date the backup recorded')
+        .toBeNull();
+      expect(cards[0].querySelector('.date-chip')?.textContent)
+        .toContain(localeFormat.formatDate(printed));
+
+      expect(rows[1].dateAssumed).toBeTrue();
+      expect(dayKey(rows[1].date)).toBe(dayKey(new Date()));
+      const chip = cards[1].querySelector('.extra-chip.date-check');
+      expect(chip).withContext('the row dated nothing is asked about').not.toBeNull();
+      // The assumed wording, which is what tells this chip from the one a
+      // receipt dated on another day carries.
+      expect(chip!.querySelector('.extra-text')?.textContent?.trim())
+        .toBe(translation.t('import.dateAssumedKeep'));
+      expect(cards[1].querySelector('.date-chip')?.textContent)
+        .toContain(localeFormat.formatDate(new Date()));
+
+      // Asked, never gated: the date question holds Continue for receipt rows
+      // only, and a backup's rows are not receipts.
+      expect(component.unansweredDates()).toBe(0);
+      expect(host.querySelector('.dates-hint')).toBeNull();
+      expect(
+        host.querySelector<HTMLButtonElement>('.review-step .action-button')!.disabled
+      ).toBeFalse();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      expect(after.docs.filter(d => !before.has(d.id)).length)
+        .withContext('nothing is confirmed here')
+        .toBe(0);
+
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));
     },
