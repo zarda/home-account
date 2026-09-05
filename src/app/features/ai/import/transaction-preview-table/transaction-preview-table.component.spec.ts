@@ -1,12 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MatDatepicker } from '@angular/material/datepicker';
+import { MatTooltip } from '@angular/material/tooltip';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
 import { CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
+import { LocaleFormatService } from '../../../../core/services/locale-format.service';
+import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
+import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
 
 describe('TransactionPreviewTableComponent', () => {
   let component: TransactionPreviewTableComponent;
@@ -377,6 +383,153 @@ describe('TransactionPreviewTableComponent', () => {
     it('reports the confidence as a percentage in the tooltip', () => {
       const t = row({ fieldConfidence: { amount: 0.42 } });
       expect(component.verificationTooltip(t, 'amount')).toContain('42');
+    });
+  });
+
+  describe('the date button\'s name', () => {
+    const makeRow = (overrides: Partial<CategorizedImportTransaction> = {}) => ({
+      ...createMockTransactions()[0],
+      ...overrides,
+    });
+    const formatted = (row: CategorizedImportTransaction) =>
+      TestBed.inject(LocaleFormatService).formatDate(row.date);
+
+    it('says only how to change the date on a row nobody doubts', () => {
+      // Same shape as currencyChipLabel: the mark leads the name only when
+      // there is one, so a plain CSV row is not announced as suspect.
+      const row = makeRow();
+      expect(component.dateChipLabel(row)).toBe(`import.changeDate:{"date":"${formatted(row)}"}`);
+    });
+
+    it('leads with the not-today wording for a receipt row dated another day', () => {
+      const row = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
+      component.dateAttentionIds = new Set(['receipt']);
+      expect(component.dateChipLabel(row)).toBe(
+        `import.dateNotTodayTooltip:{"date":"${formatted(row)}"}. import.changeDate:{"date":"${formatted(row)}"}`
+      );
+    });
+
+    it('stays quiet about another day on a row outside the attention set', () => {
+      const row = makeRow({ id: 'statement', date: new Date(2026, 5, 1) });
+      expect(component.dateNotToday(row)).toBeFalse();
+      expect(component.dateChipLabel(row)).toBe(`import.changeDate:{"date":"${formatted(row)}"}`);
+    });
+
+    it('keeps the percent wording for a low grade that was not assumed', () => {
+      // The resolver assumes every grade under the bar, so this row cannot
+      // come out of it — but a row that got here some other way must not
+      // wear a blank name.
+      const row = makeRow({ fieldConfidence: { date: 0.3 } });
+      expect(component.dateTooltip(row)).toBe('import.verifyDate:{"percent":30}');
+    });
+
+    it('names the keep button by the reason and by the date it keeps', () => {
+      const row = makeRow({ dateAssumed: true });
+      expect(component.keepDateLabel(row)).toBe(`import.dateAssumedTooltip. import.keepDate:{"date":"${formatted(row)}"}`);
+      expect(component.dateChipText(row)).toBe('import.dateAssumedKeep');
+    });
+
+    it('drops the reason\'s own stop before the join adds one', () => {
+      // The three date tooltips are sentences with a terminator of their
+      // own — "." in en, "。" in ja and tc — and the join puts one between
+      // the reason and the action, so a flagged row's name would end its
+      // reason "here.. Change" or "。. 日付". dateReviewed and the percent
+      // wording carry no stop and keep the plain ". " join the cases above
+      // pin; the echoing stub returns bare keys, so these two are stood in
+      // for with real sentences.
+      const sentences: Record<string, string> = {
+        'import.dateAssumedTooltip': 'This row is dated today — keep it or change it here.',
+        'import.dateNotTodayTooltip': 'このレシートの日付は今日ではありません。',
+      };
+      spyOn(TestBed.inject(TranslationService), 't').and.callFake(
+        (key: string, params?: Record<string, string | number>) =>
+          sentences[key] ?? (params ? `${key}:${JSON.stringify(params)}` : key)
+      );
+
+      const assumed = makeRow({ dateAssumed: true });
+      expect(component.dateChipLabel(assumed))
+        .toBe(`This row is dated today — keep it or change it here. import.changeDate:{"date":"${formatted(assumed)}"}`);
+      const receipt = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
+      component.dateAttentionIds = new Set(['receipt']);
+      expect(component.keepDateLabel(receipt))
+        .toBe(`このレシートの日付は今日ではありません. import.keepDate:{"date":"${formatted(receipt)}"}`);
+    });
+
+    it('asks a not-today row to keep the day it is dated, and flags its button', () => {
+      const row = makeRow({ id: 'receipt', date: new Date(2026, 5, 1) });
+      component.dateAttentionIds = new Set(['receipt']);
+      expect(component.dateChipText(row)).toBe(`import.dateNotTodayKeep:{"date":"${formatted(row)}"}`);
+      expect(component.dateNotToday(row)).withContext('the class the button wears').toBeTrue();
+      expect(component.dateFlagged(row)).withContext('the flag icon the button shows').toBeTrue();
+    });
+  });
+
+  describe('the bulk date answer', () => {
+    // A trip's worth of receipts are all dated on their own days, and the
+    // dates are usually right: one Keep for every row still asked, settled
+    // exactly the way the single Keep settles a row.
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+    // Every row is dated deliberately: the fixture's own dates are half of
+    // what the count means, and rows that all inherit one stale day would
+    // read the same whether the predicate looked at the date or not.
+    const rows = (): CategorizedImportTransaction[] => [
+      { ...createMockTransactions()[0], id: 'asked', date: yesterday(), fieldConfidence: { amount: 0.5, date: 0.9 } },
+      { ...createMockTransactions()[0], id: 'assumed', date: new Date(), dateAssumed: true, dateImplausible: true, fieldConfidence: { date: 0.3 } },
+      { ...createMockTransactions()[0], id: 'today', date: new Date() },
+      { ...createMockTransactions()[0], id: 'unselected', date: yesterday(), selected: false },
+      { ...createMockTransactions()[0], id: 'answered', date: yesterday(), dateReviewed: true },
+      { ...createMockTransactions()[0], id: 'outside', date: yesterday() },
+    ];
+
+    beforeEach(() => {
+      component.transactions = rows();
+      component.dateAttentionIds = new Set(['asked', 'assumed', 'today', 'unselected', 'answered']);
+    });
+
+    it('counts the selected rows under attention still owing an answer', () => {
+      // Two of the three attention rows that are selected and unanswered:
+      // the one dated yesterday and the assumed one. The third is dated
+      // today and was read, so nobody is being asked about it.
+      expect(component.unansweredCount()).toBe(2);
+    });
+
+    it('counts nothing outside the attention set', () => {
+      // A CSV batch is never asked, so its header offers no bulk Keep.
+      component.dateAttentionIds = new Set();
+      expect(component.unansweredCount()).toBe(0);
+    });
+
+    it('keeps exactly the rows still asked, and leaves every other row by identity', () => {
+      const before = component.transactions;
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.keepAllDates();
+
+      expect(emitted.length).toBe(1);
+      const byId = new Map(emitted[0].map(t => [t.id, t]));
+      const asked = byId.get('asked')!;
+      expect(asked.date).withContext('kept, not moved').toBe(before[0].date);
+      expect(asked.dateReviewed).toBeTrue();
+      expect(asked.dateAssumed).toBeUndefined();
+      expect(asked.dateImplausible).toBeUndefined();
+      expect(asked.fieldConfidence).withContext('only the date\'s grade goes').toEqual({ amount: 0.5 });
+      const assumed = byId.get('assumed')!;
+      expect(assumed.dateReviewed).toBeTrue();
+      expect(assumed.dateAssumed).toBeUndefined();
+      expect(assumed.dateImplausible).toBeUndefined();
+      expect(assumed.fieldConfidence).withContext('the date was the only grade').toBeUndefined();
+      // Untouched by identity: dated today, not selected, already answered,
+      // outside attention.
+      expect(byId.get('today')).toBe(before[2]);
+      expect(byId.get('unselected')).toBe(before[3]);
+      expect(byId.get('answered')).toBe(before[4]);
+      expect(byId.get('outside')).toBe(before[5]);
+      expect(component.unansweredCount()).toBe(0);
     });
   });
 
@@ -791,7 +944,15 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
       providers: [
-        { provide: TranslationService, useValue: { t: (key: string) => key } },
+        {
+          // Echoes the key and its params, as the first describe does, so a
+          // label that carries the formatted date can be asserted whole.
+          provide: TranslationService,
+          useValue: {
+            t: (key: string, params?: Record<string, string | number>) =>
+              params ? `${key}:${JSON.stringify(params)}` : key,
+          },
+        },
         {
           provide: CurrencyService,
           useValue: {
@@ -870,58 +1031,1152 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(currencySession.remember).not.toHaveBeenCalled();
   });
 
-  describe('the date-assumed chip', () => {
-    it('renders the date-assumed chip only when the row carries the mark', () => {
+  /**
+   * The touch picker renders in the CDK overlay container, outside the
+   * fixture, so a test that opened it closes it again — or the next test
+   * finds a stray dialog in the document.
+   */
+  describe('the date on the card', () => {
+    const formatted = (row: CategorizedImportTransaction) =>
+      TestBed.inject(LocaleFormatService).formatDate(row.date);
+    const dateButton = () => fixture.nativeElement.querySelector('button.date-chip') as HTMLButtonElement;
+    const questionChips = () =>
+      fixture.nativeElement.querySelectorAll('.extra-chip.date-check') as NodeListOf<HTMLElement>;
+    const openDialog = () => document.querySelector('.mat-datepicker-content [role="dialog"]');
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+
+    function render(rows: CategorizedImportTransaction[], attention: string[] = []): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.dateAttentionIds = new Set(attention);
+      fixture.detectChanges();
+    }
+
+    afterEach(() => {
+      for (const picker of fixture.debugElement.queryAll(By.directive(MatDatepicker))) {
+        (picker.componentInstance as MatDatepicker<Date>).close();
+      }
+      expect(document.querySelector('.mat-datepicker-content'))
+        .withContext('no picker left open for the next test')
+        .toBeNull();
+    });
+
+    it('renders the date as a button named by its mark and then by what a tap does', () => {
+      // The ordinary assumed row: resolveImportDate marks dateAssumed for the
+      // same low reading that trips needsVerification. The flag still
+      // renders, but a button's aria-label replaces its content, so the
+      // flag is decorative and the wording rides on the name instead.
+      const row = makeRow({ id: 'r1', dateAssumed: true, fieldConfidence: { date: 0.3 } });
+      render([row]);
+
+      const button = dateButton();
+      expect(button.id).toBe('date-chip-r1');
+      expect(button.getAttribute('aria-label'))
+        .toBe(`import.dateAssumedTooltip. import.changeDate:{"date":"${formatted(row)}"}`);
+      const flag = button.querySelector('.verify-flag');
+      expect(flag).withContext('the low-confidence flag on the date button still renders').not.toBeNull();
+      expect(flag?.getAttribute('aria-hidden')).withContext('but is decorative').toBe('true');
+    });
+
+    it('opens the touch picker from the button, and the dialog is named after the button', () => {
+      render([makeRow({ id: 'r1' })]);
+
+      dateButton().click();
+      fixture.detectChanges();
+
+      const dialog = openDialog();
+      expect(dialog).withContext('the touch dialog is in the document').not.toBeNull();
+      // The dialog takes its name from the anchor input's own aria-labelledby;
+      // a bare input outside a form field has no other label to hand it.
+      expect(dialog?.getAttribute('aria-labelledby')).toBe('date-chip-r1');
+    });
+
+    it('names a reviewed row\'s button by the check, shows the check, and asks nothing', () => {
+      const row = makeRow({ dateReviewed: true });
+      render([row]);
+
+      expect(dateButton().getAttribute('aria-label'))
+        .toBe(`import.dateReviewed. import.changeDate:{"date":"${formatted(row)}"}`);
+      expect(dateButton().querySelector('mat-icon')?.textContent?.trim()).toBe('check');
+      expect(questionChips().length).toBe(0);
+    });
+
+    it('picking a day emits a new row dated that day, with the marks and the date grade gone', () => {
+      const row = makeRow({ dateAssumed: true, dateImplausible: true, fieldConfidence: { amount: 0.5, date: 0.3 } });
+      render([row]);
+      const emitted = emissions();
+      const picked = new Date(2026, 5, 3);
+
+      component.updateDate(row, picked);
+
+      const next = emitted[0][0];
+      expect(next).not.toBe(row);
+      expect(next.date).toBe(picked);
+      expect(next.dateReviewed).toBeTrue();
+      expect(next.dateAssumed).toBeUndefined();
+      expect(next.dateImplausible).toBeUndefined();
+      expect(next.fieldConfidence).withContext('the amount grade stays; the object is exactly what remains').toEqual({ amount: 0.5 });
+    });
+
+    it('drops the grade altogether when the date was the only field graded', () => {
+      const row = makeRow({ dateAssumed: true, fieldConfidence: { date: 0.3 } });
+      render([row]);
+      const emitted = emissions();
+
+      component.updateDate(row, new Date(2026, 5, 3));
+
+      expect(emitted[0][0].fieldConfidence).toBeUndefined();
+    });
+
+    it('ignores a cleared picker', () => {
+      // The input emits null when its text is cleared; a row cannot be dated nothing.
+      const row = makeRow();
+      render([row]);
+      const emitted = emissions();
+
+      component.updateDate(row, null);
+
+      expect(emitted.length).toBe(0);
+    });
+
+    it('keeping the date answers the question without changing the date', () => {
+      const row = makeRow({ dateAssumed: true, dateImplausible: true, fieldConfidence: { amount: 0.5, date: 0.3 } });
+      render([row]);
+      const emitted = emissions();
+
+      component.keepDate(row);
+
+      const next = emitted[0][0];
+      expect(next.date).toBe(row.date);
+      expect(next.dateReviewed).toBeTrue();
+      expect(next.dateAssumed).toBeUndefined();
+      expect(next.dateImplausible).toBeUndefined();
+      expect(next.fieldConfidence).toEqual({ amount: 0.5 });
+    });
+
+    it('asks about an assumed date on any batch, and about another day only for a receipt row', () => {
+      render([makeRow({ id: 'assumed', dateAssumed: true }), makeRow({ id: 'old', date: yesterday() })]);
+      expect(questionChips().length).withContext('attention off: only the assumed row is asked').toBe(1);
+
+      // Through setInput, the way the wizard's binding reaches it: the
+      // component is OnPush, and a property assigned on the instance does
+      // not mark its view, so detectChanges alone would leave the DOM as is.
+      fixture.componentRef.setInput('dateAttentionIds', new Set(['old']));
+      fixture.detectChanges();
+      expect(questionChips().length).withContext('attention on: the not-today row is asked too').toBe(2);
+    });
+
+    it('renders the question only while the row carries the mark', () => {
+      render([makeRow({ id: 'marked', dateAssumed: true }), makeRow({ id: 'unmarked' })]);
+
+      expect(questionChips().length).toBe(1);
+    });
+
+    it('renders the keep button with the reason and the keep wording in its name', () => {
+      const row = makeRow({ dateAssumed: true });
+      render([row]);
+
+      const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement;
+      // Reason, then action: the name is more than the tooltip, so `toContain`.
+      expect(keep.getAttribute('aria-label')).toContain(component.dateAssumedTooltip(row));
+      expect(keep.getAttribute('aria-label')).toContain('import.keepDate');
+    });
+
+    it('an implausible row is asked with the implausible wording and wears no verify flag', () => {
+      // Graded 0.9 — well clear of the verify threshold — because that is
+      // exactly the case the window exists for: needsVerification stays
+      // quiet, so the question chip is the only surface this row gets.
+      const row = makeRow({ dateAssumed: true, dateImplausible: true, fieldConfidence: { date: 0.9 } });
+      render([row]);
+
+      const keep = fixture.nativeElement.querySelector('.extra-chip.date-check .extra-accept') as HTMLElement;
+      expect(keep.getAttribute('aria-label')).toContain(component.dateAssumedTooltip(row));
+      expect(component.dateAssumedTooltip(row)).toBe('import.dateImplausibleTooltip');
+      expect(dateButton().querySelector('.verify-flag'))
+        .withContext('grade clears the threshold, so the date button wears no flag')
+        .toBeNull();
+      expect(dateButton().getAttribute('aria-label'))
+        .withContext('the mark still rides on the button name')
+        .toMatch(/^import\.dateImplausibleTooltip\. /);
+    });
+
+    it('clicking keep answers through keepDate, and the question goes', () => {
+      const row = makeRow({ dateAssumed: true });
+      render([row]);
+      const emitted = emissions();
+
+      (fixture.nativeElement.querySelector('.date-check .extra-accept') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(emitted[0][0].dateReviewed).toBeTrue();
+      expect(questionChips().length).toBe(0);
+      expect(dateButton().querySelector('mat-icon')?.textContent?.trim()).toBe('check');
+    });
+
+    it('hands focus to the date button when Keep takes the question away', () => {
+      // Keep is the most-tapped control in the review and it removes the
+      // chip it sits on. A focused element that leaves the DOM drops focus
+      // at the document root, so a reviewer answering a batch of receipts
+      // from the keyboard is thrown out of the list on every answer — the
+      // same fall closeEdit was fixed for. The date button is where the
+      // answer landed and it names the day as it now stands.
+      render([makeRow({ id: 'r1', dateAssumed: true })]);
+      const keep = fixture.nativeElement.querySelector('.date-check .extra-accept') as HTMLElement;
+      keep.focus();
+
+      keep.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#date-chip-r1'));
+    });
+
+    it('hands focus to the date button when a day is picked from the question', () => {
+      // The picker restores focus to whatever held it when the dialog
+      // opened — here the question's own calendar button, which the answer
+      // unmounts a moment later, so the restore lands on a detached node.
+      render([makeRow({ id: 'r1', date: new Date(2026, 5, 10), dateAssumed: true })]);
+      const change = fixture.nativeElement.querySelector('.date-check .extra-change') as HTMLElement;
+      change.focus();
+      change.click();
+      fixture.detectChanges();
+
+      const third = Array.from(document.querySelectorAll<HTMLElement>('.mat-calendar-body-cell'))
+        .find(cell => cell.querySelector('.mat-calendar-body-cell-content')?.textContent?.trim() === '3')!;
+      third.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#date-chip-r1'));
+    });
+
+    it('marks exactly the asked rows that are dated another day, and no others', () => {
+      // The mark and the question are one predicate: needsDateAnswer, plus
+      // "and not today" for the rows it asks about because the date is
+      // assumed. Spelling the conjuncts out a second time is what let the
+      // `selected` guard go missing from one of them once already, so what
+      // is pinned here is the agreement, not the wording.
+      const rows = [
+        makeRow({ id: 'asked', date: yesterday() }),
+        makeRow({ id: 'unselected', date: yesterday(), selected: false }),
+        makeRow({ id: 'answered', date: yesterday(), dateReviewed: true }),
+        makeRow({ id: 'assumed', date: new Date(), dateAssumed: true }),
+        makeRow({ id: 'today', date: new Date() }),
+        makeRow({ id: 'outside', date: yesterday() }),
+      ];
+      const attention = new Set(['asked', 'unselected', 'answered', 'assumed', 'today']);
+      render(rows, [...attention]);
+
+      expect(rows.filter(row => component.dateNotToday(row)).map(row => row.id))
+        .withContext('only the selected, unanswered, attended row dated another day')
+        .toEqual(['asked']);
+      for (const row of rows) {
+        expect(component.dateNotToday(row) && !needsDateAnswer(row, attention.has(row.id)))
+          .withContext(`${row.id} is marked but not asked`)
+          .toBeFalse();
+      }
+    });
+
+    it('the change button on the question opens the same picker', () => {
+      render([makeRow({ id: 'r1', dateAssumed: true })]);
+
+      (fixture.nativeElement.querySelector('.date-check .extra-change') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(openDialog()?.getAttribute('aria-labelledby')).toBe('date-chip-r1');
+    });
+
+    it('opens the picker on the row\'s own day, and a picked day comes back through dateChange', () => {
+      // The anchor's [value] is what the calendar opens on; without it the
+      // dialog opens on today's month, and a June receipt corrected in
+      // September starts three months from its own day. June 2026 is a
+      // month no later run can be in, so a today cell showing would mean
+      // the calendar ignored the row. The emission is the (dateChange) wire
+      // to updateDate, which every other case here calls directly.
+      const row = makeRow({
+        id: 'r1',
+        date: new Date(2026, 5, 10),
+        dateAssumed: true,
+        dateImplausible: true,
+        fieldConfidence: { amount: 0.5, date: 0.3 },
+      });
+      render([row]);
+      const emitted = emissions();
+      const dayOf = (cell: Element | null) =>
+        cell?.querySelector('.mat-calendar-body-cell-content')?.textContent?.trim();
+
+      dateButton().click();
+      fixture.detectChanges();
+
+      expect(dayOf(document.querySelector('.mat-calendar-body-active')))
+        .withContext('the calendar opens on the row\'s own day')
+        .toBe('10');
+      expect(document.querySelector('.mat-calendar-body-today'))
+        .withContext('and on the row\'s own month, not this one')
+        .toBeNull();
+
+      const third = Array.from(document.querySelectorAll<HTMLElement>('.mat-calendar-body-cell'))
+        .find(cell => dayOf(cell) === '3') as HTMLElement;
+      third.click();
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      const next = emitted[0][0];
+      expect(next.date).toEqual(new Date(2026, 5, 3));
+      expect(next.dateReviewed).toBeTrue();
+      expect(next.dateAssumed).toBeUndefined();
+      expect(next.dateImplausible).toBeUndefined();
+      expect(next.fieldConfidence).toEqual({ amount: 0.5 });
+      expect(openDialog()).withContext('a touch dialog with no actions closes on the pick').toBeNull();
+    });
+
+    it('says it opens a dialog rather than wearing a menu caret', () => {
+      // A caret says "menu": the currency chip is one and keeps it, the
+      // date opens a modal dialog and says so on aria-haspopup.
+      render([makeRow()]);
+
+      expect(dateButton().getAttribute('aria-haspopup')).toBe('dialog');
+      expect(dateButton().querySelector('.chip-caret')).withContext('no caret on the date').toBeNull();
+      expect(fixture.nativeElement.querySelector('.currency-chip .chip-caret'))
+        .withContext('the menu keeps its caret')
+        .not.toBeNull();
+    });
+
+    it('asks about another day only on a row that will be imported', () => {
+      // An unselected row is not a question: nothing about it reaches the
+      // import, and needsDateAnswer already keeps the chip — the Keep that
+      // answers — off such a row, so an amber mark and its "keep it, or
+      // pick another day" wording would point at a control that is not
+      // there.
+      const row = makeRow({ id: 'old', date: yesterday(), selected: false });
+      render([row], ['old']);
+
+      expect(dateButton().classList.contains('not-today')).withContext('no mark while unselected').toBeFalse();
+      expect(dateButton().querySelector('.verify-flag')).withContext('no flag while unselected').toBeNull();
+      expect(dateButton().getAttribute('aria-label'))
+        .withContext('nothing leads the name while unselected')
+        .toBe(`import.changeDate:{"date":"${formatted(row)}"}`);
+      expect(questionChips().length).withContext('no question while unselected').toBe(0);
+
+      (fixture.nativeElement.querySelector('.card-select input[type="checkbox"]') as HTMLInputElement).click();
+      fixture.detectChanges();
+
+      expect(dateButton().classList.contains('not-today')).withContext('selected: the mark').toBeTrue();
+      expect(dateButton().querySelector('.verify-flag')?.textContent?.trim())
+        .withContext('selected: the flag')
+        .toBe('error_outline');
+      expect(questionChips().length).withContext('selected: the question').toBe(1);
+      expect(fixture.nativeElement.querySelector('.date-check .extra-text')?.textContent?.trim())
+        .toBe(`import.dateNotTodayKeep:{"date":"${formatted(row)}"}`);
+    });
+  });
+
+  /**
+   * The description and the amount are read where they are written, so these
+   * cases go through the real controls: a trigger that swaps itself for an
+   * input, and the input's own Enter, Escape and blur.
+   */
+  describe('editing the description and the amount', () => {
+    const trigger = (field: 'description' | 'amount') =>
+      fixture.nativeElement.querySelector(
+        field === 'description' ? '.description-section .inline-edit' : '.amount-section .inline-edit'
+      ) as HTMLButtonElement;
+    const input = (field: 'description' | 'amount') =>
+      fixture.nativeElement.querySelector(`.${field}-input`) as HTMLInputElement | null;
+
+    function render(row: CategorizedImportTransaction): void {
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    /** Typing, then the key that ends the edit. */
+    function type(field: 'description' | 'amount', text: string, key = 'Enter'): void {
+      const box = input(field)!;
+      box.value = text;
+      box.dispatchEvent(new KeyboardEvent('keydown', { key }));
+    }
+
+    it('swaps the description for a focused input holding what it said', () => {
+      render(makeRow());
+
+      trigger('description').click();
+      fixture.detectChanges();
+
+      const box = input('description')!;
+      expect(box.value).toBe('Coffee Shop');
+      expect(document.activeElement)
+        .withContext('the input takes the tap that opened it, so typing starts straight away')
+        .toBe(box);
+      expect(trigger('description')).withContext('the trigger is gone while editing').toBeNull();
+    });
+
+    it('commits a new description on Enter, by identity, and puts the text back', () => {
+      const row = makeRow();
+      render(row);
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      type('description', '  Kissaten Ueshima  ');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0][0]).withContext('a new row, not the one the parent holds').not.toBe(row);
+      expect(emitted[0][0].description).withContext('trimmed').toBe('Kissaten Ueshima');
+      expect(row.description).withContext('the input object is untouched').toBe('Coffee Shop');
+      expect(input('description')).withContext('the editor closes on commit').toBeNull();
+      expect(trigger('description').textContent?.trim()).toBe('Kissaten Ueshima');
+    });
+
+    it('does not commit a second time on the blur that follows Enter', () => {
+      // Enter removes the input, and the blur it takes with it arrives at the
+      // same handler: without the guard the row is replaced twice, and Task
+      // 5's duplicate re-check would run on a row that changed nothing.
+      // replaceRow's own indexOf is the second line of defence here — the row
+      // this listener still closes over is no longer in the list — so the
+      // guard itself is pinned by the Escape and cancel cases below, where
+      // the row is still there for a stray blur to overwrite.
+      render(makeRow());
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      const box = input('description')!;
+      box.value = 'Kissaten';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      box.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+    });
+
+    it('leaves the row alone on Escape, and on the blur Escape takes with it', () => {
+      const row = makeRow();
+      render(row);
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      const box = input('description')!;
+      box.value = 'Something else';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      // The departing input blurs into the same commit handler while the row
+      // is still in the list, so nothing but the cleared state stands between
+      // that blur and filing the text the reviewer just abandoned.
+      box.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(input('description')).withContext('the editor closes on Escape too').toBeNull();
+      expect(trigger('description').textContent?.trim()).toBe('Coffee Shop');
+    });
+
+    it('treats an emptied description as a cancel', () => {
+      // A row with no description reads as nothing at all in the list; the
+      // reviewer who cleared the field meant to start over, not to erase it.
+      render(makeRow());
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      type('description', '   ');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(trigger('description').textContent?.trim()).toBe('Coffee Shop');
+    });
+
+    it('emits nothing when the description comes back the same', () => {
+      render(makeRow());
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      type('description', 'Coffee Shop');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+    });
+
+    it('leaves the Enter that confirms an IME composition to the composition', () => {
+      // ja and tc type through an IME, where the first Enter accepts the
+      // conversion: committing on it would file half of the word the
+      // reviewer was writing. Same guard the saved-search label carries.
+      render(makeRow());
+      const emitted = emissions();
+
+      trigger('description').click();
+      fixture.detectChanges();
+      const box = input('description')!;
+      box.value = '喫茶';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(input('description')).withContext('still editing').not.toBeNull();
+    });
+
+    it('names the amount trigger by the figure it is showing', () => {
+      render(makeRow({ amount: 538, currency: 'JPY' }));
+
+      expect(trigger('amount').getAttribute('aria-label'))
+        .toBe('import.editAmount:{"amount":"JPY 538"}');
+    });
+
+    it('commits a typed amount and stops doubting the figure', () => {
+      // An amount the reviewer typed is nobody's doubt any more — the same
+      // rule the date answer follows.
+      const row = makeRow({ amount: 5.5, fieldConfidence: { amount: 0.4, date: 0.3 } });
+      render(row);
+      expect(fixture.nativeElement.querySelector('.amount-section .verify-flag'))
+        .withContext('the amount starts flagged')
+        .not.toBeNull();
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1,234.50');
+      fixture.detectChanges();
+
+      expect(emitted[0][0].amount).toBe(1234.5);
+      expect(emitted[0][0]).not.toBe(row);
+      expect(row.amount).withContext('the input object is untouched').toBe(5.5);
+      expect(emitted[0][0].fieldConfidence)
+        .withContext('only the amount\'s grade goes; the object is exactly what remains')
+        .toEqual({ date: 0.3 });
+      expect(fixture.nativeElement.querySelector('.amount-section .verify-flag'))
+        .withContext('and the flag with it')
+        .toBeNull();
+    });
+
+    it('keeps the amount and its grade when nothing usable was typed', () => {
+      const row = makeRow({ amount: 5.5, fieldConfidence: { amount: 0.4 } });
+      render(row);
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', 'abc');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(component.transactions[0].amount).toBe(5.5);
+      expect(component.transactions[0].fieldConfidence).toEqual({ amount: 0.4 });
+      expect(fixture.nativeElement.querySelector('.amount-section .verify-flag'))
+        .withContext('still flagged, because nothing was answered')
+        .not.toBeNull();
+    });
+
+    it('emits nothing when the amount comes back the same', () => {
+      render(makeRow({ amount: 1234.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1,234.50');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+    });
+
+    it('takes no sign from the amount field — the type toggle owns it', () => {
+      const row = makeRow({ amount: 5.5, type: 'expense' });
+      render(row);
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '-42');
+      fixture.detectChanges();
+
+      expect(emitted[0][0].amount).toBe(42);
+      expect(emitted[0][0].type).toBe('expense');
+    });
+
+    it('leaves the amount alone on Escape, and on the blur Escape takes with it', () => {
+      const row = makeRow({ amount: 5.5, fieldConfidence: { amount: 0.4 } });
+      render(row);
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      const box = input('amount')!;
+      box.value = '99';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      box.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(component.transactions[0].amount).toBe(5.5);
+      expect(component.transactions[0].fieldConfidence)
+        .withContext('an abandoned edit settles nothing, so the grade stays')
+        .toEqual({ amount: 0.4 });
+    });
+
+    it('leaves the Enter that confirms an IME composition alone in the amount too', () => {
+      // A reviewer who left the IME in Japanese mode composes digits through
+      // it as well, and that first Enter is the one that confirms the
+      // conversion — committing on it takes the field away mid-figure.
+      render(makeRow({ amount: 5.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      const box = input('amount')!;
+      box.value = '１２３';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(input('amount')).withContext('still editing').not.toBeNull();
+    });
+
+    it('hands focus back to the trigger the editor replaced', () => {
+      // Opening an editor takes focus; closing one has to give it back, or a
+      // keyboard reviewer is dropped at the document root by every correction
+      // and has to walk the whole wizard again to reach the next row.
+      render(makeRow());
+
+      trigger('description').click();
+      fixture.detectChanges();
+      type('description', 'Kissaten');
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('after a commit').toBe(trigger('description'));
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '99', 'Escape');
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('after a cancel').toBe(trigger('amount'));
+    });
+
+    it('holds the amount editor open and says why when the figure cannot be read', () => {
+      // Closing on an unreadable figure filed the old amount and said
+      // nothing: the reviewer saw the editor shut, assumed the correction
+      // took, and the row went in at the number they had just retyped over.
+      render(makeRow({ amount: 5.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1.234.567');
+      fixture.detectChanges();
+
+      const box = input('amount')!;
+      expect(box).withContext('the editor stays open on what was typed').not.toBeNull();
+      expect(box.value).withContext('and keeps it, to be corrected rather than retyped').toBe('1.234.567');
+      expect(box.getAttribute('aria-invalid')).toBe('true');
+      expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
+        .toBe('import.amountNotANumber');
+      expect(box.getAttribute('aria-describedby'))
+        .withContext('the hint names the field it belongs to')
+        .toBe(fixture.nativeElement.querySelector('.amount-error')?.id);
+      expect(emitted.length).withContext('nothing is filed').toBe(0);
+    });
+
+    it('takes the correction that follows a refused figure', () => {
+      render(makeRow({ amount: 5.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1.234.567');
+      fixture.detectChanges();
+      type('amount', '1234.56');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0][0].amount).toBe(1234.56);
+      expect(input('amount')).withContext('a figure it could read closes the editor').toBeNull();
+      expect(fixture.nativeElement.querySelector('.amount-error')).toBeNull();
+    });
+
+    it('Escape still abandons a refused figure', () => {
+      render(makeRow({ amount: 5.5 }));
+      const emitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', 'abc');
+      fixture.detectChanges();
+      type('amount', 'abc', 'Escape');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(input('amount')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.amount-error')).toBeNull();
+      expect(document.activeElement).withContext('and the trigger takes focus back').toBe(trigger('amount'));
+    });
+
+    it('edits one row at a time', () => {
+      // The state is a map keyed by row id, so an edit opened on one row must
+      // not open an input on every other card in the batch.
+      component.transactions = [makeRow({ id: 'a' }), makeRow({ id: 'b', description: 'Bakery' })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelectorAll('.description-section .inline-edit')[1] as HTMLElement).click();
+      fixture.detectChanges();
+
+      const boxes = fixture.nativeElement.querySelectorAll('.description-input') as NodeListOf<HTMLInputElement>;
+      expect(boxes.length).toBe(1);
+      expect(boxes[0].value).toBe('Bakery');
+    });
+  });
+
+  describe('the bulk keep on the header', () => {
+    const keepAll = () => fixture.nativeElement.querySelector('button.keep-dates') as HTMLButtonElement | null;
+    const questionChips = () =>
+      fixture.nativeElement.querySelectorAll('.extra-chip.date-check') as NodeListOf<HTMLElement>;
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+
+    it('appears only with something to answer', () => {
+      // Dated today on purpose: makeRow's own default is a 2024 day, so a row
+      // named for today has to be given one or it is a second not-today row
+      // and proves nothing about the ones that are asked.
+      component.transactions = [makeRow({ id: 'old', date: yesterday() }), makeRow({ id: 'today', date: new Date() })];
+      component.categories = [];
+      fixture.detectChanges();
+      expect(keepAll()).withContext('attention off: nothing is asked').toBeNull();
+
+      // setInput, not an instance assignment: the component is OnPush.
+      fixture.componentRef.setInput('dateAttentionIds', new Set(['old', 'today']));
+      fixture.detectChanges();
+      expect(keepAll()).withContext('attention on: the not-today row is asked').not.toBeNull();
+      expect(component.unansweredCount())
+        .withContext('and only that row — today\'s is not a question')
+        .toBe(1);
+      expect(keepAll()!.textContent).toContain('import.keepAllDates');
+    });
+
+    it('clicking it answers every row still asked, and the button goes with the questions', () => {
+      component.transactions = [makeRow({ id: 'old', date: yesterday() }), makeRow({ id: 'assumed', dateAssumed: true })];
+      component.categories = [];
+      component.dateAttentionIds = new Set(['old', 'assumed']);
+      fixture.detectChanges();
+      expect(questionChips().length).toBe(2);
+      const emitted = emissions();
+
+      keepAll()!.click();
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.dateReviewed)).toEqual([true, true]);
+      expect(keepAll()).toBeNull();
+      expect(questionChips().length).toBe(0);
+    });
+
+    it('hands focus to the first row\'s date button, which it has just answered', () => {
+      // The button answers every question and then removes itself, so it
+      // takes focus down with it unless the answer puts focus somewhere.
+      component.transactions = [makeRow({ id: 'old', date: yesterday() }), makeRow({ id: 'older', date: yesterday() })];
+      component.categories = [];
+      component.dateAttentionIds = new Set(['old', 'older']);
+      fixture.detectChanges();
+      const button = keepAll()!;
+      button.focus();
+
+      button.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('#date-chip-old'));
+    });
+
+    it('falls back to the select-all checkbox when no row is left to land on', () => {
+      // The header outlives the list, and focus has to have somewhere to go
+      // even when there is no card under it.
+      component.transactions = [];
+      component.categories = [];
+      fixture.detectChanges();
+
+      component.keepAllDates();
+      fixture.detectChanges();
+
+      expect(document.activeElement)
+        .toBe(fixture.nativeElement.querySelector('.header-left input[type="checkbox"]'));
+    });
+  });
+  /**
+   * A country the reader concluded without a printed address is written as
+   * the row's location by the mapper, so the card has to show it and let it
+   * go — through the same removal the location chip already has.
+   */
+  describe('a country nobody could see', () => {
+    const countryChip = () =>
+      fixture.nativeElement.querySelector('.extra-chip.country-chip') as HTMLElement | null;
+
+    it('renders the receipt country as a chip, and its remove control clears both marks', () => {
+      const row = makeRow({ receiptCountry: 'KR' });
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      const chip = countryChip();
+      expect(chip).withContext('the country the mapper would write is on the card').not.toBeNull();
+      expect(chip!.querySelector('.extra-text')?.textContent?.trim()).toBe('South Korea');
+      expect(chip!.querySelector('mat-icon')?.textContent?.trim()).toBe('place');
+      const remove = chip!.querySelector('.extra-remove') as HTMLElement;
+      expect(remove.getAttribute('aria-label')).toBe('import.removeLocation');
+
+      remove.click();
+      fixture.detectChanges();
+
+      const next = emitted[0][0];
+      expect(next).not.toBe(row);
+      expect(next.location).toBeUndefined();
+      expect(next.receiptCountry).toBeUndefined();
+      expect(row.receiptCountry).withContext('the input object is untouched').toBe('KR');
+      // The consequence, at the chokepoint: nothing left for locationSlot to
+      // rebuild a location from.
+      expect('location' in toCreateTransactionDTO(next, 'USD')).toBeFalse();
+      expect(countryChip()).withContext('the chip goes with the marks').toBeNull();
+    });
+
+    it('does not render the country beside a printed address that already carries it', () => {
+      component.transactions = [makeRow({ location: { name: 'Myeongdong', country: 'KR' }, receiptCountry: 'KR' })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      expect(countryChip()).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.extra-chip').length).withContext('the address chip alone').toBe(1);
+    });
+  });
+
+  /**
+   * Notes go through the real textarea: the input event ngModel listens to,
+   * then the blur that files the note. The old textarea wrote straight onto
+   * the @Input() object, and could not be opened on a row without a note.
+   */
+  describe('notes on the card', () => {
+    const addButton = () => fixture.nativeElement.querySelector('.add-notes-btn') as HTMLButtonElement | null;
+    const textarea = () => fixture.nativeElement.querySelector('.notes-input') as HTMLTextAreaElement | null;
+
+    function render(row: CategorizedImportTransaction): void {
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    function type(text: string): void {
+      const box = textarea()!;
+      box.value = text;
+      box.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    }
+
+    function leave(): void {
+      textarea()!.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+    }
+
+    it('opens a focused, empty textarea on a row without notes', async () => {
+      render(makeRow());
+      expect(textarea()).withContext('nothing to edit yet').toBeNull();
+
+      addButton()!.click();
+      fixture.detectChanges();
+
+      const box = textarea();
+      expect(box).withContext('the textarea replaces the button').not.toBeNull();
+      expect(box!.value).toBe('');
+      expect(addButton()).toBeNull();
+      // The focus hook runs in the tick the zone fires once it is empty, and
+      // NgModel writes its first value through a microtask of its own — so
+      // unlike the description input, the textarea is focused one microtask
+      // after detectChanges returns rather than inside it.
+      await fixture.whenStable();
+      expect(document.activeElement).withContext('the tap that opened it starts the typing').toBe(box);
+    });
+
+    it('files what was typed on a new row, and leaves the input object untouched', async () => {
+      const row = makeRow();
+      render(row);
+      const emitted = emissions();
+
+      addButton()!.click();
+      fixture.detectChanges();
+      type('  two croissants  ');
+      expect(emitted.length).withContext('typing alone files nothing').toBe(0);
+      leave();
+
+      expect(emitted.length).toBe(1);
+      const next = emitted[0][0];
+      expect(next).withContext('a new row, not the one the parent holds').not.toBe(row);
+      expect(next.notes).withContext('trimmed').toBe('two croissants');
+      expect('notes' in row).withContext('the input object is untouched').toBeFalse();
+      expect(textarea()).withContext('the note stays open to read').not.toBeNull();
+      await fixture.whenStable();
+      expect(textarea()!.value).withContext('and shows what was filed').toBe('two croissants');
+    });
+
+    it('files no note at all when the text is cleared', async () => {
+      const row = makeRow({ notes: 'keep the receipt' });
+      render(row);
+      await fixture.whenStable();
+      expect(textarea()!.value).toBe('keep the receipt');
+      const emitted = emissions();
+
+      type('   ');
+      leave();
+
+      const next = emitted[0][0];
+      expect(next.notes).toBeUndefined();
+      expect(row.notes).withContext('the input object is untouched').toBe('keep the receipt');
+      // The confirm step's own rename, then the chokepoint: an absent note is
+      // no `note` key, where '' would have been a key holding nothing.
+      expect('note' in toCreateTransactionDTO({ ...next, note: next.notes }, 'USD')).toBeFalse();
+    });
+
+    it('still edits a row that came with notes', async () => {
+      const row = makeRow({ notes: 'a' });
+      render(row);
+      await fixture.whenStable();
+      expect(addButton()).withContext('a row with notes opens straight into the editor').toBeNull();
+      const emitted = emissions();
+
+      type('b');
+      leave();
+
+      expect(emitted[0][0].notes).toBe('b');
+      expect(row.notes).withContext('the input object is untouched').toBe('a');
+    });
+
+    it('files nothing for a blur that changed nothing', () => {
+      // Leaving an untouched editor, or typing the note the row already has:
+      // neither is a change, so neither replaces the row.
+      render(makeRow({ notes: 'a' }));
+      const emitted = emissions();
+
+      leave();
+      type('a');
+      leave();
+
+      expect(emitted.length).toBe(0);
+    });
+
+    it('closes an editor that was opened by accident and never typed into', () => {
+      // Opening one is a single tap on a crowded card. Without this the tap
+      // cannot be taken back: an empty box sits on that row for the rest of
+      // the review, and there is nothing to press to be rid of it.
+      render(makeRow());
+      addButton()!.click();
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      leave();
+
+      expect(emitted.length).withContext('nothing typed, nothing filed').toBe(0);
+      expect(textarea()).toBeNull();
+      expect(addButton()).withContext('the button comes back').not.toBeNull();
+    });
+
+    it('closes an editor whose draft was typed and then emptied again', () => {
+      render(makeRow());
+      addButton()!.click();
+      fixture.detectChanges();
+
+      type('   ');
+      leave();
+
+      expect(textarea()).toBeNull();
+      expect(addButton()).not.toBeNull();
+    });
+
+    it('Escape drops the draft, closes the editor and hands the button its focus back', async () => {
+      // The same exit the description and amount editors have: a reviewer
+      // who starts a note and thinks better of it leaves nothing behind,
+      // and is not dropped at the document root for changing their mind.
+      render(makeRow());
+      addButton()!.click();
+      fixture.detectChanges();
+      type('half a thought');
+      const emitted = emissions();
+
+      textarea()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(emitted.length).withContext('a cancel files nothing').toBe(0);
+      expect(textarea()).toBeNull();
+      expect(document.activeElement).toBe(addButton());
+    });
+
+    it('Escape on a row that came with notes puts its own note back', async () => {
+      // The row's note is what the editor is showing, so there is no
+      // button to go back to and nothing to close — only the draft goes.
+      const row = makeRow({ notes: 'keep the receipt' });
+      render(row);
+      await fixture.whenStable();
+      const emitted = emissions();
+
+      type('scribble');
+      textarea()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(emitted.length).toBe(0);
+      expect(textarea()!.value).toBe('keep the receipt');
+    });
+
+    it('opens notes on one row at a time', () => {
+      component.transactions = [makeRow({ id: 'a' }), makeRow({ id: 'b' })];
+      component.categories = [];
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelectorAll('.add-notes-btn')[1] as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelectorAll('.notes-input').length).toBe(1);
+      expect(fixture.nativeElement.querySelector('[data-row-id="b"] .notes-input')).not.toBeNull();
+    });
+
+    it('grows with the draft as it is typed', () => {
+      render(makeRow());
+      addButton()!.click();
+      fixture.detectChanges();
+      expect(textarea()!.getAttribute('rows')).toBe('1');
+
+      type('items\nsecond line\nthird');
+
+      expect(textarea()!.getAttribute('rows')).toBe('3');
+    });
+  });
+
+  /**
+   * The duplicate verdict was decided inside the import doors, on inputs the
+   * reviewer could not change; the badge now carries the overrule. The card's
+   * side of it is one replaced row — the wizard reads the flag's true → false
+   * off the emission — so what is pinned here is the control and the row it
+   * emits.
+   */
+  describe('the duplicate verdict on the card', () => {
+    const clearButtons = () =>
+      fixture.nativeElement.querySelectorAll('.duplicate-clear') as NodeListOf<HTMLButtonElement>;
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+
+    it('renders the overrule only on a flagged row, on the badge, named for what it does', () => {
       component.transactions = [
-        makeRow({ id: 'marked', dateAssumed: true }),
-        makeRow({ id: 'unmarked' }),
+        makeRow({ id: 'flagged', isDuplicate: true, duplicateOf: 'stored-1', selected: false }),
+        makeRow({ id: 'clean' }),
       ];
       component.categories = [];
       fixture.detectChanges();
 
-      expect(fixture.nativeElement.querySelectorAll('.extra-chip.date-assumed').length).toBe(1);
+      expect(clearButtons().length).toBe(1);
+      const button = clearButtons()[0];
+      expect(button.closest('[data-row-id]')?.getAttribute('data-row-id')).toBe('flagged');
+      expect(button.closest('.duplicate-badge')).withContext('on the badge it answers').not.toBeNull();
+      expect(button.getAttribute('aria-label')).toBe('import.notADuplicate');
+      expect(button.querySelector('mat-icon')?.textContent?.trim()).toBe('close');
     });
 
-    it("the chip's icon carries the tooltip as its accessible name", () => {
-      const row = makeRow({ dateAssumed: true });
+    it('clicking it emits the row unflagged and selected, by a new identity', () => {
+      const row = makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false });
       component.transactions = [row];
       component.categories = [];
       fixture.detectChanges();
+      const emitted = emissions();
 
-      const icon = fixture.nativeElement.querySelector('.extra-chip.date-assumed mat-icon') as HTMLElement;
-      expect(icon.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
+      clearButtons()[0].click();
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      const next = emitted[0][0];
+      expect(next).withContext('a new row, not the one the parent holds').not.toBe(row);
+      expect(next.isDuplicate).toBeFalse();
+      expect(next.duplicateOf).toBeUndefined();
+      expect(next.selected).toBeTrue();
+      expect(row.isDuplicate).withContext('the input object is untouched').toBeTrue();
+      expect(row.selected).toBeFalse();
+      expect(clearButtons().length).withContext('the badge goes with the verdict').toBe(0);
     });
 
-    it('a marked row still shows the date verify flag, with the assumed wording', () => {
-      // The row also carries a low date confidence — the ordinary case,
-      // since resolveImportDate marks dateAssumed for the same low reading
-      // that trips needsVerification. The flag itself keeps rendering
-      // exactly as it always did; only its wording changes.
-      const row = makeRow({ dateAssumed: true, fieldConfidence: { date: 0.3 } });
-      component.transactions = [row];
+    it('hands focus to the description trigger the badge sat above', () => {
+      // The button leaves the DOM with the badge it rides on, and a focused
+      // element that is removed drops focus at the document root — the same
+      // fall the editors' exits guard against, answered the same way.
+      component.transactions = [makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false })];
+      component.categories = [];
+      fixture.detectChanges();
+      const button = clearButtons()[0];
+      button.focus();
+      expect(document.activeElement).withContext('the overrule has focus while it is pressed').toBe(button);
+
+      button.click();
+      fixture.detectChanges();
+
+      expect(document.activeElement)
+        .toBe(fixture.nativeElement.querySelector('[data-row-id="txn1"] .description-text'));
+    });
+
+    it('falls back to the date button when the description editor holds the row', () => {
+      // The overrule is reachable while the description is being corrected,
+      // and the trigger it usually hands focus to is not on the card then:
+      // a selector that matches nothing leaves focus at the document root
+      // just as surely as no selector at all.
+      component.transactions = [makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false })];
+      component.categories = [];
+      fixture.detectChanges();
+      component.startEdit(component.transactions[0], 'description');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.description-text'))
+        .withContext('the trigger is gone while the editor is open')
+        .toBeNull();
+
+      clearButtons()[0].click();
+      fixture.detectChanges();
+
+      expect(document.activeElement)
+        .toBe(fixture.nativeElement.querySelector('[data-row-id="txn1"] .date-chip'));
+    });
+
+    it('says what it is by sight as well as by name', () => {
+      // import.recheckFailed tells the reviewer to use "Not a duplicate",
+      // and this is it: an icon-only × whose name lived only in aria-label,
+      // so the instruction named a control nobody could find by looking.
+      component.transactions = [makeRow({ isDuplicate: true, duplicateOf: 'stored-1', selected: false })];
       component.categories = [];
       fixture.detectChanges();
 
-      const flag = fixture.nativeElement.querySelector('.date-chip .verify-flag') as HTMLElement;
-      expect(flag).withContext('the low-confidence flag on the date chip still renders').not.toBeNull();
-      expect(flag.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
+      const tooltip = fixture.debugElement.query(By.css('.duplicate-clear')).injector.get(MatTooltip);
+      expect(tooltip.message).toBe('import.notADuplicate');
+      expect(clearButtons()[0].getAttribute('aria-label'))
+        .withContext('one key, so the two names cannot drift')
+        .toBe(tooltip.message);
     });
 
-    it('an implausible row shows the chip with the implausible wording and no verify flag', () => {
-      // Graded 0.9 — well clear of the verify threshold — because that is
-      // exactly the case the window exists for: needsVerification stays
-      // quiet, so the card chip is the only surface this row gets.
-      const row = makeRow({ dateAssumed: true, dateImplausible: true, fieldConfidence: { date: 0.9 } });
+    it('a row that comes back selected joins the date gate if its date needs an answer', () => {
+      // needsDateAnswer reads `selected`: a deselected duplicate dated on
+      // another day was never a question, and the overrule is what makes it
+      // one.
+      const row = makeRow({ id: 'old', date: yesterday(), isDuplicate: true, duplicateOf: 'stored-1', selected: false });
       component.transactions = [row];
       component.categories = [];
+      component.dateAttentionIds = new Set(['old']);
+      fixture.detectChanges();
+      expect(component.unansweredCount()).withContext('not asked while deselected').toBe(0);
+      const emitted = emissions();
+
+      clearButtons()[0].click();
       fixture.detectChanges();
 
-      const icon = fixture.nativeElement.querySelector('.extra-chip.date-assumed mat-icon') as HTMLElement;
-      expect(icon.getAttribute('aria-label')).toBe(component.dateAssumedTooltip(row));
-      expect(component.dateAssumedTooltip(row)).toBe('import.dateImplausibleTooltip');
-
-      const flag = fixture.nativeElement.querySelector('.date-chip .verify-flag');
-      expect(flag).withContext('grade clears the threshold, so the date cell verify flag stays absent').toBeNull();
+      expect(needsDateAnswer(emitted[0][0], true)).toBeTrue();
+      expect(component.unansweredCount()).toBe(1);
+      expect(fixture.nativeElement.querySelector('.extra-chip.date-check'))
+        .withContext('the question renders on the row now')
+        .not.toBeNull();
     });
   });
 });

@@ -10,6 +10,12 @@
       </mat-checkbox>
     </div>
     <div class="header-right">
+      @if (unansweredCount() > 0) {
+        <button type="button" class="keep-dates" (click)="keepAllDates()">
+          <mat-icon aria-hidden="true">event</mat-icon>
+          <span>{{ 'import.keepAllDates' | translate }}</span>
+        </button>
+      }
       @if (selectedCount() > 0) {
         <button type="button" class="bulk-currency" [matMenuTriggerFor]="bulkCurrencyMenu">
           <mat-icon aria-hidden="true">attach_money</mat-icon>
@@ -37,6 +43,7 @@
     @for (row of transactions; track row.id) {
       <div
         class="transaction-card"
+        [attr.data-row-id]="row.id"
         [class.duplicate]="row.isDuplicate"
         [class.selected]="row.selected"
       >
@@ -55,6 +62,19 @@
                 <span class="duplicate-badge">
                   <mat-icon>content_copy</mat-icon>
                   {{ 'import.duplicate' | translate }}
+                  <!-- import.recheckFailed tells the reviewer to use "Not a
+                       duplicate", so the name has to be findable by sight
+                       too: the glyph alone says nothing about what it does. -->
+                  <button
+                    type="button"
+                    class="duplicate-clear"
+                    [attr.aria-label]="'import.notADuplicate' | translate"
+                    [matTooltip]="'import.notADuplicate' | translate"
+                    matTooltipPosition="above"
+                    (click)="clearDuplicate(row)"
+                  >
+                    <mat-icon>close</mat-icon>
+                  </button>
                 </span>
               }
               @if (row.imageMetadata?.receiptId !== undefined) {
@@ -63,7 +83,26 @@
                   {{ 'import.receiptPhotoBadge' | translate:{ receipt: row.imageMetadata!.receiptId!, photos: receiptPhotos(row) } }}
                 </span>
               }
-              <span class="description-text">{{ row.description }}</span>
+              <!-- Read where it is written: the trigger swaps itself for the
+                   input, and every exit from the input goes back through it. -->
+              @if (isEditing(row, 'description')) {
+                <input
+                  class="inline-input description-input"
+                  type="text"
+                  [value]="row.description"
+                  (keydown.enter)="commitDescription(row, $event)"
+                  (keydown.escape)="cancelEdit(row)"
+                  (blur)="commitDescription(row, $event)"
+                  [attr.aria-label]="'common.description' | translate"
+                >
+              } @else {
+                <button
+                  type="button"
+                  class="description-text inline-edit"
+                  [attr.aria-label]="editDescriptionLabel(row)"
+                  (click)="startEdit(row, 'description')"
+                >{{ row.description }}</button>
+              }
             </div>
             <div class="amount-section" [class.income]="row.type === 'income'" [class.expense]="row.type === 'expense'">
               @if (needsVerification(row, 'amount')) {
@@ -75,27 +114,72 @@
                   [attr.aria-label]="verificationTooltip(row, 'amount')"
                 >error_outline</mat-icon>
               }
-              <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
+              @if (isEditing(row, 'amount')) {
+                <!-- The sign stays outside the field: `type` owns it, the
+                     toggle below is what changes it, and a minus typed here
+                     would flip a row where nothing said it had. -->
+                <span class="amount-sign" aria-hidden="true">{{ row.type === 'income' ? '+' : '-' }}</span>
+                <input
+                  class="inline-input amount-input"
+                  type="text"
+                  inputmode="decimal"
+                  [value]="row.amount"
+                  (keydown.enter)="commitAmount(row, $event)"
+                  (keydown.escape)="cancelEdit(row)"
+                  (blur)="commitAmount(row, $event)"
+                  [attr.aria-label]="'common.amount' | translate"
+                  [attr.aria-invalid]="amountUnreadable(row) ? 'true' : null"
+                  [attr.aria-describedby]="amountUnreadable(row) ? 'amount-error-' + row.id : null"
+                >
+                @if (amountUnreadable(row)) {
+                  <!-- role="alert" because the commit that refused the figure
+                       is often a blur, and by then the reviewer is looking at
+                       the next card. -->
+                  <span class="amount-error" role="alert" [id]="'amount-error-' + row.id">
+                    {{ 'import.amountNotANumber' | translate }}
+                  </span>
+                }
+              } @else {
+                <button
+                  type="button"
+                  class="inline-edit"
+                  [attr.aria-label]="editAmountLabel(row)"
+                  (click)="startEdit(row, 'amount')"
+                >
+                  <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
+                </button>
+              }
             </div>
           </div>
 
           <!-- Middle: Date, Type, Category -->
           <div class="card-bottom-row">
             <div class="meta-info">
-              <span class="date-chip" [class.needs-verify]="needsVerification(row, 'date')">
-                @if (needsVerification(row, 'date')) {
+              <button
+                type="button"
+                class="date-chip"
+                aria-haspopup="dialog"
+                [id]="'date-chip-' + row.id"
+                [class.needs-verify]="needsVerification(row, 'date')"
+                [class.not-today]="dateNotToday(row)"
+                [class.reviewed]="row.dateReviewed"
+                [attr.aria-label]="dateChipLabel(row)"
+                (click)="datePicker.open()"
+              >
+                @if (row.dateReviewed) {
+                  <mat-icon aria-hidden="true">check</mat-icon>
+                } @else if (dateFlagged(row)) {
                   <mat-icon
                     class="verify-flag"
-                    [matTooltip]="verificationTooltip(row, 'date')"
+                    [matTooltip]="dateTooltip(row)"
                     matTooltipPosition="above"
-                    role="img"
-                    [attr.aria-label]="verificationTooltip(row, 'date')"
+                    aria-hidden="true"
                   >error_outline</mat-icon>
                 } @else {
-                  <mat-icon>calendar_today</mat-icon>
+                  <mat-icon aria-hidden="true">calendar_today</mat-icon>
                 }
                 {{ row.date | localeDate }}
-              </span>
+              </button>
               <button
                 type="button"
                 class="currency-chip"
@@ -140,6 +224,23 @@
                 {{ row.type === 'income' ? ('common.income' | translate) : ('common.expense' | translate) }}
               </button>
             </div>
+            <!-- Hidden, and kept out of the meta row rather than relying on
+                 that alone: its `gap: 6px` would count an empty host as a
+                 zero-width item the moment the hiding slipped, doubling the
+                 space between the date and the currency. touchUi because the
+                 anchor has no box for a dropdown to hang off; the anchor's
+                 own aria-labelledby is what names the touch dialog — a bare
+                 input outside a form field has no other label to hand it. -->
+            <input
+              class="picker-anchor"
+              [matDatepicker]="datePicker"
+              [value]="row.date"
+              (dateChange)="updateDate(row, $event.value)"
+              tabindex="-1"
+              aria-hidden="true"
+              [attr.aria-labelledby]="'date-chip-' + row.id"
+            >
+            <mat-datepicker #datePicker touchUi></mat-datepicker>
             <div class="category-section">
               <app-category-suggestion
                 [suggestedCategoryId]="row.suggestedCategoryId"
@@ -152,20 +253,19 @@
 
           <!-- Anything the source suggested beyond the core fields, each
                droppable in one tap -->
-          @if (row.location || row.tags?.length || row.recurringMatch || row.currencySuggestion || row.dateAssumed) {
+          @if (row.location || row.receiptCountry || row.tags?.length || row.recurringMatch || row.currencySuggestion || showsDateChip(row)) {
             <div class="card-extras">
-              <!-- Non-dismissible: there is no date editor on this card, so
-                   there is nothing for a remove button to clear. -->
-              @if (row.dateAssumed) {
-                <span class="extra-chip date-assumed">
-                  <mat-icon
-                    class="verify-flag"
-                    [matTooltip]="dateAssumedTooltip(row)"
-                    matTooltipPosition="above"
-                    role="img"
-                    [attr.aria-label]="dateAssumedTooltip(row)"
-                  >event</mat-icon>
-                  <span class="extra-text">{{ 'import.dateAssumed' | translate }}</span>
+              <!-- The date question: Keep is the chip's body, and the change
+                   button opens the same picker the date button does. -->
+              @if (showsDateChip(row)) {
+                <span class="extra-chip date-check">
+                  <button type="button" class="extra-accept" [attr.aria-label]="keepDateLabel(row)" [matTooltip]="dateTooltip(row)" matTooltipPosition="above" (click)="keepDate(row)">
+                    <mat-icon aria-hidden="true">event</mat-icon>
+                    <span class="extra-text">{{ dateChipText(row) }}</span>
+                  </button>
+                  <button type="button" class="extra-remove extra-change" [attr.aria-label]="changeDateLabel(row)" (click)="datePicker.open()">
+                    <mat-icon>edit_calendar</mat-icon>
+                  </button>
                 </span>
               }
               @if (row.recurringMatch; as match) {
@@ -186,6 +286,17 @@
                     <mat-icon>close</mat-icon>
                   </button>
                 </span>
+              } @else if (row.receiptCountry) {
+                <!-- No printed address, but the mapper writes the concluded
+                     country as the location all the same: shown and
+                     removable like one, or it lands unseen. -->
+                <span class="extra-chip country-chip">
+                  <mat-icon aria-hidden="true">place</mat-icon>
+                  <span class="extra-text">{{ receiptCountryText(row) }}</span>
+                  <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                </span>
               }
               @if (row.currencySuggestion) {
                 <span class="extra-chip currency-offer">
@@ -199,7 +310,7 @@
                 </span>
               }
               @for (tag of row.tags ?? []; track tag) {
-                <span class="extra-chip">
+                <span class="extra-chip tag-chip">
                   <mat-icon aria-hidden="true">label</mat-icon>
                   <span class="extra-text">{{ tag }}</span>
                   <button type="button" class="extra-remove" [attr.aria-label]="'import.removeTag' | translate: { tag }" (click)="removeTag(row, tag)">
@@ -210,17 +321,20 @@
             </div>
           }
 
-          <!-- Notes Section - compact inline -->
-          @if (row.notes) {
+          <!-- Notes Section - compact inline. Typed into a draft and filed on
+               blur through replaceRow, never onto the row itself. -->
+          @if (showsNotes(row)) {
             <div class="notes-section">
               <mat-icon class="notes-icon">sticky_note_2</mat-icon>
               <textarea
                 class="notes-input"
-                [(ngModel)]="row.notes"
-                (blur)="updateNotes()"
+                [ngModel]="notesText(row)"
+                (ngModelChange)="updateNotesDraft(row, $event)"
+                (keydown.escape)="cancelNotes(row)"
+                (blur)="commitNotes(row)"
                 [placeholder]="'import.notesPlaceholder' | translate"
                 [attr.aria-label]="'import.notes' | translate"
-                [attr.rows]="getRowCount(row.notes)"
+                [attr.rows]="getRowCount(row)"
               ></textarea>
             </div>
           } @else {

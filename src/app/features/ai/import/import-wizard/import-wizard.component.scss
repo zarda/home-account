@@ -436,6 +436,18 @@
   color: var(--text-secondary);
 }
 
+/* Review Step - receipt rows still owing a date answer hold Continue */
+.dates-hint {
+  margin: 16px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 5%, var(--surface-card));
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 /* Sized here rather than by a utility class: a Material icon ships its own
    line-height, and a font-size set without one drops the glyph off its row. */
 .incomplete-icon {
@@ -518,7 +530,8 @@
   color: var(--color-expense-text);
 }
 
-.skipped-card mat-icon {
+.skipped-card mat-icon,
+.dates-card mat-icon {
   background: color-mix(in srgb, var(--color-warning) 10%, transparent);
   color: var(--color-warning);
 }
@@ -588,7 +601,8 @@
   color: var(--color-expense-text);
 }
 
-.skipped-card .card-value {
+.skipped-card .card-value,
+.dates-card .card-value {
   color: var(--color-warning);
 }
 

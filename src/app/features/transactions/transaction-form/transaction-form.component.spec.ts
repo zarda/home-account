@@ -1277,13 +1277,63 @@ describe('TransactionFormComponent', () => {
     });
 
     it('scanReceipt flags a field the model was unsure of', async () => {
+      // Dated today, so the date's flag is the grade's alone.
       strategy.processReceipt.and.resolveTo(
-        scanResult({ fieldConfidence: { amount: 0.4, date: 0.95 } }),
+        scanResult({ fieldConfidence: { amount: 0.4, date: 0.95 }, date: new Date() }),
       );
       const component = build().componentInstance;
       await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
       expect(component.shouldVerifyField('amount')).toBeTrue();
       expect(component.shouldVerifyField('date')).toBeFalse();
+    });
+
+    it('scanReceipt flags a date that is not today, with the not-today wording alone when the reader was sure', async () => {
+      // This form has no review step to hold, so the field is flagged where
+      // it stands: an August receipt scanned in September is usually right,
+      // and a glance settles it. The stub echoes the key, so the tooltip is
+      // the key the field would render.
+      strategy.processReceipt.and.resolveTo(
+        scanResult({ date: new Date(2026, 7, 14), fieldConfidence: { date: 0.9 } }),
+      );
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      expect(component.shouldVerifyField('date')).toBeTrue();
+      expect(component.verifyFieldTooltip('date')).toBe('import.dateNotTodayTooltip');
+    });
+
+    it('scanReceipt puts the reader\'s own doubt first when the date is also not today', async () => {
+      strategy.processReceipt.and.resolveTo(
+        scanResult({ date: new Date(2026, 7, 14), fieldConfidence: { date: 0.4 } }),
+      );
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      expect(component.shouldVerifyField('date')).toBeTrue();
+      expect(component.verifyFieldTooltip('date')).toBe('import.verifyDate. import.dateNotTodayTooltip');
+    });
+
+    it('scanReceipt leaves a date read as today unflagged', async () => {
+      strategy.processReceipt.and.resolveTo(
+        scanResult({ date: new Date(), fieldConfidence: { date: 0.9 } }),
+      );
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      expect(component.shouldVerifyField('date')).toBeFalse();
+    });
+
+    it('drops the not-today flag once the date is moved to another day', async () => {
+      strategy.processReceipt.and.resolveTo(
+        scanResult({ date: new Date(2026, 7, 14), fieldConfidence: { date: 0.9 } }),
+      );
+      const component = build().componentInstance;
+      await (component as unknown as { scanReceipt: (f: File) => Promise<void> }).scanReceipt(receiptFile());
+      expect(component.shouldVerifyField('date')).toBeTrue();
+
+      // The same day again, re-picked or re-typed, is not a change of mind.
+      component.form.get('date')!.setValue(new Date(2026, 7, 14, 9, 30));
+      expect(component.shouldVerifyField('date')).withContext('same day').toBeTrue();
+
+      component.form.get('date')!.setValue(new Date(2026, 7, 20));
+      expect(component.shouldVerifyField('date')).withContext('another day').toBeFalse();
     });
 
     it('scanReceipt leaves an existing note untouched when no details were extracted', async () => {

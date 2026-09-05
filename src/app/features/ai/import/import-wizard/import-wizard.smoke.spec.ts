@@ -18,13 +18,22 @@
 // addTransaction, so only this one can say the rules accept those fields, or
 // that the tag memory the confirm writes passes tagMemoryValid.
 //
+// The last three cases combine both arrangements for the first time: the
+// provider stub runs the real extraction, its result is handed over through
+// router state, and the review step that renders it is the real card. That is
+// the only place a correction made on the card — a kept date, a retyped
+// amount or description, an overruled duplicate verdict — can be followed
+// through the wizard's own confirmImport into the document the rules accepted,
+// or a re-check watched against a ledger that actually holds the row it finds.
+//
 // Import the Firebase SDK through @angular/fire (not the root `firebase/*`
 // packages) — see app.smoke.spec.ts for why the copies must match.
 //
 // Runs only under the emulators:
 //   npm run smoke
-import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { provideRouter, Router } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideNativeDateAdapter } from '@angular/material/core';
@@ -52,13 +61,120 @@ import { CloudLLMProviderService } from '../../../../core/services/cloud-llm-pro
 import { PwaService } from '../../../../core/services/pwa.service';
 import { AnalyticsService } from '../../../../core/services/analytics.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
+import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/services/gemini.service';
 import { DEFAULT_USER_PREFERENCES, ImportResult } from '../../../../models';
+import { parseDateInput } from '../../../../core/utils/transaction-date.utils';
+import { TransactionPreviewTableComponent } from '../transaction-preview-table/transaction-preview-table.component';
 import { silenceFirebaseWarnings } from '../../../../core/services/testing/silence-firebase-warnings';
 
 jasmine.getEnv().configure({ random: false });
 silenceFirebaseWarnings();
+
+/**
+ * Step until the wizard has settled, rather than sleeping a guessed span.
+ * The cases above wait out a known macrotask; a re-check is a Firestore round
+ * trip behind an edit, so this polls the state it is waiting for and fails
+ * loudly when it never arrives instead of asserting against a half-applied
+ * verdict.
+ */
+async function until(
+  fixture: ComponentFixture<ImportWizardComponent>,
+  predicate: () => boolean,
+  timeoutMs = 10000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      throw new Error('the wizard never reached the expected state');
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+    fixture.detectChanges();
+  }
+  fixture.detectChanges();
+}
+
+/**
+ * The single-receipt seam the three review-correction cases share: the cloud
+ * provider (the only thing with no local emulator), the two services it is
+ * always stubbed alongside, and the exchange-rate fetch. Everything the import
+ * itself does — the strategy, the categorization fallback, duplicate
+ * detection, the Firestore writes — runs for real.
+ *
+ * CurrencyService is stubbed wider here than in the cases above, which never
+ * render the review step: the card asks for the whole currency picker at
+ * construction and formats every row's amount from its template, so the
+ * narrow { getExchangeRate, ensureRatesLoaded } stub throws before a row can
+ * be corrected. One copy, so the widening cannot drift between the three.
+ * The rate stays 1, which keeps the JPY rows off the network without touching
+ * the figures under test — nothing here converts.
+ */
+function stubReceiptSeams(parsed: ParsedReceipt): void {
+  const cloudLLMProvider: jasmine.SpyObj<CloudLLMProviderService> = jasmine.createSpyObj(
+    'CloudLLMProviderService',
+    [
+      'hasAnyCloudProvider',
+      'parseReceipt',
+      'initializeProviders',
+      'resetProviders',
+      'setOpenAIModel',
+      'setClaudeModel',
+      'availableProviders',
+      'providerStatus',
+      'resolveProvider'
+    ]
+  );
+  cloudLLMProvider.hasAnyCloudProvider.and.returnValue(true);
+  cloudLLMProvider.parseReceipt.and.resolveTo(parsed);
+  cloudLLMProvider.initializeProviders.and.resolveTo(undefined);
+  cloudLLMProvider.resetProviders.and.resolveTo(undefined);
+  cloudLLMProvider.availableProviders.and.returnValue([]);
+  cloudLLMProvider.providerStatus.and.returnValue({
+    gemini: false,
+    openai: false,
+    claude: false
+  });
+  cloudLLMProvider.resolveProvider.and.returnValue(null);
+
+  const pwa: jasmine.SpyObj<PwaService> = jasmine.createSpyObj('PwaService', [
+    'isOnline',
+    'registerBackgroundSync'
+  ]);
+  pwa.isOnline.and.returnValue(true);
+  pwa.registerBackgroundSync.and.resolveTo(true);
+
+  const analytics: jasmine.SpyObj<AnalyticsService> = jasmine.createSpyObj(
+    'AnalyticsService',
+    ['trackAiAssistUsed']
+  );
+
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: CloudLLMProviderService, useValue: cloudLLMProvider },
+      { provide: PwaService, useValue: pwa },
+      { provide: AnalyticsService, useValue: analytics },
+      {
+        provide: CurrencyService,
+        useValue: {
+          getExchangeRate: () => 1,
+          ensureRatesLoaded: () => Promise.resolve(),
+          getSupportedCurrencies: () => [
+            { code: 'USD', nameKey: 'currencies.usd', symbol: '$' },
+            { code: 'JPY', nameKey: 'currencies.jpy', symbol: '¥' }
+          ],
+          getCurrencyInfo: (code: string) => ({
+            code,
+            nameKey: `currencies.${code.toLowerCase()}`,
+            symbol: code
+          }),
+          formatCurrency: (amount: number, code: string) => `${code} ${amount}`
+        }
+      }
+    ],
+    teardown: { destroyAfterEach: false }
+  });
+}
 
 describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
   let app: FirebaseApp;
@@ -202,6 +318,86 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(text).toContain('Corner Bakery');
       const badges = (fixture.nativeElement as HTMLElement).querySelectorAll('.receipt-badge');
       expect(badges.length).toBe(2);
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'holds Continue and Import until a receipt dated before today is answered',
+    async () => {
+      // The gate's whole user-visible surface. The unit spec overrides the
+      // template with a bare div, so this is the only place that can say the
+      // two buttons are held, that the hint and the confirm card reach a
+      // screen, and that answering the date releases both. Confirm is
+      // reachable with the question still open because a camera handoff runs
+      // the stepper non-linear — which is why Import carries a guard of its
+      // own rather than leaning on the review step being incomplete.
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'july-receipt.jpg',
+        fileSize: 1234,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'Corner Store',
+            amount: 12.5,
+            currency: 'USD',
+            date: new Date('2026-07-01'),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const continueButton = () =>
+        host.querySelector<HTMLButtonElement>('.review-step .action-button')!;
+      const importButton = () =>
+        host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
+
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(continueButton().disabled).toBeTrue();
+      expect(host.querySelector('.dates-hint')).not.toBeNull();
+
+      // The stepper header reaches Confirm from here with the question open.
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(
+        host.querySelector('.confirm-step .dates-card .card-value')?.textContent?.trim()
+      ).toBe('1');
+      expect(importButton().disabled).toBeTrue();
+
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      host.querySelector<HTMLButtonElement>('.keep-dates')!.click();
+      fixture.detectChanges();
+
+      expect(host.querySelector('.dates-hint')).toBeNull();
+      expect(continueButton().disabled).toBeFalse();
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(host.querySelector('.confirm-step .dates-card')).toBeNull();
+      expect(importButton().disabled).toBeFalse();
 
       history.replaceState({}, '');
       fixture.destroy();
@@ -1032,6 +1228,311 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       expect(importHistory.transactionIds).toEqual(createdIds);
       expect(importHistory.transactionIds?.length).toBe(importHistory.successCount);
+    },
+    30000
+  );
+
+  it(
+    'a receipt dated before today waits for its own answer, and the kept date is what is stored',
+    async () => {
+      // The gate case above hands over a result built by hand, answers the
+      // batch with the header's bulk Keep and never confirms. This one runs
+      // the real extraction, answers the one row on its own chip, and presses
+      // the wizard's own Import: what it adds is the per-row half of the
+      // question — the marked date button, the chip whose Keep settles a
+      // single receipt — and the document that comes out the far end still
+      // dated the day the receipt was printed, not the day it was scanned.
+      stubReceiptSeams({
+        merchant: 'セブン-イレブン',
+        amount: 538,
+        currency: 'JPY',
+        date: new Date(2026, 7, 14),
+        suggestedCategory: 'other_expense',
+        confidence: 0.9,
+        fieldConfidence: { amount: 0.9, date: 0.9 }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      // The wizard's own confirm ends in router.navigate, and provideRouter([])
+      // has nowhere to send it.
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      // Earlier cases in this file already wrote rows of their own, so this
+      // confirm's document is told apart by id.
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const result = await importService.importFromImage(
+        new File([new Uint8Array([1])], 'seven.jpg', { type: 'image/jpeg' })
+      );
+
+      expect(result.transactions.length).toBe(1);
+      // Read clearly, off a real day: nothing was assumed, and the merchant is
+      // what the row is called — parseReceipt reports no description of its own.
+      expect(result.transactions[0].dateAssumed).toBeUndefined();
+      expect(result.transactions[0].description).toBe('セブン-イレブン');
+
+      history.replaceState({ importResult: result, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(host.querySelector('.date-chip.not-today')).not.toBeNull();
+
+      const keep = host.querySelector<HTMLButtonElement>('.extra-chip.date-check .extra-accept');
+      expect(keep).withContext('the row carries its own Keep, not just the batch one').not.toBeNull();
+      keep!.click();
+      fixture.detectChanges();
+
+      expect(host.querySelector('.extra-chip.date-check')).toBeNull();
+      expect(host.querySelector('.date-chip.not-today')).toBeNull();
+      expect(component.unansweredDates()).toBe(0);
+      expect(
+        host.querySelector<HTMLButtonElement>('.review-step .action-button')!.disabled
+      ).toBeFalse();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect((stored['date'] as Timestamp).toMillis())
+        .toBe(parseDateInput('2026-08-14')!.getTime());
+      expect(stored['amount']).toBe(538);
+      expect(stored['currency']).toBe('JPY');
+      // The review's own bookkeeping stays on the review step.
+      expect('dateReviewed' in stored).toBeFalse();
+      expect('dateAssumed' in stored).toBeFalse();
+      expect('fieldConfidence' in stored).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a date, an amount and a description corrected on the review card are what the import writes',
+    async () => {
+      // The row arrives with nothing readable where the date was and a graded
+      // amount — the state a reviewer corrects from. The card's own suite
+      // drives these three editors against a stubbed parent and can only say
+      // what the card emitted; only here do the corrections travel through the
+      // wizard's confirm into a document written under the real rules.
+      stubReceiptSeams({
+        merchant: 'セブン-イレブン',
+        amount: 539,
+        currency: 'JPY',
+        date: new Date(NaN),
+        suggestedCategory: 'other_expense',
+        confidence: 0.9,
+        fieldConfidence: { amount: 0.5, date: 0 }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const result = await importService.importFromImage(
+        new File([new Uint8Array([1])], 'dogenzaka.jpg', { type: 'image/jpeg' })
+      );
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].dateAssumed).toBeTrue();
+
+      history.replaceState({ importResult: result, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const card = fixture.debugElement.query(By.directive(TransactionPreviewTableComponent))
+        .componentInstance as TransactionPreviewTableComponent;
+      // Every editor replaces the row it edits, so the object to hand the next
+      // one is read again each time.
+      const row = () => card.transactions[0];
+
+      expect(host.querySelector('.amount-section .verify-flag'))
+        .withContext('the figure was graded under the bar').not.toBeNull();
+
+      card.updateDate(row(), new Date(2026, 7, 14));
+      fixture.detectChanges();
+
+      card.startEdit(row(), 'description');
+      fixture.detectChanges();
+      const description = host.querySelector<HTMLInputElement>('.description-input')!;
+      description.value = 'Seven-Eleven Dogenzaka';
+      description.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      card.startEdit(row(), 'amount');
+      fixture.detectChanges();
+      const amount = host.querySelector<HTMLInputElement>('.amount-input')!;
+      amount.value = '540';
+      amount.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      // All three are detection inputs, so re-checks are in flight behind
+      // these assertions. Import waits on them; so does this, because a
+      // verdict landing mid-confirm would rewrite the rows being submitted.
+      await until(fixture, () => component.rechecksInFlight() === 0);
+
+      const reviewed = component.extractedTransactions()[0];
+      expect(reviewed.date.getTime()).toBe(parseDateInput('2026-08-14')!.getTime());
+      expect(reviewed.description).toBe('Seven-Eleven Dogenzaka');
+      expect(reviewed.amount).toBe(540);
+      expect(component.unansweredDates()).toBe(0);
+      expect(host.querySelector('.amount-section .verify-flag'))
+        .withContext('a hand-typed figure settles the grade').toBeNull();
+      expect(
+        host.querySelector<HTMLButtonElement>('.review-step .action-button')!.disabled
+      ).toBeFalse();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id));
+      expect(landed.length).toBe(1);
+      const stored = landed[0].data();
+      expect((stored['date'] as Timestamp).toMillis())
+        .toBe(parseDateInput('2026-08-14')!.getTime());
+      expect(stored['description']).toBe('Seven-Eleven Dogenzaka');
+      expect(stored['amount']).toBe(540);
+      expect('fieldConfidence' in stored).toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a corrected date is checked against the ledger again, and a verdict can be overruled',
+    async () => {
+      // The re-check with a real ledger behind it. The wizard's unit suite
+      // stubs DuplicateDetectionService, so nothing there can say that a
+      // corrected date finds a document the first check's window never
+      // covered, that the badge and the panel follow the verdict onto a
+      // screen, or that an overrule survives the re-check the next correction
+      // starts. Nothing is confirmed here — the seeded row is the ledger, and
+      // it is removed again at the end.
+      const seeded = await addDoc(collection(firestore, `users/${uid}/transactions`), {
+        userId: uid,
+        type: 'expense',
+        amount: 541,
+        currency: 'JPY',
+        // The rules require both. Nothing here converts, so the base figure is
+        // the printed one.
+        amountInBaseCurrency: 541,
+        exchangeRate: 1,
+        categoryId: 'other_expense',
+        description: 'セブン-イレブン',
+        date: Timestamp.fromDate(new Date(2026, 7, 14)),
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+        isRecurring: false
+      });
+
+      stubReceiptSeams({
+        merchant: 'セブン-イレブン',
+        amount: 541,
+        currency: 'JPY',
+        date: new Date(NaN),
+        suggestedCategory: 'other_expense',
+        confidence: 0.9,
+        fieldConfidence: { date: 0 }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      // The real service, watched rather than replaced: its call count is how
+      // the waits below know a re-check ran at all — including the last one,
+      // whose answer is "no longer a duplicate" and changes nothing on screen.
+      const checkDuplicates = spyOn(
+        TestBed.inject(DuplicateDetectionService), 'checkDuplicates'
+      ).and.callThrough();
+
+      const result = await importService.importFromImage(
+        new File([new Uint8Array([1])], 'recheck.jpg', { type: 'image/jpeg' })
+      );
+
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].dateAssumed).toBeTrue();
+      expect(result.transactions[0].isDuplicate).toBeFalse();
+
+      history.replaceState({ importResult: result, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const card = fixture.debugElement.query(By.directive(TransactionPreviewTableComponent))
+        .componentInstance as TransactionPreviewTableComponent;
+      const row = () => card.transactions[0];
+
+      // Assumed onto today, the row was checked against a window the seeded
+      // document sits weeks outside of.
+      expect(component.duplicateInfos().length).toBe(0);
+      expect(host.querySelector('.duplicate-badge')).toBeNull();
+
+      card.updateDate(row(), new Date(2026, 7, 14));
+      fixture.detectChanges();
+      await until(fixture, () => component.duplicateInfos().length === 1);
+
+      expect(host.querySelector('app-duplicate-warning')).not.toBeNull();
+      expect(host.querySelector('.duplicate-badge')).not.toBeNull();
+      expect(row().selected).withContext('the verdict deselects the row').toBeFalse();
+
+      host.querySelector<HTMLButtonElement>('.duplicate-clear')!.click();
+      fixture.detectChanges();
+
+      expect(component.duplicateInfos().length).toBe(0);
+      expect(host.querySelector('app-duplicate-warning')).toBeNull();
+      expect(host.querySelector('.duplicate-badge')).toBeNull();
+      expect(row().selected).withContext('the overrule selects it again').toBeTrue();
+
+      const checksBefore = checkDuplicates.calls.count();
+      card.startEdit(row(), 'amount');
+      fixture.detectChanges();
+      const amount = host.querySelector<HTMLInputElement>('.amount-input')!;
+      amount.value = '542';
+      amount.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      await until(
+        fixture,
+        () => checkDuplicates.calls.count() > checksBefore && component.rechecksInFlight() === 0
+      );
+
+      // Nothing in the ledger is dated that day at that figure, so the row the
+      // reviewer cleared is not put back under the badge by their own edit.
+      expect(row().amount).toBe(542);
+      expect(component.duplicateInfos().length).toBe(0);
+      expect(host.querySelector('.duplicate-badge')).toBeNull();
+      expect(row().selected).toBeTrue();
+
+      await deleteDoc(seeded);
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
     },
     30000
   );

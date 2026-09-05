@@ -92,6 +92,14 @@ the same `fieldConfidence.date` the tooltip does, and 0.9 clears the bar.
 That is deliberate — the grade is honest, only the value is not, and the
 chip is where that story is told.
 
+Since [0099](0099-the-review-step-edits-what-it-shows.md) that chip is no
+longer a **Date set to today** label. It is a question — *Dated {date} — keep
+it?* — carrying a Keep and a button that opens the date picker, and
+`import.dateAssumed` has been retired from the catalogs. The discriminator
+this record added is untouched: `dateImplausible` still picks which of the two
+sentences the question's tooltip reads, and answering the question clears both
+marks and the date's grade together.
+
 ### The alternatives that were rejected
 
 - **Checking plausibility on every row, graded or not.** Rejected above: it

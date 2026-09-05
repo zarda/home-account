@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { of, EMPTY } from 'rxjs';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
@@ -11,7 +11,7 @@ import { DuplicateDetectionService } from '../../../../core/services/duplicate-d
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
-import { Category, CategorizedImportTransaction, ImportResult } from '../../../../models';
+import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
@@ -143,8 +143,16 @@ describe('ImportWizardComponent', () => {
     mockRouter = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
     mockDuplicateService = jasmine.createSpyObj('DuplicateDetectionService', [
       'findWithinBatchDuplicates',
+      'checkDuplicates',
     ]);
     mockDuplicateService.findWithinBatchDuplicates.and.returnValue([]);
+    // Resolved, never bare: a bare spy method answers undefined, which the
+    // re-check's try/catch lets through, and the merge behind it would then
+    // throw inside a void-ed promise — an unhandled rejection Jasmine pins
+    // on whichever spec happens to be running. Empty, it applies to no row
+    // and returns before the batch pass, so a case that needs the pass
+    // answers one check per row, as the service does.
+    mockDuplicateService.checkDuplicates.and.resolveTo([]);
 
     mockShareIntake = jasmine.createSpyObj('ShareIntakeService', ['consumeAll']);
     mockShareIntake.consumeAll.and.resolveTo([]);
@@ -332,6 +340,171 @@ describe('ImportWizardComponent', () => {
 
       expect(component.reviewComplete()).toBeTrue();
     });
+  });
+
+  describe('the date question', () => {
+    // Only a receipt reader's rows are asked about their date, and the set
+    // is per row: one dropzone pick can put a photo and a CSV in the same
+    // batch, and the CSV's historical rows are never a question. Whether
+    // Continue and Import actually hold is a DOM matter for the smoke spec;
+    // this suite overrides the template with a bare div.
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+    const png = (name = 'r.png') => new File([''], name, { type: 'image/png' });
+    const csv = () => new File(['a,b'], 'rows.csv', { type: 'text/csv' });
+    const receiptRows = (): CategorizedImportTransaction[] => [
+      { ...mockTransactions[0], id: 'photo1', date: yesterday() },
+      { ...mockTransactions[1], id: 'photo2', date: yesterday() },
+    ];
+    const receiptResult = (): ImportResult => ({
+      ...mockImportResult, source: 'image', fileType: 'receipt_image', transactions: receiptRows(),
+    });
+    const statementResult = (): ImportResult => ({
+      ...mockImportResult, source: 'image', fileType: 'screenshot', transactions: receiptRows(),
+    });
+
+    it('holds every handed-over row on the camera hand-off', fakeAsync(() => {
+      // That door only ever carries receipts.
+      history.replaceState({ importResult: receiptResult(), fromCamera: true }, '');
+      try {
+        const cameraFixture = TestBed.createComponent(ImportWizardComponent);
+        cameraFixture.detectChanges();
+        // ngAfterViewInit defers the hand-off by a macrotask.
+        tick();
+
+        expect(cameraFixture.componentInstance.receiptRowIds()).toEqual(new Set(['photo1', 'photo2']));
+      } finally {
+        history.replaceState({}, '');
+      }
+    }));
+
+    it('holds the image batch\'s rows for the receipt kind', async () => {
+      mockImportService.importFromMultipleImages.and.resolveTo(receiptResult());
+      component.onFilesSelected([png()]);
+
+      await component.processFiles();
+
+      expect(component.receiptRowIds()).toEqual(new Set(['photo1', 'photo2']));
+    });
+
+    it('holds nothing for the statement kind, even after a receipt batch ran', async () => {
+      // Every row of a statement is dated in the past by nature; asking
+      // about each one would train the reviewer to answer without looking.
+      // The set is rebuilt per batch, so the receipt batch this re-pick
+      // replaces does not leave its ids behind.
+      mockImportService.importFromMultipleImages.and.resolveTo(receiptResult());
+      mockImportService.importFromStatementImages.and.resolveTo(statementResult());
+      component.onFilesSelected([png()]);
+      await component.processFiles();
+      expect(component.receiptRowIds().size).withContext('the receipt batch first').toBe(2);
+
+      component.imageKind.set('statement');
+      component.onFilesSelected([png('stmt.png')]);
+      await component.processFiles();
+
+      expect(component.receiptRowIds()).toEqual(new Set());
+    });
+
+    it('holds nothing for a CSV', async () => {
+      mockImportService.importFromFile.and.resolveTo({ ...mockImportResult, transactions: receiptRows() });
+      component.onFilesSelected([csv()]);
+
+      await component.processFiles();
+
+      expect(component.receiptRowIds()).toEqual(new Set());
+    });
+
+    it('holds only the photo\'s rows when a receipt photo and a CSV share one batch', async () => {
+      mockImportService.importFromMultipleImages.and.resolveTo({
+        ...receiptResult(), transactions: [{ ...mockTransactions[0], id: 'photo1', date: yesterday() }],
+      });
+      mockImportService.importFromFile.and.resolveTo({
+        ...mockImportResult, transactions: [{ ...mockTransactions[1], id: 'csv1', date: yesterday() }],
+      });
+      component.onFilesSelected([png(), csv()]);
+
+      await component.processFiles();
+
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['photo1', 'csv1']);
+      expect(component.receiptRowIds()).toEqual(new Set(['photo1']));
+      // The CSV's row is dated yesterday too, and is not asked.
+      expect(component.unansweredDates()).toBe(1);
+    });
+
+    it('counts only selected, unanswered rows inside the set', () => {
+      component.extractedTransactions.set([
+        { ...mockTransactions[0], id: 'asked', date: yesterday() },
+        { ...mockTransactions[0], id: 'assumed', dateAssumed: true },
+        { ...mockTransactions[0], id: 'unselected', date: yesterday(), selected: false },
+        { ...mockTransactions[0], id: 'answered', date: yesterday(), dateReviewed: true },
+        { ...mockTransactions[0], id: 'today' },
+        { ...mockTransactions[0], id: 'outside', date: yesterday() },
+      ]);
+      component.receiptRowIds.set(new Set(['asked', 'assumed', 'unselected', 'answered', 'today']));
+
+      expect(component.unansweredDates()).toBe(2);
+    });
+
+    it('holds the review step until every question is answered', () => {
+      const rows = [{ ...mockTransactions[0], id: 'asked', date: yesterday() }];
+      component.extractedTransactions.set(rows);
+      component.selectedTransactionIds.set(new Set(['asked']));
+      component.receiptRowIds.set(new Set(['asked']));
+
+      expect(component.unansweredDates()).toBe(1);
+      expect(component.reviewComplete()).toBeFalse();
+
+      // The card answers through the same event every other edit rides.
+      component.onTransactionsUpdated(rows.map(t => ({ ...t, dateReviewed: true as const })));
+
+      expect(component.unansweredDates()).toBe(0);
+      expect(component.reviewComplete()).toBeTrue();
+    });
+
+    it('never gates a statement batch, whatever its rows are dated', async () => {
+      mockImportService.importFromStatementImages.and.resolveTo(statementResult());
+      component.imageKind.set('statement');
+      component.onFilesSelected([png('stmt.png')]);
+
+      await component.processFiles();
+
+      expect(component.selectedCount()).toBe(2);
+      expect(component.unansweredDates()).toBe(0);
+      expect(component.reviewComplete()).toBeTrue();
+    });
+
+    it('keeps the set through a partial import, so a failed receipt row is still asked', fakeAsync(() => {
+      // The failed rows keep their ids and come back to the review step;
+      // a receipt row among them still owes its answer unless it gave one.
+      component.selectedFiles.set([png()]);
+      component.extractedTransactions.set([
+        { ...mockTransactions[0], id: 'saved', date: yesterday(), dateReviewed: true },
+        { ...mockTransactions[0], id: 'failed', date: yesterday(), dateReviewed: true },
+      ]);
+      component.receiptRowIds.set(new Set(['saved', 'failed']));
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'image' as const, fileType: 'receipt_image' as const,
+        fileName: 'r.png', fileSize: 10,
+        transactionCount: 2, successCount: 1, skippedCount: 0, errorCount: 1,
+        totalIncome: 0, totalExpenses: 5, duplicatesSkipped: 0,
+        status: 'partial' as const,
+        errors: [{ row: 2, message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+      }));
+
+      component.confirmImport();
+      tick();
+
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['failed']);
+      expect(component.receiptRowIds()).toEqual(new Set(['saved', 'failed']));
+      expect(component.unansweredDates()).withContext('already answered, so not asked again').toBe(0);
+      // The set still names the row: stripped of its answer, it is asked again.
+      component.onTransactionsUpdated([{ ...mockTransactions[0], id: 'failed', date: yesterday() }]);
+      expect(component.unansweredDates()).toBe(1);
+    }));
   });
 
   describe('selectedCount', () => {
@@ -1004,5 +1177,527 @@ describe('ImportWizardComponent', () => {
       const rows = mockDuplicateService.findWithinBatchDuplicates.calls.mostRecent().args[0];
       expect(rows.length).toBe(4);
     });
+  });
+
+  describe('re-checking a corrected row', () => {
+    // Detection ran inside the import doors, before the review step could
+    // change anything it read. A row whose date, amount, type or description
+    // the reviewer changed is checked again; a verdict the reviewer overruled
+    // stays overruled until that row itself changes. The in-flight cases
+    // resolve the checks by hand, out of order, because that is the only
+    // way a per-row stamp can be told from a single token for the call.
+    const yesterday = () => {
+      const day = new Date();
+      day.setDate(day.getDate() - 1);
+      return day;
+    };
+    const fresh = (): CategorizedImportTransaction[] => mockTransactions.map(t => ({ ...t }));
+    const stored = (transactionId: string, isDuplicate: boolean): DuplicateCheck =>
+      isDuplicate
+        ? { transactionId, isDuplicate: true, matchType: 'exact', existingTransactionId: 'stored-1', confidence: 1 }
+        : { transactionId, isDuplicate: false, matchType: 'none', confidence: 0 };
+    const twin = (transactionId: string, of: string): DuplicateCheck =>
+      ({ transactionId, isDuplicate: true, matchType: 'within_batch', existingTransactionId: of, confidence: 0.9 });
+    const populate = (rows: CategorizedImportTransaction[], checks: DuplicateCheck[] = []) => {
+      component.extractedTransactions.set(rows);
+      component.duplicateChecks.set(checks);
+      component.selectedTransactionIds.set(new Set(rows.filter(t => t.selected).map(t => t.id)));
+    };
+    // What the card emits: every row again, the edited one by a new identity.
+    const edit = (id: string, changes: Partial<CategorizedImportTransaction>): CategorizedImportTransaction[] => {
+      const next = component.extractedTransactions().map(t => (t.id === id ? { ...t, ...changes } : t));
+      component.onTransactionsUpdated(next);
+      return next;
+    };
+    const row = (id: string) => component.extractedTransactions().find(t => t.id === id)!;
+    const checkedIds = (call: number) =>
+      mockDuplicateService.checkDuplicates.calls.argsFor(call)[0].map(t => t.id);
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      let reject!: (reason?: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    it('does not check a first population', fakeAsync(() => {
+      component.onTransactionsUpdated(fresh());
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).not.toHaveBeenCalled();
+      expect(mockDuplicateService.findWithinBatchDuplicates).not.toHaveBeenCalled();
+    }));
+
+    it('reads an Invalid Date as unchanged, so a currency edit elsewhere checks nothing', fakeAsync(() => {
+      // A JSON-door row can carry an Invalid Date; NaN !== NaN would make
+      // it "changed" on every emission.
+      const rows = fresh();
+      rows[0] = { ...rows[0], date: new Date('not a date') };
+      populate(rows);
+
+      edit('txn2', { currency: 'JPY' });
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).not.toHaveBeenCalled();
+    }));
+
+    it('checks exactly the changed row when its date changes', fakeAsync(() => {
+      populate(fresh());
+      const day = yesterday();
+
+      edit('txn1', { date: day });
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).toHaveBeenCalledTimes(1);
+      expect(checkedIds(0)).toEqual(['txn1']);
+      expect(mockDuplicateService.checkDuplicates.calls.argsFor(0)[0][0].date)
+        .withContext('the row as it is now, not as it was')
+        .toBe(day);
+    }));
+
+    it('checks the row when its amount, type or description changes', fakeAsync(() => {
+      populate(fresh());
+      const edits: Partial<CategorizedImportTransaction>[] = [
+        { amount: 6 }, { type: 'income' }, { description: 'Tea' },
+      ];
+
+      for (const changes of edits) {
+        mockDuplicateService.checkDuplicates.calls.reset();
+        edit('txn1', changes);
+        flushMicrotasks();
+        expect(mockDuplicateService.checkDuplicates).withContext(JSON.stringify(changes)).toHaveBeenCalledTimes(1);
+        expect(checkedIds(0)).withContext(JSON.stringify(changes)).toEqual(['txn1']);
+      }
+    }));
+
+    it('checks nothing for a currency, notes, category, date answer or selection change', fakeAsync(() => {
+      populate(fresh());
+      const edits: Partial<CategorizedImportTransaction>[] = [
+        { currency: 'JPY' }, { notes: 'lunch' }, { suggestedCategoryId: 'salary' },
+        { dateReviewed: true }, { selected: false },
+      ];
+
+      for (const changes of edits) {
+        edit('txn1', changes);
+        flushMicrotasks();
+        expect(mockDuplicateService.checkDuplicates).withContext(JSON.stringify(changes)).not.toHaveBeenCalled();
+      }
+    }));
+
+    it('flags and deselects a row whose fresh verdict is duplicate, and shows it in the panel', fakeAsync(() => {
+      populate(fresh());
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', true)]);
+
+      const emitted = edit('txn1', { date: yesterday() });
+      flushMicrotasks();
+
+      expect(row('txn1').isDuplicate).toBeTrue();
+      expect(row('txn1').duplicateOf).toBe('stored-1');
+      expect(row('txn1').selected).toBeFalse();
+      expect(component.selectedTransactionIds().has('txn1')).toBeFalse();
+      expect(component.selectedTransactionIds().has('txn2')).toBeTrue();
+      expect(row('txn2')).withContext('the other row is not touched').toBe(emitted[1]);
+      expect(component.duplicateInfos().map(i => [i.transaction.id, i.check.matchType])).toEqual([['txn1', 'exact']]);
+      expect(component.duplicatesSkipped()).toBe(1);
+    }));
+
+    it('clears the flag and re-selects a row whose fresh verdict is none', fakeAsync(() => {
+      const rows = fresh();
+      rows[0] = { ...rows[0], isDuplicate: true, duplicateOf: 'stored-1', selected: false };
+      populate(rows, [stored('txn1', true)]);
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
+
+      edit('txn1', { date: yesterday() });
+      flushMicrotasks();
+
+      expect(row('txn1').isDuplicate).toBeFalse();
+      expect(row('txn1').duplicateOf).toBeUndefined();
+      expect(row('txn1').selected).toBeTrue();
+      expect(component.selectedTransactionIds().has('txn1')).toBeTrue();
+      expect(component.duplicateInfos()).toEqual([]);
+      expect(component.duplicateChecks().find(c => c.transactionId === 'txn1')?.isDuplicate).toBeFalse();
+    }));
+
+    it('leaves a manual deselection alone when the verdict is unchanged', fakeAsync(() => {
+      const rows = fresh();
+      rows[0] = { ...rows[0], selected: false };
+      populate(rows);
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
+
+      const emitted = edit('txn1', { amount: 6 });
+      flushMicrotasks();
+
+      expect(row('txn1')).withContext('the row itself, not a rewrite of it').toBe(emitted[0]);
+      expect(row('txn1').selected).toBeFalse();
+      expect(component.selectedTransactionIds().has('txn1')).toBeFalse();
+    }));
+
+    it('leaves an included duplicate alone when the verdict is unchanged', fakeAsync(() => {
+      // Included through the panel, then edited: still a duplicate, still
+      // the reviewer's call to import it.
+      const rows = fresh();
+      rows[0] = { ...rows[0], isDuplicate: true, duplicateOf: 'stored-1', selected: true };
+      populate(rows, [stored('txn1', true)]);
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', true)]);
+
+      const emitted = edit('txn1', { description: 'Coffee beans' });
+      flushMicrotasks();
+
+      expect(row('txn1')).toBe(emitted[0]);
+      expect(row('txn1').selected).toBeTrue();
+      expect(component.selectedTransactionIds().has('txn1')).toBeTrue();
+    }));
+
+    it('shows the second verdict when two edits of the same row resolve out of order', fakeAsync(() => {
+      populate(fresh());
+      const first = deferred<DuplicateCheck[]>();
+      const second = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValues(first.promise, second.promise);
+
+      edit('txn1', { date: yesterday() });
+      edit('txn1', { amount: 7 });
+      second.resolve([stored('txn1', false)]);
+      flushMicrotasks();
+      expect(row('txn1').isDuplicate).toBeFalse();
+
+      // The stale answer would flag and deselect a row the fresh check cleared.
+      first.resolve([stored('txn1', true)]);
+      flushMicrotasks();
+
+      expect(row('txn1').isDuplicate).toBeFalse();
+      expect(row('txn1').selected).toBeTrue();
+      expect(component.selectedTransactionIds().has('txn1')).toBeTrue();
+    }));
+
+    it('keeps both verdicts when edits of different rows resolve out of order', fakeAsync(() => {
+      // One token for the whole call would discard txn1's answer the moment
+      // txn2 was edited before it came back.
+      populate(fresh());
+      const first = deferred<DuplicateCheck[]>();
+      const second = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValues(first.promise, second.promise);
+
+      edit('txn1', { date: yesterday() });
+      edit('txn2', { date: yesterday() });
+      second.resolve([stored('txn2', true)]);
+      flushMicrotasks();
+      expect(row('txn2').isDuplicate).toBeTrue();
+
+      first.resolve([stored('txn1', true)]);
+      flushMicrotasks();
+
+      expect(row('txn1').isDuplicate).withContext('the earlier answer still applies to its own row').toBeTrue();
+      expect(row('txn1').selected).toBeFalse();
+      expect(row('txn2').isDuplicate).withContext('the later answer survives the earlier one').toBeTrue();
+      expect(component.selectedTransactionIds()).toEqual(new Set());
+    }));
+
+    it('counts a re-check as in flight until its answer lands, however it lands', fakeAsync(() => {
+      // Import waits on this count: confirmImport snapshots the rows the
+      // moment it is pressed, and an edit followed straight by Import would
+      // ship a row whose fresh verdict had not arrived.
+      populate(fresh());
+      const first = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValue(first.promise);
+      expect(component.rechecksInFlight()).toBe(0);
+
+      edit('txn1', { date: yesterday() });
+      expect(component.rechecksInFlight()).toBe(1);
+      flushMicrotasks();
+      expect(component.rechecksInFlight()).withContext('still waiting on the read').toBe(1);
+
+      first.resolve([stored('txn1', false)]);
+      flushMicrotasks();
+      expect(component.rechecksInFlight()).toBe(0);
+
+      const second = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValue(second.promise);
+      edit('txn1', { amount: 6 });
+      expect(component.rechecksInFlight()).toBe(1);
+
+      second.reject(new Error('offline'));
+      flushMicrotasks();
+      expect(component.rechecksInFlight()).withContext('a failed read is not in flight either').toBe(0);
+    }));
+
+    it('never counts below zero when a stale answer is discarded', fakeAsync(() => {
+      populate(fresh());
+      const first = deferred<DuplicateCheck[]>();
+      const second = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValues(first.promise, second.promise);
+
+      edit('txn1', { date: yesterday() });
+      edit('txn1', { amount: 7 });
+      expect(component.rechecksInFlight()).toBe(2);
+
+      second.resolve([stored('txn1', false)]);
+      flushMicrotasks();
+      expect(component.rechecksInFlight()).toBe(1);
+
+      first.resolve([stored('txn1', true)]);
+      flushMicrotasks();
+      expect(component.rechecksInFlight()).toBe(0);
+    }));
+
+    it('keeps the standing verdict, and says so, when the check rejects or answers with no array', fakeAsync(() => {
+      // Offline, a rules refusal, a bare stub: the last honest answer
+      // stands, and the reviewer is told once per failed answer — a verdict
+      // they believe was refreshed is the one they would import on, and the
+      // overrule on the badge is theirs if they know better.
+      const rows = fresh();
+      rows[0] = { ...rows[0], isDuplicate: true, duplicateOf: 'stored-1', selected: false };
+      const checks = [stored('txn1', true)];
+      populate(rows, checks);
+
+      mockDuplicateService.checkDuplicates.and.rejectWith(new Error('offline'));
+      edit('txn1', { date: yesterday() });
+      flushMicrotasks();
+
+      expect(row('txn1').isDuplicate).toBeTrue();
+      expect(row('txn1').selected).toBeFalse();
+      expect(component.duplicateChecks()).toBe(checks);
+      expect(notifications.info).toHaveBeenCalledTimes(1);
+      expect(notifications.info).toHaveBeenCalledWith('import.recheckFailed');
+
+      mockDuplicateService.checkDuplicates.and.resolveTo(undefined as unknown as DuplicateCheck[]);
+      edit('txn1', { amount: 6 });
+      flushMicrotasks();
+
+      expect(row('txn1').isDuplicate).toBeTrue();
+      expect(row('txn1').selected).toBeFalse();
+      expect(component.duplicateChecks()).toBe(checks);
+      expect(mockDuplicateService.findWithinBatchDuplicates).not.toHaveBeenCalled();
+      expect(notifications.info).toHaveBeenCalledTimes(2);
+      expect(notifications.info.calls.mostRecent().args).toEqual(['import.recheckFailed']);
+      expect(notifications.error).not.toHaveBeenCalled();
+    }));
+
+    it('says nothing for a failed answer a later edit of the same row superseded', fakeAsync(() => {
+      // The call that superseded it answers for the row; a notice here would
+      // report an outage the reviewer never felt.
+      populate(fresh());
+      const first = deferred<DuplicateCheck[]>();
+      const second = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValues(first.promise, second.promise);
+
+      edit('txn1', { date: yesterday() });
+      edit('txn1', { amount: 7 });
+      second.resolve([stored('txn1', true)]);
+      flushMicrotasks();
+      first.reject(new Error('offline'));
+      flushMicrotasks();
+
+      expect(notifications.info).not.toHaveBeenCalled();
+      expect(row('txn1').isDuplicate).withContext('the answer that stands is the later call\'s').toBeTrue();
+    }));
+
+    it('flags a within-batch twin a date edit creates, and leaves the earlier row alone', fakeAsync(() => {
+      populate(fresh());
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn2', false)]);
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([twin('txn2', 'txn1')]);
+
+      const emitted = edit('txn2', { date: yesterday() });
+      flushMicrotasks();
+
+      expect(row('txn2').isDuplicate).toBeTrue();
+      expect(row('txn2').duplicateOf)
+        .withContext('a batch row id is not a document; processFiles leaves it unset too')
+        .toBeUndefined();
+      expect(row('txn2').selected).toBeFalse();
+      expect(row('txn1')).toBe(emitted[0]);
+      expect(component.selectedTransactionIds()).toEqual(new Set(['txn1']));
+      // The pass runs over the rows as they are now.
+      const args = mockDuplicateService.findWithinBatchDuplicates.calls.mostRecent().args;
+      expect(args[0]).withContext('the rows as emitted, which the handler stores as they are').toBe(emitted);
+      expect(args[0].map(t => t.id)).toEqual(['txn1', 'txn2']);
+      expect(component.duplicateInfos().map(i => i.check.matchType)).toEqual(['within_batch']);
+    }));
+
+    it('drops a within-batch verdict that dissolves when the other row is edited', fakeAsync(() => {
+      // What processFiles leaves behind: a stored verdict per row, then the
+      // twin's own. The pass regenerates those from the rows alone, so the
+      // standing twin entry has to go before it runs — kept, it would still
+      // say duplicate for a row the pass no longer flags, and by id it wins.
+      const rows = fresh();
+      rows[1] = { ...rows[1], isDuplicate: true, selected: false };
+      populate(rows, [stored('txn1', false), stored('txn2', false), twin('txn2', 'txn1')]);
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([]);
+
+      edit('txn1', { date: yesterday() });
+      flushMicrotasks();
+
+      expect(row('txn2').isDuplicate).toBeFalse();
+      expect(row('txn2').duplicateOf).toBeUndefined();
+      expect(row('txn2').selected).toBeTrue();
+      expect(component.selectedTransactionIds().has('txn2')).toBeTrue();
+      expect(component.duplicateChecks().some(c => c.matchType === 'within_batch')).toBeFalse();
+      const args = mockDuplicateService.findWithinBatchDuplicates.calls.mostRecent().args;
+      expect(args[1]?.some(c => c.matchType === 'within_batch'))
+        .withContext('the pass is handed the stored verdicts only')
+        .toBeFalse();
+      expect(component.duplicateInfos()).toEqual([]);
+    }));
+
+    it('keeps an overruled within-batch row clear when a different row is edited', fakeAsync(() => {
+      // The batch pass regenerates its verdicts from the rows alone, so
+      // without the overrule set it would re-flag the twin on every edit.
+      const rows = fresh();
+      rows[1] = { ...rows[1], isDuplicate: true, selected: false };
+      populate(rows, [twin('txn2', 'txn1')]);
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([twin('txn2', 'txn1')]);
+      expect(component.duplicateInfos().length).toBe(1);
+      expect(component.duplicatesSkipped()).toBe(1);
+
+      // What clearDuplicate on the card emits.
+      edit('txn2', { isDuplicate: false, duplicateOf: undefined, selected: true });
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).withContext('an overrule is not an edit').not.toHaveBeenCalled();
+      expect(component.duplicateInfos()).toEqual([]);
+      expect(component.duplicatesSkipped()).toBe(0);
+      expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
+        .toEqual({ transactionId: 'txn2', isDuplicate: false, matchType: 'none', confidence: 0 });
+
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
+      edit('txn1', { description: 'Espresso' });
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).toHaveBeenCalledTimes(1);
+      expect(checkedIds(0)).toEqual(['txn1']);
+      expect(row('txn2').isDuplicate).toBeFalse();
+      expect(row('txn2').selected).toBeTrue();
+      expect(component.duplicateChecks().some(c => c.matchType === 'within_batch')).toBeFalse();
+      expect(component.duplicateInfos()).toEqual([]);
+    }));
+
+    it('re-checks an overruled row when it is edited itself', fakeAsync(() => {
+      const rows = fresh();
+      rows[1] = { ...rows[1], isDuplicate: true, selected: false };
+      populate(rows, [twin('txn2', 'txn1')]);
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([twin('txn2', 'txn1')]);
+      edit('txn2', { isDuplicate: false, duplicateOf: undefined, selected: true });
+      flushMicrotasks();
+
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn2', false)]);
+      edit('txn2', { amount: 3001 });
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).toHaveBeenCalledTimes(1);
+      expect(checkedIds(0)).toEqual(['txn2']);
+      // Its own edit reopened the question, and the pass still says twin.
+      expect(row('txn2').isDuplicate).toBeTrue();
+      expect(row('txn2').selected).toBeFalse();
+      expect(component.duplicateInfos().map(i => i.transaction.id)).toEqual(['txn2']);
+    }));
+
+    it('takes an overrule off the panel and the skipped count', fakeAsync(() => {
+      const rows = fresh();
+      rows[0] = { ...rows[0], isDuplicate: true, duplicateOf: 'stored-1', selected: false };
+      populate(rows, [stored('txn1', true)]);
+      expect(component.duplicateInfos().length).toBe(1);
+      expect(component.duplicatesSkipped()).toBe(1);
+
+      edit('txn1', { isDuplicate: false, duplicateOf: undefined, selected: true });
+      flushMicrotasks();
+
+      expect(component.duplicateInfos()).toEqual([]);
+      expect(component.duplicatesSkipped()).toBe(0);
+      expect(mockDuplicateService.checkDuplicates).not.toHaveBeenCalled();
+    }));
+
+    it('hands the reconciled rows to confirmImport', fakeAsync(() => {
+      populate(fresh());
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', true)]);
+      edit('txn1', { date: yesterday() });
+      flushMicrotasks();
+
+      component.confirmImport();
+      tick();
+
+      const submitted = mockImportService.confirmImport.calls.mostRecent().args[0];
+      expect(submitted.find(t => t.id === 'txn1')?.isDuplicate).toBeTrue();
+      expect(submitted.find(t => t.id === 'txn1')?.selected).toBeFalse();
+      expect(submitted.find(t => t.id === 'txn2')?.selected).toBeTrue();
+    }));
+
+    it('leaves a re-pick\'s checks alone when an earlier re-check answers late', fakeAsync(() => {
+      // processFiles resets the rows and appends each batch's checks to the
+      // last's; the overrule set and the stamps have to go with the rows, or
+      // an answer for a row that is gone lands on the batch that replaced it.
+      populate(fresh(), [stored('txn1', false), stored('txn2', false)]);
+      const late = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValue(late.promise);
+      edit('txn1', { date: yesterday() });
+
+      mockImportService.importFromFile.and.resolveTo({
+        ...mockImportResult, duplicates: [stored('txn1', false), stored('txn2', false)],
+      });
+      component.selectedFiles.set([new File([''], 'again.csv', { type: 'text/csv' })]);
+      component.processFiles();
+      tick();
+      const checks = component.duplicateChecks();
+      const rows = component.extractedTransactions();
+      expect(checks.length).withContext('the new batch\'s checks, not piled on the old').toBe(2);
+
+      late.resolve([stored('txn1', true)]);
+      flushMicrotasks();
+
+      expect(component.duplicateChecks()).toBe(checks);
+      expect(component.extractedTransactions()).toBe(rows);
+      expect(row('txn1').isDuplicate).toBeFalse();
+      expect(component.selectedTransactionIds().has('txn1')).toBeTrue();
+      expect(notifications.info).not.toHaveBeenCalled();
+    }));
+
+    it('forgets an overrule with the batch it belonged to', fakeAsync(() => {
+      // The re-pick's own twin verdict stands: nobody overruled it in this
+      // batch, and a set kept from the last would clear it on the first edit.
+      const rows = fresh();
+      rows[1] = { ...rows[1], isDuplicate: true, selected: false };
+      populate(rows, [twin('txn2', 'txn1')]);
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([twin('txn2', 'txn1')]);
+      edit('txn2', { isDuplicate: false, duplicateOf: undefined, selected: true });
+      flushMicrotasks();
+
+      component.selectedFiles.set([new File([''], 'again.csv', { type: 'text/csv' })]);
+      component.processFiles();
+      tick();
+      expect(row('txn2').isDuplicate).withContext('flagged afresh by the batch pass').toBeTrue();
+
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
+      edit('txn1', { description: 'Espresso' });
+      flushMicrotasks();
+
+      expect(row('txn2').isDuplicate).toBeTrue();
+      expect(row('txn2').selected).toBeFalse();
+      expect(component.duplicateChecks().some(c => c.matchType === 'within_batch')).toBeTrue();
+    }));
+
+    it('rewrites nothing for an answer every later edit superseded', fakeAsync(() => {
+      // Applied to no row, it has nothing to say: the call that superseded
+      // it ran the batch pass over the rows it answered for.
+      populate(fresh());
+      const first = deferred<DuplicateCheck[]>();
+      const second = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValues(first.promise, second.promise);
+
+      edit('txn1', { date: yesterday() });
+      edit('txn1', { amount: 7 });
+      second.resolve([stored('txn1', false)]);
+      flushMicrotasks();
+      const checks = component.duplicateChecks();
+      const rows = component.extractedTransactions();
+      expect(mockDuplicateService.findWithinBatchDuplicates).toHaveBeenCalledTimes(1);
+
+      first.resolve([stored('txn1', true)]);
+      flushMicrotasks();
+
+      expect(component.duplicateChecks()).toBe(checks);
+      expect(component.extractedTransactions()).toBe(rows);
+      expect(mockDuplicateService.findWithinBatchDuplicates).toHaveBeenCalledTimes(1);
+    }));
   });
 });

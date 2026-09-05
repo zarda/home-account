@@ -254,9 +254,18 @@
         <app-transaction-preview-table
           [transactions]="extractedTransactions()"
           [categories]="categories()"
+          [dateAttentionIds]="receiptRowIds()"
           (transactionsUpdated)="onTransactionsUpdated($event)"
           (selectionChanged)="onSelectionChanged($event)"
         ></app-transaction-preview-table>
+
+        <!-- Why Continue is held: the receipt rows above still owe a date
+             answer (Keep, or another day). -->
+        @if (unansweredDates() > 0) {
+          <p class="dates-hint" role="status">
+            {{ 'import.datesToCheck' | translate:{ count: unansweredDates() } }}
+          </p>
+        }
 
         <div class="step-actions">
           <button mat-stroked-button (click)="stepper.previous()">
@@ -267,7 +276,7 @@
             mat-flat-button
             color="primary"
             class="action-button"
-            [disabled]="selectedCount() === 0"
+            [disabled]="selectedCount() === 0 || unansweredDates() > 0"
             (click)="stepper.next()"
           >
             {{ 'common.continue' | translate }}
@@ -318,6 +327,17 @@
               </div>
             </div>
           }
+          <!-- Reachable with questions open only through the non-linear
+               camera stepper; the card says why Import is held. -->
+          @if (unansweredDates() > 0) {
+            <div class="summary-card dates-card">
+              <mat-icon>event</mat-icon>
+              <div class="card-content">
+                <span class="card-value">{{ unansweredDates() }}</span>
+                <span class="card-label">{{ 'import.datesToCheckTitle' | translate }}</span>
+              </div>
+            </div>
+          }
           @if (hasMultiImageData()) {
             <div class="summary-card multi-image-card">
               <mat-icon>photo_library</mat-icon>
@@ -358,7 +378,7 @@
             mat-flat-button
             color="primary"
             class="action-button import-button"
-            [disabled]="isImporting() || selectedCount() === 0"
+            [disabled]="isImporting() || rechecksInFlight() > 0 || selectedCount() === 0 || unansweredDates() > 0"
             (click)="confirmImport()"
           >
             @if (isImporting()) {

@@ -35,12 +35,15 @@ import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry
   template: `
     <!-- 320px, the narrowest phone still in use, less the page's own padding. -->
     <div class="narrow">
-      <app-transaction-preview-table [transactions]="rows" [categories]="[]" />
+      <app-transaction-preview-table [transactions]="rows" [categories]="[]" [dateAttentionIds]="attention" />
     </div>
   `,
   styles: ['.narrow { width: 288px; overflow: hidden; }'],
 })
 class PreviewOverflowProbeComponent {
+  // r2 is the receipt row: dated on another day and under attention, so the
+  // not-today question is measured at this width alongside r1's assumed one.
+  readonly attention: ReadonlySet<string> = new Set(['r2']);
   readonly rows: CategorizedImportTransaction[] = [
     {
       id: 'r1',
@@ -49,6 +52,7 @@ class PreviewOverflowProbeComponent {
       currency: 'JPY',
       currencyFellBack: true,
       date: new Date('2026-06-01'),
+      dateAssumed: true,
       type: 'expense',
       suggestedCategoryId: 'food',
       categoryConfidence: 0.8,
@@ -73,9 +77,16 @@ class PreviewOverflowProbeComponent {
       type: 'expense',
       suggestedCategoryId: 'food',
       categoryConfidence: 0.8,
-      isDuplicate: false,
+      // Flagged, so the overrule renders on this row: the badge and its
+      // button sit on the top row above the description trigger, and the
+      // two are measured apart.
+      isDuplicate: true,
       selected: true,
       currencySuggestion: { code: 'EUR', reason: 'session' },
+      // A country the reader concluded with no printed address renders as a
+      // chip of its own, and r2 is the row with no location to stand in front
+      // of it.
+      receiptCountry: 'KR',
     },
   ];
 }
@@ -217,7 +228,9 @@ describe('overflow guard: the import review card', () => {
     // their text breaks mid-word rather than the row growing sideways.
     const extras = el('.card-extras');
     const chips = Array.from(host.querySelectorAll<HTMLElement>('.extra-chip'));
-    expect(chips.length).withContext('two currency offers (r1 with-country, r2 country-less), location plus three tags').toBe(6);
+    expect(chips.length)
+      .withContext('r1\'s assumed-date question, two currency offers (r1 with-country, r2 country-less), location plus three tags, r2\'s not-today question and r2\'s receipt country')
+      .toBe(9);
     for (const chip of chips) {
       const remove = chip.querySelector('.extra-remove') as HTMLElement;
       expect(withinWidthOf(clip, chip))
@@ -302,7 +315,13 @@ describe('overflow guard: the import review card', () => {
     expect(el('.bulk-currency').getBoundingClientRect().height)
       .withContext('bulk currency button tap target')
       .toBeGreaterThanOrEqual(40);
+    // Rendered because r2 is a selected receipt row dated another day.
+    expect(el('.keep-dates').getBoundingClientRect().height)
+      .withContext('keep all dates button tap target')
+      .toBeGreaterThanOrEqual(40);
 
+    // The first `.extra-remove` in the strip is the date question's change
+    // button now; it carries both classes, so it wears exactly this box.
     const remove = el('.extra-remove');
     const box = remove.getBoundingClientRect();
     const hit = getComputedStyle(remove, '::after');
@@ -318,8 +337,9 @@ describe('overflow guard: the import review card', () => {
       .toBeGreaterThanOrEqual(32);
 
     // And the tag chip is still one line of --text-xs: the hit area grew
-    // outside the box precisely so this number would not move.
-    expect(host.querySelectorAll<HTMLElement>('.extra-chip')[2].getBoundingClientRect().height)
+    // outside the box precisely so this number would not move. By class, not
+    // index: the strip's order moves whenever a chip is added ahead of it.
+    expect(el('.extra-chip.tag-chip').getBoundingClientRect().height)
       .withContext('tag chip stays chip-sized')
       .toBeLessThanOrEqual(28);
 
@@ -339,11 +359,151 @@ describe('overflow guard: the import review card', () => {
       .toBeGreaterThan(20);
   });
 
+  it('puts the date on a control of its own without wedging the picker between the chips', () => {
+    // The date was a span; as a button it has to meet the 40px floor the
+    // currency chip meets, stay inside the clip, and leave the meta row
+    // wrapping rather than widening. The picker it opens from is a hidden
+    // input and an empty host, and both stay out of the row: unhidden, an
+    // empty host inside a `gap: 6px` flex row is a zero-width item that
+    // still costs a gap, which would read as 12px between the date and the
+    // currency.
+    const dates = Array.from(host.querySelectorAll<HTMLElement>('.date-chip'));
+    expect(dates.map(date => date.tagName)).withContext('one button per row').toEqual(['BUTTON', 'BUTTON']);
+    expect(dates[0].classList.contains('not-today')).withContext('r1 is outside the attention set').toBeFalse();
+    expect(dates[1].classList.contains('not-today')).withContext('r2 is the receipt row dated another day').toBeTrue();
+    for (const date of dates) {
+      expect(date.getBoundingClientRect().height).withContext('date button tap target').toBeGreaterThanOrEqual(40);
+      expect(withinWidthOf(clip, date)).withContext('date button inside the clip').toBeTrue();
+    }
+
+    const meta = el('.meta-info');
+    for (const selector of ['.date-chip', '.currency-chip', '.type-toggle']) {
+      expect(withinWidthOf(clip, meta.querySelector(selector) as HTMLElement))
+        .withContext(`${selector} inside the clip`)
+        .toBeTrue();
+    }
+    expect(meta.scrollWidth)
+      .withContext('the meta row wraps rather than overflowing')
+      .toBeLessThanOrEqual(meta.clientWidth + 1);
+
+    // The pair is guarded directly rather than through the gap alone: a
+    // hidden host generates no box and costs no gap (the same way the
+    // `mat-menu` host in this row already gets away with it), so what has
+    // to hold is that the pair stays hidden and stays out of the row.
+    expect(meta.querySelector('.picker-anchor, mat-datepicker'))
+      .withContext('the picker pair sits after the meta row, not in it')
+      .toBeNull();
+    for (const selector of ['.picker-anchor', 'mat-datepicker']) {
+      expect((card.querySelector(selector) as HTMLElement).getClientRects().length)
+        .withContext(`${selector} has no box`)
+        .toBe(0);
+    }
+    // Measured at this width: the row is 174px once the list's and the
+    // card's own chrome and the checkbox column are paid for, the date
+    // button 104px (icon, date, 40px of chrome, no caret) and the currency
+    // chip 80px — 190 with the gap between them — so the two wrap here and
+    // the 6px is the row gap; on a wider card they sit side by side and
+    // the gap is horizontal. Whichever axis the wrap chose, nothing else
+    // fits in it: an unhidden picker host between them would read as 12.
+    const dateBox = dates[0].getBoundingClientRect();
+    const currencyBox = (meta.querySelector('.currency-chip') as HTMLElement).getBoundingClientRect();
+    const gap = currencyBox.top >= dateBox.bottom - 0.5
+      ? currencyBox.top - dateBox.bottom
+      : currencyBox.left - dateBox.right;
+    expect(gap).withContext('date and currency chips 6px apart, nothing between them').toBeCloseTo(6, 0);
+  });
+
+  it('puts the description and the amount on controls without widening the card', () => {
+    // Both were spans; as triggers they have to meet the same 40px floor the
+    // chips meet and stay inside the clip — the description while wrapped to
+    // several lines, the amount while `appFitText` is still holding every
+    // digit of ¥1,234,567 on one.
+    const description = el('.description-section .inline-edit');
+    const amount = el('.amount-section .inline-edit');
+    for (const [name, trigger] of [['description', description], ['amount', amount]] as const) {
+      expect(trigger.tagName).withContext(`${name} is a control`).toBe('BUTTON');
+      expect(trigger.getBoundingClientRect().height)
+        .withContext(`${name} trigger tap target`)
+        .toBeGreaterThanOrEqual(40);
+      expect(withinWidthOf(clip, trigger)).withContext(`${name} trigger inside the clip`).toBeTrue();
+    }
+  });
+
+  it('puts the overrule on the badge as a 40px control that stays clear of the description', () => {
+    // The badge is on the top row, where the height exists, so the button
+    // reaches 40px with a box of its own. It is the one control on the card
+    // without an ::after overhang, and on purpose: a hit area hanging 10px
+    // below a 20px glyph here would land on the description trigger beneath
+    // the badge — which is why the two boxes are measured apart directly.
+    // The strip's row-below probe never sees this button; it is not in
+    // `.card-extras`.
+    const clear = host.querySelector('[data-row-id="r2"] .duplicate-clear') as HTMLElement;
+    expect(clear).withContext('r2 is the flagged row').not.toBeNull();
+    expect(getComputedStyle(clear, '::after').content)
+      .withContext('the box is the whole hit area')
+      .toBe('none');
+    // The badge sizes its own glyph, and the overrule's rule is nested under
+    // it on purpose: at equal specificity a reorder alone would hand this
+    // glyph the badge's size.
+    expect(getComputedStyle(clear.querySelector('mat-icon')!).fontSize)
+      .withContext('the overrule\'s glyph keeps its own size')
+      .toBe('16px');
+    const box = clear.getBoundingClientRect();
+    expect(box.height).withContext('overrule tap target height').toBeGreaterThanOrEqual(40);
+    expect(box.width).withContext('overrule tap target width').toBeGreaterThanOrEqual(40);
+    expect(withinWidthOf(clip, clear)).withContext('overrule inside the clip').toBeTrue();
+
+    const description = (host.querySelector('[data-row-id="r2"] .description-text') as HTMLElement).getBoundingClientRect();
+    const overlapX = Math.min(box.right, description.right) - Math.max(box.left, description.left);
+    const overlapY = Math.min(box.bottom, description.bottom) - Math.max(box.top, description.top);
+    expect(Math.min(overlapX, overlapY))
+      .withContext('the overrule and the description trigger are disjoint')
+      .toBeLessThanOrEqual(0.5);
+  });
+
+  it('marks both triggers as controls without waiting for a pointer', () => {
+    // Receipt import is the touch-first flow — the camera hands straight over
+    // to this card — and a touch device has neither :hover nor
+    // :focus-visible. Revealing the underline on those alone left the two
+    // fields pixel-identical to the spans they replaced on the very device
+    // the card is used on, while the chips beside them read as chips.
+    for (const selector of ['.description-section .inline-edit', '.amount-section .inline-edit']) {
+      const style = getComputedStyle(el(selector));
+      expect(style.borderBlockEndStyle).withContext(`${selector} underline`).toBe('dotted');
+      expect(style.borderBlockEndColor)
+        .withContext(`${selector} underline is visible before anything is hovered`)
+        .not.toBe('rgba(0, 0, 0, 0)');
+    }
+  });
+
+  it('keeps the card inside its 288px with either editor open', () => {
+    // The description editor is a full-width input and the amount editor a
+    // fixed 7em one on the row that already carries the widest figure this
+    // fixture has; either could push the top row past the card's edge.
+    for (const selector of ['.description-section .inline-edit', '.amount-section .inline-edit']) {
+      el(selector).click();
+      fixture.detectChanges();
+
+      const box = host.querySelector('.transaction-card .inline-input') as HTMLElement;
+      expect(box).withContext(`${selector} opened an input`).not.toBeNull();
+      expect(withinWidthOf(clip, box)).withContext(`${selector}'s input inside the clip`).toBeTrue();
+      expect(card.scrollWidth)
+        .withContext(`nothing hiding past the card's right edge while editing via ${selector}`)
+        .toBeLessThanOrEqual(card.clientWidth + 1);
+
+      // Escape rather than leaving it open: the next pass needs the other
+      // trigger back, and one row edits one field at a time.
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+    }
+  });
+
   it('never lets one chip\'s tap target reach into the row below', () => {
     // The chips wrap at 288px, and a hit box 14px taller than its chip is
     // exactly how a tap on the bottom edge of one tag ends up removing the
     // tag under it. `.card-extras` pays for the overhang in row-gap, so the
-    // boxes meet and never overlap.
+    // boxes meet and never overlap. The date question's change button
+    // carries `.extra-remove` too, so both of its controls are in this set.
     const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept')).map(button => {
       const r = button.getBoundingClientRect();
       const after = getComputedStyle(button, '::after');
@@ -406,6 +566,9 @@ describe('overflow guard: the import review card', () => {
       .toBeLessThanOrEqual(header.clientWidth + 1);
     expect(withinWidthOf(clip, el('.bulk-currency')))
       .withContext('bulk currency button inside the clip')
+      .toBeTrue();
+    expect(withinWidthOf(clip, el('.keep-dates')))
+      .withContext('keep all dates button inside the clip')
       .toBeTrue();
     expect(withinWidthOf(clip, el('.selected-badge')))
       .withContext('count badge inside the clip')
