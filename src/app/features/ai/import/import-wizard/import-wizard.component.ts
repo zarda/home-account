@@ -244,8 +244,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * What the review card denominates a hand-added row in when there is no
    * row above it to copy a currency from. A field rather than a computed:
    * the route's guard has signed the user in before this component is
-   * constructed, and the account's base currency does not change under an
-   * open wizard.
+   * constructed, and nothing reachable from inside the wizard changes the
+   * account's base. A degraded profile read is the one way it can go stale —
+   * the auth service seats a fallback profile and swaps the real one in
+   * later — and it costs one currency tap on a row added to an empty list.
    */
   readonly baseCurrency = this.importService.baseCurrency();
 
@@ -862,7 +864,8 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * stepper takes a backward move only onto an editable step. The unlock is
    * a template binding, so it reaches the step at the next render and not
    * before: setting the index in the same task as the unlock would be
-   * refused silently, stranding the rows on Confirm with no way back. The
+   * refused silently, leaving the reviewer on a summary card that describes
+   * only the rows that failed, with no sign the move was attempted. The
    * finally's own set(false) that follows is then a no-op.
    *
    * Registering a render hook on a destroyed injector throws NG0911, which

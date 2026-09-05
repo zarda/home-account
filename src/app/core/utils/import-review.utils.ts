@@ -67,8 +67,10 @@ export function needsDateAnswer(
  * no grade, and none of the review-step marks. An absent grade is the
  * "nobody doubts it" shape `needsVerification` already reads, and a mark
  * here would flag a row nobody could have misread. `categoryConfidence` is
- * 0 for the same reason it is on any row nothing suggested a category for:
- * the card offers `other_expense` as the guess it is.
+ * 0 — inside the same low band every row nothing suggested a category for
+ * lands in, under the floor the categorization ladder grades those with,
+ * because no categorizer was even asked here: the card offers
+ * `other_expense` as the guess it is.
  *
  * The date is a copy. Sharing the neighbour's `Date` object would leave the
  * picker on one row moving the other, since the picker writes a new object

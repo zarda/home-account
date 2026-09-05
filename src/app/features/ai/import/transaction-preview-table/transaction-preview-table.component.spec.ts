@@ -2312,6 +2312,22 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(box()).withContext('the editor still closes').toBeNull();
     });
 
+    it('files nothing for a tag the row arrived carrying in another case', () => {
+      // A JSON backup restores its tags verbatim, so a row can hold `Coffee`
+      // while the vocabulary — normalized — offers `coffee`. Comparing the
+      // typed tag against the raw list files both, and the mapper passes
+      // tags straight through: two chips of one tag on the stored row.
+      render([makeRow({ tags: ['Coffee'] })], ['coffee']);
+      const emitted = emissions();
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      type('coffee');
+
+      expect(emitted.length).toBe(0);
+      expect(box()).withContext('the editor still closes').toBeNull();
+    });
+
     it('files nothing on Escape, or on a commit with nothing in the field', () => {
       render([makeRow()]);
       const emitted = emissions();

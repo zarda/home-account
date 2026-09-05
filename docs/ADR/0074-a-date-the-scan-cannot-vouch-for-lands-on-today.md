@@ -36,10 +36,10 @@ forward by both.
 now does.** This record's rule was written for the doors that read a date off
 paper, and the wizard's JSON backup door built its own instead — reading
 `.seconds` off the value by hand and falling back to `new Date()` when there
-was nothing to read. A backup row whose date was absent or any other shape
-therefore landed silently on today with no mark, which is the exact state this
-record exists to make visible, and any other object shape produced an Invalid
-Date the review step then carried. That door now goes through
+was nothing to read. A backup row whose date was absent therefore landed
+silently on today with no mark, which is the exact state this record exists to
+make visible, and any other object shape produced an Invalid Date the review
+step then carried. That door now goes through
 `resolveImportDate` like every other, and **with no confidence**: nobody graded
 a backup's dates — they are facts the app recorded, not readings off paper — so
 an unreadable or absent value lands on today carrying `dateAssumed`, and a

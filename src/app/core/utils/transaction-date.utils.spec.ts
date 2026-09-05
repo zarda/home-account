@@ -266,6 +266,16 @@ describe('transaction-date.utils', () => {
       expect(parseDateInput({ seconds: 1700000000 })!.getTime()).toBe(1700000000000);
     });
 
+    it('reads the three-key map a Timestamp actually serialises to', () => {
+      // What a real backup carries: `Transaction.date` is a Timestamp, whose
+      // toJSON writes a schema tag beside the two numbers — the shape every
+      // other fixture here abbreviates. The extra key is not a reason to
+      // refuse the row.
+      expect(
+        parseDateInput({ type: 'firestore/timestamp/1.0', seconds: 1700000000, nanoseconds: 0 })!.getTime()
+      ).toBe(1700000000000);
+    });
+
     it('adds the whole milliseconds of the nanoseconds field', () => {
       expect(parseDateInput({ seconds: 1700000000, nanoseconds: 500000000 })!.getTime())
         .toBe(1700000000500);

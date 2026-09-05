@@ -19,8 +19,9 @@ import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry
  * currency button on the header, all of which compete for room that was
  * already spoken for. Same shape as overflow-guard.spec.ts: real global
  * styles, the probe attached to the document because only an attached element
- * has a layout box, and a fixed container width so nothing depends on the
- * size of the browser window running the test.
+ * has a layout box, and a container width the case sets rather than the
+ * runner's window — 288px throughout, save for the one case that widens it to
+ * 900px because what it measures only happens with a chip beside the trigger.
  *
  * Containment is asserted on width alone. `.transactions-list` is a
  * deliberate vertical scroller, so a card taller than its 70dvh fold is

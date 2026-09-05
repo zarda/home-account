@@ -72,7 +72,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0065](0065-an-attempt-is-recorded-where-it-runs.md) | An attempt is recorded where it runs | Accepted | 2026-08-23 |
 | [0066](0066-an-answers-budget-follows-its-question.md) | An answer's budget follows its question, and a cut-off answer is read as far as it goes | Accepted | 2026-08-24 |
 | [0067](0067-a-photo-is-made-to-fit-and-never-costs-its-transaction.md) | A receipt photo is made to fit, and never costs its transaction | Accepted | 2026-08-25 |
-| [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted; gap closed by 0102 | 2026-08-26 |
+| [0068](0068-a-country-is-stored-on-the-evidence-that-produced-it.md) | A country is stored on the evidence that produced it | Accepted; hand-editing gap closed by 0102 | 2026-08-26 |
 | [0069](0069-one-ladder-decides-what-is-the-same-merchant.md) | One ladder decides what is the same merchant, and it stays a string ladder | Accepted | 2026-08-26 |
 | [0070](0070-accessibility-preferences-ride-the-account-and-land-on-the-root.md) | Accessibility preferences ride the account, and land on the root | Accepted | 2026-08-27 |
 | [0071](0071-direction-comes-from-the-locale-and-physical-css-is-frozen.md) | Direction comes from the locale, and physical CSS is frozen | Accepted | 2026-08-27 |

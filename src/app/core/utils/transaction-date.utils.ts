@@ -141,8 +141,10 @@ export function parseDayKey(value: unknown): Date | null {
  * `JSON.stringify`'d from stored documents, so a `Transaction.date` reaches an
  * import door as the `{ seconds, nanoseconds }` a Firestore Timestamp
  * serialises to, with no `toDate` left on it. Only a finite numeric `seconds`
- * makes that shape; anything else is still null, so a door that resolves its
- * dates through here does not mark every restored row as assumed. The
+ * makes that shape, and only one the Date range can hold — anything else,
+ * including a figure that overflows it, is still null, so a door that
+ * resolves its dates through here does not mark every restored row as
+ * assumed and none of them can carry an Invalid Date onward. The
  * sub-second part is dropped to whole milliseconds and ignored entirely when
  * it is not a number, because a hand-edited field must not turn an instant the
  * `seconds` states plainly into NaN.

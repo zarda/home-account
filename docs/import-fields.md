@@ -177,7 +177,7 @@ runs again, and whether anything is remembered past the wizard.
 | Notes | the **Notes** button opens a textarea; it files on the way out | nothing | no | no |
 | Tags | a remove control on each chip, and **Add tag** over the account's own vocabulary — a native datalist, so what is typed is filed whether or not it is on the list | the tag | no | yes, kept and removed both, per merchant |
 | Location / country | one chip with three controls: the name is an inline editor, the country a menu over the bundled table with **No country** on it, and the removal clears both | a picked country clears `receiptCountry` and writes `location.country`; the removal clears `location` and `receiptCountry` together | no | no |
-| Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival (there is no earlier row to compare it against), but on every edit after that — so a filled row has been checked | no |
+| Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival (there is no earlier row to compare it against), but on every edit to a detection input — date, amount, type or description — so a filled row has been checked | no |
 | Recurring rule | the offer's checkbox | sets or restores `recurringId` and `isRecurring` | no | no |
 | Duplicate verdict | the badge's **Not a duplicate — import it** | `isDuplicate` and `duplicateOf`, reselects the row, and marks it overruled for the rest of the batch | it *is* the overrule | no |
 
@@ -247,8 +247,10 @@ are forgotten as soon as the wizard closes.
    it in place — a chip that opens a picker or a menu, or an inline trigger
    that swaps for an input — and, if the value is graded, the edit clears its
    `fieldConfidence` entry through `withoutFieldConfidence`. A value the import
-   **suggested** gets a remove control in the card's extras area instead, and
-   you decide whether a removal is remembered — tags are, and nothing else is.
+   **suggested** gets a remove control in the card's extras area, and an
+   editor of its own as well wherever the reviewer can know the value better
+   than the source did — which is both suggested fields today — and you decide
+   whether a removal is remembered: tags are, and nothing else is.
    Either way the change goes through `replaceRow`, never onto the `@Input()`
    object, and you add a row to *What the review step corrects* above saying
    whether detection re-runs on it.

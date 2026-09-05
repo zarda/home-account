@@ -45,7 +45,7 @@ import {
 } from '../../../../core/utils/import-review.utils';
 import { nextImportRowId } from '../../../../core/utils/import-row-id.utils';
 import { isImeComposition } from '../../../../core/utils/keyboard.utils';
-import { normalizeTag } from '../../../../core/utils/tag.utils';
+import { normalizeTag, normalizeTags } from '../../../../core/utils/tag.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
@@ -844,7 +844,11 @@ export class TransactionPreviewTableComponent {
    *
    * Spelled through normalizeTag on the way in, so a tag added here matches
    * a stored one exactly and the filter can find the row. Nothing typed, or
-   * a tag the row already carries, closes the editor and changes nothing.
+   * a tag the row already carries, closes the editor and changes nothing —
+   * and the row's own tags are spelled the same way for that comparison
+   * only, because a JSON backup restores them verbatim: a row holding
+   * `Coffee` would otherwise take the vocabulary's `coffee` as a second tag
+   * and file both, the mapper passing tags through untouched.
    */
   commitTag(row: CategorizedImportTransaction, event: Event): void {
     if (!this.editing.has(row.id)) return;
@@ -852,7 +856,7 @@ export class TransactionPreviewTableComponent {
     const tag = normalizeTag((event.target as HTMLInputElement).value);
     const tags = row.tags ?? [];
     this.closeEdit(row, event.type === 'keydown');
-    if (!tag || tags.includes(tag)) return;
+    if (!tag || normalizeTags(tags).includes(tag)) return;
     this.replaceRow(row, { tags: [...tags, tag] });
   }
 

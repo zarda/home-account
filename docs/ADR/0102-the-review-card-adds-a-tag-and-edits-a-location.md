@@ -103,8 +103,10 @@ see a name for.
   together.
 
 A row with neither fact gets **Add location**, which opens the same name
-editor. Both add triggers are unconditional, so the extras strip renders on
-every row now rather than only on a row something was suggested for.
+editor — the one add trigger that is conditional, since a row with a chip to
+correct has nothing to add. **Add tag** is unconditional, so the extras strip
+renders on every row now rather than only on a row something was suggested
+for.
 
 ### A country picked by hand is the evidence
 
@@ -162,10 +164,12 @@ Which is why the two withdrawals on this chip are not symmetrical:
   suites that do are asking about.
 - **`receiptCountryText` is gone**; its only caller was the branch that merged
   into the shared chip.
-- **A batch of twenty rows names 79 regions per menu opened**, and once per
-  open, because the menu content is lazy and the list is built per call rather
-  than memoized — the names and their order are the active language's, and both
-  have to change under a language switch.
+- **A batch of twenty rows names 79 regions per menu opened**, and again on
+  every change-detection pass that menu stays open for: the content is lazy,
+  but `countryChoices` is a template call built per invocation rather than
+  memoized, with a fresh `Intl.DisplayNames` per country. The names and their
+  order are the active language's, and both have to change under a language
+  switch.
 
 ## Things that only became apparent while building
 
@@ -183,11 +187,12 @@ Which is why the two withdrawals on this chip are not symmetrical:
   costs a reviewer something, and it was one of the cases the plan named — its
   spec used a non-empty name and never reached it. So the per-field map of
   triggers to restore focus to holds **tuples** rather than one selector: the
-  place's is the name editor, then **Add location**, which is also where an
-  Escape out of an editor opened from **Add location** has to land. The country
-  withdrawal names its own pair — the country button, then **Add location** —
-  because it is not an edit commit and cannot route through the map, and that
-  is now two places encoding the same fact about this chip.
+  place's is the chip's name trigger, then **Add location**, which is also
+  where an Escape out of an editor opened from **Add location** has to land.
+  The country withdrawal names its own pair — the country button, then
+  **Add location** — because it is not an edit commit and cannot route
+  through the map, and that is now two places encoding the same fact about
+  this chip.
 - **The nameless withdrawal and the emptied name want opposite things about a
   coordinate**, and the reason is one line of `locationSlot`: it refuses
   `{ lat, lng }`. Keeping the coordinates is right where a country remains to
@@ -211,6 +216,13 @@ Which is why the two withdrawals on this chip are not symmetrical:
   on a row is appended so it renders and stays withdrawable — but nothing
   offers a region the table has no box for. It is that record's "cannot be
   edited by hand" bullet, and only that one, which this closes.
+- **The chip's hit-box budget is LTR arithmetic.** The overhangs are physical
+  insets, inside 0071's frozen baseline, while the margin that pays for the
+  gap between them is logical — so under RTL the row reverses and the insets
+  do not, leaving the name trigger's 9px overhang and the country button's
+  6px one overlapping by 11px across a 4px gap. No RTL locale ships and the
+  overflow probe measures LTR only, so this is work the RTL conversion has to
+  do rather than a live defect.
 - **A tag is committed one at a time.** The field closes on each commit, so a
   row that wants three tags is three taps on **Add tag**.
 - **The vocabulary is read once per batch**, when the rows land. A tag typed on

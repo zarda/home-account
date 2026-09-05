@@ -75,8 +75,9 @@ Everything a reader would have produced is **absent rather than blank**: no
 not look for one; no `fieldConfidence`, because absent is the documented
 "nobody graded this" shape `needsVerification` already reads, and a mark here
 would flag a row nobody could have misread. Its category is the catch-all at
-confidence 0 — the same thing any row nothing suggested a category for
-carries — so the chip offers it as the guess it is.
+confidence 0 — the same low band any row nothing suggested a category for
+wears, under even the floor the categorization ladder grades those with, since
+nothing was asked here at all — so the chip offers it as the guess it is.
 
 The description editor is opened before the row is emitted, so the row arrives
 already an input with the caret in it: the tap that added the row is the tap
@@ -159,7 +160,9 @@ NG0911.
   with it.
 - **The steps already completed swap their pencil for a check while the write
   runs**, because that is what a non-editable completed step renders as. The
-  upload step does not, since it is never completed without files.
+  upload step swaps with them wherever the dropzone filled it — its files are
+  never cleared — and stays a number only in the camera hand-off, which
+  selects no files at all.
 - **The recovery return costs a render frame.** Nothing observable hangs on it:
   the summary is already on screen and the rows are already back in the array.
 

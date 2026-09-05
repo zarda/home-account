@@ -389,9 +389,11 @@ verify tooltip would otherwise quote; an implausible reading gets its own
 wording in that tooltip, distinct from an unreadable one, since the two are
 different doubts
 ([ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)).
-A date nobody graded, a CSV cell or a backup row, is kept untouched: absent
-confidence means "nobody looked", not "the reader was unsure" — and the same
-gate keeps a years-old backup from being redated to today on re-import.
+A date nobody graded that can be read at all, a CSV cell or a backup row, is
+kept untouched: absent confidence means "nobody looked", not "the reader was
+unsure" — and the same gate keeps a years-old backup from being redated to
+today on re-import. One that cannot be read, or is not there, still lands on
+today carrying `dateAssumed`, since there is nothing to keep.
 
 The asymmetry is the reason the value moves rather than only being flagged. A
 wrong date on today's row is one tap from being fixed; the same wrong date in
