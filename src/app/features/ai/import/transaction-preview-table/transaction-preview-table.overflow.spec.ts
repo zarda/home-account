@@ -359,6 +359,43 @@ describe('overflow guard: the import review card', () => {
       .toBeGreaterThan(20);
   });
 
+  it('keeps both of the location chip\'s controls reachable, and its editor inside the card', () => {
+    // The chip carries three controls now — the name, the country and the
+    // removal — where it used to carry one, and it is the widest chip on the
+    // card. Each of the two new ones has to reach 40px through an overhang
+    // rather than by fattening the chip, exactly as the removal beside them
+    // does; the disjointness of those overhangs is measured below.
+    const hitHeight = (control: HTMLElement) => {
+      const after = getComputedStyle(control, '::after');
+      return control.getBoundingClientRect().height - parseFloat(after.top) - parseFloat(after.bottom);
+    };
+    const name = host.querySelector('[data-row-id="r1"] .place-name') as HTMLElement;
+    const country = host.querySelector('[data-row-id="r1"] .extra-country') as HTMLElement;
+    for (const control of [name, country]) {
+      expect(withinWidthOf(clip, control))
+        .withContext(`${control.className} inside the clip`)
+        .toBeTrue();
+      expect(hitHeight(control))
+        .withContext(`${control.className} hit area, glyph plus overhang`)
+        .toBeGreaterThanOrEqual(40);
+    }
+    // r2 has no printed address, so its chip is the nameless shape — the one
+    // the card spec finds by this class and clears through the removal.
+    expect(host.querySelector('[data-row-id="r2"] .extra-chip.country-chip'))
+      .withContext('a country with no name is still a chip of its own')
+      .not.toBeNull();
+
+    name.click();
+    fixture.detectChanges();
+
+    const input = host.querySelector('[data-row-id="r1"] .place-input') as HTMLElement;
+    expect(input).withContext('the trigger opened an input').not.toBeNull();
+    expect(withinWidthOf(clip, input)).withContext('the place editor inside the clip').toBeTrue();
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge while a place name is being typed')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+  });
+
   it('carries the add trigger on every row, and its editor, inside the 288px', () => {
     // The trigger is on every card now — a row with nothing suggested still
     // has a tag to add — so it is what the strip is measured with. It is a
@@ -552,8 +589,12 @@ describe('overflow guard: the import review card', () => {
     // exactly how a tap on the bottom edge of one tag ends up removing the
     // tag under it. `.card-extras` pays for the overhang in row-gap, so the
     // boxes meet and never overlap. The date question's change button
-    // carries `.extra-remove` too, so both of its controls are in this set.
-    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept')).map(button => {
+    // carries `.extra-remove` too, so both of its controls are in this set —
+    // and the country picker is the one control that borrows that hit area
+    // without carrying the class, so it is named here directly. Its chip is
+    // where a sideways collision shows up first: three controls stand side
+    // by side on it, close enough that the overhangs meet exactly.
+    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept, .extra-country')).map(button => {
       const r = button.getBoundingClientRect();
       const after = getComputedStyle(button, '::after');
       return {

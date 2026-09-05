@@ -278,25 +278,86 @@
                 {{ 'import.linkRecurring' | translate: { rule: match.name } }}
               </mat-checkbox>
             }
-            @if (row.location; as location) {
-              <span class="extra-chip">
+            <!-- Declared once and placed twice: the same field edits the name
+                 on a chip that already has one and on a row that has nothing
+                 yet, and two copies of it would be two sets of handlers to
+                 keep in step. -->
+            <ng-template #placeEditor>
+              <input
+                class="inline-input place-input"
+                type="text"
+                [value]="row.location?.name ?? ''"
+                [attr.aria-label]="'import.placeName' | translate"
+                enterkeyhint="done"
+                (keydown.enter)="commitPlaceName(row, $event)"
+                (keydown.escape)="cancelEdit(row)"
+                (blur)="commitPlaceName(row, $event)"
+              >
+            </ng-template>
+            <!-- One chip for both shapes the location arrives in: a printed
+                 address, or the country the reader concluded with no address
+                 to print, which the mapper files as the location all the
+                 same (0068). Either is corrected here — the name typed, the
+                 country picked — and `country-chip` still means the second
+                 shape: a country nobody could see a name for. -->
+            @if (row.location || row.receiptCountry) {
+              <span class="extra-chip" [class.country-chip]="!row.location?.name">
                 <mat-icon aria-hidden="true">place</mat-icon>
-                <span class="extra-text">{{ location | locationLabel }}</span>
+                @if (isEditing(row, 'place')) {
+                  <ng-container [ngTemplateOutlet]="placeEditor" />
+                } @else {
+                  <button type="button" class="extra-accept place-name" [attr.aria-label]="placeNameLabel(row)" (click)="startEdit(row, 'place')">
+                    @if (row.location?.name) {
+                      <span class="extra-text">{{ row.location | locationLabel }}</span>
+                    } @else {
+                      <mat-icon aria-hidden="true">edit</mat-icon>
+                    }
+                  </button>
+                }
+                <!-- Its own class, never `.extra-remove`: that selector is how
+                     the removal below is found, and a second element wearing
+                     it would answer first. -->
+                <button type="button" class="extra-country" [matMenuTriggerFor]="countryMenu" [attr.aria-label]="countryButtonLabel(row)">
+                  @if (effectiveCountry(row)) {
+                    <span class="country-name">{{ countryLabel(row) }}</span>
+                  } @else {
+                    <mat-icon aria-hidden="true">public</mat-icon>
+                  }
+                </button>
+                <!-- Lazy, the bulk currency menu's idiom: 79 regions named
+                     and collated per row, on twenty rows, for a menu nobody
+                     opened. -->
+                <mat-menu #countryMenu="matMenu">
+                  <ng-template matMenuContent>
+                    @if (effectiveCountry(row)) {
+                      <button mat-menu-item type="button" (click)="setCountry(row, null)">
+                        <span class="option-label">{{ 'import.noCountry' | translate }}</span>
+                      </button>
+                    }
+                    @for (option of countryChoices(row); track option.code) {
+                      <button
+                        mat-menu-item
+                        type="button"
+                        [class.current]="option.code === effectiveCountry(row)"
+                        [attr.aria-current]="option.code === effectiveCountry(row) ? 'true' : null"
+                        (click)="setCountry(row, option.code)"
+                      >
+                        <span class="option-label">{{ option.name }}</span>
+                      </button>
+                    }
+                  </ng-template>
+                </mat-menu>
                 <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
                   <mat-icon>close</mat-icon>
                 </button>
               </span>
-            } @else if (row.receiptCountry) {
-              <!-- No printed address, but the mapper writes the concluded
-                   country as the location all the same: shown and
-                   removable like one, or it lands unseen. -->
-              <span class="extra-chip country-chip">
+            } @else if (isEditing(row, 'place')) {
+              <ng-container [ngTemplateOutlet]="placeEditor" />
+            } @else {
+              <button type="button" class="extra-add location-add" (click)="startEdit(row, 'place')">
                 <mat-icon aria-hidden="true">place</mat-icon>
-                <span class="extra-text">{{ receiptCountryText(row) }}</span>
-                <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
-                  <mat-icon>close</mat-icon>
-                </button>
-              </span>
+                <span>{{ 'import.addLocation' | translate }}</span>
+              </button>
             }
             @if (row.currencySuggestion) {
               <span class="extra-chip currency-offer">

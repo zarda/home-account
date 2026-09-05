@@ -977,12 +977,15 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
   it('renders a country-only location as the country name', () => {
     // 0064 declined to store a nameless country because "a country alone
-    // renders as nothing anywhere". This is that objection answered.
+    // renders as nothing anywhere". This is that objection answered. The
+    // country reads off its own picker rather than the chip's text: since
+    // the chip became an editor, `.extra-text` is where the place name goes
+    // and nothing else.
     component.transactions = [makeRow({ location: { country: 'KR' } })];
     component.categories = [];
     fixture.detectChanges();
 
-    const chip = fixture.nativeElement.querySelector('.extra-chip .extra-text') as HTMLElement;
+    const chip = fixture.nativeElement.querySelector('.extra-chip .country-name') as HTMLElement;
     expect(chip.textContent?.trim()).toBe('South Korea');
   });
 
@@ -1821,7 +1824,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       const chip = countryChip();
       expect(chip).withContext('the country the mapper would write is on the card').not.toBeNull();
-      expect(chip!.querySelector('.extra-text')?.textContent?.trim()).toBe('South Korea');
+      expect(chip!.querySelector('.country-name')?.textContent?.trim()).toBe('South Korea');
       expect(chip!.querySelector('mat-icon')?.textContent?.trim()).toBe('place');
       const remove = chip!.querySelector('.extra-remove') as HTMLElement;
       expect(remove.getAttribute('aria-label')).toBe('import.removeLocation');
@@ -2331,6 +2334,271 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       type('lunch');
 
       expect(document.activeElement).toBe(addTrigger());
+    });
+  });
+
+  /**
+   * 0068 gave the card a country it could render; this is the reviewer
+   * answering it. The place name is typed like a description, the country
+   * picked off the same list the transaction filter offers — and a country
+   * chosen by hand has to clear `receiptCountry`, or the mapper's
+   * `?? row.receiptCountry` fallback rebuilds the one that was replaced.
+   */
+  describe('editing the location and its country', () => {
+    const chip = () => fixture.nativeElement.querySelector('.extra-chip') as HTMLElement | null;
+    const nameTrigger = () => fixture.nativeElement.querySelector('.place-name') as HTMLButtonElement | null;
+    const nameInput = () => fixture.nativeElement.querySelector('.place-input') as HTMLInputElement | null;
+    const countryButton = () => fixture.nativeElement.querySelector('.extra-country') as HTMLButtonElement | null;
+    const addTrigger = () => fixture.nativeElement.querySelector('.location-add') as HTMLButtonElement | null;
+
+    function render(row: CategorizedImportTransaction): void {
+      component.transactions = [row];
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    /** Typing into the open name editor, then the key that ends the edit. */
+    function type(text: string, key = 'Enter'): void {
+      const input = nameInput()!;
+      input.value = text;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key }));
+      fixture.detectChanges();
+    }
+
+    /** The lazy menu's items, which do not exist until it is opened. */
+    function openCountryMenu(): HTMLElement[] {
+      countryButton()!.click();
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item'));
+    }
+
+    it('names the place on its own trigger, and opens a focused field holding it', () => {
+      render(makeRow({ location: { name: 'Myeongdong', country: 'KR' } }));
+
+      expect(nameTrigger()!.getAttribute('aria-label'))
+        .toBe('import.editPlaceName:{"name":"Myeongdong"}');
+
+      nameTrigger()!.click();
+      fixture.detectChanges();
+
+      const input = nameInput()!;
+      expect(input.value).withContext('the editor starts from what is there').toBe('Myeongdong');
+      expect(document.activeElement)
+        .withContext('the tap that opened it starts the typing')
+        .toBe(input);
+    });
+
+    it('files a corrected name and leaves the country where it was', () => {
+      const row = makeRow({ location: { name: 'Myeongdong', country: 'KR' } });
+      render(row);
+      const emitted = emissions();
+
+      nameTrigger()!.click();
+      fixture.detectChanges();
+      type('  Insadong  ');
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0][0]).withContext('a new row, not the one the parent holds').not.toBe(row);
+      expect(emitted[0][0].location).toEqual({ name: 'Insadong', country: 'KR' });
+      expect(row.location)
+        .withContext('the input object is untouched')
+        .toEqual({ name: 'Myeongdong', country: 'KR' });
+    });
+
+    it('keeps the country when the name is emptied, and the chip with it', () => {
+      // The country is a separate fact the reviewer did not withdraw —
+      // dropping it here would be the removal button's job, not this one's.
+      render(makeRow({ location: { name: 'Myeongdong', country: 'KR' } }));
+      const emitted = emissions();
+
+      nameTrigger()!.click();
+      fixture.detectChanges();
+      type('   ');
+
+      expect(emitted[0][0].location).toEqual({ country: 'KR' });
+      expect(chip()).withContext('a country with no name is still a chip').not.toBeNull();
+      expect(chip()!.classList).toContain('country-chip');
+    });
+
+    it('keeps a coordinate the row arrived with when the name is emptied', () => {
+      // The receipt door attaches no coordinate, but it is not the only door:
+      // a restored backup's row is rebuilt through locationSlotFrom, which
+      // carries the location whole. The name is the one fact this edit
+      // withdraws.
+      render(makeRow({ location: { name: 'Myeongdong', lat: 37.56, lng: 126.98, country: 'KR' } }));
+      const emitted = emissions();
+
+      nameTrigger()!.click();
+      fixture.detectChanges();
+      type('   ');
+
+      expect(emitted[0][0].location).toEqual({ lat: 37.56, lng: 126.98, country: 'KR' });
+    });
+
+    it('drops the location when the name is emptied and there is no country under it', () => {
+      render(makeRow({ location: { name: 'Myeongdong' } }));
+      const emitted = emissions();
+
+      nameTrigger()!.click();
+      fixture.detectChanges();
+      type('   ');
+
+      expect(emitted[0][0].location).toBeUndefined();
+      expect(chip()).withContext('nothing left to render').toBeNull();
+    });
+
+    it('hands focus to the add trigger when the commit takes the chip away', () => {
+      // The keyboard path through the case above: the trigger the editor
+      // replaced leaves the card with the chip, and a focus call that finds
+      // nothing drops the reviewer at the document root.
+      render(makeRow({ location: { name: 'Myeongdong' } }));
+
+      nameTrigger()!.click();
+      fixture.detectChanges();
+      type('   ');
+
+      expect(addTrigger()).withContext('what stands where the chip stood').not.toBeNull();
+      expect(document.activeElement).toBe(addTrigger());
+    });
+
+    it('hands focus back to the trigger the field replaced', () => {
+      // A keyboard reviewer walking down the batch is dropped at the document
+      // root by every correction otherwise.
+      render(makeRow({ location: { name: 'Myeongdong' } }));
+
+      nameTrigger()!.click();
+      fixture.detectChanges();
+      type('Insadong');
+
+      expect(document.activeElement).toBe(nameTrigger());
+    });
+
+    it('names the country on its own button and lists the rest under it', () => {
+      render(makeRow({ location: { name: 'Shibuya', country: 'JP' } }));
+
+      expect(countryButton()!.textContent?.trim()).toBe('Japan');
+      expect(countryButton()!.getAttribute('aria-label')).toBe('import.changeCountry:{"country":"Japan"}');
+
+      const items = openCountryMenu();
+      expect(items[0].textContent?.trim())
+        .withContext('the way out leads the list')
+        .toBe('import.noCountry');
+      expect(items.length).withContext('the bundled table, plus the way out').toBe(80);
+      expect(items.filter(item => item.classList.contains('current')).length).toBe(1);
+      expect(items.find(item => item.classList.contains('current'))?.textContent?.trim()).toBe('Japan');
+    });
+
+    it('offers no way out when there is no country to withdraw', () => {
+      render(makeRow({ location: { name: 'Shibuya' } }));
+
+      expect(countryButton()!.getAttribute('aria-label')).toBe('import.setCountry');
+      expect(countryButton()!.querySelector('mat-icon')?.textContent?.trim()).toBe('public');
+      expect(openCountryMenu()[0].textContent?.trim()).not.toBe('import.noCountry');
+    });
+
+    it('files a hand-picked country on a row that only had a name', () => {
+      render(makeRow({ location: { name: 'Shibuya' } }));
+      const emitted = emissions();
+
+      openCountryMenu().find(item => item.textContent?.trim() === 'South Korea')!.click();
+      fixture.detectChanges();
+
+      expect(emitted[0][0].location).toEqual({ name: 'Shibuya', country: 'KR' });
+      expect(emitted[0][0].receiptCountry).toBeUndefined();
+    });
+
+    it('replaces a concluded country with the picked one, and drops the conclusion', () => {
+      // The hand is the evidence now. Leaving the mark behind would let the
+      // DTO's `?? row.receiptCountry` rebuild the country just overruled the
+      // moment the location is cleared again.
+      const row = makeRow({ receiptCountry: 'KR' });
+      render(row);
+      const emitted = emissions();
+
+      openCountryMenu().find(item => item.textContent?.trim() === 'Japan')!.click();
+      fixture.detectChanges();
+
+      const next = emitted[0][0];
+      expect(next.location).toEqual({ country: 'JP' });
+      expect(next.receiptCountry).toBeUndefined();
+      expect(row.receiptCountry).withContext('the input object is untouched').toBe('KR');
+      expect(toCreateTransactionDTO(next, 'USD').location).toEqual({ country: 'JP' });
+    });
+
+    it('withdraws the country and keeps the name', () => {
+      render(makeRow({ location: { name: 'Shibuya', country: 'JP' } }));
+      const emitted = emissions();
+
+      openCountryMenu()[0].click();
+      fixture.detectChanges();
+
+      const next = emitted[0][0];
+      expect(next.location?.name).toBe('Shibuya');
+      expect(next.location?.country).toBeUndefined();
+      expect(chip()).withContext('the place is still on the card').not.toBeNull();
+    });
+
+    it('withdraws a concluded country outright, leaving nothing to rebuild it from', () => {
+      render(makeRow({ receiptCountry: 'KR' }));
+      const emitted = emissions();
+
+      openCountryMenu()[0].click();
+      fixture.detectChanges();
+
+      const next = emitted[0][0];
+      expect(next.location).toBeUndefined();
+      expect(next.receiptCountry).toBeUndefined();
+      expect('location' in toCreateTransactionDTO(next, 'USD')).toBeFalse();
+      expect(chip()).withContext('the chip goes with the marks').toBeNull();
+    });
+
+    it('hands focus to the add trigger when the withdrawal takes the chip away', () => {
+      // The country button goes with the chip, so the selector focus was
+      // aimed at is no longer on the card; without the fallback the reviewer
+      // is left at the document root.
+      render(makeRow({ receiptCountry: 'KR' }));
+
+      openCountryMenu()[0].click();
+      fixture.detectChanges();
+
+      expect(addTrigger()).withContext('what stands where the chip stood').not.toBeNull();
+      expect(document.activeElement).toBe(addTrigger());
+    });
+
+    it('withdraws a country-only location the same way, chip and focus alike', () => {
+      // The withdrawal keeps the location only when a name is under it, so a
+      // location that was never more than a country loses its chip exactly as
+      // the concluded mark does — and the country button with it.
+      render(makeRow({ location: { country: 'KR' } }));
+      const emitted = emissions();
+
+      openCountryMenu()[0].click();
+      fixture.detectChanges();
+
+      expect(emitted[0][0].location).toBeUndefined();
+      expect(chip()).toBeNull();
+      expect(document.activeElement).toBe(addTrigger());
+    });
+
+    it('offers the same editor on a row the source said nothing about', () => {
+      render(makeRow());
+
+      expect(chip()).withContext('nothing to show yet').toBeNull();
+      expect(addTrigger()).not.toBeNull();
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      const emitted = emissions();
+      type('Shibuya');
+
+      expect(emitted[0][0].location).toEqual({ name: 'Shibuya' });
+      expect(addTrigger()).withContext('the trigger gives way to the chip').toBeNull();
+    });
+
+    it('carries no add trigger on a row that already has a location', () => {
+      render(makeRow({ location: { country: 'KR' } }));
+
+      expect(addTrigger()).toBeNull();
     });
   });
 });

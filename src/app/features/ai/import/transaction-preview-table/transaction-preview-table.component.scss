@@ -342,10 +342,13 @@
   }
 }
 
-// The code the row is on already, so the menu says what it is changing from.
-// Weighted on our own span: MatMenuItem projects the label into its
-// .mat-mdc-menu-item-text, which sets its own font-weight, so a weight on the
-// button never reaches the text.
+// The code the row is on already, and the country it is already filed under,
+// so either menu says what it is changing from. One class for both: this
+// stylesheet already spends `.selected` on a checked card
+// (`.transaction-card.selected`), and a menu marker sharing that name would
+// read as the same state. Weighted on our own span: MatMenuItem projects the
+// label into its .mat-mdc-menu-item-text, which sets its own font-weight, so
+// a weight on the button never reaches the text.
 .current .option-label {
   font-weight: 600;
 }
@@ -609,7 +612,13 @@
   max-inline-size: 100%;
 }
 
-.extra-remove {
+// The removal and the country picker: two glyph-sized controls with the same
+// tap target, listed together rather than one wearing the other's class.
+// `.extra-remove` is how the removal is found — by the specs and by anyone
+// reading the chip — and a second element answering to it would be found
+// first.
+.extra-remove,
+.extra-country {
   width: 20px;
   height: 20px;
   padding: 0;
@@ -638,8 +647,31 @@
   }
 }
 
-.extra-remove:hover {
+// Unlike the removal, this control can hold text — a country name — so it
+// takes the width that needs rather than the 20px box, keeping the box as
+// its floor for the glyph-only shape. The trailing margin is what keeps the
+// two hit areas apart: each overhangs its box by 6px, and the strip's own
+// 4px gap alone would leave them overlapping by 8. With the margin they meet
+// exactly, which is the same budget every other pair on the chip is held to.
+.extra-country {
+  inline-size: auto;
+  min-inline-size: 20px;
+  padding-inline: 2px;
+  margin-inline-end: 8px;
+}
+
+.extra-remove:hover,
+.extra-country:hover {
   color: var(--text-primary, #222);
+}
+
+// Room for a place name and no more, the tag field's reason: the strip is a
+// wrapping row, and a field that took the card's width would put every chip
+// on a line of its own while it is open. Wider than that field because a
+// place name is an address, not a word.
+.place-input {
+  inline-size: 12em;
+  max-inline-size: 100%;
 }
 
 /* Notes Section - compact inline style */

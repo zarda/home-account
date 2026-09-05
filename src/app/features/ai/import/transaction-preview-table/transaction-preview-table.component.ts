@@ -32,6 +32,7 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
+import { countryOptions } from '../../../../core/utils/country-options.utils';
 import {
   datedToday,
   joinSentences,
@@ -49,16 +50,21 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 
 /**
- * The fields a row edits in place, each with the trigger its editor replaced
- * — where focus goes when an edit ends on a key. A map rather than a
- * selector derived from the field name: only two of these live in a
- * `.<field>-section` holding an `.inline-edit`, and a derived selector that
- * matches nothing drops focus at the document root without a word.
+ * The fields a row edits in place, each with the triggers its editor could
+ * hand focus back to when an edit ends on a key — tried in order. A map
+ * rather than a selector derived from the field name: only two of these live
+ * in a `.<field>-section` holding an `.inline-edit`, and a derived selector
+ * that matches nothing drops focus at the document root without a word.
+ *
+ * The place is the one field whose commit can take its own trigger off the
+ * card: emptying the name of a location with nothing else under it withdraws
+ * the whole chip, and what stands where it stood is the add trigger.
  */
 const EDIT_TRIGGERS = {
-  amount: '.amount-section .inline-edit',
-  description: '.description-section .inline-edit',
-  tag: '.tag-add',
+  amount: ['.amount-section .inline-edit'],
+  description: ['.description-section .inline-edit'],
+  tag: ['.tag-add'],
+  place: ['.place-name', '.location-add'],
 } as const;
 
 type EditField = keyof typeof EDIT_TRIGGERS;
@@ -339,12 +345,84 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * The country the reader concluded when no address was printed. The mapper
-   * writes it as the row's location (0068), so the card shows it the way it
-   * shows one, and the location's own remove is what clears it.
+   * The country this row will file under, however it was arrived at: one
+   * printed in an address, one the reader concluded with no address to print
+   * (0068), or one picked here by hand. Deliberately the same precedence the
+   * DTO mapper applies, so the chip names the country that actually lands.
    */
-  receiptCountryText(row: CategorizedImportTransaction): string {
-    return row.receiptCountry ? countryDisplayName(row.receiptCountry, this.localeFormat.locale) : '';
+  effectiveCountry(row: CategorizedImportTransaction): string | undefined {
+    return row.location?.country ?? row.receiptCountry;
+  }
+
+  /**
+   * That country in the active language. Resolved at render rather than
+   * stored, for the reason locationLabel gives: one language's answer baked
+   * into the row would be wrong in every other.
+   */
+  countryLabel(row: CategorizedImportTransaction): string {
+    const code = this.effectiveCountry(row);
+    return code ? countryDisplayName(code, this.localeFormat.locale) : '';
+  }
+
+  /**
+   * The countries the picker offers — the transaction filter's own list,
+   * with the row's country appended when the bundled table has no box for
+   * it. Called from inside the menu's lazy content and nowhere else: this
+   * names and collates 79 regions per call, and a batch is twenty rows.
+   */
+  countryChoices(row: CategorizedImportTransaction): { code: string; name: string }[] {
+    return countryOptions(this.localeFormat.locale, this.effectiveCountry(row));
+  }
+
+  /**
+   * The name trigger's own name. Its content is the place, or — on a row
+   * that has a country and nothing else — an edit glyph, which says neither
+   * what it edits nor what is in it.
+   */
+  placeNameLabel(row: CategorizedImportTransaction): string {
+    const name = row.location?.name;
+    return name
+      ? this.translationService.t('import.editPlaceName', { name })
+      : this.translationService.t('import.addPlaceName');
+  }
+
+  /** Likewise the country button, whose glyph alone says nothing when no country is set. */
+  countryButtonLabel(row: CategorizedImportTransaction): string {
+    const country = this.countryLabel(row);
+    return country
+      ? this.translationService.t('import.changeCountry', { country })
+      : this.translationService.t('import.setCountry');
+  }
+
+  /**
+   * Pick the row's country by hand, or withdraw it.
+   *
+   * `receiptCountry` goes either way. The mark is what the reader concluded,
+   * and the mapper falls back to it whenever the location carries no country
+   * of its own (`import-dto.utils`) — so left behind it would quietly put
+   * the overruled country back the moment the picked one was withdrawn. A
+   * country chosen by hand is the evidence now.
+   *
+   * Withdrawing from a location with no name drops the location whole, and
+   * any coordinate on it with that: `locationSlot` refuses a bare coordinate
+   * pair, so keeping one would leave a chip on the card standing for a
+   * location the write would discard.
+   *
+   * That withdrawal takes the country button off the card with the chip, so
+   * the add trigger that replaces it is where focus goes instead — a
+   * selector that matches nothing would drop focus at the document root.
+   */
+  setCountry(row: CategorizedImportTransaction, code: string | null): void {
+    const location = row.location;
+    this.replaceRow(row, {
+      location: code
+        ? { ...(location ?? {}), country: code }
+        : location?.name
+          ? { ...location, country: undefined }
+          : undefined,
+      receiptCountry: undefined,
+    });
+    this.focusWhenRendered(this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
   }
 
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
@@ -689,7 +767,7 @@ export class TransactionPreviewTableComponent {
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
     if (restoreFocus && field) {
-      this.focusWhenRendered(this.inRow(row, EDIT_TRIGGERS[field]));
+      this.focusWhenRendered(...EDIT_TRIGGERS[field].map(selector => this.inRow(row, selector)));
     }
   }
 
@@ -710,6 +788,42 @@ export class TransactionPreviewTableComponent {
     // that reads as nothing in the list.
     if (!description || description === row.description) return;
     this.replaceRow(row, { description });
+  }
+
+  /**
+   * File the place name typed on the chip, guarded the way the description
+   * editor is.
+   *
+   * An emptied field means something here that it does not there: the name
+   * is one of the two facts this chip carries, and withdrawing it is not
+   * withdrawing the location. A country under it stays, as a chip of its
+   * own; with nothing under it the location goes. Neither case touches
+   * `receiptCountry` — a country the reader concluded is not something the
+   * reviewer just declined, and it keeps its own chip through the removal
+   * button, which is where declining it lives.
+   *
+   * Both branches carry the rest of the location through rather than rebuild
+   * it from the fields named here, because the name is not all a row can
+   * hold: `importFromJSON` rebuilds a restored backup's row through
+   * `locationSlotFrom`, which keeps a coordinate pair the receipt door never
+   * attaches. A list of fields to keep would drop the ones nobody thought
+   * of. The one case where dropping them is right is a location left with no
+   * country at all: `locationSlot` refuses a bare coordinate pair, so
+   * nothing would remain to write.
+   */
+  commitPlaceName(row: CategorizedImportTransaction, event: Event): void {
+    if (!this.editing.has(row.id)) return;
+    if (isImeComposition(event)) return;
+    const name = (event.target as HTMLInputElement).value.trim();
+    this.closeEdit(row, event.type === 'keydown');
+    if (name === (row.location?.name ?? '')) return;
+    if (!name) {
+      const location = { ...row.location };
+      delete location.name;
+      this.replaceRow(row, { location: location.country ? location : undefined });
+      return;
+    }
+    this.replaceRow(row, { location: { ...row.location, name } });
   }
 
   /**
