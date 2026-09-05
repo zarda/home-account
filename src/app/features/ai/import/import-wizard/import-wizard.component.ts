@@ -131,6 +131,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   receiptRowIds = signal<ReadonlySet<string>>(new Set());
   duplicateChecks = signal<DuplicateCheck[]>([]);
   /**
+   * Every tag the account already files by, for the card's add control.
+   * Filled once a batch's rows land, because the rows' own tags are part of
+   * it. Nothing waits on it: the review step renders with whatever list it
+   * has, and the field takes a hand-typed tag before the first read answers.
+   */
+  tagVocabulary = signal<readonly string[]>([]);
+  /**
    * Rows whose duplicate verdict the reviewer overruled, kept clear through
    * later re-checks: the within-batch pass regenerates its verdicts from the
    * rows alone, so without this an overruled twin would be flagged again the
@@ -357,6 +364,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
             .map(t => t.id)
         );
         this.selectedTransactionIds.set(nonDuplicateIds);
+        this.refreshTagVocabulary(result.transactions);
 
         // Skip to review step (index 2)
         if (this.stepper) {
@@ -490,6 +498,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           .map(t => t.id)
       );
       this.selectedTransactionIds.set(nonDuplicateIds);
+      this.refreshTagVocabulary(this.extractedTransactions());
     } catch (error) {
       const parsed = this.importService.parseAIError(error);
       this.processingError.set(parsed.message);
@@ -500,6 +509,15 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // later file finds it already settled and this is a no-op.
       receiptAttempt?.failed(error);
     }
+  }
+
+  /**
+   * Ask for the vocabulary the rows just landed with. Not awaited by either
+   * caller: the review step is ready without it, and the service holds the
+   * contract that this never rejects.
+   */
+  private refreshTagVocabulary(rows: CategorizedImportTransaction[]): void {
+    void this.importService.tagVocabulary(rows).then(vocabulary => this.tagVocabulary.set(vocabulary));
   }
 
   /**

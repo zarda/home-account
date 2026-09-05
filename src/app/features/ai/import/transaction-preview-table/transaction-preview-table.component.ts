@@ -40,12 +40,31 @@ import {
   withoutFieldConfidence,
 } from '../../../../core/utils/import-review.utils';
 import { isImeComposition } from '../../../../core/utils/keyboard.utils';
+import { normalizeTag } from '../../../../core/utils/tag.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../../shared/pipes/location-label.pipe';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
+
+/**
+ * The fields a row edits in place, each with the trigger its editor replaced
+ * — where focus goes when an edit ends on a key. A map rather than a
+ * selector derived from the field name: only two of these live in a
+ * `.<field>-section` holding an `.inline-edit`, and a derived selector that
+ * matches nothing drops focus at the document root without a word.
+ */
+const EDIT_TRIGGERS = {
+  amount: '.amount-section .inline-edit',
+  description: '.description-section .inline-edit',
+  tag: '.tag-add',
+} as const;
+
+type EditField = keyof typeof EDIT_TRIGGERS;
+
+/** One datalist per card instance: two on a page must not answer to one id. */
+let vocabularyListSeq = 0;
 
 @Component({
   selector: 'app-transaction-preview-table',
@@ -92,6 +111,12 @@ export class TransactionPreviewTableComponent {
    * row into a question the moment one photo rode along.
    */
   @Input() dateAttentionIds: ReadonlySet<string> = new Set();
+  /**
+   * Every tag the account already files by, offered to the add control. The
+   * wizard fills it; an account with none gets a bare field, which still
+   * takes anything typed into it.
+   */
+  @Input() tagVocabulary: readonly string[] = [];
   @Output() transactionsUpdated = new EventEmitter<CategorizedImportTransaction[]>();
   @Output() selectionChanged = new EventEmitter<Set<string>>();
 
@@ -118,6 +143,9 @@ export class TransactionPreviewTableComponent {
   private fellBackEligible = new Set<string>();
 
   readonly currencies = this.currencyService.getSupportedCurrencies();
+
+  /** What every row's tag input points its `list` at. */
+  readonly vocabularyListId = `tag-vocabulary-${++vocabularyListSeq}`;
 
   // Plain methods, not computed(): `transactions` is a regular @Input array,
   // not a signal — a computed would evaluate once and
@@ -589,10 +617,10 @@ export class TransactionPreviewTableComponent {
    * state the commit is still reading. Keyed the way fellBackEligible is, and
    * surviving replaceRow for the same reason.
    */
-  private editing = new Map<string, 'amount' | 'description'>();
+  private editing = new Map<string, EditField>();
 
   // A plain method rather than a computed, for the reason selectedCount gives.
-  isEditing(row: CategorizedImportTransaction, field: 'amount' | 'description'): boolean {
+  isEditing(row: CategorizedImportTransaction, field: EditField): boolean {
     return this.editing.get(row.id) === field;
   }
 
@@ -600,7 +628,7 @@ export class TransactionPreviewTableComponent {
    * Open the editor on a field and put the caret in it, so the tap that asked
    * to edit is also the tap that starts typing.
    */
-  startEdit(row: CategorizedImportTransaction, field: 'amount' | 'description'): void {
+  startEdit(row: CategorizedImportTransaction, field: EditField): void {
     this.editing.set(row.id, field);
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
@@ -661,7 +689,7 @@ export class TransactionPreviewTableComponent {
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
     if (restoreFocus && field) {
-      this.focusWhenRendered(this.inRow(row, `.${field}-section .inline-edit`));
+      this.focusWhenRendered(this.inRow(row, EDIT_TRIGGERS[field]));
     }
   }
 
@@ -682,6 +710,25 @@ export class TransactionPreviewTableComponent {
     // that reads as nothing in the list.
     if (!description || description === row.description) return;
     this.replaceRow(row, { description });
+  }
+
+  /**
+   * File one tag on the row, the way the description editor files a line:
+   * one value per commit, because this field is a single tag and not the
+   * transaction form's chip input — a comma typed here is part of the tag.
+   *
+   * Spelled through normalizeTag on the way in, so a tag added here matches
+   * a stored one exactly and the filter can find the row. Nothing typed, or
+   * a tag the row already carries, closes the editor and changes nothing.
+   */
+  commitTag(row: CategorizedImportTransaction, event: Event): void {
+    if (!this.editing.has(row.id)) return;
+    if (isImeComposition(event)) return;
+    const tag = normalizeTag((event.target as HTMLInputElement).value);
+    const tags = row.tags ?? [];
+    this.closeEdit(row, event.type === 'keydown');
+    if (!tag || tags.includes(tag)) return;
+    this.replaceRow(row, { tags: [...tags, tag] });
   }
 
   /**

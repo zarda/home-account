@@ -91,7 +91,7 @@ describe('ImportWizardComponent', () => {
   };
 
   beforeEach(async () => {
-    mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError'], {
+    mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary'], {
       isProcessing: signal(false),
       processingStatus: signal(''),
       processingProgress: signal(0)
@@ -106,6 +106,9 @@ describe('ImportWizardComponent', () => {
     mockImportService.importFromStatementImages.and.returnValue(Promise.resolve({
       ...mockImportResult, source: 'image' as const, fileType: 'screenshot' as const
     }));
+    // Resolved, never bare: the refresh below is a void-ed `.then`, and a bare
+    // spy answers undefined, which throws inside a promise nobody is holding.
+    mockImportService.tagVocabulary.and.resolveTo([]);
     mockImportService.parseAIError.and.callFake((error: unknown) => ({
       message: error instanceof Error ? error.message : String(error),
       type: 'unknown',
@@ -668,6 +671,37 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(component.answerIncomplete()).toBeFalse();
+    }));
+  });
+
+  describe('the tag vocabulary', () => {
+    it('fills from the service once a batch\'s rows land', fakeAsync(() => {
+      // Asked with the rows, not before them: the batch's own tags are part
+      // of the vocabulary the card offers.
+      mockImportService.tagVocabulary.and.resolveTo(['coffee', 'work']);
+      component.selectedFiles.set([new File([''], 'test.csv', { type: 'text/csv' })]);
+
+      component.processFiles();
+      tick();
+
+      expect(mockImportService.tagVocabulary).toHaveBeenCalledWith(component.extractedTransactions());
+      expect(component.tagVocabulary()).toEqual(['coffee', 'work']);
+    }));
+
+    it('fills on the camera hand-off too', fakeAsync(() => {
+      // The hand-off skips processFiles entirely, so its rows would arrive at
+      // the card with nothing to suggest.
+      mockImportService.tagVocabulary.and.resolveTo(['coffee']);
+      history.replaceState({ importResult: mockImportResult, fromCamera: true }, '');
+      try {
+        const cameraFixture = TestBed.createComponent(ImportWizardComponent);
+        cameraFixture.detectChanges();
+        tick();
+
+        expect(cameraFixture.componentInstance.tagVocabulary()).toEqual(['coffee']);
+      } finally {
+        history.replaceState({}, '');
+      }
     }));
   });
 

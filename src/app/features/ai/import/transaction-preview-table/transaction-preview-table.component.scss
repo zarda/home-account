@@ -422,6 +422,13 @@
   row-gap: 14px;
   margin-top: 8px;
   min-width: 0;
+  // Chips keep their own height. A flex item stretches to its line, and the
+  // add trigger below stands 40px where a chip is 26 — so without this every
+  // chip sharing its line measures 40 as well, and the row-gap above, derived
+  // from a 26px chip, stops describing the gap it is paying for. It shows at
+  // a width where the two stand side by side, which is not the 288px the rest
+  // of the strip is measured at; the guard is measured at 900.
+  align-items: flex-start;
 }
 
 // Its own line inside the strip: the label is a sentence, not a chip, and it
@@ -561,6 +568,45 @@
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
+}
+
+// The strip's own add trigger: a chip's shape with the border drawn open,
+// which is how an empty slot reads everywhere else in the app. It is the one
+// thing in the strip that is not a chip, and it stands taller on purpose —
+// a trigger with nothing beside it can carry its own 40px rather than
+// borrowing an overhang, and the chips keep their height because the strip
+// aligns them at the start rather than stretching them to the tallest thing
+// on the line.
+.extra-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+  min-block-size: 40px;
+  padding-block: 3px;
+  padding-inline: 9px;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-muted, #666);
+  background: none;
+  border: 1px dashed var(--border-primary, rgba(0, 0, 0, 0.16));
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  mat-icon {
+    font-size: var(--text-sm);
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
+}
+
+// Room for a tag and no more: the strip is a wrapping row, and a field that
+// took the card's width would put every chip on a line of its own while it
+// is open.
+.tag-input {
+  inline-size: 9em;
+  max-inline-size: 100%;
 }
 
 .extra-remove {

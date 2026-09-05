@@ -359,6 +359,55 @@ describe('overflow guard: the import review card', () => {
       .toBeGreaterThan(20);
   });
 
+  it('carries the add trigger on every row, and its editor, inside the 288px', () => {
+    // The trigger is on every card now — a row with nothing suggested still
+    // has a tag to add — so it is what the strip is measured with. It is a
+    // control rather than a chip, so it takes the 40px floor in its own box
+    // instead of an overhang, and the chips beside it must not fatten to
+    // match: the tag chip's own height is pinned above.
+    const adds = Array.from(host.querySelectorAll<HTMLElement>('.extra-add'));
+    expect(adds.length).withContext('one per row').toBe(2);
+    for (const add of adds) {
+      expect(add.getBoundingClientRect().height)
+        .withContext('add trigger tap target')
+        .toBeGreaterThanOrEqual(40);
+      expect(withinWidthOf(clip, add)).withContext('add trigger inside the clip').toBeTrue();
+    }
+
+    (host.querySelector('[data-row-id="r1"] .tag-add') as HTMLElement).click();
+    fixture.detectChanges();
+    const input = host.querySelector('[data-row-id="r1"] .tag-input') as HTMLElement;
+    expect(input).withContext('the trigger opened an input').not.toBeNull();
+    expect(withinWidthOf(clip, input)).withContext('the tag input inside the clip').toBeTrue();
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge while a tag is being typed')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+  });
+
+  it('does not carry the chips beside it up to its own height', () => {
+    // A flex item stretches to its line, and the trigger stands 40px where a
+    // chip is 26 — so every chip sharing its line takes 40 as well, which the
+    // strip's row-gap (derived from a 26px chip) then under-pays for. This is
+    // the one measurement in this file taken at a desktop width rather than
+    // at 288px, and it has to be: at 288px the chips wrap onto lines of their
+    // own and never stand beside the trigger at all, which is exactly why the
+    // chip height pinned above cannot see this.
+    clip.style.width = '900px';
+    fixture.detectChanges();
+
+    const trigger = host.querySelector('[data-row-id="r1"] .tag-add') as HTMLElement;
+    const beside = Array.from(host.querySelectorAll<HTMLElement>('[data-row-id="r1"] .extra-chip.tag-chip'))
+      .filter(chip => Math.abs(chip.getBoundingClientRect().top - trigger.getBoundingClientRect().top) < 1);
+    expect(beside.length)
+      .withContext('the trigger really does share a line with a chip here, so there is something to stretch')
+      .toBeGreaterThan(0);
+    for (const chip of beside) {
+      expect(chip.getBoundingClientRect().height)
+        .withContext(`tag chip "${chip.textContent?.trim()}" stays chip-sized beside the trigger`)
+        .toBeLessThanOrEqual(28);
+    }
+  });
+
   it('puts the date on a control of its own without wedging the picker between the chips', () => {
     // The date was a span; as a button it has to meet the 40px floor the
     // currency chip meets, stay inside the clip, and leave the meta row

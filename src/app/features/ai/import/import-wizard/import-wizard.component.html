@@ -255,6 +255,7 @@
           [transactions]="extractedTransactions()"
           [categories]="categories()"
           [dateAttentionIds]="receiptRowIds()"
+          [tagVocabulary]="tagVocabulary()"
           (transactionsUpdated)="onTransactionsUpdated($event)"
           (selectionChanged)="onSelectionChanged($event)"
         ></app-transaction-preview-table>

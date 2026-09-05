@@ -116,8 +116,8 @@ describe('AIImportService', () => {
     ]);
     // GroundingHistoryService is deliberately real here: its two dependencies
     // are already mocked, so the RAG gate is exercised rather than stubbed.
-    tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest']);
-    tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['rememberAll']);
+    tagSuggestions = jasmine.createSpyObj<TagSuggestionService>('TagSuggestionService', ['suggest', 'vocabularyFrom']);
+    tagMemory = jasmine.createSpyObj<TagMemoryService>('TagMemoryService', ['rememberAll', 'ensureLoaded']);
     recurringService = jasmine.createSpyObj<RecurringService>('RecurringService', ['listAll']);
     currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['current', 'remember', 'clear']);
     currencySession.current.and.returnValue(null);
@@ -141,7 +141,10 @@ describe('AIImportService', () => {
     transactionService.getTransactions.and.returnValue(of([]));
     ragContext.buildCategorizationGrounding.and.returnValue('');
     tagSuggestions.suggest.and.callFake(async (rows: readonly unknown[]) => rows.map(() => []));
+    // A bare spy answers undefined, and tagVocabulary spreads what it gets.
+    tagSuggestions.vocabularyFrom.and.returnValue([]);
     tagMemory.rememberAll.and.resolveTo(undefined);
+    tagMemory.ensureLoaded.and.resolveTo(undefined);
     recurringService.listAll.and.resolveTo([]);
 
     TestBed.configureTestingModule({
@@ -887,6 +890,70 @@ describe('AIImportService', () => {
       await service.importFromJSON(makeFile('b.json', 'application/json', backup));
 
       expect(tagSuggestions.suggest).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the tag vocabulary', () => {
+    /** Only the tags matter here; the rest is the shape the card holds. */
+    const taggedRows = (...tags: string[][]): CategorizedImportTransaction[] =>
+      tags.map((rowTags, index) => ({
+        id: `r${index}`,
+        description: 'STARBUCKS',
+        amount: 5,
+        currency: 'JPY',
+        date: new Date(2024, 5, 1),
+        type: 'expense' as const,
+        suggestedCategoryId: 'food',
+        categoryConfidence: 0.9,
+        isDuplicate: false,
+        selected: true,
+        tags: rowTags,
+      }));
+
+    it('waits for the memory before reading what it remembers', async () => {
+      // The JSON door and a CSV that carried its own tags never run
+      // `suggest`, so memory can still be cold when the card asks. Reading it
+      // mid-load answers a vocabulary short of everything this user files by.
+      let release!: () => void;
+      tagMemory.ensureLoaded.and.returnValue(new Promise<void>(resolve => (release = resolve)));
+      tagSuggestions.vocabularyFrom.and.returnValue(['museum']);
+
+      const pending = service.tagVocabulary([]);
+      await Promise.resolve();
+      expect(tagSuggestions.vocabularyFrom).not.toHaveBeenCalled();
+
+      release();
+
+      expect(await pending).toEqual(['museum']);
+    });
+
+    it('unions the memory, the history and the batch\'s own tags, spelled one way', async () => {
+      authService.currentUser.and.returnValue({
+        preferences: { baseCurrency: 'JPY', ragInsightsLevel: 'standard' },
+      } as never);
+      const history = [createTransaction()];
+      transactionService.getTransactions.and.returnValue(of(history));
+      tagSuggestions.vocabularyFrom.and.returnValue(['coffee', 'work']);
+
+      const vocabulary = await service.tagVocabulary(taggedRows(['Coffee '], ['reimbursable', 'work']));
+
+      expect(tagSuggestions.vocabularyFrom)
+        .withContext('the same recent window the suggester is grounded on')
+        .toHaveBeenCalledWith(history);
+      // 'Coffee ' is the row's own spelling of a tag already in the account:
+      // normalized it is the same entry, and the list offers it once.
+      expect(vocabulary).toEqual(['coffee', 'work', 'reimbursable']);
+    });
+
+    it('still answers what it could gather when the memory read fails', async () => {
+      // The list is an offer, never a gate: the input takes a hand-typed tag
+      // whichever door failed, so a throw here would only break the card.
+      spyOn(console, 'warn');
+      tagMemory.ensureLoaded.and.rejectWith(new Error('offline'));
+
+      const vocabulary = await service.tagVocabulary(taggedRows(['Lunch']));
+
+      expect(vocabulary).toEqual(['lunch']);
     });
   });
 

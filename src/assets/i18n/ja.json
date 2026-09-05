@@ -1127,6 +1127,8 @@
     "currencyReasonLocale": "端末の地域設定から",
     "currencyReasonPosition": "現在地から",
     "removeTag": "タグ {{tag}} を削除",
+    "addTag": "タグを追加",
+    "newTag": "新しいタグ",
     "matchWithinBatch": "このインポート内で重複",
     "linkRecurring": "「{{rule}}」の定期取引のようです — 紐付ける",
     "matchRecurringOccurrence": "定期取引としてすでに記帳済み",

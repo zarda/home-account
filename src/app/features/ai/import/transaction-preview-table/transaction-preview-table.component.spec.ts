@@ -2179,4 +2179,158 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
         .not.toBeNull();
     });
   });
+
+  describe('adding a tag from the account\'s own vocabulary', () => {
+    const addTrigger = (id = 'txn1') =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .tag-add`) as HTMLButtonElement | null;
+    const box = (id = 'txn1') =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .tag-input`) as HTMLInputElement | null;
+
+    function render(rows: CategorizedImportTransaction[], vocabulary: readonly string[] = []): void {
+      component.transactions = rows;
+      component.categories = [];
+      component.tagVocabulary = vocabulary;
+      fixture.detectChanges();
+    }
+
+    /** Typing, then the key that ends the edit. */
+    function type(text: string, key = 'Enter', init: KeyboardEventInit = {}): void {
+      const input = box()!;
+      input.value = text;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key, ...init }));
+      fixture.detectChanges();
+    }
+
+    it('offers what the account already files by, through one native list', () => {
+      render([makeRow()], ['coffee', 'work']);
+
+      const list = fixture.nativeElement.querySelector('datalist') as HTMLDataListElement;
+      expect(Array.from(list.options).map(option => option.value)).toEqual(['coffee', 'work']);
+      expect(fixture.nativeElement.querySelectorAll('datalist').length)
+        .withContext('one list for the card, not one per row')
+        .toBe(1);
+    });
+
+    it('gives each card a list of its own, so two on a page cannot share one', () => {
+      render([makeRow()], ['coffee']);
+      const other = TestBed.createComponent(TransactionPreviewTableComponent);
+      other.componentInstance.transactions = [makeRow()];
+      other.componentInstance.categories = [];
+      other.componentInstance.tagVocabulary = ['work'];
+      other.detectChanges();
+
+      const listId = (root: HTMLElement) => (root.querySelector('datalist') as HTMLElement).id;
+      try {
+        expect(listId(fixture.nativeElement)).not.toBe(listId(other.nativeElement));
+      } finally {
+        other.destroy();
+      }
+    });
+
+    it('opens a focused input pointed at that list', () => {
+      render([makeRow()], ['coffee']);
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+
+      const input = box()!;
+      expect(input.getAttribute('list')).toBe(component.vocabularyListId);
+      expect(document.activeElement)
+        .withContext('the tap that opened it starts the typing')
+        .toBe(input);
+      expect(addTrigger()).withContext('the trigger is gone while editing').toBeNull();
+    });
+
+    it('files one tag on Enter, spelled the one way, on a new row', () => {
+      const row = makeRow({ tags: ['coffee'] });
+      render([row]);
+      const emitted = emissions();
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      type('Lunch ');
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0][0]).withContext('a new row, not the one the parent holds').not.toBe(row);
+      expect(emitted[0][0].tags).toEqual(['coffee', 'lunch']);
+      expect(row.tags).withContext('the input object is untouched').toEqual(['coffee']);
+      expect(box()).withContext('the editor closes on commit').toBeNull();
+    });
+
+    it('files nothing for a tag the row already carries', () => {
+      // Normalized on the way in, so the same tag in another case is the
+      // same tag — a second chip saying `coffee` is not an edit.
+      render([makeRow({ tags: ['coffee'] })]);
+      const emitted = emissions();
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      type('Coffee');
+
+      expect(emitted.length).toBe(0);
+      expect(box()).withContext('the editor still closes').toBeNull();
+    });
+
+    it('files nothing on Escape, or on a commit with nothing in the field', () => {
+      render([makeRow()]);
+      const emitted = emissions();
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      type('lunch', 'Escape');
+      expect(emitted.length).withContext('a cancel files nothing').toBe(0);
+      expect(box()).toBeNull();
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      type('   ');
+      expect(emitted.length).withContext('an emptied field is a reviewer starting over').toBe(0);
+      expect(box()).toBeNull();
+    });
+
+    it('files one tag for the Enter and the blur it is followed by', () => {
+      // Both handlers reach the same commit, and the second one runs while
+      // the input is still on the card: without the guard the row would take
+      // the tag twice and the second emission would be a no-op edit.
+      render([makeRow()]);
+      const emitted = emissions();
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      const input = box()!;
+      input.value = 'lunch';
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      input.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0][0].tags).toEqual(['lunch']);
+    });
+
+    it('ignores the Enter that confirms an IME conversion', () => {
+      // ja and tc type through an IME, where the first Enter confirms the
+      // conversion rather than finishing the tag.
+      render([makeRow()]);
+      const emitted = emissions();
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      type('弁当', 'Enter', { isComposing: true });
+
+      expect(emitted.length).toBe(0);
+      expect(box()).withContext('still editing').not.toBeNull();
+    });
+
+    it('hands focus back to the trigger the input replaced', () => {
+      // A keyboard reviewer adding a tag to each of twenty rows is dropped at
+      // the document root by every one of them otherwise.
+      render([makeRow()]);
+
+      addTrigger()!.click();
+      fixture.detectChanges();
+      type('lunch');
+
+      expect(document.activeElement).toBe(addTrigger());
+    });
+  });
 });

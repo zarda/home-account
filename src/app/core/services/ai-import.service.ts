@@ -29,6 +29,7 @@ import {
   ReceiptProcessingError,
 } from '../utils/ai-error.utils';
 import { nextImportRowId } from '../utils/import-row-id.utils';
+import { normalizeTags } from '../utils/tag.utils';
 import {
   FALLBACK_CATEGORY_ID,
   gradeCategorySuggestion,
@@ -727,6 +728,33 @@ export class AIImportService {
       if (tags.length) out[index] = { ...out[index], tags, suggestedTags: tags };
     });
     return out;
+  }
+
+  /**
+   * Every tag this account already files by, for the card's own add control:
+   * what the memory remembers, what the recent window carries, and what the
+   * batch itself arrived with.
+   *
+   * `ensureLoaded` first, because the memory can still be cold here — the
+   * JSON door and a CSV that carried its own tags never run `suggest`, which
+   * is what usually warms it, and a vocabulary read mid-load is short of
+   * exactly the tags this user decided on.
+   *
+   * Never rejects, the same contract `suggest` holds. The list is an offer
+   * and the field takes a hand-typed tag either way, so a door that failed
+   * costs the reviewer suggestions and nothing else — what could be gathered
+   * is still answered.
+   */
+  async tagVocabulary(rows: readonly CategorizedImportTransaction[]): Promise<string[]> {
+    const own = rows.flatMap(row => row.tags ?? []);
+    try {
+      await this.tagMemory.ensureLoaded();
+      const history = await this.groundingHistory.recent();
+      return normalizeTags([...this.tagSuggestions.vocabularyFrom(history), ...own]);
+    } catch (error) {
+      console.warn('[AIImport] Could not read the tag vocabulary:', error);
+      return normalizeTags(own);
+    }
   }
 
   /**
