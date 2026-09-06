@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, Injector, OnDestroy, OnInit, ViewChild, afterNextRender, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -33,7 +33,7 @@ import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/r
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
-import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
+import { needsDateAnswer, rowIsUnfilled } from '../../../../core/utils/import-review.utils';
 
 @Component({
   selector: 'app-import-wizard',
@@ -67,6 +67,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private shareIntake = inject(ShareIntakeService);
   private destroyRef = inject(DestroyRef);
+  private injector = inject(Injector);
 
   @ViewChild('stepper') stepper!: MatStepper;
 
@@ -130,6 +131,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    */
   receiptRowIds = signal<ReadonlySet<string>>(new Set());
   duplicateChecks = signal<DuplicateCheck[]>([]);
+  /**
+   * Every tag the account already files by, for the card's add control.
+   * Filled once a batch's rows land, because the rows' own tags are part of
+   * it. Nothing waits on it: the review step renders with whatever list it
+   * has, and the field takes a hand-typed tag before the first read answers.
+   */
+  tagVocabulary = signal<readonly string[]>([]);
   /**
    * Rows whose duplicate verdict the reviewer overruled, kept clear through
    * later re-checks: the within-batch pass regenerates its verdicts from the
@@ -215,12 +223,33 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     const ids = this.receiptRowIds();
     return this.extractedTransactions().filter(t => needsDateAnswer(t, ids.has(t.id))).length;
   });
+  /**
+   * Selected rows still short of an amount or a description — a row the
+   * reviewer added and has not finished typing, and a row from any door
+   * that arrived without one. Held here rather than at the write, which
+   * refuses a non-positive amount mid-import with a row number the reviewer
+   * has to go back and find, and files an empty description under a name of
+   * its own — so what lands is not a nameless row but a mis-named one, past
+   * review. This holds Continue and Import exactly as the date question does.
+   */
+  unfilledRows = computed(() => this.extractedTransactions().filter(rowIsUnfilled).length);
   // The linear stepper refuses next() on an incomplete step. The camera
   // hand-off's stepper is not linear and lets the header jump straight to
   // Confirm, which is why the Import button carries the same guard itself.
   reviewComplete = computed(() =>
-    this.selectedTransactionIds().size > 0 && this.unansweredDates() === 0
+    this.selectedTransactionIds().size > 0 && this.unansweredDates() === 0 && this.unfilledRows() === 0
   );
+
+  /**
+   * What the review card denominates a hand-added row in when there is no
+   * row above it to copy a currency from. A field rather than a computed:
+   * the route's guard has signed the user in before this component is
+   * constructed, and nothing reachable from inside the wizard changes the
+   * account's base. A degraded profile read is the one way it can go stale —
+   * the auth service seats a fallback profile and swaps the real one in
+   * later — and it costs one currency tap on a row added to an empty list.
+   */
+  readonly baseCurrency = this.importService.baseCurrency();
 
   selectedCount = computed(() => {
     return this.extractedTransactions().filter(t => t.selected).length;
@@ -357,6 +386,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
             .map(t => t.id)
         );
         this.selectedTransactionIds.set(nonDuplicateIds);
+        this.refreshTagVocabulary(result.transactions);
 
         // Skip to review step (index 2)
         if (this.stepper) {
@@ -490,6 +520,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           .map(t => t.id)
       );
       this.selectedTransactionIds.set(nonDuplicateIds);
+      this.refreshTagVocabulary(this.extractedTransactions());
     } catch (error) {
       const parsed = this.importService.parseAIError(error);
       this.processingError.set(parsed.message);
@@ -503,6 +534,15 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
+   * Ask for the vocabulary the rows just landed with. Not awaited by either
+   * caller: the review step is ready without it, and the service holds the
+   * contract that this never rejects.
+   */
+  private refreshTagVocabulary(rows: CategorizedImportTransaction[]): void {
+    void this.importService.tagVocabulary(rows).then(vocabulary => this.tagVocabulary.set(vocabulary));
+  }
+
+  /**
    * The card's edits: every row again, an edited row by a new identity.
    *
    * Detection ran inside the import doors, on inputs the reviewer could not
@@ -510,10 +550,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * the row it replaces is checked again; a flag that went from true to
    * false is the reviewer's overrule. Only ids present before and after are
    * compared — a first population is not a change. Dates compare by instant
-   * under Object.is: a JSON-door row can carry an Invalid Date, and
-   * NaN !== NaN would make it "changed" on every emission. Currency, notes,
-   * category, tags, location, the rule link and selection are not detection
-   * inputs and trigger nothing.
+   * under Object.is: no door produces an Invalid Date any more, and the guard
+   * stays so a future one cannot make a row "changed" on every emission,
+   * which NaN !== NaN would. Currency, notes, category, tags, location, the
+   * rule link and selection are not detection inputs and trigger nothing.
    */
   onTransactionsUpdated(transactions: CategorizedImportTransaction[]): void {
     const before = new Map(this.extractedTransactions().map(t => [t.id, t]));
@@ -722,7 +762,9 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       // The service iterates the selected subset and numbers its per-row
       // errors against it (1-based); snapshot the same subset now so those
       // numbers can be mapped back to rows. Safe to take before the await:
-      // the review UI is unreachable while isImporting disables the stepper.
+      // every step is [editable]="!isImporting()", and the CDK stepper
+      // refuses a move back onto a step that is not editable, so the review
+      // UI cannot be reached and edited while the write is in flight.
       const submitted = this.extractedTransactions().filter(t => t.selected);
       // The receipt attempt's provenance rides the record for image batches;
       // a CSV-only batch has none, and an absent slot means nobody looked.
@@ -783,9 +825,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           total: result.successCount + result.errorCount,
         }));
 
-        if (this.stepper) {
-          this.stepper.selectedIndex = 2;
-        }
+        this.returnToReview();
         return;
       }
 
@@ -815,6 +855,33 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     } finally {
       this.isImporting.set(false);
     }
+  }
+
+  /**
+   * Put the failed rows back on the review step.
+   *
+   * Every step is editable only while nothing is being written, and the CDK
+   * stepper takes a backward move only onto an editable step. The unlock is
+   * a template binding, so it reaches the step at the next render and not
+   * before: setting the index in the same task as the unlock would be
+   * refused silently, leaving the reviewer on a summary card that describes
+   * only the rows that failed, with no sign the move was attempted. The
+   * finally's own set(false) that follows is then a no-op.
+   *
+   * Registering a render hook on a destroyed injector throws NG0911, which
+   * is what the guard is for.
+   */
+  private returnToReview(): void {
+    this.isImporting.set(false);
+    if (this.destroyRef.destroyed) return;
+    afterNextRender(
+      () => {
+        if (this.stepper) {
+          this.stepper.selectedIndex = 2;
+        }
+      },
+      { injector: this.injector }
+    );
   }
 
   goBack(): void {

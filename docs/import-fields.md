@@ -84,7 +84,7 @@ travels with zero edits.
 | `currency` | the row's, else the account's base currency (empty string falls back) |
 | `categoryId` | the row's, else the catch-all (empty string falls back) |
 | `description` | the row's, else `Imported transaction` |
-| `date` | passed through — the review-row builders and the queue drain resolve via `resolveImportDate` before the row reaches here; the data hub's CSV path and the wizard's JSON backup parse and default their own |
+| `date` | passed through — the review-row builders and the queue drain resolve via `resolveImportDate` before the row reaches here, and the wizard's JSON backup door now does too; the data hub's CSV path still parses and defaults its own |
 | `note`, `tags`, `location`, `period` | spread only when truthy / non-empty |
 | `isRecurring` | spread when **present** — `false` is an answer and travels |
 | `recurringId` | spread when truthy — an id has no `false` to preserve, and a declined link arrives as a key holding `undefined` |
@@ -156,7 +156,11 @@ failure (`RECEIPT_ATTACH_FAILED`) still fails the row.
 The review card is the editor for the row, not a preview of it. Every value a
 source *read* has a control that changes it in place, and every value the
 import *offered* has a control that removes it — that split is the rule, and
-it is what step 6 below asks you to decide for a new field.
+it is what step 6 below asks you to decide for a new field. The two suggested
+fields now carry both halves: a tag and a location can be taken off *and*
+added to or corrected, because the reviewer can know a tag the account's
+vocabulary has not learned yet, and can read the receipt's own address better
+than the reader did.
 
 Three things follow from a correction, and they are not the same three for
 every field: what grade or mark the answer clears, whether duplicate detection
@@ -171,8 +175,9 @@ runs again, and whether anything is remembered past the wizard.
 | Currency | the chip's menu | `currencyFellBack` and the standing `currencySuggestion` | no | no |
 | Category | the suggestion chip's menu | nothing — the confidence dot follows the pick and reads as the reviewer's own | no | yes, per merchant, at confirm |
 | Notes | the **Notes** button opens a textarea; it files on the way out | nothing | no | no |
-| Tags | a remove control on each chip | the tag | no | yes, kept and removed both, per merchant |
-| Location / country | a remove control on the chip | `location` and `receiptCountry` together | no | no |
+| Tags | a remove control on each chip, and **Add tag** over the account's own vocabulary — a native datalist, so what is typed is filed whether or not it is on the list | the tag | no | yes, kept and removed both, per merchant |
+| Location / country | one chip with three controls: the name is an inline editor, the country a menu over the bundled table with **No country** on it, and the removal clears both | a picked country clears `receiptCountry` and writes `location.country`; the removal clears `location` and `receiptCountry` together | no | no |
+| Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival (there is no earlier row to compare it against), but on every edit to a detection input — date, amount, type or description — so a filled row has been checked | no |
 | Recurring rule | the offer's checkbox | sets or restores `recurringId` and `isRecurring` | no | no |
 | Duplicate verdict | the badge's **Not a duplicate — import it** | `isDuplicate` and `duplicateOf`, reselects the row, and marks it overruled for the rest of the batch | it *is* the overrule | no |
 
@@ -180,16 +185,22 @@ Two mechanics are worth knowing before you add a control here. Every edit goes
 through `replaceRow`, which writes a **new row identity** rather than mutating
 the `@Input()` object — a component reading the old object would otherwise go
 on displaying it, which is exactly how the category chip once cached the
-model's first guess for the life of the card. And the country chip's remove
-clears the mark as well as the slot: clearing `location` alone would let
-`receiptCountry` rebuild the country the reviewer just dismissed.
+model's first guess for the life of the card. And anything that settles the
+country clears the mark as well as the slot — the chip's remove, and a country
+picked from its menu alike: leaving `receiptCountry` behind would let the
+mapper's own fallback rebuild the country the reviewer just dismissed or
+overruled.
 
 The decisions are
 [ADR 0099](ADR/0099-the-review-step-edits-what-it-shows.md) for the editors,
 [ADR 0100](ADR/0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md)
-for the date question and the gate it puts on Continue and Import, and
+for the date question and the gate it puts on Continue and Import,
 [ADR 0101](ADR/0101-a-corrected-row-is-checked-for-duplicates-again.md) for the
-re-check.
+re-check,
+[ADR 0102](ADR/0102-the-review-card-adds-a-tag-and-edits-a-location.md) for the
+tag field and the location chip, and
+[ADR 0103](ADR/0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md)
+for the hand-added row and the gate it joins.
 
 ## Suggestions, and what removing one means
 
@@ -236,8 +247,16 @@ are forgotten as soon as the wizard closes.
    it in place — a chip that opens a picker or a menu, or an inline trigger
    that swaps for an input — and, if the value is graded, the edit clears its
    `fieldConfidence` entry through `withoutFieldConfidence`. A value the import
-   **suggested** gets a remove control in the card's extras area instead, and
-   you decide whether a removal is remembered — tags are, and nothing else is.
+   **suggested** gets a remove control in the card's extras area, and an
+   editor of its own as well wherever the reviewer can know the value better
+   than the source did — which is both suggested fields today — and you decide
+   whether a removal is remembered: tags are, and nothing else is.
    Either way the change goes through `replaceRow`, never onto the `@Input()`
    object, and you add a row to *What the review step corrects* above saying
    whether detection re-runs on it.
+7. Decide what a row **nobody read** carries for it. `blankImportRow` in
+   `import-review.utils.ts` builds the row **Add a row** appends, and it is the
+   one producer with no source to learn a value from: absent is the default
+   there, and a value has to earn its place. A new optional that the card or
+   the write assumes is present needs a line here, or a hand-added row is the
+   one shape that breaks it.

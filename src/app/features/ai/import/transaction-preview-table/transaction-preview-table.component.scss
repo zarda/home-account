@@ -64,6 +64,49 @@
   overflow-y: auto;
 }
 
+// The list's own control, outside the scroller above so it does not walk off
+// the bottom of a long batch. It reads as the open slot at the end of the
+// list — the dashed border the strip's add triggers and the notes button
+// already use for exactly that — and takes its 40px in its own box.
+.list-footer {
+  display: flex;
+  padding: 0 10px 10px;
+}
+
+.add-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-block-size: 40px;
+  padding-block: 4px;
+  padding-inline: 12px;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-muted, #666);
+  background: none;
+  border: 1px dashed var(--border-primary, rgba(0, 0, 0, 0.16));
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  mat-icon {
+    font-size: var(--text-sm);
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
+}
+
+.add-row:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+:host-context(.dark-theme) .add-row:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
 .transaction-card {
   display: flex;
   align-items: flex-start;
@@ -282,6 +325,18 @@
   color: var(--color-expense-text);
 }
 
+// What stands in either trigger before anything has been written into the
+// field. Muted and unweighted against the description's own 600 and the
+// amount's 700, so a row still to be filled in reads as a gap rather than as
+// a transaction called "Add a description" for "Add an amount". The income
+// and expense colours above are set on the section, which this span only
+// inherits from, so its own declaration wins at any source order.
+.description-text .placeholder,
+.amount-section .placeholder {
+  font-weight: 400;
+  color: var(--text-muted, #666);
+}
+
 .card-bottom-row {
   display: flex;
   justify-content: space-between;
@@ -342,10 +397,13 @@
   }
 }
 
-// The code the row is on already, so the menu says what it is changing from.
-// Weighted on our own span: MatMenuItem projects the label into its
-// .mat-mdc-menu-item-text, which sets its own font-weight, so a weight on the
-// button never reaches the text.
+// The code the row is on already, and the country it is already filed under,
+// so either menu says what it is changing from. One class for both: this
+// stylesheet already spends `.selected` on a checked card
+// (`.transaction-card.selected`), and a menu marker sharing that name would
+// read as the same state. Weighted on our own span: MatMenuItem projects the
+// label into its .mat-mdc-menu-item-text, which sets its own font-weight, so
+// a weight on the button never reaches the text.
 .current .option-label {
   font-weight: 600;
 }
@@ -422,6 +480,13 @@
   row-gap: 14px;
   margin-top: 8px;
   min-width: 0;
+  // Chips keep their own height. A flex item stretches to its line, and the
+  // add trigger below stands 40px where a chip is 26 — so without this every
+  // chip sharing its line measures 40 as well, and the row-gap above, derived
+  // from a 26px chip, stops describing the gap it is paying for. It shows at
+  // a width where the two stand side by side, which is not the 288px the rest
+  // of the strip is measured at; the guard is measured at 900.
+  align-items: flex-start;
 }
 
 // Its own line inside the strip: the label is a sentence, not a chip, and it
@@ -507,6 +572,14 @@
 // two-line box — both inside the budget the strip's 14px row-gap already
 // pays for. On the right it stops 2px in, where the remove button's own
 // 6px overhang begins.
+//
+// That meeting is LTR-only arithmetic: these insets are physical (0071's
+// frozen baseline) while the margin paying for the gap is logical. Under RTL
+// the row reverses and the insets do not, so the neighbour lands on the
+// physical left — where this box overhangs by 9px rather than stopping 2px
+// in — and 9 + 6 across the chip's 4px gap is an 11px overlap. No RTL locale
+// ships and the overflow probe measures LTR only, so it is work for the RTL
+// conversion rather than a live defect.
 .extra-accept {
   display: inline-flex;
   align-items: center;
@@ -563,7 +636,52 @@
   }
 }
 
-.extra-remove {
+// The strip's own add trigger: a chip's shape with the border drawn open,
+// which is how an empty slot reads everywhere else in the app. It is the one
+// thing in the strip that is not a chip, and it stands taller on purpose —
+// a trigger with nothing beside it can carry its own 40px rather than
+// borrowing an overhang, and the chips keep their height because the strip
+// aligns them at the start rather than stretching them to the tallest thing
+// on the line.
+.extra-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+  min-block-size: 40px;
+  padding-block: 3px;
+  padding-inline: 9px;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-muted, #666);
+  background: none;
+  border: 1px dashed var(--border-primary, rgba(0, 0, 0, 0.16));
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+
+  mat-icon {
+    font-size: var(--text-sm);
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+  }
+}
+
+// Room for a tag and no more: the strip is a wrapping row, and a field that
+// took the card's width would put every chip on a line of its own while it
+// is open.
+.tag-input {
+  inline-size: 9em;
+  max-inline-size: 100%;
+}
+
+// The removal and the country picker: two glyph-sized controls with the same
+// tap target, listed together rather than one wearing the other's class.
+// `.extra-remove` is how the removal is found — by the specs and by anyone
+// reading the chip — and a second element answering to it would be found
+// first.
+.extra-remove,
+.extra-country {
   width: 20px;
   height: 20px;
   padding: 0;
@@ -592,8 +710,31 @@
   }
 }
 
-.extra-remove:hover {
+// Unlike the removal, this control can hold text — a country name — so it
+// takes the width that needs rather than the 20px box, keeping the box as
+// its floor for the glyph-only shape. The trailing margin is what keeps the
+// two hit areas apart: each overhangs its box by 6px, and the chip's own
+// 4px gap alone would leave them overlapping by 8. With the margin they meet
+// exactly, which is the same budget every other pair on the chip is held to.
+.extra-country {
+  inline-size: auto;
+  min-inline-size: 20px;
+  padding-inline: 2px;
+  margin-inline-end: 8px;
+}
+
+.extra-remove:hover,
+.extra-country:hover {
   color: var(--text-primary, #222);
+}
+
+// Room for a place name and no more, the tag field's reason: the strip is a
+// wrapping row, and a field that took the card's width would put every chip
+// on a line of its own while it is open. Wider than that field because a
+// place name is an address, not a word.
+.place-input {
+  inline-size: 12em;
+  max-inline-size: 100%;
 }
 
 /* Notes Section - compact inline style */

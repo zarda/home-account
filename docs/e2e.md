@@ -54,9 +54,11 @@ something the branch added rather than trusting the checkout. For the note
 translation and weekly recap surfaces that is the note button on a
 Transactions row and the weekly-recap switch in Settings → Profile; for the
 import review corrections it is the date button and the *keep it?* question
-chip on a scanned row's review card; for another branch it is whatever that
-branch added. A stale `.angular/cache`, or a server started before the
-checkout switched, shows yesterday's app with today's confidence.
+chip on a scanned row's review card; for the tag, location and added-row
+controls it is **Add tag** in a scanned row's extras and **Add a row** under
+the list; for another branch it is whatever that branch added. A stale
+`.angular/cache`, or a server started before the checkout switched, shows
+yesterday's app with today's confidence.
 
 **2. The running bundle names the expected project.** Fetch every script the
 page actually loaded and read the project id out of it:
@@ -103,8 +105,9 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full window,
 and a pane behaves differently enough to cost a run before it is understood.
-None of these is a property of the app; four of the five have produced a
-false failure, and the fifth stops a run before it starts.
+None of these is a property of the app; four of the six have produced a
+false failure, the fifth stops a run before it starts, and the last is a
+door no file picker opens in any browser.
 
 - **Pointer input can stall under viewport emulation, and stay stalled.** With
   an emulated width in force, clicks stop landing and go on not landing until
@@ -127,6 +130,26 @@ false failure, and the fifth stops a run before it starts.
   dropzone's hidden input from the page console instead; the recipe is under
   [Fixtures](#fixtures). Where the browser can open a file directly, do that
   on the same input.
+- **A door no picker reaches is driven by script.** The wizard accepts
+  `.csv,.pdf,.png,.jpg,.jpeg,.webp` and the dropzone enforces that list on
+  both drop and select, while the share target takes images, PDF and CSV —
+  so nothing any picker can hand over is a `.json` backup, and putting one
+  on the hidden input the way the recipe above does earns *is not a
+  supported file type* rather than an import. Journey 13 hands the file to
+  the wizard component instead, at the entry the share hand-off itself
+  uses, which filters nothing:
+
+  ```js
+  ng.getComponent(document.querySelector('app-import-wizard')).onFilesSelected([file]);
+  ```
+
+  `ng` is the development build's own debug global — a server started on the
+  production configuration has none. The dropzone keeps its own list of
+  files, so the zone stays empty and the only sign the file landed is
+  **Process with AI** enabling; everything past that point is the flow a
+  pick would take. That the file was placed by script rather than chosen is
+  diagnostic-grade, the standing journey 8's hand-off substitute already
+  has: say so beside the shot.
 
 The console's own quirk is check 3 above: entries persist across reloads, so
 only the difference counts.
@@ -134,9 +157,10 @@ only the difference counts.
 ## What a run may touch
 
 Three writes are authorised. Each is put back before the run ends, and the
-restore is *confirmed on screen*, not assumed. A fourth action writes nothing
-at all and is listed with them because it still costs the account a real
-provider call.
+restore is *confirmed on screen*, not assumed. The last two rows write
+nothing at all and are listed with them anyway: one still costs the account
+a real provider call, the other not even that, and what an import journey
+leaves behind is worth stating rather than leaving to be inferred.
 
 | Action | What it writes | How it is put back |
 |---|---|---|
@@ -144,11 +168,14 @@ provider call.
 | The weekly-recap switch | `preferences.enableWeeklyRecap` on the user document | Switched off at the end, and the dashboard checked to confirm the card is gone |
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
+| Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
 
 The failed-attempt record is written only by the attempt's `failed` and the
 import's own record only by `confirmImport`, so an extraction left
 unconfirmed leaves nothing behind — which is why the import journeys end by
 reading Import History and the Transactions list and finding them unchanged.
+A backup file does not open an attempt at all: that handle is opened for
+receipt images and for nothing else.
 
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
@@ -226,6 +253,54 @@ browser can open a file directly, use it on that same input. Nothing here
 writes to the repo — the fixture is gitignored and the scratch copy lives
 outside it.
 
+**A backup, for the JSON door.** Journey 13 wants a restored backup rather
+than a receipt, and that is two rows of JSON — short enough to write by
+hand, and never written into the repo. Put it beside `jp.png` in the scratch
+folder the server above serves, as `backup.json`:
+
+```json
+{
+  "transactions": [
+    {
+      "description": "Journey 13 dated row",
+      "amount": 12.5,
+      "currency": "USD",
+      "type": "expense",
+      "date": { "seconds": 1773576000, "nanoseconds": 0 }
+    },
+    {
+      "description": "Journey 13 dateless row",
+      "amount": 3.25,
+      "currency": "USD",
+      "type": "expense"
+    }
+  ]
+}
+```
+
+`{ seconds }` is the shape a stored date takes once a backup has been
+through `JSON.stringify`: a Firestore Timestamp with no `toDate` left on it.
+`1773576000` is noon UTC on 15 March 2026 — midday rather than midnight, so
+the day it renders is the same in every zone within eleven hours of UTC,
+where a midnight value renders as the 14th west of it. The second row
+carries no `date` key at all, which is the case the door dates today and
+marks assumed. Neither names a category, and the door's own fallback fills
+that in.
+
+The descriptions are deliberately things the account calls nothing: both
+rows go through the duplicate check against real history, and a match would
+deselect the row it hit and could leave the step with nothing selected.
+
+Fetch it the same way, then hand it to the wizard through the component,
+because the dropzone would refuse it — the recipe and what it is worth are
+under [Panes and viewports](#panes-and-viewports):
+
+```js
+const blob = await (await fetch('http://127.0.0.1:8123/backup.json')).blob();
+const file = new File([blob], 'backup.json', { type: 'application/json' });
+ng.getComponent(document.querySelector('app-import-wizard')).onFilesSelected([file]);
+```
+
 ## The journeys
 
 | # | Journey | What only a real browser can show | Screenshots |
@@ -240,6 +315,9 @@ outside it.
 | 8 | Review: a receipt dated before today | A real receipt read by the real provider, and the date question that holds Continue | `08-date-question.png`, `08-date-kept.png`, `08-date-picker.png` |
 | 9 | Review: inline corrections | The card's editors under a real pointer, and the duplicate re-check a correction fires | `09-inline-edits.png` |
 | 10 | Review at phone width | The review card at 390px with a question standing and an editor open | `10-review-phone.png` |
+| 11 | Review: a tag and a location | The browser's own suggestion list behind the tag field, and the country menu over a real receipt's address | `11-tag-added.png`, `11-country-menu.png` |
+| 12 | Review: a row added by hand | A blank card arriving under a real pointer with the caret already in it, and Continue held until it is filled | `12-row-added.png` |
+| 13 | Review: a backup row without a date | A restored backup entering by the one door that takes one, and the date question its dateless row raises | `13-backup-date.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -456,7 +534,8 @@ One shot: the card carrying the corrections.
 
 390px, or the pane's own width where it is already narrower — see
 [Panes and viewports](#panes-and-viewports). The same review, with the
-question chip standing and an editor open.
+question chip standing and an editor open — the tag editor, whose field
+stands in the extras row beside the chips already on it.
 
 **Pass:** nothing spills sideways. With the editor open, in the console:
 
@@ -470,7 +549,121 @@ That is the meta row wrapping as it is built to, not a failure; no threshold
 for it is pinned anywhere, so do not read one off a single run. The chips and
 the editors keep their 40px tap targets at every width.
 
-One shot: the review card, question chip and open editor together.
+One shot: the review card, question chip and open tag editor together.
+
+### 11. Review: a tag and a location
+
+The same review as journey 8, on the same `jp.png` row, with the date
+question already answered by Keep. Everything below is in the card's extras
+row, where the date chip stood.
+
+**Add tag** is the last control in that row, after whatever tags the reader
+suggested. Tap it → the field opens in its place, placeholder *New tag*,
+pointed at a list of the tags the account already files by, so the browser
+offers them itself and narrows them as the letters go in. Type `lunch` →
+Enter → the tag renders as a chip of its own, its remove button named
+*Remove tag lunch*, and focus is back on **Add tag** for the next one. The
+field spells what it takes the way the account already spells it — trimmed,
+lowercased, cut at 30 characters — so a capital typed here comes back
+lowered, which is the spelling the transaction filter finds the row by.
+Escape leaves the row alone, and so does a tag it already carries.
+
+Then the location, on the same row. `jp.png` prints its shop's address, so
+the chip arrives with a name in it and the country beside it, and both are
+corrected in place:
+
+- **The name.** Tap it → the field opens on the name as it stands → edit →
+  Enter → the chip reads what was typed. Emptying it withdraws the name
+  rather than the location: a country under it keeps the chip, in the
+  country-only shape a receipt with no printed address arrives in.
+- **The country.** The button beside the name reads the country in the app's
+  own language, or shows a globe when the row has none, and opens a menu of
+  countries named and ordered in that language. Pick another → the button
+  reads it. Open it again → **No country** at the top → the button falls
+  back to the globe. A country picked here replaces the one the reader
+  concluded, so the reader's answer cannot come back once the picked one is
+  withdrawn.
+
+**Pass:** every change shows on the card, and nothing reached the account —
+Transactions is unchanged and `/import/history` has no new run.
+
+**Precondition:** the list behind the tag field is the account's own
+vocabulary — the tags on its transactions from the last six months, plus
+what the tag memory remembers, plus the tags the batch itself arrived with.
+The first of those three is empty while the account's grounding level is
+`off` ([rag-insights.md](rag-insights.md)), which leaves only what the memory
+has learned — nothing, on an account that has never kept a suggested tag, and
+that is how the list came back empty on the first run. A bare field still
+takes a typed tag, so the tag half of the journey stands either way; the
+list half is recorded as skipped rather than faked. **No country** is
+likewise there only while the row has a country: if this receipt's row
+arrived without one, pick a country first and withdraw it after.
+
+Two shots: the new tag on the card, and the country menu open.
+
+Leave the way journey 9 leaves — the review step's **Back**, then the
+wizard's own back arrow.
+
+### 12. Review: a row added by hand
+
+The same review. **Add a row** sits under the whole list rather than in any
+row: it adds one instead of editing one, and the notice that tells a
+reviewer to add what the reader was cut short of has to point at a control
+they can reach without scrolling a batch of twenty.
+
+Tap it → a blank card appears at the end of the list with the description
+editor already open and the caret in it, the hint *Fill in 1 row before
+continuing* stands under the list, and Continue is disabled. Type a
+description → Enter → the hint stays, because the amount is still nothing:
+the card reads *Add an amount* where a figure belongs, and the description
+now reads what was typed. Tap *Add an amount* → type `120` → Enter → the
+hint goes and Continue enables.
+
+The row takes the day and the currency of the row above it, which is what it
+is missing from — on this review, August 14th and ¥, so the filled row reads
+*-¥120*. That day was copied rather than read off anything, so the row asks
+no date question of its own; its category is the fallback offered to a row
+nothing suggested one for, wearing the low-confidence dot that says so. Its
+extras carry **Add location** and **Add tag** and nothing else — that
+trigger is what a row with no location shows in place of the chip journey 11
+edits.
+
+**Pass:** the added row shows filled, Continue enabled, and nothing reached
+the account. Leave by the review step's **Back** and the wizard's back
+arrow, as journey 9 does; Import is never pressed.
+
+One shot: the added card filled, with the hint gone.
+
+### 13. Review: a backup row without a date
+
+Open the wizard as journey 8 does — the Add menu's **Import photos**, or
+`/import/file` typed in. This journey's file is a `.json` backup, which no
+picker and no share sheet will hand over, so it goes in through the
+component: the recipe and what it is worth are under
+[Panes and viewports](#panes-and-viewports), the file itself under
+[Fixtures](#fixtures). The zone stays empty, and there is no *What are these
+images?* question because nothing here is an image; **Process with AI**
+enabling is the only sign the file landed.
+
+**Process with AI** → the processing step, which makes no provider call here
+— the door parses the file itself, and only the duplicate check leaves the
+browser → **Continue** → Review.
+
+**Pass:** two rows. The one whose `date` was a `{ seconds }` timestamp reads
+*Mar 15, 2026* with the ordinary calendar glyph and no question, which is
+the whole point of the journey: the shape a stored date arrives in is read
+as a date. The one with no `date` at all reads today and carries the
+question chip *Date set to today — keep it?*; its date button wears the
+plain glyph too, because nobody graded these rows and the chip is that row's
+only mark. Continue is enabled with the question standing — a date question
+holds Continue only on a row a receipt reader produced, and these came off a
+file — and the header shows no **Keep all dates**, which counts the same
+rows. **Keep** settles the chip the way journey 8's Keep does: the chip
+goes and the button takes the check.
+
+Then **Back**, and out by the wizard's back arrow. Nothing is imported.
+
+One shot: the two rows together, with the question chip on the dateless one.
 
 ## Evidence
 

@@ -136,12 +136,33 @@ export function parseDayKey(value: unknown): Date | null {
  * `new Date('2026-02-31')` is 3 March in V8. Having recognised the format, a
  * date that does not exist is better reported than quietly moved to a month the
  * receipt never named.
+ *
+ * The fourth source is the reason objects are read at all. A backup is
+ * `JSON.stringify`'d from stored documents, so a `Transaction.date` reaches an
+ * import door as the `{ seconds, nanoseconds }` a Firestore Timestamp
+ * serialises to, with no `toDate` left on it. Only a finite numeric `seconds`
+ * makes that shape, and only one the Date range can hold — anything else,
+ * including a figure that overflows it, is still null, so a door that
+ * resolves its dates through here does not mark every restored row as
+ * assumed and none of them can carry an Invalid Date onward. The
+ * sub-second part is dropped to whole milliseconds and ignored entirely when
+ * it is not a number, because a hand-edited field must not turn an instant the
+ * `seconds` states plainly into NaN.
  */
 export function parseDateInput(value: unknown): Date | null {
   if (typeof value === 'string' && DAY_KEY_PATTERN.test(value.trim())) {
     return parseDayKey(value);
   }
   if (typeof value !== 'string' && typeof value !== 'number') {
+    const seconds = (value as { seconds?: unknown } | null | undefined)?.seconds;
+    if (typeof seconds === 'number' && Number.isFinite(seconds)) {
+      const nanoseconds = (value as { nanoseconds?: unknown }).nanoseconds;
+      const millis = typeof nanoseconds === 'number' && Number.isFinite(nanoseconds)
+        ? Math.floor(nanoseconds / 1e6)
+        : 0;
+      const instant = new Date(seconds * 1000 + millis);
+      return Number.isNaN(instant.getTime()) ? null : instant;
+    }
     return value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
   }
   const parsed = new Date(value);

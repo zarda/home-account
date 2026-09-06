@@ -341,6 +341,28 @@ suggested tag is remembered per merchant and it is not offered again for that
 merchant until it is kept again; Settings → AI has the count and a **Forget
 all**.
 
+**The review card also adds and corrects both.** **Add tag** opens a field
+over the account's own vocabulary — the browser's own suggestion list, so a
+tag already in use is one keystroke away and a tag that is not can still be
+typed, spelled by the same rule everything else that stores a tag uses. A tag
+left on the row at confirm is remembered against that merchant exactly as a
+kept suggestion is, which is how a tag typed here becomes one the next import
+can offer by itself.
+
+The location is one chip carrying two facts, and each is corrected in place:
+the place name through an inline editor, and the country through a menu over
+the same bundled table the transactions filter offers, with **No country** on
+it while there is one to withdraw. A row with neither fact carries **Add
+location** instead. A country picked by hand is the evidence from then on — it
+is written on the location and clears the country the reader had concluded, so
+the mapper's fallback cannot rebuild the answer that was just overruled
+([ADR 0102](ADR/0102-the-review-card-adds-a-tag-and-edits-a-location.md),
+closing the "cannot be edited by hand" gap of
+[ADR 0068](ADR/0068-a-country-is-stored-on-the-evidence-that-produced-it.md)).
+Emptying a place name withdraws the name only, keeping a country under it;
+withdrawing the country from a location with no name drops the location whole,
+because a bare coordinate pair is a shape the write refuses.
+
 ## Failure surfacing
 
 A provider failure is thrown, never flattened into an empty result: all three
@@ -367,9 +389,11 @@ verify tooltip would otherwise quote; an implausible reading gets its own
 wording in that tooltip, distinct from an unreadable one, since the two are
 different doubts
 ([ADR 0080](ADR/0080-an-impossible-date-lands-on-today-however-well-it-was-read.md)).
-A date nobody graded, a CSV cell or a backup row, is kept untouched: absent
-confidence means "nobody looked", not "the reader was unsure" — and the same
-gate keeps a years-old backup from being redated to today on re-import.
+A date nobody graded that can be read at all, a CSV cell or a backup row, is
+kept untouched: absent confidence means "nobody looked", not "the reader was
+unsure" — and the same gate keeps a years-old backup from being redated to
+today on re-import. One that cannot be read, or is not there, still lands on
+today carrying `dateAssumed`, since there is nothing to keep.
 
 The asymmetry is the reason the value moves rather than only being flagged. A
 wrong date on today's row is one tap from being fixed; the same wrong date in
@@ -436,6 +460,22 @@ the table's verify chip fires on it. When not even one row survived, the
 failure is classed `incomplete` and shown as its own error card; the JSON
 parser's own wording never reaches a screen. The in-form scan keeps the
 salvaged rows too, but has no review table on which to explain them.
+
+That notice used to end "add anything that is not here" with nothing on the
+step that could. It now points at **Add a row**, under the whole list rather
+than in any card: it appends a blank row taking the day and the currency of
+the row above it — the receipts of one trip are dated together and priced in
+one currency — with its description editor already open. Continue and Import
+then wait until every *selected* row has an amount and a description, which
+holds for a row from any door and not only a hand-added one: the write refuses
+a non-positive amount anyway, and files an empty description under a name of
+its own, so what would otherwise land is a mis-named row past review. Both
+unfilled fields show a placeholder on the card, because a count in a hint with
+nothing to find it by is a hunt through the batch. See
+[ADR 0103](ADR/0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md),
+which also seals the stepper for the duration of the write — the header could
+be clicked back onto Review while rows were being written, onto a card editing
+rows the service had already snapshotted.
 
 **A photo never costs its transaction.** A receipt image is compressed to fit
 the 2 MB ceiling on its way into Storage — at `uploadReceipt`, the one call

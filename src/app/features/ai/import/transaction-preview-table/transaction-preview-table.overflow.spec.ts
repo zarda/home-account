@@ -19,8 +19,9 @@ import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry
  * currency button on the header, all of which compete for room that was
  * already spoken for. Same shape as overflow-guard.spec.ts: real global
  * styles, the probe attached to the document because only an attached element
- * has a layout box, and a fixed container width so nothing depends on the
- * size of the browser window running the test.
+ * has a layout box, and a container width the case sets rather than the
+ * runner's window — 288px throughout, save for the one case that widens it to
+ * 900px because what it measures only happens with a chip beside the trigger.
  *
  * Containment is asserted on width alone. `.transactions-list` is a
  * deliberate vertical scroller, so a card taller than its 70dvh fold is
@@ -359,6 +360,92 @@ describe('overflow guard: the import review card', () => {
       .toBeGreaterThan(20);
   });
 
+  it('keeps both of the location chip\'s controls reachable, and its editor inside the card', () => {
+    // The chip carries three controls now — the name, the country and the
+    // removal — where it used to carry one, and it is the widest chip on the
+    // card. Each of the two new ones has to reach 40px through an overhang
+    // rather than by fattening the chip, exactly as the removal beside them
+    // does; the disjointness of those overhangs is measured below.
+    const hitHeight = (control: HTMLElement) => {
+      const after = getComputedStyle(control, '::after');
+      return control.getBoundingClientRect().height - parseFloat(after.top) - parseFloat(after.bottom);
+    };
+    const name = host.querySelector('[data-row-id="r1"] .place-name') as HTMLElement;
+    const country = host.querySelector('[data-row-id="r1"] .extra-country') as HTMLElement;
+    for (const control of [name, country]) {
+      expect(withinWidthOf(clip, control))
+        .withContext(`${control.className} inside the clip`)
+        .toBeTrue();
+      expect(hitHeight(control))
+        .withContext(`${control.className} hit area, glyph plus overhang`)
+        .toBeGreaterThanOrEqual(40);
+    }
+    // r2 has no printed address, so its chip is the nameless shape — the one
+    // the card spec finds by this class and clears through the removal.
+    expect(host.querySelector('[data-row-id="r2"] .extra-chip.country-chip'))
+      .withContext('a country with no name is still a chip of its own')
+      .not.toBeNull();
+
+    name.click();
+    fixture.detectChanges();
+
+    const input = host.querySelector('[data-row-id="r1"] .place-input') as HTMLElement;
+    expect(input).withContext('the trigger opened an input').not.toBeNull();
+    expect(withinWidthOf(clip, input)).withContext('the place editor inside the clip').toBeTrue();
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge while a place name is being typed')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+  });
+
+  it('carries the add trigger on every row, and its editor, inside the 288px', () => {
+    // The trigger is on every card now — a row with nothing suggested still
+    // has a tag to add — so it is what the strip is measured with. It is a
+    // control rather than a chip, so it takes the 40px floor in its own box
+    // instead of an overhang, and the chips beside it must not fatten to
+    // match: the tag chip's own height is pinned above.
+    const adds = Array.from(host.querySelectorAll<HTMLElement>('.extra-add'));
+    expect(adds.length).withContext('one per row').toBe(2);
+    for (const add of adds) {
+      expect(add.getBoundingClientRect().height)
+        .withContext('add trigger tap target')
+        .toBeGreaterThanOrEqual(40);
+      expect(withinWidthOf(clip, add)).withContext('add trigger inside the clip').toBeTrue();
+    }
+
+    (host.querySelector('[data-row-id="r1"] .tag-add') as HTMLElement).click();
+    fixture.detectChanges();
+    const input = host.querySelector('[data-row-id="r1"] .tag-input') as HTMLElement;
+    expect(input).withContext('the trigger opened an input').not.toBeNull();
+    expect(withinWidthOf(clip, input)).withContext('the tag input inside the clip').toBeTrue();
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge while a tag is being typed')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+  });
+
+  it('does not carry the chips beside it up to its own height', () => {
+    // A flex item stretches to its line, and the trigger stands 40px where a
+    // chip is 26 — so every chip sharing its line takes 40 as well, which the
+    // strip's row-gap (derived from a 26px chip) then under-pays for. This is
+    // the one measurement in this file taken at a desktop width rather than
+    // at 288px, and it has to be: at 288px the chips wrap onto lines of their
+    // own and never stand beside the trigger at all, which is exactly why the
+    // chip height pinned above cannot see this.
+    clip.style.width = '900px';
+    fixture.detectChanges();
+
+    const trigger = host.querySelector('[data-row-id="r1"] .tag-add') as HTMLElement;
+    const beside = Array.from(host.querySelectorAll<HTMLElement>('[data-row-id="r1"] .extra-chip.tag-chip'))
+      .filter(chip => Math.abs(chip.getBoundingClientRect().top - trigger.getBoundingClientRect().top) < 1);
+    expect(beside.length)
+      .withContext('the trigger really does share a line with a chip here, so there is something to stretch')
+      .toBeGreaterThan(0);
+    for (const chip of beside) {
+      expect(chip.getBoundingClientRect().height)
+        .withContext(`tag chip "${chip.textContent?.trim()}" stays chip-sized beside the trigger`)
+        .toBeLessThanOrEqual(28);
+    }
+  });
+
   it('puts the date on a control of its own without wedging the picker between the chips', () => {
     // The date was a span; as a button it has to meet the 40px floor the
     // currency chip meets, stay inside the clip, and leave the meta row
@@ -503,8 +590,12 @@ describe('overflow guard: the import review card', () => {
     // exactly how a tap on the bottom edge of one tag ends up removing the
     // tag under it. `.card-extras` pays for the overhang in row-gap, so the
     // boxes meet and never overlap. The date question's change button
-    // carries `.extra-remove` too, so both of its controls are in this set.
-    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept')).map(button => {
+    // carries `.extra-remove` too, so both of its controls are in this set —
+    // and the country picker is the one control that borrows that hit area
+    // without carrying the class, so it is named here directly. Its chip is
+    // where a sideways collision shows up first: three controls stand side
+    // by side on it, close enough that the overhangs meet exactly.
+    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept, .extra-country')).map(button => {
       const r = button.getBoundingClientRect();
       const after = getComputedStyle(button, '::after');
       return {
@@ -554,6 +645,27 @@ describe('overflow guard: the import review card', () => {
     expect(Number(weightOf(current)))
       .withContext('current code is weighted')
       .toBeGreaterThan(Number(weightOf(other)));
+  });
+
+  it('carries the add-a-row control under the list, inside the 288px', () => {
+    // One control for the whole card rather than one per row: it adds a row,
+    // it does not edit one, so it is not in `.card-extras` and takes its 40px
+    // in its own box the way the strip's triggers do.
+    const add = el('.add-row');
+    expect(host.querySelectorAll('.add-row').length).withContext('one for the list').toBe(1);
+    expect(add.getBoundingClientRect().height)
+      .withContext('add a row tap target')
+      .toBeGreaterThanOrEqual(40);
+    expect(withinWidthOf(clip, add)).withContext('add a row inside the clip').toBeTrue();
+
+    // Under the list, and outside the scroller the rows sit in: the list caps
+    // at 70dvh, so a control inside it is one a reviewer with twenty rows has
+    // to scroll to find — and the truncation notice points straight at it.
+    const list = host.querySelector('.transactions-list') as HTMLElement;
+    expect(list.contains(add)).withContext('not inside the rows\' scroller').toBeFalse();
+    expect(add.getBoundingClientRect().top)
+      .withContext('under the list rather than inside a card')
+      .toBeGreaterThanOrEqual(list.getBoundingClientRect().bottom - 1);
   });
 
   it('keeps the bulk currency button and the count badge on the header', () => {

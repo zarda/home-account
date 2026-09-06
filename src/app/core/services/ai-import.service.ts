@@ -29,6 +29,7 @@ import {
   ReceiptProcessingError,
 } from '../utils/ai-error.utils';
 import { nextImportRowId } from '../utils/import-row-id.utils';
+import { normalizeTags } from '../utils/tag.utils';
 import {
   FALLBACK_CATEGORY_ID,
   gradeCategorySuggestion,
@@ -730,6 +731,45 @@ export class AIImportService {
   }
 
   /**
+   * What this account files in, for a row no door produced: the review card
+   * denominates a hand-added row in it when there is no row above to copy a
+   * currency from, so the row the reviewer types cannot land in a currency
+   * the batch beside it never used. The doors here take the same reading
+   * inline, mid-map; this exists because the card is outside this service
+   * and must not reach past it into the auth session for it.
+   */
+  baseCurrency(): string {
+    return baseCurrencyOf(this.authService.currentUser());
+  }
+
+  /**
+   * Every tag this account already files by, for the card's own add control:
+   * what the memory remembers, what the recent window carries, and what the
+   * batch itself arrived with.
+   *
+   * `ensureLoaded` first, because the memory can still be cold here — the
+   * JSON door and a CSV that carried its own tags never run `suggest`, which
+   * is what usually warms it, and a vocabulary read mid-load is short of
+   * exactly the tags this user decided on.
+   *
+   * Never rejects, the same contract `suggest` holds. The list is an offer
+   * and the field takes a hand-typed tag either way, so a door that failed
+   * costs the reviewer suggestions and nothing else — what could be gathered
+   * is still answered.
+   */
+  async tagVocabulary(rows: readonly CategorizedImportTransaction[]): Promise<string[]> {
+    const own = rows.flatMap(row => row.tags ?? []);
+    try {
+      await this.tagMemory.ensureLoaded();
+      const history = await this.groundingHistory.recent();
+      return normalizeTags([...this.tagSuggestions.vocabularyFrom(history), ...own]);
+    } catch (error) {
+      console.warn('[AIImport] Could not read the tag vocabulary:', error);
+      return normalizeTags(own);
+    }
+  }
+
+  /**
    * Offer each row the active rule it looks like. One enumeration per batch
    * through listAll(): the rules signal is only warm on pages that subscribed
    * (ADR 0034), and a link is a write decision. A row already linked by its
@@ -1024,30 +1064,40 @@ export class AIImportService {
 
       const baseCurrency = baseCurrencyOf(this.authService.currentUser());
       const categorized: CategorizedImportTransaction[] = data.transactions.map(
-        (t: Record<string, unknown>) => ({
-          id: nextImportRowId('json'),
-          description: t['description'] as string || 'Unknown',
-          amount: Math.abs(t['amount'] as number || 0),
-          ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
-          date: t['date']
-            ? new Date((t['date'] as { seconds: number }).seconds * 1000)
-            : new Date(),
-          type: (t['type'] as 'income' | 'expense') || 'expense',
-          suggestedCategoryId: (t['categoryId'] as string) || 'other_expense',
-          categoryConfidence: 1.0, // From backup, category is known
-          isDuplicate: false,
-          selected: true,
-          // A backup row carries what its transaction held; anything absent
-          // or malformed stays absent rather than being defaulted.
-          ...(t['note'] ? { notes: t['note'] as string } : {}),
-          ...(Array.isArray(t['tags']) && t['tags'].length ? { tags: t['tags'] as string[] } : {}),
-          // Gated on a name until 0068, which silently dropped a location
-          // that carried only a country -- exactly what a backup taken after
-          // that change holds for a receipt that printed no address.
-          ...locationSlotFrom(t['location'] as TransactionLocation | undefined),
-          ...(isBudgetPeriod(t['period']) ? { period: t['period'] } : {}),
-          ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {})
-        })
+        (t: Record<string, unknown>) => {
+          // The same resolver every other door runs its date through, and with
+          // no confidence because nobody graded these: a backup's dates are
+          // facts it recorded, not readings off paper. Ungraded means the
+          // plausibility window is skipped, so a years-old file re-imports as
+          // itself, while an absent or unreadable value still lands on today
+          // carrying the mark the review card asks its question from. Reading
+          // `.seconds` here by hand was what left that row silently dated
+          // today, and a `date` of any other shape an Invalid Date.
+          const resolved = resolveImportDate(t['date']);
+          return {
+            id: nextImportRowId('json'),
+            description: t['description'] as string || 'Unknown',
+            amount: Math.abs(t['amount'] as number || 0),
+            ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
+            date: resolved.date,
+            type: (t['type'] as 'income' | 'expense') || 'expense',
+            suggestedCategoryId: (t['categoryId'] as string) || 'other_expense',
+            categoryConfidence: 1.0, // From backup, category is known
+            isDuplicate: false,
+            selected: true,
+            // A backup row carries what its transaction held; anything absent
+            // or malformed stays absent rather than being defaulted.
+            ...(t['note'] ? { notes: t['note'] as string } : {}),
+            ...(Array.isArray(t['tags']) && t['tags'].length ? { tags: t['tags'] as string[] } : {}),
+            // Gated on a name until 0068, which silently dropped a location
+            // that carried only a country -- exactly what a backup taken after
+            // that change holds for a receipt that printed no address.
+            ...locationSlotFrom(t['location'] as TransactionLocation | undefined),
+            ...(isBudgetPeriod(t['period']) ? { period: t['period'] } : {}),
+            ...(typeof t['isRecurring'] === 'boolean' ? { isRecurring: t['isRecurring'] } : {}),
+            ...(resolved.dateAssumed ? { dateAssumed: true } : {})
+          };
+        }
       );
 
       this.processingStatus.set('Checking for duplicates...');

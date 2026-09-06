@@ -96,12 +96,21 @@
                   [attr.aria-label]="'common.description' | translate"
                 >
               } @else {
+                <!-- Nothing, or nothing but spaces, is a control with no
+                     width to press on: the placeholder is what says the row
+                     is still unfilled, and it answers the same predicate the
+                     gate holds Continue on rather than a truthiness test
+                     that reads a quoted "   " cell as filled. -->
                 <button
                   type="button"
                   class="description-text inline-edit"
                   [attr.aria-label]="editDescriptionLabel(row)"
                   (click)="startEdit(row, 'description')"
-                >{{ row.description }}</button>
+                >@if (descriptionIsUnfilled(row)) {
+                    <span class="placeholder">{{ 'import.addDescription' | translate }}</span>
+                  } @else {
+                    {{ row.description }}
+                  }</button>
               }
             </div>
             <div class="amount-section" [class.income]="row.type === 'income'" [class.expense]="row.type === 'expense'">
@@ -140,13 +149,23 @@
                   </span>
                 }
               } @else {
+                <!-- An unusable figure arrives from every door, not only from
+                     Add a row: a blank CSV cell, a missing total, a refund
+                     that cancels its charge. Such a row carries no verify
+                     flag — that reads a grade these rows have none of — so
+                     without the placeholder it reads as an ordinary -$0.00
+                     and the count in the hint has nothing to find it by. -->
                 <button
                   type="button"
                   class="inline-edit"
                   [attr.aria-label]="editAmountLabel(row)"
                   (click)="startEdit(row, 'amount')"
                 >
-                  <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
+                  @if (amountIsUnfilled(row)) {
+                    <span class="placeholder">{{ 'import.addAmount' | translate }}</span>
+                  } @else {
+                    <span class="amount-text" appFitText>{{ row.type === 'income' ? '+' : '-' }}{{ formatAmount(row) }}</span>
+                  }
                 </button>
               }
             </div>
@@ -252,74 +271,158 @@
           </div>
 
           <!-- Anything the source suggested beyond the core fields, each
-               droppable in one tap -->
-          @if (row.location || row.receiptCountry || row.tags?.length || row.recurringMatch || row.currencySuggestion || showsDateChip(row)) {
-            <div class="card-extras">
-              <!-- The date question: Keep is the chip's body, and the change
-                   button opens the same picker the date button does. -->
-              @if (showsDateChip(row)) {
-                <span class="extra-chip date-check">
-                  <button type="button" class="extra-accept" [attr.aria-label]="keepDateLabel(row)" [matTooltip]="dateTooltip(row)" matTooltipPosition="above" (click)="keepDate(row)">
-                    <mat-icon aria-hidden="true">event</mat-icon>
-                    <span class="extra-text">{{ dateChipText(row) }}</span>
+               droppable in one tap — and the add triggers. Add tag is the
+               unconditional one, so the strip renders on every row whether or
+               not anything was suggested for it; Add location stands only
+               where there is no location chip to correct instead. -->
+          <div class="card-extras">
+            <!-- The date question: Keep is the chip's body, and the change
+                 button opens the same picker the date button does. -->
+            @if (showsDateChip(row)) {
+              <span class="extra-chip date-check">
+                <button type="button" class="extra-accept" [attr.aria-label]="keepDateLabel(row)" [matTooltip]="dateTooltip(row)" matTooltipPosition="above" (click)="keepDate(row)">
+                  <mat-icon aria-hidden="true">event</mat-icon>
+                  <span class="extra-text">{{ dateChipText(row) }}</span>
+                </button>
+                <button type="button" class="extra-remove extra-change" [attr.aria-label]="changeDateLabel(row)" (click)="datePicker.open()">
+                  <mat-icon>edit_calendar</mat-icon>
+                </button>
+              </span>
+            }
+            @if (row.recurringMatch; as match) {
+              <mat-checkbox
+                class="recurring-link"
+                [checked]="!!row.recurringId"
+                (change)="toggleRecurringLink(row, $event.checked)"
+              >
+                <mat-icon aria-hidden="true">autorenew</mat-icon>
+                {{ 'import.linkRecurring' | translate: { rule: match.name } }}
+              </mat-checkbox>
+            }
+            <!-- Declared once and placed twice: the same field edits the name
+                 on a chip that already has one and on a row that has nothing
+                 yet, and two copies of it would be two sets of handlers to
+                 keep in step. -->
+            <ng-template #placeEditor>
+              <input
+                class="inline-input place-input"
+                type="text"
+                [value]="row.location?.name ?? ''"
+                [attr.aria-label]="'import.placeName' | translate"
+                enterkeyhint="done"
+                (keydown.enter)="commitPlaceName(row, $event)"
+                (keydown.escape)="cancelEdit(row)"
+                (blur)="commitPlaceName(row, $event)"
+              >
+            </ng-template>
+            <!-- One chip for both shapes the location arrives in: a printed
+                 address, or the country the reader concluded with no address
+                 to print, which the mapper files as the location all the
+                 same (0068). Either is corrected here — the name typed, the
+                 country picked — and `country-chip` still means the second
+                 shape: a country nobody could see a name for. -->
+            @if (row.location || row.receiptCountry) {
+              <span class="extra-chip" [class.country-chip]="!row.location?.name">
+                <mat-icon aria-hidden="true">place</mat-icon>
+                @if (isEditing(row, 'place')) {
+                  <ng-container [ngTemplateOutlet]="placeEditor" />
+                } @else {
+                  <button type="button" class="extra-accept place-name" [attr.aria-label]="placeNameLabel(row)" (click)="startEdit(row, 'place')">
+                    @if (row.location?.name) {
+                      <span class="extra-text">{{ row.location | locationLabel }}</span>
+                    } @else {
+                      <mat-icon aria-hidden="true">edit</mat-icon>
+                    }
                   </button>
-                  <button type="button" class="extra-remove extra-change" [attr.aria-label]="changeDateLabel(row)" (click)="datePicker.open()">
-                    <mat-icon>edit_calendar</mat-icon>
-                  </button>
-                </span>
-              }
-              @if (row.recurringMatch; as match) {
-                <mat-checkbox
-                  class="recurring-link"
-                  [checked]="!!row.recurringId"
-                  (change)="toggleRecurringLink(row, $event.checked)"
-                >
-                  <mat-icon aria-hidden="true">autorenew</mat-icon>
-                  {{ 'import.linkRecurring' | translate: { rule: match.name } }}
-                </mat-checkbox>
-              }
-              @if (row.location; as location) {
-                <span class="extra-chip">
-                  <mat-icon aria-hidden="true">place</mat-icon>
-                  <span class="extra-text">{{ location | locationLabel }}</span>
-                  <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
-                    <mat-icon>close</mat-icon>
-                  </button>
-                </span>
-              } @else if (row.receiptCountry) {
-                <!-- No printed address, but the mapper writes the concluded
-                     country as the location all the same: shown and
-                     removable like one, or it lands unseen. -->
-                <span class="extra-chip country-chip">
-                  <mat-icon aria-hidden="true">place</mat-icon>
-                  <span class="extra-text">{{ receiptCountryText(row) }}</span>
-                  <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
-                    <mat-icon>close</mat-icon>
-                  </button>
-                </span>
-              }
-              @if (row.currencySuggestion) {
-                <span class="extra-chip currency-offer">
-                  <button type="button" class="extra-accept" [attr.aria-label]="currencyOfferLabel(row)" [matTooltip]="currencyOfferReason(row)" matTooltipPosition="above" (click)="acceptCurrencySuggestion(row)">
+                }
+                <!-- Its own class, never `.extra-remove`: that selector is how
+                     the removal below is found, and a second element wearing
+                     it would answer first. -->
+                <button type="button" class="extra-country" [matMenuTriggerFor]="countryMenu" [attr.aria-label]="countryButtonLabel(row)">
+                  @if (effectiveCountry(row)) {
+                    <span class="country-name">{{ countryLabel(row) }}</span>
+                  } @else {
                     <mat-icon aria-hidden="true">public</mat-icon>
-                    <span class="extra-text">{{ currencyOfferText(row) }}</span>
-                  </button>
-                  <button type="button" class="extra-remove" [attr.aria-label]="'import.dismissCurrencySuggestion' | translate" (click)="dismissCurrencySuggestion(row)">
-                    <mat-icon>close</mat-icon>
-                  </button>
-                </span>
-              }
-              @for (tag of row.tags ?? []; track tag) {
-                <span class="extra-chip tag-chip">
-                  <mat-icon aria-hidden="true">label</mat-icon>
-                  <span class="extra-text">{{ tag }}</span>
-                  <button type="button" class="extra-remove" [attr.aria-label]="'import.removeTag' | translate: { tag }" (click)="removeTag(row, tag)">
-                    <mat-icon>close</mat-icon>
-                  </button>
-                </span>
-              }
-            </div>
-          }
+                  }
+                </button>
+                <!-- Lazy, the bulk currency menu's idiom: 79 regions named
+                     and collated per row, on twenty rows, for a menu nobody
+                     opened. -->
+                <mat-menu #countryMenu="matMenu">
+                  <ng-template matMenuContent>
+                    @if (effectiveCountry(row)) {
+                      <button mat-menu-item type="button" (click)="setCountry(row, null)">
+                        <span class="option-label">{{ 'import.noCountry' | translate }}</span>
+                      </button>
+                    }
+                    @for (option of countryChoices(row); track option.code) {
+                      <button
+                        mat-menu-item
+                        type="button"
+                        [class.current]="option.code === effectiveCountry(row)"
+                        [attr.aria-current]="option.code === effectiveCountry(row) ? 'true' : null"
+                        (click)="setCountry(row, option.code)"
+                      >
+                        <span class="option-label">{{ option.name }}</span>
+                      </button>
+                    }
+                  </ng-template>
+                </mat-menu>
+                <button type="button" class="extra-remove" [attr.aria-label]="'import.removeLocation' | translate" (click)="removeLocation(row)">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </span>
+            } @else if (isEditing(row, 'place')) {
+              <ng-container [ngTemplateOutlet]="placeEditor" />
+            } @else {
+              <button type="button" class="extra-add location-add" (click)="startEdit(row, 'place')">
+                <mat-icon aria-hidden="true">place</mat-icon>
+                <span>{{ 'import.addLocation' | translate }}</span>
+              </button>
+            }
+            @if (row.currencySuggestion) {
+              <span class="extra-chip currency-offer">
+                <button type="button" class="extra-accept" [attr.aria-label]="currencyOfferLabel(row)" [matTooltip]="currencyOfferReason(row)" matTooltipPosition="above" (click)="acceptCurrencySuggestion(row)">
+                  <mat-icon aria-hidden="true">public</mat-icon>
+                  <span class="extra-text">{{ currencyOfferText(row) }}</span>
+                </button>
+                <button type="button" class="extra-remove" [attr.aria-label]="'import.dismissCurrencySuggestion' | translate" (click)="dismissCurrencySuggestion(row)">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </span>
+            }
+            @for (tag of row.tags ?? []; track tag) {
+              <span class="extra-chip tag-chip">
+                <mat-icon aria-hidden="true">label</mat-icon>
+                <span class="extra-text">{{ tag }}</span>
+                <button type="button" class="extra-remove" [attr.aria-label]="'import.removeTag' | translate: { tag }" (click)="removeTag(row, tag)">
+                  <mat-icon>close</mat-icon>
+                </button>
+              </span>
+            }
+            <!-- The reader offers tags from what the account already uses;
+                 this is the reviewer answering with one it did not think
+                 of. The card's list is the suggestion, so the field takes
+                 anything typed into it either way. -->
+            @if (isEditing(row, 'tag')) {
+              <input
+                class="inline-input tag-input"
+                type="text"
+                [attr.list]="vocabularyListId"
+                [attr.aria-label]="'import.newTag' | translate"
+                [placeholder]="'import.newTag' | translate"
+                enterkeyhint="done"
+                (keydown.enter)="commitTag(row, $event)"
+                (keydown.escape)="cancelEdit(row)"
+                (blur)="commitTag(row, $event)"
+              >
+            } @else {
+              <button type="button" class="extra-add tag-add" (click)="startEdit(row, 'tag')">
+                <mat-icon aria-hidden="true">add</mat-icon>
+                <span>{{ 'import.addTag' | translate }}</span>
+              </button>
+            }
+          </div>
 
           <!-- Notes Section - compact inline. Typed into a draft and filed on
                blur through replaceRow, never onto the row itself. -->
@@ -350,7 +453,27 @@
     }
   </div>
 
+  <!-- Under the whole list rather than in a row: it adds a row, it does not
+       edit one, so it is neither an `.extra-add` nor inside the scroller the
+       rows sit in — a control the reviewer has to scroll a batch of twenty to
+       reach is a control the truncation notice points at in vain. -->
+  <div class="list-footer">
+    <button type="button" class="add-row" (click)="addRow()">
+      <mat-icon aria-hidden="true">add</mat-icon>
+      <span>{{ 'import.addRow' | translate }}</span>
+    </button>
+  </div>
+
   @if (transactions.length === 0) {
     <app-empty-state size="sm" icon="inbox" [title]="'import.noTransactions' | translate" />
   }
+
+  <!-- One list for the whole card, pointed at by every row's tag input: the
+       browser's own suggestion popup, so nothing of ours can cover the row
+       being edited. Its id is per instance, not per row. -->
+  <datalist [id]="vocabularyListId">
+    @for (tag of tagVocabulary; track tag) {
+      <option [value]="tag"></option>
+    }
+  </datalist>
 </div>

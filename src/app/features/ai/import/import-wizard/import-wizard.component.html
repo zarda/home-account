@@ -35,7 +35,7 @@
   <!-- Stepper -->
   <mat-stepper [linear]="!fromCamera" #stepper class="modern-stepper">
     <!-- Step 1: Upload -->
-    <mat-step [completed]="uploadComplete()">
+    <mat-step [completed]="uploadComplete()" [editable]="!isImporting()">
       <ng-template matStepLabel>{{ 'import.uploadStep' | translate }}</ng-template>
 
       <div class="step-content upload-step">
@@ -102,7 +102,7 @@
     </mat-step>
 
     <!-- Step 2: Processing -->
-    <mat-step [completed]="processingComplete()">
+    <mat-step [completed]="processingComplete()" [editable]="!isImporting()">
       <ng-template matStepLabel>{{ 'import.processingStep' | translate }}</ng-template>
 
       <div class="step-content processing-step">
@@ -227,7 +227,7 @@
     </mat-step>
 
     <!-- Step 3: Review -->
-    <mat-step [completed]="reviewComplete()">
+    <mat-step [completed]="reviewComplete()" [editable]="!isImporting()">
       <ng-template matStepLabel>{{ 'import.reviewStep' | translate }}</ng-template>
 
       <div class="step-content review-step">
@@ -255,6 +255,8 @@
           [transactions]="extractedTransactions()"
           [categories]="categories()"
           [dateAttentionIds]="receiptRowIds()"
+          [tagVocabulary]="tagVocabulary()"
+          [defaultCurrency]="baseCurrency"
           (transactionsUpdated)="onTransactionsUpdated($event)"
           (selectionChanged)="onSelectionChanged($event)"
         ></app-transaction-preview-table>
@@ -267,6 +269,14 @@
           </p>
         }
 
+        <!-- And why else: a row above carries no amount or no description —
+             the one the reviewer just added, or one that arrived that way. -->
+        @if (unfilledRows() > 0) {
+          <p class="rows-hint" role="status">
+            {{ 'import.rowsToFill' | translate:{ count: unfilledRows() } }}
+          </p>
+        }
+
         <div class="step-actions">
           <button mat-stroked-button (click)="stepper.previous()">
             <mat-icon>arrow_back</mat-icon>
@@ -276,7 +286,7 @@
             mat-flat-button
             color="primary"
             class="action-button"
-            [disabled]="selectedCount() === 0 || unansweredDates() > 0"
+            [disabled]="selectedCount() === 0 || unansweredDates() > 0 || unfilledRows() > 0"
             (click)="stepper.next()"
           >
             {{ 'common.continue' | translate }}
@@ -287,7 +297,7 @@
     </mat-step>
 
     <!-- Step 4: Confirm -->
-    <mat-step>
+    <mat-step [editable]="!isImporting()">
       <ng-template matStepLabel>{{ 'import.confirmStep' | translate }}</ng-template>
 
       <div class="step-content confirm-step">
@@ -338,6 +348,15 @@
               </div>
             </div>
           }
+          @if (unfilledRows() > 0) {
+            <div class="summary-card rows-card">
+              <mat-icon>edit_note</mat-icon>
+              <div class="card-content">
+                <span class="card-value">{{ unfilledRows() }}</span>
+                <span class="card-label">{{ 'import.rowsToFillTitle' | translate }}</span>
+              </div>
+            </div>
+          }
           @if (hasMultiImageData()) {
             <div class="summary-card multi-image-card">
               <mat-icon>photo_library</mat-icon>
@@ -378,7 +397,7 @@
             mat-flat-button
             color="primary"
             class="action-button import-button"
-            [disabled]="isImporting() || rechecksInFlight() > 0 || selectedCount() === 0 || unansweredDates() > 0"
+            [disabled]="isImporting() || rechecksInFlight() > 0 || selectedCount() === 0 || unansweredDates() > 0 || unfilledRows() > 0"
             (click)="confirmImport()"
           >
             @if (isImporting()) {

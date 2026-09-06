@@ -32,20 +32,49 @@ import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
+import { countryOptions } from '../../../../core/utils/country-options.utils';
 import {
+  amountIsUnfilled,
+  blankImportRow,
   datedToday,
+  descriptionIsUnfilled,
   joinSentences,
   needsDateAnswer,
   parseAmountInput,
   withoutFieldConfidence,
 } from '../../../../core/utils/import-review.utils';
+import { nextImportRowId } from '../../../../core/utils/import-row-id.utils';
 import { isImeComposition } from '../../../../core/utils/keyboard.utils';
+import { normalizeTag, normalizeTags } from '../../../../core/utils/tag.utils';
 import { CategorySuggestionComponent } from '../category-suggestion/category-suggestion.component';
 import { LocaleDatePipe } from '../../../../shared/pipes/locale-date.pipe';
 import { TranslatePipe } from '../../../../shared/pipes/translate.pipe';
 import { LocationLabelPipe } from '../../../../shared/pipes/location-label.pipe';
 import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
+
+/**
+ * The fields a row edits in place, each with the triggers its editor could
+ * hand focus back to when an edit ends on a key — tried in order. A map
+ * rather than a selector derived from the field name: only two of these live
+ * in a `.<field>-section` holding an `.inline-edit`, and a derived selector
+ * that matches nothing drops focus at the document root without a word.
+ *
+ * The place is the one field whose commit can take its own trigger off the
+ * card: emptying the name of a location with nothing else under it withdraws
+ * the whole chip, and what stands where it stood is the add trigger.
+ */
+const EDIT_TRIGGERS = {
+  amount: ['.amount-section .inline-edit'],
+  description: ['.description-section .inline-edit'],
+  tag: ['.tag-add'],
+  place: ['.place-name', '.location-add'],
+} as const;
+
+type EditField = keyof typeof EDIT_TRIGGERS;
+
+/** One datalist per card instance: two on a page must not answer to one id. */
+let vocabularyListSeq = 0;
 
 @Component({
   selector: 'app-transaction-preview-table',
@@ -92,6 +121,19 @@ export class TransactionPreviewTableComponent {
    * row into a question the moment one photo rode along.
    */
   @Input() dateAttentionIds: ReadonlySet<string> = new Set();
+  /**
+   * Every tag the account already files by, offered to the add control. The
+   * wizard fills it; an account with none gets a bare field, which still
+   * takes anything typed into it.
+   */
+  @Input() tagVocabulary: readonly string[] = [];
+  /**
+   * What a hand-added row is denominated in when there is no row above it to
+   * copy a currency from — the account's base, which the wizard reads. Empty
+   * only in a test that never adds one; the curated picker's first code
+   * stands in then.
+   */
+  @Input() defaultCurrency = '';
   @Output() transactionsUpdated = new EventEmitter<CategorizedImportTransaction[]>();
   @Output() selectionChanged = new EventEmitter<Set<string>>();
 
@@ -118,6 +160,9 @@ export class TransactionPreviewTableComponent {
   private fellBackEligible = new Set<string>();
 
   readonly currencies = this.currencyService.getSupportedCurrencies();
+
+  /** What every row's tag input points its `list` at. */
+  readonly vocabularyListId = `tag-vocabulary-${++vocabularyListSeq}`;
 
   // Plain methods, not computed(): `transactions` is a regular @Input array,
   // not a signal — a computed would evaluate once and
@@ -311,12 +356,84 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * The country the reader concluded when no address was printed. The mapper
-   * writes it as the row's location (0068), so the card shows it the way it
-   * shows one, and the location's own remove is what clears it.
+   * The country this row will file under, however it was arrived at: one
+   * printed in an address, one the reader concluded with no address to print
+   * (0068), or one picked here by hand. Deliberately the same precedence the
+   * DTO mapper applies, so the chip names the country that actually lands.
    */
-  receiptCountryText(row: CategorizedImportTransaction): string {
-    return row.receiptCountry ? countryDisplayName(row.receiptCountry, this.localeFormat.locale) : '';
+  effectiveCountry(row: CategorizedImportTransaction): string | undefined {
+    return row.location?.country ?? row.receiptCountry;
+  }
+
+  /**
+   * That country in the active language. Resolved at render rather than
+   * stored, for the reason locationLabel gives: one language's answer baked
+   * into the row would be wrong in every other.
+   */
+  countryLabel(row: CategorizedImportTransaction): string {
+    const code = this.effectiveCountry(row);
+    return code ? countryDisplayName(code, this.localeFormat.locale) : '';
+  }
+
+  /**
+   * The countries the picker offers — the transaction filter's own list,
+   * with the row's country appended when the bundled table has no box for
+   * it. Called from inside the menu's lazy content and nowhere else: this
+   * names and collates 79 regions per call, and a batch is twenty rows.
+   */
+  countryChoices(row: CategorizedImportTransaction): { code: string; name: string }[] {
+    return countryOptions(this.localeFormat.locale, this.effectiveCountry(row));
+  }
+
+  /**
+   * The name trigger's own name. Its content is the place, or — on a row
+   * that has a country and nothing else — an edit glyph, which says neither
+   * what it edits nor what is in it.
+   */
+  placeNameLabel(row: CategorizedImportTransaction): string {
+    const name = row.location?.name;
+    return name
+      ? this.translationService.t('import.editPlaceName', { name })
+      : this.translationService.t('import.addPlaceName');
+  }
+
+  /** Likewise the country button, whose glyph alone says nothing when no country is set. */
+  countryButtonLabel(row: CategorizedImportTransaction): string {
+    const country = this.countryLabel(row);
+    return country
+      ? this.translationService.t('import.changeCountry', { country })
+      : this.translationService.t('import.setCountry');
+  }
+
+  /**
+   * Pick the row's country by hand, or withdraw it.
+   *
+   * `receiptCountry` goes either way. The mark is what the reader concluded,
+   * and the mapper falls back to it whenever the location carries no country
+   * of its own (`import-dto.utils`) — so left behind it would quietly put
+   * the overruled country back the moment the picked one was withdrawn. A
+   * country chosen by hand is the evidence now.
+   *
+   * Withdrawing from a location with no name drops the location whole, and
+   * any coordinate on it with that: `locationSlot` refuses a bare coordinate
+   * pair, so keeping one would leave a chip on the card standing for a
+   * location the write would discard.
+   *
+   * That withdrawal takes the country button off the card with the chip, so
+   * the add trigger that replaces it is where focus goes instead — a
+   * selector that matches nothing would drop focus at the document root.
+   */
+  setCountry(row: CategorizedImportTransaction, code: string | null): void {
+    const location = row.location;
+    this.replaceRow(row, {
+      location: code
+        ? { ...(location ?? {}), country: code }
+        : location?.name
+          ? { ...location, country: undefined }
+          : undefined,
+      receiptCountry: undefined,
+    });
+    this.focusWhenRendered(this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
   }
 
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
@@ -589,10 +706,10 @@ export class TransactionPreviewTableComponent {
    * state the commit is still reading. Keyed the way fellBackEligible is, and
    * surviving replaceRow for the same reason.
    */
-  private editing = new Map<string, 'amount' | 'description'>();
+  private editing = new Map<string, EditField>();
 
   // A plain method rather than a computed, for the reason selectedCount gives.
-  isEditing(row: CategorizedImportTransaction, field: 'amount' | 'description'): boolean {
+  isEditing(row: CategorizedImportTransaction, field: EditField): boolean {
     return this.editing.get(row.id) === field;
   }
 
@@ -600,7 +717,7 @@ export class TransactionPreviewTableComponent {
    * Open the editor on a field and put the caret in it, so the tap that asked
    * to edit is also the tap that starts typing.
    */
-  startEdit(row: CategorizedImportTransaction, field: 'amount' | 'description'): void {
+  startEdit(row: CategorizedImportTransaction, field: EditField): void {
     this.editing.set(row.id, field);
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
@@ -661,7 +778,7 @@ export class TransactionPreviewTableComponent {
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
     if (restoreFocus && field) {
-      this.focusWhenRendered(this.inRow(row, `.${field}-section .inline-edit`));
+      this.focusWhenRendered(...EDIT_TRIGGERS[field].map(selector => this.inRow(row, selector)));
     }
   }
 
@@ -682,6 +799,65 @@ export class TransactionPreviewTableComponent {
     // that reads as nothing in the list.
     if (!description || description === row.description) return;
     this.replaceRow(row, { description });
+  }
+
+  /**
+   * File the place name typed on the chip, guarded the way the description
+   * editor is.
+   *
+   * An emptied field means something here that it does not there: the name
+   * is one of the two facts this chip carries, and withdrawing it is not
+   * withdrawing the location. A country under it stays, as a chip of its
+   * own; with nothing under it the location goes. Neither case touches
+   * `receiptCountry` — a country the reader concluded is not something the
+   * reviewer just declined, and it keeps its own chip through the removal
+   * button, which is where declining it lives.
+   *
+   * Both branches carry the rest of the location through rather than rebuild
+   * it from the fields named here, because the name is not all a row can
+   * hold: `importFromJSON` rebuilds a restored backup's row through
+   * `locationSlotFrom`, which keeps a coordinate pair the receipt door never
+   * attaches. A list of fields to keep would drop the ones nobody thought
+   * of. The one case where dropping them is right is a location left with no
+   * country at all: `locationSlot` refuses a bare coordinate pair, so
+   * nothing would remain to write.
+   */
+  commitPlaceName(row: CategorizedImportTransaction, event: Event): void {
+    if (!this.editing.has(row.id)) return;
+    if (isImeComposition(event)) return;
+    const name = (event.target as HTMLInputElement).value.trim();
+    this.closeEdit(row, event.type === 'keydown');
+    if (name === (row.location?.name ?? '')) return;
+    if (!name) {
+      const location = { ...row.location };
+      delete location.name;
+      this.replaceRow(row, { location: location.country ? location : undefined });
+      return;
+    }
+    this.replaceRow(row, { location: { ...row.location, name } });
+  }
+
+  /**
+   * File one tag on the row, the way the description editor files a line:
+   * one value per commit, because this field is a single tag and not the
+   * transaction form's chip input — a comma typed here is part of the tag.
+   *
+   * Spelled through normalizeTag on the way in, so a tag added here matches
+   * a stored one exactly and the filter can find the row. Nothing typed, or
+   * a tag the row already carries, closes the editor and changes nothing —
+   * and the row's own tags are spelled the same way for that comparison
+   * only, because a JSON backup restores them verbatim: a row holding
+   * `Coffee` would otherwise take the vocabulary's `coffee` as a second tag
+   * and file both, the mapper passing tags through untouched.
+   */
+  commitTag(row: CategorizedImportTransaction, event: Event): void {
+    if (!this.editing.has(row.id)) return;
+    if (isImeComposition(event)) return;
+    const tag = normalizeTag((event.target as HTMLInputElement).value);
+    const tags = row.tags ?? [];
+    this.closeEdit(row, event.type === 'keydown');
+    if (!tag || normalizeTags(tags).includes(tag)) return;
+    this.replaceRow(row, { tags: [...tags, tag] });
   }
 
   /**
@@ -723,13 +899,33 @@ export class TransactionPreviewTableComponent {
     });
   }
 
-  /** The trigger's name has to carry the value, which its own content states without saying what it is. */
+  /**
+   * The gate's own readings of the two fields it holds an import for, bound
+   * as fields because the template cannot reach an imported function. The
+   * placeholder, the trigger's name and the wizard's count must all come
+   * from here: a truthiness test beside a trimmed gate leaves a row of
+   * spaces counted as unfilled and shown as filled, on a trigger with no
+   * width to press on.
+   */
+  readonly amountIsUnfilled = amountIsUnfilled;
+  readonly descriptionIsUnfilled = descriptionIsUnfilled;
+
+  /**
+   * The triggers' names have to carry their values, which their own content
+   * states without saying what it is — and a field nothing has been written
+   * into has no value to carry, so the name says what the placeholder in it
+   * says rather than naming an empty string or a formatted zero.
+   */
   editDescriptionLabel(row: CategorizedImportTransaction): string {
-    return this.translationService.t('import.editDescription', { description: row.description });
+    return descriptionIsUnfilled(row)
+      ? this.translationService.t('import.addDescription')
+      : this.translationService.t('import.editDescription', { description: row.description });
   }
 
   editAmountLabel(row: CategorizedImportTransaction): string {
-    return this.translationService.t('import.editAmount', { amount: this.formatAmount(row) });
+    return amountIsUnfilled(row)
+      ? this.translationService.t('import.addAmount')
+      : this.translationService.t('import.editAmount', { amount: this.formatAmount(row) });
   }
 
   /**
@@ -807,6 +1003,41 @@ export class TransactionPreviewTableComponent {
     if (!notes) return 1;
     const lineCount = notes.split('\n').length;
     return Math.min(Math.max(lineCount, 1), 20);
+  }
+
+  /**
+   * A blank row at the end of the list, for what the reader never reached.
+   *
+   * The notice above the list tells the reviewer to add whatever the answer
+   * was cut short of; this is the control that lets them, and it belongs to
+   * the list rather than to any row — appended at the end, never spliced in
+   * after the row it took its day and currency from, because the list is in
+   * the order the source gave it and a row nobody read has no place in that
+   * order.
+   *
+   * The editor is seeded before the row is emitted, because the emission is
+   * what the parent renders the row from: the state that decides whether it
+   * comes up as an input rather than an empty trigger has to be in place by
+   * then. `focusWhenRendered` waits for whichever pass renders it, so the
+   * tap that added the row is the tap that starts typing.
+   *
+   * The row goes onto the card's own list as well, the way every edit here
+   * does — the parent owns the array, but the card must not be rendering a
+   * list the reviewer has already added to.
+   */
+  addRow(): void {
+    const row = blankImportRow(
+      nextImportRowId('manual'),
+      this.transactions.at(-1),
+      // The picker's first code covers a card given no base currency at all,
+      // which is a test's shape rather than the wizard's.
+      this.defaultCurrency || this.currencies[0]?.code || 'USD'
+    );
+    this.editing.set(row.id, 'description');
+    this.transactions = [...this.transactions, row];
+    this.emitChanges();
+    this.cdr.markForCheck();
+    this.focusWhenRendered(this.inRow(row, '.inline-input'));
   }
 
   private emitChanges(): void {

@@ -4,6 +4,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatStepper } from '@angular/material/stepper';
 
 import { ImportWizardComponent } from './import-wizard.component';
 import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/services/ai-import.service';
@@ -91,7 +92,7 @@ describe('ImportWizardComponent', () => {
   };
 
   beforeEach(async () => {
-    mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError'], {
+    mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary', 'baseCurrency'], {
       isProcessing: signal(false),
       processingStatus: signal(''),
       processingProgress: signal(0)
@@ -106,6 +107,12 @@ describe('ImportWizardComponent', () => {
     mockImportService.importFromStatementImages.and.returnValue(Promise.resolve({
       ...mockImportResult, source: 'image' as const, fileType: 'screenshot' as const
     }));
+    // Resolved, never bare: the refresh below is a void-ed `.then`, and a bare
+    // spy answers undefined, which throws inside a promise nobody is holding.
+    mockImportService.tagVocabulary.and.resolveTo([]);
+    // Read once, in a field initializer, so it has to answer before the
+    // component is constructed rather than at the first template read.
+    mockImportService.baseCurrency.and.returnValue('USD');
     mockImportService.parseAIError.and.callFake((error: unknown) => ({
       message: error instanceof Error ? error.message : String(error),
       type: 'unknown',
@@ -507,6 +514,52 @@ describe('ImportWizardComponent', () => {
     }));
   });
 
+  describe('the rows still to fill in', () => {
+    // The twin of the date question: a count over the same rows, holding the
+    // same two buttons. Whether Continue and Import actually hold is a DOM
+    // matter for the smoke spec; this suite overrides the template away.
+    const blank = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      ...mockTransactions[0], id: 'manual_1', description: '', amount: 0, ...overrides,
+    });
+
+    it('counts a selected row with no amount, and one with no description', () => {
+      component.extractedTransactions.set([
+        blank({ id: 'nothing' }),
+        blank({ id: 'no-amount', description: 'Bread' }),
+        blank({ id: 'no-description', amount: 4 }),
+        blank({ id: 'whitespace', description: '   ', amount: 4 }),
+        { ...mockTransactions[0], id: 'filled' },
+      ]);
+
+      expect(component.unfilledRows()).toBe(4);
+    });
+
+    it('ignores a row the reviewer left out', () => {
+      component.extractedTransactions.set([blank({ id: 'left-out', selected: false })]);
+
+      expect(component.unfilledRows()).toBe(0);
+    });
+
+    it('holds the review step until the row the reviewer added is filled in', () => {
+      component.extractedTransactions.set([blank()]);
+      component.selectedTransactionIds.set(new Set(['manual_1']));
+
+      expect(component.unfilledRows()).toBe(1);
+      expect(component.reviewComplete()).toBeFalse();
+
+      // The card fills it through the same event every other edit rides.
+      component.onTransactionsUpdated([blank({ description: 'Bread', amount: 4 })]);
+
+      expect(component.unfilledRows()).toBe(0);
+      expect(component.reviewComplete()).toBeTrue();
+    });
+
+    it('reads the base currency once, for the card to denominate a blank row in', () => {
+      expect(component.baseCurrency).toBe('USD');
+      expect(mockImportService.baseCurrency).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('selectedCount', () => {
     it('should count selected transactions', () => {
       component.extractedTransactions.set(mockTransactions);
@@ -668,6 +721,37 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(component.answerIncomplete()).toBeFalse();
+    }));
+  });
+
+  describe('the tag vocabulary', () => {
+    it('fills from the service once a batch\'s rows land', fakeAsync(() => {
+      // Asked with the rows, not before them: the batch's own tags are part
+      // of the vocabulary the card offers.
+      mockImportService.tagVocabulary.and.resolveTo(['coffee', 'work']);
+      component.selectedFiles.set([new File([''], 'test.csv', { type: 'text/csv' })]);
+
+      component.processFiles();
+      tick();
+
+      expect(mockImportService.tagVocabulary).toHaveBeenCalledWith(component.extractedTransactions());
+      expect(component.tagVocabulary()).toEqual(['coffee', 'work']);
+    }));
+
+    it('fills on the camera hand-off too', fakeAsync(() => {
+      // The hand-off skips processFiles entirely, so its rows would arrive at
+      // the card with nothing to suggest.
+      mockImportService.tagVocabulary.and.resolveTo(['coffee']);
+      history.replaceState({ importResult: mockImportResult, fromCamera: true }, '');
+      try {
+        const cameraFixture = TestBed.createComponent(ImportWizardComponent);
+        cameraFixture.detectChanges();
+        tick();
+
+        expect(cameraFixture.componentInstance.tagVocabulary()).toEqual(['coffee']);
+      } finally {
+        history.replaceState({}, '');
+      }
     }));
   });
 
@@ -1091,6 +1175,51 @@ describe('ImportWizardComponent', () => {
       await component.confirmImport();
 
       expect(mockImportService.confirmImport.calls.mostRecent().args[6]).toBeUndefined();
+    });
+  });
+
+  describe('the return to review after a partial import', () => {
+    // The template is blanked here, so there is no real stepper and no
+    // header to click; that the header itself refuses the move is the
+    // smoke suite's case. What is testable here is the ordering the seal
+    // forces: every step carries [editable]="!isImporting()", and the CDK's
+    // selectedIndex setter takes a backward move only onto an editable step
+    // (stepper.mjs: `index >= this.selectedIndex || steps[index].editable`).
+    // The unlock is a binding, so it reaches the step at the next render and
+    // a set in the same task would be dropped, stranding the failed rows.
+    function stubStepper(at: number): { selectedIndex: number } {
+      const stepper = { selectedIndex: at };
+      component.stepper = stepper as unknown as MatStepper;
+      return stepper;
+    }
+
+    it('unlocks the steps before it moves back onto Review', () => {
+      const stepper = stubStepper(3);
+      component.isImporting.set(true);
+
+      component['returnToReview']();
+
+      // Synchronously, not after an await: an await would let the
+      // scheduler's own tick run the render hook first and the assertion
+      // would pass whatever the order.
+      expect(component.isImporting()).toBeFalse();
+      expect(stepper.selectedIndex).toBe(3);
+
+      fixture.detectChanges();
+
+      expect(stepper.selectedIndex).toBe(2);
+    });
+
+    it('leaves the stepper alone once the wizard is destroyed', () => {
+      const stepper = stubStepper(3);
+      component.isImporting.set(true);
+      fixture.destroy();
+
+      // Registering a render hook on a destroyed injector throws NG0911,
+      // and by this point the partial-import toast is already out: the
+      // throw would surface as an unhandled error and nothing else.
+      expect(() => component['returnToReview']()).not.toThrow();
+      expect(stepper.selectedIndex).toBe(3);
     });
   });
 

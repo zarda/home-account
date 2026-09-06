@@ -16,8 +16,7 @@ import { Subject, Subscription, debounceTime } from 'rxjs';
 import { Category, CurrencyInfo, Goal, SavedSearch, TransactionFilters } from '../../../models';
 import { TransactionService } from '../../../core/services/transaction.service';
 import { CurrencyService } from '../../../core/services/currency.service';
-import { COUNTRY_CURRENCY } from '../../../core/utils/country-bounds';
-import { countryDisplayName } from '../../../core/utils/currency-suggestion.utils';
+import { countryOptions } from '../../../core/utils/country-options.utils';
 import { LocaleFormatService } from '../../../core/services/locale-format.service';
 import { GoalService } from '../../../core/services/goal.service';
 import { SearchHistoryService } from '../../../core/services/search-history.service';
@@ -110,33 +109,14 @@ export class TransactionFiltersComponent implements OnInit, OnChanges, OnDestroy
   }
 
   /**
-   * The countries offered for filtering, named in the active language and
-   * ordered by that name.
-   *
-   * The domain is the bundled bounding-box table's own country set — the same
-   * list the currency ladder places a coordinate in — rather than every region
-   * CLDR knows, because ADR 0008's discipline is that no country list ships
-   * for the model to be steered by, and this one already exists for another
-   * reason. It is travel-destination coverage, which is exactly when a country
-   * gets recorded.
-   *
-   * A receipt can still name a region outside that set, so a selected value
-   * that is not in it is appended rather than dropped — the goal picker's rule,
-   * for the same reason: an arriving filter must render its value and stay
-   * clearable. Listing the whole domain rather than only the countries present
-   * follows the currency filter beside it.
+   * The countries offered for filtering — the shared list, which the review
+   * card's own country picker offers too.
    *
    * A getter rather than a computed, again like goalOptions: `filters` is a
    * plain object, so the selected code is not a signal.
    */
   get countryOptions(): { code: string; name: string }[] {
-    const locale = this.localeFormat.locale;
-    const codes = new Set(Object.keys(COUNTRY_CURRENCY));
-    const selected = this.filters.country;
-    if (selected) codes.add(selected);
-    return [...codes]
-      .map(code => ({ code, name: countryDisplayName(code, locale) }))
-      .sort((a, b) => a.name.localeCompare(b.name, locale) || a.code.localeCompare(b.code));
+    return countryOptions(this.localeFormat.locale, this.filters.country);
   }
 
   // Store transaction dates for calendar highlighting - keyed by "year-month"
