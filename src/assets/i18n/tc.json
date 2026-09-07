@@ -1193,7 +1193,6 @@
     "syncNow": "立即同步",
     "clearQueue": "清除佇列",
     "storageInfo": "儲存空間",
-    "totalCache": "快取總量",
     "queueSynced": "佇列同步成功",
     "queueCleared": "佇列已清除",
     "queueSyncFailed": "同步佇列失敗",

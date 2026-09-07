@@ -1271,7 +1271,6 @@
     "syncNow": "Sync Now",
     "clearQueue": "Clear Queue",
     "storageInfo": "Storage",
-    "totalCache": "Total Cache",
     "queueSynced": "Queue synced successfully",
     "queueCleared": "Queue cleared",
     "queueSyncFailed": "Failed to sync queue",

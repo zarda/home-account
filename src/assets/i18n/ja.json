@@ -1193,7 +1193,6 @@
     "syncNow": "今すぐ同期",
     "clearQueue": "キューをクリア",
     "storageInfo": "ストレージ",
-    "totalCache": "合計キャッシュ",
     "queueSynced": "キューの同期が完了しました",
     "queueCleared": "キューがクリアされました",
     "queueSyncFailed": "キューの同期に失敗しました",

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { SwUpdate } from '@angular/service-worker';
 import { Subject } from 'rxjs';
-import { PwaService, CacheSize, PwaInstallPrompt } from './pwa.service';
+import { PwaService, PwaInstallPrompt } from './pwa.service';
 
 describe('PwaService', () => {
   // Every instance built here keeps its window listeners for the rest of the
@@ -35,17 +35,6 @@ describe('PwaService', () => {
 
   it('creates without a service worker', () => {
     expect(make()).toBeTruthy();
-  });
-
-  describe('formatBytes', () => {
-    it('formats across units', () => {
-      const s = make();
-      expect(s.formatBytes(0)).toBe('0 Bytes');
-      expect(s.formatBytes(512)).toBe('512 Bytes');
-      expect(s.formatBytes(1024)).toBe('1 KB');
-      expect(s.formatBytes(1024 * 1024)).toBe('1 MB');
-      expect(s.formatBytes(1024 * 1024 * 1024)).toBe('1 GB');
-    });
   });
 
   describe('online/offline state', () => {
@@ -247,15 +236,6 @@ describe('PwaService', () => {
   describe('service worker messages', () => {
     type Handler = (d: { type: string; payload?: unknown }) => void;
 
-    it('stores cache size from CACHE_SIZE messages', () => {
-      const s = make();
-      const size: CacheSize = { total: 10, models: 4, static: 3, dynamic: 3 };
-      (s as unknown as { handleServiceWorkerMessage: Handler }).handleServiceWorkerMessage({
-        type: 'CACHE_SIZE', payload: size,
-      });
-      expect(s.cacheSize()).toEqual(size);
-    });
-
     it('re-dispatches the sync signal', () => {
       const s = make();
       const events: string[] = [];
@@ -267,6 +247,16 @@ describe('PwaService', () => {
       expect(events).toEqual(['sync']);
     });
 
+    it('ignores CACHE_SIZE messages', () => {
+      const s = make();
+      const dispatchSpy = spyOn(window, 'dispatchEvent').and.callThrough();
+      const handler = (s as unknown as { handleServiceWorkerMessage: Handler }).handleServiceWorkerMessage.bind(s);
+      expect(() => handler({
+        type: 'CACHE_SIZE', payload: { total: 10, models: 4, static: 3, dynamic: 3 },
+      })).not.toThrow();
+      expect(dispatchSpy).not.toHaveBeenCalled();
+    });
+
     it('ignores CHECK_MODEL_UPDATES messages', () => {
       const s = make();
       const onModel = jasmine.createSpy('onModel');
@@ -275,18 +265,6 @@ describe('PwaService', () => {
       handler({ type: 'CHECK_MODEL_UPDATES' });
       window.removeEventListener('check-model-updates', onModel);
       expect(onModel).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('cache operations without a controller', () => {
-    it('getCacheSize returns zeros', async () => {
-      expect(await make().getCacheSize()).toEqual({ total: 0, models: 0, static: 0, dynamic: 0 });
-    });
-
-    it('clearModelCache and cacheModels resolve quietly', async () => {
-      const s = make();
-      await expectAsync(s.clearModelCache()).toBeResolved();
-      await expectAsync(s.cacheModels(['/models/a.bin'])).toBeResolved();
     });
   });
 

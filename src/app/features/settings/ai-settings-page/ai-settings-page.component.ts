@@ -129,7 +129,6 @@ export class AiSettingsPageComponent implements OnInit {
   useNativeOCR = computed(() => this.strategyService.useNativeOCR());
   platform = computed(() => this.strategyService.platform());
   pendingQueueCount = computed(() => this.offlineQueue.pendingCount());
-  cacheSize = computed(() => this.pwaService.cacheSize().total);
   configuredProviderCount = computed(() => {
     let count = 0;
     if (this.cloudLLMProvider.isProviderAvailable('gemini')) count++;
@@ -461,10 +460,6 @@ export class AiSettingsPageComponent implements OnInit {
       const message = this.translationService.t('aiPage.queueClearFailed');
       this.notifications.error(message);
     }
-  }
-
-  formatBytes(bytes: number): string {
-    return this.pwaService.formatBytes(bytes);
   }
 
   private showToast(key: string): void {
