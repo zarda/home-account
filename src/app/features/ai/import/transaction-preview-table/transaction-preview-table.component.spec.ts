@@ -3042,4 +3042,267 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(splitInput('txn1')).withContext('still editing').not.toBeNull();
     });
   });
+
+  /**
+   * Two rows that belong to one purchase — a receipt the reader split across
+   * two photos, or a wrong split — joined before the import (#371). This is
+   * the other half of the pair splitting a row started above.
+   */
+  describe('merging a row into another', () => {
+    const mergeTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .merge-trigger`) as HTMLButtonElement | null;
+    const descriptionTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .description-section .inline-edit`) as HTMLButtonElement | null;
+    const formattedDate = (row: CategorizedImportTransaction) =>
+      TestBed.inject(LocaleFormatService).formatDate(row.date);
+
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    /** The lazy menu's items, which do not exist until it is opened. */
+    function openMergeMenu(id: string): HTMLElement[] {
+      mergeTrigger(id)!.click();
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item'));
+    }
+
+    it('renders the trigger only on a row another row shares a currency with', () => {
+      render([
+        makeRow({ id: 'a', currency: 'USD' }),
+        makeRow({ id: 'b', currency: 'USD' }),
+        makeRow({ id: 'c', currency: 'KRW' }),
+      ]);
+
+      expect(mergeTrigger('a')).not.toBeNull();
+      expect(mergeTrigger('b')).not.toBeNull();
+      expect(mergeTrigger('c')).withContext('nothing else is in KRW').toBeNull();
+    });
+
+    it('names the trigger after the row', () => {
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee' }),
+        makeRow({ id: 'b', currency: 'USD', description: 'Lunch' }),
+      ]);
+
+      expect(mergeTrigger('a')!.getAttribute('aria-label')).toBe('import.mergeIntoLabel:{"description":"Coffee"}');
+      expect(mergeTrigger('b')!.getAttribute('aria-label')).toBe('import.mergeIntoLabel:{"description":"Lunch"}');
+    });
+
+    it('keeps a blank row out of a merge on either side: no trigger of its own, not listed on another\'s', () => {
+      // A hand-added row is filled first: merged into, its placeholder
+      // category and copied date would win, and the empty description is
+      // the only part of that the unfilled gate would catch.
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee' }),
+        makeRow({ id: 'b', currency: 'USD', description: 'Lunch' }),
+        makeRow({ id: 'c', currency: 'USD', description: '' }),
+        makeRow({ id: 'd', currency: 'USD', description: 'Water', amount: 0 }),
+      ]);
+
+      expect(mergeTrigger('c')).withContext('no description yet').toBeNull();
+      expect(mergeTrigger('d')).withContext('no amount yet').toBeNull();
+      const items = openMergeMenu('a');
+      expect(items.length).withContext('b only').toBe(1);
+      expect(items[0].textContent).toContain('Lunch');
+    });
+
+    it('keeps a flagged row out of a merge on either side until the badge\'s own control overrules it', () => {
+      // The verdict is answered by the overrule, never cleared on the way
+      // through a merge — a re-check that then failed would leave a real
+      // duplicate unflagged and selected.
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee' }),
+        makeRow({ id: 'b', currency: 'USD', description: 'Lunch' }),
+        makeRow({ id: 'c', currency: 'USD', description: 'Snacks', isDuplicate: true, duplicateOf: 'stored-1', selected: false }),
+      ]);
+
+      expect(mergeTrigger('c')).withContext('flagged').toBeNull();
+      expect(openMergeMenu('a').length).withContext('b only').toBe(1);
+
+      (fixture.nativeElement.querySelector('[data-row-id="c"] .duplicate-clear') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(mergeTrigger('c')).withContext('overruled, so back in').not.toBeNull();
+      expect(document.querySelectorAll('.mat-mdc-menu-panel .mat-mdc-menu-item').length)
+        .withContext('b and c, in the menu a still has open')
+        .toBe(2);
+    });
+
+    it('offers no trigger on a row whose only same-currency company is blank or flagged', () => {
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee' }),
+        makeRow({ id: 'b', currency: 'USD', description: '' }),
+        makeRow({ id: 'c', currency: 'USD', description: 'Snacks', isDuplicate: true, selected: false }),
+      ]);
+
+      expect(mergeTrigger('a')).withContext('nothing mergeable to offer').toBeNull();
+    });
+
+    it('keeps the trigger count right once an edit has replaced the array', () => {
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee' });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch' });
+      const c = makeRow({ id: 'c', currency: 'USD', description: 'Snacks' });
+      render([a, b, c]);
+      // The parent puts every emitted array back through the input, which
+      // is what marks this OnPush card for a re-render an instance
+      // assignment would not — and the array the census is keyed on.
+      component.transactionsUpdated.subscribe(rows => fixture.componentRef.setInput('transactions', rows));
+      const triggers = () => (fixture.nativeElement.querySelectorAll('.merge-trigger') as NodeListOf<HTMLElement>).length;
+      expect(triggers()).toBe(3);
+
+      component.updateCurrency(c, 'KRW');
+      fixture.detectChanges();
+      expect(triggers()).withContext('c left USD; a and b still share it').toBe(2);
+      expect(mergeTrigger('c')).toBeNull();
+
+      component.updateCurrency(component.transactions.find(t => t.id === 'b')!, 'KRW');
+      fixture.detectChanges();
+      expect(triggers()).withContext('b joined c in KRW, leaving a alone in USD').toBe(2);
+      expect(mergeTrigger('a')).toBeNull();
+    });
+
+    it('lists the other same-currency rows in the menu, named by mergeOption', () => {
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 }),
+        b,
+        makeRow({ id: 'c', currency: 'KRW' }),
+      ]);
+
+      const items = openMergeMenu('a');
+      expect(items.length).withContext('b only: c is a different currency, a is the row itself').toBe(1);
+      expect(items[0].textContent?.trim()).toBe(
+        `import.mergeOption:${JSON.stringify({ description: 'Lunch', amount: 'USD 12', date: formattedDate(b) })}`
+      );
+    });
+
+    it('merges the source into the picked target: a shorter array, the target\'s id, the summed amount and the union badge', () => {
+      const a = makeRow({
+        id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5,
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1 },
+      });
+      const b = makeRow({
+        id: 'b', currency: 'USD', description: 'Lunch', amount: 12,
+        imageMetadata: { imageIndex: 1, imageId: 'image_1', positionInImage: 'bottom', confidenceScore: 0.8, receiptId: 1 },
+      });
+      const given = [a, b];
+      render(given);
+      const emitted = emissions();
+
+      openMergeMenu('a').find(item => item.textContent?.includes('Lunch'))!.click();
+      fixture.detectChanges();
+
+      expect(given.length).withContext('never mutates the @Input() array').toBe(2);
+      expect(emitted.length).toBe(1);
+      expect(emitted[0]).withContext('a new array, as every other edit emits').not.toBe(given);
+      expect(emitted[0].length).toBe(1);
+      const [merged] = emitted[0];
+      expect(merged.id).withContext('the target keeps its id').toBe('b');
+      expect(merged.amount).toBe(17.5);
+
+      const badge = fixture.nativeElement.querySelector('.receipt-badge') as HTMLElement;
+      expect(badge.textContent).toContain('1–2');
+    });
+
+    it('merges by id, so a target replaced under the open menu still takes the source', () => {
+      // The menu's items hold the row objects captured at render, and the
+      // wizard replaces a row under the same id whenever a re-check
+      // reconciles its verdict. Resolving by id makes the click independent
+      // of whether a refresh ran between render and click — here it did
+      // not: an instance assignment marks nothing dirty on an OnPush root,
+      // so the items keep naming objects the array no longer holds.
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
+      render([a, b]);
+      const emitted = emissions();
+      const items = openMergeMenu('a');
+
+      component.transactions = [a, { ...b }];
+      fixture.detectChanges();
+      items[0].click();
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.id)).withContext('the source gone, the target kept').toEqual(['b']);
+      expect(emitted[0][0].amount).withContext('the target holds the source\'s figure').toBe(17.5);
+    });
+
+    it('merges by id on a direct call too, given a copy of the target the array never held', () => {
+      // The case above rests on the fixture leaving an OnPush root alone
+      // after an instance assignment; this one does not. Only the id can
+      // resolve a copy, so the pin survives a harness that refreshes.
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
+      render([a, b]);
+      const emitted = emissions();
+
+      component.mergeInto(a, { ...b });
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.id)).withContext('the source gone, the target kept').toEqual(['b']);
+      expect(emitted[0][0].amount).withContext('b\'s id, summed').toBe(17.5);
+    });
+
+    it('does nothing when the source or the target has left the batch by the time the click lands', () => {
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
+      const c = makeRow({ id: 'c', currency: 'USD', description: 'Snacks', amount: 3 });
+      render([a, b, c]);
+      const emitted = emissions();
+      const items = openMergeMenu('a');
+
+      component.transactions = [a, c];
+      fixture.detectChanges();
+      items.find(item => item.textContent?.includes('Lunch'))!.click();
+      fixture.detectChanges();
+
+      expect(emitted.length).withContext('the stale-commit no-op, as commitSplit models it').toBe(0);
+    });
+
+    it('forgets the source\'s in-progress edit once it has merged away', () => {
+      const a = makeRow({ id: 'a', currency: 'USD' });
+      const b = makeRow({ id: 'b', currency: 'USD' });
+      render([a, b]);
+      component.startEdit(a, 'description');
+      fixture.detectChanges();
+      expect(component.isEditing(a, 'description')).withContext('editing before the merge').toBeTrue();
+
+      openMergeMenu('a')[0].click();
+      fixture.detectChanges();
+
+      expect(component.isEditing(a, 'description')).withContext('forgotten once merged away').toBeFalse();
+    });
+
+    it('focuses the survivor\'s merge trigger when another row still shares its currency', async () => {
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee' });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch' });
+      const c = makeRow({ id: 'c', currency: 'USD', description: 'Snacks' });
+      render([a, b, c]);
+
+      openMergeMenu('a').find(item => item.textContent?.includes('Lunch'))!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(mergeTrigger('b'));
+    });
+
+    it('focuses the survivor\'s description trigger when the merge leaves nothing else in its currency', async () => {
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee' });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch' });
+      render([a, b]);
+
+      openMergeMenu('a')[0].click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(mergeTrigger('b')).withContext('nothing else left in USD').toBeNull();
+      expect(document.activeElement).toBe(descriptionTrigger('b'));
+    });
+  });
 });

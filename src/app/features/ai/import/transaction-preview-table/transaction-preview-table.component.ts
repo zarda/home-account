@@ -39,6 +39,8 @@ import {
   datedToday,
   descriptionIsUnfilled,
   joinSentences,
+  mergeImportRows,
+  mergeableRow,
   needsDateAnswer,
   parseAmountInput,
   splitImportRow,
@@ -978,6 +980,126 @@ export class TransactionPreviewTableComponent {
     return descriptionIsUnfilled(row)
       ? this.translationService.t('import.splitRow')
       : this.translationService.t('import.splitRowLabel', { description: row.description });
+  }
+
+  /**
+   * Mergeable rows per currency, counted once per array rather than once
+   * per row. canMerge is bound in the row @for, so a scan of the list from
+   * inside it is quadratic on every render, and every other eager per-row
+   * predicate on this card is O(1) — the O(n) work belongs behind the menu,
+   * in mergeTargets, where it runs only for a menu someone opened. The
+   * array's identity is the key: every edit here produces a new array
+   * rather than mutating the old one (the reason replaceRow rewrites a
+   * row), and the wizard hands back a new one on every emission, so a
+   * census cannot outlive the rows it counted.
+   */
+  private mergeCensus: { rows: readonly CategorizedImportTransaction[]; byCurrency: Map<string, number> } | null = null;
+
+  private mergeableByCurrency(): Map<string, number> {
+    let census = this.mergeCensus;
+    if (census?.rows !== this.transactions) {
+      const byCurrency = new Map<string, number>();
+      for (const t of this.transactions) {
+        if (mergeableRow(t)) byCurrency.set(t.currency, (byCurrency.get(t.currency) ?? 0) + 1);
+      }
+      census = this.mergeCensus = { rows: this.transactions, byCurrency };
+    }
+    return census.byCurrency;
+  }
+
+  /**
+   * Whether this row can merge at all — mergeImportRows' own two refusals,
+   * read here too so the trigger renders only when the menu behind it would
+   * have something to offer: the row takes part (mergeableRow), and so does
+   * at least one other row in its currency.
+   */
+  canMerge(row: CategorizedImportTransaction): boolean {
+    return mergeableRow(row) && (this.mergeableByCurrency().get(row.currency) ?? 0) > 1;
+  }
+
+  /**
+   * The rows canMerge counted, less this one, as a filter — called only from
+   * inside the lazy menu content, the way countryChoices is: filtering every
+   * row on a batch of twenty is a cost worth paying only for a menu someone
+   * actually opened.
+   */
+  mergeTargets(row: CategorizedImportTransaction): CategorizedImportTransaction[] {
+    return this.transactions.filter(t => t !== row && t.currency === row.currency && mergeableRow(t));
+  }
+
+  /**
+   * The trigger's own name. Unlike splitLabel there is no blank fallback:
+   * the template offers this trigger only under canMerge, which refuses a
+   * blank row on either side (mergeableRow).
+   */
+  mergeLabel(row: CategorizedImportTransaction): string {
+    return this.translationService.t('import.mergeIntoLabel', { description: row.description });
+  }
+
+  /**
+   * One target's own name in the menu — mergeTargets lists only rows that
+   * pass mergeableRow, so the description is never blank here either.
+   */
+  mergeOptionLabel(target: CategorizedImportTransaction): string {
+    return this.translationService.t('import.mergeOption', {
+      description: target.description,
+      amount: this.formatAmount(target),
+      date: this.formattedDate(target),
+    });
+  }
+
+  /**
+   * Fold row into target. mergeImportRows is the single judge of validity —
+   * canMerge and mergeTargets already keep a currency mismatch, a blank row
+   * and a flagged one off the menu, so the null case here is the pure
+   * function refusing on its own account, not a path the UI is expected to
+   * reach.
+   *
+   * Both rows are read by id when the click lands, not taken as given: the
+   * listener holds the row objects captured when the lazy menu rendered,
+   * while the wizard replaces a row under the same id whenever a re-check
+   * reconciles its verdict. Under zone.js the tick after that reconcile
+   * refreshes the open menu's contexts before a click can dispatch;
+   * resolving by id makes the click independent of whether such a refresh
+   * ran in between at all (none does after a harness assignment, and a
+   * zoneless scheduler may order it differently). Filtered by identity, a
+   * stale source would vanish and the target stay as it was. A row gone
+   * from the batch by then is the stale-commit no-op commitSplit models
+   * with its indexOf guard.
+   *
+   * row's own trigger leaves with it, so focus has nowhere on row to return
+   * to; it goes to the survivor instead — its own merge trigger when a third
+   * row still shares its currency, its description trigger when this merge
+   * just took the last one. Material's own focus restore targets the
+   * trigger this click removed, and afterNextRender runs after the change
+   * detection that removes it, so this call is what actually wins.
+   */
+  mergeInto(row: CategorizedImportTransaction, target: CategorizedImportTransaction): void {
+    const source = this.transactions.find(t => t.id === row.id);
+    const dest = this.transactions.find(t => t.id === target.id);
+    if (!source || !dest || source === dest) return;
+    const merged = mergeImportRows(dest, source);
+    if (!merged) return;
+    this.forgetRow(source.id);
+    this.transactions = this.transactions.filter(t => t !== source).map(t => t === dest ? merged : t);
+    this.emitChanges();
+    this.cdr.markForCheck();
+    this.focusWhenRendered(this.inRow(merged, '.merge-trigger'), this.inRow(merged, '.description-section .inline-edit'));
+  }
+
+  /**
+   * Drop every per-id container's entry for a row that just left the card.
+   * `editing`, `amountRejected`, `notesOpen`, `draftNotes` and
+   * `fellBackEligible` are all keyed by row id and outlive `replaceRow`'s
+   * swap on purpose — until mergeInto, a row's id never stopped appearing in
+   * `transactions` at all, so nothing else has ever needed to prune them.
+   */
+  private forgetRow(id: string): void {
+    this.editing.delete(id);
+    this.amountRejected.delete(id);
+    this.notesOpen.delete(id);
+    this.draftNotes.delete(id);
+    this.fellBackEligible.delete(id);
   }
 
   /**

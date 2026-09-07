@@ -684,6 +684,53 @@ describe('overflow guard: the import review card', () => {
     }
   });
 
+  it('carries a merge trigger on every row once they share a currency, inside the 288px', () => {
+    // r1 and r2 are JPY and USD everywhere else in this file, so canMerge is
+    // false on both and nothing above ever sees a `.merge-trigger` — the
+    // `.extra-add` count pinned two tests up stays two per row. Correcting
+    // r2's own currency to JPY through its own menu (the same click this
+    // file's currency-menu case above already drives) is what gives the two
+    // a shared currency here, a real edit rather than a fixture rewrite, so
+    // every other case's r2 — and the offer chips whose count and shape they
+    // pin — stays exactly as it was. r2 is flagged as well, and a flagged
+    // row takes no part in a merge until the badge's own control overrules
+    // it (mergeableRow), so that click comes first, the same real edit the
+    // overrule case above measures.
+    (host.querySelector('[data-row-id="r2"] .duplicate-clear') as HTMLElement).click();
+    fixture.detectChanges();
+    (host.querySelector('[data-row-id="r2"] .currency-chip') as HTMLElement).click();
+    fixture.detectChanges();
+    const jpyOption = Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item'))
+      .find(item => item.textContent?.includes('JPY'));
+    jpyOption!.click();
+    fixture.detectChanges();
+
+    const chipHits = chipHitBoxes();
+    const triggers = Array.from(host.querySelectorAll<HTMLElement>('.merge-trigger'));
+    expect(chipHits.length).withContext('there are chips here to stay clear of').toBeGreaterThan(0);
+    expect(triggers.length).withContext('one per row now both are JPY').toBe(2);
+
+    for (const trigger of triggers) {
+      const box = trigger.getBoundingClientRect();
+      expect(withinWidthOf(clip, trigger)).withContext('merge trigger inside the clip').toBeTrue();
+      expect(box.height).withContext('merge trigger tap target').toBeGreaterThanOrEqual(40);
+      for (const hit of chipHits) {
+        const overlapX = Math.min(box.right, hit.right) - Math.max(box.left, hit.left);
+        const overlapY = Math.min(box.bottom, hit.bottom) - Math.max(box.top, hit.top);
+        expect(Math.min(overlapX, overlapY))
+          .withContext('merge trigger and a chip\'s hit area are disjoint')
+          .toBeLessThanOrEqual(0.5);
+      }
+    }
+
+    // The menu is a CDK overlay outside the card, like the country menu —
+    // closed here, so this is the card's own width with nothing borrowed
+    // from an overlay that would not count against it anyway.
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge with the merge trigger showing')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+  });
+
   it('marks the code the row is already on in the currency menu', () => {
     // The mark is why the menu is worth opening: without it the list gives no
     // sign of what the row is changing from. It has to sit on an element of

@@ -337,6 +337,28 @@
                 <span>{{ 'import.splitRow' | translate }}</span>
               </button>
             }
+            <!-- The other half of the pair: two receipt lines the reader
+                 read apart, joined into one before the import. Gated rather
+                 than always offered — mergeImportRows refuses across
+                 currencies and refuses a blank or flagged row on either
+                 side, and a menu with nothing to list is worse than no menu.
+                 Lazy, the country menu's own idiom, for the same reason:
+                 named and filtered per row, on a batch of twenty. -->
+            @if (canMerge(row)) {
+              <button type="button" class="extra-add merge-trigger" [matMenuTriggerFor]="mergeMenu" [attr.aria-label]="mergeLabel(row)">
+                <mat-icon aria-hidden="true">call_merge</mat-icon>
+                <span>{{ 'import.mergeInto' | translate }}</span>
+              </button>
+              <mat-menu #mergeMenu="matMenu">
+                <ng-template matMenuContent>
+                  @for (target of mergeTargets(row); track target.id) {
+                    <button mat-menu-item type="button" (click)="mergeInto(row, target)">
+                      <span class="option-label">{{ mergeOptionLabel(target) }}</span>
+                    </button>
+                  }
+                </ng-template>
+              </mat-menu>
+            }
             <!-- Declared once and placed twice: the same field edits the name
                  on a chip that already has one and on a row that has nothing
                  yet, and two copies of it would be two sets of handlers to

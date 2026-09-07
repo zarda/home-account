@@ -1,6 +1,7 @@
 import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata } from '../../models';
 import { dayKey } from './transaction-date.utils';
 import { roundMoney } from './transaction-aggregation.utils';
+import { normalizeTags } from './tag.utils';
 
 /**
  * The review step's corrections, kept pure so the card that offers them and
@@ -323,4 +324,138 @@ export function splitImportRow(
   delete part.recurringMatch;
 
   return [kept, part];
+}
+
+/**
+ * Whether a row may take part in a merge, on either side: it has an amount,
+ * a description, and no standing duplicate verdict.
+ *
+ * A blank row is filled first. Merged into, the placeholder's own
+ * `other_expense` and the date it copied from a neighbour would win over
+ * the source's real ones (the target's identity wins outright below), and
+ * the empty description is the only part of that the unfilled gate would
+ * catch — a reviewer who then names the row ships a wrong category and
+ * date without a sign. Merged away, it has nothing to add.
+ *
+ * A flagged row is overruled first, by the badge's own control. A merge
+ * that cleared the verdict on its own way through would answer a question
+ * the reviewer was never shown, and should the re-check behind it fail, a
+ * real duplicate is left unflagged and selected — the one edit that would
+ * fail open, when an amount edit on a flagged row leaves the flag alone.
+ * Selection is not read: a row the reviewer left out can still merge, and
+ * comes back selected.
+ */
+export function mergeableRow(row: CategorizedImportTransaction): boolean {
+  return !amountIsUnfilled(row) && !descriptionIsUnfilled(row) && !row.isDuplicate;
+}
+
+/**
+ * Fold `source` into `target` — a receipt the reader split across two
+ * photos, or a wrong split, rejoined before the import. `null` for a row
+ * against itself, when the two are not in the same currency — nothing here
+ * converts — or when either side fails `mergeableRow`. The judging happens
+ * here and nowhere else: the card's own `canMerge`/`mergeTargets` read the
+ * same refusals so as never to offer such a pair, but that keeps a menu
+ * honest rather than deciding anything, and a `null` reaching the card is
+ * a no-op there, not a case of its own.
+ *
+ * The target's identity wins outright — id, description, date, every
+ * review-step mark, category, currency, the recurring link, `splitFrom` —
+ * because that is what lets the wizard's own diff see an ordinary amount
+ * change on a row it already knows, rather than a row appearing and another
+ * disappearing, which would need a rule of its own. `splitFrom` rides the
+ * spread rather than being read explicitly: a part merged into stays a
+ * part, still recognised by `sameSplit` as the same split as its siblings.
+ *
+ * The amount is not the two figures added blind: `signed` reads expense as
+ * positive and income as negative, so a refund folded into a purchase (or
+ * the reverse) nets the two rather than summing unlike signs, and the type
+ * follows whichever direction the net actually points — expense on a net of
+ * exactly zero, the same tie-break a brand-new row is born with. The
+ * amount's grade drops from the result the way a hand correction clears it
+ * (`commitAmount`): the figure is now arithmetic the reviewer asked for, not
+ * a reading. The date's grade is not this function's business and rides the
+ * target's `fieldConfidence` through untouched.
+ *
+ * `imageMetadata` unions through `imageSources` rather than reading the two
+ * `imageIndex`/`mergedFromImages` pairs directly, because a row already
+ * folded together by the multi-image consolidator carries its own
+ * `mergedFromImages` and a raw `imageIndex` of 0 that would double as
+ * "image zero" if read on its own — `imageSources` is the one reading that
+ * already knows which of the two to trust. The target's own block survives
+ * with the union and `wasMerged` set on it; a lone side is copied rather
+ * than aliased, the way `splitImportRow` copies one across a new row.
+ *
+ * `selected` returns true whatever either side carried: a row the reviewer
+ * had left out is back in once another's figure is folded into it. The
+ * verdict fields are written clear rather than spread, even though
+ * `mergeableRow` keeps a flagged row off both sides and there is no verdict
+ * here to overrule: the wizard's reconcile leaves a check's document id on
+ * a row it unflags, and the sum is a figure that check never saw. It is the
+ * wizard's own diff — the merged row's new amount against the target's old
+ * one — that asks the question about it.
+ */
+export function mergeImportRows(
+  target: CategorizedImportTransaction,
+  source: CategorizedImportTransaction
+): CategorizedImportTransaction | null {
+  if (
+    target.id === source.id ||
+    target.currency !== source.currency ||
+    !mergeableRow(target) ||
+    !mergeableRow(source)
+  ) {
+    return null;
+  }
+
+  const signed = (row: CategorizedImportTransaction) => (row.type === 'income' ? -row.amount : row.amount);
+  const net = roundMoney(signed(target) + signed(source));
+
+  const single = target.imageMetadata ?? source.imageMetadata;
+  const imageMetadata = target.imageMetadata && source.imageMetadata
+    ? {
+        ...target.imageMetadata,
+        wasMerged: true,
+        mergedFromImages: [...new Set([
+          ...imageSources(target.imageMetadata),
+          ...imageSources(source.imageMetadata),
+        ])].sort((a, b) => a - b),
+      }
+    : single && { ...single };
+
+  const tags = normalizeTags([...(target.tags ?? []), ...(source.tags ?? [])]);
+  const suggestedTags = normalizeTags([...(target.suggestedTags ?? []), ...(source.suggestedTags ?? [])]);
+
+  const merged: CategorizedImportTransaction = {
+    ...target,
+    type: net < 0 ? 'income' : 'expense',
+    amount: Math.abs(net),
+    location: target.location ?? source.location,
+    receiptCountry: target.receiptCountry ?? source.receiptCountry,
+    isDuplicate: false,
+    selected: true,
+    fieldConfidence: withoutFieldConfidence(target.fieldConfidence, 'amount'),
+  };
+  // Absent, not undefined, the way splitImportRow leaves what it drops: the
+  // spread carries every key the target had, a stale duplicateOf included.
+  if (imageMetadata) merged.imageMetadata = imageMetadata;
+  else delete merged.imageMetadata;
+  if (tags.length) merged.tags = tags;
+  else delete merged.tags;
+  if (suggestedTags.length) merged.suggestedTags = suggestedTags;
+  else delete merged.suggestedTags;
+  delete merged.duplicateOf;
+  // A blank note is no note, on either side: a total-only receipt lands
+  // with `notes: ''` (convertParsedReceipt), which a truthiness test reads
+  // as absent and a nullish fallback then keeps over the other side's real
+  // one. Absent is the key gone, the way splitImportRow leaves it. Each
+  // side is trimmed before the join: commitNotes stores trimmed text but a
+  // reader's note is verbatim, and a trailing newline doubles the separator.
+  const noteLines = [target.notes, source.notes]
+    .filter((n): n is string => !!n?.trim())
+    .map(n => n.trim());
+  if (noteLines.length) merged.notes = noteLines.join('\n');
+  else delete merged.notes;
+
+  return merged;
 }
