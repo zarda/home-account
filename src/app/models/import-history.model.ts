@@ -181,6 +181,14 @@ export interface CategorizedImportTransaction {
    * flagged and is not asked again.
    */
   dateReviewed?: true;
+  /**
+   * A review-step mark, never written: the row this one was split off from
+   * (`splitImportRow`). A row carrying it attaches its own photos rather
+   * than joining its receipt's group (`planReceiptAttachments`) and is
+   * never mistaken for its original's duplicate (`sameSplit`) — it is a
+   * transaction of its own the reviewer made on purpose, not a repeat.
+   */
+  splitFrom?: string;
   originalText?: string;           // Raw text from source
   merchant?: string;
   notes?: string;                  // Optional notes/details (e.g., items list from receipt)

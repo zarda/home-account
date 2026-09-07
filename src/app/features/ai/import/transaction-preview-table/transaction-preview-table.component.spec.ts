@@ -2778,4 +2778,268 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(placeholder('filled')).withContext('nothing missing here').toBeNull();
     });
   });
+
+  /**
+   * A receipt whose line items the reader merged into one row, taken apart
+   * before the import (#371). Merge is a separate control (Task 5); this is
+   * the half that moves an amount off a row into a new one.
+   */
+  describe('splitting a row', () => {
+    const splitTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .split-trigger`) as HTMLButtonElement | null;
+    const splitInput = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .split-input`) as HTMLInputElement | null;
+    const refusal = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .amount-error`) as HTMLElement | null;
+    const descriptionInput = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .description-input`) as HTMLInputElement | null;
+    const receiptBadges = () =>
+      Array.from(fixture.nativeElement.querySelectorAll('.receipt-badge')) as HTMLElement[];
+
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    /** Typing, then the key that ends the edit. */
+    function type(id: string, text: string, key = 'Enter'): void {
+      const box = splitInput(id)!;
+      box.value = text;
+      box.dispatchEvent(new KeyboardEvent('keydown', { key }));
+    }
+
+    it('renders on a filled row and not on a row with no amount', () => {
+      render([makeRow({ id: 'filled' }), makeRow({ id: 'empty', amount: 0 })]);
+
+      expect(splitTrigger('filled')).withContext('an amount to take off').not.toBeNull();
+      expect(splitTrigger('empty')).withContext('nothing to split off zero').toBeNull();
+    });
+
+    it('names itself "Split" rather than "Add a description" on a row with no description yet', () => {
+      render([makeRow({ id: 'txn1', description: '' })]);
+
+      expect(splitTrigger('txn1')!.getAttribute('aria-label')).toBe('import.splitRow');
+    });
+
+    it('opens a focused split input on click', () => {
+      render([makeRow({ id: 'txn1' })]);
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+
+      const box = splitInput('txn1')!;
+      expect(document.activeElement).withContext('the tap that opened it starts typing').toBe(box);
+      expect(splitTrigger('txn1')).withContext('the trigger is gone while editing').toBeNull();
+    });
+
+    it('splits the amount into two rows on Enter, and opens the new part\'s description editor', async () => {
+      const row = makeRow({
+        id: 'txn1',
+        amount: 5400,
+        currency: 'JPY',
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 3 },
+      });
+      const given = [row];
+      render(given);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '1,200');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(given.length).withContext('never mutates the @Input() array').toBe(1);
+      expect(emitted[0]).withContext('a new array, as every other edit emits').not.toBe(given);
+      expect(emitted[0].length).toBe(2);
+      const [kept, part] = emitted[0];
+      expect(kept.id).withContext('the original keeps its identity').toBe('txn1');
+      expect(kept.amount).toBe(4200);
+      expect(part.id).toMatch(/^split_/);
+      expect(part.amount).toBe(1200);
+      expect(part.splitFrom).toBe('txn1');
+      expect(component.isEditing(part, 'description'))
+        .withContext('the part is born already open in its own editor')
+        .toBeTrue();
+
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const description = descriptionInput(part.id);
+      expect(description).withContext('the part rendered as a description editor').not.toBeNull();
+      expect(document.activeElement).toBe(description);
+    });
+
+    it('carries the receipt badge to the split part unchanged', () => {
+      render([makeRow({
+        id: 'txn1',
+        amount: 5400,
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 3 },
+      })]);
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '1,200');
+      fixture.detectChanges();
+
+      const badges = receiptBadges();
+      expect(badges.length).withContext('both halves show a badge').toBe(2);
+      expect(badges[0].textContent?.trim())
+        .withContext('the same receipt and photo as the original')
+        .toBe(badges[1].textContent?.trim());
+    });
+
+    it('rejects an unreadable figure, the whole amount, and more than the whole amount, without emitting', () => {
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+
+      for (const value of ['abc', '5400', '6000']) {
+        type('txn1', value);
+        fixture.detectChanges();
+
+        const box = splitInput('txn1');
+        expect(box).withContext(`editor stays open for ${value}`).not.toBeNull();
+        expect(box!.getAttribute('aria-invalid')).withContext(value).toBe('true');
+      }
+      expect(emitted.length).toBe(0);
+    });
+
+    it('rejects a figure that only rounds to zero or to the whole amount, the same as one that already is', () => {
+      // 19.999 and 0.004 both clear parseAmountInput's own >0 guard and
+      // read as less than a 20 row's amount — splitImportRow is what
+      // catches them, once its rounding puts one at the row's own amount
+      // and the other at zero. A guard here that disagreed with that one
+      // would close the editor on a figure splitImportRow was about to
+      // refuse.
+      render([makeRow({ id: 'txn1', amount: 20 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+
+      for (const value of ['19.999', '0.004']) {
+        type('txn1', value);
+        fixture.detectChanges();
+
+        const box = splitInput('txn1');
+        expect(box).withContext(`editor stays open for ${value}`).not.toBeNull();
+        expect(box!.getAttribute('aria-invalid')).withContext(value).toBe('true');
+      }
+      expect(emitted.length).toBe(0);
+    });
+
+    it('says why it refused: the input names a message, and the message is an alert', () => {
+      // aria-invalid alone tells a screen reader only that the figure was
+      // refused, and a sighted reviewer only that the editor would not
+      // close. The message is the amount editor's own pair, an alert for
+      // the amount editor's reason: the commit that refused is often a
+      // blur, by which time the reviewer is on the next card.
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '6000');
+      fixture.detectChanges();
+
+      const box = splitInput('txn1')!;
+      const message = refusal('txn1');
+      expect(box.getAttribute('aria-invalid')).toBe('true');
+      expect(message).withContext('the refusal is written down').not.toBeNull();
+      expect(message!.getAttribute('role')).toBe('alert');
+      expect(message!.textContent?.trim()).toBe('import.splitAmountRefused');
+      expect(message!.id).toBe('split-error-txn1');
+      expect(box.getAttribute('aria-describedby'))
+        .withContext('the input names the message it stands with')
+        .toBe(message!.id);
+    });
+
+    it('drops the message once a figure is taken, and opens clean the next time', () => {
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '6000');
+      fixture.detectChanges();
+      expect(refusal('txn1')).withContext('refused first').not.toBeNull();
+
+      type('txn1', '1,200');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(splitInput('txn1')).withContext('a figure the row can spare closes the editor').toBeNull();
+      expect(refusal('txn1')).withContext('and takes the message with it').toBeNull();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+
+      const box = splitInput('txn1')!;
+      expect(box.getAttribute('aria-invalid')).toBeNull();
+      expect(box.getAttribute('aria-describedby')).toBeNull();
+      expect(refusal('txn1')).withContext('the refusal does not outlive the editor it was made in').toBeNull();
+    });
+
+    it('closes on a blur with nothing typed, rather than hold an empty figure open as unreadable', () => {
+      render([makeRow({ id: 'txn1' })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      splitInput('txn1')!.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(splitInput('txn1')).withContext('closes instead of stranding an empty, invalid editor').toBeNull();
+      expect(splitTrigger('txn1')).withContext('the trigger is back').not.toBeNull();
+    });
+
+    it('closes on Enter with nothing but spaces typed too, the same as blur', () => {
+      render([makeRow({ id: 'txn1' })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '   ');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(splitInput('txn1')).toBeNull();
+      expect(document.activeElement).withContext('a key hands focus back to the trigger').toBe(splitTrigger('txn1'));
+    });
+
+    it('emits nothing and returns focus to the trigger on Escape', () => {
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      const box = splitInput('txn1')!;
+      box.value = '1,200';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(splitInput('txn1')).toBeNull();
+      expect(document.activeElement).toBe(splitTrigger('txn1'));
+    });
+
+    it('leaves a composing Enter to the IME', () => {
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      const box = splitInput('txn1')!;
+      box.value = '1200';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(splitInput('txn1')).withContext('still editing').not.toBeNull();
+    });
+  });
 });

@@ -299,6 +299,44 @@
                 {{ 'import.linkRecurring' | translate: { rule: match.name } }}
               </mat-checkbox>
             }
+            <!-- Takes an amount off the row into a new row of its own — a
+                 receipt line the reader merged into one, taken apart before
+                 the import. Ahead of Add location and Add tag, never after:
+                 the new row's own extras start from nothing, so nothing
+                 about its position should depend on what either of those
+                 renders for this row. The trigger is conditional — it
+                 vanishes once the amount it would split is gone — so its
+                 EDIT_TRIGGERS entry carries a fallback the way place's does. -->
+            @if (isEditing(row, 'split')) {
+              <input
+                class="inline-input split-input"
+                type="text"
+                inputmode="decimal"
+                enterkeyhint="done"
+                [placeholder]="'import.splitAmount' | translate"
+                [attr.aria-label]="'import.splitAmount' | translate"
+                [attr.aria-invalid]="amountUnreadable(row) ? 'true' : null"
+                [attr.aria-describedby]="amountUnreadable(row) ? 'split-error-' + row.id : null"
+                (keydown.enter)="commitSplit(row, $event)"
+                (keydown.escape)="cancelEdit(row)"
+                (blur)="commitSplit(row, $event)"
+              >
+              @if (amountUnreadable(row)) {
+                <!-- One flag stands for both refusals — a figure that would
+                     not read and one the row cannot spare — so the message
+                     is worded to fit either. role="alert" for the amount
+                     editor's reason: the blur that refused has usually
+                     moved the reviewer on already. -->
+                <span class="amount-error" role="alert" [id]="'split-error-' + row.id">
+                  {{ 'import.splitAmountRefused' | translate }}
+                </span>
+              }
+            } @else if (!amountIsUnfilled(row)) {
+              <button type="button" class="extra-add split-trigger" [attr.aria-label]="splitLabel(row)" (click)="startEdit(row, 'split')">
+                <mat-icon aria-hidden="true">call_split</mat-icon>
+                <span>{{ 'import.splitRow' | translate }}</span>
+              </button>
+            }
             <!-- Declared once and placed twice: the same field edits the name
                  on a chip that already has one and on a row that has nothing
                  yet, and two copies of it would be two sets of handlers to

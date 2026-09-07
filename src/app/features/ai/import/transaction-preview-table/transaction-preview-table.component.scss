@@ -675,6 +675,12 @@
   max-inline-size: 100%;
 }
 
+// A figure, not a sentence: narrower than .tag-input, same reason.
+.split-input {
+  inline-size: 7em;
+  max-inline-size: 100%;
+}
+
 // The removal and the country picker: two glyph-sized controls with the same
 // tap target, listed together rather than one wearing the other's class.
 // `.extra-remove` is how the removal is found — by the specs and by anyone

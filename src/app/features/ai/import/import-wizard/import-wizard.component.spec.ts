@@ -16,6 +16,7 @@ import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult } 
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
+import { blankImportRow } from '../../../../core/utils/import-review.utils';
 
 function attemptStub() {
   const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
@@ -1357,6 +1358,35 @@ describe('ImportWizardComponent', () => {
 
       expect(mockDuplicateService.checkDuplicates).not.toHaveBeenCalled();
       expect(mockDuplicateService.findWithinBatchDuplicates).not.toHaveBeenCalled();
+    }));
+
+    it('checks a filled row that appears beside the rows already here', fakeAsync(() => {
+      // A split part is born already filled and under a new id, so the plain
+      // "ids present before and after" reading would never check it — the
+      // very re-check the split exists to trigger.
+      populate(fresh());
+      const part: CategorizedImportTransaction = {
+        id: 'txn3', description: 'Part', amount: 3, currency: 'USD', date: new Date(),
+        type: 'expense', suggestedCategoryId: 'food', categoryConfidence: 0,
+        isDuplicate: false, selected: true,
+      };
+
+      component.onTransactionsUpdated([...component.extractedTransactions(), part]);
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).toHaveBeenCalledTimes(1);
+      expect(checkedIds(0)).toEqual(['txn3']);
+    }));
+
+    it('does not check a blank row that appears', fakeAsync(() => {
+      // 0103's rule: a hand-added row is unchecked until its first edit.
+      populate(fresh());
+      const blank = blankImportRow('txn3', row('txn2'), 'USD');
+
+      component.onTransactionsUpdated([...component.extractedTransactions(), blank]);
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).not.toHaveBeenCalled();
     }));
 
     it('reads an Invalid Date as unchanged, so a currency edit elsewhere checks nothing', fakeAsync(() => {

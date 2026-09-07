@@ -4,7 +4,7 @@ import { planReceiptAttachments } from './receipt-attachment.utils';
 describe('planReceiptAttachments', () => {
   let counter = 0;
 
-  function row(meta?: Partial<ImagePositionMetadata>): CategorizedImportTransaction {
+  function row(meta?: Partial<ImagePositionMetadata>, splitFrom?: string): CategorizedImportTransaction {
     return {
       id: `row-${counter++}`,
       description: 'Coffee',
@@ -26,7 +26,8 @@ describe('planReceiptAttachments', () => {
               ...meta
             }
           }
-        : {})
+        : {}),
+      ...(splitFrom !== undefined ? { splitFrom } : {})
     };
   }
 
@@ -94,5 +95,49 @@ describe('planReceiptAttachments', () => {
     const merged = row({ imageIndex: 0, mergedFromImages: [1, 1, 0] });
 
     expect(planReceiptAttachments([merged], 2)).toEqual([[0, 1]]);
+  });
+
+  it('lets a split part attach its own copy of the receipt it was taken off of', () => {
+    // The one case the "attach once per receipt" rule above does not cover
+    // (ADR 0106): a row the reviewer split off is a transaction of its own,
+    // whose evidence happens to be the same photo.
+    const original = row({ imageIndex: 0, receiptId: 1 });
+    const part = row({ imageIndex: 0, receiptId: 1 }, original.id);
+
+    expect(planReceiptAttachments([original, part], 1)).toEqual([[0], [0]]);
+  });
+
+  it('keeps the standing once-per-receipt rule for a second row with no split mark', () => {
+    // Pinned beside the case above so the two read as a pair: same receipt,
+    // same image, and the only difference is the mark.
+    const first = row({ imageIndex: 0, receiptId: 1 });
+    const second = row({ imageIndex: 0, receiptId: 1 });
+
+    expect(planReceiptAttachments([first, second], 1)).toEqual([[0], []]);
+  });
+
+  it('still attaches a part\'s own photo when its original was deselected', () => {
+    const original = row({ imageIndex: 0, receiptId: 1 });
+    original.selected = false;
+    const part = row({ imageIndex: 0, receiptId: 1 }, original.id);
+
+    expect(planReceiptAttachments([original, part], 1)).toEqual([[0], [0]]);
+  });
+
+  it('gives two parts of one original their own photo each', () => {
+    // Keyed on each part's own id, not on the shared splitFrom value — or
+    // the second part would read as the first's repeat and attach nothing.
+    const partA = row({ imageIndex: 0, receiptId: 1 }, 'orig');
+    const partB = row({ imageIndex: 0, receiptId: 1 }, 'orig');
+
+    expect(planReceiptAttachments([partA, partB], 1)).toEqual([[0], [0]]);
+  });
+
+  it('attaches nothing for a split row whose index is out of range', () => {
+    // The empty-indices guard runs before the split grouping does, the same
+    // order the plain out-of-range case above exercises.
+    const stale = row({ imageIndex: 7 }, 'orig');
+
+    expect(planReceiptAttachments([stale], 2)).toEqual([[]]);
   });
 });

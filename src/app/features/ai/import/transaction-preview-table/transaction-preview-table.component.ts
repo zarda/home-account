@@ -41,6 +41,7 @@ import {
   joinSentences,
   needsDateAnswer,
   parseAmountInput,
+  splitImportRow,
   withoutFieldConfidence,
 } from '../../../../core/utils/import-review.utils';
 import { nextImportRowId } from '../../../../core/utils/import-row-id.utils';
@@ -69,6 +70,12 @@ const EDIT_TRIGGERS = {
   description: ['.description-section .inline-edit'],
   tag: ['.tag-add'],
   place: ['.place-name', '.location-add'],
+  // The primary vanishes only when the split it just committed left the row
+  // unfilled — splitImportRow refuses that outright — but Escape still needs
+  // a landing if the row's amount was ever emptied by some other path while
+  // this editor was open, and the add-tag trigger is the strip's next
+  // control over.
+  split: ['.split-trigger', '.tag-add'],
 } as const;
 
 type EditField = keyof typeof EDIT_TRIGGERS;
@@ -881,6 +888,11 @@ export class TransactionPreviewTableComponent {
    * shut, the old amount stood, and the row went to import at a number they
    * believed they had just replaced. Escape is still the way out, and it is
    * the only way the old figure is kept deliberately.
+   *
+   * commitSplit below holds its own editor open on the same rule, for the
+   * same reason: a figure that reads fine on its own but would leave
+   * nothing behind on the row it came from is exactly as silent a mistake
+   * as one parseAmountInput could not read at all.
    */
   commitAmount(row: CategorizedImportTransaction, event: Event): void {
     if (!this.editing.has(row.id)) return;
@@ -897,6 +909,75 @@ export class TransactionPreviewTableComponent {
       amount,
       fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'amount'),
     });
+  }
+
+  /**
+   * Take the typed amount off the row into a new row directly beneath it.
+   * splitImportRow is the only judge of what a valid split is — it rounds
+   * before refusing, so a figure that reads fine here on its own (19.999,
+   * 0.004 on a whole-number row) can still fail once rounded, and calling
+   * it directly rather than re-checking `amount >= row.amount` first is
+   * what keeps the two from disagreeing over exactly those figures. Its
+   * refusal reads to the reviewer exactly like an unreadable one, so it
+   * holds the editor open the same way commitAmount does rather than let
+   * it close having silently done nothing.
+   *
+   * Nothing typed is different. This field opens empty by design rather
+   * than pre-filled the way commitAmount's is, so a blank commit is not a
+   * reviewer clearing a figure — it is a reviewer who opened the editor and
+   * changed their mind. It closes the way commitTag and commitPlaceName
+   * close on their own empty-by-design starts, on the Enter path as much as
+   * on blur, rather than trap a keyboard reviewer behind an aria-invalid
+   * field the only way out of which is clicking back in to press Escape.
+   *
+   * The new row is spliced in under the row it came from rather than
+   * appended, and opens straight into its own description editor: it was
+   * born holding the original's, which is rarely right for a line item
+   * taken out on its own. Focus moves the way every other row-creating
+   * control on this card moves it (addRow).
+   */
+  commitSplit(row: CategorizedImportTransaction, event: Event): void {
+    if (!this.editing.has(row.id)) return;
+    if (isImeComposition(event)) return;
+    if (!(event.target as HTMLInputElement).value.trim()) {
+      this.closeEdit(row, event.type === 'keydown');
+      return;
+    }
+    const amount = parseAmountInput((event.target as HTMLInputElement).value);
+    const split = amount === null ? null : splitImportRow(row, amount, nextImportRowId('split'));
+    if (!split) {
+      this.amountRejected.add(row.id);
+      this.cdr.markForCheck();
+      return;
+    }
+    // Ahead of closeEdit and the part's own editing entry: a row gone from
+    // the table by the time this commits must not leave the editor closed
+    // and an orphan entry in `editing` for a part that never gets spliced
+    // in to render and clear it.
+    const index = this.transactions.indexOf(row);
+    if (index === -1) return;
+    const [kept, part] = split;
+    this.closeEdit(row, false);
+    this.editing.set(part.id, 'description');
+    const before = this.transactions.slice(0, index);
+    const after = this.transactions.slice(index + 1);
+    this.transactions = [...before, kept, part, ...after];
+    this.emitChanges();
+    this.cdr.markForCheck();
+    this.focusWhenRendered(this.inRow(part, '.inline-input'));
+  }
+
+  /**
+   * The trigger's own name. A blank description falls back to the button's
+   * own visible text rather than editDescriptionLabel's "Add a description":
+   * that names an action this control does not perform, and on a row with
+   * both triggers showing it would collide with the real add-description
+   * button's name.
+   */
+  splitLabel(row: CategorizedImportTransaction): string {
+    return descriptionIsUnfilled(row)
+      ? this.translationService.t('import.splitRow')
+      : this.translationService.t('import.splitRowLabel', { description: row.description });
   }
 
   /**

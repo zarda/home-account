@@ -549,11 +549,18 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * change, so a row whose date, amount, type or description differs from
    * the row it replaces is checked again; a flag that went from true to
    * false is the reviewer's overrule. Only ids present before and after are
-   * compared — a first population is not a change. Dates compare by instant
-   * under Object.is: no door produces an Invalid Date any more, and the guard
-   * stays so a future one cannot make a row "changed" on every emission,
-   * which NaN !== NaN would. Currency, notes, category, tags, location, the
-   * rule link and selection are not detection inputs and trigger nothing.
+   * compared, with one exception: an id that is new but the batch is not —
+   * a row split off an existing one, filled the moment it is born — is
+   * checked once, the same as an edit, because nothing else ever will. A
+   * first population is still not a change (`before` is empty then, so the
+   * exception cannot fire), and neither is a hand-added row appearing blank
+   * (`rowIsUnfilled`, 0103's rule) — its first edit is what checks it. The
+   * pruning half of this — an id that first disappears — is separate.
+   * Dates compare by instant under Object.is: no door produces an Invalid
+   * Date any more, and the guard stays so a future one cannot make a row
+   * "changed" on every emission, which NaN !== NaN would. Currency, notes,
+   * category, tags, location, the rule link and selection are not detection
+   * inputs and trigger nothing.
    */
   onTransactionsUpdated(transactions: CategorizedImportTransaction[]): void {
     const before = new Map(this.extractedTransactions().map(t => [t.id, t]));
@@ -561,7 +568,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     const overrules = new Set<string>();
     for (const row of transactions) {
       const prev = before.get(row.id);
-      if (!prev) continue;
+      if (!prev) {
+        if (before.size > 0 && !rowIsUnfilled(row)) changed.add(row.id);
+        continue;
+      }
       if (
         !Object.is(+prev.date, +row.date) ||
         prev.amount !== row.amount ||

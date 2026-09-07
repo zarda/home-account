@@ -1,13 +1,16 @@
 import {
   blankImportRow,
   datedToday,
+  imageSources,
   joinSentences,
   needsDateAnswer,
   parseAmountInput,
   rowIsUnfilled,
+  sameSplit,
+  splitImportRow,
   withoutFieldConfidence,
 } from './import-review.utils';
-import { CategorizedImportTransaction } from '../../models';
+import { CategorizedImportTransaction, ImagePositionMetadata } from '../../models';
 
 /**
  * Dates are built from local parts (`new Date(2026, 5, 15)`), never parsed
@@ -336,6 +339,188 @@ describe('import-review.utils', () => {
       expect(parseAmountInput('1.234.567')).toBeNull();
       expect(parseAmountInput('1,23,456')).toBeNull();
       expect(parseAmountInput('1,2,3')).toBeNull();
+    });
+  });
+
+  describe('imageSources', () => {
+    const meta = (overrides: Partial<ImagePositionMetadata> = {}): ImagePositionMetadata => ({
+      imageIndex: 0,
+      imageId: 'image_0',
+      positionInImage: 'middle',
+      confidenceScore: 0.9,
+      ...overrides,
+    });
+
+    it('reads mergedFromImages when consolidation left something in it', () => {
+      // imageIndex is hardcoded to 0 on a merged row (receipt-attachment.utils
+      // .spec.ts pins the same reading on the planner's side); mergedFromImages
+      // is the only honest source list once that has happened.
+      expect(imageSources(meta({ imageIndex: 0, mergedFromImages: [2, 0, 1] }))).toEqual([2, 0, 1]);
+    });
+
+    it('falls back to imageIndex when mergedFromImages is empty or absent', () => {
+      expect(imageSources(meta({ imageIndex: 3, mergedFromImages: [] }))).toEqual([3]);
+      expect(imageSources(meta({ imageIndex: 3 }))).toEqual([3]);
+    });
+  });
+
+  describe('sameSplit', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Coffee',
+      amount: 5,
+      currency: 'USD',
+      date: new Date(2026, 5, 15),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('is true from a part to its original', () => {
+      expect(sameSplit(row({ id: 'b', splitFrom: 'a' }), row({ id: 'a' }))).toBeTrue();
+    });
+
+    it('is true from an original to its part', () => {
+      expect(sameSplit(row({ id: 'a' }), row({ id: 'b', splitFrom: 'a' }))).toBeTrue();
+    });
+
+    it('is true for two parts split from the same original', () => {
+      expect(sameSplit(row({ id: 'b', splitFrom: 'a' }), row({ id: 'c', splitFrom: 'a' }))).toBeTrue();
+    });
+
+    it('is false for two rows that share no split', () => {
+      expect(sameSplit(row({ id: 'a' }), row({ id: 'b' }))).toBeFalse();
+    });
+  });
+
+  describe('splitImportRow', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Groceries',
+      amount: 5.4,
+      currency: 'USD',
+      date: new Date(2026, 5, 15, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('splits the amount so the two halves sum to the original, rounded to cents', () => {
+      const [kept, part] = splitImportRow(row(), 1.2, 'split_1')!;
+      expect(kept.amount).toBe(4.2);
+      expect(part.amount).toBe(1.2);
+    });
+
+    it('rounds a figure with more than two decimals before splitting, so the two halves still sum to the original', () => {
+      const [kept, part] = splitImportRow(row({ amount: 20 }), 10.005, 'split_1')!;
+      expect(part.amount).toBe(10.01);
+      expect(kept.amount).toBe(9.99);
+      expect(kept.amount + part.amount).toBe(20);
+    });
+
+    it('rounds a row amount with more than two decimals before splitting, so the two halves still sum to the cent', () => {
+      const [kept, part] = splitImportRow(row({ amount: 45.675 }), 20, 'split_1')!;
+      expect(part.amount).toBe(20);
+      expect(kept.amount).toBe(25.67);
+      // Not roundMoney(45.675) (45.68): that figure only rounds up because
+      // *100 on the whole amount happens to land exactly on the boundary.
+      // kept.amount subtracts taken first and rounds once, the same order
+      // the guard now judges by, and reads the same double a cent honester.
+      expect(kept.amount + part.amount).toBe(45.67);
+    });
+
+    it('gives the part the id it was handed and marks it split from the original, which carries no mark itself', () => {
+      const [kept, part] = splitImportRow(row({ id: 'r1' }), 1.2, 'split_1')!;
+      expect(part.id).toBe('split_1');
+      expect(part.splitFrom).toBe('r1');
+      expect(kept.splitFrom).toBeUndefined();
+    });
+
+    it('copies imageMetadata onto the part rather than sharing the original\'s object', () => {
+      const meta: ImagePositionMetadata = {
+        imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1,
+      };
+      const [, part] = splitImportRow(row({ imageMetadata: meta }), 1.2, 'split_1')!;
+      expect(part.imageMetadata).toEqual(meta);
+      expect(part.imageMetadata).not.toBe(meta);
+    });
+
+    it('drops notes, duplicateOf, recurringId, isRecurring and recurringMatch from the part entirely', () => {
+      const [, part] = splitImportRow(row({
+        notes: 'lunch',
+        duplicateOf: 'txn-9',
+        recurringId: 'rule-1',
+        isRecurring: true,
+        recurringMatch: { id: 'rule-1', name: 'Coffee' },
+      }), 1.2, 'split_1')!;
+
+      // Deleted, not set to undefined: a key present-but-undefined still
+      // answers 'notes' in part, and the mapper the part eventually reaches
+      // spreads on truthiness rather than presence for most of these.
+      expect('notes' in part).toBeFalse();
+      expect('duplicateOf' in part).toBeFalse();
+      expect('recurringId' in part).toBeFalse();
+      expect('isRecurring' in part).toBeFalse();
+      expect('recurringMatch' in part).toBeFalse();
+    });
+
+    it('starts the part unchecked and selected, whatever the original carried', () => {
+      const [, part] = splitImportRow(row({ isDuplicate: true, selected: false }), 1.2, 'split_1')!;
+      expect(part.isDuplicate).toBeFalse();
+      expect(part.selected).toBeTrue();
+    });
+
+    it('drops the amount grade from both halves and keeps the date grade on both', () => {
+      const [kept, part] = splitImportRow(
+        row({ fieldConfidence: { amount: 0.3, date: 0.5 } }), 1.2, 'split_1'
+      )!;
+      expect(kept.fieldConfidence).toEqual({ date: 0.5 });
+      expect(part.fieldConfidence).toEqual({ date: 0.5 });
+    });
+
+    it('gives the part its own date object, equal to the original\'s but not shared', () => {
+      const original = row();
+      const [, part] = splitImportRow(original, 1.2, 'split_1')!;
+      expect(part.date.getTime()).toBe(original.date.getTime());
+      expect(part.date).not.toBe(original.date);
+    });
+
+    it('carries tags and location to the part', () => {
+      const [, part] = splitImportRow(
+        row({ tags: ['coffee'], location: { name: 'Myeongdong' } }), 1.2, 'split_1'
+      )!;
+      expect(part.tags).toEqual(['coffee']);
+      expect(part.location).toEqual({ name: 'Myeongdong' });
+    });
+
+    it('refuses an amount that is not a positive figure smaller than the row', () => {
+      expect(splitImportRow(row({ amount: 5.4 }), 0, 'split_1')).toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), -1, 'split_1')).toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), NaN, 'split_1')).toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), 5.4, 'split_1')).withContext('the whole amount leaves nothing behind').toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), 6, 'split_1')).toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), 5.399, 'split_1'))
+        .withContext('rounds up to the whole amount, leaving a sub-cent remainder behind')
+        .toBeNull();
+      expect(splitImportRow(row({ amount: 45.675 }), 45.67, 'split_1'))
+        .withContext('the row amount itself rounds up to 45.68, but taken leaves only a sub-cent remainder behind')
+        .toBeNull();
+      expect(splitImportRow(row({ amount: NaN }), 5, 'split_1'))
+        .withContext('a row amount that was never a usable figure')
+        .toBeNull();
+    });
+
+    it('never mutates the row it was given', () => {
+      const original = row();
+      const snapshot = { ...original };
+      splitImportRow(original, 1.2, 'split_1');
+      expect(original).toEqual(snapshot);
     });
   });
 });

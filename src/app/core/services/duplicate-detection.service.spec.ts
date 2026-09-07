@@ -573,6 +573,41 @@ describe('DuplicateDetectionService', () => {
       expect(checks).toEqual([]);
     });
 
+    it('does not flag an even split as its original\'s twin', () => {
+      // A split leaves both halves with the same day, type and description
+      // by construction, and an even split the same amount too — exactly
+      // what isSameRow looks for. Without the exemption the re-check the
+      // split itself fires would flag the part and deselect it on the spot.
+      const checks = service.findWithinBatchDuplicates([
+        row({ id: 'a', description: 'Coffee Shop', amount: 50 }),
+        row({ id: 'b', description: 'Coffee Shop', amount: 50, splitFrom: 'a' }),
+      ]);
+
+      expect(checks).toEqual([]);
+    });
+
+    it('does not flag two parts of one original against each other', () => {
+      const checks = service.findWithinBatchDuplicates([
+        row({ id: 'p1', description: 'Coffee Shop', amount: 25, splitFrom: 'orig' }),
+        row({ id: 'p2', description: 'Coffee Shop', amount: 25, splitFrom: 'orig' }),
+      ]);
+
+      expect(checks).toEqual([]);
+    });
+
+    it('still flags the same pair when neither carries the split mark', () => {
+      // Pinned beside the case above: same day, type, description and
+      // amount, and the only difference is the mark — so the exemption is
+      // provably doing the work, not some other reading of the two rows.
+      const checks = service.findWithinBatchDuplicates([
+        row({ id: 'a', description: 'Coffee Shop', amount: 50 }),
+        row({ id: 'b', description: 'Coffee Shop', amount: 50 }),
+      ]);
+
+      expect(checks.length).toBe(1);
+      expect(checks[0].transactionId).toBe('b');
+    });
+
     it('leaves a row already flagged against stored history alone', () => {
       // That verdict is more specific; saying it twice would double-count the
       // row in the duplicate panel.

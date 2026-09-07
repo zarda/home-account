@@ -1,5 +1,6 @@
-import { CategorizedImportTransaction, FieldConfidence } from '../../models';
+import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata } from '../../models';
 import { dayKey } from './transaction-date.utils';
+import { roundMoney } from './transaction-aggregation.utils';
 
 /**
  * The review step's corrections, kept pure so the card that offers them and
@@ -203,4 +204,123 @@ export function parseAmountInput(raw: string): number | null {
   if (!/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null;
   const value = Math.abs(Number.parseFloat(normalized));
   return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/**
+ * Which source images a row's evidence actually comes from: every image
+ * consolidation merged into it, or its own single image when nothing was
+ * merged. The receipt-attachment planner (`receipt-attachment.utils.ts`)
+ * reads a row's `imageMetadata` through this rather than its own copy, so
+ * the two cannot drift apart; the reading lives here and not there because
+ * the planner already imports `MAX_RECEIPTS_PER_TRANSACTION` off
+ * `storage.service`, which drags in `@angular/core` and
+ * `@angular/fire/storage` — imports this file's own spec has no TestBed to
+ * carry, and importing the planner back into this file would hand them to
+ * it too.
+ */
+export function imageSources(meta: ImagePositionMetadata): number[] {
+  return meta.mergedFromImages?.length ? meta.mergedFromImages : [meta.imageIndex];
+}
+
+/**
+ * Whether two rows in one import are the two (or more) halves of a single
+ * split, in either direction — a part against the original it was taken off
+ * of, an original against its part, or two parts of the same original. Split
+ * rows can read as identical twins to `isSameRow` (same day, type,
+ * description and, for an even split, the same amount) and that is by
+ * design, not a repeat: the reviewer made both on purpose, off one receipt,
+ * and the exemption in `findWithinBatchDuplicates` is keyed on this.
+ */
+export function sameSplit(
+  a: CategorizedImportTransaction,
+  b: CategorizedImportTransaction
+): boolean {
+  return (
+    a.splitFrom === b.id ||
+    b.splitFrom === a.id ||
+    (a.splitFrom !== undefined && a.splitFrom === b.splitFrom)
+  );
+}
+
+/**
+ * Take `amount` off `row` into a new row of its own, id `id` — a receipt
+ * line the reader merged into one, taken apart before the import. `null`
+ * unless `amount` is a positive figure that still leaves something behind on
+ * the original, to the cent; `splitImportRow` refuses to produce a kept row
+ * at zero or negative, and refuses to hand back two rows that are not really
+ * two.
+ *
+ * The two halves are not even copies, because they do not carry even
+ * evidence:
+ *  - The amount's grade drops from both — a split is the reviewer overruling
+ *    what was read, the same rule a hand-typed correction follows
+ *    (`commitAmount`). The date's grade, and every other review-step mark
+ *    (`dateAssumed`, `dateReviewed`, `currencyFellBack`, `currencySuggestion`,
+ *    `receiptCountry`) and reader-supplied field (`tags`, `location`,
+ *    `merchant`, `originalText`, `suggestedCategoryId`, `categoryConfidence`,
+ *    `period`), travel to both untouched: the receipt was read once, and
+ *    splitting the amount does not reread the date. A part born of a row
+ *    whose date question is still open carries `dateAssumed` and shows the
+ *    chip too — but the part's id is new, so the wizard's `receiptRowIds`
+ *    (stamped once, at extraction) never contains it, and the question does
+ *    not gate Continue or Import the way a receipt row's does. It stands on
+ *    the same footing as any other assumed date outside a receipt batch.
+ *  - `notes`, `duplicateOf`, `recurringId`, `isRecurring` and
+ *    `recurringMatch` are deleted off the part rather than carried or
+ *    cleared to `undefined` (so `'notes' in part` is false, not true of
+ *    nothing): a note about the whole receipt is not a note about a
+ *    fraction of it read alone, and a duplicate or recurring verdict was
+ *    reached about the original's own amount — a different figure needs its
+ *    own. `isDuplicate` resets to `false` and `selected` to `true` for the
+ *    same reason: the part is unchecked evidence, not yet a verdict.
+ *  - `imageMetadata` is a shallow copy, `date` a new `Date` — the way
+ *    `blankImportRow` copies a neighbour's date — and `fieldConfidence` its
+ *    own call per half rather than one object handed to both, so an edit to
+ *    one half can never reach through a shared object into the other. `tags`,
+ *    `location`, `period` and `currencySuggestion` stay exactly as shared as
+ *    they already were on `row`, which every editor on the card only ever
+ *    replaces, never mutates.
+ */
+export function splitImportRow(
+  row: CategorizedImportTransaction,
+  amount: number,
+  id: string
+): [CategorizedImportTransaction, CategorizedImportTransaction] | null {
+  // taken is rounded once, up front, and reused for the part below — the
+  // way row.amount reaches this function too, parseAmountInput (via
+  // commitAmount) and a CSV cell can both carry three or more decimals.
+  // remainder rounds row.amount − taken the same way, once, and the guard
+  // judges remainder itself rather than a separately-rounded row.amount:
+  // the two roundings can disagree by a cent, and a guard built on the
+  // latter can pass a split this function then hands back kept at zero —
+  // exactly what it otherwise refuses to produce. `!(remainder > 0)`, not
+  // `remainder <= 0`: a NaN row.amount makes remainder NaN too, and
+  // `NaN <= 0` is false — only `> 0` negated catches it.
+  const taken = roundMoney(amount);
+  const remainder = roundMoney(row.amount - taken);
+  if (!Number.isFinite(taken) || taken <= 0 || !(remainder > 0)) return null;
+
+  const kept: CategorizedImportTransaction = {
+    ...row,
+    amount: remainder,
+    fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'amount'),
+  };
+  const part: CategorizedImportTransaction = {
+    ...row,
+    id,
+    amount: taken,
+    splitFrom: row.id,
+    fieldConfidence: withoutFieldConfidence(row.fieldConfidence, 'amount'),
+    isDuplicate: false,
+    selected: true,
+    date: new Date(row.date),
+  };
+  if (row.imageMetadata) part.imageMetadata = { ...row.imageMetadata };
+  delete part.notes;
+  delete part.duplicateOf;
+  delete part.recurringId;
+  delete part.isRecurring;
+  delete part.recurringMatch;
+
+  return [kept, part];
 }
