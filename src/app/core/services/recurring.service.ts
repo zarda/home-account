@@ -72,20 +72,6 @@ export class RecurringService {
     this.recurringTransactions().filter(r => r.isActive)
   );
 
-  upcomingRecurring = computed(() => {
-    const now = new Date();
-    const thirtyDaysLater = endOfDay(addDays(startOfDay(now), 30));
-
-    return this.activeRecurring()
-      .filter(r => {
-        const nextDate = r.nextOccurrence.toDate();
-        return nextDate >= now && nextDate <= thirtyDaysLater;
-      })
-      .sort((a, b) =>
-        a.nextOccurrence.toDate().getTime() - b.nextOccurrence.toDate().getTime()
-      );
-  });
-
   private get userRecurringPath(): string {
     const userId = this.authService.userId();
     if (!userId) throw new Error('User not authenticated');

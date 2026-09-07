@@ -239,55 +239,6 @@ describe('RecurringService', () => {
       expect(active.length).toBe(1);
       expect(active[0].id).toBe('a');
     });
-
-    it('upcomingRecurring should include only active entries due within 30 days, sorted', () => {
-      const now = new Date();
-      const inFive = new Date(now.getTime() + 5 * DAY);
-      const inTwenty = new Date(now.getTime() + 20 * DAY);
-      const inForty = new Date(now.getTime() + 40 * DAY);
-      const inPast = new Date(now.getTime() - 5 * DAY);
-
-      service.recurringTransactions.set([
-        createRecurring({ id: 'far', nextOccurrence: Timestamp.fromDate(inForty) }),
-        createRecurring({ id: 'soon', nextOccurrence: Timestamp.fromDate(inTwenty) }),
-        createRecurring({ id: 'soonest', nextOccurrence: Timestamp.fromDate(inFive) }),
-        createRecurring({ id: 'past', nextOccurrence: Timestamp.fromDate(inPast) }),
-        createRecurring({ id: 'inactive', isActive: false, nextOccurrence: Timestamp.fromDate(inFive) })
-      ]);
-
-      const upcoming = service.upcomingRecurring();
-      expect(upcoming.map(r => r.id)).toEqual(['soonest', 'soon']);
-    });
-
-    /**
-     * Same raw-millisecond window as getNextOccurrences had. This one has no
-     * consumer outside its specs today, so it was latent rather than visible —
-     * but it is the shape the next surface would have copied.
-     */
-    it('upcomingRecurring should include a rule due later in the day on day 30', () => {
-      jasmine.clock().install();
-      try {
-        const now = new Date(2026, 7, 10, 10, 0);
-        jasmine.clock().mockDate(now);
-        const lastDay = addDays(startOfDay(now), 30);
-
-        service.recurringTransactions.set([
-          createRecurring({
-            id: 'edge',
-            nextOccurrence: Timestamp.fromDate(new Date(
-              lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 15, 0))
-          }),
-          createRecurring({
-            id: 'past-edge',
-            nextOccurrence: Timestamp.fromDate(addDays(lastDay, 1))
-          })
-        ]);
-
-        expect(service.upcomingRecurring().map(r => r.id)).toEqual(['edge']);
-      } finally {
-        jasmine.clock().uninstall();
-      }
-    });
   });
 
   describe('getRecurring', () => {
