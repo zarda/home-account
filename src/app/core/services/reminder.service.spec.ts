@@ -37,10 +37,12 @@ interface WebNotification {
 }
 
 /**
- * Substitutes the three production seams. The web seam reports whether it
- * displayed anything, which is what the service uses to decide whether the
- * reminder counts as sent, so `webPermitted` stands in for the browser
- * permission without touching the read-only global.
+ * Substitutes the production seams. `webPermitted` stands in for the browser
+ * permission without touching the read-only global; `webDisplays` is what
+ * the seam reports back, which is what the service uses to decide whether
+ * the reminder counts as sent. `webPermissionReads` counts calls to
+ * `webPermission()`, the only way to prove a batch reads permission once
+ * rather than once per reminder.
  */
 class TestReminderService extends ReminderService {
   readonly webNotifications: WebNotification[] = [];
@@ -52,15 +54,53 @@ class TestReminderService extends ReminderService {
     'requestPermissions',
   ]);
   webPermitted = true;
+  webDisplays: boolean | ((tag: string) => boolean) = true;
+  webPermissionReads = 0;
 
-  protected override showWebNotification(title: string, body: string, tag: string): boolean {
-    if (!this.webPermitted) return false;
+  protected override async showWebNotification(
+    title: string,
+    body: string,
+    tag: string
+  ): Promise<boolean> {
     this.webNotifications.push({ title, body, tag });
-    return true;
+    return typeof this.webDisplays === 'function' ? this.webDisplays(tag) : this.webDisplays;
+  }
+
+  protected override webPermission(): NotificationPermission | 'unsupported' {
+    this.webPermissionReads += 1;
+    return this.webPermitted ? 'granted' : 'denied';
   }
 
   protected override nativePlugin(): LocalNotificationsPlugin {
     return this.plugin;
+  }
+}
+
+/**
+ * Exercises the real `showWebNotification` rather than the stand-in above:
+ * only `nativePlugin` and `webPermission` are substituted, so every case
+ * reaches the production registration/constructor logic. The seam stays
+ * `protected` in production; this wrapper is the test-only public door to it.
+ */
+class RealWebSeamService extends ReminderService {
+  readonly plugin = jasmine.createSpyObj<LocalNotificationsPlugin>('LocalNotifications', [
+    'schedule',
+    'getPending',
+    'cancel',
+    'checkPermissions',
+    'requestPermissions',
+  ]);
+
+  protected override nativePlugin(): LocalNotificationsPlugin {
+    return this.plugin;
+  }
+
+  protected override webPermission(): NotificationPermission | 'unsupported' {
+    return 'granted';
+  }
+
+  raiseWebNotification(title: string, body: string, tag: string): Promise<boolean> {
+    return this.showWebNotification(title, body, tag);
   }
 }
 
@@ -695,15 +735,39 @@ describe('ReminderService', () => {
   });
 
   describe('web delivery', () => {
-    it('marks nothing as sent when the browser refuses to display', async () => {
-      occurrences = [occurrence({ date: daysOut(3), remindDaysBefore: 3 })];
+    it('marks nothing as sent when the page has no permission', async () => {
+      occurrences = [
+        occurrence({ date: daysOut(3), remindDaysBefore: 3 }),
+        occurrence({ recurringId: 'rule-2', name: 'Gym', date: daysOut(3), remindDaysBefore: 3 }),
+      ];
       const denied = createService();
       denied.webPermitted = false;
 
       await sweep();
 
+      // Once per batch, not once per reminder: the read happens exactly once
+      // even though two bills are due.
+      expect(denied.webPermissionReads).toBe(1);
       expect(denied.webNotifications).toEqual([]);
       expect(readSentLog()).toEqual({});
+    });
+
+    it('skips a reminder the browser refuses to raise and still raises the next', async () => {
+      occurrences = [
+        occurrence({ date: daysOut(3), remindDaysBefore: 3 }),
+        occurrence({ recurringId: 'rule-2', name: 'Gym', date: daysOut(3), remindDaysBefore: 3 }),
+      ];
+      const service = createService();
+      const firstKey = 'bill|rule-1|2026-09-04|3';
+      service.webDisplays = tag => tag !== firstKey;
+
+      await sweep();
+
+      expect(service.webNotifications.map(n => n.tag)).toEqual([
+        firstKey,
+        'bill|rule-2|2026-09-04|3',
+      ]);
+      expect(Object.keys(readSentLog())).toEqual(['bill|rule-2|2026-09-04|3']);
     });
 
     it('never schedules ahead of time', async () => {
@@ -714,6 +778,80 @@ describe('ReminderService', () => {
 
       expect(service.webNotifications).toEqual([]);
       expect(service.plugin.schedule).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the web seam', () => {
+    let service: RealWebSeamService;
+
+    beforeEach(() => {
+      if (!('serviceWorker' in navigator)) {
+        pending('this browser has no navigator.serviceWorker');
+      }
+      service = TestBed.runInInjectionContext(() => new RealWebSeamService());
+    });
+
+    it('raises through the registered worker rather than the constructor', async () => {
+      const fakeRegistration = {
+        showNotification: jasmine.createSpy().and.resolveTo(),
+      } as unknown as ServiceWorkerRegistration;
+      const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(fakeRegistration);
+      const notificationSpy = spyOn(window, 'Notification');
+
+      // Not awaited yet: a `.ready`-based implementation would hang here
+      // forever (nothing controls this origin), and this must fail fast on
+      // that rather than ride out Jasmine's async timeout. Two microtask
+      // turns are enough for the real seam's `getRegistration()` call.
+      const pending = service.raiseWebNotification('title', 'b', 't');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
+
+      const result = await pending;
+
+      expect(result).toBeTrue();
+      expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
+      expect(fakeRegistration.showNotification).toHaveBeenCalledWith('title', {
+        body: 'b',
+        tag: 't',
+      });
+      expect(notificationSpy).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the constructor when nothing is registered', async () => {
+      const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(undefined);
+      const notificationSpy = spyOn(window, 'Notification');
+
+      const result = await service.raiseWebNotification('title', 'b', 't');
+
+      expect(result).toBeTrue();
+      expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
+      expect(notificationSpy).toHaveBeenCalledWith('title', { body: 'b', tag: 't' });
+      expect(notificationSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports false when the registration refuses to display', async () => {
+      const fakeRegistration = {
+        showNotification: jasmine.createSpy().and.rejectWith(new Error('refused')),
+      } as unknown as ServiceWorkerRegistration;
+      const getRegistrationSpy = spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(fakeRegistration);
+
+      const result = await service.raiseWebNotification('title', 'b', 't');
+
+      expect(result).toBeFalse();
+      expect(getRegistrationSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports false when the constructor throws', async () => {
+      spyOn(navigator.serviceWorker, 'getRegistration').and.resolveTo(undefined);
+      const notificationSpy = spyOn(window, 'Notification').and.callFake(() => {
+        throw new TypeError('Notification is not allowed');
+      });
+
+      const result = await service.raiseWebNotification('title', 'b', 't');
+
+      expect(result).toBeFalse();
+      expect(notificationSpy).toHaveBeenCalled();
     });
   });
 
@@ -1177,6 +1315,20 @@ describe('ReminderService', () => {
       isNative.and.returnValue(true);
       const service = createService();
       service.plugin.requestPermissions.and.rejectWith(new Error('not implemented'));
+
+      await expectAsync(service.requestPermission()).toBeResolvedTo(false);
+    });
+
+    it('asks the browser on the web', async () => {
+      spyOn(Notification, 'requestPermission').and.resolveTo('granted');
+      const service = createService();
+
+      await expectAsync(service.requestPermission()).toBeResolvedTo(true);
+    });
+
+    it('reports refusal when the browser denies', async () => {
+      spyOn(Notification, 'requestPermission').and.resolveTo('denied');
+      const service = createService();
 
       await expectAsync(service.requestPermission()).toBeResolvedTo(false);
     });

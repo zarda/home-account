@@ -95,9 +95,17 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     /** The instant every assertion in the case is derived from. */
     readonly at = new Date();
 
-    protected override showWebNotification(title: string, body: string, tag: string): boolean {
+    protected override async showWebNotification(
+      title: string,
+      body: string,
+      tag: string
+    ): Promise<boolean> {
       this.webNotifications.push({ title, body, tag });
       return true;
+    }
+
+    protected override webPermission(): NotificationPermission | 'unsupported' {
+      return 'granted';
     }
 
     protected override nativePlugin(): LocalNotificationsPlugin {
@@ -282,5 +290,22 @@ describe('ReminderService sweep (emulator smoke test)', () => {
     expect(service.plugin.schedule).not.toHaveBeenCalled();
     expect(service.plugin.cancel).toHaveBeenCalledWith({ notifications: [{ id: 4242 }] });
     expect(recurring.recurringTransactions()).toEqual([]);
+  }, 30000);
+
+  it('raises the due bill through the web seam and records its key, booking nothing ahead', async () => {
+    (Capacitor.isNativePlatform as jasmine.Spy).and.returnValue(false);
+    const service = createService({ enableReminders: true, enableWeeklyRecap: true });
+
+    await service.sweep();
+
+    // Due in three days with a seven-day lead: inside the window, so this is
+    // the sweep's only immediate bill; the twenty-day one and the recap nudge
+    // both carry an `at` and have nowhere to be scheduled on the web.
+    const dueKey = `bill|${DUE_ID}|${dayKey(addDays(startOfDay(service.at), 3))}|7`;
+    expect(sentKeys()).toEqual([dueKey]);
+    expect(service.plugin.schedule).not.toHaveBeenCalled();
+    // Not toEqual: the service's own effect may have swept once already, and
+    // deliveredThisSession only stops that pass repeating, not appearing.
+    expect(service.webNotifications).toContain(jasmine.objectContaining({ tag: dueKey }));
   }, 30000);
 });
