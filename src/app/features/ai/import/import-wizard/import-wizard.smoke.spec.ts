@@ -2095,4 +2095,341 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
     },
     30000
   );
+
+  it(
+    'a split part is written as its own transaction with its own copy of the photo',
+    async () => {
+      // The card's suite proves the split emits two rows, and the planner's
+      // that a part is keyed apart from its original's receipt group. What
+      // neither can reach is the upload: one File in sourceFiles landing on
+      // the storage emulator twice, under two transaction ids, so each half
+      // carries a receiptUrl of its own rather than the part borrowing the
+      // original's. The re-check the split fires is real here too, against
+      // a ledger the cases above left holding this merchant on this day at
+      // other figures.
+      stubReceiptSeams();
+      TestBed.configureTestingModule({
+        providers: [
+          // The quota check reads Remote Config, which has no emulator.
+          {
+            provide: ReceiptQuotaService,
+            useValue: { canAddImages: async () => true, noteImagesAdded: () => undefined }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const photo = new File([new Uint8Array([1, 2, 3])], 'seven.jpg', { type: 'image/jpeg' });
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: 'seven.jpg',
+        fileSize: photo.size,
+        confidence: 0.9,
+        warnings: [],
+        duplicates: [],
+        sourceFiles: [photo],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'セブン-イレブン',
+            amount: 546,
+            currency: 'JPY',
+            date: new Date(),
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true,
+            // The item list the reader writes into the note: about the whole
+            // receipt, so the original keeps it and the part must not.
+            notes: 'おにぎり, お茶',
+            imageMetadata: {
+              imageIndex: 0,
+              imageId: 'image_0',
+              positionInImage: 'top',
+              confidenceScore: 0.9,
+              receiptId: 1
+            }
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      const continueButton = () =>
+        host.querySelector<HTMLButtonElement>('.review-step .action-button')!;
+      const importButton = () =>
+        host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
+
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(cards().length).toBe(1);
+
+      cards()[0].querySelector<HTMLButtonElement>('.split-trigger')!.click();
+      fixture.detectChanges();
+      const splitInput = cards()[0].querySelector<HTMLInputElement>('.split-input')!;
+      splitInput.value = '146';
+      splitInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      expect(cards().length).toBe(2);
+      // The part's editor is focused by an afterNextRender hook, and in this
+      // zone-run suite those hooks run in the zone's own tick, not inside
+      // detectChanges(): addRow's lands within the same call because nothing
+      // is pending when the zone settles, but the split's emission starts a
+      // re-check whose promise chain holds the zone unstable until this task
+      // yields once.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      fixture.detectChanges();
+      expect(document.activeElement)
+        .withContext('the part opens straight into its own description editor')
+        .toBe(cards()[1].querySelector('.description-input'));
+      // Nothing here loads a catalog — init() runs only under the app's
+      // initializer, and the Karma target serves public/, not src/assets —
+      // so the translate pipe echoes keys and a badge's text says nothing
+      // about the receipt or its photos. What the badge binds is read
+      // instead: the receipt id and receiptPhotos, per row.
+      const card = fixture.debugElement.query(By.directive(TransactionPreviewTableComponent))
+        .componentInstance as TransactionPreviewTableComponent;
+      expect(cards().map(c => c.querySelector('.receipt-badge') !== null)).toEqual([true, true]);
+      expect(component.extractedTransactions().map(t => [t.imageMetadata?.receiptId, card.receiptPhotos(t)]))
+        .withContext('both halves name the one receipt and its one photo')
+        .toEqual([[1, '1'], [1, '1']]);
+      expect(continueButton().disabled)
+        .withContext('the part is born filled, so nothing holds Continue')
+        .toBeFalse();
+
+      // Enter with the original's description left standing: the editor
+      // closes and the row keeps what it was born with.
+      cards()[1].querySelector<HTMLInputElement>('.description-input')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+      expect(cards()[1].querySelector('.description-input')).toBeNull();
+
+      // Both halves are detection inputs the split just changed — one a new
+      // amount, the other a new row — so a re-check is in flight behind
+      // them, and Import waits on it.
+      await until(fixture, () => component.rechecksInFlight() === 0);
+      expect(component.extractedTransactions().map(t => t.isDuplicate))
+        .withContext('the re-check flagged neither half')
+        .toEqual([false, false]);
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(importButton().disabled).toBeFalse();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.map(d => d['amount']).sort())
+        .withContext('the part and what was left on the original')
+        .toEqual([146, 400]);
+      const kept = landed.find(d => d['amount'] === 400)!;
+      const part = landed.find(d => d['amount'] === 146)!;
+      for (const [name, stored] of [['the original', kept], ['the part', part]] as const) {
+        expect(typeof stored['receiptUrl']).withContext(`${name} carries the photo`).toBe('string');
+        expect((stored['receiptUrls'] as string[]).length).withContext(name).toBe(1);
+        expect(stored['receiptCount']).withContext(name).toBe(1);
+      }
+      // The object is keyed per transaction id (storage.service.ts,
+      // receiptPath), so one File became two objects, not one URL shared.
+      expect(part['receiptUrl']).not.toBe(kept['receiptUrl']);
+      expect(part['description']).toBe('セブン-イレブン');
+      expect(part['currency']).toBe('JPY');
+      expect(kept['note']).toBe('おにぎり, お茶');
+      expect('note' in part)
+        .withContext('a note about the whole receipt is not the part\'s')
+        .toBeFalse();
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a merged row keeps both receipts\' photos and is checked again before it is written',
+    async () => {
+      // The card's suite proves the merge emits one row wearing the union
+      // badge, and the wizard's spec, over a mocked detector, that the gone
+      // row's verdict is pruned. Only here does the real checkDuplicates run
+      // behind the merge — a Firestore round trip over the survivor alone,
+      // not a resolved stub — and only here can the union in
+      // mergedFromImages be followed through planReceiptAttachments into
+      // two objects on the storage emulator under one transaction id.
+      stubReceiptSeams();
+      TestBed.configureTestingModule({
+        providers: [
+          // The quota check reads Remote Config, which has no emulator.
+          {
+            provide: ReceiptQuotaService,
+            useValue: { canAddImages: async () => true, noteImagesAdded: () => undefined }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const seven = new File([new Uint8Array([1, 2, 3])], 'seven.jpg', { type: 'image/jpeg' });
+      const lawson = new File([new Uint8Array([4, 5, 6])], 'lawson.jpg', { type: 'image/jpeg' });
+      const scannedOn = new Date();
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: '2 images',
+        fileSize: seven.size + lawson.size,
+        confidence: 0.9,
+        warnings: [],
+        // The capture dialog hands over the verdict checkDuplicates gave
+        // every row, clean rows included — which is what the merge has to
+        // prune for the row it removes.
+        duplicates: [
+          { transactionId: 'r1', isDuplicate: false, matchType: 'none', confidence: 0 },
+          { transactionId: 'r2', isDuplicate: false, matchType: 'none', confidence: 0 }
+        ],
+        sourceFiles: [seven, lawson],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'セブン-イレブン',
+            amount: 547,
+            currency: 'JPY',
+            date: scannedOn,
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true,
+            imageMetadata: {
+              imageIndex: 0,
+              imageId: 'image_0',
+              positionInImage: 'top',
+              confidenceScore: 0.9,
+              receiptId: 1
+            }
+          },
+          {
+            id: 'r2',
+            description: 'ローソン',
+            amount: 548,
+            currency: 'JPY',
+            date: scannedOn,
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true,
+            imageMetadata: {
+              imageIndex: 1,
+              imageId: 'image_1',
+              positionInImage: 'top',
+              confidenceScore: 0.9,
+              receiptId: 2
+            }
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: true }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      const importButton = () =>
+        host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
+
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(cards().length).toBe(2);
+      expect(component.duplicateChecks().some(c => c.transactionId === 'r2'))
+        .withContext('the row about to merge away holds a verdict to prune')
+        .toBeTrue();
+
+      const checkDuplicates = spyOn(TestBed.inject(DuplicateDetectionService), 'checkDuplicates')
+        .and.callThrough();
+
+      // The item's label echoes its key here, for the reason the split case
+      // gives, so the row it names is proven by the count on offer and by
+      // the id that survives the click.
+      cards()[1].querySelector<HTMLButtonElement>('.merge-trigger')!.click();
+      fixture.detectChanges();
+      const items = Array.from(
+        document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item')
+      );
+      expect(items.length).withContext('the 547 row is the only other JPY row on offer').toBe(1);
+      items[0].click();
+      fixture.detectChanges();
+
+      expect(cards().length).toBe(1);
+      expect(component.extractedTransactions().map(t => t.id))
+        .withContext('the source folded into the target the item named')
+        .toEqual(['r1']);
+      expect(cards()[0].querySelector('.amount-text')?.textContent).toContain('1095');
+      const card = fixture.debugElement.query(By.directive(TransactionPreviewTableComponent))
+        .componentInstance as TransactionPreviewTableComponent;
+      const survivor = component.extractedTransactions()[0];
+      expect(cards()[0].querySelector('.receipt-badge')).not.toBeNull();
+      expect(survivor.imageMetadata?.mergedFromImages).toEqual([0, 1]);
+      expect(card.receiptPhotos(survivor)).withContext('the badge names both photos').toBe('1–2');
+
+      // The survivor's amount changed, which is a detection input, so a
+      // re-check is in flight behind the merge; Import waits on it.
+      await until(fixture, () => component.rechecksInFlight() === 0);
+
+      expect(checkDuplicates).toHaveBeenCalledTimes(1);
+      expect(checkDuplicates.calls.argsFor(0)[0].map(t => t.id))
+        .withContext('the survivor alone, never the row that merged away')
+        .toEqual(['r1']);
+      expect(component.duplicateChecks().some(c => c.transactionId === 'r2'))
+        .withContext('no verdict is kept for a row that left the batch')
+        .toBeFalse();
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(importButton().disabled).toBeFalse();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.length).withContext('one transaction, not two').toBe(1);
+      const merged = landed[0];
+      expect(merged['amount']).toBe(1095);
+      expect((merged['receiptUrls'] as string[]).length)
+        .withContext('both receipts\' photos, under the one id')
+        .toBe(2);
+      expect(merged['receiptCount']).toBe(2);
+      expect(merged['description']).toBe('セブン-イレブン');
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
 });
