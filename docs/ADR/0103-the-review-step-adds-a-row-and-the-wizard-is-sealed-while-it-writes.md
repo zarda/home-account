@@ -1,6 +1,6 @@
 # 103. The review step adds a row, and the wizard is sealed while it writes
 
-**Status:** Accepted, implemented · **Date:** 2026-09-06 · **Issues:** #372, #373
+**Status:** Accepted, implemented; amended for #371 (2026-09-08) · **Date:** 2026-09-06 · **Issues:** #372, #373
 
 Reference documentation lives in [../import-fields.md](../import-fields.md)
 and [../receipt-import.md](../receipt-import.md).
@@ -214,7 +214,10 @@ NG0911.
   emission that adds it is skipped. Typing into it fires the check, and this
   gate is what guarantees it is typed into — so the row is always checked
   before it can be imported, by the interaction of two rules rather than by
-  anything that states it.
+  anything that states it. Amended for #371: since
+  [ADR 0106](0106-the-review-step-splits-a-row-and-merges-two.md) a filled row
+  that appears beside rows already on the card is checked on arrival; a blank
+  one is still checked on its first edit.
 - **The gate counts rows, and does not lead to one.** The hint says how many
   are owed and nothing scrolls to them or filters the list; on a batch of
   twenty that is a hunt, mitigated only by the placeholders.

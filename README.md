@@ -29,7 +29,7 @@ This project demonstrates modern Angular development practices with a focus on:
 - **Dark Mode** - Light/dark/system theme support
 - **Multi-language** - English, Traditional Chinese, Japanese
 - **Usage statistics** - Included in the free plan; premium accounts can turn it off. Only which screens are opened and which features are used are recorded; never amounts, merchants, categories, notes or anything you typed — see [docs/analytics.md](docs/analytics.md)
-- **PWA Support** - Install as a native app on iOS/Android, works offline
+- **PWA Support** - Install to the home screen on iOS/Android; a receipt photographed without a connection waits in an on-device queue and is processed when the connection returns
 
 ## Platform-Specific Features
 
@@ -37,7 +37,7 @@ This project demonstrates modern Angular development practices with a focus on:
 |---------|-----------|--------------|-----------------------|
 | **Receipt OCR** | Cloud AI (Gemini) | Vision OCR + Apple Intelligence (iOS 26+) | Apple Intelligence (on-device) → Cloud AI → Vision OCR |
 | **Camera** | Browser API | Native Camera | File picker |
-| **Offline** | Service Worker | Native + SW | Native + SW |
+| **Offline** | Offline queue in IndexedDB; no caching worker | Offline queue in IndexedDB | Offline queue in IndexedDB |
 | **Donate Link** | Visible | Hidden (App Store guidelines) | Hidden (App Store guidelines) |
 | **Installation** | Add to Home Screen | App Store | App Store / runs the iOS app ("Designed for iPad") |
 
@@ -56,7 +56,7 @@ On macOS the iOS build runs natively on Apple Silicon. When Apple Intelligence i
 | Multi-Platform | Capacitor 8 |
 | Charts | Chart.js + ng2-charts |
 | Export | jspdf, date-fns |
-| PWA | Service Worker, IndexedDB |
+| PWA | Share-target service worker (share intake and reminder notifications), IndexedDB |
 
 ## Project Structure
 
@@ -176,11 +176,13 @@ Falls back to cloud AI if native OCR is unavailable.
 
 ## PWA Support
 
-The web app is a fully-featured Progressive Web App:
+The web app installs as a Progressive Web App:
 
 - **Installable** - Add to home screen on any device
-- **Offline Queue** - Images saved for processing when back online
-- **Background sync** - Queued images processed when online
+- **Offline queue** - A receipt captured without a connection is stored in IndexedDB on the device and processed when the connection returns, or on **Sync Now** in Settings → AI Processing
+- **Share target** - A receipt shared from another app lands in the import wizard ([docs/share-import.md](docs/share-import.md))
+
+There is no caching worker: the app itself needs a connection to load.
 
 ### iOS Installation (PWA)
 1. Open in Safari

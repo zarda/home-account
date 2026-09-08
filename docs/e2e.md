@@ -112,8 +112,8 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full window,
 and a pane behaves differently enough to cost a run before it is understood.
-None of these is a property of the app; four of the seven have produced a
-false failure, the fifth stops a run before it starts, and the last two are
+None of these is a property of the app; five of the eight have produced a
+false failure, the sixth stops a run before it starts, and the last two are
 doors nothing in a pane opens — one that no file picker reaches in any
 browser, one whose only control on the page is a switch with a write behind
 it.
@@ -126,6 +126,20 @@ it.
 - **A screenshot can freeze under a scaled emulation** — the image that comes
   back is the one from before the last interaction, which reads exactly like a
   control that did nothing. Confirm against the page's text, not the picture.
+- **A hidden pane stops painting, and the app's render scheduler with it.**
+  Angular schedules a render on `requestAnimationFrame` raced against a
+  timer, and a pane the host is not showing throttles both, so a click lands
+  in the model while the view lags behind it — a control that did nothing,
+  read from a screenshot that never updated, and focus that never arrived.
+  Front the pane before reading anything off it. Where it cannot be fronted,
+  `ng.applyChanges(ng.getComponent(document.querySelector('app-import-wizard')))`
+  after each action renders what the model already holds — state only, so it
+  proves nothing about what the app would have painted — and everything
+  `afterNextRender` does, focus above all, is left to the specs that pin it.
+  An overlay's position and its close animation cannot be judged without
+  frames either: the merge menu reported a negative left and stayed in the
+  DOM until closed through its trigger, an artefact of the pane and not a
+  finding.
 - **A desktop-only door needs a pane genuinely wide enough for the table.**
   The list swaps to the table at `min-width: 768px`, so below that the row's
   note icon does not exist and journey 2 silently becomes journey 4.
@@ -202,7 +216,7 @@ rather than leaving to be inferred.
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
-| Raising one test notification through the worker | Nothing on the account. One OS notification from this browser profile, tagged `e2e-14` | Closed by the journey: `(await navigator.serviceWorker.getRegistration()).getNotifications().then(ns => ns.forEach(n => n.close()))` |
+| Raising one test notification through the worker | Nothing on the account. One OS notification from this browser profile, tagged `e2e-14` | Closed by the journey: `(await navigator.serviceWorker.getRegistration()).getNotifications({ tag: 'e2e-14' }).then(ns => ns.forEach(n => n.close()))` — by tag, so a bill reminder the account's own sweep raised in this profile is left standing |
 
 The failed-attempt record is written only by the attempt's `failed` and the
 import's own record only by `confirmImport`, so an extraction left
@@ -587,15 +601,33 @@ the editors keep their 40px tap targets at every width.
 
 Two more readings, in journey 15's order: with the split field open on the
 card, and — once the split has made two — with the merge menu open over
-the part. Every card still fits:
+the part. What is pinned is what these controls own: every **Split** and
+**Merge into…** trigger inside its own card's box and 40px tall, and the
+open split field inside that box too — the 288px probe's own reading of
+them, taken here at the wizard's real width:
 
 ```js
-[...document.querySelectorAll('.transaction-card')]
-  .every(card => card.scrollWidth === card.clientWidth);
+[...document.querySelectorAll('.transaction-card')].every(card => {
+  const c = card.getBoundingClientRect();
+  const inside = el => {
+    const b = el.getBoundingClientRect();
+    return b.left >= c.left && b.right <= c.right;
+  };
+  return [...card.querySelectorAll('.split-input')].every(inside) &&
+    [...card.querySelectorAll('.split-trigger, .merge-trigger')]
+      .every(t => inside(t) && t.getBoundingClientRect().height >= 40);
+});
 ```
 
-`true` both times, and **Split** and **Merge into…** are 40px controls like
-the chips beside them.
+`true` both times. The card's own `scrollWidth === clientWidth` is not the
+pass here, because on a real receipt it comes back `false` for a reason that
+is none of these controls': the category suggestion chip is sized to its
+label, and a long category name — *Groceries*, 185px — reaches 12px past a
+240px card. That chip predates Split and Merge into…, the 288px probe never
+measures it because its fixture's category is shorter, and the first run
+recorded it as a follow-up of its own. Until that lands, a card that
+overflows only by that chip is recorded with the figures and passed over,
+not read as a failure of the controls being measured.
 
 One shot: the review card, question chip and open tag editor together.
 
@@ -726,12 +758,17 @@ The script URL ends in `/share-target-sw.js`: the share-target worker the
 app registers at scope `/` on every web boot is the registration a reminder
 is now raised on. Record the permission with it.
 
-**Precondition:** `granted`. The pane may not prompt — the only prompt in
-the app is the reminders switch's, and the same click writes a preference
-and sweeps the account ([Panes and viewports](#panes-and-viewports)) — so a
-`default` or `denied` state is recorded and the journey skipped rather than
-faked. The seam raises nothing on either: the registration refuses the call
-and the seam resolves `false`.
+**Precondition for the OS half:** `granted`. The pane may not prompt — the
+only prompt in the app is the reminders switch's, and the same click writes a
+preference and sweeps the account ([Panes and viewports](#panes-and-viewports))
+— and `granted` comes from the browser's own site settings for the origin,
+never from the app. A `default` or `denied` state is recorded, and the OS half
+of the journey is skipped rather than faked. The registration half still
+stands on either: the wrapper below still sees the call arrive with the
+sweep's own arguments, the constructor is never touched, and the seam resolves
+`false` on the platform's own refusal (*No notification permission has been
+granted for this origin*). That is what the first run proved, in a pane that
+reported `denied`; the notification itself waits for a profile that grants.
 
 Then Settings → Profile, the page `app-reminder-settings` is on — the bill
 reminders block journey 6 walks past — and, in the console, wrap the
@@ -745,7 +782,7 @@ await ng.getComponent(document.querySelector('app-reminder-settings')).reminders
   .showWebNotification('Home Account', 'Journey 14', 'e2e-14');
 ```
 
-**Pass:** the call resolves `true`; `window.__shown` is
+**Pass, on a granting profile:** the call resolves `true`; `window.__shown` is
 `['Home Account', { body: 'Journey 14', tag: 'e2e-14' }]` — the title, then
 the body and the tag as one options object, which is the shape the sweep
 hands over; `(await reg.getNotifications()).map(n => n.tag)` contains
@@ -755,7 +792,9 @@ registration and not the constructor, which touches no registration at all.
 Nothing was written, and the switch is untouched.
 
 Close it with the restore in [What a run may touch](#what-a-run-may-touch)
-before leaving the page. Clicking it instead is the worker's
+before leaving the page — by its tag, never every notification the
+registration holds, since a bill reminder the account's own sweep raised in
+this profile may be standing beside it. Clicking it instead is the worker's
 `notificationclick`, which closes the notification and focuses an open tab,
 or opens one at `/` — fine to try, and not part of the pass.
 
@@ -785,8 +824,9 @@ the original's description, which a line item taken out on its own rarely
 keeps. Enter with the copied name left standing closes the editor and keeps
 it, the way journey 9's description editor keeps an unchanged one. Escape
 leaves the row alone and so does an emptied field, while a figure the row
-cannot spare — the whole ¥538, or more — holds the field open rather than
-close having done nothing, as journey 9's unreadable amount does.
+cannot spare — the whole ¥538, or more — holds the field open, marked invalid,
+with *Enter an amount smaller than the row's* next to it, the way the amount
+editor refuses a figure it cannot read.
 
 Both cards wear the receipt badge, *Receipt 1 (photo 1)*: one photo, two
 transactions, each of which would attach its own copy at an import this run
@@ -809,7 +849,10 @@ marks the review put on it stand, and the amount is the one thing summed.
 That new figure sends it back through the duplicate check alone, the row
 that merged away owing no verdict, and once that settles there is no
 duplicate badge. A *Duplicate* verdict from either re-check is journey 9's
-case — what to recognise against a real account, not part of the pass.
+case — what to recognise against a real account, not part of the pass. A run
+that strays onto the confirm step sees an *Items merged* card reading 1 after
+the merge: the survivor is marked merged and that card counts it — not a
+defect, and not on this journey's path.
 
 A blank row and a flagged one are kept off both sides: a card still reading
 *Add a description* or *Add an amount*, or wearing the duplicate badge,

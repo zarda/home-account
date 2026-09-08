@@ -36,7 +36,7 @@ needs. `ExtractedTransaction`, `ProcessedTransaction` and the review shape
 also carry `receiptCountry`, a mark rather than a field: `printedLocationSlot(name, country)`
 files it under a printed address and nowhere else.
 
-`CategorizedImportTransaction` carries eight more that are **review-step
+`CategorizedImportTransaction` carries nine more that are **review-step
 marks, not fields**: `currencyFellBack` (nobody read a currency, so the base
 currency is standing in), `dateAssumed` (the row's `date` is *now* rather than
 something read off the source, because `resolveImportDate` could not vouch
@@ -52,6 +52,11 @@ day and by the bulk Keep, each of which clears `dateAssumed`,
 `dateImplausible` and the date's grade in the same move, so an answered row
 stops looking flagged and is not asked again; see
 [ADR 0100](ADR/0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md)),
+`splitFrom` (the row this one was split off from on the review card, set by
+**Split** and carried through a merge — the attachment planner keys such a row
+on its own id so it uploads its own copy of the photo, and the duplicate
+detector never reads rows born of one split as each other's twins; see
+[ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md)),
 `suggestedTags` (what was offered, so the confirm step can
 tell a removal from a row that never had any), `recurringMatch` (the rule
 this row looks like), `receiptCountry` (the country the reader concluded the
@@ -142,6 +147,12 @@ own `imageMetadata`:
 - Rows sharing a receipt (same `receiptId`, or identical source images when
   ungrouped) attach on the **first selected row only**. Two receipts printed
   on one photo both keep it.
+- A row the reviewer split off on the card (`splitFrom` set) is keyed on its
+  own id, apart from its original's receipt group, so **every part uploads its
+  own copy** of the photo — one storage object per transaction id, and one
+  quota slot each. A merged row attaches the union of both sides' sources
+  under the target's id
+  ([ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md)).
 - The wizard passes the **image subset** of its files — `imageIndex` indexes
   what the extraction ran over, not `selectedFiles`. The camera flow passes
   the `sourceFiles` its capture result handed over via router state.
@@ -177,7 +188,9 @@ runs again, and whether anything is remembered past the wizard.
 | Notes | the **Notes** button opens a textarea; it files on the way out | nothing | no | no |
 | Tags | a remove control on each chip, and **Add tag** over the account's own vocabulary — a native datalist, so what is typed is filed whether or not it is on the list | the tag | no | yes, kept and removed both, per merchant |
 | Location / country | one chip with three controls: the name is an inline editor, the country a menu over the bundled table with **No country** on it, and the removal clears both | a picked country clears `receiptCountry` and writes `location.country`; the removal clears `location` and `receiptCountry` together | no | no |
-| Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival (there is no earlier row to compare it against), but on every edit to a detection input — date, amount, type or description — so a filled row has been checked | no |
+| Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival while blank (a blank row has nothing to compare; a filled row that appears is checked, as the split row below is), but on every edit to a detection input — date, amount, type or description — so a filled row has been checked | no |
+| Row (split) | **Split** in the extras opens an inline amount field; Enter takes that amount into a new row directly under the original, which keeps the purchase's identity — description, date and its marks, currency, type, category, location, tags, photo — and drops notes, the rule link and the verdict, and opens with its description editor focused | `fieldConfidence.amount` on both halves | yes — the original by its amount, the part on arrival; the two are never each other's within-batch twins | no |
+| Row (merged) | **Merge into…** lists the other rows in the same currency that have an amount, a description and no standing verdict; the target keeps its id, the amounts net with the type following the sign, tags and photos union, notes join, and the source leaves the batch with everything keyed on its id | `fieldConfidence.amount` on the survivor, whose verdict is written clear | yes, the target — the row that merged away owes none | no |
 | Recurring rule | the offer's checkbox | sets or restores `recurringId` and `isRecurring` | no | no |
 | Duplicate verdict | the badge's **Not a duplicate — import it** | `isDuplicate` and `duplicateOf`, reselects the row, and marks it overruled for the rest of the batch | it *is* the overrule | no |
 
@@ -200,7 +213,9 @@ re-check,
 [ADR 0102](ADR/0102-the-review-card-adds-a-tag-and-edits-a-location.md) for the
 tag field and the location chip, and
 [ADR 0103](ADR/0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md)
-for the hand-added row and the gate it joins.
+for the hand-added row and the gate it joins, and
+[ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md) for the
+split and the merge.
 
 ## Suggestions, and what removing one means
 
@@ -253,7 +268,12 @@ are forgotten as soon as the wizard closes.
    whether a removal is remembered: tags are, and nothing else is.
    Either way the change goes through `replaceRow`, never onto the `@Input()`
    object, and you add a row to *What the review step corrects* above saying
-   whether detection re-runs on it.
+   whether detection re-runs on it. Decide too what a split part keeps of the
+   field and what a merge does with two of it: `splitImportRow` and
+   `mergeImportRows` in `import-review.utils.ts` name every field they drop,
+   union or take from one side, and a field they do not name rides the
+   spread — onto both halves of a split from the original, and onto the
+   survivor of a merge from the target alone, the source's value lost.
 7. Decide what a row **nobody read** carries for it. `blankImportRow` in
    `import-review.utils.ts` builds the row **Add a row** appends, and it is the
    one producer with no source to learn a value from: absent is the default

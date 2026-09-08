@@ -70,7 +70,11 @@ it:
 so the review table marks the amount for a second look before the row is
 imported. A wildly deviating total is kept rather than replaced: one of the two
 figures was misread and the printed one is the likelier to be right, but the
-reviewer should see the disagreement either way.
+reviewer should see the disagreement either way. And what consolidation
+decided about *how many* purchases the photos hold is not final either: a
+receipt read as two rows, or two receipts folded into one, is put right on the
+review card before anything is written — see *Splitting and merging on the
+card*.
 
 The row's own `confidence` is untouched on purpose. That number averages into
 the score the strategy layer compares against 0.4 when deciding whether the
@@ -363,6 +367,61 @@ Emptying a place name withdraws the name only, keeping a country under it;
 withdrawing the country from a location with no name drops the location whole,
 because a bare coordinate pair is a shape the write refuses.
 
+## Splitting and merging on the card
+
+Consolidation is a one-way door: `consolidateReceiptItems` folds every item
+sharing a `receiptId` into one row and the wizard keeps none of the
+constituents, so what the reader gets wrong about *how many* purchases a photo
+holds is put right on the card, by two controls in a row's extras ahead of
+**Add location** and **Add tag**.
+
+**Split** takes an amount off the row into a new row directly beneath it. It
+opens an inline field, empty, for the figure the new row takes; Enter or blur
+commits, Escape cancels, and an emptied field closes without doing anything. A
+figure the row cannot spare — nothing, the whole amount, or more, judged to the
+cent — holds the field open, marked invalid and saying why (*Enter an amount
+smaller than the row's*), rather than closing having done nothing. The part
+keeps what identifies the purchase — description, date and its marks,
+currency, type, category, location, tags, and a copy of the photo lineage —
+and drops what is singular: the note, the rule link and the duplicate verdict.
+Both halves lose the amount's grade, since the reviewer's hand settled
+both figures. The part opens with its description editor focused, because the
+copied description is rarely right for a line taken out on its own, and it
+carries `splitFrom`, a review-step mark naming the row it came off: the
+attachment planner keys it on its own id so **each part uploads its own copy of
+the photo** — one object per transaction id, one quota slot each — and the
+duplicate detector never reads rows born of one split as each other's twins. A
+bill halved is the first thing Split is for, and an even split is exactly the
+shape the within-batch pass looks for.
+
+**Merge into…** lists the other rows in the same currency as *description ·
+amount · date*; picking one folds this row into it. The target keeps its id and
+its identity — description, date and marks, category, currency, rule link — and
+the amounts net, an income line cancelling an expense with the type following
+the sign; tags and photo lineage union, a location or country the target lacks
+is taken from the source, notes join on a new line with a blank note read as
+none, and the row that merged away leaves the batch with everything keyed on
+its id — its editing state on the card, its overrule, its re-check stamp and
+its verdict on the wizard. A row takes part on either side only when it has an
+amount, a description and no standing duplicate verdict: a blank target's
+placeholder category and copied date would otherwise win over the source's real
+ones, and a flagged one's verdict cleared on the way through would answer a
+question the reviewer was never shown. A row in another currency is never
+listed, because nothing here converts.
+
+Both go back through the duplicate check
+([ADR 0101](ADR/0101-a-corrected-row-is-checked-for-duplicates-again.md)): the
+original for its new amount, the part because it is new — a filled row that
+appears beside rows already on the card is checked on arrival, unlike the blank
+row **Add a row** appends — and the survivor of a merge alone, the gone row
+owing no verdict. Both controls keep the card's own rules: 40px targets,
+nothing truncating, and a focus landing named for the control that leaves —
+the part's editor after a split, the survivor after a merge. Neither edits the
+note, and a merge cannot be undone except by splitting an amount back off,
+which makes a new part with the survivor's identity rather than the row that
+was folded in. The decision, the seams it had to meet and what it rejected are
+in [ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md).
+
 ## Failure surfacing
 
 A provider failure is thrown, never flattened into an empty result: all three
@@ -581,9 +640,12 @@ surfaced only to the account that was signed in when it arrived, with a bounded
 claim window for shares made signed out (see
 [share-import.md](share-import.md)).
 
-The queue drains when the browser reports the connection back, when the service
-worker's background sync fires, and when you press **Sync Now** on the AI
-settings page. Draining is unattended by definition — a reconnect with no dialog
+The queue drains when the browser reports the connection back and when you
+press **Sync Now** on the AI settings page. It also listens for a
+`sync-offline-queue` event that nothing produces — no registered worker
+carries a `sync` handler
+([ADR 0105](ADR/0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md)).
+Draining is unattended by definition — a reconnect with no dialog
 open and possibly nobody looking — so there is no review step: what the model
 read goes straight into the ledger and a toast says how many rows arrived. They
 are ordinary transactions afterwards, editable like any other.
@@ -596,8 +658,8 @@ behind is dropped here: there is no review surface on this door to show it on.
 
 A launch does not drain the queue by itself; what it does is sweep. Anything
 left marked *processing* — a tab closed mid-receipt, an app swiped away, a
-background sync killed by the OS — is handed back as pending, at the cost of one
-of its retries. Without the sweep such a row is invisible to every counter and
+drain interrupted by the OS — is handed back as pending, at the cost of one of
+its retries. Without the sweep such a row is invisible to every counter and
 every retry, and the receipt is silently lost while its bytes sit in IndexedDB.
 
 **A drain that runs twice over the same image does not import it twice.** Each

@@ -64,7 +64,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0057](0057-a-replayed-answer-enumerates-and-reports.md) | A replayed answer enumerates, and reports | Accepted | 2026-08-19 |
 | [0058](0058-a-formatted-date-follows-the-chosen-language.md) | A formatted date follows the chosen language | Accepted | 2026-08-19 |
 | [0059](0059-one-mapper-builds-every-imported-transaction.md) | One mapper builds every imported transaction | Accepted; amends 0011 | 2026-08-20 |
-| [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) | A confirmed import keeps its photos and names its source | Accepted | 2026-08-20 |
+| [0060](0060-a-confirmed-import-keeps-its-photos-and-names-its-source.md) | A confirmed import keeps its photos and names its source | Accepted; split parts excepted by 0106 | 2026-08-20 |
 | [0061](0061-a-period-total-is-swept-exact-or-shown-absent.md) | A period total is swept exact, or shown absent | Accepted | 2026-08-21 |
 | [0062](0062-the-review-step-can-correct-every-field-the-import-writes.md) | The review step can correct every field the import writes | Accepted; amended by 0099 | 2026-08-22 |
 | [0063](0063-an-import-suggests-only-what-the-account-already-knows.md) | An import suggests only what the account already knows | Accepted | 2026-08-22 |
@@ -96,7 +96,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0089](0089-the-auth-listener-dies-with-the-injector-that-registered-it.md) | The auth listener dies with the injector that registered it | Accepted; closes a gap of 0088 | 2026-08-31 |
 | [0090](0090-a-render-callback-is-registered-only-while-the-view-can-run-it.md) | A render callback is registered only while the view can run it | Accepted; follow-up to 0088 | 2026-08-31 |
 | [0091](0091-the-upcoming-card-reads-the-live-schedule-not-the-ledger.md) | The upcoming card reads the live schedule, not the ledger | Accepted | 2026-09-01 |
-| [0092](0092-a-reminder-fires-once-and-the-record-of-it-lives-on-the-device.md) | A reminder fires once, and the record of it lives on the device | Accepted | 2026-09-01 |
+| [0092](0092-a-reminder-fires-once-and-the-record-of-it-lives-on-the-device.md) | A reminder fires once, and the record of it lives on the device | Accepted; delivery gap closed by 0104 | 2026-09-01 |
 | [0093](0093-the-summary-export-names-both-sides-of-the-ledger.md) | The summary export names both sides of the ledger | Accepted | 2026-09-01 |
 | [0094](0094-the-receipt-quota-is-recounted-from-the-bucket-it-limits.md) | The receipt quota is recounted from the bucket it limits | Accepted | 2026-09-01 |
 | [0095](0095-a-translation-is-a-lens-never-a-write.md) | A translation is a lens, never a write | Accepted | 2026-09-02 |
@@ -107,7 +107,10 @@ reverse — why a thing is the way it is, not how to use it.
 | [0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md) | A receipt dated before today is a question the reviewer answers | Accepted; closes a gap of 0074 | 2026-09-04 |
 | [0101](0101-a-corrected-row-is-checked-for-duplicates-again.md) | A corrected row is checked for duplicates again | Accepted; extends 0063 | 2026-09-04 |
 | [0102](0102-the-review-card-adds-a-tag-and-edits-a-location.md) | The review card adds a tag and edits a location | Accepted; closes a gap of 0068; extends 0099 | 2026-09-06 |
-| [0103](0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md) | The review step adds a row, and the wizard is sealed while it writes | Accepted; extends 0100 | 2026-09-06 |
+| [0103](0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md) | The review step adds a row, and the wizard is sealed while it writes | Accepted; extends 0100; amended for #371 | 2026-09-06 |
+| [0104](0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md) | A web reminder is raised through the worker the app already registers | Accepted; extends 0092; a second job for 0019's worker | 2026-09-08 |
+| [0105](0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md) | The cache-size card is removed, and the dead worker with it | Accepted; applies 0048 and 0097 | 2026-09-08 |
+| [0106](0106-the-review-step-splits-a-row-and-merges-two.md) | The review step splits a row, and merges two | Accepted; extends 0099 and 0103; excepts 0060; widens 0101 | 2026-09-08 |
 
 ## What belongs here
 
