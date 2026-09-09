@@ -2182,7 +2182,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       cards()[0].querySelector<HTMLButtonElement>('.split-trigger')!.click();
       fixture.detectChanges();
       const splitInput = cards()[0].querySelector<HTMLInputElement>('.split-input')!;
-      splitInput.value = '146';
+      splitInput.value = '146.4';
       splitInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
       fixture.detectChanges();
 
@@ -2237,7 +2237,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
       const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
       expect(landed.map(d => d['amount']).sort())
-        .withContext('the part and what was left on the original')
+        .withContext('146.4 rounds to whole yen before the split is written')
         .toEqual([146, 400]);
       const kept = landed.find(d => d['amount'] === 400)!;
       const part = landed.find(d => d['amount'] === 146)!;
@@ -2425,6 +2425,164 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         .toBe(2);
       expect(merged['receiptCount']).toBe(2);
       expect(merged['description']).toBe('セブン-イレブン');
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a removed row is never written, and leaves no verdict behind',
+    async () => {
+      // The card's own suite proves removeRow takes the row off the card
+      // and moves focus to its neighbour, and the wizard's spec, over a
+      // mocked detector, that a gone row's verdict is pruned. Only here
+      // does a real re-check run for the edited row first, so there is a
+      // genuine verdict to prune rather than one asserted into place, and
+      // only here does confirmImport follow the removal all the way to
+      // storage: the row's photo, still sitting in sourceFiles under the
+      // batch's own imageIndex, must never reach the emulator.
+      stubReceiptSeams();
+      TestBed.configureTestingModule({
+        providers: [
+          // The quota check reads Remote Config, which has no emulator.
+          {
+            provide: ReceiptQuotaService,
+            useValue: { canAddImages: async () => true, noteImagesAdded: () => undefined }
+          }
+        ],
+        teardown: { destroyAfterEach: false }
+      });
+
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const secondId = 'r2';
+      const seven = new File([new Uint8Array([1, 2, 3])], 'seven.jpg', { type: 'image/jpeg' });
+      const lawson = new File([new Uint8Array([4, 5, 6])], 'lawson.jpg', { type: 'image/jpeg' });
+      const scannedOn = new Date();
+      const importResult: ImportResult = {
+        source: 'image',
+        fileType: 'receipt_image',
+        fileName: '2 images',
+        fileSize: seven.size + lawson.size,
+        confidence: 0.9,
+        warnings: [],
+        // Empty, unlike the merge case's: the entry this test asserts on
+        // has to come from the edit's own re-check, not ride in already
+        // hydrated from the capture dialog's payload.
+        duplicates: [],
+        sourceFiles: [seven, lawson],
+        transactions: [
+          {
+            id: 'r1',
+            description: 'セブン-イレブン',
+            amount: 551,
+            currency: 'JPY',
+            date: scannedOn,
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true,
+            imageMetadata: {
+              imageIndex: 0,
+              imageId: 'image_0',
+              positionInImage: 'top',
+              confidenceScore: 0.9,
+              receiptId: 1
+            }
+          },
+          {
+            id: secondId,
+            description: 'ローソン',
+            amount: 552,
+            currency: 'JPY',
+            date: scannedOn,
+            type: 'expense',
+            suggestedCategoryId: 'other_expense',
+            categoryConfidence: 0.9,
+            isDuplicate: false,
+            selected: true,
+            imageMetadata: {
+              imageIndex: 1,
+              imageId: 'image_1',
+              positionInImage: 'top',
+              confidenceScore: 0.9,
+              receiptId: 2
+            }
+          }
+        ]
+      };
+
+      history.replaceState({ importResult, fromCamera: true, multiImage: true }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      const cards = () => Array.from(host.querySelectorAll<HTMLElement>('.transaction-card'));
+      const continueButton = () =>
+        host.querySelector<HTMLButtonElement>('.review-step .action-button')!;
+      const importButton = () =>
+        host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!;
+
+      expect(component.stepper.selectedIndex).toBe(2);
+      expect(cards().length).toBe(2);
+
+      cards()[1].querySelector<HTMLButtonElement>('.amount-section .inline-edit')!.click();
+      fixture.detectChanges();
+      const amount = cards()[1].querySelector<HTMLInputElement>('.amount-input')!;
+      amount.value = '553';
+      amount.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+
+      // The amount just changed, a detection input, so a real re-check is
+      // in flight behind it — a Firestore round trip, not a resolved stub.
+      await until(fixture, () => component.rechecksInFlight() === 0);
+      expect(component.duplicateChecks().some(c => c.transactionId === secondId))
+        .withContext('the edit earned the row a genuine verdict to prune')
+        .toBeTrue();
+
+      cards()[1].querySelector<HTMLButtonElement>('.remove-trigger')!.click();
+      fixture.detectChanges();
+      expect(cards().length).toBe(1);
+
+      // Focus after a removal is set by the same afterNextRender hook, and
+      // in this zone-run suite it runs in the zone's own tick, not inside
+      // detectChanges() — case 5's own reason, above.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      fixture.detectChanges();
+      expect(document.activeElement)
+        .withContext('the removed row was last, so focus falls to the row before it')
+        .toBe(cards()[0].querySelector('.remove-trigger'));
+      expect(component.duplicateChecks().some(c => c.transactionId === secondId))
+        .withContext('no verdict is kept for a row that left the batch')
+        .toBeFalse();
+      expect(continueButton().disabled).toBeFalse();
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(importButton().disabled).toBeFalse();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.map(d => d['amount']))
+        .withContext('the removed row was never written, at either its old figure or its edit')
+        .toEqual([551]);
+      expect((landed[0]['receiptUrls'] as string[]).length)
+        .withContext('the removed row\'s own photo was never uploaded')
+        .toBe(1);
 
       history.replaceState({}, '');
       fixture.destroy();
