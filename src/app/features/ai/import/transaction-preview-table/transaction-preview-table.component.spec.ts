@@ -1034,6 +1034,40 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(currencySession.remember).not.toHaveBeenCalled();
   });
 
+  it('hands focus to the currency chip when the offer is dismissed', () => {
+    // The offer chip goes with its own remove button; the currency chip
+    // beneath it is unconditional, so no fallback is needed behind it.
+    const row = makeRow({
+      currencyFellBack: true,
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+    });
+    component.transactions = [row];
+    component.categories = [];
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.currency-offer .extra-remove') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.currency-chip'));
+  });
+
+  it('hands focus to the currency chip when the offer is accepted', () => {
+    // Accept goes through updateCurrency, which clears currencySuggestion
+    // the same way dismiss does — the same unmount, so the same landing.
+    const row = makeRow({
+      currencyFellBack: true,
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+    });
+    component.transactions = [row];
+    component.categories = [];
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.currency-offer .extra-accept') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.currency-chip'));
+  });
+
   /**
    * The touch picker renders in the CDK overlay container, outside the
    * fixture, so a test that opened it closes it again — or the next test
@@ -2447,6 +2481,17 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(document.activeElement).toBe(addTrigger());
     });
+
+    it('hands focus to the add-tag trigger when a tag is removed', () => {
+      // The chip's own remove button leaves with the chip; the add trigger
+      // is what stands in its place.
+      render([makeRow({ tags: ['coffee'] })]);
+
+      (fixture.nativeElement.querySelector('.tag-chip .extra-remove') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(addTrigger());
+    });
   });
 
   /**
@@ -2671,6 +2716,18 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       render(makeRow({ receiptCountry: 'KR' }));
 
       openCountryMenu()[0].click();
+      fixture.detectChanges();
+
+      expect(addTrigger()).withContext('what stands where the chip stood').not.toBeNull();
+      expect(document.activeElement).toBe(addTrigger());
+    });
+
+    it('hands focus to the add trigger when the removal takes the chip away', () => {
+      // The remove button goes with the whole chip, the same drop as the
+      // withdrawal above.
+      render(makeRow({ location: { name: 'Myeongdong' } }));
+
+      (chip()!.querySelector('.extra-remove') as HTMLElement).click();
       fixture.detectChanges();
 
       expect(addTrigger()).withContext('what stands where the chip stood').not.toBeNull();

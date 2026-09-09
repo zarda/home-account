@@ -371,8 +371,13 @@ export class TransactionPreviewTableComponent {
   // rebuilds one from `receiptCountry` when the row carries no location, so
   // clearing the slot alone would let the country the user just dismissed
   // walk back in. Both marks go, or removal does not mean removal.
+  //
+  // The chip leaves with its button, and the add trigger is what stands in
+  // its place — the same landing setCountry names — or the bare editor when
+  // the row's own place editor was open.
   removeLocation(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, { location: undefined, receiptCountry: undefined });
+    this.focusWhenRendered(this.inRow(transaction, '.location-add'), this.inRow(transaction, '.place-input'));
   }
 
   /**
@@ -456,8 +461,11 @@ export class TransactionPreviewTableComponent {
     this.focusWhenRendered(this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
   }
 
+  // The chip goes with the tag; the add trigger is the strip's unconditional
+  // control, or the bare input when that row's own tag editor was open.
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
     this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
+    this.focusWhenRendered(this.inRow(transaction, '.tag-add'), this.inRow(transaction, '.tag-input'));
   }
 
   /** Accept = the ordinary currency edit, so one path clears the marks and records the choice. */
@@ -465,11 +473,16 @@ export class TransactionPreviewTableComponent {
     const offer = transaction.currencySuggestion;
     if (!offer) return;
     this.updateCurrency(transaction, offer.code);
+    // The offer's own chip goes with the accepted choice, and the currency
+    // chip is where the choice now shows — the same landing dismiss names,
+    // for the same unmount.
+    this.focusWhenRendered(this.inRow(transaction, '.currency-chip'));
   }
 
   /** Dismiss = drop the mark. The row keeps its fallen-back marker; nothing was applied. */
   dismissCurrencySuggestion(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, { currencySuggestion: undefined });
+    this.focusWhenRendered(this.inRow(transaction, '.currency-chip'));
   }
 
   currencyOfferText(row: CategorizedImportTransaction): string {
