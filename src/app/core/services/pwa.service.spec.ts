@@ -1,7 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { SwUpdate } from '@angular/service-worker';
-import { Subject } from 'rxjs';
-import { PwaService, PwaInstallPrompt } from './pwa.service';
+import { PwaService } from './pwa.service';
 
 describe('PwaService', () => {
   // Every instance built here keeps its window listeners for the rest of the
@@ -13,27 +11,15 @@ describe('PwaService', () => {
     fetchSpy = spyOn(window, 'fetch').and.resolveTo(new Response(null, { status: 200 }));
   });
 
-  function make(swUpdate?: Partial<SwUpdate>): PwaService {
+  function make(): PwaService {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      providers: [PwaService, ...(swUpdate ? [{ provide: SwUpdate, useValue: swUpdate }] : [])],
+      providers: [PwaService],
     });
     return TestBed.inject(PwaService);
   }
 
-  // An enabled SwUpdate must expose the observables the constructor subscribes to.
-  function enabledSw(overrides: Partial<SwUpdate> = {}): Partial<SwUpdate> {
-    return {
-      isEnabled: true,
-      versionUpdates: new Subject(),
-      unrecoverable: new Subject(),
-      checkForUpdate: () => Promise.resolve(false),
-      activateUpdate: () => Promise.resolve(false),
-      ...overrides,
-    } as unknown as Partial<SwUpdate>;
-  }
-
-  it('creates without a service worker', () => {
+  it('creates', () => {
     expect(make()).toBeTruthy();
   });
 
@@ -159,78 +145,18 @@ describe('PwaService', () => {
     });
   });
 
-  describe('install prompt lifecycle', () => {
-    it('captures beforeinstallprompt and clears on appinstalled', () => {
-      const s = make();
-      const event = new Event('beforeinstallprompt');
-      spyOn(event, 'preventDefault');
-      window.dispatchEvent(event);
-      expect(event.preventDefault).toHaveBeenCalled();
-      expect(s.isInstallable()).toBeTrue();
-
-      window.dispatchEvent(new Event('appinstalled'));
-      expect(s.isInstallable()).toBeFalse();
-      expect(s.isStandalone()).toBeTrue();
-    });
+  it('appinstalled marks the app standalone', () => {
+    const s = make();
+    window.dispatchEvent(new Event('appinstalled'));
+    expect(s.isStandalone()).toBeTrue();
   });
 
-  describe('promptInstall', () => {
-    it('returns false when no prompt is available', async () => {
-      expect(await make().promptInstall()).toBeFalse();
-    });
-
-    it('returns true when the user accepts', async () => {
-      const s = make();
-      (s as unknown as { deferredInstallPrompt: PwaInstallPrompt }).deferredInstallPrompt = {
-        prompt: () => Promise.resolve(),
-        userChoice: Promise.resolve({ outcome: 'accepted' }),
-      };
-      expect(await s.promptInstall()).toBeTrue();
-    });
-
-    it('returns false when the user dismisses', async () => {
-      const s = make();
-      (s as unknown as { deferredInstallPrompt: PwaInstallPrompt }).deferredInstallPrompt = {
-        prompt: () => Promise.resolve(),
-        userChoice: Promise.resolve({ outcome: 'dismissed' }),
-      };
-      expect(await s.promptInstall()).toBeFalse();
-    });
-
-    it('returns false when prompting throws', async () => {
-      const s = make();
-      (s as unknown as { deferredInstallPrompt: PwaInstallPrompt }).deferredInstallPrompt = {
-        prompt: () => Promise.reject(new Error('x')),
-        userChoice: Promise.resolve({ outcome: 'accepted' }),
-      };
-      expect(await s.promptInstall()).toBeFalse();
-    });
-  });
-
-  describe('applyUpdate', () => {
-    it('does nothing without an enabled service worker', async () => {
-      await expectAsync(make().applyUpdate()).toBeResolved();
-    });
-
-    it('handles activation that reports no update', async () => {
-      const s = make(enabledSw({ activateUpdate: () => Promise.resolve(false) }));
-      await expectAsync(s.applyUpdate()).toBeResolved();
-    });
-
-    it('swallows activation errors', async () => {
-      const s = make(enabledSw({ activateUpdate: () => Promise.reject(new Error('x')) }));
-      await expectAsync(s.applyUpdate()).toBeResolved();
-    });
-  });
-
-  describe('service worker version updates', () => {
-    it('flags an available update on VERSION_READY', () => {
-      const versionUpdates = new Subject<{ type: string }>();
-      const s = make(enabledSw({ versionUpdates } as unknown as Partial<SwUpdate>));
-      expect(s.serviceWorkerReady()).toBeTrue();
-      versionUpdates.next({ type: 'VERSION_READY' });
-      expect(s.updateAvailable()).toBeTrue();
-    });
+  it('ignores beforeinstallprompt', () => {
+    make();
+    const event = new Event('beforeinstallprompt');
+    spyOn(event, 'preventDefault');
+    window.dispatchEvent(event);
+    expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
   describe('service worker messages', () => {
@@ -275,19 +201,6 @@ describe('PwaService', () => {
       const s = make();
       expect(s.isStandalone()).toBeTrue();
       window.matchMedia = original;
-    });
-
-    it('computes iOS install instructions from internal state', () => {
-      const s = make();
-      const internal = s as unknown as {
-        _isIOS: { set: (v: boolean) => void };
-        _isStandalone: { set: (v: boolean) => void };
-        _isInstallable: { set: (v: boolean) => void };
-      };
-      internal._isIOS.set(true);
-      internal._isStandalone.set(false);
-      internal._isInstallable.set(false);
-      expect(s.showIOSInstallInstructions()).toBeTrue();
     });
   });
 

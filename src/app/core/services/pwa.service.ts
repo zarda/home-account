@@ -1,11 +1,4 @@
-import { Injectable, inject, signal, computed, ApplicationRef } from '@angular/core';
-import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
-import { filter, first, interval, concat } from 'rxjs';
-
-export interface PwaInstallPrompt {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
+import { Injectable, signal, computed } from '@angular/core';
 
 /** A connection that cannot answer within this counts as unusable. */
 const REACHABILITY_TIMEOUT_MS = 4000;
@@ -19,21 +12,20 @@ const REACHABILITY_TIMEOUT_MS = 4000;
 const REACHABILITY_RETRY_MIN_MS = 5000;
 const REACHABILITY_RETRY_MAX_MS = 60000;
 
+/**
+ * Reachability, platform detection and the service worker's messages.
+ *
+ * Confirms the connection actually carries traffic (not just that the OS
+ * reports an interface), detects standalone/iOS so callers can adapt their
+ * UI, registers background sync for the offline queue, and relays the
+ * message types the service worker posts back to the running app.
+ */
 @Injectable({ providedIn: 'root' })
 export class PwaService {
-  private swUpdate: SwUpdate | null = null;
-  private appRef = inject(ApplicationRef);
-
   // Signals for PWA state
   private _isOnline = signal<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   private _isStandalone = signal<boolean>(false);
-  private _isInstallable = signal<boolean>(false);
-  private _updateAvailable = signal<boolean>(false);
   private _isIOS = signal<boolean>(false);
-  private _serviceWorkerReady = signal<boolean>(false);
-
-  // Store install prompt for later use
-  private deferredInstallPrompt: PwaInstallPrompt | null = null;
 
   // Reachability probe state
   private probeInFlight: Promise<boolean> | null = null;
@@ -43,31 +35,14 @@ export class PwaService {
   // Public computed signals
   isOnline = computed(() => this._isOnline());
   isStandalone = computed(() => this._isStandalone());
-  isInstallable = computed(() => this._isInstallable());
-  updateAvailable = computed(() => this._updateAvailable());
   isIOS = computed(() => this._isIOS());
-  serviceWorkerReady = computed(() => this._serviceWorkerReady());
-
-  // Computed: Show iOS install instructions
-  showIOSInstallInstructions = computed(() => 
-    this._isIOS() && !this._isStandalone() && !this._isInstallable()
-  );
 
   constructor() {
-    // Try to inject SwUpdate, but handle when service worker isn't available
-    try {
-      this.swUpdate = inject(SwUpdate);
-    } catch {
-      console.log('[PWA] Service worker not available');
-      this.swUpdate = null;
-    }
-
     // Initialize browser-only features
     if (typeof window !== 'undefined') {
       this._isStandalone.set(this.checkStandaloneMode());
       this._isIOS.set(this.checkIsIOS());
       this.initializeListeners();
-      this.checkForUpdates();
     }
   }
 
@@ -95,41 +70,13 @@ export class PwaService {
       }
     });
 
-    // PWA install prompt (Chrome, Edge, etc.)
-    window.addEventListener('beforeinstallprompt', (event: Event) => {
-      event.preventDefault();
-      this.deferredInstallPrompt = event as unknown as PwaInstallPrompt;
-      this._isInstallable.set(true);
-      console.log('[PWA] Install prompt available');
-    });
-
-    // App installed
+    // App installed: the one moment standalone flips without a reload, and
+    // the camera capture reads it. Nothing reads an install state, and no
+    // listener claims beforeinstallprompt — the browser's own install
+    // prompt is left to the browser.
     window.addEventListener('appinstalled', () => {
-      this._isInstallable.set(false);
       this._isStandalone.set(true);
-      this.deferredInstallPrompt = null;
-      console.log('[PWA] App was installed');
     });
-
-    // Service worker updates
-    if (this.swUpdate?.isEnabled) {
-      this._serviceWorkerReady.set(true);
-
-      // Check for version updates
-      this.swUpdate.versionUpdates
-        .pipe(filter((evt): evt is VersionReadyEvent => evt.type === 'VERSION_READY'))
-        .subscribe(() => {
-          this._updateAvailable.set(true);
-          console.log('[PWA] New version available');
-        });
-
-      // Handle unrecoverable state
-      this.swUpdate.unrecoverable.subscribe((event) => {
-        console.error('[PWA] Unrecoverable state:', event.reason);
-        // Optionally reload the page
-        // window.location.reload();
-      });
-    }
 
     // Listen for messages from service worker
     if ('serviceWorker' in navigator) {
@@ -137,27 +84,6 @@ export class PwaService {
         this.handleServiceWorkerMessage(event.data);
       });
     }
-  }
-
-  private checkForUpdates(): void {
-    if (!this.swUpdate?.isEnabled) return;
-
-    // Check for updates when the app is stable
-    const appIsStable$ = this.appRef.isStable.pipe(first((isStable) => isStable));
-    
-    // Then check periodically (every 6 hours)
-    const everySixHours$ = interval(6 * 60 * 60 * 1000);
-    const checkInterval$ = concat(appIsStable$, everySixHours$);
-
-    const swUpdate = this.swUpdate; // Capture for closure
-    checkInterval$.subscribe(async () => {
-      try {
-        const updateFound = await swUpdate.checkForUpdate();
-        console.log('[PWA] Update check:', updateFound ? 'Update available' : 'No update');
-      } catch (err) {
-        console.error('[PWA] Update check failed:', err);
-      }
-    });
   }
 
   private handleServiceWorkerMessage(data: { type: string; payload?: unknown }): void {
@@ -280,49 +206,6 @@ export class PwaService {
       this.retryTimer = null;
     }
     this.retryDelayMs = 0;
-  }
-
-  /**
-   * Trigger PWA installation prompt (non-iOS browsers)
-   */
-  async promptInstall(): Promise<boolean> {
-    if (!this.deferredInstallPrompt) {
-      console.warn('[PWA] Install prompt not available');
-      return false;
-    }
-
-    try {
-      await this.deferredInstallPrompt.prompt();
-      const choice = await this.deferredInstallPrompt.userChoice;
-      
-      if (choice.outcome === 'accepted') {
-        console.log('[PWA] User accepted installation');
-        return true;
-      } else {
-        console.log('[PWA] User dismissed installation');
-        return false;
-      }
-    } catch (error) {
-      console.error('[PWA] Installation error:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Apply available update and reload
-   */
-  async applyUpdate(): Promise<void> {
-    if (!this.swUpdate?.isEnabled) return;
-
-    try {
-      const updated = await this.swUpdate.activateUpdate();
-      if (updated) {
-        console.log('[PWA] Update activated, reloading...');
-        window.location.reload();
-      }
-    } catch (error) {
-      console.error('[PWA] Update activation failed:', error);
-    }
   }
 
   /**
