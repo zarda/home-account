@@ -437,6 +437,32 @@ describe('import-review.utils', () => {
       expect(kept.amount + part.amount).toBe(45.67);
     });
 
+    it('rounds by the row\'s own currency rather than the cent, so a JPY split lands on whole yen', () => {
+      const [kept, part] = splitImportRow(row({ amount: 538, currency: 'JPY' }), 179.4, 'split_1')!;
+      expect(part.amount).toBe(179);
+      expect(kept.amount).toBe(359);
+    });
+
+    it('refuses a figure that rounds to nothing in a currency coarser than the cent', () => {
+      // 0.4 clears parseAmountInput's own >0 guard and would have taken a
+      // sliver on a cent-based row; on JPY, where there is no sliver
+      // smaller than a whole yen, it rounds to zero and splitImportRow
+      // refuses it the same way it refuses zero typed outright.
+      expect(splitImportRow(row({ amount: 538, currency: 'JPY' }), 0.4, 'split_1')).toBeNull();
+    });
+
+    it('refuses a JPY amount that rounds up to the whole row', () => {
+      expect(splitImportRow(row({ amount: 1, currency: 'JPY' }), 0.5, 'split_1'))
+        .withContext('0.5 rounds up to the whole yen, leaving nothing behind')
+        .toBeNull();
+    });
+
+    it('rounds to three places for a currency whose minor unit is thousandths, so a KWD split keeps its own precision', () => {
+      const [kept, part] = splitImportRow(row({ amount: 1.5, currency: 'KWD' }), 0.2345, 'split_1')!;
+      expect(part.amount).toBe(0.235);
+      expect(kept.amount).toBe(1.265);
+    });
+
     it('gives the part the id it was handed and marks it split from the original, which carries no mark itself', () => {
       const [kept, part] = splitImportRow(row({ id: 'r1' }), 1.2, 'split_1')!;
       expect(part.id).toBe('split_1');
@@ -597,6 +623,22 @@ describe('import-review.utils', () => {
       const merged = mergeImportRows(target({ amount: 40 }), source({ amount: 10 }))!;
       expect(merged.amount).toBe(50);
       expect(merged.type).toBe('expense');
+    });
+
+    it('rounds the net by the target\'s currency rather than the cent, so two JPY rows land on whole yen', () => {
+      const merged = mergeImportRows(
+        target({ amount: 100.4, currency: 'JPY' }),
+        source({ amount: 200.4, currency: 'JPY' })
+      )!;
+      expect(merged.amount).toBe(301);
+    });
+
+    it('keeps three places for a currency whose minor unit is thousandths', () => {
+      const merged = mergeImportRows(
+        target({ amount: 1.234, currency: 'KWD' }),
+        source({ amount: 2.111, currency: 'KWD' })
+      )!;
+      expect(merged.amount).toBe(3.345);
     });
 
     it('nets an income source off an expense target, and the type follows the sign', () => {

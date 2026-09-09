@@ -22,8 +22,10 @@ import { FormsModule } from '@angular/forms';
 import {
   Category,
   CategorizedImportTransaction,
+  currencyDecimalPlaces,
   CurrencyInfo,
   CurrencySuggestionReason,
+  roundToMinorUnit,
   VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -909,8 +911,22 @@ export class TransactionPreviewTableComponent {
    * rule a date answer follows. The figure already shown closes the editor
    * and changes nothing.
    *
-   * A figure parseAmountInput cannot read keeps the editor open and says so.
-   * Closing on it looked to the reviewer exactly like a commit — the editor
+   * The parsed figure is rounded to what the row's own currency stores
+   * before it is compared against the old one or written — a JPY row
+   * typed at 179.33 settles at 179, the only figure formatAmount would
+   * ever show for it, so the two never disagree.
+   *
+   * A figure that rounds to nothing is refused, on every row, the same way
+   * an unreadable one is: amountRejected holds the row and the editor stays
+   * open, marked invalid. 0.4 on a JPY row rounds to that same nothing —
+   * written over a real figure it reads to the reviewer as one erased, and
+   * on a row already at amount 0 the amount === row.amount short-circuit
+   * below would otherwise close the editor having shown nothing changed on
+   * a figure just typed. Both are the same silent loss, so both are refused
+   * the one way.
+   *
+   * A figure parseAmountInput cannot read is refused for the same reason:
+   * closing on it looked to the reviewer exactly like a commit — the editor
    * shut, the old amount stood, and the row went to import at a number they
    * believed they had just replaced. Escape is still the way out, and it is
    * the only way the old figure is kept deliberately.
@@ -918,13 +934,15 @@ export class TransactionPreviewTableComponent {
    * commitSplit below holds its own editor open on the same rule, for the
    * same reason: a figure that reads fine on its own but would leave
    * nothing behind on the row it came from is exactly as silent a mistake
-   * as one parseAmountInput could not read at all.
+   * as one that rounds to nothing or that parseAmountInput could not read
+   * at all.
    */
   commitAmount(row: CategorizedImportTransaction, event: Event): void {
     if (!this.editing.has(row.id)) return;
     if (isImeComposition(event)) return;
-    const amount = parseAmountInput((event.target as HTMLInputElement).value);
-    if (amount === null) {
+    const parsed = parseAmountInput((event.target as HTMLInputElement).value);
+    const amount = parsed === null ? null : roundToMinorUnit(parsed, row.currency);
+    if (amount === null || amount === 0) {
       this.amountRejected.add(row.id);
       this.cdr.markForCheck();
       return;
@@ -940,13 +958,15 @@ export class TransactionPreviewTableComponent {
   /**
    * Take the typed amount off the row into a new row directly beneath it.
    * splitImportRow is the only judge of what a valid split is — it rounds
-   * before refusing, so a figure that reads fine here on its own (19.999,
-   * 0.004 on a whole-number row) can still fail once rounded, and calling
-   * it directly rather than re-checking `amount >= row.amount` first is
-   * what keeps the two from disagreeing over exactly those figures. Its
-   * refusal reads to the reviewer exactly like an unreadable one, so it
-   * holds the editor open the same way commitAmount does rather than let
-   * it close having silently done nothing.
+   * before refusing, so a figure that reads fine here on its own can still
+   * fail once rounded: 19.999 and 0.004 on a whole-number row, or 0.4 on a
+   * JPY row, which a cent-based row would have kept. splitImportRow judges
+   * all three the one way, and calling it directly rather than
+   * re-checking `amount >= row.amount` first is what keeps the two from
+   * disagreeing over exactly those figures. Its refusal reads to the
+   * reviewer exactly like an unreadable one, so it holds the editor open
+   * the same way commitAmount does rather than let it close having
+   * silently done nothing.
    *
    * Nothing typed is different. This field opens empty by design rather
    * than pre-filled the way commitAmount's is, so a blank commit is not a
@@ -1004,6 +1024,28 @@ export class TransactionPreviewTableComponent {
     return descriptionIsUnfilled(row)
       ? this.translationService.t('import.splitRow')
       : this.translationService.t('import.splitRowLabel', { description: row.description });
+  }
+
+  /**
+   * The split refusal's own floor, named rather than left as "too small":
+   * the smallest positive figure the row's own currency can hold, one
+   * whole yen on a JPY row and one cent on a USD one. `10 ** -digits` is
+   * that unit at whatever precision currencyDecimalPlaces gives the row,
+   * formatted the same way formatAmount renders it so the two figures a
+   * reviewer compares never disagree.
+   */
+  minimumAmountText(row: CategorizedImportTransaction): string {
+    return this.currencyService.formatCurrency(10 ** -currencyDecimalPlaces(row.currency), row.currency);
+  }
+
+  /**
+   * A row can only split into two positive figures a minor unit apart, so
+   * anything worth less than twice that unit — ¥1, $0.01 — has no split
+   * that clears minimumAmountText's floor on both halves at once. The
+   * trigger hides rather than offer a control every figure would refuse.
+   */
+  canSplit(row: CategorizedImportTransaction): boolean {
+    return row.amount >= 2 * 10 ** -currencyDecimalPlaces(row.currency);
   }
 
   /**

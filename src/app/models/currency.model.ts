@@ -99,6 +99,27 @@ export function currencyDecimalPlaces(code: string): number {
 }
 
 /**
+ * A stored figure, rounded to what its own currency's minor unit can hold —
+ * the whole yen for JPY, thousandths for KWD, the cent for most others. This
+ * is the one a hand-typed or CSV-parsed amount goes through before it is
+ * compared or written, so what is stored and what `formatCurrency` renders
+ * never disagree. `roundMoney` (transaction-aggregation.utils) is unrelated:
+ * it rounds a base-currency aggregate to the cent regardless of any row's
+ * own currency. `snapDisplayZero` (money-display.utils) is its display-side
+ * twin, not unrelated: the same factor off the same `currencyDecimalPlaces`,
+ * agreeing exactly on which values are zero — but it only ever touches what
+ * is shown, never what is stored. `|| 0` folds two falsy results to unsigned
+ * zero: the `-0` `Math.round(-0.4)` produces (the same trap
+ * `snapDisplayZero`'s own comment records), and the `NaN` a non-finite
+ * `value` produces — the fold `splitImportRow`'s own guard now leans on to
+ * keep a NaN `row.amount` from ever reaching `remainder` as `NaN`.
+ */
+export function roundToMinorUnit(value: number, code: string): number {
+  const factor = 10 ** currencyDecimalPlaces(code);
+  return Math.round(value * factor) / factor || 0;
+}
+
+/**
  * Descriptor for any representable code. Currencies past the curated list have
  * no symbol and no translated name, so they carry their ISO code in both
  * slots: TranslationService echoes an unknown key back, which is exactly the

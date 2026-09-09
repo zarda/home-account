@@ -1,6 +1,5 @@
-import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata } from '../../models';
+import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata, roundToMinorUnit } from '../../models';
 import { dayKey } from './transaction-date.utils';
-import { roundMoney } from './transaction-aggregation.utils';
 import { normalizeTags } from './tag.utils';
 
 /**
@@ -247,9 +246,9 @@ export function sameSplit(
  * Take `amount` off `row` into a new row of its own, id `id` — a receipt
  * line the reader merged into one, taken apart before the import. `null`
  * unless `amount` is a positive figure that still leaves something behind on
- * the original, to the cent; `splitImportRow` refuses to produce a kept row
- * at zero or negative, and refuses to hand back two rows that are not really
- * two.
+ * the original, to the currency's own minor unit; `splitImportRow` refuses
+ * to produce a kept row at zero or negative, and refuses to hand back two
+ * rows that are not really two.
  *
  * The two halves are not even copies, because they do not carry even
  * evidence:
@@ -289,16 +288,18 @@ export function splitImportRow(
 ): [CategorizedImportTransaction, CategorizedImportTransaction] | null {
   // taken is rounded once, up front, and reused for the part below — the
   // way row.amount reaches this function too, parseAmountInput (via
-  // commitAmount) and a CSV cell can both carry three or more decimals.
-  // remainder rounds row.amount − taken the same way, once, and the guard
-  // judges remainder itself rather than a separately-rounded row.amount:
-  // the two roundings can disagree by a cent, and a guard built on the
-  // latter can pass a split this function then hands back kept at zero —
-  // exactly what it otherwise refuses to produce. `!(remainder > 0)`, not
-  // `remainder <= 0`: a NaN row.amount makes remainder NaN too, and
-  // `NaN <= 0` is false — only `> 0` negated catches it.
-  const taken = roundMoney(amount);
-  const remainder = roundMoney(row.amount - taken);
+  // commitAmount) and a CSV cell can both carry more decimals than the
+  // row's own currency stores. remainder rounds row.amount − taken the
+  // same way, once, and the guard judges remainder itself rather than a
+  // separately-rounded row.amount: the two roundings can disagree by the
+  // currency's own minor unit, and a guard built on the latter can pass a
+  // split this function then hands back kept at zero — exactly what it
+  // otherwise refuses to produce. roundToMinorUnit folds a NaN row.amount
+  // to a plain 0, so remainder is never NaN; the guard's real job is a
+  // remainder of zero or less — the whole row taken, a figure larger than
+  // the row, or a figure that rounds up to the whole row.
+  const taken = roundToMinorUnit(amount, row.currency);
+  const remainder = roundToMinorUnit(row.amount - taken, row.currency);
   if (!Number.isFinite(taken) || taken <= 0 || !(remainder > 0)) return null;
 
   const kept: CategorizedImportTransaction = {
@@ -409,7 +410,7 @@ export function mergeImportRows(
   }
 
   const signed = (row: CategorizedImportTransaction) => (row.type === 'income' ? -row.amount : row.amount);
-  const net = roundMoney(signed(target) + signed(source));
+  const net = roundToMinorUnit(signed(target) + signed(source), target.currency);
 
   const single = target.imageMetadata ?? source.imageMetadata;
   const imageMetadata = target.imageMetadata && source.imageMetadata

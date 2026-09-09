@@ -1707,7 +1707,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(box.value).withContext('and keeps it, to be corrected rather than retyped').toBe('1.234.567');
       expect(box.getAttribute('aria-invalid')).toBe('true');
       expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
-        .toBe('import.amountNotANumber');
+        .toBe('import.amountNotANumber:{"minimum":"USD 0.01"}');
       expect(box.getAttribute('aria-describedby'))
         .withContext('the hint names the field it belongs to')
         .toBe(fixture.nativeElement.querySelector('.amount-error')?.id);
@@ -1799,6 +1799,97 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(box.querySelector('.placeholder')).toBeNull();
       expect(box.querySelector('.amount-text')?.textContent?.trim()).toBe('-USD 5.5');
       expect(box.getAttribute('aria-label')).toBe('import.editAmount:{"amount":"USD 5.5"}');
+    });
+
+    it('rounds a typed amount to what the currency stores', () => {
+      // JPY has no fractional yen: 179.33 settles at 179, and the trigger's
+      // own text — driven by the same formatAmount the editor's label uses
+      // — reads the row back rounded, not the fraction that was typed.
+      render(makeRow({ amount: 5.5, currency: 'JPY' }));
+      const jpyEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '179.33');
+      fixture.detectChanges();
+
+      expect(jpyEmitted[0][0].amount).toBe(179);
+      expect(trigger('amount').querySelector('.amount-text')?.textContent?.trim()).toBe('-JPY 179');
+
+      // A row already at the whole-yen figure a typed fraction would round
+      // to reads as unchanged even though what was typed is not that
+      // figure: the comparison is against 179.33 rounded to 179, not
+      // against 179.33 itself, so retyping a fraction the row should never
+      // have held commits nothing. The old, unrounded comparison would
+      // have written 179.33 back onto a row that already read as 179.
+      render(makeRow({ amount: 179, currency: 'JPY' }));
+      const unchangedEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '179.33');
+      fixture.detectChanges();
+
+      expect(unchangedEmitted.length).toBe(0);
+
+      // A currency with three decimals keeps its own precision rather
+      // than being flattened to the cent.
+      render(makeRow({ amount: 5.5, currency: 'KWD' }));
+      const kwdEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1.2345');
+      fixture.detectChanges();
+
+      expect(kwdEmitted[0][0].amount).toBe(1.235);
+    });
+
+    it('refuses a figure that rounds to nothing, the same on a filled row and one already empty', () => {
+      // 0.4 clears parseAmountInput's own >0 guard, so this is not the
+      // unreadable-figure path on its face — but JPY has no fractional yen,
+      // and 0.4 rounds to a real currency value's absence: 0. Filing it on
+      // a filled row would overwrite a real figure with one amountIsUnfilled
+      // reads as none at all; filing it on a row already at 0 would close
+      // the editor having shown the reviewer nothing changed on a figure
+      // they had just typed. Both are the same silent loss an unreadable
+      // figure is refused for, so both take that refusal too.
+      render(makeRow({ amount: 5.5, currency: 'JPY' }));
+      const filledEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '0.4');
+      fixture.detectChanges();
+
+      const filledBox = input('amount')!;
+      expect(filledBox).withContext('the editor stays open on a filled row').not.toBeNull();
+      expect(filledBox.getAttribute('aria-invalid')).toBe('true');
+      expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
+        .toBe('import.amountNotANumber:{"minimum":"JPY 1"}');
+      expect(filledEmitted.length).withContext('nothing is filed').toBe(0);
+      expect(component.transactions[0].amount).withContext('the old figure stands').toBe(5.5);
+
+      // Escape abandons the refusal (the one deliberate way out, per
+      // commitAmount's own doc) so the second precondition starts from a
+      // closed editor rather than continuing the first one's session.
+      filledBox.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+
+      render(makeRow({ amount: 0, currency: 'JPY' }));
+      const emptyEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '0.4');
+      fixture.detectChanges();
+
+      const emptyBox = input('amount')!;
+      expect(emptyBox).withContext('the editor stays open on a row already at 0 too').not.toBeNull();
+      expect(emptyBox.getAttribute('aria-invalid')).toBe('true');
+      expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
+        .toBe('import.amountNotANumber:{"minimum":"JPY 1"}');
+      expect(emptyEmitted.length).withContext('nothing is filed').toBe(0);
     });
   });
 
@@ -2931,6 +3022,16 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(splitTrigger('empty')).withContext('nothing to split off zero').toBeNull();
     });
 
+    it('renders on a row worth twice its currency\'s minor unit, and not on one worth exactly one', () => {
+      // ¥1 has no split that leaves a positive whole yen on both halves —
+      // every figure satisfies at most one of splitAmountRefused's two
+      // clauses at once. ¥2 is the least that clears both.
+      render([makeRow({ id: 'two', amount: 2, currency: 'JPY' }), makeRow({ id: 'one', amount: 1, currency: 'JPY' })]);
+
+      expect(splitTrigger('two')).withContext('¥2 can leave ¥1 on each half').not.toBeNull();
+      expect(splitTrigger('one')).withContext('¥1 has no split that clears the floor twice').toBeNull();
+    });
+
     it('names itself "Split" rather than "Add a description" on a row with no description yet', () => {
       render([makeRow({ id: 'txn1', description: '' })]);
 
@@ -3065,7 +3166,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(box.getAttribute('aria-invalid')).toBe('true');
       expect(message).withContext('the refusal is written down').not.toBeNull();
       expect(message!.getAttribute('role')).toBe('alert');
-      expect(message!.textContent?.trim()).toBe('import.splitAmountRefused');
+      expect(message!.textContent?.trim()).toBe('import.splitAmountRefused:{"minimum":"USD 0.01"}');
       expect(message!.id).toBe('split-error-txn1');
       expect(box.getAttribute('aria-describedby'))
         .withContext('the input names the message it stands with')
