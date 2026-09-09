@@ -47,7 +47,8 @@ appearing.
 The issue's premise was half wrong. `applyMultiImageDeduplication` — the
 position-overlap pass that rewrites `wasMerged` and `mergedFromImages` — has no
 production caller; the live cross-photo merge is consolidation alone. That dead
-helper is left for a record of its own.
+helper is left for a record of its own —
+[ADR 0111](0111-the-position-overlap-pass-is-removed.md), #389.
 
 ## Decision
 
@@ -322,7 +323,8 @@ then is the same no-op a stale split commit is.
 
 - **No plain Remove.** 0103's gap stands. The mechanics now exist — `forgetRow`,
   the wizard's prune, a focus fallback named for a control that leaves — and a
-  Remove would reuse all three.
+  Remove would reuse all three. Closed by
+  [ADR 0108](0108-the-review-step-removes-a-row.md), #391.
 - **A split cannot pick items.** An amount is all it takes off.
 - **The twin exemption is one generation deep.** `sameSplit` knows a part and
   its original, and two parts of one original; a part split again is not

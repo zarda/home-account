@@ -367,23 +367,31 @@ Emptying a place name withdraws the name only, keeping a country under it;
 withdrawing the country from a location with no name drops the location whole,
 because a bare coordinate pair is a shape the write refuses.
 
-## Splitting and merging on the card
+## Splitting, merging and removing on the card
 
 Consolidation is a one-way door: `consolidateReceiptItems` folds every item
 sharing a `receiptId` into one row and the wizard keeps none of the
 constituents, so what the reader gets wrong about *how many* purchases a photo
-holds is put right on the card, by two controls in a row's extras ahead of
+holds is put right on the card, by three controls in a row's extras ahead of
 **Add location** and **Add tag**.
 
 **Split** takes an amount off the row into a new row directly beneath it. It
 opens an inline field, empty, for the figure the new row takes; Enter or blur
-commits, Escape cancels, and an emptied field closes without doing anything. A
-figure the row cannot spare — nothing, the whole amount, or more, judged to the
-cent — holds the field open, marked invalid and saying why (*Enter an amount
-smaller than the row's*), rather than closing having done nothing. The part
-keeps what identifies the purchase — description, date and its marks,
-currency, type, category, location, tags, and a copy of the photo lineage —
-and drops what is singular: the note, the rule link and the duplicate verdict.
+commits, Escape cancels, and an emptied field closes without doing anything.
+The figure taken and the remainder left behind are each rounded to the row's
+own currency before anything is judged — whole yen on a JPY row, cents on a
+USD one, thousandths on a KWD one — so a split can never leave a figure the
+row's own formatting would not show
+([ADR 0109](ADR/0109-a-hand-typed-amount-is-whole-in-its-currency.md)). A
+figure the row cannot spare — nothing, the whole amount, or more, judged on
+the rounded remainder — holds the field open, marked invalid and saying why
+(*Enter an amount smaller than the row's — at least ¥1*, the floor named in
+the row's own currency), rather than closing having done nothing. The trigger
+itself is hidden on a row worth less than two minor units: a ¥1 row has no
+split that would clear that floor on both halves. The part keeps what
+identifies the purchase — description, date and its marks, currency, type,
+category, location, tags, and a copy of the photo lineage — and drops what is
+singular: the note, the rule link and the duplicate verdict.
 Both halves lose the amount's grade, since the reviewer's hand settled
 both figures. The part opens with its description editor focused, because the
 copied description is rarely right for a line taken out on its own, and it
@@ -409,18 +417,34 @@ ones, and a flagged one's verdict cleared on the way through would answer a
 question the reviewer was never shown. A row in another currency is never
 listed, because nothing here converts.
 
-Both go back through the duplicate check
+**Remove** takes the row off the batch, and it stands on every row — filled,
+blank and flagged alike, unlike the other two. It asks nothing: **Deselect**
+is the reversible answer, on the same card and one tap away, so a
+confirmation would guard a mistake that already has a cheap remedy. What
+leaves with the row is everything keyed on its id — the card's editing state
+and drafts, the wizard's overrule, re-check stamp and duplicate verdict — and
+a row whose within-batch *twin* was the one removed is re-checked, because a
+verdict naming a row that has gone is no verdict at all. Focus lands on the
+next row's Remove, the previous row's when this was the last, and the list's
+own **Add a row** when nothing is left; an emptied batch shows *No
+transactions to import* and holds Continue
+([ADR 0108](ADR/0108-the-review-step-removes-a-row.md)).
+
+All three go back through the duplicate check
 ([ADR 0101](ADR/0101-a-corrected-row-is-checked-for-duplicates-again.md)): the
 original for its new amount, the part because it is new — a filled row that
 appears beside rows already on the card is checked on arrival, unlike the blank
-row **Add a row** appends — and the survivor of a merge alone, the gone row
-owing no verdict. Both controls keep the card's own rules: 40px targets,
+row **Add a row** appends — the survivor of a merge alone, the gone row owing
+no verdict, and after a removal the rows a departed within-batch twin leaves
+holding a verdict about it. All three keep the card's own rules: 40px targets,
 nothing truncating, and a focus landing named for the control that leaves —
-the part's editor after a split, the survivor after a merge. Neither edits the
-note, and a merge cannot be undone except by splitting an amount back off,
-which makes a new part with the survivor's identity rather than the row that
-was folded in. The decision, the seams it had to meet and what it rejected are
-in [ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md).
+the part's editor after a split, the survivor after a merge, the neighbour's
+own Remove after a removal. None of them edits the note, and a merge cannot be
+undone except by splitting an amount back off, which makes a new part with the
+survivor's identity rather than the row that was folded in. The decisions, the
+seams they had to meet and what they rejected are in
+[ADR 0106](ADR/0106-the-review-step-splits-a-row-and-merges-two.md) and
+[ADR 0108](ADR/0108-the-review-step-removes-a-row.md).
 
 ## Failure surfacing
 

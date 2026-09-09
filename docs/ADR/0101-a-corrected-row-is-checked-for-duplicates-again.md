@@ -1,6 +1,6 @@
 # 101. A corrected row is checked for duplicates again
 
-**Status:** Accepted, implemented · **Date:** 2026-09-04 · **Issues:** #368
+**Status:** Accepted, implemented; corrected for #387 (2026-09-10) · **Date:** 2026-09-04 · **Issues:** #368
 
 Reference documentation lives in [../import-fields.md](../import-fields.md)
 and [../receipt-import.md](../receipt-import.md).
@@ -171,6 +171,9 @@ flag on a row id that no longer exists — or, worse, on one that does.
 - **An asynchronous verdict flip is not announced**, though the wizard already
   injects `AnnouncerService`. A screen-reader user editing an amount is not
   told that a row two cards down just lost its flag.
+  Correction (2026-09-10): the wizard does not inject `AnnouncerService` —
+  only two specs provide it — so closing this gap starts with the injection;
+  the gap stands.
 - **A re-check reads history, not the offline queue.** A row matching
   something queued and not yet drained is not a duplicate as far as this
   check is concerned.

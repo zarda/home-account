@@ -102,7 +102,8 @@ has been declared and not built.
   own:** `isInstallable`, `updateAvailable`, `serviceWorkerReady`,
   `showIOSInstallInstructions`, `promptInstall`, `applyUpdate` and the
   `SwUpdate`/`checkForUpdates` path, none consumed, and `swUpdate.isEnabled`
-  always false with no ngsw registered.
+  always false with no ngsw registered. Closed by
+  [ADR 0112](0112-pwaservice-keeps-only-the-surface-something-calls.md), #390.
 - **What a future worker would need:** a job first — a caching strategy the
   app has decided it wants, with a consumer for its messages — and then a file,
   written against listeners that already exist. The reverse order produced
