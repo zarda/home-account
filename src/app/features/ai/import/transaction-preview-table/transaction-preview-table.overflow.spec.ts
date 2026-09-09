@@ -423,15 +423,21 @@ describe('overflow guard: the import review card', () => {
     // control rather than a chip, so it takes the 40px floor in its own box
     // instead of an overhang, and the chips beside it must not fatten to
     // match: the tag chip's own height is pinned above. Split joined it as a
-    // second trigger once both fixture rows carry an amount to take off.
+    // second trigger once both fixture rows carry an amount to take off, and
+    // remove is the third — unconditional, the same as add tag, so a flagged
+    // row carries it too.
     const adds = Array.from(host.querySelectorAll<HTMLElement>('.extra-add'));
-    expect(adds.length).withContext('two per row: add tag and split, both rows filled').toBe(4);
+    expect(adds.length).withContext('three per row: add tag, split and remove').toBe(6);
     for (const add of adds) {
       expect(add.getBoundingClientRect().height)
         .withContext('add trigger tap target')
         .toBeGreaterThanOrEqual(40);
       expect(withinWidthOf(clip, add)).withContext('add trigger inside the clip').toBeTrue();
     }
+    // r2 is flagged (isDuplicate), and unlike merge and split, remove is
+    // offered whether or not the badge's own control has overruled it.
+    expect(host.querySelector('[data-row-id="r1"] .remove-trigger')).not.toBeNull();
+    expect(host.querySelector('[data-row-id="r2"] .remove-trigger')).withContext('flagged too').not.toBeNull();
 
     (host.querySelector('[data-row-id="r1"] .tag-add') as HTMLElement).click();
     fixture.detectChanges();
@@ -687,7 +693,7 @@ describe('overflow guard: the import review card', () => {
   it('carries a merge trigger on every row once they share a currency, inside the 288px', () => {
     // r1 and r2 are JPY and USD everywhere else in this file, so canMerge is
     // false on both and nothing above ever sees a `.merge-trigger` — the
-    // `.extra-add` count pinned two tests up stays two per row. Correcting
+    // `.extra-add` count pinned above stays three per row. Correcting
     // r2's own currency to JPY through its own menu (the same click this
     // file's currency-menu case above already drives) is what gives the two
     // a shared currency here, a real edit rather than a fixture rewrite, so

@@ -1219,6 +1219,7 @@
     "mergeInto": "Merge into…",
     "mergeIntoLabel": "Merge {{description}} into another row",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
+    "removeRowLabel": "Remove {{description}}",
     "addLocation": "Add location",
     "addPlaceName": "Add a place name",
     "editPlaceName": "Edit place name ({{name}})",

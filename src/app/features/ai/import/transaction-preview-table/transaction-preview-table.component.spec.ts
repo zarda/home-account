@@ -3420,4 +3420,135 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(document.activeElement).toBe(descriptionTrigger('b'));
     });
   });
+
+  /**
+   * A row taken off the card outright, on the reviewer's own say — a blank
+   * one added by mistake, or a flagged one they never want to see again.
+   * Deselect already keeps a row off the import and off the gate (0103's
+   * known gap); this is the one that does not come back from either.
+   */
+  describe('removing a row', () => {
+    const removeTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .remove-trigger`) as HTMLButtonElement | null;
+
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    it('renders the trigger on every row, blank and flagged included', () => {
+      render([
+        makeRow({ id: 'filled' }),
+        makeRow({ id: 'blank', description: '' }),
+        makeRow({ id: 'flagged', isDuplicate: true }),
+      ]);
+
+      expect(fixture.nativeElement.querySelectorAll('.remove-trigger').length).toBe(3);
+      expect(removeTrigger('filled')!.getAttribute('aria-label'))
+        .toBe('import.removeRowLabel:{"description":"Coffee Shop"}');
+      expect(removeTrigger('blank')!.getAttribute('aria-label'))
+        .withContext('nothing to name yet').toBe('common.remove');
+      expect(removeTrigger('flagged')!.getAttribute('aria-label'))
+        .withContext('offered on a flagged row too').toBe('import.removeRowLabel:{"description":"Coffee Shop"}');
+    });
+
+    it('takes the row off the card and emits the rest as a new array, leaving the input untouched', () => {
+      const a = makeRow({ id: 'a' });
+      const b = makeRow({ id: 'b' });
+      const c = makeRow({ id: 'c' });
+      const given = [a, b, c];
+      render(given);
+      const emitted = emissions();
+      const selected: Set<string>[] = [];
+      component.selectionChanged.subscribe(ids => selected.push(ids));
+
+      removeTrigger('b')!.click();
+      fixture.detectChanges();
+
+      expect(given.length).withContext('never mutates the @Input() array').toBe(3);
+      expect(emitted.length).toBe(1);
+      expect(emitted[0]).withContext('a new array, as every other edit emits').not.toBe(given);
+      expect(emitted[0].length).toBe(2);
+      expect(emitted[0][0]).withContext('the same object, not a copy').toBe(a);
+      expect(emitted[0][1]).withContext('the same object, not a copy').toBe(c);
+      expect(selected[0]).withContext('without the removed id').toEqual(new Set(['a', 'c']));
+    });
+
+    it('forgets what the card kept for the row', () => {
+      // notes: 'a' is what makes the box render through row.notes alone
+      // (showsNotes), so typing a draft here needs no startEdit and leaves
+      // the editing slot free for amount — calling startEdit a second time
+      // would clear amountRejected early and make the "before" assertion
+      // below vacuous.
+      const row = makeRow({ id: 'x', notes: 'a', amount: 5400 });
+      render([row]);
+
+      const notes = fixture.nativeElement.querySelector('[data-row-id="x"] .notes-input') as HTMLTextAreaElement;
+      notes.value = 'draft';
+      notes.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      component.startEdit(row, 'amount');
+      fixture.detectChanges();
+      const amount = fixture.nativeElement.querySelector('[data-row-id="x"] .amount-input') as HTMLInputElement;
+      amount.value = 'abc';
+      amount.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+      expect(component.amountUnreadable(row)).withContext('refused, before the removal').toBeTrue();
+      expect(component.isEditing(row, 'amount')).withContext('still open, before the removal').toBeTrue();
+
+      removeTrigger('x')!.click();
+      fixture.detectChanges();
+
+      expect(component.isEditing(row, 'amount')).withContext('the editing slot is gone').toBeFalse();
+      expect(component.amountUnreadable(row)).withContext('the refusal is gone').toBeFalse();
+      expect(component.notesText(row)).withContext('the draft is gone, the filed note is not').toBe('a');
+    });
+
+    it('hands focus to the next row\'s Remove, the previous row\'s when it was last, and Add a row when the list is empty', async () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'b' }), makeRow({ id: 'c' })]);
+
+      removeTrigger('a')!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('the next row\'s own control').toBe(removeTrigger('b'));
+
+      // Without this, the assertion below would pass on a broken handler
+      // too: focus is already on b from the step above, and @for's
+      // track row.id keeps that same element across c's removal.
+      (document.activeElement as HTMLElement).blur();
+      removeTrigger('c')!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('no row after it; the previous row\'s').toBe(removeTrigger('b'));
+
+      removeTrigger('b')!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(document.activeElement)
+        .withContext('nothing left; the list\'s own control')
+        .toBe(fixture.nativeElement.querySelector('.add-row'));
+      expect(fixture.nativeElement.querySelector('app-empty-state')).withContext('the empty state renders').not.toBeNull();
+    });
+
+    it('lets a blank hand-added row leave again', async () => {
+      render([makeRow({ id: 'existing' })]);
+
+      component.addRow();
+      fixture.detectChanges();
+      const added = component.transactions.at(-1)!;
+
+      removeTrigger(added.id)!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector(`[data-row-id="${added.id}"]`)).withContext('gone').toBeNull();
+      expect(document.activeElement).withContext('the previous row\'s own control').toBe(removeTrigger('existing'));
+    });
+  });
 });

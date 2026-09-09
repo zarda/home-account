@@ -1890,6 +1890,29 @@ describe('ImportWizardComponent', () => {
         .toBeUndefined();
     }));
 
+    it('re-checks a within-batch twin when its partner leaves, and drops its stale verdict', fakeAsync(() => {
+      // findWithinBatchDuplicates flags the LATER row and keeps the earlier
+      // one, so txn2's standing check names txn1 as the twin it repeats.
+      const rows = fresh();
+      rows[1] = { ...rows[1], isDuplicate: true, selected: false };
+      populate(rows, [twin('txn2', 'txn1')]);
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn2', false)]);
+      mockDuplicateService.findWithinBatchDuplicates.and.returnValue([]);
+
+      // txn1 (the earlier twin) leaves the batch — a plain removal, not an
+      // edit to txn2, so `changed` alone would never catch it.
+      component.onTransactionsUpdated(component.extractedTransactions().filter(t => t.id !== 'txn1'));
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).withContext('the survivor is re-checked').toHaveBeenCalledTimes(1);
+      expect(checkedIds(0)).toEqual(['txn2']);
+      expect(row('txn2').isDuplicate).withContext('nothing left to repeat').toBeFalse();
+      expect(row('txn2').selected).toBeTrue();
+      expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
+        .withContext('the stale within_batch verdict does not stand')
+        .toEqual({ transactionId: 'txn2', isDuplicate: false, matchType: 'none', confidence: 0 });
+    }));
+
     it('re-checks the row a merge changed and nothing else', fakeAsync(() => {
       populate(fresh());
       mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn2', false)]);

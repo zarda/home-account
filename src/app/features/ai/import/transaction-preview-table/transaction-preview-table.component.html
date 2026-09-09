@@ -359,6 +359,15 @@
                 </ng-template>
               </mat-menu>
             }
+            <!-- Unconditional, blank and flagged alike: a blank
+                 hand-added row has no other way off the card. It
+                 asks nothing on any row, flagged included, because
+                 Deselect — not a dialog — is the reversible
+                 answer. -->
+            <button type="button" class="extra-add remove-trigger" [attr.aria-label]="removeLabel(row)" (click)="removeRow(row)">
+              <mat-icon aria-hidden="true">delete_outline</mat-icon>
+              <span>{{ 'common.remove' | translate }}</span>
+            </button>
             <!-- Declared once and placed twice: the same field edits the name
                  on a chip that already has one and on a row that has nothing
                  yet, and two copies of it would be two sets of handlers to

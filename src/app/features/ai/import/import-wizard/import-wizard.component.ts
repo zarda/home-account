@@ -572,6 +572,17 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * out from under an in-flight re-check makes `standing(id)` false for it,
    * so a reply that lands afterwards is dropped by the mechanism already
    * there rather than a second one here.
+   *
+   * A `within_batch` verdict is about a pair, not a row: it flags the later
+   * twin and names the earlier one as `existingTransactionId`. Half the
+   * pair leaving the batch invalidates the verdict as surely as an edit to
+   * the row itself does, but the survivor's own fields never change, so
+   * the comparison loop above would never add it to `changed` on its own.
+   * Its id is folded into `changed` here instead, once, whether or not the
+   * row was independently edited in the same emission — the same
+   * `recheckDuplicates` call, run against the batch with the departed twin
+   * already gone, either finds a new pairing or finds none and drops the
+   * stale flag; a second call path would just re-derive the same answer.
    */
   onTransactionsUpdated(transactions: CategorizedImportTransaction[]): void {
     const before = new Map(this.extractedTransactions().map(t => [t.id, t]));
@@ -595,6 +606,19 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       if (prev.isDuplicate && !row.isDuplicate) {
         overrules.add(row.id);
+      }
+    }
+    if (gone.length > 0) {
+      const goneIds = new Set(gone);
+      for (const check of this.duplicateChecks()) {
+        if (
+          check.matchType === 'within_batch' &&
+          check.existingTransactionId !== undefined &&
+          goneIds.has(check.existingTransactionId) &&
+          present.has(check.transactionId)
+        ) {
+          changed.add(check.transactionId);
+        }
       }
     }
     this.extractedTransactions.set(transactions);

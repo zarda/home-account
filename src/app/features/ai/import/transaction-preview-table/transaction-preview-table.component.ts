@@ -1112,11 +1112,46 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
+   * The trigger's own name. A blank description falls back to the button's
+   * own visible text, splitLabel's reason: import.removeRowLabel would name
+   * a value the row does not have, on a control offered even before
+   * anything has been written into it.
+   */
+  removeLabel(row: CategorizedImportTransaction): string {
+    return descriptionIsUnfilled(row)
+      ? this.translationService.t('common.remove')
+      : this.translationService.t('import.removeRowLabel', { description: row.description });
+  }
+
+  /**
+   * The row's own trigger leaves with it, so focus goes where a keyboard
+   * reviewer clearing a batch would want it — the same control on the next
+   * row, the previous row's when this was the last, and the list's own
+   * control when the list is empty. The wizard prunes what it keeps for the
+   * id on its own (0106's mechanics, `onTransactionsUpdated`); the stale
+   * entry this leaves in `receiptRowIds` is inert, because `unansweredDates`
+   * reads the present rows, not that set alone.
+   */
+  removeRow(row: CategorizedImportTransaction): void {
+    const index = this.transactions.indexOf(row);
+    if (index === -1) return;
+    const neighbour = this.transactions[index + 1] ?? this.transactions[index - 1];
+    this.forgetRow(row.id);
+    this.transactions = this.transactions.filter(t => t !== row);
+    this.emitChanges();
+    this.cdr.markForCheck();
+    this.focusWhenRendered(
+      ...(neighbour ? [this.inRow(neighbour, '.remove-trigger')] : []),
+      '.add-row'
+    );
+  }
+
+  /**
    * Drop every per-id container's entry for a row that just left the card.
    * `editing`, `amountRejected`, `draftNotes` and `fellBackEligible` are all
    * keyed by row id and outlive `replaceRow`'s swap on purpose — until
-   * mergeInto, a row's id never stopped appearing in `transactions` at all,
-   * so nothing else has ever needed to prune them.
+   * mergeInto and removeRow, a row's id never stopped appearing in
+   * `transactions` at all, so nothing else has ever needed to prune them.
    */
   private forgetRow(id: string): void {
     this.editing.delete(id);

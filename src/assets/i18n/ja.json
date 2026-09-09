@@ -1141,6 +1141,7 @@
     "mergeInto": "結合…",
     "mergeIntoLabel": "{{description}}を別の行に結合",
     "mergeOption": "{{description}} · {{amount}} · {{date}}",
+    "removeRowLabel": "{{description}}を削除",
     "addLocation": "場所を追加",
     "addPlaceName": "場所の名前を追加",
     "editPlaceName": "場所の名前を編集（{{name}}）",
