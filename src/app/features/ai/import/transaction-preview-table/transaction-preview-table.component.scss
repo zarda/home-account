@@ -465,8 +465,17 @@
   border-color: var(--color-expense-text);
 }
 
+// The section keeps flex-shrink: 0 — it wraps rather than yields beside the
+// meta row — and the pair below is what that costs: min-inline-size: 0
+// lifts the content-based automatic minimum a flex item gets by default,
+// and max-inline-size: 100% does the clamping flex-shrink: 0 refuses to do
+// once the section is alone on its own wrapped line. The media query below
+// only reaches the app's own narrowest window, never a card clipped
+// tighter than that by something else on the page.
 .category-section {
   flex-shrink: 0;
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 /* What the source suggested beyond the core fields */

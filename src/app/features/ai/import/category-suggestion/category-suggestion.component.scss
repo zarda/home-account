@@ -1,7 +1,13 @@
+// An inline-flex box sizes shrink-to-fit and never below its content, so on
+// the phone layout — where the section holding it is a block at the card's
+// width — the cap is the only thing that makes the row's width reach the
+// chip at all; the button below shrinks inside it.
 .category-suggestion {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 // Confidence dot: a quick-scan traffic light for how much to trust the
@@ -37,8 +43,23 @@
   padding: 4px 12px;
   border-radius: var(--radius-xl);
   font-size: var(--text-sm);
-  min-width: auto;
+  // min-inline-size: 0 carries both jobs min-width: auto used to: beating
+  // Material's own .mdc-button min-width: 64px floor, and lifting the
+  // content-based automatic minimum a flex item gets by default — the one
+  // that let the chip run past the card. The cap beside it is what
+  // .category-section's own clamp resolves against.
+  min-inline-size: 0;
+  max-inline-size: 100%;
   min-height: 32px;
+}
+
+// Material wraps the projected label in its own flex item, whose automatic
+// minimum is the nowrap label's full width — so a button narrowed by the
+// cap above would keep its label at full width and let it poke out of the
+// card. Lifting that minimum is what hands the squeeze on to the label,
+// where appFitText can see it.
+.category-button ::ng-deep .mdc-button__label {
+  min-inline-size: 0;
 }
 
 .category-icon {
@@ -65,7 +86,10 @@
   display: inline-block;
   vertical-align: middle;
   min-width: 0;
-  max-width: 120px;
+  // 120px on a row with room; the wrapper's own width when the card has
+  // less, so the label's box is the one that shrinks and the directive's
+  // measure of it is the truth.
+  max-inline-size: min(120px, 100%);
   white-space: nowrap;
 }
 

@@ -1,13 +1,15 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
-import { CategorizedImportTransaction } from '../../../../models';
+import { Category, CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry';
+import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 
 /**
  * The review card at the narrowest width the app supports, carrying
@@ -36,12 +38,15 @@ import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry
   template: `
     <!-- 320px, the narrowest phone still in use, less the page's own padding. -->
     <div class="narrow">
-      <app-transaction-preview-table [transactions]="rows" [categories]="[]" [dateAttentionIds]="attention" />
+      <app-transaction-preview-table [transactions]="rows" [categories]="categories()" [dateAttentionIds]="attention" />
     </div>
   `,
   styles: ['.narrow { width: 288px; overflow: hidden; }'],
 })
 class PreviewOverflowProbeComponent {
+  // Empty by default, so every case but the one below still renders
+  // Unknown — the shape the fixture shipped with.
+  categories = signal<Category[]>([]);
   // r2 is the receipt row: dated on another day and under attention, so the
   // not-today question is measured at this width alongside r1's assumed one.
   readonly attention: ReadonlySet<string> = new Set(['r2']);
@@ -797,6 +802,85 @@ describe('overflow guard: the import review card', () => {
     expect(withinWidthOf(clip, el('.selected-badge')))
       .withContext('count badge inside the clip')
       .toBeTrue();
+  });
+
+  it('lets a long category name yield at the width the wizard leaves the card', () => {
+    // 262: .table-container's 1px border takes the clip to 260, then
+    // .transactions-list's 10px padding on both sides takes it to 240 — the
+    // width a stretched flex item in that column list is handed regardless
+    // of what overflows inside it. A driven run once measured exactly this
+    // shape, 240 wide with a 238 clientWidth once the card's own 1px border
+    // is paid too, against a category chip reading Groceries (#393).
+    //
+    // This fixture's two rows are always taller than 70dvh of Karma's own
+    // window, so .transactions-list always carries a real vertical
+    // scrollbar here (never on the touch devices this card ships to, which
+    // overlay theirs) — a fixed cost of this file's shared rows, not of the
+    // width being asserted. Reading it back rather than hard-coding it is
+    // what keeps 240 the number that drifts loudly when the padding or
+    // border above it does, instead of one that is also wrong by whatever a
+    // future browser's scrollbar happens to cost.
+    fixture.componentInstance.categories.set([
+      {
+        id: 'food',
+        userId: null,
+        name: 'Groceries & household supplies',
+        icon: 'shopping_cart',
+        color: '#2e7d32',
+        type: 'expense',
+        order: 0,
+        isActive: true,
+        isDefault: true,
+      },
+    ]);
+    clip.style.width = '262px';
+    // The wizard hands this input down as a signal read
+    // (import-wizard.component.html, [categories]="categories()"), and this
+    // probe's host does the same: a component that declares no
+    // changeDetection strategy is OnPush by default in this Angular, so a
+    // plain field reassignment would never re-run the host's own template
+    // to re-evaluate the [categories] binding below.
+    fixture.detectChanges();
+    // The directive's own MutationObserver is what would normally notice
+    // this row's text changed, but it runs outside the zone and fires from
+    // a real browser callback rather than synchronously — nothing in a
+    // plain (non-fakeAsync) spec waits long enough for that callback to
+    // land. Re-marking every appFitText host directly is what makes the
+    // flush below see them all — the amounts and r2's own category label
+    // carry the directive too, and would otherwise keep the scaling they
+    // computed at 288px while the card here is measured at 262.
+    const registry = TestBed.inject(FitTextRegistry);
+    fixture.debugElement
+      .queryAll(By.directive(FitTextDirective))
+      .forEach(d => registry.markDirty(d.injector.get(FitTextDirective)));
+    registry.flush();
+
+    const label = host.querySelector('[data-row-id="r1"] .category-name') as HTMLElement;
+    expect(label.textContent?.trim())
+      .withContext('the long category name actually reached the chip rather than the Unknown fallback')
+      .toBe('Groceries & household supplies');
+
+    const list = host.querySelector('.transactions-list') as HTMLElement;
+    const scrollbarWidth = list.getBoundingClientRect().width - list.clientWidth;
+    expect(getComputedStyle(list).borderInlineStartWidth)
+      .withContext('the scrollbar subtraction below only equals the scrollbar when the list has no border')
+      .toBe('0px');
+    expect(Math.abs(card.getBoundingClientRect().width - (240 - scrollbarWidth)))
+      .withContext('card at the width the arithmetic above predicts, so drift is visible')
+      .toBeLessThanOrEqual(1);
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge for a long category name')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+    expect(withinWidthOf(clip, el('[data-row-id="r1"] .category-button')))
+      .withContext('category chip inside the clip')
+      .toBeTrue();
+
+    expect(label.scrollWidth)
+      .withContext('the label\'s own box, appFitText\'s contract')
+      .toBeLessThanOrEqual(label.clientWidth + 1);
+    expect(parseFloat(getComputedStyle(label).fontSize))
+      .withContext('scaled no further than the 12px floor')
+      .toBeGreaterThanOrEqual(12);
   });
 });
 
