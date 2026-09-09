@@ -201,6 +201,48 @@ describe('overflow guard: the import review card', () => {
     });
   }
 
+  /**
+   * Fails unless every pair in `boxes` is disjoint on at least one axis.
+   * `label(i, j)` builds the failure message — the pair's own indices say
+   * nothing on their own about which two controls collided.
+   */
+  function expectDisjoint(
+    boxes: { top: number; bottom: number; left: number; right: number }[],
+    label: (i: number, j: number) => string,
+  ): void {
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+        // Two boxes overlap only when they overlap on both axes, so the
+        // smaller of the two spans is what has to come out non-positive.
+        const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        expect(Math.min(overlapX, overlapY)).withContext(label(i, j)).toBeLessThanOrEqual(0.5);
+      }
+    }
+  }
+
+  /**
+   * Fails unless every one of `triggers` stays disjoint from every box in
+   * `hits`. Kept apart from `expectDisjoint` rather than sharing it: a
+   * trigger is not one of the hits, so there is no self-pairing to skip.
+   */
+  function expectClearOf(
+    triggers: { top: number; bottom: number; left: number; right: number }[],
+    hits: { top: number; bottom: number; left: number; right: number }[],
+  ): void {
+    for (const trigger of triggers) {
+      for (const hit of hits) {
+        const overlapX = Math.min(trigger.right, hit.right) - Math.max(trigger.left, hit.left);
+        const overlapY = Math.min(trigger.bottom, hit.bottom) - Math.max(trigger.top, hit.top);
+        expect(Math.min(overlapX, overlapY))
+          .withContext('add trigger and a chip\'s hit area below it are disjoint')
+          .toBeLessThanOrEqual(0.5);
+      }
+    }
+  }
+
   it('keeps the card inside the 288px it was given', () => {
     expect(card.scrollWidth)
       .withContext('nothing hiding past the card\'s right edge')
@@ -656,19 +698,7 @@ describe('overflow guard: the import review card', () => {
       .withContext('the chips really did wrap, so there are rows to collide')
       .toBeGreaterThan(1);
 
-    for (let i = 0; i < hits.length; i++) {
-      for (let j = i + 1; j < hits.length; j++) {
-        const a = hits[i];
-        const b = hits[j];
-        // Two boxes overlap only when they overlap on both axes, so the
-        // smaller of the two spans is what has to come out non-positive.
-        const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-        const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-        expect(Math.min(overlapX, overlapY))
-          .withContext(`hit areas ${i} and ${j} are disjoint`)
-          .toBeLessThanOrEqual(0.5);
-      }
-    }
+    expectDisjoint(hits, (i, j) => `hit areas ${i} and ${j} are disjoint`);
   });
 
   it('keeps the add-tag and split triggers clear of the chip row below them', () => {
@@ -676,23 +706,64 @@ describe('overflow guard: the import review card', () => {
     // area, pinned above — so it cannot join the pass above over
     // .extra-remove/.extra-accept/.extra-country: getComputedStyle(button,
     // '::after').top on an element with no such pseudo-element is 'auto',
-    // and parseFloat('auto') is NaN, which would pass every comparison
-    // silently rather than fail loudly. This measures the same collision the
-    // way the trigger, not the chip, sees it: its own full box.
+    // and parseFloat('auto') is NaN, which every comparison below would
+    // fail on with a bare "Expected NaN to be less than or equal to 0.5"
+    // that names no control. This measures the same collision the way the
+    // trigger, not the chip, sees it: its own full box.
     const chipHits = chipHitBoxes();
     const triggers = Array.from(host.querySelectorAll<HTMLElement>('.extra-add')).map(add => add.getBoundingClientRect());
     expect(chipHits.length).withContext('there are chips here to stay clear of').toBeGreaterThan(0);
     expect(triggers.length).withContext('there are add triggers here to keep clear').toBeGreaterThan(0);
 
-    for (const trigger of triggers) {
-      for (const hit of chipHits) {
-        const overlapX = Math.min(trigger.right, hit.right) - Math.max(trigger.left, hit.left);
-        const overlapY = Math.min(trigger.bottom, hit.bottom) - Math.max(trigger.top, hit.top);
-        expect(Math.min(overlapX, overlapY))
-          .withContext('add trigger and a chip\'s hit area below it are disjoint')
-          .toBeLessThanOrEqual(0.5);
-      }
+    expectClearOf(triggers, chipHits);
+  });
+
+  it('keeps every hit box apart under RTL too', () => {
+    // Everything above is measured in LTR, where the card actually ships —
+    // this is the one case that flips the fixture instead, since the
+    // stylesheet's logical properties are what is under test here, not the
+    // card's own layout.
+    clip.setAttribute('dir', 'rtl');
+    fixture.detectChanges();
+    TestBed.inject(FitTextRegistry).flush();
+
+    const hits = chipHitBoxes();
+    // chipHitBoxes() reads back whichever spelling the stylesheet used, as a
+    // physical top/bottom/left/right — so a control missing the inset the
+    // reconstruction needs on a given side reads 'auto' there just as
+    // `.extra-add` would above, and parseFloat('auto') is NaN. Finite first,
+    // so that failure names the box it is about instead of surfacing as a
+    // bare "Expected NaN to be less than or equal to 0.5" from whichever
+    // comparison below meets it first.
+    for (const hit of hits) {
+      expect([hit.top, hit.bottom, hit.left, hit.right].every(Number.isFinite))
+        .withContext('every hit box inset resolves to a real value under rtl too')
+        .toBeTrue();
     }
+
+    expectDisjoint(hits, (i, j) => `hit areas ${i} and ${j} are disjoint`);
+    const triggers = Array.from(host.querySelectorAll<HTMLElement>('.extra-add')).map(add => add.getBoundingClientRect());
+    expectClearOf(triggers, hits);
+
+    // The location chip's own three controls are where this matters
+    // concretely: .place-name's big overhang faces away from
+    // .extra-country under LTR, and stays that way under RTL only because
+    // the inset is logical now — a physical spelling would leave it facing
+    // .extra-country instead, the 9 + 6 across the chip's 4px gap the
+    // stylesheet's own comment measures as an 11px overlap.
+    const hitBox = (control: HTMLElement) => {
+      const r = control.getBoundingClientRect();
+      const after = getComputedStyle(control, '::after');
+      return {
+        top: r.top + parseFloat(after.top),
+        bottom: r.bottom - parseFloat(after.bottom),
+        left: r.left + parseFloat(after.left),
+        right: r.right - parseFloat(after.right),
+      };
+    };
+    const placeName = hitBox(host.querySelector('[data-row-id="r1"] .place-name') as HTMLElement);
+    const country = hitBox(host.querySelector('[data-row-id="r1"] .extra-country') as HTMLElement);
+    expectDisjoint([placeName, country], () => 'the location chip\'s place name and its country control are disjoint');
   });
 
   it('carries a merge trigger on every row once they share a currency, inside the 288px', () => {

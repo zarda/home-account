@@ -98,7 +98,7 @@
   width: 1em;
   height: 1em;
   line-height: 1em;
-  margin-left: -2px;
+  margin-inline-start: -2px;
   opacity: 0.7;
 }
 
@@ -115,5 +115,5 @@
 }
 
 ::ng-deep .category-menu .mat-mdc-menu-item mat-icon {
-  margin-right: 8px;
+  margin-inline-end: 8px;
 }
