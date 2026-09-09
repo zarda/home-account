@@ -1,9 +1,21 @@
 // Share-target intake worker.
 //
-// Its ONLY job is to catch the POST the manifest's share_target sends,
+// Its first job is to catch the POST the manifest's share_target sends,
 // stash the shared files into IndexedDB, and bounce the browser to the
 // import wizard. Firebase Hosting rewrites do not apply to POST, so without
 // this worker the share would 404 before the app ever loads.
+//
+// Its second job is raising the app's reminders. Android Chrome and Firefox
+// refuse `new Notification()` with a `TypeError` at construction — only a
+// registration's `showNotification()` reaches the user there — and this
+// worker is already registered at scope `/` on every non-native session, so
+// ReminderService reuses it rather than opening a second one; a `register()`
+// at the same scope would replace this one instead of adding to it. The
+// click handler below is what a page-raised notification's default click
+// behaviour used to be, restated here because a worker-raised one gets none:
+// focus an open tab, or open one at `/`, where the Upcoming card is. No
+// `notificationclose`, no `data`, no deep link — the reminder already names
+// the bill.
 //
 // Every other request passes through untouched: no caching, no offline
 // shell, and deliberately no `sync` handler — registering any worker makes
@@ -37,6 +49,29 @@ self.addEventListener('fetch', (event) => {
   }
   event.respondWith(handleShare(event.request));
 });
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(focusOrOpen());
+});
+
+async function focusOrOpen() {
+  // matchAll({ type: 'window' }) returns only WindowClients, and every one
+  // exposes focus() — there is nothing to filter on, so this is
+  // windowClients[0].
+  const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const target = windowClients[0];
+  if (target) {
+    try {
+      return await target.focus();
+    } catch {
+      // focus() rejects when the click's user activation isn't attributed to
+      // it (Chrome: InvalidAccessError) — fall through instead of leaving
+      // event.waitUntil() holding a rejected promise and no window opening.
+    }
+  }
+  return self.clients.openWindow('/');
+}
 
 async function handleShare(request) {
   try {

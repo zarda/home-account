@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { TransactionService } from './transaction.service';
 import { Transaction, CategorizedImportTransaction, DuplicateCheck, ImagePositionMetadata } from '../../models';
 import { normalizeMerchantKey } from '../utils/merchant-key.utils';
+import { sameSplit } from '../utils/import-review.utils';
 
 /** Minimum Dice-coefficient overlap for two descriptions to count as similar. */
 const SIMILARITY_THRESHOLD = 0.7;
@@ -190,6 +191,12 @@ export class DuplicateDetectionService {
    * can deselect them while leaving them visible: overlapping exports are
    * usually genuine duplicates, but a real pair of identical charges on the
    * same day exists too, and only the user can tell them apart.
+   *
+   * A pair the reviewer split apart (`sameSplit`) is exempted: same day,
+   * type and description — and, for an even split, the same amount — is
+   * exactly the shape `isSameRow` looks for, and without the exemption the
+   * re-check the split itself fires would flag the new part as its
+   * original's twin and deselect it on the spot.
    */
   findWithinBatchDuplicates(
     transactions: CategorizedImportTransaction[],
@@ -208,7 +215,7 @@ export class DuplicateDetectionService {
         continue;
       }
 
-      const twin = kept.find(earlier => this.isSameRow(earlier, candidate));
+      const twin = kept.find(earlier => !sameSplit(earlier, candidate) && this.isSameRow(earlier, candidate));
       if (twin) {
         checks.push({
           transactionId: candidate.id,

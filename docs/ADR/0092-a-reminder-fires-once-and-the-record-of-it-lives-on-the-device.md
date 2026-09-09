@@ -1,6 +1,6 @@
 # 92. A reminder fires once, and the record of it lives on the device
 
-**Status:** Accepted, implemented · **Date:** 2026-09-01 · **Issues:** #79
+**Status:** Accepted, implemented; the *web half fires only while the page is open* gap is closed in part by [0104](0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md) · **Date:** 2026-09-01 · **Issues:** #79
 
 ## Context
 
@@ -174,7 +174,9 @@ spent without context.
   owning a subscription.
 - **The web half fires only while the page is open.** No service worker, so a
   closed tab raises nothing and an ahead-of-time reminder is dropped rather
-  than scheduled.
+  than scheduled. Delivery closed by
+  [ADR 0104](0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md),
+  #375 (2026-09-08); the closed-tab half stands.
 - **A denied web permission is sticky.** The browser will not prompt again until
   the user resets the site's permissions; the toggle says so rather than
   silently failing to ask.

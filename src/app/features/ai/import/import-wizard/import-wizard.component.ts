@@ -549,19 +549,42 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * change, so a row whose date, amount, type or description differs from
    * the row it replaces is checked again; a flag that went from true to
    * false is the reviewer's overrule. Only ids present before and after are
-   * compared — a first population is not a change. Dates compare by instant
-   * under Object.is: no door produces an Invalid Date any more, and the guard
-   * stays so a future one cannot make a row "changed" on every emission,
-   * which NaN !== NaN would. Currency, notes, category, tags, location, the
-   * rule link and selection are not detection inputs and trigger nothing.
+   * compared, with one exception: an id that is new but the batch is not —
+   * a row split off an existing one, filled the moment it is born — is
+   * checked once, the same as an edit, because nothing else ever will. A
+   * first population is still not a change (`before` is empty then, so the
+   * exception cannot fire), and neither is a hand-added row appearing blank
+   * (`rowIsUnfilled`, 0103's rule) — its first edit is what checks it.
+   * Dates compare by instant under Object.is: no door produces an Invalid
+   * Date any more, and the guard stays so a future one cannot make a row
+   * "changed" on every emission, which NaN !== NaN would. Currency, notes,
+   * category, tags, location, the rule link and selection are not detection
+   * inputs and trigger nothing.
+   *
+   * The pruning half: an id present before and gone after — a merge, or any
+   * other edit that drops a row outright — owes no verdict and no overrule.
+   * `overruled` and `recheckStamp` are dropped for it whatever removed it;
+   * `duplicateChecks` loses its entry too, but only when something actually
+   * left, since the filter below is a fresh array on every call otherwise.
+   * Left standing, a stored (non-`within_batch`) check for a gone id would
+   * ride `recheckDuplicates`'s `storedOnly` fold forever — nothing else ever
+   * drops a check once `applied` stops naming it. A `recheckStamp` pruned
+   * out from under an in-flight re-check makes `standing(id)` false for it,
+   * so a reply that lands afterwards is dropped by the mechanism already
+   * there rather than a second one here.
    */
   onTransactionsUpdated(transactions: CategorizedImportTransaction[]): void {
     const before = new Map(this.extractedTransactions().map(t => [t.id, t]));
+    const present = new Set(transactions.map(t => t.id));
+    const gone = [...before.keys()].filter(id => !present.has(id));
     const changed = new Set<string>();
     const overrules = new Set<string>();
     for (const row of transactions) {
       const prev = before.get(row.id);
-      if (!prev) continue;
+      if (!prev) {
+        if (before.size > 0 && !rowIsUnfilled(row)) changed.add(row.id);
+        continue;
+      }
       if (
         !Object.is(+prev.date, +row.date) ||
         prev.amount !== row.amount ||
@@ -589,6 +612,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     for (const id of changed) this.overruled.delete(id);
     if (changed.size > 0) {
       void this.recheckDuplicates(changed);
+    }
+    for (const id of gone) {
+      this.overruled.delete(id);
+      this.recheckStamp.delete(id);
+    }
+    if (gone.length > 0) {
+      this.duplicateChecks.update(checks => checks.filter(c => present.has(c.transactionId)));
     }
   }
 

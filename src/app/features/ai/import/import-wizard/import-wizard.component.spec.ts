@@ -16,6 +16,7 @@ import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult } 
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
+import { blankImportRow } from '../../../../core/utils/import-review.utils';
 
 function attemptStub() {
   const handle = jasmine.createSpyObj<ReceiptAttempt>('ReceiptAttempt', ['succeeded', 'failed', 'queued']);
@@ -1359,6 +1360,35 @@ describe('ImportWizardComponent', () => {
       expect(mockDuplicateService.findWithinBatchDuplicates).not.toHaveBeenCalled();
     }));
 
+    it('checks a filled row that appears beside the rows already here', fakeAsync(() => {
+      // A split part is born already filled and under a new id, so the plain
+      // "ids present before and after" reading would never check it — the
+      // very re-check the split exists to trigger.
+      populate(fresh());
+      const part: CategorizedImportTransaction = {
+        id: 'txn3', description: 'Part', amount: 3, currency: 'USD', date: new Date(),
+        type: 'expense', suggestedCategoryId: 'food', categoryConfidence: 0,
+        isDuplicate: false, selected: true,
+      };
+
+      component.onTransactionsUpdated([...component.extractedTransactions(), part]);
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).toHaveBeenCalledTimes(1);
+      expect(checkedIds(0)).toEqual(['txn3']);
+    }));
+
+    it('does not check a blank row that appears', fakeAsync(() => {
+      // 0103's rule: a hand-added row is unchecked until its first edit.
+      populate(fresh());
+      const blank = blankImportRow('txn3', row('txn2'), 'USD');
+
+      component.onTransactionsUpdated([...component.extractedTransactions(), blank]);
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).not.toHaveBeenCalled();
+    }));
+
     it('reads an Invalid Date as unchanged, so a currency edit elsewhere checks nothing', fakeAsync(() => {
       // A JSON-door row can carry an Invalid Date; NaN !== NaN would make
       // it "changed" on every emission.
@@ -1827,6 +1857,68 @@ describe('ImportWizardComponent', () => {
       expect(component.duplicateChecks()).toBe(checks);
       expect(component.extractedTransactions()).toBe(rows);
       expect(mockDuplicateService.findWithinBatchDuplicates).toHaveBeenCalledTimes(1);
+    }));
+
+    it('forgets the verdict and the overrule of a row that left the batch', fakeAsync(() => {
+      const rows = fresh();
+      rows[1] = { ...rows[1], isDuplicate: true, duplicateOf: 'stored-1', selected: false };
+      populate(rows, [stored('txn2', true)]);
+
+      // What clearDuplicate on the card emits — the overrule this test then
+      // has to see survive txn2's own departure.
+      edit('txn2', { isDuplicate: false, duplicateOf: undefined, selected: true });
+      flushMicrotasks();
+      expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
+        .withContext('the overrule\'s own rewrite')
+        .toEqual({ transactionId: 'txn2', isDuplicate: false, matchType: 'none', confidence: 0 });
+
+      // A merge (or any other edit) that drops txn2 from the batch.
+      component.onTransactionsUpdated(component.extractedTransactions().filter(t => t.id !== 'txn2'));
+      flushMicrotasks();
+
+      expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
+        .withContext('no verdict left to keep for a row that left the batch')
+        .toBeUndefined();
+
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
+      edit('txn1', { description: 'Espresso' });
+      flushMicrotasks();
+
+      expect(checkedIds(0)).withContext('the gone row is not re-checked').toEqual(['txn1']);
+      expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
+        .withContext('the storedOnly fold does not carry it back in')
+        .toBeUndefined();
+    }));
+
+    it('re-checks the row a merge changed and nothing else', fakeAsync(() => {
+      populate(fresh());
+      mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn2', false)]);
+
+      // What the card emits for a merge: the target's id survives with a new
+      // amount, and the source's id (txn1) is simply gone from the array.
+      const merged = { ...row('txn2'), amount: row('txn1').amount + row('txn2').amount };
+      component.onTransactionsUpdated([merged]);
+      flushMicrotasks();
+
+      expect(mockDuplicateService.checkDuplicates).toHaveBeenCalledTimes(1);
+      expect(checkedIds(0)).toEqual(['txn2']);
+    }));
+
+    it('drops a re-check reply for a row that left the batch while it was in flight', fakeAsync(() => {
+      // The stamp pruned out from under the read is what makes the reply
+      // not standing; left in place, the gone id's verdict would ride the
+      // storedOnly fold on every later re-check, with nothing on screen to
+      // say so — duplicateInfos hides a check whose row is missing.
+      populate(fresh());
+      const pending = deferred<DuplicateCheck[]>();
+      mockDuplicateService.checkDuplicates.and.returnValue(pending.promise);
+      edit('txn2', { amount: 99 });
+      component.onTransactionsUpdated(component.extractedTransactions().filter(t => t.id !== 'txn2'));
+      pending.resolve([stored('txn2', true)]);
+      flushMicrotasks();
+
+      expect(component.duplicateChecks().find(c => c.transactionId === 'txn2')).toBeUndefined();
+      expect(component.rechecksInFlight()).toBe(0);
     }));
   });
 });

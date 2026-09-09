@@ -56,7 +56,14 @@ Transactions row and the weekly-recap switch in Settings → Profile; for the
 import review corrections it is the date button and the *keep it?* question
 chip on a scanned row's review card; for the tag, location and added-row
 controls it is **Add tag** in a scanned row's extras and **Add a row** under
-the list; for another branch it is whatever that branch added. A stale
+the list; for the split, merge and worker-reminder surfaces it is **Split**
+in a scanned row's extras — **Merge into…** stands beside it only once a
+second filled row shares the currency, so on a one-receipt review it shows
+after journey 15's split — and a `notificationclick` listener in the served
+worker: `await fetch('/share-target-sw.js').then(r => r.text())` contains
+`notificationclick`. The worker is served straight from `public/`, so that
+fetch reads the branch's file whether or not the page has re-registered it.
+For another branch it is whatever that branch added. A stale
 `.angular/cache`, or a server started before the checkout switched, shows
 yesterday's app with today's confidence.
 
@@ -105,9 +112,11 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full window,
 and a pane behaves differently enough to cost a run before it is understood.
-None of these is a property of the app; four of the six have produced a
-false failure, the fifth stops a run before it starts, and the last is a
-door no file picker opens in any browser.
+None of these is a property of the app; five of the eight have produced a
+false failure, the sixth stops a run before it starts, and the last two are
+doors nothing in a pane opens — one that no file picker reaches in any
+browser, one whose only control on the page is a switch with a write behind
+it.
 
 - **Pointer input can stall under viewport emulation, and stay stalled.** With
   an emulated width in force, clicks stop landing and go on not landing until
@@ -117,6 +126,20 @@ door no file picker opens in any browser.
 - **A screenshot can freeze under a scaled emulation** — the image that comes
   back is the one from before the last interaction, which reads exactly like a
   control that did nothing. Confirm against the page's text, not the picture.
+- **A hidden pane stops painting, and the app's render scheduler with it.**
+  Angular schedules a render on `requestAnimationFrame` raced against a
+  timer, and a pane the host is not showing throttles both, so a click lands
+  in the model while the view lags behind it — a control that did nothing,
+  read from a screenshot that never updated, and focus that never arrived.
+  Front the pane before reading anything off it. Where it cannot be fronted,
+  `ng.applyChanges(ng.getComponent(document.querySelector('app-import-wizard')))`
+  after each action renders what the model already holds — state only, so it
+  proves nothing about what the app would have painted — and everything
+  `afterNextRender` does, focus above all, is left to the specs that pin it.
+  An overlay's position and its close animation cannot be judged without
+  frames either: the merge menu reported a negative left and stayed in the
+  DOM until closed through its trigger, an artefact of the pane and not a
+  finding.
 - **A desktop-only door needs a pane genuinely wide enough for the table.**
   The list swaps to the table at `min-width: 768px`, so below that the row's
   note icon does not exist and journey 2 silently becomes journey 4.
@@ -150,6 +173,28 @@ door no file picker opens in any browser.
   pick would take. That the file was placed by script rather than chosen is
   diagnostic-grade, the standing journey 8's hand-off substitute already
   has: say so beside the shot.
+- **A notification is raised by script.** The one control that leads to a
+  web notification is the reminders switch in Settings → Profile, and the
+  click that turns it on asks the operating system for permission, writes
+  `preferences.enableReminders` on the user document and sweeps — raising
+  whatever is due and logging it as delivered in this browser's storage.
+  None of that is the run's to do for the sake of one notification, so
+  journey 14 calls the reminder service's own web seam from the console,
+  the way the file doors above are already script-driven:
+
+  ```js
+  ng.getComponent(document.querySelector('app-reminder-settings')).reminders
+    .showWebNotification('Home Account', 'Journey 14', 'e2e-14');
+  ```
+
+  `reminders` is the component's injected service and the seam is
+  `protected` — TypeScript's words, which the running page does not
+  enforce, so both are reachable without either being public. The seam is
+  what the sweep itself calls, so the evidence is the wire the sweep uses:
+  the registration's `showNotification` call, the notification the
+  operating system shows, and the permission state the pane reports. It
+  never asks for permission — that request is the switch's — and the
+  switch is never touched.
 
 The console's own quirk is check 3 above: entries persist across reloads, so
 only the difference counts.
@@ -157,10 +202,12 @@ only the difference counts.
 ## What a run may touch
 
 Three writes are authorised. Each is put back before the run ends, and the
-restore is *confirmed on screen*, not assumed. The last two rows write
+restore is *confirmed on screen*, not assumed. The last three rows write
 nothing at all and are listed with them anyway: one still costs the account
-a real provider call, the other not even that, and what an import journey
-leaves behind is worth stating rather than leaving to be inferred.
+a real provider call, one not even that, and the third leaves a notification
+standing in the operating system rather than anything on the account — what
+an import journey or a raised notification leaves behind is worth stating
+rather than leaving to be inferred.
 
 | Action | What it writes | How it is put back |
 |---|---|---|
@@ -169,6 +216,7 @@ leaves behind is worth stating rather than leaving to be inferred.
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
+| Raising one test notification through the worker | Nothing on the account. One OS notification from this browser profile, tagged `e2e-14` | Closed by the journey: `(await navigator.serviceWorker.getRegistration()).getNotifications({ tag: 'e2e-14' }).then(ns => ns.forEach(n => n.close()))` — by tag, so a bill reminder the account's own sweep raised in this profile is left standing |
 
 The failed-attempt record is written only by the attempt's `failed` and the
 import's own record only by `confirmImport`, so an extraction left
@@ -318,6 +366,8 @@ ng.getComponent(document.querySelector('app-import-wizard')).onFilesSelected([fi
 | 11 | Review: a tag and a location | The browser's own suggestion list behind the tag field, and the country menu over a real receipt's address | `11-tag-added.png`, `11-country-menu.png` |
 | 12 | Review: a row added by hand | A blank card arriving under a real pointer with the caret already in it, and Continue held until it is filled | `12-row-added.png` |
 | 13 | Review: a backup row without a date | A restored backup entering by the one door that takes one, and the date question its dateless row raises | `13-backup-date.png` |
+| 14 | Reminders through the worker | A real registration raising a real OS notification, and the permission state the pane reports | `14-worker-notification.png` |
+| 15 | Review: split and merge | Two cards born under a real pointer from one, both wearing the receipt badge, and the merge menu folding one back | `15-split-parts.png`, `15-merge-menu.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -549,6 +599,36 @@ That is the meta row wrapping as it is built to, not a failure; no threshold
 for it is pinned anywhere, so do not read one off a single run. The chips and
 the editors keep their 40px tap targets at every width.
 
+Two more readings, in journey 15's order: with the split field open on the
+card, and — once the split has made two — with the merge menu open over
+the part. What is pinned is what these controls own: every **Split** and
+**Merge into…** trigger inside its own card's box and 40px tall, and the
+open split field inside that box too — the 288px probe's own reading of
+them, taken here at the wizard's real width:
+
+```js
+[...document.querySelectorAll('.transaction-card')].every(card => {
+  const c = card.getBoundingClientRect();
+  const inside = el => {
+    const b = el.getBoundingClientRect();
+    return b.left >= c.left && b.right <= c.right;
+  };
+  return [...card.querySelectorAll('.split-input')].every(inside) &&
+    [...card.querySelectorAll('.split-trigger, .merge-trigger')]
+      .every(t => inside(t) && t.getBoundingClientRect().height >= 40);
+});
+```
+
+`true` both times. The card's own `scrollWidth === clientWidth` is not the
+pass here, because on a real receipt it comes back `false` for a reason that
+is none of these controls': the category suggestion chip is sized to its
+label, and a long category name — *Groceries*, 185px — reaches 12px past a
+240px card. That chip predates Split and Merge into…, the 288px probe never
+measures it because its fixture's category is shorter, and the first run
+recorded it as a follow-up of its own. Until that lands, a card that
+overflows only by that chip is recorded with the figures and passed over,
+not read as a failure of the controls being measured.
+
 One shot: the review card, question chip and open tag editor together.
 
 ### 11. Review: a tag and a location
@@ -664,6 +744,129 @@ goes and the button takes the check.
 Then **Back**, and out by the wizard's back arrow. Nothing is imported.
 
 One shot: the two rows together, with the question chip on the dateless one.
+
+### 14. Reminders through the worker
+
+Any page, from the console:
+
+```js
+const reg = await navigator.serviceWorker.getRegistration();
+[reg.active.scriptURL, Notification.permission];
+```
+
+The script URL ends in `/share-target-sw.js`: the share-target worker the
+app registers at scope `/` on every web boot is the registration a reminder
+is now raised on. Record the permission with it.
+
+**Precondition for the OS half:** `granted`. The pane may not prompt — the
+only prompt in the app is the reminders switch's, and the same click writes a
+preference and sweeps the account ([Panes and viewports](#panes-and-viewports))
+— and `granted` comes from the browser's own site settings for the origin,
+never from the app. A `default` or `denied` state is recorded, and the OS half
+of the journey is skipped rather than faked. The registration half still
+stands on either: the wrapper below still sees the call arrive with the
+sweep's own arguments, the constructor is never touched, and the seam resolves
+`false` on the platform's own refusal (*No notification permission has been
+granted for this origin*). That is what the first run proved, in a pane that
+reported `denied`; the notification itself waits for a profile that grants.
+
+Then Settings → Profile, the page `app-reminder-settings` is on — the bill
+reminders block journey 6 walks past — and, in the console, wrap the
+registration's method so the call's arguments are kept, then raise one
+through the service's own seam:
+
+```js
+const orig = reg.showNotification.bind(reg);
+reg.showNotification = (...a) => { window.__shown = a; return orig(...a); };
+await ng.getComponent(document.querySelector('app-reminder-settings')).reminders
+  .showWebNotification('Home Account', 'Journey 14', 'e2e-14');
+```
+
+**Pass, on a granting profile:** the call resolves `true`; `window.__shown` is
+`['Home Account', { body: 'Journey 14', tag: 'e2e-14' }]` — the title, then
+the body and the tag as one options object, which is the shape the sweep
+hands over; `(await reg.getNotifications()).map(n => n.tag)` contains
+`e2e-14`; and the operating system shows it, *Home Account* over
+*Journey 14*. That the wrapper saw the call is what says it went through the
+registration and not the constructor, which touches no registration at all.
+Nothing was written, and the switch is untouched.
+
+Close it with the restore in [What a run may touch](#what-a-run-may-touch)
+before leaving the page — by its tag, never every notification the
+registration holds, since a bill reminder the account's own sweep raised in
+this profile may be standing beside it. Clicking it instead is the worker's
+`notificationclick`, which closes the notification and focuses an open tab,
+or opens one at `/` — fine to try, and not part of the pass.
+
+One shot: the notification, where the pane can see the operating system's
+notification surface; otherwise the console with the three readings above,
+and say so beside the shot.
+
+What this journey does not prove is the Android device. Desktop Chromium
+exercised the same registration API here, and Android Chrome is where the
+constructor throws and the registration is the only way through — but the
+device is a check on the deployed site after the merge, not something a
+pane reaches, and it is recorded as that rather than assumed from this run.
+
+### 15. Review: split and merge
+
+The same review as journey 8, on the same `jp.png` row, fed the same way,
+with the date question answered by **Keep** first: Continue is then held by
+nothing, so whatever holds or frees it below is this journey's own doing.
+
+**Split** is in the card's extras, ahead of **Add location** and **Add
+tag**, on any row that has an amount. Tap it → the field opens in its place,
+empty, placeholder *Amount for the new row*, with the caret in it → type
+`179`, a third of the printed ¥538 → Enter → two cards. The original now
+reads *-¥359*, and directly under it stands the part at *-¥179* with its
+description editor already open and the caret in it: it was born holding
+the original's description, which a line item taken out on its own rarely
+keeps. Enter with the copied name left standing closes the editor and keeps
+it, the way journey 9's description editor keeps an unchanged one. Escape
+leaves the row alone and so does an emptied field, while a figure the row
+cannot spare — the whole ¥538, or more — holds the field open, marked invalid,
+with *Enter an amount smaller than the row's* next to it, the way the amount
+editor refuses a figure it cannot read.
+
+Both cards wear the receipt badge, *Receipt 1 (photo 1)*: one photo, two
+transactions, each of which would attach its own copy at an import this run
+never reaches. An amount flag, if the row wore one, goes with the split the
+way a hand-typed figure clears it. Continue stays enabled — the part is born
+filled, and the kept date travels with it — and both halves go back through
+the duplicate check, the original for its new amount and the part because
+it is new; a part is exempt from reading as its original's twin within the
+batch, so the batch half of that re-check flags neither.
+
+Then **Merge into…** in the part's extras, after **Split**. The trigger
+exists only while another filled row shares the currency, which until the
+split none did. Open it → the menu lists the original alone, as
+*description · amount · date* — the row's description, *¥359*, *Aug 14,
+2026* — since the two are the only rows. Pick it → one card again, at the
+printed total *-¥538*, the badge still reading photo 1, and focus on the
+survivor's description trigger: its own **Merge into…** left with the last
+other row. The survivor is the original — its description, its date and the
+marks the review put on it stand, and the amount is the one thing summed.
+That new figure sends it back through the duplicate check alone, the row
+that merged away owing no verdict, and once that settles there is no
+duplicate badge. A *Duplicate* verdict from either re-check is journey 9's
+case — what to recognise against a real account, not part of the pass. A run
+that strays onto the confirm step sees an *Items merged* card reading 1 after
+the merge: the survivor is marked merged and that card counts it — not a
+defect, and not on this journey's path.
+
+A blank row and a flagged one are kept off both sides: a card still reading
+*Add a description* or *Add an amount*, or wearing the duplicate badge,
+offers no **Merge into…** and is listed in no other row's menu, so a merge
+never answers a question the reviewer was not shown; a row in another
+currency is not listed either, because nothing here converts.
+
+**Pass:** the split shows two parts and the merge shows one, and nothing
+reached the account — Transactions is unchanged and `/import/history` has
+no new run. Leave by the review step's **Back** and the wizard's back arrow,
+as journey 9 does; Import is never pressed.
+
+Two shots: the two cards after the split, and the merge menu open over the
+part.
 
 ## Evidence
 

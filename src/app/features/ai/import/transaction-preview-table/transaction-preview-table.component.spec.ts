@@ -2778,4 +2778,531 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(placeholder('filled')).withContext('nothing missing here').toBeNull();
     });
   });
+
+  /**
+   * A receipt whose line items the reader merged into one row, taken apart
+   * before the import (#371). Merge is a separate control (Task 5); this is
+   * the half that moves an amount off a row into a new one.
+   */
+  describe('splitting a row', () => {
+    const splitTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .split-trigger`) as HTMLButtonElement | null;
+    const splitInput = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .split-input`) as HTMLInputElement | null;
+    const refusal = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .amount-error`) as HTMLElement | null;
+    const descriptionInput = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .description-input`) as HTMLInputElement | null;
+    const receiptBadges = () =>
+      Array.from(fixture.nativeElement.querySelectorAll('.receipt-badge')) as HTMLElement[];
+
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    /** Typing, then the key that ends the edit. */
+    function type(id: string, text: string, key = 'Enter'): void {
+      const box = splitInput(id)!;
+      box.value = text;
+      box.dispatchEvent(new KeyboardEvent('keydown', { key }));
+    }
+
+    it('renders on a filled row and not on a row with no amount', () => {
+      render([makeRow({ id: 'filled' }), makeRow({ id: 'empty', amount: 0 })]);
+
+      expect(splitTrigger('filled')).withContext('an amount to take off').not.toBeNull();
+      expect(splitTrigger('empty')).withContext('nothing to split off zero').toBeNull();
+    });
+
+    it('names itself "Split" rather than "Add a description" on a row with no description yet', () => {
+      render([makeRow({ id: 'txn1', description: '' })]);
+
+      expect(splitTrigger('txn1')!.getAttribute('aria-label')).toBe('import.splitRow');
+    });
+
+    it('opens a focused split input on click', () => {
+      render([makeRow({ id: 'txn1' })]);
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+
+      const box = splitInput('txn1')!;
+      expect(document.activeElement).withContext('the tap that opened it starts typing').toBe(box);
+      expect(splitTrigger('txn1')).withContext('the trigger is gone while editing').toBeNull();
+    });
+
+    it('splits the amount into two rows on Enter, and opens the new part\'s description editor', async () => {
+      const row = makeRow({
+        id: 'txn1',
+        amount: 5400,
+        currency: 'JPY',
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 3 },
+      });
+      const given = [row];
+      render(given);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '1,200');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(given.length).withContext('never mutates the @Input() array').toBe(1);
+      expect(emitted[0]).withContext('a new array, as every other edit emits').not.toBe(given);
+      expect(emitted[0].length).toBe(2);
+      const [kept, part] = emitted[0];
+      expect(kept.id).withContext('the original keeps its identity').toBe('txn1');
+      expect(kept.amount).toBe(4200);
+      expect(part.id).toMatch(/^split_/);
+      expect(part.amount).toBe(1200);
+      expect(part.splitFrom).toBe('txn1');
+      expect(component.isEditing(part, 'description'))
+        .withContext('the part is born already open in its own editor')
+        .toBeTrue();
+
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const description = descriptionInput(part.id);
+      expect(description).withContext('the part rendered as a description editor').not.toBeNull();
+      expect(document.activeElement).toBe(description);
+    });
+
+    it('carries the receipt badge to the split part unchanged', () => {
+      render([makeRow({
+        id: 'txn1',
+        amount: 5400,
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 3 },
+      })]);
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '1,200');
+      fixture.detectChanges();
+
+      const badges = receiptBadges();
+      expect(badges.length).withContext('both halves show a badge').toBe(2);
+      expect(badges[0].textContent?.trim())
+        .withContext('the same receipt and photo as the original')
+        .toBe(badges[1].textContent?.trim());
+    });
+
+    it('rejects an unreadable figure, the whole amount, and more than the whole amount, without emitting', () => {
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+
+      for (const value of ['abc', '5400', '6000']) {
+        type('txn1', value);
+        fixture.detectChanges();
+
+        const box = splitInput('txn1');
+        expect(box).withContext(`editor stays open for ${value}`).not.toBeNull();
+        expect(box!.getAttribute('aria-invalid')).withContext(value).toBe('true');
+      }
+      expect(emitted.length).toBe(0);
+    });
+
+    it('rejects a figure that only rounds to zero or to the whole amount, the same as one that already is', () => {
+      // 19.999 and 0.004 both clear parseAmountInput's own >0 guard and
+      // read as less than a 20 row's amount — splitImportRow is what
+      // catches them, once its rounding puts one at the row's own amount
+      // and the other at zero. A guard here that disagreed with that one
+      // would close the editor on a figure splitImportRow was about to
+      // refuse.
+      render([makeRow({ id: 'txn1', amount: 20 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+
+      for (const value of ['19.999', '0.004']) {
+        type('txn1', value);
+        fixture.detectChanges();
+
+        const box = splitInput('txn1');
+        expect(box).withContext(`editor stays open for ${value}`).not.toBeNull();
+        expect(box!.getAttribute('aria-invalid')).withContext(value).toBe('true');
+      }
+      expect(emitted.length).toBe(0);
+    });
+
+    it('says why it refused: the input names a message, and the message is an alert', () => {
+      // aria-invalid alone tells a screen reader only that the figure was
+      // refused, and a sighted reviewer only that the editor would not
+      // close. The message is the amount editor's own pair, an alert for
+      // the amount editor's reason: the commit that refused is often a
+      // blur, by which time the reviewer is on the next card.
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '6000');
+      fixture.detectChanges();
+
+      const box = splitInput('txn1')!;
+      const message = refusal('txn1');
+      expect(box.getAttribute('aria-invalid')).toBe('true');
+      expect(message).withContext('the refusal is written down').not.toBeNull();
+      expect(message!.getAttribute('role')).toBe('alert');
+      expect(message!.textContent?.trim()).toBe('import.splitAmountRefused');
+      expect(message!.id).toBe('split-error-txn1');
+      expect(box.getAttribute('aria-describedby'))
+        .withContext('the input names the message it stands with')
+        .toBe(message!.id);
+    });
+
+    it('drops the message once a figure is taken, and opens clean the next time', () => {
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '6000');
+      fixture.detectChanges();
+      expect(refusal('txn1')).withContext('refused first').not.toBeNull();
+
+      type('txn1', '1,200');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(splitInput('txn1')).withContext('a figure the row can spare closes the editor').toBeNull();
+      expect(refusal('txn1')).withContext('and takes the message with it').toBeNull();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+
+      const box = splitInput('txn1')!;
+      expect(box.getAttribute('aria-invalid')).toBeNull();
+      expect(box.getAttribute('aria-describedby')).toBeNull();
+      expect(refusal('txn1')).withContext('the refusal does not outlive the editor it was made in').toBeNull();
+    });
+
+    it('closes on a blur with nothing typed, rather than hold an empty figure open as unreadable', () => {
+      render([makeRow({ id: 'txn1' })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      splitInput('txn1')!.dispatchEvent(new FocusEvent('blur'));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(splitInput('txn1')).withContext('closes instead of stranding an empty, invalid editor').toBeNull();
+      expect(splitTrigger('txn1')).withContext('the trigger is back').not.toBeNull();
+    });
+
+    it('closes on Enter with nothing but spaces typed too, the same as blur', () => {
+      render([makeRow({ id: 'txn1' })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      type('txn1', '   ');
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(splitInput('txn1')).toBeNull();
+      expect(document.activeElement).withContext('a key hands focus back to the trigger').toBe(splitTrigger('txn1'));
+    });
+
+    it('emits nothing and returns focus to the trigger on Escape', () => {
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      const box = splitInput('txn1')!;
+      box.value = '1,200';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(splitInput('txn1')).toBeNull();
+      expect(document.activeElement).toBe(splitTrigger('txn1'));
+    });
+
+    it('leaves a composing Enter to the IME', () => {
+      render([makeRow({ id: 'txn1', amount: 5400 })]);
+      const emitted = emissions();
+
+      splitTrigger('txn1')!.click();
+      fixture.detectChanges();
+      const box = splitInput('txn1')!;
+      box.value = '1200';
+      box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(0);
+      expect(splitInput('txn1')).withContext('still editing').not.toBeNull();
+    });
+  });
+
+  /**
+   * Two rows that belong to one purchase — a receipt the reader split across
+   * two photos, or a wrong split — joined before the import (#371). This is
+   * the other half of the pair splitting a row started above.
+   */
+  describe('merging a row into another', () => {
+    const mergeTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .merge-trigger`) as HTMLButtonElement | null;
+    const descriptionTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .description-section .inline-edit`) as HTMLButtonElement | null;
+    const formattedDate = (row: CategorizedImportTransaction) =>
+      TestBed.inject(LocaleFormatService).formatDate(row.date);
+
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    /** The lazy menu's items, which do not exist until it is opened. */
+    function openMergeMenu(id: string): HTMLElement[] {
+      mergeTrigger(id)!.click();
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item'));
+    }
+
+    it('renders the trigger only on a row another row shares a currency with', () => {
+      render([
+        makeRow({ id: 'a', currency: 'USD' }),
+        makeRow({ id: 'b', currency: 'USD' }),
+        makeRow({ id: 'c', currency: 'KRW' }),
+      ]);
+
+      expect(mergeTrigger('a')).not.toBeNull();
+      expect(mergeTrigger('b')).not.toBeNull();
+      expect(mergeTrigger('c')).withContext('nothing else is in KRW').toBeNull();
+    });
+
+    it('names the trigger after the row', () => {
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee' }),
+        makeRow({ id: 'b', currency: 'USD', description: 'Lunch' }),
+      ]);
+
+      expect(mergeTrigger('a')!.getAttribute('aria-label')).toBe('import.mergeIntoLabel:{"description":"Coffee"}');
+      expect(mergeTrigger('b')!.getAttribute('aria-label')).toBe('import.mergeIntoLabel:{"description":"Lunch"}');
+    });
+
+    it('keeps a blank row out of a merge on either side: no trigger of its own, not listed on another\'s', () => {
+      // A hand-added row is filled first: merged into, its placeholder
+      // category and copied date would win, and the empty description is
+      // the only part of that the unfilled gate would catch.
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee' }),
+        makeRow({ id: 'b', currency: 'USD', description: 'Lunch' }),
+        makeRow({ id: 'c', currency: 'USD', description: '' }),
+        makeRow({ id: 'd', currency: 'USD', description: 'Water', amount: 0 }),
+      ]);
+
+      expect(mergeTrigger('c')).withContext('no description yet').toBeNull();
+      expect(mergeTrigger('d')).withContext('no amount yet').toBeNull();
+      const items = openMergeMenu('a');
+      expect(items.length).withContext('b only').toBe(1);
+      expect(items[0].textContent).toContain('Lunch');
+    });
+
+    it('keeps a flagged row out of a merge on either side until the badge\'s own control overrules it', () => {
+      // The verdict is answered by the overrule, never cleared on the way
+      // through a merge — a re-check that then failed would leave a real
+      // duplicate unflagged and selected.
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee' }),
+        makeRow({ id: 'b', currency: 'USD', description: 'Lunch' }),
+        makeRow({ id: 'c', currency: 'USD', description: 'Snacks', isDuplicate: true, duplicateOf: 'stored-1', selected: false }),
+      ]);
+
+      expect(mergeTrigger('c')).withContext('flagged').toBeNull();
+      expect(openMergeMenu('a').length).withContext('b only').toBe(1);
+
+      (fixture.nativeElement.querySelector('[data-row-id="c"] .duplicate-clear') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(mergeTrigger('c')).withContext('overruled, so back in').not.toBeNull();
+      expect(document.querySelectorAll('.mat-mdc-menu-panel .mat-mdc-menu-item').length)
+        .withContext('b and c, in the menu a still has open')
+        .toBe(2);
+    });
+
+    it('offers no trigger on a row whose only same-currency company is blank or flagged', () => {
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee' }),
+        makeRow({ id: 'b', currency: 'USD', description: '' }),
+        makeRow({ id: 'c', currency: 'USD', description: 'Snacks', isDuplicate: true, selected: false }),
+      ]);
+
+      expect(mergeTrigger('a')).withContext('nothing mergeable to offer').toBeNull();
+    });
+
+    it('keeps the trigger count right once an edit has replaced the array', () => {
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee' });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch' });
+      const c = makeRow({ id: 'c', currency: 'USD', description: 'Snacks' });
+      render([a, b, c]);
+      // The parent puts every emitted array back through the input, which
+      // is what marks this OnPush card for a re-render an instance
+      // assignment would not — and the array the census is keyed on.
+      component.transactionsUpdated.subscribe(rows => fixture.componentRef.setInput('transactions', rows));
+      const triggers = () => (fixture.nativeElement.querySelectorAll('.merge-trigger') as NodeListOf<HTMLElement>).length;
+      expect(triggers()).toBe(3);
+
+      component.updateCurrency(c, 'KRW');
+      fixture.detectChanges();
+      expect(triggers()).withContext('c left USD; a and b still share it').toBe(2);
+      expect(mergeTrigger('c')).toBeNull();
+
+      component.updateCurrency(component.transactions.find(t => t.id === 'b')!, 'KRW');
+      fixture.detectChanges();
+      expect(triggers()).withContext('b joined c in KRW, leaving a alone in USD').toBe(2);
+      expect(mergeTrigger('a')).toBeNull();
+    });
+
+    it('lists the other same-currency rows in the menu, named by mergeOption', () => {
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
+      render([
+        makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 }),
+        b,
+        makeRow({ id: 'c', currency: 'KRW' }),
+      ]);
+
+      const items = openMergeMenu('a');
+      expect(items.length).withContext('b only: c is a different currency, a is the row itself').toBe(1);
+      expect(items[0].textContent?.trim()).toBe(
+        `import.mergeOption:${JSON.stringify({ description: 'Lunch', amount: 'USD 12', date: formattedDate(b) })}`
+      );
+    });
+
+    it('merges the source into the picked target: a shorter array, the target\'s id, the summed amount and the union badge', () => {
+      const a = makeRow({
+        id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5,
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1 },
+      });
+      const b = makeRow({
+        id: 'b', currency: 'USD', description: 'Lunch', amount: 12,
+        imageMetadata: { imageIndex: 1, imageId: 'image_1', positionInImage: 'bottom', confidenceScore: 0.8, receiptId: 1 },
+      });
+      const given = [a, b];
+      render(given);
+      const emitted = emissions();
+
+      openMergeMenu('a').find(item => item.textContent?.includes('Lunch'))!.click();
+      fixture.detectChanges();
+
+      expect(given.length).withContext('never mutates the @Input() array').toBe(2);
+      expect(emitted.length).toBe(1);
+      expect(emitted[0]).withContext('a new array, as every other edit emits').not.toBe(given);
+      expect(emitted[0].length).toBe(1);
+      const [merged] = emitted[0];
+      expect(merged.id).withContext('the target keeps its id').toBe('b');
+      expect(merged.amount).toBe(17.5);
+
+      const badge = fixture.nativeElement.querySelector('.receipt-badge') as HTMLElement;
+      expect(badge.textContent).toContain('1–2');
+    });
+
+    it('merges by id, so a target replaced under the open menu still takes the source', () => {
+      // The menu's items hold the row objects captured at render, and the
+      // wizard replaces a row under the same id whenever a re-check
+      // reconciles its verdict. Resolving by id makes the click independent
+      // of whether a refresh ran between render and click — here it did
+      // not: an instance assignment marks nothing dirty on an OnPush root,
+      // so the items keep naming objects the array no longer holds.
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
+      render([a, b]);
+      const emitted = emissions();
+      const items = openMergeMenu('a');
+
+      component.transactions = [a, { ...b }];
+      fixture.detectChanges();
+      items[0].click();
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.id)).withContext('the source gone, the target kept').toEqual(['b']);
+      expect(emitted[0][0].amount).withContext('the target holds the source\'s figure').toBe(17.5);
+    });
+
+    it('merges by id on a direct call too, given a copy of the target the array never held', () => {
+      // The case above rests on the fixture leaving an OnPush root alone
+      // after an instance assignment; this one does not. Only the id can
+      // resolve a copy, so the pin survives a harness that refreshes.
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
+      render([a, b]);
+      const emitted = emissions();
+
+      component.mergeInto(a, { ...b });
+      fixture.detectChanges();
+
+      expect(emitted.length).toBe(1);
+      expect(emitted[0].map(t => t.id)).withContext('the source gone, the target kept').toEqual(['b']);
+      expect(emitted[0][0].amount).withContext('b\'s id, summed').toBe(17.5);
+    });
+
+    it('does nothing when the source or the target has left the batch by the time the click lands', () => {
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee', amount: 5.5 });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch', amount: 12 });
+      const c = makeRow({ id: 'c', currency: 'USD', description: 'Snacks', amount: 3 });
+      render([a, b, c]);
+      const emitted = emissions();
+      const items = openMergeMenu('a');
+
+      component.transactions = [a, c];
+      fixture.detectChanges();
+      items.find(item => item.textContent?.includes('Lunch'))!.click();
+      fixture.detectChanges();
+
+      expect(emitted.length).withContext('the stale-commit no-op, as commitSplit models it').toBe(0);
+    });
+
+    it('forgets the source\'s in-progress edit once it has merged away', () => {
+      const a = makeRow({ id: 'a', currency: 'USD' });
+      const b = makeRow({ id: 'b', currency: 'USD' });
+      render([a, b]);
+      component.startEdit(a, 'description');
+      fixture.detectChanges();
+      expect(component.isEditing(a, 'description')).withContext('editing before the merge').toBeTrue();
+
+      openMergeMenu('a')[0].click();
+      fixture.detectChanges();
+
+      expect(component.isEditing(a, 'description')).withContext('forgotten once merged away').toBeFalse();
+    });
+
+    it('focuses the survivor\'s merge trigger when another row still shares its currency', async () => {
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee' });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch' });
+      const c = makeRow({ id: 'c', currency: 'USD', description: 'Snacks' });
+      render([a, b, c]);
+
+      openMergeMenu('a').find(item => item.textContent?.includes('Lunch'))!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(mergeTrigger('b'));
+    });
+
+    it('focuses the survivor\'s description trigger when the merge leaves nothing else in its currency', async () => {
+      const a = makeRow({ id: 'a', currency: 'USD', description: 'Coffee' });
+      const b = makeRow({ id: 'b', currency: 'USD', description: 'Lunch' });
+      render([a, b]);
+
+      openMergeMenu('a')[0].click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(mergeTrigger('b')).withContext('nothing else left in USD').toBeNull();
+      expect(document.activeElement).toBe(descriptionTrigger('b'));
+    });
+  });
 });

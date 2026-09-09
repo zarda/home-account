@@ -1,6 +1,6 @@
 # 60. A confirmed import keeps its photos and names its source
 
-**Status:** Accepted, implemented · **Date:** 2026-08-20 · **Issues:** #317, #318
+**Status:** Accepted, implemented; split parts excepted by [0106](0106-the-review-step-splits-a-row-and-merges-two.md) (2026-09-08) · **Date:** 2026-08-20 · **Issues:** #317, #318
 
 Builds on the row shapes widened in
 [0059](0059-one-mapper-builds-every-imported-transaction.md). Reference
@@ -58,7 +58,10 @@ merged a receipt (it hardcodes `imageIndex` 0 there), the `imageIndex`
 otherwise; indices deduped, sorted into photo order, bounded to the batch, and
 cut at `MAX_RECEIPTS_PER_TRANSACTION`. Rows sharing a receipt — by `receiptId`,
 or by identical source images when ungrouped — attach on the first selected
-row only. Two receipts printed on one photo both keep it: the photo shows both.
+row only. Split parts excepted by
+[ADR 0106](0106-the-review-step-splits-a-row-and-merges-two.md), #371
+(2026-09-08). Two receipts printed on one photo both keep it: the photo shows
+both.
 
 **The strategy seam carries the truth instead of inventing it.**
 `ProcessedTransaction` gains optional `imageIndex` and `mergedFromImages`;

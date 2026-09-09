@@ -1,13 +1,18 @@
 import {
   blankImportRow,
   datedToday,
+  imageSources,
   joinSentences,
+  mergeImportRows,
+  mergeableRow,
   needsDateAnswer,
   parseAmountInput,
   rowIsUnfilled,
+  sameSplit,
+  splitImportRow,
   withoutFieldConfidence,
 } from './import-review.utils';
-import { CategorizedImportTransaction } from '../../models';
+import { CategorizedImportTransaction, ImagePositionMetadata } from '../../models';
 
 /**
  * Dates are built from local parts (`new Date(2026, 5, 15)`), never parsed
@@ -336,6 +341,460 @@ describe('import-review.utils', () => {
       expect(parseAmountInput('1.234.567')).toBeNull();
       expect(parseAmountInput('1,23,456')).toBeNull();
       expect(parseAmountInput('1,2,3')).toBeNull();
+    });
+  });
+
+  describe('imageSources', () => {
+    const meta = (overrides: Partial<ImagePositionMetadata> = {}): ImagePositionMetadata => ({
+      imageIndex: 0,
+      imageId: 'image_0',
+      positionInImage: 'middle',
+      confidenceScore: 0.9,
+      ...overrides,
+    });
+
+    it('reads mergedFromImages when consolidation left something in it', () => {
+      // imageIndex is hardcoded to 0 on a merged row (receipt-attachment.utils
+      // .spec.ts pins the same reading on the planner's side); mergedFromImages
+      // is the only honest source list once that has happened.
+      expect(imageSources(meta({ imageIndex: 0, mergedFromImages: [2, 0, 1] }))).toEqual([2, 0, 1]);
+    });
+
+    it('falls back to imageIndex when mergedFromImages is empty or absent', () => {
+      expect(imageSources(meta({ imageIndex: 3, mergedFromImages: [] }))).toEqual([3]);
+      expect(imageSources(meta({ imageIndex: 3 }))).toEqual([3]);
+    });
+  });
+
+  describe('sameSplit', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Coffee',
+      amount: 5,
+      currency: 'USD',
+      date: new Date(2026, 5, 15),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('is true from a part to its original', () => {
+      expect(sameSplit(row({ id: 'b', splitFrom: 'a' }), row({ id: 'a' }))).toBeTrue();
+    });
+
+    it('is true from an original to its part', () => {
+      expect(sameSplit(row({ id: 'a' }), row({ id: 'b', splitFrom: 'a' }))).toBeTrue();
+    });
+
+    it('is true for two parts split from the same original', () => {
+      expect(sameSplit(row({ id: 'b', splitFrom: 'a' }), row({ id: 'c', splitFrom: 'a' }))).toBeTrue();
+    });
+
+    it('is false for two rows that share no split', () => {
+      expect(sameSplit(row({ id: 'a' }), row({ id: 'b' }))).toBeFalse();
+    });
+  });
+
+  describe('splitImportRow', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Groceries',
+      amount: 5.4,
+      currency: 'USD',
+      date: new Date(2026, 5, 15, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('splits the amount so the two halves sum to the original, rounded to cents', () => {
+      const [kept, part] = splitImportRow(row(), 1.2, 'split_1')!;
+      expect(kept.amount).toBe(4.2);
+      expect(part.amount).toBe(1.2);
+    });
+
+    it('rounds a figure with more than two decimals before splitting, so the two halves still sum to the original', () => {
+      const [kept, part] = splitImportRow(row({ amount: 20 }), 10.005, 'split_1')!;
+      expect(part.amount).toBe(10.01);
+      expect(kept.amount).toBe(9.99);
+      expect(kept.amount + part.amount).toBe(20);
+    });
+
+    it('rounds a row amount with more than two decimals before splitting, so the two halves still sum to the cent', () => {
+      const [kept, part] = splitImportRow(row({ amount: 45.675 }), 20, 'split_1')!;
+      expect(part.amount).toBe(20);
+      expect(kept.amount).toBe(25.67);
+      // Not roundMoney(45.675) (45.68): that figure only rounds up because
+      // *100 on the whole amount happens to land exactly on the boundary.
+      // kept.amount subtracts taken first and rounds once, the same order
+      // the guard now judges by, and reads the same double a cent honester.
+      expect(kept.amount + part.amount).toBe(45.67);
+    });
+
+    it('gives the part the id it was handed and marks it split from the original, which carries no mark itself', () => {
+      const [kept, part] = splitImportRow(row({ id: 'r1' }), 1.2, 'split_1')!;
+      expect(part.id).toBe('split_1');
+      expect(part.splitFrom).toBe('r1');
+      expect(kept.splitFrom).toBeUndefined();
+    });
+
+    it('copies imageMetadata onto the part rather than sharing the original\'s object', () => {
+      const meta: ImagePositionMetadata = {
+        imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9, receiptId: 1,
+      };
+      const [, part] = splitImportRow(row({ imageMetadata: meta }), 1.2, 'split_1')!;
+      expect(part.imageMetadata).toEqual(meta);
+      expect(part.imageMetadata).not.toBe(meta);
+    });
+
+    it('drops notes, duplicateOf, recurringId, isRecurring and recurringMatch from the part entirely', () => {
+      const [, part] = splitImportRow(row({
+        notes: 'lunch',
+        duplicateOf: 'txn-9',
+        recurringId: 'rule-1',
+        isRecurring: true,
+        recurringMatch: { id: 'rule-1', name: 'Coffee' },
+      }), 1.2, 'split_1')!;
+
+      // Deleted, not set to undefined: a key present-but-undefined still
+      // answers 'notes' in part, and the mapper the part eventually reaches
+      // spreads on truthiness rather than presence for most of these.
+      expect('notes' in part).toBeFalse();
+      expect('duplicateOf' in part).toBeFalse();
+      expect('recurringId' in part).toBeFalse();
+      expect('isRecurring' in part).toBeFalse();
+      expect('recurringMatch' in part).toBeFalse();
+    });
+
+    it('starts the part unchecked and selected, whatever the original carried', () => {
+      const [, part] = splitImportRow(row({ isDuplicate: true, selected: false }), 1.2, 'split_1')!;
+      expect(part.isDuplicate).toBeFalse();
+      expect(part.selected).toBeTrue();
+    });
+
+    it('drops the amount grade from both halves and keeps the date grade on both', () => {
+      const [kept, part] = splitImportRow(
+        row({ fieldConfidence: { amount: 0.3, date: 0.5 } }), 1.2, 'split_1'
+      )!;
+      expect(kept.fieldConfidence).toEqual({ date: 0.5 });
+      expect(part.fieldConfidence).toEqual({ date: 0.5 });
+    });
+
+    it('gives the part its own date object, equal to the original\'s but not shared', () => {
+      const original = row();
+      const [, part] = splitImportRow(original, 1.2, 'split_1')!;
+      expect(part.date.getTime()).toBe(original.date.getTime());
+      expect(part.date).not.toBe(original.date);
+    });
+
+    it('carries tags and location to the part', () => {
+      const [, part] = splitImportRow(
+        row({ tags: ['coffee'], location: { name: 'Myeongdong' } }), 1.2, 'split_1'
+      )!;
+      expect(part.tags).toEqual(['coffee']);
+      expect(part.location).toEqual({ name: 'Myeongdong' });
+    });
+
+    it('refuses an amount that is not a positive figure smaller than the row', () => {
+      expect(splitImportRow(row({ amount: 5.4 }), 0, 'split_1')).toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), -1, 'split_1')).toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), NaN, 'split_1')).toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), 5.4, 'split_1')).withContext('the whole amount leaves nothing behind').toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), 6, 'split_1')).toBeNull();
+      expect(splitImportRow(row({ amount: 5.4 }), 5.399, 'split_1'))
+        .withContext('rounds up to the whole amount, leaving a sub-cent remainder behind')
+        .toBeNull();
+      expect(splitImportRow(row({ amount: 45.675 }), 45.67, 'split_1'))
+        .withContext('the row amount itself rounds up to 45.68, but taken leaves only a sub-cent remainder behind')
+        .toBeNull();
+      expect(splitImportRow(row({ amount: NaN }), 5, 'split_1'))
+        .withContext('a row amount that was never a usable figure')
+        .toBeNull();
+    });
+
+    it('never mutates the row it was given', () => {
+      const original = row();
+      const snapshot = { ...original };
+      splitImportRow(original, 1.2, 'split_1');
+      expect(original).toEqual(snapshot);
+    });
+  });
+
+  describe('mergeableRow', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Coffee',
+      amount: 5,
+      currency: 'USD',
+      date: new Date(2026, 5, 15, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('is true for a row with an amount, a description and no standing verdict', () => {
+      expect(mergeableRow(row())).toBeTrue();
+    });
+
+    it('is false while the amount or the description is still nothing', () => {
+      // The same two readings the unfilled gate uses, so a hand-added row
+      // that has not been filled yet cannot be merged into or away.
+      expect(mergeableRow(row({ amount: 0 }))).toBeFalse();
+      expect(mergeableRow(row({ amount: NaN }))).toBeFalse();
+      expect(mergeableRow(row({ description: '' }))).toBeFalse();
+      expect(mergeableRow(row({ description: '   ' }))).toBeFalse();
+    });
+
+    it('is false for a row under a duplicate verdict, whatever the reviewer selected', () => {
+      expect(mergeableRow(row({ isDuplicate: true, duplicateOf: 'stored-1', selected: false }))).toBeFalse();
+      expect(mergeableRow(row({ isDuplicate: true, selected: true }))).toBeFalse();
+    });
+
+    it('does not read selection: a row the reviewer left out can still merge', () => {
+      expect(mergeableRow(row({ selected: false }))).toBeTrue();
+    });
+  });
+
+  describe('mergeImportRows', () => {
+    const target = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'target',
+      description: 'Groceries',
+      amount: 40,
+      currency: 'USD',
+      date: new Date(2026, 5, 15, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    const source = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'source',
+      description: 'Snacks',
+      amount: 10,
+      currency: 'USD',
+      date: new Date(2026, 5, 16, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'other_expense',
+      categoryConfidence: 0.5,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('sums two expenses', () => {
+      const merged = mergeImportRows(target({ amount: 40 }), source({ amount: 10 }))!;
+      expect(merged.amount).toBe(50);
+      expect(merged.type).toBe('expense');
+    });
+
+    it('nets an income source off an expense target, and the type follows the sign', () => {
+      const expenseWins = mergeImportRows(target({ type: 'expense', amount: 100 }), source({ type: 'income', amount: 30 }))!;
+      expect(expenseWins.amount).toBe(70);
+      expect(expenseWins.type).toBe('expense');
+
+      const incomeWins = mergeImportRows(target({ type: 'expense', amount: 30 }), source({ type: 'income', amount: 100 }))!;
+      expect(incomeWins.amount).toBe(70);
+      expect(incomeWins.type).toBe('income');
+    });
+
+    it('reads a net of zero as 0 expense', () => {
+      const merged = mergeImportRows(target({ type: 'expense', amount: 50 }), source({ type: 'income', amount: 50 }))!;
+      expect(merged.amount).toBe(0);
+      expect(merged.type).toBe('expense');
+    });
+
+    it('keeps the target\'s id, description, date, marks, category, currency, location and recurring link, and drops the source\'s', () => {
+      const t = target({
+        id: 'keep-me',
+        description: 'Target desc',
+        date: new Date(2026, 5, 15, 9, 0),
+        dateAssumed: true,
+        suggestedCategoryId: 'food',
+        categoryConfidence: 0.9,
+        currency: 'USD',
+        location: { name: 'Target Place' },
+        recurringId: 'rule-1',
+        isRecurring: true,
+        recurringMatch: { id: 'rule-1', name: 'Coffee' },
+      });
+      const s = source({
+        id: 'drop-me',
+        description: 'Source desc',
+        date: new Date(2026, 5, 20, 9, 0),
+        dateAssumed: false,
+        suggestedCategoryId: 'other_expense',
+        categoryConfidence: 0.1,
+        currency: 'USD',
+        location: { name: 'Source Place' },
+        recurringId: 'rule-2',
+        isRecurring: true,
+        recurringMatch: { id: 'rule-2', name: 'Netflix' },
+      });
+      const merged = mergeImportRows(t, s)!;
+
+      expect(merged.id).toBe('keep-me');
+      expect(merged.description).toBe('Target desc');
+      expect(merged.date).toBe(t.date);
+      expect(merged.dateAssumed).toBeTrue();
+      expect(merged.suggestedCategoryId).toBe('food');
+      expect(merged.categoryConfidence).toBe(0.9);
+      expect(merged.currency).toBe('USD');
+      expect(merged.location).toEqual({ name: 'Target Place' });
+      expect(merged.recurringId).toBe('rule-1');
+      expect(merged.recurringMatch).toEqual({ id: 'rule-1', name: 'Coffee' });
+    });
+
+    it('takes the source\'s location when the target has none', () => {
+      const merged = mergeImportRows(
+        target({ location: undefined }),
+        source({ location: { name: 'Source Place' } })
+      )!;
+      expect(merged.location).toEqual({ name: 'Source Place' });
+    });
+
+    it('unions and normalizes tags and suggestedTags, absent when both are absent', () => {
+      const merged = mergeImportRows(
+        target({ tags: ['Coffee'], suggestedTags: ['Coffee'] }),
+        source({ tags: ['coffee', 'lunch'], suggestedTags: ['lunch'] })
+      )!;
+      expect(merged.tags).toEqual(['coffee', 'lunch']);
+      expect(merged.suggestedTags).toEqual(['coffee', 'lunch']);
+
+      const neither = mergeImportRows(target({ tags: undefined }), source({ tags: undefined }))!;
+      expect('tags' in neither).withContext('absent, not undefined').toBeFalse();
+    });
+
+    it('joins notes when both exist, or keeps the one that exists', () => {
+      const both = mergeImportRows(target({ notes: 'first' }), source({ notes: 'second' }))!;
+      expect(both.notes).toBe('first\nsecond');
+
+      const targetOnly = mergeImportRows(target({ notes: 'first' }), source({ notes: undefined }))!;
+      expect(targetOnly.notes).toBe('first');
+
+      const sourceOnly = mergeImportRows(target({ notes: undefined }), source({ notes: 'second' }))!;
+      expect(sourceOnly.notes).toBe('second');
+    });
+
+    it('reads a blank note as no note on either side, and leaves the key off when both are blank', () => {
+      // A total-only receipt reaches the card with `notes: ''` rather than
+      // none (convertParsedReceipt), and an empty string is absent to a
+      // truthiness test but present to a nullish fallback.
+      const blankTarget = mergeImportRows(target({ notes: '' }), source({ notes: 'tip included' }))!;
+      expect(blankTarget.notes).toBe('tip included');
+
+      const blankSource = mergeImportRows(target({ notes: 'first' }), source({ notes: '   ' }))!;
+      expect(blankSource.notes).toBe('first');
+
+      const trailing = mergeImportRows(target({ notes: 'first\n' }), source({ notes: 'second' }))!;
+      expect(trailing.notes).withContext('each side trimmed before the join').toBe('first\nsecond');
+
+      const bothBlank = mergeImportRows(target({ notes: '' }), source({ notes: '' }))!;
+      expect('notes' in bothBlank).withContext('absent, not an empty string').toBeFalse();
+
+      const neither = mergeImportRows(target({ notes: undefined }), source({ notes: undefined }))!;
+      expect('notes' in neither).withContext('absent, not undefined').toBeFalse();
+    });
+
+    it('unions photo lineage into the target\'s imageMetadata block when both rows carry one', () => {
+      const t = target({
+        imageMetadata: { imageIndex: 0, imageId: 'image_0', positionInImage: 'top', confidenceScore: 0.9 },
+      });
+      const s = source({
+        imageMetadata: {
+          imageIndex: 0, imageId: 'image_1', positionInImage: 'bottom', confidenceScore: 0.8, mergedFromImages: [1],
+        },
+      });
+      const merged = mergeImportRows(t, s)!;
+      expect(merged.imageMetadata?.imageId).withContext('the target\'s own block').toBe('image_0');
+      expect(merged.imageMetadata?.wasMerged).toBeTrue();
+      expect(merged.imageMetadata?.mergedFromImages).toEqual([0, 1]);
+    });
+
+    it('copies the source\'s imageMetadata block when the target has none', () => {
+      const meta: ImagePositionMetadata = {
+        imageIndex: 1, imageId: 'image_1', positionInImage: 'bottom', confidenceScore: 0.8,
+      };
+      const merged = mergeImportRows(target({ imageMetadata: undefined }), source({ imageMetadata: meta }))!;
+      expect(merged.imageMetadata).toEqual(meta);
+      expect(merged.imageMetadata).not.toBe(meta);
+    });
+
+    it('keeps splitFrom when the target carries it', () => {
+      const merged = mergeImportRows(target({ splitFrom: 'original-1' }), source())!;
+      expect(merged.splitFrom).toBe('original-1');
+    });
+
+    it('refuses a blank row on either side, and takes the same pair once it is filled', () => {
+      expect(mergeImportRows(target({ description: '' }), source())).withContext('blank target').toBeNull();
+      expect(mergeImportRows(target(), source({ description: '   ' }))).withContext('blank source').toBeNull();
+      expect(mergeImportRows(target({ amount: 0 }), source())).withContext('target with no amount').toBeNull();
+      expect(mergeImportRows(target(), source({ amount: 0 }))).withContext('source with no amount').toBeNull();
+      expect(mergeImportRows(target(), source())).withContext('both filled').not.toBeNull();
+    });
+
+    it('refuses a flagged row on either side, and takes the same pair once the flag is overruled', () => {
+      expect(mergeImportRows(target({ isDuplicate: true, duplicateOf: 'txn-9', selected: false }), source()))
+        .withContext('flagged target')
+        .toBeNull();
+      expect(mergeImportRows(target(), source({ isDuplicate: true, selected: false })))
+        .withContext('flagged source')
+        .toBeNull();
+      // What the badge's own control leaves behind (clearDuplicate on the card).
+      expect(mergeImportRows(target({ isDuplicate: false, duplicateOf: undefined, selected: true }), source()))
+        .withContext('overruled target')
+        .not.toBeNull();
+    });
+
+    it('leaves the merged row unflagged, without a pointer, whatever an unflagged target still carried', () => {
+      // The wizard's reconcile writes a check's document id onto a row it
+      // unflags; the sum is a figure that check never saw.
+      const merged = mergeImportRows(target({ isDuplicate: false, duplicateOf: 'txn-9' }), source())!;
+      expect(merged.isDuplicate).toBeFalse();
+      expect(merged.duplicateOf).toBeUndefined();
+    });
+
+    it('selects the merged row even when the target was not selected', () => {
+      const merged = mergeImportRows(target({ selected: false }), source())!;
+      expect(merged.selected).toBeTrue();
+    });
+
+    it('drops the amount grade and keeps the date grade', () => {
+      const merged = mergeImportRows(
+        target({ fieldConfidence: { amount: 0.3, date: 0.5 } }),
+        source()
+      )!;
+      expect(merged.fieldConfidence).toEqual({ date: 0.5 });
+    });
+
+    it('refuses to merge rows in different currencies', () => {
+      expect(mergeImportRows(target({ currency: 'USD' }), source({ currency: 'JPY' }))).toBeNull();
+    });
+
+    it('refuses a row against itself', () => {
+      const r = target();
+      expect(mergeImportRows(r, r)).toBeNull();
+    });
+
+    it('never mutates either row it was given', () => {
+      const t = target({ tags: ['coffee'] });
+      const s = source({ tags: ['lunch'] });
+      const tSnapshot = { ...t };
+      const sSnapshot = { ...s };
+      mergeImportRows(t, s);
+      expect(t).toEqual(tSnapshot);
+      expect(s).toEqual(sSnapshot);
     });
   });
 });

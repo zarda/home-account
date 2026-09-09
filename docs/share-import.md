@@ -14,11 +14,17 @@ as if the file had been dropped on the dropzone
 2. **`public/share-target-sw.js` catches that POST.** Firebase Hosting
    rewrites apply only to GET/HEAD, so without a service worker the share
    would 404 before the app loads. This is the first — and only — service
-   worker the app registers, and it is deliberately minimal:
-   - It handles nothing but `POST /share-target`. Every other fetch passes
-     through untouched; there is no caching and no offline shell. The Angular
-     `ngsw` build artifacts remain unactivated and `src/service-worker.ts`
-     remains dead code.
+   worker the app registers, and it has two jobs and no more:
+   - It handles `POST /share-target`, and it raises the app's reminders:
+     `ReminderService` calls this registration's `showNotification`, because
+     Android Chrome and Firefox refuse the page's `Notification` constructor
+     and a second worker registered at the same scope would replace this one
+     ([ADR 0104](ADR/0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md)).
+     Its `notificationclick` handler focuses an open tab or opens one at `/`.
+   - Every other fetch passes through untouched; there is no caching and no
+     offline shell. The Angular `ngsw` build artifacts remain unactivated,
+     and the hand-written caching worker that once sat dead in `src/` is gone
+     ([ADR 0105](ADR/0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md)).
    - It has no `sync` handler. Registering any worker makes
      `PwaService.registerBackgroundSync()` start succeeding (the offline
      queue calls it), and a sync event with no handler is inert on purpose.

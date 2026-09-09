@@ -241,13 +241,27 @@ They share no API. The installed iOS app has no `Notification` constructor, and
 on the web the Capacitor plugin proxy has no native half to call, so each path
 is fenced off from the other's.
 
-**Web** — `new Notification(...)`, raised immediately, **only while the page is
-open**. Nothing here depends on a service worker, so there is nowhere to
-schedule an ahead-of-time reminder: anything carrying a scheduled moment is
-skipped entirely on the web. That covers the far-off bill reminders and the
-recap nudge, which is always scheduled ahead and therefore never raised in a
-browser at all. The `tag` is the dedup key, so the browser coalesces a repeat
-rather than stacking it.
+**Web** — raised immediately, **only while the page is open**, through the
+service-worker registration the app already holds: `showWebNotification` asks
+`navigator.serviceWorker.getRegistration()` and calls that registration's
+`showNotification`, and constructs a page `Notification` only where no
+registration exists. The registration comes first everywhere, not only where
+the constructor is known to fail — Android Chrome and Firefox refuse
+`new Notification()` with a `TypeError` at construction, which no feature test
+can see coming — and it is what gives the notification a click behaviour at
+all: the worker's `notificationclick` focuses an open tab or opens one at `/`,
+while a constructor-raised notification never reaches the worker and does
+nothing when tapped. The `tag` is the dedup key, so the browser coalesces a
+repeat rather than stacking it. The permission is read once per pass and
+tested only after the sent-log read that prunes stale keys — a refused device
+must still prune — and a call the browser refuses skips that reminder alone:
+its key is not marked, the batch goes on, and the next sweep tries again.
+Nothing is scheduled: `showTrigger` ships in no browser, so anything carrying
+a scheduled moment is still skipped entirely on the web. That covers the
+far-off bill reminders and the recap nudge, which is always scheduled ahead
+and therefore never raised in a browser at all. Why the worker is the
+share-target one and not a second registration, and what was rejected, is in
+[ADR 0104](ADR/0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md).
 
 A denied web permission is **sticky**. The browser will not prompt again until
 the user resets the site's permissions, and the switch says so instead of
@@ -289,10 +303,18 @@ convenience.
 
 - **Two devices remind twice.** The deliberate trade — a duplicate is a smaller
   failure than a silence. See ADR 0092.
-- **The web half is silent when the tab is closed.** Everything a browser
-  could do about that needs a service worker with a background lifecycle to
-  wake it; the only one the app registers is the minimal share-target worker,
-  which handles one POST and passes every other fetch through.
+- **The web half is silent when the tab is closed.** The share-target worker
+  raises the notification, but nothing wakes it: a scheduled web reminder has
+  nowhere to be scheduled, so a closed tab raises nothing and the ahead-of-time
+  reminders are dropped rather than booked.
+- **A tap opens the app, not the bill.** The worker's click handler focuses an
+  open tab or opens one at `/`, where the Upcoming card is; the reminder names
+  the bill, and there is no deep link to it.
+- **The constructor fallback's click is silent.** Where no registration exists
+  the notification is raised through the page constructor, which the worker's
+  click handler never sees, so tapping it does nothing. No web session lacks
+  the registration today — the share-target worker is registered on every
+  boot — so the fallback is for a registration that failed.
 - **A budget reminder needs a page to have loaded budgets.** In practice the
   dashboard always has; a Settings-only session would raise none.
 - **Nothing checks the pending count against the 64 cap.** Scheduling only the

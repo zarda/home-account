@@ -176,6 +176,26 @@ describe('overflow guard: the import review card', () => {
     return i.left >= o.left - 1 && i.right <= o.right + 1;
   }
 
+  /**
+   * A chip's tap target, expanded by its own `::after` overhang — the box a
+   * tap actually lands in, not just the button's own border box. Only
+   * `.extra-remove`/`.extra-accept`/`.extra-country` carry that overhang, so
+   * this is not something every chip-like control on the card can share —
+   * `.extra-add` reads its plain `getBoundingClientRect()` instead.
+   */
+  function chipHitBoxes(): { top: number; bottom: number; left: number; right: number }[] {
+    return Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept, .extra-country')).map(button => {
+      const r = button.getBoundingClientRect();
+      const after = getComputedStyle(button, '::after');
+      return {
+        top: r.top + parseFloat(after.top),
+        bottom: r.bottom - parseFloat(after.bottom),
+        left: r.left + parseFloat(after.left),
+        right: r.right - parseFloat(after.right),
+      };
+    });
+  }
+
   it('keeps the card inside the 288px it was given', () => {
     expect(card.scrollWidth)
       .withContext('nothing hiding past the card\'s right edge')
@@ -402,9 +422,10 @@ describe('overflow guard: the import review card', () => {
     // has a tag to add — so it is what the strip is measured with. It is a
     // control rather than a chip, so it takes the 40px floor in its own box
     // instead of an overhang, and the chips beside it must not fatten to
-    // match: the tag chip's own height is pinned above.
+    // match: the tag chip's own height is pinned above. Split joined it as a
+    // second trigger once both fixture rows carry an amount to take off.
     const adds = Array.from(host.querySelectorAll<HTMLElement>('.extra-add'));
-    expect(adds.length).withContext('one per row').toBe(2);
+    expect(adds.length).withContext('two per row: add tag and split, both rows filled').toBe(4);
     for (const add of adds) {
       expect(add.getBoundingClientRect().height)
         .withContext('add trigger tap target')
@@ -567,7 +588,9 @@ describe('overflow guard: the import review card', () => {
     // The description editor is a full-width input and the amount editor a
     // fixed 7em one on the row that already carries the widest figure this
     // fixture has; either could push the top row past the card's edge.
-    for (const selector of ['.description-section .inline-edit', '.amount-section .inline-edit']) {
+    // Split is a fixed 7em field too, opened on r1 — the first of each
+    // selector's matches, this probe's own widest row.
+    for (const selector of ['.description-section .inline-edit', '.amount-section .inline-edit', '.split-trigger']) {
       el(selector).click();
       fixture.detectChanges();
 
@@ -585,6 +608,27 @@ describe('overflow guard: the import review card', () => {
     }
   });
 
+  it('keeps the refusal under the split editor inside the 288px', () => {
+    // A refused figure holds the split editor open and writes why next to
+    // it — inside the strip that wraps chips, not the amount section the
+    // message's rule was written for. Measured as the bare key: one
+    // unbreakable token, longer than the English it stands for.
+    el('.split-trigger').click();
+    fixture.detectChanges();
+    const box = host.querySelector('.transaction-card .split-input') as HTMLInputElement;
+    box.value = '9999999';
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    fixture.detectChanges();
+
+    const message = host.querySelector('.transaction-card .amount-error') as HTMLElement | null;
+    expect(box.getAttribute('aria-invalid')).withContext('more than r1 carries, refused').toBe('true');
+    expect(message).withContext('the refusal is standing').not.toBeNull();
+    expect(withinWidthOf(clip, message!)).withContext('the message inside the clip').toBeTrue();
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge with the refusal showing')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+  });
+
   it('never lets one chip\'s tap target reach into the row below', () => {
     // The chips wrap at 288px, and a hit box 14px taller than its chip is
     // exactly how a tap on the bottom edge of one tag ends up removing the
@@ -595,16 +639,7 @@ describe('overflow guard: the import review card', () => {
     // without carrying the class, so it is named here directly. Its chip is
     // where a sideways collision shows up first: three controls stand side
     // by side on it, close enough that the overhangs meet exactly.
-    const hits = Array.from(host.querySelectorAll<HTMLElement>('.extra-remove, .extra-accept, .extra-country')).map(button => {
-      const r = button.getBoundingClientRect();
-      const after = getComputedStyle(button, '::after');
-      return {
-        top: r.top + parseFloat(after.top),
-        bottom: r.bottom - parseFloat(after.bottom),
-        left: r.left + parseFloat(after.left),
-        right: r.right - parseFloat(after.right),
-      };
-    });
+    const hits = chipHitBoxes();
 
     expect(new Set(hits.map(h => Math.round(h.top))).size)
       .withContext('the chips really did wrap, so there are rows to collide')
@@ -623,6 +658,77 @@ describe('overflow guard: the import review card', () => {
           .toBeLessThanOrEqual(0.5);
       }
     }
+  });
+
+  it('keeps the add-tag and split triggers clear of the chip row below them', () => {
+    // .extra-add has no ::after overhang — its own box is the whole 40px hit
+    // area, pinned above — so it cannot join the pass above over
+    // .extra-remove/.extra-accept/.extra-country: getComputedStyle(button,
+    // '::after').top on an element with no such pseudo-element is 'auto',
+    // and parseFloat('auto') is NaN, which would pass every comparison
+    // silently rather than fail loudly. This measures the same collision the
+    // way the trigger, not the chip, sees it: its own full box.
+    const chipHits = chipHitBoxes();
+    const triggers = Array.from(host.querySelectorAll<HTMLElement>('.extra-add')).map(add => add.getBoundingClientRect());
+    expect(chipHits.length).withContext('there are chips here to stay clear of').toBeGreaterThan(0);
+    expect(triggers.length).withContext('there are add triggers here to keep clear').toBeGreaterThan(0);
+
+    for (const trigger of triggers) {
+      for (const hit of chipHits) {
+        const overlapX = Math.min(trigger.right, hit.right) - Math.max(trigger.left, hit.left);
+        const overlapY = Math.min(trigger.bottom, hit.bottom) - Math.max(trigger.top, hit.top);
+        expect(Math.min(overlapX, overlapY))
+          .withContext('add trigger and a chip\'s hit area below it are disjoint')
+          .toBeLessThanOrEqual(0.5);
+      }
+    }
+  });
+
+  it('carries a merge trigger on every row once they share a currency, inside the 288px', () => {
+    // r1 and r2 are JPY and USD everywhere else in this file, so canMerge is
+    // false on both and nothing above ever sees a `.merge-trigger` — the
+    // `.extra-add` count pinned two tests up stays two per row. Correcting
+    // r2's own currency to JPY through its own menu (the same click this
+    // file's currency-menu case above already drives) is what gives the two
+    // a shared currency here, a real edit rather than a fixture rewrite, so
+    // every other case's r2 — and the offer chips whose count and shape they
+    // pin — stays exactly as it was. r2 is flagged as well, and a flagged
+    // row takes no part in a merge until the badge's own control overrules
+    // it (mergeableRow), so that click comes first, the same real edit the
+    // overrule case above measures.
+    (host.querySelector('[data-row-id="r2"] .duplicate-clear') as HTMLElement).click();
+    fixture.detectChanges();
+    (host.querySelector('[data-row-id="r2"] .currency-chip') as HTMLElement).click();
+    fixture.detectChanges();
+    const jpyOption = Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel .mat-mdc-menu-item'))
+      .find(item => item.textContent?.includes('JPY'));
+    jpyOption!.click();
+    fixture.detectChanges();
+
+    const chipHits = chipHitBoxes();
+    const triggers = Array.from(host.querySelectorAll<HTMLElement>('.merge-trigger'));
+    expect(chipHits.length).withContext('there are chips here to stay clear of').toBeGreaterThan(0);
+    expect(triggers.length).withContext('one per row now both are JPY').toBe(2);
+
+    for (const trigger of triggers) {
+      const box = trigger.getBoundingClientRect();
+      expect(withinWidthOf(clip, trigger)).withContext('merge trigger inside the clip').toBeTrue();
+      expect(box.height).withContext('merge trigger tap target').toBeGreaterThanOrEqual(40);
+      for (const hit of chipHits) {
+        const overlapX = Math.min(box.right, hit.right) - Math.max(box.left, hit.left);
+        const overlapY = Math.min(box.bottom, hit.bottom) - Math.max(box.top, hit.top);
+        expect(Math.min(overlapX, overlapY))
+          .withContext('merge trigger and a chip\'s hit area are disjoint')
+          .toBeLessThanOrEqual(0.5);
+      }
+    }
+
+    // The menu is a CDK overlay outside the card, like the country menu —
+    // closed here, so this is the card's own width with nothing borrowed
+    // from an overlay that would not count against it anyway.
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge with the merge trigger showing')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
   });
 
   it('marks the code the row is already on in the currency menu', () => {

@@ -53,17 +53,9 @@ describe('AiSettingsPageComponent', () => {
     strategyServiceMock.useNativeOCR.and.returnValue(false);
     strategyServiceMock.platform.and.returnValue('web');
 
-    pwaServiceMock = jasmine.createSpyObj('PwaService', ['isOnline', 'cacheSize', 'formatBytes']);
+    pwaServiceMock = jasmine.createSpyObj('PwaService', ['isOnline']);
     notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     pwaServiceMock.isOnline.and.returnValue(true);
-    pwaServiceMock.cacheSize.and.returnValue({ total: 0, models: 0, static: 0, dynamic: 0 });
-    pwaServiceMock.formatBytes.and.callFake((bytes: number) => {
-      if (bytes === 0) return '0 Bytes';
-      const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    });
 
     offlineQueueServiceMock = jasmine.createSpyObj('OfflineQueueService', [
       'pendingCount',
@@ -227,25 +219,28 @@ describe('AiSettingsPageComponent', () => {
     });
   });
 
-  describe('formatBytes', () => {
-    it('should format 0 bytes', () => {
-      expect(component.formatBytes(0)).toBe('0 Bytes');
-    });
+  describe('storage card', () => {
+    // .storage-icon also decorates the category- and tag-memory cards, so
+    // the title text is what actually singles out the Storage Info card.
+    function findStorageCard(): HTMLElement {
+      const cards = Array.from(
+        fixture.nativeElement.querySelectorAll('mat-card')
+      ) as HTMLElement[];
+      const card = cards.find(
+        (c) =>
+          c.querySelector('.storage-icon') &&
+          c.querySelector('mat-card-title')?.textContent?.trim() === 'aiPage.storageInfo'
+      );
+      if (!card) throw new Error('Storage Info card not found');
+      return card;
+    }
 
-    it('should format bytes', () => {
-      expect(component.formatBytes(500)).toBe('500 Bytes');
-    });
+    it('shows only the platform row once the cache row is removed', () => {
+      const rows = findStorageCard().querySelectorAll('.info-row');
 
-    it('should format KB', () => {
-      expect(component.formatBytes(1024)).toBe('1 KB');
-    });
-
-    it('should format MB', () => {
-      expect(component.formatBytes(1024 * 1024)).toBe('1 MB');
-    });
-
-    it('should format GB', () => {
-      expect(component.formatBytes(1024 * 1024 * 1024)).toBe('1 GB');
+      expect(rows.length).toBe(1);
+      expect(rows[0].querySelector('.info-label')!.textContent!.trim()).toBe('aiPage.platform');
+      expect(fixture.nativeElement.textContent).not.toContain('aiPage.totalCache');
     });
   });
 

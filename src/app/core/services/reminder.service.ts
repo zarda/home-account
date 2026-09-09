@@ -472,21 +472,27 @@ export class ReminderService {
     if (Capacitor.isNativePlatform()) {
       await this.deliverNative(userId, reminders, pruneStale);
     } else {
-      this.deliverWeb(userId, reminders);
+      await this.deliverWeb(userId, reminders);
     }
   }
 
-  private deliverWeb(userId: string, reminders: PreparedReminder[]): void {
+  private async deliverWeb(userId: string, reminders: PreparedReminder[]): Promise<void> {
     const title = this.translation.t('app.title');
+    const permitted = this.webPermission() === 'granted';
 
     for (const reminder of reminders) {
       // A browser can only raise a notification while the page is open, so an
-      // ahead-of-time reminder has nowhere to be scheduled. No service worker
-      // is involved: nothing here may depend on one being registered.
+      // ahead-of-time reminder has nowhere to be scheduled.
       if (reminder.at !== undefined) continue;
+      // Read before the permission gate: the read is where stale keys are
+      // pruned, and a refused device must still prune.
       if (this.wasDelivered(userId, reminder.key)) continue;
-      // Permission is refused for the whole page, not per notification.
-      if (!this.showWebNotification(title, reminder.body, reminder.key)) return;
+      if (!permitted) continue;
+      // The worker is preferred where one is registered; its absence is
+      // tolerated, and a refusal of one call is that call's alone — the
+      // batch goes on, and the key is not marked, so the next sweep tries
+      // again.
+      if (!(await this.showWebNotification(title, reminder.body, reminder.key))) continue;
       this.markDelivered(userId, reminder.key);
     }
   }
@@ -657,16 +663,46 @@ export class ReminderService {
   }
 
   /**
-   * Raise a browser notification, reporting whether it was displayed. Nothing
-   * outside this method may name `Notification`: the constructor does not
-   * exist in the iOS WKWebView, where every sweep would then throw.
+   * The page's notification permission, read once per batch rather than once
+   * per reminder — a refusal is for the page, not the message.
+   * `'unsupported'` covers the iOS WKWebView, where the global itself does
+   * not exist. Nothing outside this method, `showWebNotification`, and
+   * `requestPermission()`'s web branch may name `Notification`: the
+   * constructor does not exist there either, and a sweep in that WebView
+   * must never reach for it and throw.
    */
-  protected showWebNotification(title: string, body: string, tag: string): boolean {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
-      return false;
-    }
+  protected webPermission(): NotificationPermission | 'unsupported' {
+    return typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+  }
+
+  /**
+   * Raise a browser notification through the worker registration Android
+   * Chrome and Firefox require, reporting whether it was displayed.
+   *
+   * The registration is tried first on every platform, not only where the
+   * constructor is known to fail: Android's refusal is a `TypeError` raised
+   * at construction, which no feature test can see coming, so probing ahead
+   * of time would still throw on exactly the platforms this exists to
+   * protect. Preferring the registration is also what gives the notification
+   * a click behaviour at all: `share-target-sw.js`'s `notificationclick`
+   * fires only for a registration-raised notification, so the constructor
+   * fallback below has none.
+   *
+   * `getRegistration()`, never `.ready`: `.ready` never resolves where
+   * registration failed, and a sweep must not hang waiting for a worker that
+   * is never coming.
+   *
+   * No `showTrigger`: it ships in no browser (ADR 0092), so an ahead-of-time
+   * reminder stays unschedulable on the web regardless of the worker.
+   */
+  protected async showWebNotification(title: string, body: string, tag: string): Promise<boolean> {
     try {
-      new Notification(title, { body, tag });
+      const registration = await navigator.serviceWorker?.getRegistration();
+      if (registration) {
+        await registration.showNotification(title, { body, tag });
+      } else {
+        new Notification(title, { body, tag });
+      }
       return true;
     } catch {
       return false;

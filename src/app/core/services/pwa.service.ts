@@ -7,13 +7,6 @@ export interface PwaInstallPrompt {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-export interface CacheSize {
-  total: number;
-  models: number;
-  static: number;
-  dynamic: number;
-}
-
 /** A connection that cannot answer within this counts as unusable. */
 const REACHABILITY_TIMEOUT_MS = 4000;
 
@@ -37,7 +30,6 @@ export class PwaService {
   private _isInstallable = signal<boolean>(false);
   private _updateAvailable = signal<boolean>(false);
   private _isIOS = signal<boolean>(false);
-  private _cacheSize = signal<CacheSize>({ total: 0, models: 0, static: 0, dynamic: 0 });
   private _serviceWorkerReady = signal<boolean>(false);
 
   // Store install prompt for later use
@@ -54,7 +46,6 @@ export class PwaService {
   isInstallable = computed(() => this._isInstallable());
   updateAvailable = computed(() => this._updateAvailable());
   isIOS = computed(() => this._isIOS());
-  cacheSize = computed(() => this._cacheSize());
   serviceWorkerReady = computed(() => this._serviceWorkerReady());
 
   // Computed: Show iOS install instructions
@@ -171,10 +162,6 @@ export class PwaService {
 
   private handleServiceWorkerMessage(data: { type: string; payload?: unknown }): void {
     switch (data.type) {
-      case 'CACHE_SIZE':
-        this._cacheSize.set(data.payload as CacheSize);
-        break;
-
       case 'SYNC_OFFLINE_QUEUE':
         // Trigger offline queue sync (will be handled by offline-queue service)
         window.dispatchEvent(new CustomEvent('sync-offline-queue'));
@@ -339,64 +326,6 @@ export class PwaService {
   }
 
   /**
-   * Request cache size from service worker
-   */
-  async getCacheSize(): Promise<CacheSize> {
-    if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
-      return { total: 0, models: 0, static: 0, dynamic: 0 };
-    }
-
-    return new Promise((resolve) => {
-      const handler = (event: MessageEvent) => {
-        if (event.data?.type === 'CACHE_SIZE') {
-          navigator.serviceWorker.removeEventListener('message', handler);
-          resolve(event.data.payload as CacheSize);
-        }
-      };
-
-      navigator.serviceWorker.addEventListener('message', handler);
-      navigator.serviceWorker.controller!.postMessage({ type: 'GET_CACHE_SIZE' });
-
-      // Timeout after 5 seconds
-      setTimeout(() => {
-        navigator.serviceWorker.removeEventListener('message', handler);
-        resolve(this._cacheSize());
-      }, 5000);
-    });
-  }
-
-  /**
-   * Clear model cache
-   */
-  async clearModelCache(): Promise<void> {
-    if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
-      return;
-    }
-
-    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_MODEL_CACHE' });
-    console.log('[PWA] Model cache cleared');
-    
-    // Refresh cache size
-    await this.getCacheSize();
-  }
-
-  /**
-   * Pre-cache ML models for offline use
-   */
-  async cacheModels(modelUrls: string[]): Promise<void> {
-    if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
-      console.warn('[PWA] Service worker not available for caching models');
-      return;
-    }
-
-    navigator.serviceWorker.controller.postMessage({
-      type: 'CACHE_MODELS',
-      payload: { modelUrls }
-    });
-    console.log('[PWA] Model caching requested:', modelUrls);
-  }
-
-  /**
    * Register for background sync (for offline queue)
    */
   async registerBackgroundSync(tag: string): Promise<boolean> {
@@ -414,16 +343,5 @@ export class PwaService {
       console.error('[PWA] Background sync registration failed:', error);
       return false;
     }
-  }
-
-  /**
-   * Format bytes to human readable string
-   */
-  formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 }
