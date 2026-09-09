@@ -152,6 +152,14 @@ is why accept carries it rather than the shared write beneath it.
   `row.notes` whatever the slot holds — and a typed draft survives in
   `draftNotes` for the blur that files it. It is the intended reading of
   "one field at a time" and it is still a change in what the card does.
+- **And the other direction: opening the notes box now closes whatever editor
+  the row already had open.** Its trigger calls `startEdit(row, 'notes')` like
+  every other, so it takes the row's slot and clears `amountRejected` with it.
+  A reviewer holding an amount editor open on a refusal who taps **Notes**
+  rather than Escape drops the typed figure and keeps the old one, with
+  nothing on the card saying so. Description, Split, Add tag and the place
+  chip have always done exactly this — notes joining the machine is what puts
+  the door next to the refusal, not a new way to lose a figure.
 - **`forgetRow` names four containers.** Anything added later that is keyed by
   row id has one place to be pruned from, and a fifth container is a line
   there rather than a fifth thing to remember.

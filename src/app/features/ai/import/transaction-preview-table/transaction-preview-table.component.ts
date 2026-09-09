@@ -84,11 +84,14 @@ const EDITORS = {
   description: { input: '.inline-input', triggers: ['.description-section .inline-edit'] },
   tag: { input: '.inline-input', triggers: ['.tag-add'] },
   place: { input: '.inline-input', triggers: ['.place-name', '.location-add'] },
-  // The primary vanishes only when the split it just committed left the row
-  // unfilled — splitImportRow refuses that outright — but Escape still needs
-  // a landing if the row's amount was ever emptied by some other path while
-  // this editor was open, and the add-tag trigger is the strip's next
-  // control over.
+  // The primary vanishes two ways, and its own commit is neither:
+  // splitImportRow refuses outright a split that would leave the row
+  // unfilled, so the trigger's !amountIsUnfilled half fails only if some
+  // other path emptied the amount while this editor was open. The second is
+  // canSplit, which hides the trigger on a row worth less than two minor
+  // units (ADR 0109) — a bulk re-denomination under an open editor is the
+  // way there, USD 0.50 taken to JPY. Escape needs a landing in both, and
+  // the add-tag trigger is the strip's next control over.
   split: { input: '.inline-input', triggers: ['.split-trigger', '.tag-add'] },
   notes: { input: '.notes-input', triggers: ['.add-notes-btn'] },
 } as const;
@@ -929,7 +932,9 @@ export class TransactionPreviewTableComponent {
    * closing on it looked to the reviewer exactly like a commit — the editor
    * shut, the old amount stood, and the row went to import at a number they
    * believed they had just replaced. Escape is still the way out, and it is
-   * the only way the old figure is kept deliberately.
+   * the only deliberate way the old figure is kept: startEdit on any other
+   * field of the same row — notes among them now — clears amountRejected
+   * too, so the refusal goes with the editor and the typed figure with it.
    *
    * commitSplit below holds its own editor open on the same rule, for the
    * same reason: a figure that reads fine on its own but would leave
@@ -1039,10 +1044,12 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * A row can only split into two positive figures a minor unit apart, so
-   * anything worth less than twice that unit — ¥1, $0.01 — has no split
-   * that clears minimumAmountText's floor on both halves at once. The
-   * trigger hides rather than offer a control every figure would refuse.
+   * A row can only split into two figures each worth at least a minor unit,
+   * so anything worth less than twice that unit — ¥1, $0.01 — has no split
+   * that clears minimumAmountText's floor on both halves at once. ¥2 is the
+   * split at the floor, ¥1 and ¥1: each half clears the unit, and the two
+   * are not apart at all. The trigger hides rather than offer a control
+   * every figure would refuse.
    */
   canSplit(row: CategorizedImportTransaction): boolean {
     return row.amount >= 2 * 10 ** -currencyDecimalPlaces(row.currency);

@@ -725,7 +725,15 @@ describe('overflow guard: the import review card', () => {
     // card's own layout.
     clip.setAttribute('dir', 'rtl');
     fixture.detectChanges();
-    TestBed.inject(FitTextRegistry).flush();
+    // Marked before the flush for the reason the 262px case below spells
+    // out: the directive's own observers never land inside a plain
+    // (non-fakeAsync) spec, so a flush over an empty dirty set re-measures
+    // nothing and the line would be protection this case is not getting.
+    const registry = TestBed.inject(FitTextRegistry);
+    fixture.debugElement
+      .queryAll(By.directive(FitTextDirective))
+      .forEach(d => registry.markDirty(d.injector.get(FitTextDirective)));
+    registry.flush();
 
     const hits = chipHitBoxes();
     // chipHitBoxes() reads back whichever spelling the stylesheet used, as a

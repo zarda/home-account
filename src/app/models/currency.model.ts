@@ -110,9 +110,13 @@ export function currencyDecimalPlaces(code: string): number {
  * agreeing exactly on which values are zero — but it only ever touches what
  * is shown, never what is stored. `|| 0` folds two falsy results to unsigned
  * zero: the `-0` `Math.round(-0.4)` produces (the same trap
- * `snapDisplayZero`'s own comment records), and the `NaN` a non-finite
- * `value` produces — the fold `splitImportRow`'s own guard now leans on to
- * keep a NaN `row.amount` from ever reaching `remainder` as `NaN`.
+ * `snapDisplayZero`'s own comment records), and the `NaN` a `NaN` `value`
+ * produces — the fold `splitImportRow`'s own guard now leans on to keep a
+ * NaN `row.amount` from ever reaching `remainder` as `NaN`. `±Infinity` is
+ * not folded: it survives both the multiply and the divide, and a truthy
+ * result is left alone. `splitImportRow`'s own `Number.isFinite(taken)`
+ * guard is what catches that one, which is why the guard is live rather
+ * than dead beside this fold.
  */
 export function roundToMinorUnit(value: number, code: string): number {
   const factor = 10 ** currencyDecimalPlaces(code);
