@@ -191,7 +191,7 @@ There is no caching worker: the app itself needs a connection to load.
 
 ## Scripts
 
-Everything CI runs, in the order it runs it:
+Every script CI runs, in the order it runs it:
 
 | Command | Description |
 |---------|-------------|

@@ -107,7 +107,7 @@ to nothing are the same mistake from the reviewer's side.
 
 ### `canSplit` hides a trigger every figure would refuse
 
-A split has to leave two positive figures at least a minor unit apart, so a
+A split has to leave two figures each worth at least a minor unit, so a
 row worth less than twice that unit has no valid split at all. `canSplit(row)`
 is `row.amount >= 2 * 10 ** -currencyDecimalPlaces(row.currency)`, and the
 trigger renders only under it. Without that, a ¥1 row would offer a control

@@ -116,9 +116,9 @@ Two cases join the overflow probe:
   fixture, because what is under test there is the stylesheet's logical
   properties and not the card's layout. It re-runs the disjointness pass over
   the chips' hit boxes and the add triggers, and then reads the location
-  chip's own three controls specifically — the concrete place where a physical
-  spelling would have put the name trigger's overhang back on the country
-  button. Every inset is checked finite first, so a control missing one on a
+  chip's name trigger and country button directly — the concrete place where a
+  physical spelling would have put the one's overhang back on the other.
+  Every inset is checked finite first, so a control missing one on a
   given side fails with a message naming the box rather than a bare
   `Expected NaN …`.
 

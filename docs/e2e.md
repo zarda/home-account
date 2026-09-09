@@ -62,12 +62,14 @@ second filled row shares the currency, so on a one-receipt review it shows
 after journey 15's split — and a `notificationclick` listener in the served
 worker: `await fetch('/share-target-sw.js').then(r => r.text())` contains
 `notificationclick`. The worker is served straight from `public/`, so that
-fetch reads the branch's file whether or not the page has re-registered it;
-for the row-removal and phone-width chip surfaces it is **Remove** in a
-scanned row's extras and the category chip standing inside its card at
-phone width. For another branch it is whatever that branch added. A stale
-`.angular/cache`, or a server started before the checkout switched, shows
-yesterday's app with today's confidence.
+fetch reads the branch's file whether or not the page has re-registered it.
+For the row-removal and phone-width chip surfaces it is **Remove** in a
+scanned row's extras and the category chip's own stylesheet:
+`getComputedStyle(document.querySelector('.category-button')).minInlineSize === '0px'`,
+where the flat `min-width: auto` it replaced reads `auto`. For another branch
+it is whatever that branch added. A stale `.angular/cache`, or a server
+started before the checkout switched, shows yesterday's app with today's
+confidence.
 
 **2. The running bundle names the expected project.** Fetch every script the
 page actually loaded and read the project id out of it:
@@ -578,9 +580,11 @@ the act of opening one.
   pick another → the chip's icon, name and confidence dot all follow the
   choice, the dot going green because the reviewer's own pick is the confident
   one.
-- **Notes.** The **Notes** button under the card opens a textarea with the
-  caret in it; type, then click away — the note is filed on the way out, not
-  keystroke by keystroke.
+- **Notes.** This row came with the reader's own note, so its box is already
+  on the card — a row with none shows a **Notes** button that opens the same
+  box. Extend the note, then click away: it is filed on the way out, not
+  keystroke by keystroke, and the box stays up as a filed note with the row's
+  editing slot empty.
 
 An edit to the date, amount, type or description sends that row back through
 the duplicate check. A verdict of *Duplicate* deselects the row and the
@@ -622,10 +626,10 @@ the editors keep their 40px tap targets at every width.
 
 Two more readings, in journey 15's order: with the split field open on the
 card, and — once the split has made two — with the merge menu open over
-the part. What is pinned is what these controls own: every **Split** and
-**Merge into…** trigger inside its own card's box and 40px tall, and the
-open split field inside that box too — the 288px probe's own reading of
-them, taken here at the wizard's real width:
+the part. What is pinned is what these controls own: every **Split**,
+**Merge into…** and **Remove** trigger inside its own card's box and 40px
+tall, and the open split field inside that box too — the 288px probe's own
+reading of them, taken here at the wizard's real width:
 
 ```js
 [...document.querySelectorAll('.transaction-card')].every(card => {
@@ -640,12 +644,20 @@ them, taken here at the wizard's real width:
 });
 ```
 
-`true` both times. The card's own `scrollWidth === clientWidth` is the
-pass here now, on every card: the category suggestion chip that used to
-push a real receipt's card wider than that no longer can. Its section now
-shrinks with the card instead of sizing itself to the label's own width,
-and the label scales down through `appFitText`, wrapping rather than
-overflowing once it reaches the 12px floor. *Groceries* at 185px reaching
+`true` both times. The card's own `scrollWidth` inside its `clientWidth` is
+the pass here now, on every card:
+
+```js
+[...document.querySelectorAll('.transaction-card')]
+  .every(c => c.scrollWidth <= c.clientWidth + 1);
+```
+
+`true`. The pixel of slack is the 288px probe's own, for a sub-pixel width
+that reads one over with nothing hiding. The category suggestion chip that
+used to push a real receipt's card wider than that no longer can: its
+section now shrinks with the card instead of sizing itself to the label's
+own width, and the label scales down through `appFitText`, wrapping rather
+than overflowing once it reaches the 12px floor. *Groceries* at 185px reaching
 12px past a 240px card is what the first run recorded against a follow-up
 of its own — closed now, and history.
 
@@ -726,9 +738,10 @@ no date question of its own; its category is the fallback offered to a row
 nothing suggested one for, wearing the low-confidence dot that says so. While it
 was blank its extras carried **Remove**, **Add location** and **Add tag** and
 nothing else — no Split on a row with no amount, no Merge into… on a blank
-one; filled, it gains **Split** and, since the scanned row shares its
-currency, **Merge into…** beside them. The location trigger is what a row
-with no location shows in place of the chip journey 11 edits.
+one; filled, it gains **Split**. **Merge into…** joins it only while the
+scanned row shares its currency and carries no duplicate badge of its own —
+a flagged row takes part in no merge, on either side. The location trigger
+is what a row with no location shows in place of the chip journey 11 edits.
 
 **Pass:** the added row shows filled, Continue enabled, and nothing reached
 the account. Leave by the review step's **Back** and the wizard's back
@@ -837,20 +850,22 @@ with the date question answered by **Keep** first: Continue is then held by
 nothing, so whatever holds or frees it below is this journey's own doing.
 
 **Split** is in the card's extras, ahead of **Add location** and **Add
-tag**, on any row that has an amount. Tap it → the field opens in its place,
-empty, placeholder *Amount for the new row*, with the caret in it → type
-`179`, a third of the printed ¥538 → Enter → two cards. The original now
-reads *-¥359*, and directly under it stands the part at *-¥179* with its
-description editor already open and the caret in it: it was born holding
-the original's description, which a line item taken out on its own rarely
-keeps. Enter with the copied name left standing closes the editor and keeps
-it, the way journey 9's description editor keeps an unchanged one. A
-fractional figure typed here — `179.4` — rounds the same way, ¥179 off and
-¥359 left. Escape leaves the row alone and so does an emptied field, while
-a figure the row cannot spare — the whole ¥538, or more — holds the field
-open, marked invalid, with *Enter an amount smaller than the row's — at
-least ¥1* next to it, the way the amount editor refuses a figure it
-cannot read.
+tag**, on any row worth at least two of its currency's minor units — ¥2 on a
+yen row, $0.02 on a dollar one; below that the trigger is not offered at
+all, since no figure would leave both halves above the floor. Tap it → the
+field opens in its place, empty, placeholder *Amount for the new row*, with
+the caret in it → type `179`, a third of the printed ¥538 → Enter → two
+cards. The original now reads *-¥359*, and directly under it stands the
+part at *-¥179* with its description editor already open and the caret in
+it: it was born holding the original's description, which a line item taken
+out on its own rarely keeps. Enter with the copied name left standing closes
+the editor and keeps it, the way journey 9's description editor keeps an
+unchanged one. A fractional figure typed here — `179.4` — rounds the same
+way, ¥179 off and ¥359 left. Escape leaves the row alone and so does an
+emptied field, while a figure the row cannot spare — the whole ¥538, or
+more — holds the field open, marked invalid, with *Enter an amount smaller
+than the row's — at least ¥1* next to it, the way the amount editor refuses
+a figure it cannot read.
 
 Both cards wear the receipt badge, *Receipt 1 (photo 1)*: one photo, two
 transactions, each of which would attach its own copy at an import this run
@@ -902,13 +917,13 @@ list with its description editor open and the caret in it, the hint *Fill in
 1 row before continuing* stands under the list, and Continue is disabled.
 **Remove** in the blank card's extras → the card goes, the hint goes with it,
 Continue enables, and focus lands on the scanned row's own **Remove** — the
-previous row's, since the removed one was last, a focus reading left to the
-specs where the pane cannot show it.
+previous row's, since the removed one was last.
 
 Then **Remove** on the scanned row, the list's last one left: the card goes,
 the empty state stands in its place — *No transactions to import* — the
 header reads *0 / 0*, Continue is disabled again with nothing left to select,
-and focus lands on **Add a row**.
+and focus lands on **Add a row**. Both landings are focus readings left to
+the specs, where the pane cannot show them.
 
 **Pass:** both removals show on the card, and nothing reached the account —
 Transactions is unchanged and `/import/history` has no new run. Leave by the

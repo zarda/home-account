@@ -317,7 +317,9 @@ then is the same no-op a stale split commit is.
   leaves each card 240px wide, and the category suggestion chip — sized to its
   label, *Groceries* at 185px — reaches 12px past it. That chip predates this
   record and the probe's fixture category is shorter; it is left for a record
-  of its own.
+  of its own —
+  [ADR 0110](0110-the-probe-measures-the-card-at-phone-width-and-in-both-directions.md),
+  #393.
 
 ## Known gaps
 
@@ -339,7 +341,8 @@ then is the same no-op a stale split commit is.
 - **A decimal typed into a zero-decimal currency is stored with it.**
   `parseAmountInput` accepts decimals and `roundMoney` rounds to cents whatever
   the currency, so `179.33` on a JPY row stores `179.33` and renders `¥179`.
-  The split field inherits what the amount editor already did.
+  The split field inherits what the amount editor already did. Closed by
+  [ADR 0109](0109-a-hand-typed-amount-is-whole-in-its-currency.md), #394.
 - **A merge is not undoable.** The source's own description, date, category
   and notes are gone except the note text joined in; splitting an amount back
   off makes a new part with the survivor's identity, not the row that was
