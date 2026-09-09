@@ -153,9 +153,12 @@ it.
   `const d = ng.getDirectives(label).find(x => x.overflowRatio);
   d.registry.markDirty(d); d.registry.flush();` — and read the font-size
   after: state only, diagnostic-grade, as the render flush above is; a
-  fronted pane does this on its own. The pane's 390px emulation also raises
-  the root font to 20.8px, so a label reads 18.2px where a phone reads 14 —
-  the fit is what is pinned, never the number.
+  fronted pane does this on its own. A card born after the last flush — a
+  split's part, a row added by hand — has a label no flush has reached, and
+  it reads as the same overflow until it gets one of its own. The pane's
+  390px emulation also raises the root font to 20.8px, so a label reads
+  18.2px where a phone reads 14 — the fit is what is pinned, never the
+  number.
 - **A desktop-only door needs a pane genuinely wide enough for the table.**
   The list swaps to the table at `min-width: 768px`, so below that the row's
   note icon does not exist and journey 2 silently becomes journey 4.
