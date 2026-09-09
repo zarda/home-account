@@ -306,7 +306,7 @@
                  about its position should depend on what either of those
                  renders for this row. The trigger is conditional — it
                  vanishes once the amount it would split is gone — so its
-                 EDIT_TRIGGERS entry carries a fallback the way place's does. -->
+                 EDITORS entry carries a fallback the way place's does. -->
             @if (isEditing(row, 'split')) {
               <input
                 class="inline-input split-input"
@@ -502,7 +502,7 @@
             </div>
           } @else {
             <div class="notes-section notes-empty">
-              <button class="add-notes-btn" (click)="initNotes(row)">
+              <button type="button" class="add-notes-btn" (click)="startEdit(row, 'notes')">
                 <mat-icon>add</mat-icon>
                 <span>{{ 'import.notes' | translate }}</span>
               </button>

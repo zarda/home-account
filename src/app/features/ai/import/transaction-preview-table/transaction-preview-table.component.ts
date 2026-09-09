@@ -57,30 +57,41 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 
 /**
- * The fields a row edits in place, each with the triggers its editor could
- * hand focus back to when an edit ends on a key — tried in order. A map
- * rather than a selector derived from the field name: only two of these live
- * in a `.<field>-section` holding an `.inline-edit`, and a derived selector
- * that matches nothing drops focus at the document root without a word.
+ * The fields a row edits in place, each with the input its editor focuses
+ * on open and the triggers it could hand focus back to when an edit ends on
+ * a key — tried in order. A map rather than a selector derived from the
+ * field name: only two of these live in a `.<field>-section` holding an
+ * `.inline-edit`, and a derived selector that matches nothing drops focus at
+ * the document root without a word. Each input selector must match at most
+ * one element per row: notes' box can be on the card independently of
+ * `editing` (a filed note renders through `!!row.notes`), so sharing
+ * `.inline-input` with a row whose description editor is also open would
+ * give `querySelector` two matches to resolve by DOM order alone —
+ * `.notes-input` is its own class so that ambiguity cannot arise.
  *
  * The place is the one field whose commit can take its own trigger off the
  * card: emptying the name of a location with nothing else under it withdraws
  * the whole chip, and what stands where it stood is the add trigger.
+ *
+ * Notes is the one field whose box also shows a filed value: its trigger
+ * exists only while the row has no note, and Escape in a filed note's box
+ * is a draft drop rather than an editor exit.
  */
-const EDIT_TRIGGERS = {
-  amount: ['.amount-section .inline-edit'],
-  description: ['.description-section .inline-edit'],
-  tag: ['.tag-add'],
-  place: ['.place-name', '.location-add'],
+const EDITORS = {
+  amount: { input: '.inline-input', triggers: ['.amount-section .inline-edit'] },
+  description: { input: '.inline-input', triggers: ['.description-section .inline-edit'] },
+  tag: { input: '.inline-input', triggers: ['.tag-add'] },
+  place: { input: '.inline-input', triggers: ['.place-name', '.location-add'] },
   // The primary vanishes only when the split it just committed left the row
   // unfilled — splitImportRow refuses that outright — but Escape still needs
   // a landing if the row's amount was ever emptied by some other path while
   // this editor was open, and the add-tag trigger is the strip's next
   // control over.
-  split: ['.split-trigger', '.tag-add'],
+  split: { input: '.inline-input', triggers: ['.split-trigger', '.tag-add'] },
+  notes: { input: '.notes-input', triggers: ['.add-notes-btn'] },
 } as const;
 
-type EditField = keyof typeof EDIT_TRIGGERS;
+type EditField = keyof typeof EDITORS;
 
 /** One datalist per card instance: two on a page must not answer to one id. */
 let vocabularyListSeq = 0;
@@ -730,7 +741,7 @@ export class TransactionPreviewTableComponent {
     this.editing.set(row.id, field);
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, '.inline-input'));
+    this.focusWhenRendered(this.inRow(row, EDITORS[field].input));
   }
 
   /**
@@ -787,7 +798,7 @@ export class TransactionPreviewTableComponent {
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
     if (restoreFocus && field) {
-      this.focusWhenRendered(...EDIT_TRIGGERS[field].map(selector => this.inRow(row, selector)));
+      this.focusWhenRendered(...EDITORS[field].triggers.map(selector => this.inRow(row, selector)));
     }
   }
 
@@ -966,7 +977,7 @@ export class TransactionPreviewTableComponent {
     this.transactions = [...before, kept, part, ...after];
     this.emitChanges();
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(part, '.inline-input'));
+    this.focusWhenRendered(this.inRow(part, EDITORS.description.input));
   }
 
   /**
@@ -1089,15 +1100,14 @@ export class TransactionPreviewTableComponent {
 
   /**
    * Drop every per-id container's entry for a row that just left the card.
-   * `editing`, `amountRejected`, `notesOpen`, `draftNotes` and
-   * `fellBackEligible` are all keyed by row id and outlive `replaceRow`'s
-   * swap on purpose — until mergeInto, a row's id never stopped appearing in
-   * `transactions` at all, so nothing else has ever needed to prune them.
+   * `editing`, `amountRejected`, `draftNotes` and `fellBackEligible` are all
+   * keyed by row id and outlive `replaceRow`'s swap on purpose — until
+   * mergeInto, a row's id never stopped appearing in `transactions` at all,
+   * so nothing else has ever needed to prune them.
    */
   private forgetRow(id: string): void {
     this.editing.delete(id);
     this.amountRejected.delete(id);
-    this.notesOpen.delete(id);
     this.draftNotes.delete(id);
     this.fellBackEligible.delete(id);
   }
@@ -1132,32 +1142,28 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * Which rows have their notes editor open, and what has been typed into it
-   * so far — by row id, for the reason `editing` gives: filing the note
-   * replaces the row, and state carried on the object would be dropped by the
-   * commit that reads it. The draft lives here and not on the row because the
-   * row is the parent's object: the old textarea wrote straight onto it, so a
-   * note typed during an in-flight import could change what was written for
-   * a row not yet processed.
+   * What has been typed into a row's notes editor so far, by row id — not on
+   * the row itself, because the row is the parent's object: the old textarea
+   * wrote straight onto it, so a note typed during an in-flight import could
+   * change what was written for a row not yet processed. Whether the editor
+   * is open needs no container of its own: a row edits one field at a time,
+   * notes included, so `editing` already carries that, and a filed note's
+   * box is on the card by `row.notes`, not by `editing`. A draft here can
+   * outlive its box, but only on a path no pointer or keyboard reaches — a
+   * same-row `startEdit` to another field with no blur in between; every
+   * reachable path blurs the textarea first, and `commitNotes` is what
+   * drains this map there.
    */
-  private notesOpen = new Set<string>();
   private draftNotes = new Map<string, string>();
 
   // Plain methods, for the reason selectedCount gives.
   showsNotes(row: CategorizedImportTransaction): boolean {
-    return !!row.notes || this.notesOpen.has(row.id);
+    return !!row.notes || this.isEditing(row, 'notes');
   }
 
   /** What the editor shows: the draft while one is being typed, else the row's own note. */
   notesText(row: CategorizedImportTransaction): string {
     return this.draftNotes.get(row.id) ?? row.notes ?? '';
-  }
-
-  /** Open the editor on a row without notes and put the caret in it, as startEdit does. */
-  initNotes(row: CategorizedImportTransaction): void {
-    this.notesOpen.add(row.id);
-    this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, '.notes-input'));
   }
 
   updateNotesDraft(row: CategorizedImportTransaction, text: string): void {
@@ -1170,34 +1176,32 @@ export class TransactionPreviewTableComponent {
    * holding nothing. Nothing typed, or the note the row already had, is not
    * a change and replaces nothing.
    *
-   * An editor left with nothing in it also closes. Opening one is a single
-   * tap on a crowded card, and without this that tap could not be taken
-   * back: `notesOpen` was only ever added to, so an empty box stayed on the
-   * row for the rest of the review with nothing to press to be rid of it.
+   * An editor left with nothing in it also closes — closeEdit's doing now:
+   * opening one is a single tap on a crowded card, and without it that tap
+   * could not be taken back. A filed note needs no such push; its box stays
+   * up on `row.notes` alone, whatever the shared slot just cleared to.
    */
   commitNotes(row: CategorizedImportTransaction): void {
     const draft = this.draftNotes.get(row.id);
     this.draftNotes.delete(row.id);
+    if (this.isEditing(row, 'notes')) this.closeEdit(row, false);
     const notes = draft?.trim() || undefined;
-    if (!notes) {
-      this.notesOpen.delete(row.id);
-      this.cdr.markForCheck();
-    }
     if (draft === undefined || notes === row.notes) return;
     this.replaceRow(row, { notes });
   }
 
   /**
    * Abandon the draft, the way Escape abandons the description and the
-   * amount. A row that came with a note keeps its editor — the note is what
-   * the editor is showing, and there is no button to go back to — so only
-   * the draft goes and the row's own note is written back into the box.
+   * amount — but not through cancelEdit: a filed note's box is on the card
+   * whatever `editing` holds, so a row that came with a note has no slot of
+   * its own to close, and if this row's slot holds some other field, that
+   * editor is open on purpose and is not what Escape here means. Only when
+   * the slot is notes does closing it apply.
    */
   cancelNotes(row: CategorizedImportTransaction): void {
     this.draftNotes.delete(row.id);
-    this.notesOpen.delete(row.id);
-    this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, '.add-notes-btn'));
+    if (this.isEditing(row, 'notes')) this.closeEdit(row, true);
+    else this.cdr.markForCheck();
   }
 
   /** One row per line of what is shown, so the box grows as the reviewer types. */
@@ -1240,7 +1244,7 @@ export class TransactionPreviewTableComponent {
     this.transactions = [...this.transactions, row];
     this.emitChanges();
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, '.inline-input'));
+    this.focusWhenRendered(this.inRow(row, EDITORS.description.input));
   }
 
   private emitChanges(): void {

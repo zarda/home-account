@@ -2089,6 +2089,64 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(textarea()!.getAttribute('rows')).toBe('3');
     });
+
+    it('opens through the card\'s one machine: isEditing(row, "notes") while the box is open, and not once the note is filed', () => {
+      const row = makeRow();
+      render(row);
+      expect(component.isEditing(row, 'notes')).withContext('nothing open yet').toBeFalse();
+
+      addButton()!.click();
+      fixture.detectChanges();
+      expect(component.isEditing(row, 'notes')).withContext('the row\'s one slot now holds notes').toBeTrue();
+
+      type('two croissants');
+      leave();
+
+      expect(component.isEditing(row, 'notes')).withContext('closeEdit cleared the slot on commit').toBeFalse();
+    });
+
+    it('Escape in a filed note\'s box drops the draft and leaves the row\'s open description editor alone', async () => {
+      // Not cancelEdit: the row's slot holds 'description' here, not
+      // 'notes', so cancelNotes must not read that slot as its own to close.
+      const row = makeRow({ notes: 'a' });
+      render(row);
+      component.startEdit(row, 'description');
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      type('scribble');
+      textarea()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      // NgModel writes the reverted value through its own microtask, the
+      // same fall case 9 above waits out.
+      await fixture.whenStable();
+
+      expect(component.isEditing(row, 'description')).withContext('the row\'s real editor is untouched').toBeTrue();
+      expect(fixture.nativeElement.querySelector('.description-input')).withContext('still on the card').not.toBeNull();
+      expect(textarea()!.value).withContext('the draft alone goes').toBe('a');
+      expect(emitted.length).toBe(0);
+    });
+
+    it('opening the notes editor on one row leaves another row\'s open editor alone', () => {
+      // The two-row shape sidesteps depending on what a same-row startEdit
+      // to 'notes' would do here: editing holds one field per row, and every
+      // commit gates on editing.has(row.id), not on which field it names.
+      const rowA = makeRow({ id: 'a' });
+      const rowB = makeRow({ id: 'b' });
+      component.transactions = [rowA, rowB];
+      component.categories = [];
+      fixture.detectChanges();
+      component.startEdit(rowA, 'description');
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('[data-row-id="b"] .add-notes-btn') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(component.isEditing(rowA, 'description')).withContext('row a keeps its own entry in the per-row map').toBeTrue();
+      expect(fixture.nativeElement.querySelector('[data-row-id="a"] .description-input')).withContext('row a\'s editor is still on the card').not.toBeNull();
+      expect(component.isEditing(rowB, 'notes')).withContext('row b opened its own entry, not row a\'s').toBeTrue();
+      expect(fixture.nativeElement.querySelector('[data-row-id="b"] .notes-input')).withContext('row b\'s box is on the card too').not.toBeNull();
+    });
   });
 
   /**
