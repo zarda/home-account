@@ -57,8 +57,8 @@ in. What does not come with it, against the table below: the row's id, its
 `createdAt`, its stored rate and base-currency figure — the amount is
 re-converted at **today's** rate instead — its goal link and that link's
 figure, and its recurring-rule link, so a row the file flagged recurring
-arrives with the flag and no rule behind it. Only what the review card shows
-travels; receipt images are sourced by neither door. Use it to bring some
+arrives with the flag and no rule behind it. Receipt images are sourced by
+neither door. Use it to bring some
 transactions back, or to bring them into a different account, and look at
 them first
 ([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)).

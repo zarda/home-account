@@ -173,3 +173,12 @@ count on the confirm summary.
   [../backup-restore.md](../backup-restore.md).
 - **`roundMoney` still governs base-currency aggregates**, and should: those
   figures are in the account's base currency by construction.
+- **The offline drain has no review card.** A queued reading below its
+  currency's minor unit — a sub-¥1 or sub-1¢ figure — now rounds to 0 in
+  `toCreateTransactionDTO` and is refused by
+  `TransactionService.addTransaction` (`transaction.service.ts:256`,
+  `INVALID_AMOUNT_ERROR`), where it used to write the fraction. The queue's
+  `createTransactions` finishes the rest of the batch before it throws
+  (`offline-queue-processor.service.ts:172-179`), so the whole image is
+  marked failed even though the other rows already landed — a loud failure
+  on a path with no reviewer, almost certainly right, and untested.

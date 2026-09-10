@@ -117,13 +117,13 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 ## Panes and viewports
 
-Some browsers are driven inside an embedded pane rather than a full window,
-and a pane behaves differently enough to cost a run before it is understood.
-None of these is a property of the app bar the seventh, which is the app's
-own timing; six of the nine have produced a false failure, the seventh cost a
-run a second provider call, the eighth stops a run before it starts, and the
-last is a door nothing in a pane opens — its only control on the page is a switch
-with a write behind it.
+Some browsers are driven inside an embedded pane rather than a full
+window, and a pane behaves differently enough to cost a run before it is
+understood. None of these is a property of the app bar the seventh, which
+is the app's own timing; six of the nine have produced a false failure,
+the seventh cost a run a second provider call, the eighth stops a run
+before it starts, and the last is a door nothing in a pane opens — its
+only control on the page is a switch with a write behind it.
 
 - **Pointer input can stall under viewport emulation, and stay stalled.** With
   an emulated width in force, clicks stop landing and go on not landing until
@@ -637,14 +637,14 @@ the act of opening one.
   figures already whole in both currencies fires nothing. Type `538` back
   before leaving, so journey 15 finds the printed total on the row it splits.
 
-An edit to the date, amount, type or description sends that row back through
-the duplicate check, and so does a currency switch that moves the amount. A
-verdict of *Duplicate* deselects the row and the badge's × (*Not a duplicate
-— import it*) overrules it; a re-check that cannot
-reach history says so once, in a snackbar — *Couldn't re-check for duplicates
-— the earlier verdict stands.* Neither is guaranteed with a one-receipt
-fixture against a real account: they are what to recognise if they appear, not
-part of the pass.
+An edit to the date, amount, type or description sends that row back
+through the duplicate check, and so does a currency switch that moves the
+amount. A verdict of *Duplicate* deselects the row and the badge's × (*Not
+a duplicate — import it*) overrules it; a re-check that cannot reach
+history says so once, in a snackbar — *Couldn't re-check for duplicates —
+the earlier verdict stands.* Neither is guaranteed with a one-receipt
+fixture against a real account: they are what to recognise if they
+appear, not part of the pass.
 
 Leave by the review step's **Back**, then the wizard's own back arrow to
 Transactions. The processing step behind the review offers Continue and
