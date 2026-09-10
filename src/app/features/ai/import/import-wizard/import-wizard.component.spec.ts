@@ -96,7 +96,8 @@ describe('ImportWizardComponent', () => {
     mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary', 'baseCurrency'], {
       isProcessing: signal(false),
       processingStatus: signal(''),
-      processingProgress: signal(0)
+      processingProgress: signal(0),
+      processingRow: signal(null)
     });
     // Per-path results carry the pair the real service reports; a shared
     // csv-shaped fixture here is what let the confirm step's hardcoded
@@ -216,6 +217,11 @@ describe('ImportWizardComponent', () => {
 
     it('should have accepted file types', () => {
       expect(component.acceptedFileTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp,.json');
+    });
+
+    it("renders the write's progress from the service's own signals", () => {
+      expect(component.processingRow).toBe(mockImportService.processingRow);
+      expect(component.processingProgress).toBe(mockImportService.processingProgress);
     });
   });
 

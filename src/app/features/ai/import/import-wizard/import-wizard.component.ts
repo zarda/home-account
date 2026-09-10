@@ -178,8 +178,6 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * and gets no copy of its own.
    */
   readonly rechecksInFlight = signal(0);
-  importProgress = signal(0);
-  importStatus = signal('');
 
   // Multi-image metadata
   multiImageMetadata = signal<MultiImageMetadata | null>(null);
@@ -188,6 +186,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   isProcessing = this.importService.isProcessing;
   processingStatus = this.importService.processingStatus;
   processingProgress = this.importService.processingProgress;
+  processingRow = this.importService.processingRow;
   categories = this.categoryService.categories;
 
   /**
@@ -812,7 +811,6 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   async confirmImport(): Promise<void> {
     this.isImporting.set(true);
-    this.importProgress.set(0);
 
     try {
       const batch = this.batchDescriptor();

@@ -113,7 +113,10 @@ export class AIImportService {
   isProcessing = signal<boolean>(false);
   processingStatus = signal<string>('');
   processingProgress = signal<number>(0);
-  
+  // The confirm step renders this translated, so the write's progress is a
+  // structured fact rather than an English sentence like processingStatus.
+  processingRow = signal<{ done: number; total: number } | null>(null);
+
   // New signals for processing
   processingSource = signal<'cloud' | 'native' | null>(null);
   isOfflineMode = computed(() => !this.pwaService.isOnline());
@@ -1246,7 +1249,7 @@ export class AIImportService {
       for (let i = 0; i < selectedTransactions.length; i++) {
         const txn = selectedTransactions[i];
         this.processingProgress.set(Math.round(((i + 1) / selectedTransactions.length) * 100));
-        this.processingStatus.set(`Importing ${i + 1} of ${selectedTransactions.length}...`);
+        this.processingRow.set({ done: i + 1, total: selectedTransactions.length });
 
         try {
           // A Date, a date-only string the model produced, or nothing at all.
@@ -1403,6 +1406,8 @@ export class AIImportService {
       throw error;
     } finally {
       this.isProcessing.set(false);
+      // The row is a fact about a write in progress; it outlives none.
+      this.processingRow.set(null);
     }
 
     // Read back the completed record. Deliberately outside the try above:

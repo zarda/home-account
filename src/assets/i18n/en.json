@@ -1057,6 +1057,7 @@
     },
     "importFailed": "Import failed: {{error}}",
     "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
+    "importingRow": "Importing {{done}} of {{total}}...",
     "importPhotosSkipped": {
       "one": "The transactions were saved, but {{count}} receipt photo was not attached — image storage limit reached",
       "other": "The transactions were saved, but {{count}} receipt photos were not attached — image storage limit reached"

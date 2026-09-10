@@ -2295,6 +2295,23 @@ describe('AIImportService', () => {
       expect('currencyFellBack' in dto).toBeFalse();
     });
 
+    it('reports each row as it is written and clears the row when the write ends', async () => {
+      const rowSpy = spyOn(service.processingRow, 'set').and.callThrough();
+      const progressSpy = spyOn(service.processingProgress, 'set').and.callThrough();
+
+      await service.confirmImport(
+        [selected({ id: 'a' }), selected({ id: 'b' })],
+        'r.png', 10, 'image', 'receipt_image'
+      );
+
+      expect(rowSpy.calls.allArgs()).toEqual([
+        [{ done: 1, total: 2 }],
+        [{ done: 2, total: 2 }],
+        [null]
+      ]);
+      expect(progressSpy.calls.allArgs()).toEqual([[0], [50], [100]]);
+    });
+
     describe('history read-back', () => {
       it('skips a null first emission and resolves on the record', async () => {
         // subscribeToDocument emits null while the write is still landing;
