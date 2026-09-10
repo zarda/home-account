@@ -1199,10 +1199,9 @@ export class TransactionPreviewTableComponent {
    * The row's own trigger leaves with it, so focus goes where a keyboard
    * reviewer clearing a batch would want it — the same control on the next
    * row, the previous row's when this was the last, and the list's own
-   * control when the list is empty. The wizard prunes what it keeps for the
-   * id on its own (0106's mechanics, `onTransactionsUpdated`); the stale
-   * entry this leaves in `receiptRowIds` is inert, because `unansweredDates`
-   * reads the present rows, not that set alone.
+   * control when the list is empty. The wizard prunes `receiptRowIds` along
+   * with everything else it keeps for the id on its own (0106's mechanics,
+   * `onTransactionsUpdated`).
    */
   removeRow(row: CategorizedImportTransaction): void {
     const index = this.transactions.indexOf(row);

@@ -646,6 +646,21 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     if (gone.length > 0) {
       this.duplicateChecks.update(checks => checks.filter(c => present.has(c.transactionId)));
     }
+    this.keepReceiptRows(present);
+  }
+
+  /**
+   * The set names the batch's receipt rows and is written once per batch,
+   * so it is pruned wherever a row leaves rather than left to describe a
+   * batch that moved on. The same `Set` is returned when nothing left, so
+   * `unansweredDates` — a computed keyed on this signal — is not recomputed
+   * for a no-op.
+   */
+  private keepReceiptRows(present: Set<string>): void {
+    this.receiptRowIds.update(ids => {
+      const kept = new Set([...ids].filter(id => present.has(id)));
+      return kept.size === ids.size ? ids : kept;
+    });
   }
 
   /**
@@ -874,6 +889,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
           .map(t => ({ ...t, selected: true, isDuplicate: false }));
 
         this.extractedTransactions.set(failedRows);
+        this.keepReceiptRows(new Set(failedRows.map(t => t.id)));
         this.duplicateChecks.set([]);
         this.selectedTransactionIds.set(new Set(failedRows.map(t => t.id)));
 

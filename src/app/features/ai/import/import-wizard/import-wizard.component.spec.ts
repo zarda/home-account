@@ -514,7 +514,9 @@ describe('ImportWizardComponent', () => {
       tick();
 
       expect(component.extractedTransactions().map(t => t.id)).toEqual(['failed']);
-      expect(component.receiptRowIds()).toEqual(new Set(['saved', 'failed']));
+      // The saved row left the batch and the set with it; the failed one
+      // stays named, which is the point of the case.
+      expect(component.receiptRowIds()).toEqual(new Set(['failed']));
       expect(component.unansweredDates()).withContext('already answered, so not asked again').toBe(0);
       // The set still names the row: stripped of its answer, it is asked again.
       component.onTransactionsUpdated([{ ...mockTransactions[0], id: 'failed', date: yesterday() }]);
@@ -1880,12 +1882,16 @@ describe('ImportWizardComponent', () => {
         .toEqual({ transactionId: 'txn2', isDuplicate: false, matchType: 'none', confidence: 0 });
 
       // A merge (or any other edit) that drops txn2 from the batch.
+      component.receiptRowIds.set(new Set(['txn1', 'txn2']));
       component.onTransactionsUpdated(component.extractedTransactions().filter(t => t.id !== 'txn2'));
       flushMicrotasks();
 
       expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
         .withContext('no verdict left to keep for a row that left the batch')
         .toBeUndefined();
+      expect(component.receiptRowIds())
+        .withContext('the departed row\'s id leaves the set too')
+        .toEqual(new Set(['txn1']));
 
       mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
       edit('txn1', { description: 'Espresso' });
@@ -1895,6 +1901,19 @@ describe('ImportWizardComponent', () => {
       expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
         .withContext('the storedOnly fold does not carry it back in')
         .toBeUndefined();
+    }));
+
+    it('leaves the set alone when no receipt row left', fakeAsync(() => {
+      const rows = fresh();
+      populate(rows);
+      component.receiptRowIds.set(new Set(['txn1', 'txn2']));
+      const before = component.receiptRowIds();
+
+      // Same rows back — an edit that removes nothing.
+      component.onTransactionsUpdated(component.extractedTransactions());
+      flushMicrotasks();
+
+      expect(component.receiptRowIds()).toBe(before);
     }));
 
     it('re-checks a within-batch twin when its partner leaves, and drops its stale verdict', fakeAsync(() => {
