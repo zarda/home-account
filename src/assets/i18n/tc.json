@@ -970,7 +970,7 @@
     "reviewStep": "檢閱",
     "confirmStep": "確認",
     "dropzoneTitle": "拖放檔案或點擊瀏覽",
-    "dropzoneHint": "支援 CSV、PDF 和圖片",
+    "dropzoneHint": "支援 CSV、PDF、圖片和 JSON 備份",
     "browseFiles": "瀏覽檔案",
     "addMoreFiles": "新增更多檔案",
     "preview": "預覽",

@@ -23,7 +23,7 @@ import { looksLikeImageFile } from '../../../../core/utils/file.utils';
   styleUrl: './file-dropzone.component.scss'
 })
 export class FileDropzoneComponent implements OnDestroy {
-  @Input() acceptedTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp';
+  @Input() acceptedTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp,.json';
   @Input() maxFileSize = 10 * 1024 * 1024; // 10MB
   @Input() multiple = true;
   @Output() filesSelected = new EventEmitter<File[]>();
@@ -153,7 +153,8 @@ export class FileDropzoneComponent implements OnDestroy {
       '.png': ['image/png'],
       '.jpg': ['image/jpeg'],
       '.jpeg': ['image/jpeg'],
-      '.webp': ['image/webp']
+      '.webp': ['image/webp'],
+      '.json': ['application/json']
     };
 
     for (const [ext, mimeTypes] of Object.entries(mimeTypeMap)) {
@@ -251,6 +252,8 @@ export class FileDropzoneComponent implements OnDestroy {
       case 'jpeg':
       case 'webp':
         return 'image';
+      case 'json':
+        return 'backup';
       default:
         return 'insert_drive_file';
     }

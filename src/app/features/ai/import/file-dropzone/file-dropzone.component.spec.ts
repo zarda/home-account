@@ -41,7 +41,7 @@ describe('FileDropzoneComponent', () => {
     });
 
     it('should have default accepted types', () => {
-      expect(component.acceptedTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp');
+      expect(component.acceptedTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp,.json');
     });
 
     it('should have default max file size of 10MB', () => {
@@ -141,6 +141,11 @@ describe('FileDropzoneComponent', () => {
       expect(component.getFileIcon(file)).toBe('insert_drive_file');
     });
 
+    it('returns the backup icon for a json file', () => {
+      const file = new File([''], 'backup.json', { type: 'application/json' });
+      expect(component.getFileIcon(file)).toBe('backup');
+    });
+
     it('should identify image files correctly', () => {
       const imageFile = new File([''], 'test.png', { type: 'image/png' });
       const nonImageFile = new File([''], 'test.csv', { type: 'text/csv' });
@@ -154,6 +159,37 @@ describe('FileDropzoneComponent', () => {
       // type; the extension is what says it is an image.
       const shared = new File([''], 'photo.jpg', { type: 'application/octet-stream' });
       expect(component.isImageFile(shared)).toBeTrue();
+    });
+
+    it('takes a .json typed application/json', () => {
+      spyOn(component.filesSelected, 'emit');
+      const file = new File(['{}'], 'backup.json', { type: 'application/json' });
+
+      component.onFileSelect({ target: { files: [file], value: 'x' } } as unknown as Event);
+
+      expect(component.filesSelected.emit).toHaveBeenCalled();
+      expect(component.hasError()).toBeFalse();
+    });
+
+    it('takes a .json with a blank type on its extension', () => {
+      // A backup file dragged from Finder or a Files app share carries no
+      // MIME type at all; the extension has to carry the whole decision.
+      spyOn(component.filesSelected, 'emit');
+      const file = new File(['{}'], 'backup.json', { type: '' });
+
+      component.onFileSelect({ target: { files: [file], value: 'x' } } as unknown as Event);
+
+      expect(component.filesSelected.emit).toHaveBeenCalled();
+      expect(component.hasError()).toBeFalse();
+    });
+
+    it('still refuses a .txt', () => {
+      const file = new File(['hi'], 'notes.txt', { type: 'text/plain' });
+
+      component.onFileSelect({ target: { files: [file], value: 'x' } } as unknown as Event);
+
+      expect(component.hasError()).toBeTrue();
+      expect(component.errorMessage().endsWith('is not a supported file type')).toBeTrue();
     });
   });
 

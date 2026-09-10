@@ -2006,9 +2006,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // half a silent `.seconds` read used to get wrong in the other
       // direction.
       //
-      // The file is handed to onFilesSelected, the share hand-off's own
-      // entry: the dropzone's accepted types exclude JSON, so a backup never
-      // arrives through it.
+      // The picker takes a backup now, but this case still hands the file
+      // straight to onFilesSelected: whether the dropzone itself accepts a
+      // .json is that component's own spec's concern, not this one's.
       stubReceiptSeams();
 
       // No hand-off here, and the wizard reads whatever state stands.

@@ -71,7 +71,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   @ViewChild('stepper') stepper!: MatStepper;
 
-  acceptedFileTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp';
+  // JSON here is the backup door (importFromJSON) — the share sheet stays
+  // shorter (share-intake.service.ts) since a share is never where a backup
+  // comes from.
+  acceptedFileTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp,.json';
 
   // Flag to track if the review data arrived already extracted, via router
   // state, rather than through this wizard's own processFiles.

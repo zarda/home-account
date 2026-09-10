@@ -1010,7 +1010,7 @@
     "reviewStep": "Review",
     "confirmStep": "Import",
     "dropzoneTitle": "Drop files here or click to upload",
-    "dropzoneHint": "Supports CSV, PDF, and images",
+    "dropzoneHint": "Supports CSV, PDF, images, and JSON backups",
     "browseFiles": "Browse Files",
     "addMoreFiles": "Add more files",
     "preview": "Preview",

@@ -970,7 +970,7 @@
     "reviewStep": "確認",
     "confirmStep": "完了",
     "dropzoneTitle": "ファイルをドラッグ＆ドロップまたはクリックして選択",
-    "dropzoneHint": "CSV、PDF、画像に対応",
+    "dropzoneHint": "CSV、PDF、画像、JSON バックアップに対応",
     "browseFiles": "ファイルを選択",
     "addMoreFiles": "ファイルを追加",
     "preview": "プレビュー",

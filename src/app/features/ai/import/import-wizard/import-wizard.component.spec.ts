@@ -215,7 +215,7 @@ describe('ImportWizardComponent', () => {
     });
 
     it('should have accepted file types', () => {
-      expect(component.acceptedFileTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp');
+      expect(component.acceptedFileTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp,.json');
     });
   });
 
