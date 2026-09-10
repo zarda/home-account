@@ -122,8 +122,9 @@ The data hub's CSV path has no review step, so it takes no suggestions and
 carries no marks. The JSON backup is the one wizard door that takes none
 either: its rows already carry what the backup recorded — with one exception.
 A category the backup did **not** record is not carried; it is defaulted to
-the catch-all and graded 0.3 like every other door's default, so the chip's
-dot and the low-confidence tally see it
+the catch-all and graded 0.3, the grade 0045 gives a default nobody answered
+for — the shared mapper's, not the categorization ladder's own unanswered
+floor of 0.1 — so the chip's dot and the low-confidence tally see it
 ([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)).
 
 A mixed wizard batch is recorded as its dominant kind by row count (ties keep

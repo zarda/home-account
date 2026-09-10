@@ -432,9 +432,9 @@ listed, because nothing here converts.
 blank and flagged alike, unlike the other two. It asks nothing: **Deselect**
 is the reversible answer, on the same card and one tap away, so a
 confirmation would guard a mistake that already has a cheap remedy. What
-leaves with the row is everything keyed on its id bar the inert
-`receiptRowIds` entry (known gap, ADR 0108) — the card's editing state and
-drafts, the wizard's overrule, re-check stamp and duplicate verdict — and
+leaves with the row is everything keyed on its id — the card's editing state
+and drafts, the wizard's overrule, re-check stamp and duplicate verdict, and
+its entry in the receipt-row set (ADR 0108, amended for #400) — and
 a row whose within-batch *twin* was the one removed is re-checked, because a
 verdict naming a row that has gone is no verdict at all. Focus lands on the
 next row's Remove, the previous row's when this was the last, and the list's

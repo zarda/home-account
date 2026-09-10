@@ -87,7 +87,7 @@ verdict for a second attempt.
   what it protects — a reviewer editing rows that are being written — was
   never only about the numbering.
 - **`firestore.rules` is unchanged.** `importOptionalsValid` accepts any list
-  under `errors` (`firestore.rules:528`), so a new field on the entries needs
+  under `errors` (`firestore.rules:529`), so a new field on the entries needs
   no deploy and this wave ships no rules change.
 - **0060's boundary was checked and is intact.** A row whose *photos* failed —
   a quota refusal or an upload failure — is retried bare inside the per-row

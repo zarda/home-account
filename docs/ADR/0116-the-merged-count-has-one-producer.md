@@ -6,10 +6,11 @@ No reference document owns the figure. The card mechanics that write the flag
 it counts are in [../receipt-import.md](../receipt-import.md), under
 *Splitting, merging and removing on the card*.
 
-Applies [0048](0048-a-dead-capability-is-removed-not-guarded.md). It closes
-the known gap [0111](0111-the-position-overlap-pass-is-removed.md) named —
-"three producers for one number, which is #392's subject and not this
-record's" — and the one
+Applies [0048](0048-a-dead-capability-is-removed-not-guarded.md). It records
+#392 and removes the fourth figure the gap
+[0111](0111-the-position-overlap-pass-is-removed.md) named — "three producers
+for one number" — leaving those three writers into `imageMetadata.wasMerged`
+standing (see *Known gaps*); it closes the one
 [0106](0106-the-review-step-splits-a-row-and-merges-two.md) left beside it:
 "the survivor says *1 item merged* where the extraction result's `itemsMerged`
 says 0".

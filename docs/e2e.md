@@ -68,7 +68,7 @@ scanned row's extras and the category chip's own stylesheet:
 `getComputedStyle(document.querySelector('.category-button')).minInlineSize === '0px'`,
 where the flat `min-width: auto` it replaced reads `auto`. For the import
 honesty surfaces it is the dropzone's fourth file-type chip, the backup icon
-over the word **JSON**, and the list its hidden input enforces:
+beside the word **JSON**, and the list its hidden input enforces:
 `document.querySelector('app-file-dropzone input[type=file]').accept` ends in
 `.json`, where `1c0f3d2`'s ends in `.webp`. For another branch it is whatever
 that branch added. A stale `.angular/cache`, or a server started before the
@@ -119,10 +119,11 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full window,
 and a pane behaves differently enough to cost a run before it is understood.
-None of these is a property of the app; six of the eight have produced a
-false failure, the seventh stops a run before it starts, and the last is a
-door nothing in a pane opens — its only control on the page is a switch with
-a write behind it.
+None of these is a property of the app bar the seventh, which is the app's
+own timing; six of the nine have produced a false failure, the seventh cost a
+run a second provider call, the eighth stops a run before it starts, and the
+last is a door nothing in a pane opens — its only control on the page is a switch
+with a write behind it.
 
 - **Pointer input can stall under viewport emulation, and stay stalled.** With
   an emulated width in force, clicks stop landing and go on not landing until
@@ -168,6 +169,13 @@ a write behind it.
   to a third-party host and can be missing from the log entirely, so its
   absence proves nothing. The translated text on screen is the proof the
   provider answered.
+- **The wizard's back arrow navigates asynchronously.** The click returns
+  before the route has changed, so a file handed to the dropzone's input in
+  the same breath goes to the wizard the run thought it had left and joins
+  that batch. In run 1 that cost a second real provider call on the account —
+  the one thing *What a run may touch* exists to account for. Read
+  `location.pathname` and wait for it to change before handing the next file
+  over.
 - **A pane may have no way to open a file.** The import journeys start by
   handing the wizard a receipt, and a pane with no file picker cannot open
   one — the dropzone's own click leads nowhere. Hand the file to the
@@ -360,9 +368,10 @@ three rows go through the duplicate check against real history, and a match
 would deselect the row it hit and could leave the step with nothing
 selected.
 
-Fetch it and put it on the same hidden input the PNG goes on. The picker
-takes `.json` since this wave, so the backup enters by the door every other
-fixture uses:
+Fetch it and put it on the same hidden input the PNG goes on. The picker takes
+`.json` since
+[ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md),
+so the backup enters by the door every other fixture uses:
 
 ```js
 const blob = await (await fetch('http://127.0.0.1:8123/backup.json')).blob();
@@ -413,7 +422,7 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 10 | Review at phone width | The review card at 390px with a question standing and an editor open | `10-review-phone.png` |
 | 11 | Review: a tag and a location | The browser's own suggestion list behind the tag field, and the country menu over a real receipt's address | `11-tag-added.png`, `11-country-menu.png` |
 | 12 | Review: a row added by hand | A blank card arriving under a real pointer with the caret already in it, and Continue held until it is filled | `12-row-added.png` |
-| 13 | Review: a backup row without a date | A restored backup going in through the picker that takes one since this wave, and the date question its dateless row raises | `13-backup-date.png` |
+| 13 | Review: a backup row without a date | A restored backup going in through the picker that takes one since ADR 0113, and the date question its dateless row raises | `13-backup-date.png` |
 | 14 | Reminders through the worker | A real registration raising a real OS notification, and the permission state the pane reports | `14-worker-notification.png` |
 | 15 | Review: split and merge | Two cards born under a real pointer from one, both wearing the receipt badge, and the merge menu folding one back | `15-split-parts.png`, `15-merge-menu.png` |
 | 16 | Review: a row removed | A card leaving under a real pointer, focus landing on its neighbour, and the empty review step with Continue held | `16-row-removed.png`, `16-empty-review.png` |
@@ -622,12 +631,16 @@ the act of opening one.
   the two places the yen does not. Type `12.34` into the amount → *-$12.34* →
   the menu again → **JPY** → *-¥12*. The figure follows the currency it is
   stored in, and a switch rounds it to what the new one holds rather than
-  converting it — nothing on this card converts anything. Type `538` back
+  converting it — nothing on this card converts anything. A switch that moves
+  the amount — `12.34` to `¥12` here — sends the row back through the
+  duplicate check on the same rule an amount edit follows; a switch between
+  figures already whole in both currencies fires nothing. Type `538` back
   before leaving, so journey 15 finds the printed total on the row it splits.
 
 An edit to the date, amount, type or description sends that row back through
-the duplicate check. A verdict of *Duplicate* deselects the row and the
-badge's × (*Not a duplicate — import it*) overrules it; a re-check that cannot
+the duplicate check, and so does a currency switch that moves the amount. A
+verdict of *Duplicate* deselects the row and the badge's × (*Not a duplicate
+— import it*) overrules it; a re-check that cannot
 reach history says so once, in a snackbar — *Couldn't re-check for duplicates
 — the earlier verdict stands.* Neither is guaranteed with a one-receipt
 fixture against a real account: they are what to recognise if they appear, not
@@ -792,9 +805,11 @@ One shot: the added card filled, with the hint gone.
 
 Open the wizard as journey 8 does — the Add menu's **Import photos**, or
 `/import/file` typed in. This journey's file is a `.json` backup, which the
-picker takes since this wave — the share sheet still does not — so it goes
+picker takes since
+[ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)
+— the share sheet still takes images, PDF and CSV only — so it goes
 in through the hidden input like every other file, the recipe and the rows
-under [Fixtures](#fixtures). The zone shows it the way it shows a receipt:
+under [Fixtures](#fixtures). The zone shows it the way it shows a CSV:
 the file's name, its size, the `backup` icon and the label *JSON*. There is
 no *What are these images?* question, because nothing here is an image, and
 **Process with AI** enables.
@@ -991,8 +1006,10 @@ images?* question, because nothing here is an image.
 **Process with AI** → the processing step. The parse is local, and then the
 ladder asks the configured provider to categorize the two descriptions the
 category memory does not know — one real call under the account's own key,
-the row [What a run may touch](#what-a-run-may-touch) records — before the
-duplicate check reads history → **Continue** → Review.
+and, where the account's grounding is on and it has a tag vocabulary to
+offer, a second for tag suggestions: both are named by the row
+[What a run may touch](#what-a-run-may-touch) records — before the duplicate
+check reads history → **Continue** → Review.
 
 The yen row reads *-¥179* and the cent row *-$4.13*. The file says `179.33`
 and `4.126`; what the card shows is what each currency can hold, rounded
@@ -1002,7 +1019,7 @@ Neither row is asked a date question: nobody graded these dates, so *Mar 15,
 2026* stands on both with the plain calendar glyph, and Continue is held by
 nothing. Whatever category the provider picked is not part of the pass — it
 is a real answer to a real description, and it is allowed to be anything.
-Both rows carry **Split** in their extras, each being worth more than two of
+Both rows carry **Split** in their extras, each being worth at least two of
 its own minor units (journey 15's floor); neither carries **Merge into…**,
 since the two are in different currencies and nothing here converts.
 

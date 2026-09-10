@@ -20,13 +20,13 @@ its whole duration."
 That is the whole defect, and both halves of it were on the wizard.
 `importProgress` was written exactly once — reset to 0 at the top of the
 wizard's `confirmImport`, and never again; `importStatus` was declared and
-never assigned at all. Meanwhile `confirmImport` on
-the service walked the selected rows setting `processingProgress` to a real
-percentage on each pass and `processingStatus` to `Importing ${i + 1} of
-${total}...` — figures nobody was bound to, on the one screen built to show
-them. So a write that takes as long as it takes, behind a stepper that
-deliberately refuses every way out of it (0103's seal), reported nothing at
-all.
+never assigned at all. Meanwhile `confirmImport` on the service walked the
+selected rows setting `processingProgress` to a real percentage on each pass
+and `processingStatus` to `Importing ${i + 1} of
+${selectedTransactions.length}...` — figures nobody was bound to, on the one
+screen built to show them. So a write that takes as long as it takes, behind a
+stepper that deliberately refuses every way out of it (0103's seal), reported
+nothing at all.
 
 The service's own status string could not simply be bound. It is English
 assembled in a service, and a string the user reads lives in the catalogs

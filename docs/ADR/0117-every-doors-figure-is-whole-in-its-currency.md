@@ -6,8 +6,9 @@ Reference documentation lives in [../import-fields.md](../import-fields.md)
 and [../receipt-import.md](../receipt-import.md).
 
 Extends [0109](0109-a-hand-typed-amount-is-whole-in-its-currency.md) and
-closes both of its known gaps — "`updateCurrency` does not re-round" and "the
-doors still write unrounded figures".
+closes the two gaps it filed as follow-ups — "`updateCurrency` does not
+re-round" and "the doors still write unrounded figures". The other two 0109
+listed stand, and are restated below.
 
 ## Context
 
@@ -138,10 +139,6 @@ count on the confirm summary.
   NaN, because `roundToMinorUnit` ends in `|| 0`. Strictly better — the rules
   refuse both — and the Continue gate already counts a non-positive amount as
   unfilled.
-
-## Departures from the issues
-
-None. #401 and #399 are implemented as they were drafted.
 
 ## Things that only became apparent while building
 

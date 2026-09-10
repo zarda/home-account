@@ -71,7 +71,8 @@ Because the extension is lower-cased before the comparison, a file named
 `backup.JSON` is accepted; and a file the OS types `text/json` is accepted
 too, since the extension matched before the type was ever consulted. The MIME
 map's entry is the narrower half: it lists `application/json` alone, so a JSON
-backup carrying some other extension is refused.
+backup carrying some other extension gets through only when the OS types it
+exactly `application/json`; typed `text/json`, or untyped, it is refused.
 
 ### The share sheet does not, and the comment beside it says why
 
@@ -172,6 +173,15 @@ than written into `suggestedCategoryId` as whatever it is.
   the generic icon — `categoryName` falls back when the id matches nothing —
   wearing a high-confidence dot, and the reviewer has to notice and pick
   again.
+- **A row through this door loses more than its id.** `ImportRowFields` has no
+  `goalId`, so no import door carries a goal link or its figure; the door
+  copies `isRecurring` but not `recurringId`, so a restored row can be flagged
+  recurring with no rule behind it; and the confirm step calls
+  `addTransaction` with no `snapshot` and no `createdAt`, so the figure is
+  re-converted at today's rate and the row is stamped today. `/data` passes
+  all four from the file. Named here and in
+  [../backup-restore.md](../backup-restore.md) because the picker invites a
+  user to treat this as a restore.
 - **The door still validates nothing past the array.** A row missing every
   field becomes `Unknown` at 0 with today's date, which the Continue gate
   holds and the reviewer must fix or deselect; a `transactions` key holding

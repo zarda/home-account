@@ -110,8 +110,9 @@ deletion cannot half-land.
   copies whatever the reader said into the row's `imageMetadata`, and the
   wizard's *Items merged* count reads that field alongside consolidation's
   and the merge's own writes — three producers for one number, which is
-  #392's subject and not this record's. Closed by
-  [ADR 0116](0116-the-merged-count-has-one-producer.md), #392.
+  #392's subject and not this record's. Narrowed by
+  [ADR 0116](0116-the-merged-count-has-one-producer.md), #392, which removed
+  the fourth figure; the three writers into `imageMetadata.wasMerged` stand.
 - **Nothing checks cross-photo duplicates beyond consolidation.** Two photos
   of the same receipt that the reader does not group under one `receiptId`
   produce two rows, and only the within-batch pass — same type, amount, day
