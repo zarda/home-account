@@ -1976,6 +1976,26 @@ describe('AIImportService', () => {
       expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
     });
 
+    it('treats a non-string category id as absent', async () => {
+      // A hand-edited or half-migrated backup can hold anything here. The
+      // typeof guard is what keeps a number or a null out of the id slot,
+      // where it would be written as the row's category.
+      const backup = {
+        transactions: [
+          { description: 'Numeric', amount: -5, type: 'expense', categoryId: 42 },
+          { description: 'Null', amount: -6, type: 'expense', categoryId: null }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.map(t => t.suggestedCategoryId))
+        .toEqual(['other_expense', 'other_expense']);
+      expect(result.transactions.map(t => t.categoryConfidence))
+        .toEqual([UNRESOLVED_CATEGORY_CONFIDENCE, UNRESOLVED_CATEGORY_CONFIDENCE]);
+    });
+
     it('keeps the full grade on a category the backup named', async () => {
       const backup = {
         transactions: [

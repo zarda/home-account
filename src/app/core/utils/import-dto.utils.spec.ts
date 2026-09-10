@@ -123,6 +123,16 @@ describe('toCreateTransactionDTO', () => {
 
     expect(dto.amount).toBe(13);
   });
+
+  it('folds a NaN amount to 0 rather than writing NaN', () => {
+    // `roundToMinorUnit`'s trailing `|| 0` is what folds it, and the mapper
+    // inherited that when it started rounding. addTransaction refuses both
+    // readings alike (`Number.isFinite` then `<= 0`), so what this pins is
+    // the shape of the figure that leaves the mapper, not the refusal.
+    const dto = toCreateTransactionDTO({ amount: Number.NaN, date }, 'USD');
+
+    expect(dto.amount).toBe(0);
+  });
 });
 
 describe('resolveImportCurrency', () => {

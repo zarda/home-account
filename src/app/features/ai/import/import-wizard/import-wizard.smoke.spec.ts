@@ -2059,7 +2059,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(rows[0].description).toBe('Rent');
       expect(rows[1].description).toBe('Deposit');
 
-      // Neither row names a categoryId, so both are the defaulted category --
+      // Neither row names a categoryId, so both are the defaulted category —
       // graded the way every other door grades a default, which is what puts
       // the low-confidence dot on the chip instead of the shine a backup's
       // own category earns.
@@ -2685,6 +2685,12 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       // Material binds aria-valuenow to value in determinate mode, so the
       // attribute is the bar's own figure rather than a class the test picked.
+      //
+      // Karma loads no catalog, so the line's second reading is the bare key
+      // on both sides of the comparison: what this pins is which key the
+      // confirm step renders and that the line is on screen while the write
+      // runs, never the interpolated sentence. The placeholders inside it are
+      // translation-keys.spec.ts's to guard.
       expect(readings).toEqual([
         ['50', translation.t('import.importingRow', { done: 1, total: 2 })],
         ['100', translation.t('import.importingRow', { done: 2, total: 2 })]
@@ -2844,10 +2850,10 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       const card = host.querySelector<HTMLElement>('.transaction-card')!;
       expect(component.extractedTransactions()[0].amount).toBe(559);
       const amountText = card.querySelector('.amount-text')?.textContent ?? '';
+      // The model figure above is the discriminator: JPY formats with no
+      // decimals, so the card would read ¥559 over an unrounded 559.4 too —
+      // the currency's own formatting never exposes a sub-unit reading.
       expect(amountText).toContain('559');
-      expect(amountText)
-        .withContext('the reading behind the row never reaches a screen')
-        .not.toContain('559.4');
       expect(card.querySelector('.split-trigger'))
         .withContext('the rounded figure clears the two-minor-unit floor')
         .not.toBeNull();

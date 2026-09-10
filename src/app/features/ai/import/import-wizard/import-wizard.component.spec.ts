@@ -219,7 +219,10 @@ describe('ImportWizardComponent', () => {
       expect(component.acceptedFileTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp,.json');
     });
 
-    it("renders the write's progress from the service's own signals", () => {
+    it("takes the write's progress from the service's own signals", () => {
+      // Identity is all this file can show: its template is the stub above.
+      // The confirm step actually rendering these is the emulator case in
+      // import-wizard.smoke.spec.ts.
       expect(component.processingRow).toBe(mockImportService.processingRow);
       expect(component.processingProgress).toBe(mockImportService.processingProgress);
     });

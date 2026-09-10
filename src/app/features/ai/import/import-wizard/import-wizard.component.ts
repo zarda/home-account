@@ -829,14 +829,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const batch = this.batchDescriptor();
-      // The record names its failed rows by id, so matching `result.errors`
-      // back onto rows is a lookup, not a re-run of the service's own
-      // "selected" filter. The seal keeps the list unchanged during the
-      // write: every step is [editable]="!isImporting()", and the CDK
-      // stepper refuses a move back onto a step that is not editable, so
-      // the review UI cannot be reached and edited while the write is in
-      // flight — `extractedTransactions()` read after the await is still
-      // the set that was submitted.
+      // The seal keeps the list unchanged during the write: every step is
+      // [editable]="!isImporting()", and the CDK stepper refuses a move back
+      // onto a step that is not editable, so the review UI cannot be reached
+      // and edited while the write is in flight — `extractedTransactions()`
+      // read after the await is still the set that was submitted.
       // The receipt attempt's provenance rides the record for image batches;
       // a CSV-only batch has none, and an absent slot means nobody looked.
       const diagnostics = this.fromCamera
@@ -880,7 +877,13 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // report success, leaving the user's reconciliation silently short.
         // Keep exactly the failed rows on the review step for correction and
         // a second confirm — the saved ones are removed so confirming again
-        // cannot double-import them.
+        // cannot double-import them, and the rows the reviewer deselected,
+        // which were never submitted, go with them: the list is rebuilt from
+        // the failed ids alone and holds nothing else.
+        //
+        // The record names its failed rows by id, so matching `result.errors`
+        // back onto rows is a lookup, not a re-run of the service's own
+        // "selected" filter.
         const failedIds = new Set(
           (result.errors ?? []).map(e => e.transactionId).filter((id): id is string => !!id)
         );
