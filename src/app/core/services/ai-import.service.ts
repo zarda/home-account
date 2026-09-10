@@ -1074,6 +1074,7 @@ export class AIImportService {
           // `.seconds` here by hand was what left that row silently dated
           // today, and a `date` of any other shape an Invalid Date.
           const resolved = resolveImportDate(t['date']);
+          const categoryId = typeof t['categoryId'] === 'string' && t['categoryId'] ? t['categoryId'] : undefined;
           return {
             id: nextImportRowId('json'),
             description: t['description'] as string || 'Unknown',
@@ -1081,8 +1082,12 @@ export class AIImportService {
             ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
             date: resolved.date,
             type: (t['type'] as 'income' | 'expense') || 'expense',
-            suggestedCategoryId: (t['categoryId'] as string) || 'other_expense',
-            categoryConfidence: 1.0, // From backup, category is known
+            // A category the backup named is the reviewer's earlier pick and
+            // keeps the full grade; a row that had none is defaulted and
+            // graded the way every door grades a default (0045), so the
+            // chip's dot and the low_confidence tally see it.
+            suggestedCategoryId: categoryId ?? FALLBACK_CATEGORY_ID,
+            categoryConfidence: categoryId ? 1.0 : UNRESOLVED_CATEGORY_CONFIDENCE,
             isDuplicate: false,
             selected: true,
             // A backup row carries what its transaction held; anything absent

@@ -1904,6 +1904,8 @@ describe('AIImportService', () => {
       expect(result.transactions[0].amount).toBe(5000);
       expect(result.transactions[1].amount).toBe(1200);
       expect(result.transactions[1].suggestedCategoryId).toBe('other_expense');
+      expect(result.transactions[0].categoryConfidence).toBe(1);
+      expect(result.transactions[1].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
       // The stored Timestamp a stringified backup carries, read as the instant
       // it names and left unmarked; the row that carries no date at all lands
       // on today wearing the mark that lets the card ask about it.
@@ -1911,6 +1913,38 @@ describe('AIImportService', () => {
       expect('dateAssumed' in result.transactions[0]).toBeFalse();
       expect(datedToday(result.transactions[1].date)).toBeTrue();
       expect(result.transactions[1].dateAssumed).toBeTrue();
+      expect(result.warnings.some(w => w.type === 'low_confidence'))
+        .withContext('the defaulted row is counted')
+        .toBeTrue();
+    });
+
+    it('grades an empty category id as a default, not as the backup\'s own', async () => {
+      const backup = {
+        transactions: [
+          { description: 'Blank', amount: -5, type: 'expense', categoryId: '' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('other_expense');
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('keeps the full grade on a category the backup named', async () => {
+      const backup = {
+        transactions: [
+          { description: 'Groceries', amount: -5, type: 'expense', categoryId: 'food' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('food');
+      expect(result.transactions[0].categoryConfidence).toBe(1);
+      expect(result.warnings.some(w => w.type === 'low_confidence')).toBeFalse();
     });
 
     it('resolves a backup date the way every other import door does', async () => {

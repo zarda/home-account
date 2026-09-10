@@ -2058,6 +2058,17 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(rows[0].description).toBe('Rent');
       expect(rows[1].description).toBe('Deposit');
 
+      // Neither row names a categoryId, so both are the defaulted category --
+      // graded the way every other door grades a default, which is what puts
+      // the low-confidence dot on the chip instead of the shine a backup's
+      // own category earns.
+      expect(cards[0].querySelector('.confidence-dot.low-confidence'))
+        .withContext('Rent carries no categoryId')
+        .not.toBeNull();
+      expect(cards[1].querySelector('.confidence-dot.low-confidence'))
+        .withContext('Deposit carries no categoryId')
+        .not.toBeNull();
+
       expect(rows[0].dateAssumed).toBeUndefined();
       expect(dayKey(rows[0].date)).toBe(dayKey(printed));
       expect(cards[0].querySelector('.extra-chip.date-check'))
