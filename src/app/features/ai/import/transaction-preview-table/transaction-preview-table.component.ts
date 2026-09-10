@@ -298,6 +298,13 @@ export class TransactionPreviewTableComponent {
     return eligible;
   }
 
+  /**
+   * The figure follows the currency it is stored in — ADR 0109's rule,
+   * applied here to a change of currency rather than of figure. A figure
+   * that rounds to nothing leaves the row unfilled, which the placeholder
+   * and the Continue gate already say; unlike the typed amount, the chip
+   * has no editor to hold open, so there is nothing to refuse into.
+   */
   updateCurrency(transaction: CategorizedImportTransaction, code: string): void {
     // Chosen by the user, so whatever the source failed to read no longer
     // applies — and a choice made for a fallen-back row is worth remembering
@@ -306,7 +313,12 @@ export class TransactionPreviewTableComponent {
     if (this.recordFellBackEligibility(transaction)) {
       this.currencySession.remember(code);
     }
-    this.replaceRow(transaction, { currency: code, currencyFellBack: false, currencySuggestion: undefined });
+    this.replaceRow(transaction, {
+      currency: code,
+      amount: roundToMinorUnit(transaction.amount, code),
+      currencyFellBack: false,
+      currencySuggestion: undefined,
+    });
   }
 
   /**
@@ -317,6 +329,9 @@ export class TransactionPreviewTableComponent {
    * there. Gated the same way the per-row edit is, on eligibility rather
    * than the live marker, so a row already settled by hand earlier this
    * session still counts here.
+   *
+   * Rounds each row's amount the same way `updateCurrency` does, and for
+   * the same reason — see its comment.
    */
   applyCurrencyToSelected(code: string): void {
     const selected = this.transactions.filter(t => t.selected);
@@ -331,7 +346,15 @@ export class TransactionPreviewTableComponent {
       this.currencySession.remember(code);
     }
     this.transactions = this.transactions.map(t =>
-      t.selected ? { ...t, currency: code, currencyFellBack: false, currencySuggestion: undefined } : t
+      t.selected
+        ? {
+            ...t,
+            currency: code,
+            amount: roundToMinorUnit(t.amount, code),
+            currencyFellBack: false,
+            currencySuggestion: undefined,
+          }
+        : t
     );
     this.emitChanges();
   }

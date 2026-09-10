@@ -720,6 +720,49 @@ describe('TransactionPreviewTableComponent', () => {
 
       expect(currencySession.remember).toHaveBeenCalledWith('KRW');
     });
+
+    it('rounds the amount to the new currency\'s unit', () => {
+      const usd = makeRow({ currency: 'USD', amount: 12.34 });
+      component.transactions = [usd];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.updateCurrency(usd, 'JPY');
+      expect(emitted[0][0].amount).toBe(12);
+
+      component.updateCurrency(emitted[0][0], 'USD');
+      expect(emitted[1][0].amount).toBe(12); // rounding never restores what it dropped
+
+      component.transactions = [makeRow({ currency: 'JPY', amount: 12 })];
+      component.updateCurrency(component.transactions[0], 'KWD');
+      expect(emitted[2][0].amount).toBe(12);
+    });
+
+    it('rounds every selected row to the unit it is switched to', () => {
+      component.transactions = [
+        makeRow({ id: 'a', currency: 'USD', amount: 12.34, selected: true }),
+        makeRow({ id: 'b', currency: 'USD', amount: 0.5, selected: true }),
+        makeRow({ id: 'c', currency: 'USD', amount: 12.34, selected: false }),
+      ];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(emitted[0].map(t => t.amount)).toEqual([12, 1, 12.34]);
+    });
+
+    it('a figure that rounds to nothing leaves the row unfilled', () => {
+      const row = makeRow({ currency: 'USD', amount: 0.4 });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.updateCurrency(row, 'JPY');
+
+      expect(emitted[0][0].amount).toBe(0);
+      expect(component.amountIsUnfilled(emitted[0][0])).toBeTrue();
+    });
   });
 
   describe('suggested fields', () => {
@@ -806,6 +849,17 @@ describe('TransactionPreviewTableComponent', () => {
       expect(emitted[0][0].currencySuggestion).toBeUndefined();
       expect(currencySession.remember).toHaveBeenCalledWith('KRW');
       expect(row.currency).toBe('USD'); // the input object is untouched
+    });
+
+    it('rounds the amount when the offer is accepted', () => {
+      const row = makeRow({ currency: 'USD', amount: 12.34, currencySuggestion: offer });
+      component.transactions = [row];
+      const emitted: CategorizedImportTransaction[][] = [];
+      component.transactionsUpdated.subscribe(t => emitted.push(t));
+
+      component.acceptCurrencySuggestion(row);
+
+      expect(emitted[0][0].amount).toBe(12);
     });
 
     it('dismissing drops the offer and nothing else — ADR 0062: offered, never applied', () => {
