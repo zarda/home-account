@@ -1316,6 +1316,7 @@ export class AIImportService {
           errorCount++;
           errors.push({
             row: i + 1,
+            transactionId: txn.id,
             message: error instanceof Error ? error.message : 'Unknown error',
             originalValue: txn.description
           });

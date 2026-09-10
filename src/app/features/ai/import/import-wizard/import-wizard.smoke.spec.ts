@@ -1971,7 +1971,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         totalIncome: 0,
         totalExpenses: 0,
         status: 'partial',
-        errors: [{ row: 1, message: 'refused' }],
+        // row is wrong on purpose: the wizard matches by transactionId.
+        errors: [{ row: 99, transactionId: component.extractedTransactions()[0].id, message: 'refused' }],
         duplicatesSkipped: 0
       });
 

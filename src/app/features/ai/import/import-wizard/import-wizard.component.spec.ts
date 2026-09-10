@@ -506,7 +506,8 @@ describe('ImportWizardComponent', () => {
         transactionCount: 2, successCount: 1, skippedCount: 0, errorCount: 1,
         totalIncome: 0, totalExpenses: 5, duplicatesSkipped: 0,
         status: 'partial' as const,
-        errors: [{ row: 2, message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        // row is wrong on purpose: the wizard reads transactionId, not position.
+        errors: [{ row: 99, transactionId: 'failed', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();
@@ -1115,9 +1116,9 @@ describe('ImportWizardComponent', () => {
       const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({
         ...mockTransactions[0], id, selected, isDuplicate,
       });
-      // An unselected duplicate sits between selected rows: the service
-      // numbers its errors against the selected subset only, so mapping
-      // row 2 must land on `b`, not on the duplicate.
+      // An unselected duplicate still sits between selected rows, but the
+      // match is now by id: row is planted wrong (99) to prove the wizard
+      // isn't reading position — only transactionId 'b' can land it on `b`.
       component.extractedTransactions.set([
         row('a', true), row('dup', false, true), row('b', true), row('c', true),
       ]);
@@ -1128,7 +1129,7 @@ describe('ImportWizardComponent', () => {
         transactionCount: 3, successCount: 2, skippedCount: 1, errorCount: 1,
         totalIncome: 0, totalExpenses: 10, duplicatesSkipped: 1,
         status: 'partial' as const,
-        errors: [{ row: 2, message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        errors: [{ row: 99, transactionId: 'b', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();

@@ -814,13 +814,14 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
     try {
       const batch = this.batchDescriptor();
-      // The service iterates the selected subset and numbers its per-row
-      // errors against it (1-based); snapshot the same subset now so those
-      // numbers can be mapped back to rows. Safe to take before the await:
-      // every step is [editable]="!isImporting()", and the CDK stepper
-      // refuses a move back onto a step that is not editable, so the review
-      // UI cannot be reached and edited while the write is in flight.
-      const submitted = this.extractedTransactions().filter(t => t.selected);
+      // The record names its failed rows by id, so matching `result.errors`
+      // back onto rows is a lookup, not a re-run of the service's own
+      // "selected" filter. The seal keeps the list unchanged during the
+      // write: every step is [editable]="!isImporting()", and the CDK
+      // stepper refuses a move back onto a step that is not editable, so
+      // the review UI cannot be reached and edited while the write is in
+      // flight — `extractedTransactions()` read after the await is still
+      // the set that was submitted.
       // The receipt attempt's provenance rides the record for image batches;
       // a CSV-only batch has none, and an absent slot means nobody looked.
       const diagnostics = this.fromCamera
@@ -865,9 +866,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // Keep exactly the failed rows on the review step for correction and
         // a second confirm — the saved ones are removed so confirming again
         // cannot double-import them.
-        const failedRows = (result.errors ?? [])
-          .map(e => (typeof e.row === 'number' ? submitted[e.row - 1] : undefined))
-          .filter((t): t is CategorizedImportTransaction => t !== undefined)
+        const failedIds = new Set(
+          (result.errors ?? []).map(e => e.transactionId).filter((id): id is string => !!id)
+        );
+        const failedRows = this.extractedTransactions()
+          .filter(t => failedIds.has(t.id))
           .map(t => ({ ...t, selected: true, isDuplicate: false }));
 
         this.extractedTransactions.set(failedRows);

@@ -81,6 +81,13 @@ export type ImportProvenance = Pick<
 
 export interface ImportError {
   row?: number;
+  /**
+   * The review row's id at the time of the write, which the wizard
+   * re-offers by. `row` is kept for records already written before this
+   * field existed, and for the history list, which renders the message
+   * alone.
+   */
+  transactionId?: string;
   field?: string;
   message: string;
   originalValue?: string;

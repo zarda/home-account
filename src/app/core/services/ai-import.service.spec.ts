@@ -2463,6 +2463,7 @@ describe('AIImportService', () => {
       expect(stats.errorCount).toBe(1);
       expect(stats.successCount).toBe(1);
       expect(stats.errors?.length).toBe(1);
+      expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({ row: 1, transactionId: 'a' }));
     });
 
     it('should coerce string and invalid dates to valid Date objects', async () => {
