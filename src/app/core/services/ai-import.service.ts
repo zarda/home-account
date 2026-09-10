@@ -544,7 +544,6 @@ export class AIImportService {
         files,
         markedTransactions,
         duplicates,
-        extractedTransactions,
         answerIncomplete
       );
       result.diagnostics = this.cloudDiagnostics(startedAt, provider);
@@ -823,7 +822,6 @@ export class AIImportService {
     files: File[],
     transactions: CategorizedImportTransaction[],
     duplicates: DuplicateCheck[],
-    extractedTransactions: MultiImageExtractedTransaction[],
     answerIncomplete = false
   ): ImportResult {
     const warnings: ImportWarning[] = [];
@@ -864,9 +862,6 @@ export class AIImportService {
       ? transactions.reduce((sum, t) => sum + t.categoryConfidence, 0) / transactions.length
       : 0;
 
-    // Count merged items
-    const mergedCount = extractedTransactions.filter(t => t.wasMerged).length;
-
     // Calculate total file size
     const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
 
@@ -887,7 +882,6 @@ export class AIImportService {
       sourceFiles: files,
       multiImageMetadata: {
         totalImages: files.length,
-        itemsMerged: mergedCount,
         deduplicationMethod: 'ai',
         imageIds: files.map((_, i) => `image_${i}`)
       }
