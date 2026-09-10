@@ -607,6 +607,28 @@ describe('AIImportService', () => {
       expect('dateAssumed' in row).toBeFalse();
       expect(row.fieldConfidence?.date).toBe(0.9);
     });
+
+    it('rounds the figure to the row\'s own currency', () => {
+      const [row] = service.convertStrategyResultToCategories(processed([
+        { amount: 538.4, currency: 'JPY' },
+      ]));
+
+      expect(row.amount).toBe(538);
+    });
+
+    it('shows a negative reading as its absolute, with the row\'s type kept', () => {
+      // The write flipped the sign anyway; the card now shows the figure the
+      // ledger will hold. Type is income here, opposite of what a
+      // sign-derived type would call it, so the assertion below only passes
+      // if the row's own type survives rather than being recomputed from
+      // the (now-positive) sign.
+      const [row] = service.convertStrategyResultToCategories(processed([
+        { amount: -12.5, currency: 'USD', type: 'income' },
+      ]));
+
+      expect(row.amount).toBe(12.5);
+      expect(row.type).toBe('income');
+    });
   });
 
   describe('remembered categories', () => {
@@ -1351,8 +1373,30 @@ describe('AIImportService', () => {
       ]);
 
       expect(result.transactions.length).toBe(1);
-      expect(result.transactions[0].amount).toBe(330.9);
+      // Consolidation prefers the printed total and rounds nothing itself;
+      // the builder is what makes the figure whole.
+      expect(result.transactions[0].amount)
+        .withContext('the door rounds the reported total to whole yen')
+        .toBe(331);
       expect(result.transactions[0].fieldConfidence).toBeUndefined();
+    });
+
+    it('rounds a summed receipt to whole yen', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100.4, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+        { date: '2024-06-01', description: 'Item B', amount: 200.4, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'bottom', confidence: 0.7, receiptId: 1 }
+      ]));
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      // With no printed total to prefer, consolidation sums the items and
+      // leaves 300.8 alone; a yen row has nowhere to keep the fraction.
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].amount).toBe(301);
     });
 
     it('keeps a lone item\'s own merged flag through consolidation', async () => {
@@ -2034,6 +2078,20 @@ describe('AIImportService', () => {
         expect('location' in row).toBeFalse();
       }
     });
+
+    it('rounds a backup figure to the currency the row carries', async () => {
+      const backup = {
+        transactions: [
+          { description: 'Coffee', amount: -12.345, currency: 'USD', type: 'expense',
+            date: { seconds: 1700000000 } }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].amount).toBe(12.35);
+    });
   });
 
   describe('categorizeTransactions', () => {
@@ -2216,6 +2274,18 @@ describe('AIImportService', () => {
 
       expect(result[0].currency).toBe('EUR');
       expect('currencyFellBack' in result[0]).toBeFalse();
+    });
+
+    it('rounds each figure to its own row\'s currency', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2026-01-01', description: 'Konbini', amount: 179.33, type: 'expense', currency: 'JPY' },
+        { date: '2026-01-01', description: 'Coffee', amount: 4.126, type: 'expense', currency: 'USD' }
+      ]);
+
+      // A yen row holds no fraction and a dollar row holds two places, so
+      // the same door writes two different roundings.
+      expect(result[0].amount).toBe(179);
+      expect(result[1].amount).toBe(4.13);
     });
   });
 

@@ -1,4 +1,4 @@
-import { BudgetPeriod, CreateTransactionDTO, TransactionLocation, VERIFY_FIELD_THRESHOLD } from '../../models';
+import { BudgetPeriod, CreateTransactionDTO, roundToMinorUnit, TransactionLocation, VERIFY_FIELD_THRESHOLD } from '../../models';
 import { FALLBACK_CATEGORY_ID } from './categorization.utils';
 import { parseDateInput } from './transaction-date.utils';
 
@@ -50,6 +50,24 @@ export function resolveImportCurrency(
   baseCurrency: string
 ): { currency: string; currencyFellBack?: true } {
   return read ? { currency: read } : { currency: baseCurrency, currencyFellBack: true };
+}
+
+/**
+ * The one figure a door writes: absolute, and whole in the currency the row
+ * carries.
+ *
+ * Rounding used to live only on the review side, so a yen amount a reader
+ * reported as 179.33 stayed fractional on the card, in the ledger and in
+ * every total built off it while the screen rendered ¥179. It is called
+ * where a row is built, so the card, the duplicate check and the split
+ * trigger all read the figure that will be stored, and again in
+ * `toCreateTransactionDTO`, so a row that reached the write with no builder
+ * behind it — the offline drain — is whole too. Calling it twice costs
+ * nothing: rounding an already-rounded figure returns it. `-0` and NaN fold
+ * to unsigned zero inside the helper it wraps.
+ */
+export function importAmount(raw: number, code: string): number {
+  return roundToMinorUnit(Math.abs(raw), code);
 }
 
 /** What `resolveImportDate` decided: the date to use, and whether it's a real reading. */
@@ -177,10 +195,11 @@ export function locationSlotFrom(
  * key holding undefined.
  */
 export function toCreateTransactionDTO(row: ImportRowFields, baseCurrency: string): CreateTransactionDTO {
+  const currency = row.currency || baseCurrency;
   return {
     type: row.type ?? (row.amount >= 0 ? 'income' : 'expense'),
-    amount: Math.abs(row.amount),
-    currency: row.currency || baseCurrency,
+    amount: importAmount(row.amount, currency),
+    currency,
     categoryId: row.categoryId || FALLBACK_CATEGORY_ID,
     description: row.description || 'Imported transaction',
     date: row.date,

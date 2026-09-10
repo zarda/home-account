@@ -61,7 +61,7 @@ import {
   CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { importAmount, locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
@@ -359,11 +359,15 @@ export class AIImportService {
 
     return result.transactions.map(tx => {
       const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
+      const money = resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency);
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('strategy'),
         description: tx.description,
-        amount: tx.amount,
-        ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
+        // A reader that reports an expense as a negative loses the sign here
+        // rather than at the write, which flipped it anyway: the card is
+        // meant to show the figure the ledger will hold.
+        amount: importAmount(tx.amount, money.currency),
+        ...money,
         date: resolved.date,
         type: tx.type,
         ...gradeCategorySuggestion(tx),
@@ -638,11 +642,14 @@ export class AIImportService {
     return categorizedByAI.map((t, index) => {
       const original = transactions[index];
       const resolved = resolutions[index];
+      const money = resolveImportCurrency(original.currency, baseCurrency);
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('multi_img'),
         description: t.description,
-        amount: Math.abs(t.amount),
-        ...resolveImportCurrency(original.currency, baseCurrency),
+        // Consolidation sums items and prefers a printed total without
+        // rounding either; a receipt's own currency decides what survives.
+        amount: importAmount(t.amount, money.currency),
+        ...money,
         date: resolved.date,
         type: original.type,
         suggestedCategoryId: original.category || t.suggestedCategoryId,
@@ -1072,11 +1079,12 @@ export class AIImportService {
           // today, and a `date` of any other shape an Invalid Date.
           const resolved = resolveImportDate(t['date']);
           const categoryId = typeof t['categoryId'] === 'string' && t['categoryId'] ? t['categoryId'] : undefined;
+          const money = resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency);
           return {
             id: nextImportRowId('json'),
             description: t['description'] as string || 'Unknown',
-            amount: Math.abs(t['amount'] as number || 0),
-            ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
+            amount: importAmount((t['amount'] as number) || 0, money.currency),
+            ...money,
             date: resolved.date,
             type: (t['type'] as 'income' | 'expense') || 'expense',
             // A category the backup named is the reviewer's earlier pick and
@@ -1143,12 +1151,13 @@ export class AIImportService {
     return transactions.map(t => {
       const suggestedCategoryId = t.category || 'other_expense';
       const resolved = resolveImportDate(t.date, t.dateConfidence);
+      const money = resolveImportCurrency(t.currency, baseCurrency);
 
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('import'),
         description: t.description,
-        amount: Math.abs(t.amount),
-        ...resolveImportCurrency(t.currency, baseCurrency),
+        amount: importAmount(t.amount, money.currency),
+        ...money,
         date: resolved.date,
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,

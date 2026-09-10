@@ -103,12 +103,15 @@ export function currencyDecimalPlaces(code: string): number {
  * the whole yen for JPY, thousandths for KWD, the cent for most others. This
  * is the one a hand-typed or CSV-parsed amount goes through before it is
  * compared or written, so what is stored and what `formatCurrency` renders
- * never disagree. `roundMoney` (transaction-aggregation.utils) is unrelated:
- * it rounds a base-currency aggregate to the cent regardless of any row's
- * own currency. `snapDisplayZero` (money-display.utils) is its display-side
- * twin, not unrelated: the same factor off the same `currencyDecimalPlaces`,
- * agreeing exactly on which values are zero — but it only ever touches what
- * is shown, never what is stored. `|| 0` folds two falsy results to unsigned
+ * never disagree. `importAmount` (import-dto.utils) is the door-side caller:
+ * every import row goes through it on the way in, so a read figure is whole
+ * before anything reviews, compares or writes it. `roundMoney`
+ * (transaction-aggregation.utils) is unrelated: it rounds a base-currency
+ * aggregate to the cent regardless of any row's own currency.
+ * `snapDisplayZero` (money-display.utils) is its display-side twin, not
+ * unrelated: the same factor off the same `currencyDecimalPlaces`, agreeing
+ * exactly on which values are zero — but it only ever touches what is shown,
+ * never what is stored. `|| 0` folds two falsy results to unsigned
  * zero: the `-0` `Math.round(-0.4)` produces (the same trap
  * `snapDisplayZero`'s own comment records), and the `NaN` a `NaN` `value`
  * produces — the fold `splitImportRow`'s own guard now leans on to keep a
