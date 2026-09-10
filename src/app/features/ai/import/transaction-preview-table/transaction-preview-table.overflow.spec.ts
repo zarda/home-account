@@ -503,8 +503,13 @@ describe('overflow guard: the import review card', () => {
     // the one measurement in this file taken at a desktop width rather than
     // at 288px, and it has to be: at 288px the chips wrap onto lines of their
     // own and never stand beside the trigger at all, which is exactly why the
-    // chip height pinned above cannot see this.
-    clip.style.width = '900px';
+    // chip height pinned above cannot see this. The width is not a desktop's
+    // but one that holds the whole strip on a single line whatever font the
+    // browser has: at 900px the last line's composition was the fonts' to
+    // decide, and once Remove joined the strip, Linux Chrome's wider fallback
+    // face wrapped the trigger onto a line of its own — a precondition
+    // failing, not the stretch it guards.
+    clip.style.width = '2400px';
     fixture.detectChanges();
 
     const trigger = host.querySelector('[data-row-id="r1"] .tag-add') as HTMLElement;
