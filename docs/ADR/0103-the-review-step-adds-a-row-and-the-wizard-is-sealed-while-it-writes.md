@@ -222,7 +222,8 @@ NG0911.
   are owed and nothing scrolls to them or filters the list; on a batch of
   twenty that is a hunt, mitigated only by the placeholders.
 - **A row added by hand cannot be removed again.** Deselecting it keeps it off
-  the import and off the gate, which is the whole of the answer.
+  the import and off the gate, which is the whole of the answer. Closed by
+  [ADR 0108](0108-the-review-step-removes-a-row.md), #391.
 - **The added row's category is the catch-all, and nothing suggests one for
   it.** The description the reviewer types is exactly the input the category
   memory answers from, and it is never asked.

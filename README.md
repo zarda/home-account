@@ -178,7 +178,7 @@ Falls back to cloud AI if native OCR is unavailable.
 
 The web app installs as a Progressive Web App:
 
-- **Installable** - Add to home screen on any device
+- **Installable** - The browser offers its own install prompt where it has one; the app neither suppresses it nor puts up a prompt of its own. iOS has no such prompt, so it is still Add to Home Screen from the Share sheet (below)
 - **Offline queue** - A receipt captured without a connection is stored in IndexedDB on the device and processed when the connection returns, or on **Sync Now** in Settings → AI Processing
 - **Share target** - A receipt shared from another app lands in the import wizard ([docs/share-import.md](docs/share-import.md))
 
@@ -191,29 +191,41 @@ There is no caching worker: the app itself needs a connection to load.
 
 ## Scripts
 
+Every script CI runs, in the order it runs it:
+
 | Command | Description |
 |---------|-------------|
-| `npm start` | Dev server at localhost:4200 |
-| `npm run build` | Production build |
-| `npm run build:ios` | Build and sync to iOS |
-| `npm run cap:ios` | Open iOS project in Xcode |
-| `npm test` | Run unit tests |
-| `npm run test:ci` | Run unit tests once (headless, with coverage) |
-| `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
-| `npm run smoke:dates` | Run the zone-sensitive smoke specs under two shifted timezones, with one emulator boot |
-| `npm run test:ios` | Run the Swift share-seam tests in the iOS Simulator (local only — CI never builds iOS; edit the destination if iPhone 17 is not installed) |
+| `npm --prefix functions test` | The functions workspace's own tests, after `npm --prefix functions ci` builds it — not a root script |
 | `npm run lint` | ESLint |
 | `npm run lint-guards:check` | Verify the ESLint import bans still resolve for the files they were written for |
 | `npm run i18n:check` | Verify every literal translation key resolves in all locales and no template hard-codes an aria-label |
 | `npm run analytics:check` | Verify docs/analytics.md matches the tracked events and routes |
 | `npm run prompts:check` | Verify every registered prompt reaches every provider and is documented |
 | `npm run indexes:check` | Verify firestore.indexes.json covers every transaction filter combination |
+| `npm run firebase-tools:check` | Verify the pinned firebase-tools major has not drifted |
+| `npm run prod-env:check` | Verify the production config secret matches its committed digest. CI runs the checker's `--self-test` half only, against a stub it wrote itself; the real compare runs in `deploy-web` against the actual secret |
 | `npm run truncation:check` | Verify nothing under src/ declares text-overflow — G3, nothing truncates |
+| `npm run direction:check` | Verify the physical-direction CSS is still exactly where the per-file baseline says ([docs/rtl.md](docs/rtl.md)) |
+| `npm run test:ci` | Run unit tests once (headless, with coverage) |
+| `npm run test:dates` | Run the zone-sensitive specs — CI runs them twice, under `TZ=America/New_York` and `TZ=Asia/Tokyo` |
+| `npm run smoke` | Run integration tests against Firebase emulators (requires JDK 21+) |
+| `npm run smoke:dates` | Run the zone-sensitive smoke specs under two shifted timezones, with one emulator boot |
+| `npm run build` | Production build |
+
+Local only:
+
+| Command | Description |
+|---------|-------------|
+| `npm start` | Dev server at localhost:4200 |
+| `npm run build:ios` | Build and sync to iOS |
+| `npm run cap:ios` | Open iOS project in Xcode |
+| `npm test` | Run unit tests |
+| `npm run test:ios` | Run the Swift share-seam tests in the iOS Simulator — CI never builds iOS; edit the destination if iPhone 17 is not installed |
 | `npx firebase deploy --only hosting,firestore,storage` | Manual web deploy — merges to `main` deploy automatically ([docs/deploy.md](docs/deploy.md)) |
 
 ## Continuous Integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions workspace build and tests, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the truncation check, the direction check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. On a push to `main`, a `changes` job classifies what the merge touched and a green pipeline fans out into deploys: `deploy-web` rebuilds against the real production config held in the `PROD_ENVIRONMENT_TS` secret and ships hosting, the Firestore rules and indexes, and the Storage rules, while `deploy-functions` ships the Cloud Function when `functions/` or `firebase.json` changed — docs-only merges deploy nothing, and [docs/deploy.md](docs/deploy.md) is the runbook. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
+GitHub Actions (`.github/workflows/ci.yml`) runs, in order, the functions workspace build and tests, lint, the lint-guard check, the translation-key check, the analytics-registry check, the prompt-registry check, the composite-index check, the firebase-tools major check, the self-test of the production-config digest checker (the real compare belongs to `deploy-web`), the self-test of the Firestore index wait (which cannot reach the Admin API outside a deploy), the truncation check, the direction check, headless unit tests with coverage, the date specs under two non-UTC timezones, the emulator smoke tests, the zone-sensitive smoke specs under the same two timezones, and a production build — on every pull request and push to `main`. On a push to `main`, a `changes` job classifies what the merge touched and a green pipeline fans out into deploys: `deploy-web` rebuilds against the real production config held in the `PROD_ENVIRONMENT_TS` secret and ships hosting, the Firestore rules and indexes, and the Storage rules, while `deploy-functions` ships the Cloud Function when `functions/` or `firebase.json` changed — docs-only merges deploy nothing, and [docs/deploy.md](docs/deploy.md) is the runbook. The coverage report is uploaded as a build artifact. Dependabot keeps npm packages and workflow actions current. Nothing in CI builds the iOS target, so native changes are verified only by a local `npm run build:ios` and an Xcode run.
 
 **Note:** `npm install` runs a postinstall script that patches `@capacitor-firebase/authentication` to remove the Facebook SDK dependency (only Google Sign-In is used).
 

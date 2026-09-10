@@ -222,7 +222,9 @@ Which is why the two withdrawals on this chip are not symmetrical:
   do not, leaving the name trigger's 9px overhang and the country button's
   6px one overlapping by 11px across a 4px gap. No RTL locale ships and the
   overflow probe measures LTR only, so this is work the RTL conversion has to
-  do rather than a live defect.
+  do rather than a live defect. Closed by
+  [ADR 0110](0110-the-probe-measures-the-card-at-phone-width-and-in-both-directions.md),
+  #388.
 - **A tag is committed one at a time.** The field closes on each commit, so a
   row that wants three tags is three taps on **Add tag**.
 - **The vocabulary is read once per batch**, when the rows land. A tag typed on

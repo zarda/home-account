@@ -145,7 +145,7 @@
                        is often a blur, and by then the reviewer is looking at
                        the next card. -->
                   <span class="amount-error" role="alert" [id]="'amount-error-' + row.id">
-                    {{ 'import.amountNotANumber' | translate }}
+                    {{ 'import.amountNotANumber' | translate: { minimum: minimumAmountText(row) } }}
                   </span>
                 }
               } @else {
@@ -306,7 +306,7 @@
                  about its position should depend on what either of those
                  renders for this row. The trigger is conditional — it
                  vanishes once the amount it would split is gone — so its
-                 EDIT_TRIGGERS entry carries a fallback the way place's does. -->
+                 EDITORS entry carries a fallback the way place's does. -->
             @if (isEditing(row, 'split')) {
               <input
                 class="inline-input split-input"
@@ -328,10 +328,10 @@
                      editor's reason: the blur that refused has usually
                      moved the reviewer on already. -->
                 <span class="amount-error" role="alert" [id]="'split-error-' + row.id">
-                  {{ 'import.splitAmountRefused' | translate }}
+                  {{ 'import.splitAmountRefused' | translate: { minimum: minimumAmountText(row) } }}
                 </span>
               }
-            } @else if (!amountIsUnfilled(row)) {
+            } @else if (!amountIsUnfilled(row) && canSplit(row)) {
               <button type="button" class="extra-add split-trigger" [attr.aria-label]="splitLabel(row)" (click)="startEdit(row, 'split')">
                 <mat-icon aria-hidden="true">call_split</mat-icon>
                 <span>{{ 'import.splitRow' | translate }}</span>
@@ -359,6 +359,15 @@
                 </ng-template>
               </mat-menu>
             }
+            <!-- Unconditional, blank and flagged alike: a blank
+                 hand-added row has no other way off the card. It
+                 asks nothing on any row, flagged included, because
+                 Deselect — not a dialog — is the reversible
+                 answer. -->
+            <button type="button" class="extra-add remove-trigger" [attr.aria-label]="removeLabel(row)" (click)="removeRow(row)">
+              <mat-icon aria-hidden="true">delete_outline</mat-icon>
+              <span>{{ 'common.remove' | translate }}</span>
+            </button>
             <!-- Declared once and placed twice: the same field edits the name
                  on a chip that already has one and on a row that has nothing
                  yet, and two copies of it would be two sets of handlers to
@@ -502,7 +511,7 @@
             </div>
           } @else {
             <div class="notes-section notes-empty">
-              <button class="add-notes-btn" (click)="initNotes(row)">
+              <button type="button" class="add-notes-btn" (click)="startEdit(row, 'notes')">
                 <mat-icon>add</mat-icon>
                 <span>{{ 'import.notes' | translate }}</span>
               </button>

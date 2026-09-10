@@ -63,9 +63,13 @@ after journey 15's split — and a `notificationclick` listener in the served
 worker: `await fetch('/share-target-sw.js').then(r => r.text())` contains
 `notificationclick`. The worker is served straight from `public/`, so that
 fetch reads the branch's file whether or not the page has re-registered it.
-For another branch it is whatever that branch added. A stale
-`.angular/cache`, or a server started before the checkout switched, shows
-yesterday's app with today's confidence.
+For the row-removal and phone-width chip surfaces it is **Remove** in a
+scanned row's extras and the category chip's own stylesheet:
+`getComputedStyle(document.querySelector('.category-button')).minInlineSize === '0px'`,
+where the flat `min-width: auto` it replaced reads `auto`. For another branch
+it is whatever that branch added. A stale `.angular/cache`, or a server
+started before the checkout switched, shows yesterday's app with today's
+confidence.
 
 **2. The running bundle names the expected project.** Fetch every script the
 page actually loaded and read the project id out of it:
@@ -112,8 +116,8 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 Some browsers are driven inside an embedded pane rather than a full window,
 and a pane behaves differently enough to cost a run before it is understood.
-None of these is a property of the app; five of the eight have produced a
-false failure, the sixth stops a run before it starts, and the last two are
+None of these is a property of the app; six of the nine have produced a
+false failure, the seventh stops a run before it starts, and the last two are
 doors nothing in a pane opens — one that no file picker reaches in any
 browser, one whose only control on the page is a switch with a write behind
 it.
@@ -140,6 +144,21 @@ it.
   frames either: the merge menu reported a negative left and stayed in the
   DOM until closed through its trigger, an artefact of the pane and not a
   finding.
+- **A hidden pane delivers no ResizeObserver callbacks either.** `appFitText`
+  re-measures a label when the box around it changes, through an observer the
+  browser runs with its frames — and a pane the host is not showing runs
+  none, so after a style or width change the label sits overflowing its box
+  with no font-size written, which reads exactly like the directive failing.
+  Flush the registry by script, the way the overflow probe does —
+  `const d = ng.getDirectives(label).find(x => x.overflowRatio);
+  d.registry.markDirty(d); d.registry.flush();` — and read the font-size
+  after: state only, diagnostic-grade, as the render flush above is; a
+  fronted pane does this on its own. A card born after the last flush — a
+  split's part, a row added by hand — has a label no flush has reached, and
+  it reads as the same overflow until it gets one of its own. The pane's
+  390px emulation also raises the root font to 20.8px, so a label reads
+  18.2px where a phone reads 14 — the fit is what is pinned, never the
+  number.
 - **A desktop-only door needs a pane genuinely wide enough for the table.**
   The list swaps to the table at `min-width: 768px`, so below that the row's
   note icon does not exist and journey 2 silently becomes journey 4.
@@ -222,8 +241,9 @@ The failed-attempt record is written only by the attempt's `failed` and the
 import's own record only by `confirmImport`, so an extraction left
 unconfirmed leaves nothing behind — which is why the import journeys end by
 reading Import History and the Transactions list and finding them unchanged.
-A backup file does not open an attempt at all: that handle is opened for
-receipt images and for nothing else.
+A row removed on the review step leaves nothing behind, the way an
+unconfirmed extraction does. A backup file does not open an attempt at all:
+that handle is opened for receipt images and for nothing else.
 
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
@@ -368,6 +388,7 @@ ng.getComponent(document.querySelector('app-import-wizard')).onFilesSelected([fi
 | 13 | Review: a backup row without a date | A restored backup entering by the one door that takes one, and the date question its dateless row raises | `13-backup-date.png` |
 | 14 | Reminders through the worker | A real registration raising a real OS notification, and the permission state the pane reports | `14-worker-notification.png` |
 | 15 | Review: split and merge | Two cards born under a real pointer from one, both wearing the receipt badge, and the merge menu folding one back | `15-split-parts.png`, `15-merge-menu.png` |
+| 16 | Review: a row removed | A card leaving under a real pointer, focus landing on its neighbour, and the empty review step with Continue held | `16-row-removed.png`, `16-empty-review.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -550,6 +571,11 @@ the act of opening one.
   the row reads *-¥540*, an amount flag beside it is gone (a hand-typed
   figure settles the reading), and focus is back on the amount trigger, which
   now names the new value. Escape leaves the figure alone.
+- **A fraction on a yen row.** Type `538.4` → Enter → the row reads
+  *-¥538*: the figure is rounded to what the currency stores before it
+  lands, and the trigger names the rounded value. `0.4` is refused — the
+  field stays open, marked invalid, *Enter an amount — at least ¥1* beside
+  it, and Escape is the way out.
 - **The description.** Tap it → edit → Enter. An emptied field is a reviewer
   starting over, not a row that reads as nothing: it closes and changes
   nothing.
@@ -557,9 +583,11 @@ the act of opening one.
   pick another → the chip's icon, name and confidence dot all follow the
   choice, the dot going green because the reviewer's own pick is the confident
   one.
-- **Notes.** The **Notes** button under the card opens a textarea with the
-  caret in it; type, then click away — the note is filed on the way out, not
-  keystroke by keystroke.
+- **Notes.** This row came with the reader's own note, so its box is already
+  on the card — a row with none shows a **Notes** button that opens the same
+  box. Extend the note, then click away: it is filed on the way out, not
+  keystroke by keystroke, and the box stays up as a filed note with the row's
+  editing slot empty.
 
 An edit to the date, amount, type or description sends that row back through
 the duplicate check. A verdict of *Duplicate* deselects the row and the
@@ -601,10 +629,10 @@ the editors keep their 40px tap targets at every width.
 
 Two more readings, in journey 15's order: with the split field open on the
 card, and — once the split has made two — with the merge menu open over
-the part. What is pinned is what these controls own: every **Split** and
-**Merge into…** trigger inside its own card's box and 40px tall, and the
-open split field inside that box too — the 288px probe's own reading of
-them, taken here at the wizard's real width:
+the part. What is pinned is what these controls own: every **Split**,
+**Merge into…** and **Remove** trigger inside its own card's box and 40px
+tall, and the open split field inside that box too — the 288px probe's own
+reading of them, taken here at the wizard's real width:
 
 ```js
 [...document.querySelectorAll('.transaction-card')].every(card => {
@@ -614,20 +642,27 @@ them, taken here at the wizard's real width:
     return b.left >= c.left && b.right <= c.right;
   };
   return [...card.querySelectorAll('.split-input')].every(inside) &&
-    [...card.querySelectorAll('.split-trigger, .merge-trigger')]
+    [...card.querySelectorAll('.split-trigger, .merge-trigger, .remove-trigger')]
       .every(t => inside(t) && t.getBoundingClientRect().height >= 40);
 });
 ```
 
-`true` both times. The card's own `scrollWidth === clientWidth` is not the
-pass here, because on a real receipt it comes back `false` for a reason that
-is none of these controls': the category suggestion chip is sized to its
-label, and a long category name — *Groceries*, 185px — reaches 12px past a
-240px card. That chip predates Split and Merge into…, the 288px probe never
-measures it because its fixture's category is shorter, and the first run
-recorded it as a follow-up of its own. Until that lands, a card that
-overflows only by that chip is recorded with the figures and passed over,
-not read as a failure of the controls being measured.
+`true` both times. The card's own `scrollWidth` inside its `clientWidth` is
+the pass here now, on every card:
+
+```js
+[...document.querySelectorAll('.transaction-card')]
+  .every(c => c.scrollWidth <= c.clientWidth + 1);
+```
+
+`true`. The pixel of slack is the 288px probe's own, for a sub-pixel width
+that reads one over with nothing hiding. The category suggestion chip that
+used to push a real receipt's card wider than that no longer can: its
+section now shrinks with the card instead of sizing itself to the label's
+own width, and the label scales down through `appFitText`, wrapping rather
+than overflowing once it reaches the 12px floor. *Groceries* at 185px reaching
+12px past a 240px card is what the first run recorded against a follow-up
+of its own — closed now, and history.
 
 One shot: the review card, question chip and open tag editor together.
 
@@ -703,10 +738,13 @@ The row takes the day and the currency of the row above it, which is what it
 is missing from — on this review, August 14th and ¥, so the filled row reads
 *-¥120*. That day was copied rather than read off anything, so the row asks
 no date question of its own; its category is the fallback offered to a row
-nothing suggested one for, wearing the low-confidence dot that says so. Its
-extras carry **Add location** and **Add tag** and nothing else — that
-trigger is what a row with no location shows in place of the chip journey 11
-edits.
+nothing suggested one for, wearing the low-confidence dot that says so. While it
+was blank its extras carried **Remove**, **Add location** and **Add tag** and
+nothing else — no Split on a row with no amount, no Merge into… on a blank
+one; filled, it gains **Split**. **Merge into…** joins it only while the
+scanned row shares its currency and carries no duplicate badge of its own —
+a flagged row takes part in no merge, on either side. The location trigger
+is what a row with no location shows in place of the chip journey 11 edits.
 
 **Pass:** the added row shows filled, Continue enabled, and nothing reached
 the account. Leave by the review step's **Back** and the wizard's back
@@ -815,18 +853,22 @@ with the date question answered by **Keep** first: Continue is then held by
 nothing, so whatever holds or frees it below is this journey's own doing.
 
 **Split** is in the card's extras, ahead of **Add location** and **Add
-tag**, on any row that has an amount. Tap it → the field opens in its place,
-empty, placeholder *Amount for the new row*, with the caret in it → type
-`179`, a third of the printed ¥538 → Enter → two cards. The original now
-reads *-¥359*, and directly under it stands the part at *-¥179* with its
-description editor already open and the caret in it: it was born holding
-the original's description, which a line item taken out on its own rarely
-keeps. Enter with the copied name left standing closes the editor and keeps
-it, the way journey 9's description editor keeps an unchanged one. Escape
-leaves the row alone and so does an emptied field, while a figure the row
-cannot spare — the whole ¥538, or more — holds the field open, marked invalid,
-with *Enter an amount smaller than the row's* next to it, the way the amount
-editor refuses a figure it cannot read.
+tag**, on any row worth at least two of its currency's minor units — ¥2 on a
+yen row, $0.02 on a dollar one; below that the trigger is not offered at
+all, since no figure would leave both halves above the floor. Tap it → the
+field opens in its place, empty, placeholder *Amount for the new row*, with
+the caret in it → type `179`, a third of the printed ¥538 → Enter → two
+cards. The original now reads *-¥359*, and directly under it stands the
+part at *-¥179* with its description editor already open and the caret in
+it: it was born holding the original's description, which a line item taken
+out on its own rarely keeps. Enter with the copied name left standing closes
+the editor and keeps it, the way journey 9's description editor keeps an
+unchanged one. A fractional figure typed here — `179.4` — rounds the same
+way, ¥179 off and ¥359 left. Escape leaves the row alone and so does an
+emptied field, while a figure the row cannot spare — the whole ¥538, or
+more — holds the field open, marked invalid, with *Enter an amount smaller
+than the row's — at least ¥1* next to it, the way the amount editor refuses
+a figure it cannot read.
 
 Both cards wear the receipt badge, *Receipt 1 (photo 1)*: one photo, two
 transactions, each of which would attach its own copy at an import this run
@@ -867,6 +909,32 @@ as journey 9 does; Import is never pressed.
 
 Two shots: the two cards after the split, and the merge menu open over the
 part.
+
+### 16. Review: a row removed
+
+The same review as journey 8, on the same `jp.png` row, with the date
+question already answered by **Keep**.
+
+**Add a row**, journey 12's mechanics: the blank card lands at the end of the
+list with its description editor open and the caret in it, the hint *Fill in
+1 row before continuing* stands under the list, and Continue is disabled.
+**Remove** in the blank card's extras → the card goes, the hint goes with it,
+Continue enables, and focus lands on the scanned row's own **Remove** — the
+previous row's, since the removed one was last.
+
+Then **Remove** on the scanned row, the list's last one left: the card goes,
+the empty state stands in its place — *No transactions to import* — the
+header reads *0 / 0*, Continue is disabled again with nothing left to select,
+and focus lands on **Add a row**. Both landings are focus readings left to
+the specs, where the pane cannot show them.
+
+**Pass:** both removals show on the card, and nothing reached the account —
+Transactions is unchanged and `/import/history` has no new run. Leave by the
+review step's **Back** and the wizard's back arrow, as journey 9 does; Import
+is never pressed.
+
+Two shots: the list after the first removal, and the empty review step after
+the second.
 
 ## Evidence
 

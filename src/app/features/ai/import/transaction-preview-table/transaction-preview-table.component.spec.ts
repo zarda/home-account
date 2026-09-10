@@ -1034,6 +1034,40 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
     expect(currencySession.remember).not.toHaveBeenCalled();
   });
 
+  it('hands focus to the currency chip when the offer is dismissed', () => {
+    // The offer chip goes with its own remove button; the currency chip
+    // beneath it is unconditional, so no fallback is needed behind it.
+    const row = makeRow({
+      currencyFellBack: true,
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+    });
+    component.transactions = [row];
+    component.categories = [];
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.currency-offer .extra-remove') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.currency-chip'));
+  });
+
+  it('hands focus to the currency chip when the offer is accepted', () => {
+    // Accept goes through updateCurrency, which clears currencySuggestion
+    // the same way dismiss does — the same unmount, so the same landing.
+    const row = makeRow({
+      currencyFellBack: true,
+      currencySuggestion: { code: 'KRW', country: 'KR', reason: 'receipt' },
+    });
+    component.transactions = [row];
+    component.categories = [];
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.currency-offer .extra-accept') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.currency-chip'));
+  });
+
   /**
    * The touch picker renders in the CDK overlay container, outside the
    * fixture, so a test that opened it closes it again — or the next test
@@ -1673,7 +1707,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(box.value).withContext('and keeps it, to be corrected rather than retyped').toBe('1.234.567');
       expect(box.getAttribute('aria-invalid')).toBe('true');
       expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
-        .toBe('import.amountNotANumber');
+        .toBe('import.amountNotANumber:{"minimum":"USD 0.01"}');
       expect(box.getAttribute('aria-describedby'))
         .withContext('the hint names the field it belongs to')
         .toBe(fixture.nativeElement.querySelector('.amount-error')?.id);
@@ -1765,6 +1799,97 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(box.querySelector('.placeholder')).toBeNull();
       expect(box.querySelector('.amount-text')?.textContent?.trim()).toBe('-USD 5.5');
       expect(box.getAttribute('aria-label')).toBe('import.editAmount:{"amount":"USD 5.5"}');
+    });
+
+    it('rounds a typed amount to what the currency stores', () => {
+      // JPY has no fractional yen: 179.33 settles at 179, and the trigger's
+      // own text — driven by the same formatAmount the editor's label uses
+      // — reads the row back rounded, not the fraction that was typed.
+      render(makeRow({ amount: 5.5, currency: 'JPY' }));
+      const jpyEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '179.33');
+      fixture.detectChanges();
+
+      expect(jpyEmitted[0][0].amount).toBe(179);
+      expect(trigger('amount').querySelector('.amount-text')?.textContent?.trim()).toBe('-JPY 179');
+
+      // A row already at the whole-yen figure a typed fraction would round
+      // to reads as unchanged even though what was typed is not that
+      // figure: the comparison is against 179.33 rounded to 179, not
+      // against 179.33 itself, so retyping a fraction the row should never
+      // have held commits nothing. The old, unrounded comparison would
+      // have written 179.33 back onto a row that already read as 179.
+      render(makeRow({ amount: 179, currency: 'JPY' }));
+      const unchangedEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '179.33');
+      fixture.detectChanges();
+
+      expect(unchangedEmitted.length).toBe(0);
+
+      // A currency with three decimals keeps its own precision rather
+      // than being flattened to the cent.
+      render(makeRow({ amount: 5.5, currency: 'KWD' }));
+      const kwdEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '1.2345');
+      fixture.detectChanges();
+
+      expect(kwdEmitted[0][0].amount).toBe(1.235);
+    });
+
+    it('refuses a figure that rounds to nothing, the same on a filled row and one already empty', () => {
+      // 0.4 clears parseAmountInput's own >0 guard, so this is not the
+      // unreadable-figure path on its face — but JPY has no fractional yen,
+      // and 0.4 rounds to a real currency value's absence: 0. Filing it on
+      // a filled row would overwrite a real figure with one amountIsUnfilled
+      // reads as none at all; filing it on a row already at 0 would close
+      // the editor having shown the reviewer nothing changed on a figure
+      // they had just typed. Both are the same silent loss an unreadable
+      // figure is refused for, so both take that refusal too.
+      render(makeRow({ amount: 5.5, currency: 'JPY' }));
+      const filledEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '0.4');
+      fixture.detectChanges();
+
+      const filledBox = input('amount')!;
+      expect(filledBox).withContext('the editor stays open on a filled row').not.toBeNull();
+      expect(filledBox.getAttribute('aria-invalid')).toBe('true');
+      expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
+        .toBe('import.amountNotANumber:{"minimum":"JPY 1"}');
+      expect(filledEmitted.length).withContext('nothing is filed').toBe(0);
+      expect(component.transactions[0].amount).withContext('the old figure stands').toBe(5.5);
+
+      // Escape abandons the refusal (the one deliberate way out, per
+      // commitAmount's own doc) so the second precondition starts from a
+      // closed editor rather than continuing the first one's session.
+      filledBox.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+
+      render(makeRow({ amount: 0, currency: 'JPY' }));
+      const emptyEmitted = emissions();
+
+      trigger('amount').click();
+      fixture.detectChanges();
+      type('amount', '0.4');
+      fixture.detectChanges();
+
+      const emptyBox = input('amount')!;
+      expect(emptyBox).withContext('the editor stays open on a row already at 0 too').not.toBeNull();
+      expect(emptyBox.getAttribute('aria-invalid')).toBe('true');
+      expect(fixture.nativeElement.querySelector('.amount-error')?.textContent?.trim())
+        .toBe('import.amountNotANumber:{"minimum":"JPY 1"}');
+      expect(emptyEmitted.length).withContext('nothing is filed').toBe(0);
     });
   });
 
@@ -2089,6 +2214,64 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(textarea()!.getAttribute('rows')).toBe('3');
     });
+
+    it('opens through the card\'s one machine: isEditing(row, "notes") while the box is open, and not once the note is filed', () => {
+      const row = makeRow();
+      render(row);
+      expect(component.isEditing(row, 'notes')).withContext('nothing open yet').toBeFalse();
+
+      addButton()!.click();
+      fixture.detectChanges();
+      expect(component.isEditing(row, 'notes')).withContext('the row\'s one slot now holds notes').toBeTrue();
+
+      type('two croissants');
+      leave();
+
+      expect(component.isEditing(row, 'notes')).withContext('closeEdit cleared the slot on commit').toBeFalse();
+    });
+
+    it('Escape in a filed note\'s box drops the draft and leaves the row\'s open description editor alone', async () => {
+      // Not cancelEdit: the row's slot holds 'description' here, not
+      // 'notes', so cancelNotes must not read that slot as its own to close.
+      const row = makeRow({ notes: 'a' });
+      render(row);
+      component.startEdit(row, 'description');
+      fixture.detectChanges();
+      const emitted = emissions();
+
+      type('scribble');
+      textarea()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+      // NgModel writes the reverted value through its own microtask, the
+      // same fall case 9 above waits out.
+      await fixture.whenStable();
+
+      expect(component.isEditing(row, 'description')).withContext('the row\'s real editor is untouched').toBeTrue();
+      expect(fixture.nativeElement.querySelector('.description-input')).withContext('still on the card').not.toBeNull();
+      expect(textarea()!.value).withContext('the draft alone goes').toBe('a');
+      expect(emitted.length).toBe(0);
+    });
+
+    it('opening the notes editor on one row leaves another row\'s open editor alone', () => {
+      // The two-row shape sidesteps depending on what a same-row startEdit
+      // to 'notes' would do here: editing holds one field per row, and every
+      // commit gates on editing.has(row.id), not on which field it names.
+      const rowA = makeRow({ id: 'a' });
+      const rowB = makeRow({ id: 'b' });
+      component.transactions = [rowA, rowB];
+      component.categories = [];
+      fixture.detectChanges();
+      component.startEdit(rowA, 'description');
+      fixture.detectChanges();
+
+      (fixture.nativeElement.querySelector('[data-row-id="b"] .add-notes-btn') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(component.isEditing(rowA, 'description')).withContext('row a keeps its own entry in the per-row map').toBeTrue();
+      expect(fixture.nativeElement.querySelector('[data-row-id="a"] .description-input')).withContext('row a\'s editor is still on the card').not.toBeNull();
+      expect(component.isEditing(rowB, 'notes')).withContext('row b opened its own entry, not row a\'s').toBeTrue();
+      expect(fixture.nativeElement.querySelector('[data-row-id="b"] .notes-input')).withContext('row b\'s box is on the card too').not.toBeNull();
+    });
   });
 
   /**
@@ -2389,6 +2572,17 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(document.activeElement).toBe(addTrigger());
     });
+
+    it('hands focus to the add-tag trigger when a tag is removed', () => {
+      // The chip's own remove button leaves with the chip; the add trigger
+      // is what stands in its place.
+      render([makeRow({ tags: ['coffee'] })]);
+
+      (fixture.nativeElement.querySelector('.tag-chip .extra-remove') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(document.activeElement).toBe(addTrigger());
+    });
   });
 
   /**
@@ -2619,6 +2813,18 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(document.activeElement).toBe(addTrigger());
     });
 
+    it('hands focus to the add trigger when the removal takes the chip away', () => {
+      // The remove button goes with the whole chip, the same drop as the
+      // withdrawal above.
+      render(makeRow({ location: { name: 'Myeongdong' } }));
+
+      (chip()!.querySelector('.extra-remove') as HTMLElement).click();
+      fixture.detectChanges();
+
+      expect(addTrigger()).withContext('what stands where the chip stood').not.toBeNull();
+      expect(document.activeElement).toBe(addTrigger());
+    });
+
     it('withdraws a country-only location the same way, chip and focus alike', () => {
       // The withdrawal keeps the location only when a name is under it, so a
       // location that was never more than a country loses its chip exactly as
@@ -2816,6 +3022,16 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(splitTrigger('empty')).withContext('nothing to split off zero').toBeNull();
     });
 
+    it('renders on a row worth twice its currency\'s minor unit, and not on one worth exactly one', () => {
+      // ¥1 has no split that leaves a positive whole yen on both halves —
+      // every figure satisfies at most one of splitAmountRefused's two
+      // clauses at once. ¥2 is the least that clears both.
+      render([makeRow({ id: 'two', amount: 2, currency: 'JPY' }), makeRow({ id: 'one', amount: 1, currency: 'JPY' })]);
+
+      expect(splitTrigger('two')).withContext('¥2 can leave ¥1 on each half').not.toBeNull();
+      expect(splitTrigger('one')).withContext('¥1 has no split that clears the floor twice').toBeNull();
+    });
+
     it('names itself "Split" rather than "Add a description" on a row with no description yet', () => {
       render([makeRow({ id: 'txn1', description: '' })]);
 
@@ -2950,7 +3166,7 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
       expect(box.getAttribute('aria-invalid')).toBe('true');
       expect(message).withContext('the refusal is written down').not.toBeNull();
       expect(message!.getAttribute('role')).toBe('alert');
-      expect(message!.textContent?.trim()).toBe('import.splitAmountRefused');
+      expect(message!.textContent?.trim()).toBe('import.splitAmountRefused:{"minimum":"USD 0.01"}');
       expect(message!.id).toBe('split-error-txn1');
       expect(box.getAttribute('aria-describedby'))
         .withContext('the input names the message it stands with')
@@ -3303,6 +3519,137 @@ describe('TransactionPreviewTableComponent, the offer chip through its own templ
 
       expect(mergeTrigger('b')).withContext('nothing else left in USD').toBeNull();
       expect(document.activeElement).toBe(descriptionTrigger('b'));
+    });
+  });
+
+  /**
+   * A row taken off the card outright, on the reviewer's own say — a blank
+   * one added by mistake, or a flagged one they never want to see again.
+   * Deselect already keeps a row off the import and off the gate (0103's
+   * known gap); this is the one that does not come back from either.
+   */
+  describe('removing a row', () => {
+    const removeTrigger = (id: string) =>
+      fixture.nativeElement.querySelector(`[data-row-id="${id}"] .remove-trigger`) as HTMLButtonElement | null;
+
+    function render(rows: CategorizedImportTransaction[]): void {
+      component.transactions = rows;
+      component.categories = [];
+      fixture.detectChanges();
+    }
+
+    it('renders the trigger on every row, blank and flagged included', () => {
+      render([
+        makeRow({ id: 'filled' }),
+        makeRow({ id: 'blank', description: '' }),
+        makeRow({ id: 'flagged', isDuplicate: true }),
+      ]);
+
+      expect(fixture.nativeElement.querySelectorAll('.remove-trigger').length).toBe(3);
+      expect(removeTrigger('filled')!.getAttribute('aria-label'))
+        .toBe('import.removeRowLabel:{"description":"Coffee Shop"}');
+      expect(removeTrigger('blank')!.getAttribute('aria-label'))
+        .withContext('nothing to name yet').toBe('common.remove');
+      expect(removeTrigger('flagged')!.getAttribute('aria-label'))
+        .withContext('offered on a flagged row too').toBe('import.removeRowLabel:{"description":"Coffee Shop"}');
+    });
+
+    it('takes the row off the card and emits the rest as a new array, leaving the input untouched', () => {
+      const a = makeRow({ id: 'a' });
+      const b = makeRow({ id: 'b' });
+      const c = makeRow({ id: 'c' });
+      const given = [a, b, c];
+      render(given);
+      const emitted = emissions();
+      const selected: Set<string>[] = [];
+      component.selectionChanged.subscribe(ids => selected.push(ids));
+
+      removeTrigger('b')!.click();
+      fixture.detectChanges();
+
+      expect(given.length).withContext('never mutates the @Input() array').toBe(3);
+      expect(emitted.length).toBe(1);
+      expect(emitted[0]).withContext('a new array, as every other edit emits').not.toBe(given);
+      expect(emitted[0].length).toBe(2);
+      expect(emitted[0][0]).withContext('the same object, not a copy').toBe(a);
+      expect(emitted[0][1]).withContext('the same object, not a copy').toBe(c);
+      expect(selected[0]).withContext('without the removed id').toEqual(new Set(['a', 'c']));
+    });
+
+    it('forgets what the card kept for the row', () => {
+      // notes: 'a' is what makes the box render through row.notes alone
+      // (showsNotes), so typing a draft here needs no startEdit and leaves
+      // the editing slot free for amount — calling startEdit a second time
+      // would clear amountRejected early and make the "before" assertion
+      // below vacuous.
+      const row = makeRow({ id: 'x', notes: 'a', amount: 5400 });
+      render([row]);
+
+      const notes = fixture.nativeElement.querySelector('[data-row-id="x"] .notes-input') as HTMLTextAreaElement;
+      notes.value = 'draft';
+      notes.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+
+      component.startEdit(row, 'amount');
+      fixture.detectChanges();
+      const amount = fixture.nativeElement.querySelector('[data-row-id="x"] .amount-input') as HTMLInputElement;
+      amount.value = 'abc';
+      amount.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      fixture.detectChanges();
+      expect(component.amountUnreadable(row)).withContext('refused, before the removal').toBeTrue();
+      expect(component.isEditing(row, 'amount')).withContext('still open, before the removal').toBeTrue();
+
+      removeTrigger('x')!.click();
+      fixture.detectChanges();
+
+      expect(component.isEditing(row, 'amount')).withContext('the editing slot is gone').toBeFalse();
+      expect(component.amountUnreadable(row)).withContext('the refusal is gone').toBeFalse();
+      expect(component.notesText(row)).withContext('the draft is gone, the filed note is not').toBe('a');
+    });
+
+    it('hands focus to the next row\'s Remove, the previous row\'s when it was last, and Add a row when the list is empty', async () => {
+      render([makeRow({ id: 'a' }), makeRow({ id: 'b' }), makeRow({ id: 'c' })]);
+
+      removeTrigger('a')!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('the next row\'s own control').toBe(removeTrigger('b'));
+
+      // Without this, the assertion below would pass on a broken handler
+      // too: focus is already on b from the step above, and @for's
+      // track row.id keeps that same element across c's removal.
+      (document.activeElement as HTMLElement).blur();
+      removeTrigger('c')!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(document.activeElement).withContext('no row after it; the previous row\'s').toBe(removeTrigger('b'));
+
+      removeTrigger('b')!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(document.activeElement)
+        .withContext('nothing left; the list\'s own control')
+        .toBe(fixture.nativeElement.querySelector('.add-row'));
+      expect(fixture.nativeElement.querySelector('app-empty-state')).withContext('the empty state renders').not.toBeNull();
+    });
+
+    it('lets a blank hand-added row leave again', async () => {
+      render([makeRow({ id: 'existing' })]);
+
+      component.addRow();
+      fixture.detectChanges();
+      const added = component.transactions.at(-1)!;
+
+      removeTrigger(added.id)!.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector(`[data-row-id="${added.id}"]`)).withContext('gone').toBeNull();
+      expect(document.activeElement).withContext('the previous row\'s own control').toBe(removeTrigger('existing'));
     });
   });
 });

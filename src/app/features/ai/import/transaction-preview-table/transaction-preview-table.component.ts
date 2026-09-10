@@ -22,8 +22,10 @@ import { FormsModule } from '@angular/forms';
 import {
   Category,
   CategorizedImportTransaction,
+  currencyDecimalPlaces,
   CurrencyInfo,
   CurrencySuggestionReason,
+  roundToMinorUnit,
   VERIFY_FIELD_THRESHOLD,
 } from '../../../../models';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -57,30 +59,44 @@ import { FitTextDirective } from '../../../../shared/directives/fit-text.directi
 import { EmptyStateComponent } from '../../../../shared/components/empty-state/empty-state.component';
 
 /**
- * The fields a row edits in place, each with the triggers its editor could
- * hand focus back to when an edit ends on a key — tried in order. A map
- * rather than a selector derived from the field name: only two of these live
- * in a `.<field>-section` holding an `.inline-edit`, and a derived selector
- * that matches nothing drops focus at the document root without a word.
+ * The fields a row edits in place, each with the input its editor focuses
+ * on open and the triggers it could hand focus back to when an edit ends on
+ * a key — tried in order. A map rather than a selector derived from the
+ * field name: only two of these live in a `.<field>-section` holding an
+ * `.inline-edit`, and a derived selector that matches nothing drops focus at
+ * the document root without a word. Each input selector must match at most
+ * one element per row: notes' box can be on the card independently of
+ * `editing` (a filed note renders through `!!row.notes`), so sharing
+ * `.inline-input` with a row whose description editor is also open would
+ * give `querySelector` two matches to resolve by DOM order alone —
+ * `.notes-input` is its own class so that ambiguity cannot arise.
  *
  * The place is the one field whose commit can take its own trigger off the
  * card: emptying the name of a location with nothing else under it withdraws
  * the whole chip, and what stands where it stood is the add trigger.
+ *
+ * Notes is the one field whose box also shows a filed value: its trigger
+ * exists only while the row has no note, and Escape in a filed note's box
+ * is a draft drop rather than an editor exit.
  */
-const EDIT_TRIGGERS = {
-  amount: ['.amount-section .inline-edit'],
-  description: ['.description-section .inline-edit'],
-  tag: ['.tag-add'],
-  place: ['.place-name', '.location-add'],
-  // The primary vanishes only when the split it just committed left the row
-  // unfilled — splitImportRow refuses that outright — but Escape still needs
-  // a landing if the row's amount was ever emptied by some other path while
-  // this editor was open, and the add-tag trigger is the strip's next
-  // control over.
-  split: ['.split-trigger', '.tag-add'],
+const EDITORS = {
+  amount: { input: '.inline-input', triggers: ['.amount-section .inline-edit'] },
+  description: { input: '.inline-input', triggers: ['.description-section .inline-edit'] },
+  tag: { input: '.inline-input', triggers: ['.tag-add'] },
+  place: { input: '.inline-input', triggers: ['.place-name', '.location-add'] },
+  // The primary vanishes two ways, and its own commit is neither:
+  // splitImportRow refuses outright a split that would leave the row
+  // unfilled, so the trigger's !amountIsUnfilled half fails only if some
+  // other path emptied the amount while this editor was open. The second is
+  // canSplit, which hides the trigger on a row worth less than two minor
+  // units (ADR 0109) — a bulk re-denomination under an open editor is the
+  // way there, USD 0.50 taken to JPY. Escape needs a landing in both, and
+  // the add-tag trigger is the strip's next control over.
+  split: { input: '.inline-input', triggers: ['.split-trigger', '.tag-add'] },
+  notes: { input: '.notes-input', triggers: ['.add-notes-btn'] },
 } as const;
 
-type EditField = keyof typeof EDIT_TRIGGERS;
+type EditField = keyof typeof EDITORS;
 
 /** One datalist per card instance: two on a page must not answer to one id. */
 let vocabularyListSeq = 0;
@@ -360,8 +376,13 @@ export class TransactionPreviewTableComponent {
   // rebuilds one from `receiptCountry` when the row carries no location, so
   // clearing the slot alone would let the country the user just dismissed
   // walk back in. Both marks go, or removal does not mean removal.
+  //
+  // The chip leaves with its button, and the add trigger is what stands in
+  // its place — the same landing setCountry names — or the bare editor when
+  // the row's own place editor was open.
   removeLocation(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, { location: undefined, receiptCountry: undefined });
+    this.focusWhenRendered(this.inRow(transaction, '.location-add'), this.inRow(transaction, '.place-input'));
   }
 
   /**
@@ -445,8 +466,11 @@ export class TransactionPreviewTableComponent {
     this.focusWhenRendered(this.inRow(row, '.extra-country'), this.inRow(row, '.location-add'));
   }
 
+  // The chip goes with the tag; the add trigger is the strip's unconditional
+  // control, or the bare input when that row's own tag editor was open.
   removeTag(transaction: CategorizedImportTransaction, tag: string): void {
     this.replaceRow(transaction, { tags: (transaction.tags ?? []).filter(t => t !== tag) });
+    this.focusWhenRendered(this.inRow(transaction, '.tag-add'), this.inRow(transaction, '.tag-input'));
   }
 
   /** Accept = the ordinary currency edit, so one path clears the marks and records the choice. */
@@ -454,11 +478,16 @@ export class TransactionPreviewTableComponent {
     const offer = transaction.currencySuggestion;
     if (!offer) return;
     this.updateCurrency(transaction, offer.code);
+    // The offer's own chip goes with the accepted choice, and the currency
+    // chip is where the choice now shows — the same landing dismiss names,
+    // for the same unmount.
+    this.focusWhenRendered(this.inRow(transaction, '.currency-chip'));
   }
 
   /** Dismiss = drop the mark. The row keeps its fallen-back marker; nothing was applied. */
   dismissCurrencySuggestion(transaction: CategorizedImportTransaction): void {
     this.replaceRow(transaction, { currencySuggestion: undefined });
+    this.focusWhenRendered(this.inRow(transaction, '.currency-chip'));
   }
 
   currencyOfferText(row: CategorizedImportTransaction): string {
@@ -730,7 +759,7 @@ export class TransactionPreviewTableComponent {
     this.editing.set(row.id, field);
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, '.inline-input'));
+    this.focusWhenRendered(this.inRow(row, EDITORS[field].input));
   }
 
   /**
@@ -787,7 +816,7 @@ export class TransactionPreviewTableComponent {
     this.amountRejected.delete(row.id);
     this.cdr.markForCheck();
     if (restoreFocus && field) {
-      this.focusWhenRendered(...EDIT_TRIGGERS[field].map(selector => this.inRow(row, selector)));
+      this.focusWhenRendered(...EDITORS[field].triggers.map(selector => this.inRow(row, selector)));
     }
   }
 
@@ -885,22 +914,40 @@ export class TransactionPreviewTableComponent {
    * rule a date answer follows. The figure already shown closes the editor
    * and changes nothing.
    *
-   * A figure parseAmountInput cannot read keeps the editor open and says so.
-   * Closing on it looked to the reviewer exactly like a commit — the editor
+   * The parsed figure is rounded to what the row's own currency stores
+   * before it is compared against the old one or written — a JPY row
+   * typed at 179.33 settles at 179, the only figure formatAmount would
+   * ever show for it, so the two never disagree.
+   *
+   * A figure that rounds to nothing is refused, on every row, the same way
+   * an unreadable one is: amountRejected holds the row and the editor stays
+   * open, marked invalid. 0.4 on a JPY row rounds to that same nothing —
+   * written over a real figure it reads to the reviewer as one erased, and
+   * on a row already at amount 0 the amount === row.amount short-circuit
+   * below would otherwise close the editor having shown nothing changed on
+   * a figure just typed. Both are the same silent loss, so both are refused
+   * the one way.
+   *
+   * A figure parseAmountInput cannot read is refused for the same reason:
+   * closing on it looked to the reviewer exactly like a commit — the editor
    * shut, the old amount stood, and the row went to import at a number they
    * believed they had just replaced. Escape is still the way out, and it is
-   * the only way the old figure is kept deliberately.
+   * the only deliberate way the old figure is kept: startEdit on any other
+   * field of the same row — notes among them now — clears amountRejected
+   * too, so the refusal goes with the editor and the typed figure with it.
    *
    * commitSplit below holds its own editor open on the same rule, for the
    * same reason: a figure that reads fine on its own but would leave
    * nothing behind on the row it came from is exactly as silent a mistake
-   * as one parseAmountInput could not read at all.
+   * as one that rounds to nothing or that parseAmountInput could not read
+   * at all.
    */
   commitAmount(row: CategorizedImportTransaction, event: Event): void {
     if (!this.editing.has(row.id)) return;
     if (isImeComposition(event)) return;
-    const amount = parseAmountInput((event.target as HTMLInputElement).value);
-    if (amount === null) {
+    const parsed = parseAmountInput((event.target as HTMLInputElement).value);
+    const amount = parsed === null ? null : roundToMinorUnit(parsed, row.currency);
+    if (amount === null || amount === 0) {
       this.amountRejected.add(row.id);
       this.cdr.markForCheck();
       return;
@@ -916,13 +963,15 @@ export class TransactionPreviewTableComponent {
   /**
    * Take the typed amount off the row into a new row directly beneath it.
    * splitImportRow is the only judge of what a valid split is — it rounds
-   * before refusing, so a figure that reads fine here on its own (19.999,
-   * 0.004 on a whole-number row) can still fail once rounded, and calling
-   * it directly rather than re-checking `amount >= row.amount` first is
-   * what keeps the two from disagreeing over exactly those figures. Its
-   * refusal reads to the reviewer exactly like an unreadable one, so it
-   * holds the editor open the same way commitAmount does rather than let
-   * it close having silently done nothing.
+   * before refusing, so a figure that reads fine here on its own can still
+   * fail once rounded: 19.999 and 0.004 on a whole-number row, or 0.4 on a
+   * JPY row, which a cent-based row would have kept. splitImportRow judges
+   * all three the one way, and calling it directly rather than
+   * re-checking `amount >= row.amount` first is what keeps the two from
+   * disagreeing over exactly those figures. Its refusal reads to the
+   * reviewer exactly like an unreadable one, so it holds the editor open
+   * the same way commitAmount does rather than let it close having
+   * silently done nothing.
    *
    * Nothing typed is different. This field opens empty by design rather
    * than pre-filled the way commitAmount's is, so a blank commit is not a
@@ -966,7 +1015,7 @@ export class TransactionPreviewTableComponent {
     this.transactions = [...before, kept, part, ...after];
     this.emitChanges();
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(part, '.inline-input'));
+    this.focusWhenRendered(this.inRow(part, EDITORS.description.input));
   }
 
   /**
@@ -980,6 +1029,30 @@ export class TransactionPreviewTableComponent {
     return descriptionIsUnfilled(row)
       ? this.translationService.t('import.splitRow')
       : this.translationService.t('import.splitRowLabel', { description: row.description });
+  }
+
+  /**
+   * The split refusal's own floor, named rather than left as "too small":
+   * the smallest positive figure the row's own currency can hold, one
+   * whole yen on a JPY row and one cent on a USD one. `10 ** -digits` is
+   * that unit at whatever precision currencyDecimalPlaces gives the row,
+   * formatted the same way formatAmount renders it so the two figures a
+   * reviewer compares never disagree.
+   */
+  minimumAmountText(row: CategorizedImportTransaction): string {
+    return this.currencyService.formatCurrency(10 ** -currencyDecimalPlaces(row.currency), row.currency);
+  }
+
+  /**
+   * A row can only split into two figures each worth at least a minor unit,
+   * so anything worth less than twice that unit — ¥1, $0.01 — has no split
+   * that clears minimumAmountText's floor on both halves at once. ¥2 is the
+   * split at the floor, ¥1 and ¥1: each half clears the unit, and the two
+   * are not apart at all. The trigger hides rather than offer a control
+   * every figure would refuse.
+   */
+  canSplit(row: CategorizedImportTransaction): boolean {
+    return row.amount >= 2 * 10 ** -currencyDecimalPlaces(row.currency);
   }
 
   /**
@@ -1088,16 +1161,50 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
+   * The trigger's own name. A blank description falls back to the button's
+   * own visible text, splitLabel's reason: import.removeRowLabel would name
+   * a value the row does not have, on a control offered even before
+   * anything has been written into it.
+   */
+  removeLabel(row: CategorizedImportTransaction): string {
+    return descriptionIsUnfilled(row)
+      ? this.translationService.t('common.remove')
+      : this.translationService.t('import.removeRowLabel', { description: row.description });
+  }
+
+  /**
+   * The row's own trigger leaves with it, so focus goes where a keyboard
+   * reviewer clearing a batch would want it — the same control on the next
+   * row, the previous row's when this was the last, and the list's own
+   * control when the list is empty. The wizard prunes what it keeps for the
+   * id on its own (0106's mechanics, `onTransactionsUpdated`); the stale
+   * entry this leaves in `receiptRowIds` is inert, because `unansweredDates`
+   * reads the present rows, not that set alone.
+   */
+  removeRow(row: CategorizedImportTransaction): void {
+    const index = this.transactions.indexOf(row);
+    if (index === -1) return;
+    const neighbour = this.transactions[index + 1] ?? this.transactions[index - 1];
+    this.forgetRow(row.id);
+    this.transactions = this.transactions.filter(t => t !== row);
+    this.emitChanges();
+    this.cdr.markForCheck();
+    this.focusWhenRendered(
+      ...(neighbour ? [this.inRow(neighbour, '.remove-trigger')] : []),
+      '.add-row'
+    );
+  }
+
+  /**
    * Drop every per-id container's entry for a row that just left the card.
-   * `editing`, `amountRejected`, `notesOpen`, `draftNotes` and
-   * `fellBackEligible` are all keyed by row id and outlive `replaceRow`'s
-   * swap on purpose — until mergeInto, a row's id never stopped appearing in
+   * `editing`, `amountRejected`, `draftNotes` and `fellBackEligible` are all
+   * keyed by row id and outlive `replaceRow`'s swap on purpose — until
+   * mergeInto and removeRow, a row's id never stopped appearing in
    * `transactions` at all, so nothing else has ever needed to prune them.
    */
   private forgetRow(id: string): void {
     this.editing.delete(id);
     this.amountRejected.delete(id);
-    this.notesOpen.delete(id);
     this.draftNotes.delete(id);
     this.fellBackEligible.delete(id);
   }
@@ -1132,32 +1239,28 @@ export class TransactionPreviewTableComponent {
   }
 
   /**
-   * Which rows have their notes editor open, and what has been typed into it
-   * so far — by row id, for the reason `editing` gives: filing the note
-   * replaces the row, and state carried on the object would be dropped by the
-   * commit that reads it. The draft lives here and not on the row because the
-   * row is the parent's object: the old textarea wrote straight onto it, so a
-   * note typed during an in-flight import could change what was written for
-   * a row not yet processed.
+   * What has been typed into a row's notes editor so far, by row id — not on
+   * the row itself, because the row is the parent's object: the old textarea
+   * wrote straight onto it, so a note typed during an in-flight import could
+   * change what was written for a row not yet processed. Whether the editor
+   * is open needs no container of its own: a row edits one field at a time,
+   * notes included, so `editing` already carries that, and a filed note's
+   * box is on the card by `row.notes`, not by `editing`. A draft here can
+   * outlive its box, but only on a path no pointer or keyboard reaches — a
+   * same-row `startEdit` to another field with no blur in between; every
+   * reachable path blurs the textarea first, and `commitNotes` is what
+   * drains this map there.
    */
-  private notesOpen = new Set<string>();
   private draftNotes = new Map<string, string>();
 
   // Plain methods, for the reason selectedCount gives.
   showsNotes(row: CategorizedImportTransaction): boolean {
-    return !!row.notes || this.notesOpen.has(row.id);
+    return !!row.notes || this.isEditing(row, 'notes');
   }
 
   /** What the editor shows: the draft while one is being typed, else the row's own note. */
   notesText(row: CategorizedImportTransaction): string {
     return this.draftNotes.get(row.id) ?? row.notes ?? '';
-  }
-
-  /** Open the editor on a row without notes and put the caret in it, as startEdit does. */
-  initNotes(row: CategorizedImportTransaction): void {
-    this.notesOpen.add(row.id);
-    this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, '.notes-input'));
   }
 
   updateNotesDraft(row: CategorizedImportTransaction, text: string): void {
@@ -1170,34 +1273,32 @@ export class TransactionPreviewTableComponent {
    * holding nothing. Nothing typed, or the note the row already had, is not
    * a change and replaces nothing.
    *
-   * An editor left with nothing in it also closes. Opening one is a single
-   * tap on a crowded card, and without this that tap could not be taken
-   * back: `notesOpen` was only ever added to, so an empty box stayed on the
-   * row for the rest of the review with nothing to press to be rid of it.
+   * An editor left with nothing in it also closes — closeEdit's doing now:
+   * opening one is a single tap on a crowded card, and without it that tap
+   * could not be taken back. A filed note needs no such push; its box stays
+   * up on `row.notes` alone, whatever the shared slot just cleared to.
    */
   commitNotes(row: CategorizedImportTransaction): void {
     const draft = this.draftNotes.get(row.id);
     this.draftNotes.delete(row.id);
+    if (this.isEditing(row, 'notes')) this.closeEdit(row, false);
     const notes = draft?.trim() || undefined;
-    if (!notes) {
-      this.notesOpen.delete(row.id);
-      this.cdr.markForCheck();
-    }
     if (draft === undefined || notes === row.notes) return;
     this.replaceRow(row, { notes });
   }
 
   /**
    * Abandon the draft, the way Escape abandons the description and the
-   * amount. A row that came with a note keeps its editor — the note is what
-   * the editor is showing, and there is no button to go back to — so only
-   * the draft goes and the row's own note is written back into the box.
+   * amount — but not through cancelEdit: a filed note's box is on the card
+   * whatever `editing` holds, so a row that came with a note has no slot of
+   * its own to close, and if this row's slot holds some other field, that
+   * editor is open on purpose and is not what Escape here means. Only when
+   * the slot is notes does closing it apply.
    */
   cancelNotes(row: CategorizedImportTransaction): void {
     this.draftNotes.delete(row.id);
-    this.notesOpen.delete(row.id);
-    this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, '.add-notes-btn'));
+    if (this.isEditing(row, 'notes')) this.closeEdit(row, true);
+    else this.cdr.markForCheck();
   }
 
   /** One row per line of what is shown, so the box grows as the reviewer types. */
@@ -1240,7 +1341,7 @@ export class TransactionPreviewTableComponent {
     this.transactions = [...this.transactions, row];
     this.emitChanges();
     this.cdr.markForCheck();
-    this.focusWhenRendered(this.inRow(row, '.inline-input'));
+    this.focusWhenRendered(this.inRow(row, EDITORS.description.input));
   }
 
   private emitChanges(): void {

@@ -1,13 +1,15 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { TransactionPreviewTableComponent } from './transaction-preview-table.component';
-import { CategorizedImportTransaction } from '../../../../models';
+import { Category, CategorizedImportTransaction } from '../../../../models';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry';
+import { FitTextDirective } from '../../../../shared/directives/fit-text.directive';
 
 /**
  * The review card at the narrowest width the app supports, carrying
@@ -36,12 +38,15 @@ import { FitTextRegistry } from '../../../../shared/directives/fit-text.registry
   template: `
     <!-- 320px, the narrowest phone still in use, less the page's own padding. -->
     <div class="narrow">
-      <app-transaction-preview-table [transactions]="rows" [categories]="[]" [dateAttentionIds]="attention" />
+      <app-transaction-preview-table [transactions]="rows" [categories]="categories()" [dateAttentionIds]="attention" />
     </div>
   `,
   styles: ['.narrow { width: 288px; overflow: hidden; }'],
 })
 class PreviewOverflowProbeComponent {
+  // Empty by default, so every case but the one below still renders
+  // Unknown — the shape the fixture shipped with.
+  categories = signal<Category[]>([]);
   // r2 is the receipt row: dated on another day and under attention, so the
   // not-today question is measured at this width alongside r1's assumed one.
   readonly attention: ReadonlySet<string> = new Set(['r2']);
@@ -194,6 +199,48 @@ describe('overflow guard: the import review card', () => {
         right: r.right - parseFloat(after.right),
       };
     });
+  }
+
+  /**
+   * Fails unless every pair in `boxes` is disjoint on at least one axis.
+   * `label(i, j)` builds the failure message — the pair's own indices say
+   * nothing on their own about which two controls collided.
+   */
+  function expectDisjoint(
+    boxes: { top: number; bottom: number; left: number; right: number }[],
+    label: (i: number, j: number) => string,
+  ): void {
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+        // Two boxes overlap only when they overlap on both axes, so the
+        // smaller of the two spans is what has to come out non-positive.
+        const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        expect(Math.min(overlapX, overlapY)).withContext(label(i, j)).toBeLessThanOrEqual(0.5);
+      }
+    }
+  }
+
+  /**
+   * Fails unless every one of `triggers` stays disjoint from every box in
+   * `hits`. Kept apart from `expectDisjoint` rather than sharing it: a
+   * trigger is not one of the hits, so there is no self-pairing to skip.
+   */
+  function expectClearOf(
+    triggers: { top: number; bottom: number; left: number; right: number }[],
+    hits: { top: number; bottom: number; left: number; right: number }[],
+  ): void {
+    for (const trigger of triggers) {
+      for (const hit of hits) {
+        const overlapX = Math.min(trigger.right, hit.right) - Math.max(trigger.left, hit.left);
+        const overlapY = Math.min(trigger.bottom, hit.bottom) - Math.max(trigger.top, hit.top);
+        expect(Math.min(overlapX, overlapY))
+          .withContext('add trigger and a chip\'s hit area below it are disjoint')
+          .toBeLessThanOrEqual(0.5);
+      }
+    }
   }
 
   it('keeps the card inside the 288px it was given', () => {
@@ -423,15 +470,21 @@ describe('overflow guard: the import review card', () => {
     // control rather than a chip, so it takes the 40px floor in its own box
     // instead of an overhang, and the chips beside it must not fatten to
     // match: the tag chip's own height is pinned above. Split joined it as a
-    // second trigger once both fixture rows carry an amount to take off.
+    // second trigger once both fixture rows carry an amount to take off, and
+    // remove is the third — unconditional, the same as add tag, so a flagged
+    // row carries it too.
     const adds = Array.from(host.querySelectorAll<HTMLElement>('.extra-add'));
-    expect(adds.length).withContext('two per row: add tag and split, both rows filled').toBe(4);
+    expect(adds.length).withContext('three per row: add tag, split and remove').toBe(6);
     for (const add of adds) {
       expect(add.getBoundingClientRect().height)
         .withContext('add trigger tap target')
         .toBeGreaterThanOrEqual(40);
       expect(withinWidthOf(clip, add)).withContext('add trigger inside the clip').toBeTrue();
     }
+    // r2 is flagged (isDuplicate), and unlike merge and split, remove is
+    // offered whether or not the badge's own control has overruled it.
+    expect(host.querySelector('[data-row-id="r1"] .remove-trigger')).not.toBeNull();
+    expect(host.querySelector('[data-row-id="r2"] .remove-trigger')).withContext('flagged too').not.toBeNull();
 
     (host.querySelector('[data-row-id="r1"] .tag-add') as HTMLElement).click();
     fixture.detectChanges();
@@ -450,8 +503,13 @@ describe('overflow guard: the import review card', () => {
     // the one measurement in this file taken at a desktop width rather than
     // at 288px, and it has to be: at 288px the chips wrap onto lines of their
     // own and never stand beside the trigger at all, which is exactly why the
-    // chip height pinned above cannot see this.
-    clip.style.width = '900px';
+    // chip height pinned above cannot see this. The width is not a desktop's
+    // but one that holds the whole strip on a single line whatever font the
+    // browser has: at 900px the last line's composition was the fonts' to
+    // decide, and once Remove joined the strip, Linux Chrome's wider fallback
+    // face wrapped the trigger onto a line of its own — a precondition
+    // failing, not the stretch it guards.
+    clip.style.width = '2400px';
     fixture.detectChanges();
 
     const trigger = host.querySelector('[data-row-id="r1"] .tag-add') as HTMLElement;
@@ -645,19 +703,7 @@ describe('overflow guard: the import review card', () => {
       .withContext('the chips really did wrap, so there are rows to collide')
       .toBeGreaterThan(1);
 
-    for (let i = 0; i < hits.length; i++) {
-      for (let j = i + 1; j < hits.length; j++) {
-        const a = hits[i];
-        const b = hits[j];
-        // Two boxes overlap only when they overlap on both axes, so the
-        // smaller of the two spans is what has to come out non-positive.
-        const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-        const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-        expect(Math.min(overlapX, overlapY))
-          .withContext(`hit areas ${i} and ${j} are disjoint`)
-          .toBeLessThanOrEqual(0.5);
-      }
-    }
+    expectDisjoint(hits, (i, j) => `hit areas ${i} and ${j} are disjoint`);
   });
 
   it('keeps the add-tag and split triggers clear of the chip row below them', () => {
@@ -665,29 +711,78 @@ describe('overflow guard: the import review card', () => {
     // area, pinned above — so it cannot join the pass above over
     // .extra-remove/.extra-accept/.extra-country: getComputedStyle(button,
     // '::after').top on an element with no such pseudo-element is 'auto',
-    // and parseFloat('auto') is NaN, which would pass every comparison
-    // silently rather than fail loudly. This measures the same collision the
-    // way the trigger, not the chip, sees it: its own full box.
+    // and parseFloat('auto') is NaN, which every comparison below would
+    // fail on with a bare "Expected NaN to be less than or equal to 0.5"
+    // that names no control. This measures the same collision the way the
+    // trigger, not the chip, sees it: its own full box.
     const chipHits = chipHitBoxes();
     const triggers = Array.from(host.querySelectorAll<HTMLElement>('.extra-add')).map(add => add.getBoundingClientRect());
     expect(chipHits.length).withContext('there are chips here to stay clear of').toBeGreaterThan(0);
     expect(triggers.length).withContext('there are add triggers here to keep clear').toBeGreaterThan(0);
 
-    for (const trigger of triggers) {
-      for (const hit of chipHits) {
-        const overlapX = Math.min(trigger.right, hit.right) - Math.max(trigger.left, hit.left);
-        const overlapY = Math.min(trigger.bottom, hit.bottom) - Math.max(trigger.top, hit.top);
-        expect(Math.min(overlapX, overlapY))
-          .withContext('add trigger and a chip\'s hit area below it are disjoint')
-          .toBeLessThanOrEqual(0.5);
-      }
+    expectClearOf(triggers, chipHits);
+  });
+
+  it('keeps every hit box apart under RTL too', () => {
+    // Everything above is measured in LTR, where the card actually ships —
+    // this is the one case that flips the fixture instead, since the
+    // stylesheet's logical properties are what is under test here, not the
+    // card's own layout.
+    clip.setAttribute('dir', 'rtl');
+    fixture.detectChanges();
+    // Marked before the flush for the reason the 262px case below spells
+    // out: the directive's own observers never land inside a plain
+    // (non-fakeAsync) spec, so a flush over an empty dirty set re-measures
+    // nothing and the line would be protection this case is not getting.
+    const registry = TestBed.inject(FitTextRegistry);
+    fixture.debugElement
+      .queryAll(By.directive(FitTextDirective))
+      .forEach(d => registry.markDirty(d.injector.get(FitTextDirective)));
+    registry.flush();
+
+    const hits = chipHitBoxes();
+    // chipHitBoxes() reads back whichever spelling the stylesheet used, as a
+    // physical top/bottom/left/right — so a control missing the inset the
+    // reconstruction needs on a given side reads 'auto' there just as
+    // `.extra-add` would above, and parseFloat('auto') is NaN. Finite first,
+    // so that failure names the box it is about instead of surfacing as a
+    // bare "Expected NaN to be less than or equal to 0.5" from whichever
+    // comparison below meets it first.
+    for (const hit of hits) {
+      expect([hit.top, hit.bottom, hit.left, hit.right].every(Number.isFinite))
+        .withContext('every hit box inset resolves to a real value under rtl too')
+        .toBeTrue();
     }
+
+    expectDisjoint(hits, (i, j) => `hit areas ${i} and ${j} are disjoint`);
+    const triggers = Array.from(host.querySelectorAll<HTMLElement>('.extra-add')).map(add => add.getBoundingClientRect());
+    expectClearOf(triggers, hits);
+
+    // The location chip's own three controls are where this matters
+    // concretely: .place-name's big overhang faces away from
+    // .extra-country under LTR, and stays that way under RTL only because
+    // the inset is logical now — a physical spelling would leave it facing
+    // .extra-country instead, the 9 + 6 across the chip's 4px gap the
+    // stylesheet's own comment measures as an 11px overlap.
+    const hitBox = (control: HTMLElement) => {
+      const r = control.getBoundingClientRect();
+      const after = getComputedStyle(control, '::after');
+      return {
+        top: r.top + parseFloat(after.top),
+        bottom: r.bottom - parseFloat(after.bottom),
+        left: r.left + parseFloat(after.left),
+        right: r.right - parseFloat(after.right),
+      };
+    };
+    const placeName = hitBox(host.querySelector('[data-row-id="r1"] .place-name') as HTMLElement);
+    const country = hitBox(host.querySelector('[data-row-id="r1"] .extra-country') as HTMLElement);
+    expectDisjoint([placeName, country], () => 'the location chip\'s place name and its country control are disjoint');
   });
 
   it('carries a merge trigger on every row once they share a currency, inside the 288px', () => {
     // r1 and r2 are JPY and USD everywhere else in this file, so canMerge is
     // false on both and nothing above ever sees a `.merge-trigger` — the
-    // `.extra-add` count pinned two tests up stays two per row. Correcting
+    // `.extra-add` count pinned above stays three per row. Correcting
     // r2's own currency to JPY through its own menu (the same click this
     // file's currency-menu case above already drives) is what gives the two
     // a shared currency here, a real edit rather than a fixture rewrite, so
@@ -791,6 +886,85 @@ describe('overflow guard: the import review card', () => {
     expect(withinWidthOf(clip, el('.selected-badge')))
       .withContext('count badge inside the clip')
       .toBeTrue();
+  });
+
+  it('lets a long category name yield at the width the wizard leaves the card', () => {
+    // 262: .table-container's 1px border takes the clip to 260, then
+    // .transactions-list's 10px padding on both sides takes it to 240 — the
+    // width a stretched flex item in that column list is handed regardless
+    // of what overflows inside it. A driven run once measured exactly this
+    // shape, 240 wide with a 238 clientWidth once the card's own 1px border
+    // is paid too, against a category chip reading Groceries (#393).
+    //
+    // This fixture's two rows are always taller than 70dvh of Karma's own
+    // window, so .transactions-list always carries a real vertical
+    // scrollbar here (never on the touch devices this card ships to, which
+    // overlay theirs) — a fixed cost of this file's shared rows, not of the
+    // width being asserted. Reading it back rather than hard-coding it is
+    // what keeps 240 the number that drifts loudly when the padding or
+    // border above it does, instead of one that is also wrong by whatever a
+    // future browser's scrollbar happens to cost.
+    fixture.componentInstance.categories.set([
+      {
+        id: 'food',
+        userId: null,
+        name: 'Groceries & household supplies',
+        icon: 'shopping_cart',
+        color: '#2e7d32',
+        type: 'expense',
+        order: 0,
+        isActive: true,
+        isDefault: true,
+      },
+    ]);
+    clip.style.width = '262px';
+    // The wizard hands this input down as a signal read
+    // (import-wizard.component.html, [categories]="categories()"), and this
+    // probe's host does the same: a component that declares no
+    // changeDetection strategy is OnPush by default in this Angular, so a
+    // plain field reassignment would never re-run the host's own template
+    // to re-evaluate the [categories] binding below.
+    fixture.detectChanges();
+    // The directive's own MutationObserver is what would normally notice
+    // this row's text changed, but it runs outside the zone and fires from
+    // a real browser callback rather than synchronously — nothing in a
+    // plain (non-fakeAsync) spec waits long enough for that callback to
+    // land. Re-marking every appFitText host directly is what makes the
+    // flush below see them all — the amounts and r2's own category label
+    // carry the directive too, and would otherwise keep the scaling they
+    // computed at 288px while the card here is measured at 262.
+    const registry = TestBed.inject(FitTextRegistry);
+    fixture.debugElement
+      .queryAll(By.directive(FitTextDirective))
+      .forEach(d => registry.markDirty(d.injector.get(FitTextDirective)));
+    registry.flush();
+
+    const label = host.querySelector('[data-row-id="r1"] .category-name') as HTMLElement;
+    expect(label.textContent?.trim())
+      .withContext('the long category name actually reached the chip rather than the Unknown fallback')
+      .toBe('Groceries & household supplies');
+
+    const list = host.querySelector('.transactions-list') as HTMLElement;
+    const scrollbarWidth = list.getBoundingClientRect().width - list.clientWidth;
+    expect(getComputedStyle(list).borderInlineStartWidth)
+      .withContext('the scrollbar subtraction below only equals the scrollbar when the list has no border')
+      .toBe('0px');
+    expect(Math.abs(card.getBoundingClientRect().width - (240 - scrollbarWidth)))
+      .withContext('card at the width the arithmetic above predicts, so drift is visible')
+      .toBeLessThanOrEqual(1);
+    expect(card.scrollWidth)
+      .withContext('nothing hiding past the card\'s right edge for a long category name')
+      .toBeLessThanOrEqual(card.clientWidth + 1);
+    expect(withinWidthOf(clip, el('[data-row-id="r1"] .category-button')))
+      .withContext('category chip inside the clip')
+      .toBeTrue();
+
+    expect(label.scrollWidth)
+      .withContext('the label\'s own box, appFitText\'s contract')
+      .toBeLessThanOrEqual(label.clientWidth + 1);
+    expect(parseFloat(getComputedStyle(label).fontSize))
+      .withContext('scaled no further than the 12px floor')
+      .toBeGreaterThanOrEqual(12);
   });
 });
 

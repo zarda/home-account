@@ -104,12 +104,10 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', '.angular', 'coverage']);
 const BASELINE = {
   'src/app/features/about/about.component.scss': 1,
   'src/app/features/about/feedback-dialog/feedback-dialog.component.scss': 1,
-  'src/app/features/ai/import/category-suggestion/category-suggestion.component.scss': 2,
   'src/app/features/ai/import/duplicate-warning/duplicate-warning.component.scss': 3,
   'src/app/features/ai/import/file-dropzone/file-dropzone.component.scss': 4,
   'src/app/features/ai/import/import-history/import-history.component.scss': 2,
   'src/app/features/ai/import/import-wizard/import-wizard.component.scss': 9,
-  'src/app/features/ai/import/transaction-preview-table/transaction-preview-table.component.scss': 5,
   'src/app/features/ai/search-history/search-answer-history.component.scss': 1,
   'src/app/features/auth/login/login.component.scss': 3,
   'src/app/features/budgets/goals/goal-progress-card/goal-progress-card.component.scss': 2,
