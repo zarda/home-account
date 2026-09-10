@@ -375,8 +375,14 @@ describe('DuplicateDetectionService', () => {
   });
 
   describe('findWithinBatchDuplicates', () => {
+    let seq = 0;
+
+    beforeEach(() => {
+      seq = 0;
+    });
+
     const row = (overrides: Partial<CategorizedImportTransaction> = {}) => importTxn({
-      id: `row-${Math.random()}`,
+      id: `row-${++seq}`,
       ...overrides,
     });
 

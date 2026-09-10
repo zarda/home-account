@@ -44,11 +44,9 @@ export class DuplicateDetectionService {
     maxDate.setDate(maxDate.getDate() + 2);
 
     // Load only transactions within the relevant date range
-    console.log(`[DuplicateDetection] Loading existing transactions from ${minDate.toLocaleDateString()} to ${maxDate.toLocaleDateString()}`);
     const existingTxns = await firstValueFrom(
       this.transactionService.getTransactions({ startDate: minDate, endDate: maxDate })
     );
-    console.log(`[DuplicateDetection] Loaded ${existingTxns.length} existing transactions in date range`);
 
     if (existingTxns.length === 0) {
       return transactions.map(txn => ({
