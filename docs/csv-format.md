@@ -181,6 +181,10 @@ column, `debit` and `credit` are used instead.
 ### What is validated and quietly dropped
 
 - A **currency** that is not a real ISO code falls back to your base currency.
+- An **amount** is rounded to that currency's minor unit, on the wizard's door
+  and on the data hub's alike: `179.33 JPY` imports as `179`, because the yen
+  has no minor unit to keep the fraction in
+  ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)).
 - A **period** outside `weekly`/`monthly`/`yearly` is dropped. This matters
   because the match is a substring: a statement carrying a `Statement Period`
   column lands on the period probe with a value like `2024-01 to 2024-02`, and

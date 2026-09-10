@@ -199,13 +199,15 @@ that refusal names the minimum.
 - **`updateCurrency` does not re-round.** Changing a row from USD to JPY
   leaves an amount of `179.33` on it, stored as it was and rendered `¥179` —
   the same disagreement this record closes for typed figures, reopened by a
-  currency edit. Filed as a follow-up.
+  currency edit. Filed as a follow-up. Closed by
+  [ADR 0117](0117-every-doors-figure-is-whole-in-its-currency.md), #399.
 - **The doors still write unrounded figures.** The scan and CSV paths write
   `Math.abs(t.amount)` with no currency rounding (`ai-import.service.ts`), so
   a scanned JPY `179.33` arrives on the card stored at `179.33` and shown
   `¥179`. Everything this record fixes is about figures the *reviewer* typed;
   a figure that was *read* stays as it arrived until it is edited. Filed as a
-  follow-up.
+  follow-up. Closed by
+  [ADR 0117](0117-every-doors-figure-is-whole-in-its-currency.md), #401.
 - **`roundMoney` still governs base-currency aggregates**, and should: those
   figures are in the account's base currency by construction, and rounding
   them to a row's currency would be wrong.

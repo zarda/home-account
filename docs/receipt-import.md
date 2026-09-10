@@ -111,6 +111,17 @@ structures the OCR text instead of the parser and reports no per-field
 confidence of its own, except for a date it could not read at all, which it
 grades at zero for the same reason.
 
+Whichever of those produced it, the figure is **rounded to the currency's
+minor unit twice**: once where the review row is built, so the card, the
+duplicate check, the split floor and the confirm totals all read the number
+the ledger will hold, and again in the shared mapper where the transaction is
+written, which is what covers the offline drain — it reaches the write with no
+builder in front of it. A yen amount read as 179.33 is 179 from the card
+onwards, and changing a row's currency on the card re-rounds it to the new
+one. Rounding an already-rounded figure returns it, so the second pass costs
+nothing
+([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)).
+
 The decision and its rejected alternatives are recorded in
 [ADR 0013](ADR/0013-the-printed-total-is-the-amount-not-the-item-sum.md).
 
@@ -457,9 +468,18 @@ layer can fall back between engines on the throw. A row whose date could not be
 read cannot fail the batch either — it is re-dated and marked instead, as
 below. A partial save keeps exactly the failed rows on the review step —
 editable and re-confirmable, with the saved ones removed so a second confirm
-cannot double-import — and the completion toast carries both counts. When every
-row saved but the summary read-back fails, the wizard says so and moves on; the
-full record, including per-row errors, is on the Import History page.
+cannot double-import — and the completion toast carries both counts. The rows
+that come back are the ones the record **names by id**, not by position: the
+record's `row` number counts the submitted subset, which is not what the
+reviewer is looking at once anything has been deselected
+([ADR 0115](ADR/0115-a-failed-row-is-named-by-its-id.md)). While the write
+runs, the confirm step's bar and the line under it are the import service's
+own progress — the row being written out of the total — rather than figures
+the wizard keeps
+([ADR 0114](ADR/0114-the-confirm-step-reads-the-writes-progress-from-the-service.md)).
+When every row saved but the summary read-back fails, the wizard says so and
+moves on; the full record, including per-row errors, is on the Import History
+page.
 
 **A date the scan cannot vouch for lands on today, and the row says so.** The
 date is graded like the amount is, on the same 0.7 bar; what is new is what

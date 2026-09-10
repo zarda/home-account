@@ -85,7 +85,7 @@ travels with zero edits.
 | Field | Guard |
 |---|---|
 | `type` | the row's own, else derived from the amount's sign |
-| `amount` | absolute value |
+| `amount` | `importAmount` — absolute, and whole in the row's currency. The four review-row builders call it too, so the figure is already whole by the time it reaches here; the second call is for the offline drain, which has no builder in front of it, and rounding an already-rounded figure returns it ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)) |
 | `currency` | the row's, else the account's base currency (empty string falls back) |
 | `categoryId` | the row's, else the catch-all (empty string falls back) |
 | `description` | the row's, else `Imported transaction` |
@@ -114,13 +114,17 @@ it is the fourth door now, not an exception to the rule.
 | tags, location, period, recurring | from the file | from the file | `location` when the receipt prints one | `location` when the document prints one | `location` when the document prints one | from the file | `location` when the receipt prints one |
 | suggestions (tags, rule link) | — | yes | yes | yes | yes | — | — (no review step) |
 | currency marked as fallen back | — | yes | yes | yes | yes | yes | — (the base currency is written, unmarked) |
-| category | catch-all (ADR 0011) | ladder (#258) | ladder / extraction | ladder | ladder | the backup's own | extraction, else catch-all |
+| category | catch-all (ADR 0011) | ladder (#258) | ladder / extraction | ladder | ladder | the backup's own; a row without one is defaulted and graded 0.3 (ADR 0113) | extraction, else catch-all |
 | photo attached | — | — | **yes** | no (known gap, ADR 0060) | no | no | no (follow-up) |
 | recorded as | n/a | `csv` / `generic_csv` | `image` / `receipt_image` | `image` / `screenshot` | `pdf` / `bank_pdf` | `json` / `backup_json` | a failed attempt only: `image` / `receipt_image`, door `queue` |
 
 The data hub's CSV path has no review step, so it takes no suggestions and
 carries no marks. The JSON backup is the one wizard door that takes none
-either: its rows already carry what the backup recorded.
+either: its rows already carry what the backup recorded — with one exception.
+A category the backup did **not** record is not carried; it is defaulted to
+the catch-all and graded 0.3 like every other door's default, so the chip's
+dot and the low-confidence tally see it
+([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)).
 
 A mixed wizard batch is recorded as its dominant kind by row count (ties keep
 the first processed), sized by every file in the batch. Import History renders
@@ -180,10 +184,10 @@ runs again, and whether anything is remembered past the wizard.
 | Field | Control | What a correction clears | Detection re-runs | Remembered |
 |---|---|---|---|---|
 | Date | the date button opens a modal picker seeded on the row's own day; the question chip's **Keep** accepts it as read | `dateAssumed`, `dateImplausible` and `fieldConfidence.date`; sets `dateReviewed` | yes | no |
-| Amount | inline editor — Enter or blur commits, Escape cancels. The figure is rounded to the currency's minor unit before it is compared or written (¥179 for 179.33 on a JPY row), and one that rounds to nothing is refused: the editor is held open, marked invalid, and says the minimum the row's currency can hold | `fieldConfidence.amount` | yes | no |
+| Amount | inline editor — Enter or blur commits, Escape cancels. The figure is rounded to the currency's minor unit before it is compared or written (¥179 for 179.33 on a JPY row), and one that rounds to nothing is refused: the editor is held open, marked invalid, and says the minimum the row's currency can hold. The doors already round what they read to the same unit, so this is the same rule applied to a figure the reviewer typed rather than a different one ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)) | `fieldConfidence.amount` | yes | no |
 | Type | the income/expense toggle | nothing | yes | no |
 | Description | inline editor, same commit rules; an emptied field is a cancel | nothing | yes | it becomes the key the category is remembered under |
-| Currency | the chip's menu | `currencyFellBack` and the standing `currencySuggestion` | no | no |
+| Currency | the chip's menu, and the header's **Currency for selected** for the whole selection | `currencyFellBack` and the standing `currencySuggestion`; the amount is re-rounded to the new currency's minor unit, and one that rounds to nothing leaves the row unfilled — there is no editor to hold open | only when the re-rounding moved the amount, on the rule every amount edit follows | no |
 | Category | the suggestion chip's menu | nothing — the confidence dot follows the pick and reads as the reviewer's own | no | yes, per merchant, at confirm |
 | Notes | a **Notes** button on a row with no note opens a textarea through the card's one editing machine — a row edits one field at a time, notes included — and it files on the way out, on blur; a filed note's box is already on the card, so only a row with none shows the button | nothing | no | no |
 | Tags | a remove control on each chip, and **Add tag** over the account's own vocabulary — a native datalist, so what is typed is filed whether or not it is on the list | the tag | no | yes, kept and removed both, per merchant |
@@ -191,7 +195,7 @@ runs again, and whether anything is remembered past the wizard.
 | Row (added by hand) | **Add a row** under the list appends a blank row with its description editor open; Continue and Import wait until it has an amount and a description | nothing — it is born with no grade and no mark to clear | not on arrival while blank (a blank row has nothing to compare; a filled row that appears is checked, as the split row below is), but on every edit to a detection input — date, amount, type or description — so a filled row has been checked | no |
 | Row (split) | **Split** in the extras opens an inline amount field; Enter takes that amount into a new row directly under the original, which keeps the purchase's identity — description, date and its marks, currency, type, category, location, tags, photo — and drops notes, the rule link and the verdict, and opens with its description editor focused. The figure taken and the remainder are each rounded to the row's own currency, and the refusal is judged on the rounded remainder; the trigger is hidden altogether on a row worth less than two minor units, since no figure would clear the floor on both halves | `fieldConfidence.amount` on both halves | yes — the original by its amount, the part on arrival; the two are never each other's within-batch twins | no |
 | Row (merged) | **Merge into…** lists the other rows in the same currency that have an amount, a description and no standing verdict; the target keeps its id, the amounts net with the type following the sign, tags and photos union, notes join, and the source leaves the batch with everything keyed on its id | `fieldConfidence.amount` on the survivor, whose verdict is written clear | yes, the target — the row that merged away owes none | no |
-| Row (removed) | **Remove** in the extras takes the row off the batch, on any row; focus lands on the neighbour's Remove or Add a row | everything keyed on its id bar the inert `receiptRowIds` entry (known gap, ADR 0108) — the card's editing state, the wizard's overrule, stamp and verdict | not for the removed row — nothing left to check — but yes for a survivor whose within-batch verdict named it, since that verdict is now about a row that has gone | no |
+| Row (removed) | **Remove** in the extras takes the row off the batch, on any row; focus lands on the neighbour's Remove or Add a row | everything keyed on its id — the card's editing state, the wizard's overrule, stamp and verdict, and its entry in the receipt-row set | not for the removed row — nothing left to check — but yes for a survivor whose within-batch verdict named it, since that verdict is now about a row that has gone | no |
 | Recurring rule | the offer's checkbox | sets or restores `recurringId` and `isRecurring` | no | no |
 | Duplicate verdict | the badge's **Not a duplicate — import it** | `isDuplicate` and `duplicateOf`, reselects the row, and marks it overruled for the rest of the batch | it *is* the overrule | no |
 

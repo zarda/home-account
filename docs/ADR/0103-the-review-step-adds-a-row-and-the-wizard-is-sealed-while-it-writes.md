@@ -40,6 +40,10 @@ Import button and the Confirm step's own Back button, and nothing else: the
 stepper *header* stayed live, so a click on **Review** during a twenty-row
 write went back to a card that edits rows the service was already writing. The
 error numbers then indexed a list that had moved under them.
+(The numbering itself is superseded: since
+[ADR 0115](0115-a-failed-row-is-named-by-its-id.md) a failed row is named by
+its id and the wizard keeps no snapshot to index. The seal stands for what it
+was really protecting — a reviewer editing rows that are being written.)
 
 The two met at the recovery jump. A partial failure returns the reviewer to the
 review step by setting the stepper's index — which is exactly the backward move
@@ -198,13 +202,17 @@ NG0911.
   figures that do move belong to the service. A twenty-row import shows an
   empty status line and a bar at zero for its whole duration. Out of scope
   here — the seal is about what the user can *do* during the write, not about
-  what they are told — and filed as a follow-up.
+  what they are told — and filed as a follow-up. Closed by
+  [ADR 0114](0114-the-confirm-step-reads-the-writes-progress-from-the-service.md),
+  #381.
 - **Nothing a user can press reaches the JSON backup door.** The wizard accepts
   `.csv,.pdf,.png,.jpg,.jpeg,.webp`, the dropzone enforces that list on both
   drop and select, and the share target takes images, PDF and CSV. The door is
   maintained as if it were live and is reachable only from a spec or a console.
   Also filed as a follow-up, and it is why the browser journey for it hands the
-  file to the component directly.
+  file to the component directly. Closed by
+  [ADR 0113](0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md),
+  #380.
 
 ## Known gaps
 
