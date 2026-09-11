@@ -1138,6 +1138,7 @@
     "addRow": "行を追加",
     "addDescription": "説明を追加",
     "addAmount": "金額を追加",
+    "bulkCurrencyBlanked": "{{currency}}では{{count}}件の金額が0になりました。もう一度入力してください",
     "splitRow": "分割",
     "splitRowLabel": "{{description}}を2つの行に分割",
     "splitAmountRefused": "{{minimum}}以上、この行の金額より小さい金額を入力してください",

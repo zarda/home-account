@@ -1216,6 +1216,10 @@
     "addRow": "Add a row",
     "addDescription": "Add a description",
     "addAmount": "Add an amount",
+    "bulkCurrencyBlanked": {
+      "one": "{{count}} amount rounds to nothing in {{currency}} — add it again",
+      "other": "{{count}} amounts round to nothing in {{currency}} — add them again"
+    },
     "splitRow": "Split",
     "splitRowLabel": "Split {{description}} into two rows",
     "splitAmountRefused": "Enter an amount smaller than the row's — at least {{minimum}}",

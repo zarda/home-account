@@ -33,6 +33,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
+import { NotificationService } from '../../../../core/services/notification.service';
 import { countryDisplayName, currencyReasonKey } from '../../../../core/utils/currency-suggestion.utils';
 import { countryOptions } from '../../../../core/utils/country-options.utils';
 import {
@@ -134,6 +135,7 @@ export class TransactionPreviewTableComponent {
   private destroyRef = inject(DestroyRef);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private cdr = inject(ChangeDetectorRef);
+  private notifications = inject(NotificationService);
 
   @Input() transactions: CategorizedImportTransaction[] = [];
   @Input() categories: Category[] = [];
@@ -332,6 +334,13 @@ export class TransactionPreviewTableComponent {
    *
    * Rounds each row's amount the same way `updateCurrency` does, and for
    * the same reason — see its comment.
+   *
+   * The per-row chip rounds without asking, and this keeps that same rule —
+   * a bulk switch is never refused. But a chip is one row the reviewer is
+   * already looking at when it blanks; a bulk switch can blank several
+   * without any of them being looked at, so this is the one path that says
+   * how many. Just a count: each blanked row's own placeholder already
+   * names itself, and the Continue gate holds until every one is filled.
    */
   applyCurrencyToSelected(code: string): void {
     const selected = this.transactions.filter(t => t.selected);
@@ -345,6 +354,12 @@ export class TransactionPreviewTableComponent {
     if (eligible) {
       this.currencySession.remember(code);
     }
+    // Counted before the map below replaces `amount`: after it, every row
+    // has already been rounded and a row that was blank to start looks the
+    // same as one the switch just blanked.
+    const blanked = selected.filter(
+      t => !amountIsUnfilled(t) && amountIsUnfilled({ ...t, amount: roundToMinorUnit(t.amount, code) })
+    ).length;
     this.transactions = this.transactions.map(t =>
       t.selected
         ? {
@@ -357,6 +372,11 @@ export class TransactionPreviewTableComponent {
         : t
     );
     this.emitChanges();
+    if (blanked > 0) {
+      this.notifications.info(
+        this.translationService.t('import.bulkCurrencyBlanked', { count: blanked, currency: code })
+      );
+    }
   }
 
   currencyFellBackTooltip(): string {
