@@ -133,6 +133,13 @@ describe('AIStrategyService', () => {
     return TestBed.inject(AIStrategyService);
   }
 
+  it('constructs without narrating', () => {
+    // Before createService(): the line under test runs from the constructor.
+    const logSpy = spyOn(console, 'log');
+    createService('web');
+    expect(logSpy).not.toHaveBeenCalledWith(jasmine.stringContaining('[AIStrategy]'));
+  });
+
   describe('provider lifecycle across accounts', () => {
     // Sign-out is a router navigation, so every root singleton survives it. On
     // a shared device that meant account B's receipts were sent to account A's

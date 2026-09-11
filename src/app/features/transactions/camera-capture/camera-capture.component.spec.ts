@@ -422,12 +422,14 @@ describe('CameraCaptureComponent', () => {
           transactions: [{ description: 'X', amount: 1, currency: 'USD', date: new Date(), type: 'expense', confidence: 1 }],
           confidence: 1, diagnostics,
         } as never);
+        const logSpy = spyOn(console, 'log');
         const component = build().componentInstance;
         withImages(component, 1);
         await component.processImage();
         expect(attempts.handle.succeeded).toHaveBeenCalledWith(jasmine.objectContaining({ diagnostics }));
         const navState = (router.navigate.calls.mostRecent().args[1] as { state: { importResult: ImportResult } }).state;
         expect(navState.importResult.diagnostics).toEqual(diagnostics);
+        expect(logSpy).not.toHaveBeenCalledWith(jasmine.stringContaining('[Camera] Processed'));
       });
 
       it('reports the error when both the strategy and the fallback throw', async () => {

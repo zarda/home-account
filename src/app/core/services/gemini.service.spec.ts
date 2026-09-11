@@ -52,6 +52,7 @@ describe('GeminiService', () => {
 
   let textModel: FakeModel;
   let visionModel: FakeModel;
+  let consoleWarnSpy: jasmine.Spy;
 
   // The local (gitignored) environment may carry a real geminiApiKey, which
   // initializeGemini falls back to when no explicit key is given. Blank it for
@@ -126,6 +127,9 @@ describe('GeminiService', () => {
       ],
     });
 
+    // Before the inject below: the no-key check runs synchronously from the
+    // constructor, so a spy attached any later would miss it.
+    consoleWarnSpy = spyOn(console, 'warn');
     service = TestBed.inject(GeminiService);
     const fakes = installFakeModels(service);
     textModel = fakes.text;
@@ -134,6 +138,10 @@ describe('GeminiService', () => {
 
   it('should be created', () => {
     expect(service).toBeTruthy();
+  });
+
+  it('says nothing at construction without a key', () => {
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
   // ----------------------------------------------------------------

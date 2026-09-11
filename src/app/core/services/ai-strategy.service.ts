@@ -135,7 +135,6 @@ export class AIStrategyService {
     // Apply the stored model selection at startup so the first request honors
     // the user's choice from AI settings. Keys, if any, arrive with the effect
     // below once the account resolves.
-    console.log('[AIStrategy] Applying stored model selection on app start');
     void this.initializeCloudProviders();
 
     // Probe native capabilities (Mac environment, Apple Intelligence)

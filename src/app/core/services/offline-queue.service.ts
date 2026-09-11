@@ -183,7 +183,6 @@ export class OfflineQueueService implements OnDestroy {
 
       this._isReady.set(true);
       await this.updatePendingCount();
-      console.log('[OfflineQueue] Database initialized');
     } catch (error) {
       console.error('[OfflineQueue] Failed to initialize database:', error);
     }
@@ -544,7 +543,6 @@ export class OfflineQueueService implements OnDestroy {
     }
 
     await this.updatePendingCount();
-    console.log('[OfflineQueue] Cleared all items');
   }
 
   /**

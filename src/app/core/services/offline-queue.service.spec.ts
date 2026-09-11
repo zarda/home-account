@@ -24,6 +24,7 @@ describe('OfflineQueueService', () => {
   let service: OfflineQueueService;
   let pwa: jasmine.SpyObj<PwaService>;
   let userId: WritableSignal<string | null>;
+  let consoleLogSpy: jasmine.Spy;
 
   beforeEach(async () => {
     pwa = jasmine.createSpyObj('PwaService', ['isOnline', 'registerBackgroundSync']);
@@ -38,6 +39,10 @@ describe('OfflineQueueService', () => {
         { provide: AuthService, useValue: { userId } },
       ],
     });
+    // Before the inject below: initializeDB() logs from the constructor, and
+    // isReady() only resolves once it already has — a spy attached after
+    // either line would miss it.
+    consoleLogSpy = spyOn(console, 'log');
     service = TestBed.inject(OfflineQueueService);
     await waitFor(() => service.isReady());
 
@@ -58,6 +63,7 @@ describe('OfflineQueueService', () => {
   it('initializes the database', () => {
     expect(service.isReady()).toBeTrue();
     expect(service.pendingCount()).toBe(0);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
   });
 
   describe('queueing', () => {
@@ -128,6 +134,7 @@ describe('OfflineQueueService', () => {
       await service.queueImage(imageFile('c.jpg'));
       await service.clearAll();
       expect(service.pendingCount()).toBe(0);
+      expect(consoleLogSpy).not.toHaveBeenCalledWith(jasmine.stringContaining('[OfflineQueue] Cleared all items'));
     });
   });
 
@@ -221,6 +228,7 @@ describe('OfflineQueueService', () => {
       const stats = await service.getStats();
       expect(stats.pendingImages).toBe(0);
       expect(service.pendingCount()).toBe(0);
+      expect(consoleLogSpy).not.toHaveBeenCalledWith(jasmine.stringContaining('[OfflineQueue] Cleared all items'));
     });
   });
 
@@ -306,6 +314,7 @@ describe('OfflineQueueService', () => {
 
       await service.clearAll();
       expect(await service.getPendingImages()).toEqual([]);
+      expect(consoleLogSpy).not.toHaveBeenCalledWith(jasmine.stringContaining('[OfflineQueue] Cleared all items'));
 
       userId.set('user-a');
       expect((await service.getPendingImages()).length).toBe(1);

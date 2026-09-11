@@ -445,10 +445,6 @@ export class CameraCaptureComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Log processing completion
-    const platform = this.strategyService.platform();
-    console.log(`[Camera] Processed on ${platform}`);
-
     attempt.succeeded(result);
     this.dialogRef.close({ success: true, result });
     this.router.navigate(['/import/file'], {

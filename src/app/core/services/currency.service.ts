@@ -58,8 +58,7 @@ export class CurrencyService {
       }
 
       await this.refreshRates();
-    } catch (error) {
-      console.error('Failed to initialize exchange rates:', error);
+    } catch {
       if (cached) {
         this.setRatesFromCache(cached);
       } else {
@@ -144,7 +143,10 @@ export class CurrencyService {
   // Refresh exchange rates from ExchangeRate-API (free, no key required).
   // Rejects on any failure — transport, HTTP status, or an in-band error
   // body — leaving the signals and the device cache untouched, so a caller's
-  // fallback runs against clean state.
+  // fallback runs against clean state. Nothing is caught here: the rejection
+  // is the report, and initializeRates walks the fallback ladder on it
+  // (ADR 0037, docs/exchange-rates.md) — a device that never reached the
+  // network is a state the signals already carry, not an error to print.
   async refreshRates(): Promise<void> {
     this.isLoading.set(true);
 
@@ -178,9 +180,6 @@ export class CurrencyService {
       this.lastUpdated.set(new Date());
 
       this.cacheRates(data.rates);
-    } catch (error) {
-      console.error('Failed to refresh exchange rates:', error);
-      throw error;
     } finally {
       this.isLoading.set(false);
     }
