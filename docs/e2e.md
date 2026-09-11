@@ -70,7 +70,12 @@ where the flat `min-width: auto` it replaced reads `auto`. For the import
 honesty surfaces it is the dropzone's fourth file-type chip, the backup icon
 beside the word **JSON**, and the list its hidden input enforces:
 `document.querySelector('app-file-dropzone input[type=file]').accept` ends in
-`.json`, where `1c0f3d2`'s ends in `.webp`. For another branch it is whatever
+`.json`, where `1c0f3d2`'s ends in `.webp`. For the phone-width caret and
+per-currency total surfaces it is any review card's category chip, where the
+caret now follows the name:
+`document.querySelector('.category-button .mdc-button__label + .dropdown-icon') !== null`
+is `true` on this branch and `false` on `2c35002`, where the caret projects
+through the leading slot instead. For another branch it is whatever
 that branch added. A stale `.angular/cache`, or a server started before the
 checkout switched, shows yesterday's app with today's confidence.
 
@@ -241,7 +246,11 @@ that handle is opened for receipt images and for nothing else. The confirm
 step is visited and left rather than avoided — journey 17 reads its summary —
 and it writes nothing either: its progress bar and the *Importing 1 of 2...*
 line under it are shown only while a write is running, and no run performs
-one.
+one. The processing step's line is read in passing on the way there, and the
+confirm step's own figures are one line per currency now rather than a
+single sum across them. The bulk currency switch journey 17 performs changes
+rows on the review step only, which is memory until Import is pressed, and
+Import never is.
 
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
@@ -381,22 +390,27 @@ const input = document.querySelector('app-file-dropzone input[type=file]');
 input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
 ```
 
-**A CSV with a fraction, for journey 17.** Two rows, one in a currency that
-stores no fraction and one whose fraction is finer than the cent, written by
-hand beside the others as `fraction.csv`:
+**A CSV with a fraction, for journey 17.** Three rows: one in a currency that
+stores no fraction, one whose fraction is finer than the cent, and one
+smaller than the currency it will be switched into, written by hand beside
+the others as `fraction.csv`:
 
 ```
 Date,Type,Description,Amount,Currency
 2026-03-15,expense,Journey 17 yen row,179.33,JPY
 2026-03-15,expense,Journey 17 cent row,4.126,USD
+2026-03-15,expense,Journey 17 sub-unit row,0.4,USD
 ```
 
-The `Type` column is why both rows read as expenses: with no such column the
-sign decides, and these amounts are unsigned ([csv-format.md](csv-format.md)).
-The descriptions are things the account calls nothing, for the reason the
-backup's are — and, on this file, for one more: a description the category
-memory has never seen is what sends the row to the provider, which is the
-call journey 17 is there to make.
+The `Type` column is why all three rows read as expenses: with no such
+column the sign decides, and these amounts are unsigned
+([csv-format.md](csv-format.md)). The descriptions are things the account
+calls nothing, for the reason the backup's are — and, on this file, for one
+more: a description the category memory has never seen is what sends the
+row to the provider, which is the call journey 17 is there to make. The
+sub-unit row is smaller than the currency it will be switched into — forty
+cents is nothing in yen — so the bulk switch on that journey has a figure to
+round away to nothing.
 
 ```js
 const blob = await (await fetch('http://127.0.0.1:8123/fraction.csv')).blob();
@@ -426,7 +440,7 @@ input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true 
 | 14 | Reminders through the worker | A real registration raising a real OS notification, and the permission state the pane reports | `14-worker-notification.png` |
 | 15 | Review: split and merge | Two cards born under a real pointer from one, both wearing the receipt badge, and the merge menu folding one back | `15-split-parts.png`, `15-merge-menu.png` |
 | 16 | Review: a row removed | A card leaving under a real pointer, focus landing on its neighbour, and the empty review step with Continue held | `16-row-removed.png`, `16-empty-review.png` |
-| 17 | Review: a fraction from a file | A CSV's fraction landing whole under a real parse, the Split trigger it earns, and the confirm step's summary with Import never pressed | `17-csv-fraction.png`, `17-confirm-summary.png` |
+| 17 | Review: a fraction from a file | A CSV's fraction landing whole under a real parse, the Split trigger it earns, the confirm step's per-currency summary, and the snackbar a bulk currency switch raises over the row it blanks | `17-csv-fraction.png`, `17-confirm-summary.png`, `17-bulk-blanked.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -712,6 +726,33 @@ own width, and the label scales down through `appFitText`, wrapping rather
 than overflowing once it reaches the 12px floor. *Groceries* at 185px reaching
 12px past a 240px card is what the first run recorded against a follow-up
 of its own — closed now, and history.
+
+The chip's caret is gone at this width. From the chip's menu, pick the
+account's longest category name for the row under test — a local change to
+a row that is never imported, and the original is picked back before
+leaving. Then, in the console:
+
+```js
+getComputedStyle(document.querySelector('.transaction-card .dropdown-icon')).display;
+```
+
+`'none'` — the caret yields the width to the name, which is the only place
+the name can get any: the chip stays beside the other extras, so what it
+has is the card's row share. And the label's own line count, read from its
+text rather than its height:
+
+```js
+const label = document.querySelector('.transaction-card .category-name');
+const r = document.createRange(); r.selectNodeContents(label);
+r.getClientRects().length;
+```
+
+**at most 3**, on a name of about thirty characters — the probe's own
+reading, taken here at a real phone's width. Three is what the caret's
+width bought: the probe measured five lines with the caret standing and
+three without it, and two lines would need the chip on a line of its own, a
+layout this wave did not take. Record the label's measured box width in the
+run's notes, not here.
 
 One shot: the review card, question chip and open tag editor together.
 
@@ -1003,41 +1044,59 @@ the hidden input like every other ([Fixtures](#fixtures)); the zone shows it
 with the table icon and the label *CSV*, and there is no *What are these
 images?* question, because nothing here is an image.
 
-**Process with AI** → the processing step. The parse is local, and then the
-ladder asks the configured provider to categorize the two descriptions the
-category memory does not know — one real call under the account's own key,
-and, where the account's grounding is on and it has a tag vocabulary to
-offer, a second for tag suggestions: both are named by the row
-[What a run may touch](#what-a-run-may-touch) records — before the duplicate
-check reads history → **Continue** → Review.
+**Process with AI** → the processing step. Its line under the heading now
+reads the catalog's own text for the app's locale rather than an English
+sentence the service set — it moves too fast to be certain of catching, the
+unit and smoke specs pin which key it renders, and what a runner confirms is
+only that nothing English appears there under a non-English locale. The
+parse is local, and then the ladder asks the configured provider to
+categorize the three descriptions the category memory does not know — one
+real call under the account's own key, and, where the account's grounding is
+on and it has a tag vocabulary to offer, a second for tag suggestions: both
+are named by the row [What a run may touch](#what-a-run-may-touch) records —
+before the duplicate check reads history → **Continue** → Review.
 
-The yen row reads *-¥179* and the cent row *-$4.13*. The file says `179.33`
-and `4.126`; what the card shows is what each currency can hold, rounded
-where the row was built rather than on the way to the screen — the same
-figure a reviewer would type by hand and the same one an import would write.
-Neither row is asked a date question: nobody graded these dates, so *Mar 15,
-2026* stands on both with the plain calendar glyph, and Continue is held by
-nothing. Whatever category the provider picked is not part of the pass — it
-is a real answer to a real description, and it is allowed to be anything.
-Both rows carry **Split** in their extras, each being worth at least two of
-its own minor units (journey 15's floor); neither carries **Merge into…**,
-since the two are in different currencies and nothing here converts.
+The yen row reads *-¥179*, the cent row *-$4.13*, and the sub-unit row
+*-$0.40*. The file says `179.33`, `4.126` and `0.4`; what the card shows is
+what each currency can hold, rounded where the row was built rather than on
+the way to the screen — the same figure a reviewer would type by hand and
+the same one an import would write. None of the three is asked a date
+question: nobody graded these dates, so *Mar 15, 2026* stands on all three
+with the plain calendar glyph, and Continue is held by nothing. Whatever
+category the provider picked is not part of the pass — it is a real answer
+to a real description, and it is allowed to be anything. All three rows
+carry **Split** in their extras, each worth at least two of its own minor
+units (journey 15's floor). The cent row and the sub-unit row also carry
+**Merge into…** now, since a second filled row shares each one's currency;
+the yen row carries none — nothing else in the batch is in JPY, and nothing
+here converts between currencies.
 
-**Continue** → the confirm step. The summary counts **2** transactions and
-the Import button reads *Import 2 Transactions*, enabled, with no date
+**Continue** → the confirm step. The summary counts **3** transactions and
+the Import button reads *Import 3 Transactions*, enabled, with no date
 question and no unfilled row to hold it — and no progress bar under the
-cards, which is shown only while a write runs. The income and expense cards
-add the figures up without converting them, so on a two-currency batch that
-total says nothing (#414); the count is what is read here.
+cards, which is shown only while a write runs. The expense card now reads
+two lines, *-¥179* and *-$4.53*, one per currency in the batch; the income
+card reads a single zero line in the account's own currency, since nothing
+here is income. A batch is totalled per currency now, and nothing here
+converts.
 
-Then **Back**, **Back**, and out by the wizard's back arrow. Import is never
-pressed.
+**Back** to Review, with all three rows still ticked, then
+**Currency for selected** → **JPY**: a snackbar reads *1 amount rounds to
+nothing in JPY — add it again*, the sub-unit row's amount is replaced by
+its *Add an amount* placeholder, and Continue is held by it. Nothing is
+switched back and nothing is written — the batch is memory — and the
+journey leaves by the wizard's back arrow without pressing Import. Then, on
+`/import/history`, the records already there read their totals in the
+account's own currency, and none of them in dollars it never had.
 
-**Pass:** both figures whole on the card, **Split** standing on the rows that
-clear the floor, the summary read on the confirm step, and nothing on the
-account — Transactions is unchanged and `/import/history` has no new run.
+**Pass:** all three figures whole on the card, **Split** standing on the
+rows that clear the floor, the confirm step's per-currency summary, the
+snackbar's count on the bulk switch, and Import History showing no `$` on a
+record that was never in dollars — and nothing on the account: Transactions
+is unchanged and `/import/history` has no new run.
 
-Two shots: the two rows on the review card, and the confirm step's summary.
+Three shots: the review card with its three rows, the confirm step's
+summary, and the snackbar over the blanked row.
 
 ## Evidence
 
