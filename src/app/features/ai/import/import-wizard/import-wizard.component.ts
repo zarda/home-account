@@ -911,11 +911,12 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // Some rows were rejected (a zero-amount summary line, a rules
         // denial). Navigating away would destroy the only copy of them and
         // report success, leaving the user's reconciliation silently short.
-        // Keep exactly the failed rows on the review step for correction and
-        // a second confirm — the saved ones are removed so confirming again
-        // cannot double-import them, and the rows the reviewer deselected,
-        // which were never submitted, go with them: the list is rebuilt from
-        // the failed ids alone and holds nothing else.
+        // Only the saved rows leave, so a second confirm cannot double-import
+        // them. A row the reviewer deselected was never submitted and is
+        // named in no record, so it stays as it was, unticked, for the
+        // reviewer to change their mind. A failed row comes back ticked,
+        // with its duplicate mark and its duplicate check cleared, because
+        // it is being offered for a second try.
         //
         // The record names its failed rows by id, so matching `result.errors`
         // back onto rows is a lookup, not a re-run of the service's own
@@ -923,14 +924,17 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         const failedIds = new Set(
           (result.errors ?? []).map(e => e.transactionId).filter((id): id is string => !!id)
         );
-        const failedRows = this.extractedTransactions()
-          .filter(t => failedIds.has(t.id))
-          .map(t => ({ ...t, selected: true, isDuplicate: false }));
+        const kept = this.extractedTransactions()
+          .filter(t => failedIds.has(t.id) || !t.selected)
+          .map(t => (failedIds.has(t.id) ? { ...t, selected: true, isDuplicate: false } : t));
+        const keptIds = new Set(kept.map(t => t.id));
 
-        this.extractedTransactions.set(failedRows);
-        this.keepReceiptRows(new Set(failedRows.map(t => t.id)));
-        this.duplicateChecks.set([]);
-        this.selectedTransactionIds.set(new Set(failedRows.map(t => t.id)));
+        this.extractedTransactions.set(kept);
+        this.keepReceiptRows(keptIds);
+        this.duplicateChecks.update(checks =>
+          checks.filter(c => keptIds.has(c.transactionId) && !failedIds.has(c.transactionId))
+        );
+        this.selectedTransactionIds.set(new Set(kept.filter(t => t.selected).map(t => t.id)));
 
         this.notifications.error(this.t('import.importPartial', {
           success: result.successCount,

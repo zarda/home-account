@@ -2788,9 +2788,14 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       expect(component.isImporting()).toBeFalse();
       expect(component.extractedTransactions().map(t => [t.id, t.selected]))
-        .withContext('exactly the refused row is back, ticked for a second try')
-        .toEqual([[zeroRow.id, true]]);
-      expect(component.duplicateChecks()).toEqual([]);
+        .withContext('the refused row is back and ticked; the deselected one never left and is still unticked')
+        .toEqual([[second.id, false], [zeroRow.id, true]]);
+      // The failed and succeeded rows' checks leave with them; the
+      // deselected row was never touched, so its own verdict — a fresh row,
+      // no match — stands as it was.
+      expect(component.duplicateChecks()).toEqual([
+        { transactionId: second.id, isDuplicate: false, matchType: 'none', confidence: 0 },
+      ]);
 
       const imports = await getDocs(collection(firestore, `users/${uid}/imports`));
       const record = imports.docs

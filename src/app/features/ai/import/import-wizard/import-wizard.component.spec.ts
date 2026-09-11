@@ -535,8 +535,12 @@ describe('ImportWizardComponent', () => {
       component.extractedTransactions.set([
         { ...mockTransactions[0], id: 'saved', date: yesterday(), dateReviewed: true },
         { ...mockTransactions[0], id: 'failed', date: yesterday(), dateReviewed: true },
+        {
+          ...mockTransactions[0], id: 'deselected', date: yesterday(), dateReviewed: true,
+          selected: false,
+        },
       ]);
-      component.receiptRowIds.set(new Set(['saved', 'failed']));
+      component.receiptRowIds.set(new Set(['saved', 'failed', 'deselected']));
       mockImportService.confirmImport.and.returnValue(Promise.resolve({
         id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
         source: 'image' as const, fileType: 'receipt_image' as const,
@@ -551,10 +555,10 @@ describe('ImportWizardComponent', () => {
       component.confirmImport();
       tick();
 
-      expect(component.extractedTransactions().map(t => t.id)).toEqual(['failed']);
-      // The saved row left the batch and the set with it; the failed one
-      // stays named, which is the point of the case.
-      expect(component.receiptRowIds()).toEqual(new Set(['failed']));
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['failed', 'deselected']);
+      // The saved row left the batch and the set with it; the failed row and
+      // the deselected one — never submitted — both stay named.
+      expect(component.receiptRowIds()).toEqual(new Set(['failed', 'deselected']));
       expect(component.unansweredDates()).withContext('already answered, so not asked again').toBe(0);
       // The set still names the row: stripped of its answer, it is asked again.
       component.onTransactionsUpdated([{ ...mockTransactions[0], id: 'failed', date: yesterday() }]);
@@ -1180,7 +1184,7 @@ describe('ImportWizardComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('import.importFailed');
     }));
 
-    it('keeps exactly the failed rows on screen after a partial import', fakeAsync(() => {
+    it('keeps the failed rows selected and the deselected ones as they were after a partial import', fakeAsync(() => {
       const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({
         ...mockTransactions[0], id, selected, isDuplicate,
       });
@@ -1189,6 +1193,9 @@ describe('ImportWizardComponent', () => {
       // isn't reading position — only transactionId 'b' can land it on `b`.
       component.extractedTransactions.set([
         row('a', true), row('dup', false, true), row('b', true), row('c', true),
+      ]);
+      component.duplicateChecks.set([
+        { transactionId: 'dup', isDuplicate: true, matchType: 'exact', existingTransactionId: 'stored-1', confidence: 1 },
       ]);
       mockImportService.confirmImport.and.returnValue(Promise.resolve({
         id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
@@ -1207,11 +1214,40 @@ describe('ImportWizardComponent', () => {
       expect(mockRouter.navigate).not.toHaveBeenCalled();
       expect(notifications.error).toHaveBeenCalledWith('import.importPartial');
       expect(notifications.success).not.toHaveBeenCalled();
-      expect(component.extractedTransactions().map(t => t.id)).toEqual(['b']);
-      expect(component.extractedTransactions()[0].selected).toBeTrue();
-      expect(component.selectedTransactionIds().has('b')).toBeTrue();
-      expect(component.duplicateChecks()).toEqual([]);
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['dup', 'b']);
+      expect(component.extractedTransactions()[0].selected).toBeFalse();
+      expect(component.extractedTransactions()[0].isDuplicate).toBeTrue();
+      expect(component.extractedTransactions()[1].selected).toBeTrue();
+      expect(component.extractedTransactions()[1].isDuplicate).toBeFalse();
+      expect(component.selectedTransactionIds()).toEqual(new Set(['b']));
+      expect(component.duplicateChecks()).toEqual([
+        { transactionId: 'dup', isDuplicate: true, matchType: 'exact', existingTransactionId: 'stored-1', confidence: 1 },
+      ]);
       expect(component.isImporting()).toBeFalse();
+    }));
+
+    it('keeps a row the reviewer deselected, still deselected and out of the selected set', fakeAsync(() => {
+      const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({
+        ...mockTransactions[0], id, selected, isDuplicate,
+      });
+      component.extractedTransactions.set([row('a', true), row('keep', false), row('b', true)]);
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'csv' as const, fileType: 'generic_csv' as const,
+        fileName: 'test.csv', fileSize: 1024,
+        transactionCount: 3, successCount: 2, skippedCount: 0, errorCount: 1,
+        totalIncome: 0, totalExpenses: 10, duplicatesSkipped: 0,
+        status: 'partial' as const,
+        errors: [{ row: 1, transactionId: 'b', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+      }));
+
+      component.confirmImport();
+      tick();
+
+      expect(component.extractedTransactions().map(t => [t.id, t.selected])).toEqual([
+        ['keep', false], ['b', true],
+      ]);
+      expect(component.selectedTransactionIds()).toEqual(new Set(['b']));
     }));
 
     it('treats a failed read-back as saved: info toast, still navigates', fakeAsync(() => {
