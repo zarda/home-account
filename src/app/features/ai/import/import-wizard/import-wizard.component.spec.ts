@@ -96,7 +96,8 @@ describe('ImportWizardComponent', () => {
     mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary', 'baseCurrency'], {
       isProcessing: signal(false),
       processingStatus: signal(''),
-      processingProgress: signal(0)
+      processingProgress: signal(0),
+      processingRow: signal(null)
     });
     // Per-path results carry the pair the real service reports; a shared
     // csv-shaped fixture here is what let the confirm step's hardcoded
@@ -215,7 +216,15 @@ describe('ImportWizardComponent', () => {
     });
 
     it('should have accepted file types', () => {
-      expect(component.acceptedFileTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp');
+      expect(component.acceptedFileTypes).toBe('.csv,.pdf,.png,.jpg,.jpeg,.webp,.json');
+    });
+
+    it("takes the write's progress from the service's own signals", () => {
+      // Identity is all this file can show: its template is the stub above.
+      // The confirm step actually rendering these is the emulator case in
+      // import-wizard.smoke.spec.ts.
+      expect(component.processingRow).toBe(mockImportService.processingRow);
+      expect(component.processingProgress).toBe(mockImportService.processingProgress);
     });
   });
 
@@ -500,14 +509,17 @@ describe('ImportWizardComponent', () => {
         transactionCount: 2, successCount: 1, skippedCount: 0, errorCount: 1,
         totalIncome: 0, totalExpenses: 5, duplicatesSkipped: 0,
         status: 'partial' as const,
-        errors: [{ row: 2, message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        // row is wrong on purpose: the wizard reads transactionId, not position.
+        errors: [{ row: 99, transactionId: 'failed', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();
       tick();
 
       expect(component.extractedTransactions().map(t => t.id)).toEqual(['failed']);
-      expect(component.receiptRowIds()).toEqual(new Set(['saved', 'failed']));
+      // The saved row left the batch and the set with it; the failed one
+      // stays named, which is the point of the case.
+      expect(component.receiptRowIds()).toEqual(new Set(['failed']));
       expect(component.unansweredDates()).withContext('already answered, so not asked again').toBe(0);
       // The set still names the row: stripped of its answer, it is asked again.
       component.onTransactionsUpdated([{ ...mockTransactions[0], id: 'failed', date: yesterday() }]);
@@ -1109,9 +1121,9 @@ describe('ImportWizardComponent', () => {
       const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({
         ...mockTransactions[0], id, selected, isDuplicate,
       });
-      // An unselected duplicate sits between selected rows: the service
-      // numbers its errors against the selected subset only, so mapping
-      // row 2 must land on `b`, not on the duplicate.
+      // An unselected duplicate still sits between selected rows, but the
+      // match is now by id: row is planted wrong (99) to prove the wizard
+      // isn't reading position — only transactionId 'b' can land it on `b`.
       component.extractedTransactions.set([
         row('a', true), row('dup', false, true), row('b', true), row('c', true),
       ]);
@@ -1122,7 +1134,7 @@ describe('ImportWizardComponent', () => {
         transactionCount: 3, successCount: 2, skippedCount: 1, errorCount: 1,
         totalIncome: 0, totalExpenses: 10, duplicatesSkipped: 1,
         status: 'partial' as const,
-        errors: [{ row: 2, message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+        errors: [{ row: 99, transactionId: 'b', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
       }));
 
       component.confirmImport();
@@ -1873,12 +1885,16 @@ describe('ImportWizardComponent', () => {
         .toEqual({ transactionId: 'txn2', isDuplicate: false, matchType: 'none', confidence: 0 });
 
       // A merge (or any other edit) that drops txn2 from the batch.
+      component.receiptRowIds.set(new Set(['txn1', 'txn2']));
       component.onTransactionsUpdated(component.extractedTransactions().filter(t => t.id !== 'txn2'));
       flushMicrotasks();
 
       expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
         .withContext('no verdict left to keep for a row that left the batch')
         .toBeUndefined();
+      expect(component.receiptRowIds())
+        .withContext('the departed row\'s id leaves the set too')
+        .toEqual(new Set(['txn1']));
 
       mockDuplicateService.checkDuplicates.and.resolveTo([stored('txn1', false)]);
       edit('txn1', { description: 'Espresso' });
@@ -1888,6 +1904,19 @@ describe('ImportWizardComponent', () => {
       expect(component.duplicateChecks().find(c => c.transactionId === 'txn2'))
         .withContext('the storedOnly fold does not carry it back in')
         .toBeUndefined();
+    }));
+
+    it('leaves the set alone when no receipt row left', fakeAsync(() => {
+      const rows = fresh();
+      populate(rows);
+      component.receiptRowIds.set(new Set(['txn1', 'txn2']));
+      const before = component.receiptRowIds();
+
+      // Same rows back — an edit that removes nothing.
+      component.onTransactionsUpdated(component.extractedTransactions());
+      flushMicrotasks();
+
+      expect(component.receiptRowIds()).toBe(before);
     }));
 
     it('re-checks a within-batch twin when its partner leaves, and drops its stale verdict', fakeAsync(() => {

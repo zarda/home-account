@@ -66,10 +66,13 @@ fetch reads the branch's file whether or not the page has re-registered it.
 For the row-removal and phone-width chip surfaces it is **Remove** in a
 scanned row's extras and the category chip's own stylesheet:
 `getComputedStyle(document.querySelector('.category-button')).minInlineSize === '0px'`,
-where the flat `min-width: auto` it replaced reads `auto`. For another branch
-it is whatever that branch added. A stale `.angular/cache`, or a server
-started before the checkout switched, shows yesterday's app with today's
-confidence.
+where the flat `min-width: auto` it replaced reads `auto`. For the import
+honesty surfaces it is the dropzone's fourth file-type chip, the backup icon
+beside the word **JSON**, and the list its hidden input enforces:
+`document.querySelector('app-file-dropzone input[type=file]').accept` ends in
+`.json`, where `1c0f3d2`'s ends in `.webp`. For another branch it is whatever
+that branch added. A stale `.angular/cache`, or a server started before the
+checkout switched, shows yesterday's app with today's confidence.
 
 **2. The running bundle names the expected project.** Fetch every script the
 page actually loaded and read the project id out of it:
@@ -114,13 +117,13 @@ hits;  // empty ⇒ stale; anything listed ⇒ a real missing chunk, fix the bui
 
 ## Panes and viewports
 
-Some browsers are driven inside an embedded pane rather than a full window,
-and a pane behaves differently enough to cost a run before it is understood.
-None of these is a property of the app; six of the nine have produced a
-false failure, the seventh stops a run before it starts, and the last two are
-doors nothing in a pane opens — one that no file picker reaches in any
-browser, one whose only control on the page is a switch with a write behind
-it.
+Some browsers are driven inside an embedded pane rather than a full
+window, and a pane behaves differently enough to cost a run before it is
+understood. None of these is a property of the app bar the seventh, which
+is the app's own timing; six of the nine have produced a false failure,
+the seventh cost a run a second provider call, the eighth stops a run
+before it starts, and the last is a door nothing in a pane opens — its
+only control on the page is a switch with a write behind it.
 
 - **Pointer input can stall under viewport emulation, and stay stalled.** With
   an emulated width in force, clicks stop landing and go on not landing until
@@ -166,32 +169,21 @@ it.
   to a third-party host and can be missing from the log entirely, so its
   absence proves nothing. The translated text on screen is the proof the
   provider answered.
+- **The wizard's back arrow navigates asynchronously.** The click returns
+  before the route has changed, so a file handed to the dropzone's input in
+  the same breath goes to the wizard the run thought it had left and joins
+  that batch. In run 1 that cost a second real provider call on the account —
+  the one thing *What a run may touch* exists to account for. Read
+  `location.pathname` and wait for it to change before handing the next file
+  over.
 - **A pane may have no way to open a file.** The import journeys start by
   handing the wizard a receipt, and a pane with no file picker cannot open
   one — the dropzone's own click leads nowhere. Hand the file to the
   dropzone's hidden input from the page console instead; the recipe is under
   [Fixtures](#fixtures). Where the browser can open a file directly, do that
-  on the same input.
-- **A door no picker reaches is driven by script.** The wizard accepts
-  `.csv,.pdf,.png,.jpg,.jpeg,.webp` and the dropzone enforces that list on
-  both drop and select, while the share target takes images, PDF and CSV —
-  so nothing any picker can hand over is a `.json` backup, and putting one
-  on the hidden input the way the recipe above does earns *is not a
-  supported file type* rather than an import. Journey 13 hands the file to
-  the wizard component instead, at the entry the share hand-off itself
-  uses, which filters nothing:
-
-  ```js
-  ng.getComponent(document.querySelector('app-import-wizard')).onFilesSelected([file]);
-  ```
-
-  `ng` is the development build's own debug global — a server started on the
-  production configuration has none. The dropzone keeps its own list of
-  files, so the zone stays empty and the only sign the file landed is
-  **Process with AI** enabling; everything past that point is the flow a
-  pick would take. That the file was placed by script rather than chosen is
-  diagnostic-grade, the standing journey 8's hand-off substitute already
-  has: say so beside the shot.
+  on the same input. Every file the journeys use goes in that way — the
+  receipt, the CSV and, since the picker started taking it, the `.json`
+  backup — so what a run drives is the door a pick would have opened.
 - **A notification is raised by script.** The one control that leads to a
   web notification is the reminders switch in Settings → Profile, and the
   click that turns it on asks the operating system for permission, writes
@@ -199,21 +191,22 @@ it.
   whatever is due and logging it as delivered in this browser's storage.
   None of that is the run's to do for the sake of one notification, so
   journey 14 calls the reminder service's own web seam from the console,
-  the way the file doors above are already script-driven:
+  the way the file door above is already fed from one:
 
   ```js
   ng.getComponent(document.querySelector('app-reminder-settings')).reminders
     .showWebNotification('Home Account', 'Journey 14', 'e2e-14');
   ```
 
-  `reminders` is the component's injected service and the seam is
-  `protected` — TypeScript's words, which the running page does not
-  enforce, so both are reachable without either being public. The seam is
-  what the sweep itself calls, so the evidence is the wire the sweep uses:
-  the registration's `showNotification` call, the notification the
-  operating system shows, and the permission state the pane reports. It
-  never asks for permission — that request is the switch's — and the
-  switch is never touched.
+  `ng` is the development build's own debug global — a server started on the
+  production configuration has none. `reminders` is the component's injected
+  service and the seam is `protected` — TypeScript's words, which the running
+  page does not enforce, so both are reachable without either being public.
+  The seam is what the sweep itself calls, so the evidence is the wire the
+  sweep uses: the registration's `showNotification` call, the notification
+  the operating system shows, and the permission state the pane reports. It
+  never asks for permission — that request is the switch's — and the switch
+  is never touched.
 
 The console's own quirk is check 3 above: entries persist across reloads, so
 only the difference counts.
@@ -221,9 +214,9 @@ only the difference counts.
 ## What a run may touch
 
 Three writes are authorised. Each is put back before the run ends, and the
-restore is *confirmed on screen*, not assumed. The last three rows write
-nothing at all and are listed with them anyway: one still costs the account
-a real provider call, one not even that, and the third leaves a notification
+restore is *confirmed on screen*, not assumed. The last four rows write
+nothing at all and are listed with them anyway: two still cost the account
+a real provider call, one not even that, and the last leaves a notification
 standing in the operating system rather than anything on the account — what
 an import journey or a raised notification leaves behind is worth stating
 rather than leaving to be inferred.
@@ -235,6 +228,7 @@ rather than leaving to be inferred.
 | The Note Translation provider select | `preferences.llmProviderPreferences.translation` | Set back to the value it held, then reloaded and read back |
 | Scanning a receipt | One provider call under the account's own key, and — when analytics consent is on — one `receipt_import` analytics event with outcome `ok` at extraction; no document | Nothing to undo — the run leaves before Import |
 | Handing the wizard a backup file | Nothing. The parse is local and `checkDuplicates` only reads history; the rows sit on the review step | Nothing to undo — the run leaves before Import |
+| Handing the wizard a CSV | One grounded categorization call under the account's own key, covering in one batch every description the category memory does not know — the CSV door climbs the same ladder the image doors do — and a tag-suggestion call beside it where the account's grounding is on and it has a vocabulary to offer. No analytics event: a CSV is no receipt import ([analytics.md](analytics.md)), and nothing on this path reports `ai_assist_used`. No document | Nothing to undo — the run leaves before Import |
 | Raising one test notification through the worker | Nothing on the account. One OS notification from this browser profile, tagged `e2e-14` | Closed by the journey: `(await navigator.serviceWorker.getRegistration()).getNotifications({ tag: 'e2e-14' }).then(ns => ns.forEach(n => n.close()))` — by tag, so a bill reminder the account's own sweep raised in this profile is left standing |
 
 The failed-attempt record is written only by the attempt's `failed` and the
@@ -243,7 +237,11 @@ unconfirmed leaves nothing behind — which is why the import journeys end by
 reading Import History and the Transactions list and finding them unchanged.
 A row removed on the review step leaves nothing behind, the way an
 unconfirmed extraction does. A backup file does not open an attempt at all:
-that handle is opened for receipt images and for nothing else.
+that handle is opened for receipt images and for nothing else. The confirm
+step is visited and left rather than avoided — journey 17 reads its summary —
+and it writes nothing either: its progress bar and the *Importing 1 of 2...*
+line under it are shown only while a write is running, and no run performs
+one.
 
 Everything else is read-only. Every dialog is closed or **cancelled** — the
 edit dialog in journey 5 opens on a real transaction and is left by Cancel,
@@ -322,7 +320,7 @@ writes to the repo — the fixture is gitignored and the scratch copy lives
 outside it.
 
 **A backup, for the JSON door.** Journey 13 wants a restored backup rather
-than a receipt, and that is two rows of JSON — short enough to write by
+than a receipt, and that is three rows of JSON — short enough to write by
 hand, and never written into the repo. Put it beside `jp.png` in the scratch
 folder the server above serves, as `backup.json`:
 
@@ -341,6 +339,13 @@ folder the server above serves, as `backup.json`:
       "amount": 3.25,
       "currency": "USD",
       "type": "expense"
+    },
+    {
+      "description": "Journey 13 categoryless row",
+      "amount": 4.75,
+      "currency": "USD",
+      "type": "expense",
+      "date": { "seconds": 1773576000, "nanoseconds": 0 }
     }
   ]
 }
@@ -352,21 +357,53 @@ through `JSON.stringify`: a Firestore Timestamp with no `toDate` left on it.
 the day it renders is the same in every zone within eleven hours of UTC,
 where a midnight value renders as the 14th west of it. The second row
 carries no `date` key at all, which is the case the door dates today and
-marks assumed. Neither names a category, and the door's own fallback fills
-that in.
+marks assumed. None of the three names a `categoryId`, which is the door's
+other case: the fallback category at the grade a default earns, rather than
+the full one a category the backup named would keep. The third row is there
+to make that count three — three rows, three chips, a header reading
+*3 / 3* — and it is named for the case all three share.
 
-The descriptions are deliberately things the account calls nothing: both
-rows go through the duplicate check against real history, and a match would
-deselect the row it hit and could leave the step with nothing selected.
+The descriptions are deliberately things the account calls nothing: all
+three rows go through the duplicate check against real history, and a match
+would deselect the row it hit and could leave the step with nothing
+selected.
 
-Fetch it the same way, then hand it to the wizard through the component,
-because the dropzone would refuse it — the recipe and what it is worth are
-under [Panes and viewports](#panes-and-viewports):
+Fetch it and put it on the same hidden input the PNG goes on. The picker takes
+`.json` since
+[ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md),
+so the backup enters by the door every other fixture uses:
 
 ```js
 const blob = await (await fetch('http://127.0.0.1:8123/backup.json')).blob();
 const file = new File([blob], 'backup.json', { type: 'application/json' });
-ng.getComponent(document.querySelector('app-import-wizard')).onFilesSelected([file]);
+const dt = new DataTransfer(); dt.items.add(file);
+const input = document.querySelector('app-file-dropzone input[type=file]');
+input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
+```
+
+**A CSV with a fraction, for journey 17.** Two rows, one in a currency that
+stores no fraction and one whose fraction is finer than the cent, written by
+hand beside the others as `fraction.csv`:
+
+```
+Date,Type,Description,Amount,Currency
+2026-03-15,expense,Journey 17 yen row,179.33,JPY
+2026-03-15,expense,Journey 17 cent row,4.126,USD
+```
+
+The `Type` column is why both rows read as expenses: with no such column the
+sign decides, and these amounts are unsigned ([csv-format.md](csv-format.md)).
+The descriptions are things the account calls nothing, for the reason the
+backup's are — and, on this file, for one more: a description the category
+memory has never seen is what sends the row to the provider, which is the
+call journey 17 is there to make.
+
+```js
+const blob = await (await fetch('http://127.0.0.1:8123/fraction.csv')).blob();
+const file = new File([blob], 'fraction.csv', { type: 'text/csv' });
+const dt = new DataTransfer(); dt.items.add(file);
+const input = document.querySelector('app-file-dropzone input[type=file]');
+input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true }));
 ```
 
 ## The journeys
@@ -385,10 +422,11 @@ ng.getComponent(document.querySelector('app-import-wizard')).onFilesSelected([fi
 | 10 | Review at phone width | The review card at 390px with a question standing and an editor open | `10-review-phone.png` |
 | 11 | Review: a tag and a location | The browser's own suggestion list behind the tag field, and the country menu over a real receipt's address | `11-tag-added.png`, `11-country-menu.png` |
 | 12 | Review: a row added by hand | A blank card arriving under a real pointer with the caret already in it, and Continue held until it is filled | `12-row-added.png` |
-| 13 | Review: a backup row without a date | A restored backup entering by the one door that takes one, and the date question its dateless row raises | `13-backup-date.png` |
+| 13 | Review: a backup row without a date | A restored backup going in through the picker that takes one since ADR 0113, and the date question its dateless row raises | `13-backup-date.png` |
 | 14 | Reminders through the worker | A real registration raising a real OS notification, and the permission state the pane reports | `14-worker-notification.png` |
 | 15 | Review: split and merge | Two cards born under a real pointer from one, both wearing the receipt badge, and the merge menu folding one back | `15-split-parts.png`, `15-merge-menu.png` |
 | 16 | Review: a row removed | A card leaving under a real pointer, focus landing on its neighbour, and the empty review step with Continue held | `16-row-removed.png`, `16-empty-review.png` |
+| 17 | Review: a fraction from a file | A CSV's fraction landing whole under a real parse, the Split trigger it earns, and the confirm step's summary with Import never pressed | `17-csv-fraction.png`, `17-confirm-summary.png` |
 
 Screenshot names are the journey number and what is on screen; a re-run
 overwrites rather than accumulating.
@@ -588,14 +626,25 @@ the act of opening one.
   box. Extend the note, then click away: it is filed on the way out, not
   keystroke by keystroke, and the box stays up as a filed note with the row's
   editing slot empty.
+- **A currency switch.** The currency chip's menu → **USD** → the row reads
+  *-$538.00*: the figure is whole in both currencies, and the dollar renders
+  the two places the yen does not. Type `12.34` into the amount → *-$12.34* →
+  the menu again → **JPY** → *-¥12*. The figure follows the currency it is
+  stored in, and a switch rounds it to what the new one holds rather than
+  converting it — nothing on this card converts anything. A switch that moves
+  the amount — `12.34` to `¥12` here — sends the row back through the
+  duplicate check on the same rule an amount edit follows; a switch between
+  figures already whole in both currencies fires nothing. Type `538` back
+  before leaving, so journey 15 finds the printed total on the row it splits.
 
-An edit to the date, amount, type or description sends that row back through
-the duplicate check. A verdict of *Duplicate* deselects the row and the
-badge's × (*Not a duplicate — import it*) overrules it; a re-check that cannot
-reach history says so once, in a snackbar — *Couldn't re-check for duplicates
-— the earlier verdict stands.* Neither is guaranteed with a one-receipt
-fixture against a real account: they are what to recognise if they appear, not
-part of the pass.
+An edit to the date, amount, type or description sends that row back
+through the duplicate check, and so does a currency switch that moves the
+amount. A verdict of *Duplicate* deselects the row and the badge's × (*Not
+a duplicate — import it*) overrules it; a re-check that cannot reach
+history says so once, in a snackbar — *Couldn't re-check for duplicates —
+the earlier verdict stands.* Neither is guaranteed with a one-receipt
+fixture against a real account: they are what to recognise if they
+appear, not part of the pass.
 
 Leave by the review step's **Back**, then the wizard's own back arrow to
 Transactions. The processing step behind the review offers Continue and
@@ -755,33 +804,43 @@ One shot: the added card filled, with the hint gone.
 ### 13. Review: a backup row without a date
 
 Open the wizard as journey 8 does — the Add menu's **Import photos**, or
-`/import/file` typed in. This journey's file is a `.json` backup, which no
-picker and no share sheet will hand over, so it goes in through the
-component: the recipe and what it is worth are under
-[Panes and viewports](#panes-and-viewports), the file itself under
-[Fixtures](#fixtures). The zone stays empty, and there is no *What are these
-images?* question because nothing here is an image; **Process with AI**
-enabling is the only sign the file landed.
+`/import/file` typed in. This journey's file is a `.json` backup, which the
+picker takes since
+[ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)
+— the share sheet still takes images, PDF and CSV only — so it goes
+in through the hidden input like every other file, the recipe and the rows
+under [Fixtures](#fixtures). The zone shows it the way it shows a CSV:
+the file's name, its size, the `backup` icon and the label *JSON*. There is
+no *What are these images?* question, because nothing here is an image, and
+**Process with AI** enables.
 
 **Process with AI** → the processing step, which makes no provider call here
 — the door parses the file itself, and only the duplicate check leaves the
 browser → **Continue** → Review.
 
-**Pass:** two rows. The one whose `date` was a `{ seconds }` timestamp reads
-*Mar 15, 2026* with the ordinary calendar glyph and no question, which is
-the whole point of the journey: the shape a stored date arrives in is read
-as a date. The one with no `date` at all reads today and carries the
-question chip *Date set to today — keep it?*; its date button wears the
-plain glyph too, because nobody graded these rows and the chip is that row's
-only mark. Continue is enabled with the question standing — a date question
-holds Continue only on a row a receipt reader produced, and these came off a
-file — and the header shows no **Keep all dates**, which counts the same
-rows. **Keep** settles the chip the way journey 8's Keep does: the chip
+**Pass:** three rows, the header reading *3 / 3*. The two whose `date` was a
+`{ seconds }` timestamp read *Mar 15, 2026* with the ordinary calendar glyph
+and no question, which is the whole point of the journey: the shape a stored
+date arrives in is read as a date. The one with no `date` at all reads today
+and carries the question chip *Date set to today — keep it?*; its date button
+wears the plain glyph too, because nobody graded these rows and the chip is
+that row's only mark. Continue is enabled with the question standing — a date
+question holds Continue only on a row a receipt reader produced, and these
+came off a file — and the header shows no **Keep all dates**, which counts the
+same rows. **Keep** settles the chip the way journey 8's Keep does: the chip
 goes and the button takes the check.
+
+Every row's category chip reads *Other* and wears the low-confidence dot,
+tooltip *Low confidence (30%) — please review and select the correct
+category*. Nobody named a category in this file, so the door says as much
+instead of vouching for the one it fell back to. A `categoryId` the backup
+did name would keep the full grade and the green dot, which is a case this
+fixture deliberately does not carry — three rows, one reading.
 
 Then **Back**, and out by the wizard's back arrow. Nothing is imported.
 
-One shot: the two rows together, with the question chip on the dateless one.
+One shot: the three rows together, with the question chip on the dateless
+one.
 
 ### 14. Reminders through the worker
 
@@ -935,6 +994,50 @@ is never pressed.
 
 Two shots: the list after the first removal, and the empty review step after
 the second.
+
+### 17. Review: a fraction from a file
+
+Open the wizard as journey 8 does — the Add menu's **Import photos**, or
+`/import/file` typed in. This journey's file is `fraction.csv`, in through
+the hidden input like every other ([Fixtures](#fixtures)); the zone shows it
+with the table icon and the label *CSV*, and there is no *What are these
+images?* question, because nothing here is an image.
+
+**Process with AI** → the processing step. The parse is local, and then the
+ladder asks the configured provider to categorize the two descriptions the
+category memory does not know — one real call under the account's own key,
+and, where the account's grounding is on and it has a tag vocabulary to
+offer, a second for tag suggestions: both are named by the row
+[What a run may touch](#what-a-run-may-touch) records — before the duplicate
+check reads history → **Continue** → Review.
+
+The yen row reads *-¥179* and the cent row *-$4.13*. The file says `179.33`
+and `4.126`; what the card shows is what each currency can hold, rounded
+where the row was built rather than on the way to the screen — the same
+figure a reviewer would type by hand and the same one an import would write.
+Neither row is asked a date question: nobody graded these dates, so *Mar 15,
+2026* stands on both with the plain calendar glyph, and Continue is held by
+nothing. Whatever category the provider picked is not part of the pass — it
+is a real answer to a real description, and it is allowed to be anything.
+Both rows carry **Split** in their extras, each being worth at least two of
+its own minor units (journey 15's floor); neither carries **Merge into…**,
+since the two are in different currencies and nothing here converts.
+
+**Continue** → the confirm step. The summary counts **2** transactions and
+the Import button reads *Import 2 Transactions*, enabled, with no date
+question and no unfilled row to hold it — and no progress bar under the
+cards, which is shown only while a write runs. The income and expense cards
+add the figures up without converting them, so on a two-currency batch that
+total says nothing (#414); the count is what is read here.
+
+Then **Back**, **Back**, and out by the wizard's back arrow. Import is never
+pressed.
+
+**Pass:** both figures whole on the card, **Split** standing on the rows that
+clear the floor, the summary read on the confirm step, and nothing on the
+account — Transactions is unchanged and `/import/history` has no new run.
+
+Two shots: the two rows on the review card, and the confirm step's summary.
 
 ## Evidence
 

@@ -65,6 +65,7 @@ import { DuplicateDetectionService } from '../../../../core/services/duplicate-d
 import { ReceiptQuotaService } from '../../../../core/services/receipt-quota.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { INVALID_AMOUNT_ERROR } from '../../../../core/services/transaction.service';
 import { MultiImageExtractedTransaction, ParsedReceipt } from '../../../../core/services/gemini.service';
 import { DEFAULT_USER_PREFERENCES, ImportHistory, ImportResult } from '../../../../models';
 import { dayKey, parseDateInput } from '../../../../core/utils/transaction-date.utils';
@@ -306,7 +307,6 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         ],
         multiImageMetadata: {
           totalImages: 1,
-          itemsMerged: 0,
           deduplicationMethod: 'ai',
           imageIds: ['image_0']
         }
@@ -1971,7 +1971,8 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         totalIncome: 0,
         totalExpenses: 0,
         status: 'partial',
-        errors: [{ row: 1, message: 'refused' }],
+        // row is wrong on purpose: the wizard matches by transactionId.
+        errors: [{ row: 99, transactionId: component.extractedTransactions()[0].id, message: 'refused' }],
         duplicatesSkipped: 0
       });
 
@@ -2006,9 +2007,9 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // half a silent `.seconds` read used to get wrong in the other
       // direction.
       //
-      // The file is handed to onFilesSelected, the share hand-off's own
-      // entry: the dropzone's accepted types exclude JSON, so a backup never
-      // arrives through it.
+      // The picker takes a backup now, but this case still hands the file
+      // straight to onFilesSelected: whether the dropzone itself accepts a
+      // .json is that component's own spec's concern, not this one's.
       stubReceiptSeams();
 
       // No hand-off here, and the wizard reads whatever state stands.
@@ -2057,6 +2058,17 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(cards.length).toBe(2);
       expect(rows[0].description).toBe('Rent');
       expect(rows[1].description).toBe('Deposit');
+
+      // Neither row names a categoryId, so both are the defaulted category —
+      // graded the way every other door grades a default, which is what puts
+      // the low-confidence dot on the chip instead of the shine a backup's
+      // own category earns.
+      expect(cards[0].querySelector('.confidence-dot.low-confidence'))
+        .withContext('Rent carries no categoryId')
+        .not.toBeNull();
+      expect(cards[1].querySelector('.confidence-dot.low-confidence'))
+        .withContext('Deposit carries no categoryId')
+        .not.toBeNull();
 
       expect(rows[0].dateAssumed).toBeUndefined();
       expect(dayKey(rows[0].date)).toBe(dayKey(printed));
@@ -2583,6 +2595,286 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect((landed[0]['receiptUrls'] as string[]).length)
         .withContext('the removed row\'s own photo was never uploaded')
         .toBe(1);
+
+      history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'the confirm step\'s bar and line are the service\'s own, and they move once per row written',
+    async () => {
+      // Read while the write is running, which is the only time either one
+      // says anything. The wizard's unit suite renders a bare div over a
+      // service whose two signals are stubs, so nothing there can say the
+      // confirm step binds the real ones, and the service's own suite has no
+      // template to bind them to. The readings are taken from inside the
+      // loop: the row is set before the Firestore write is awaited, so the
+      // macrotask scheduled at that moment runs while the write is in flight.
+      //
+      // The backup door, because it writes a known number of rows and
+      // uploads nothing between them: the row loop is the only thing that
+      // can move either figure.
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      const translation = TestBed.inject(TranslationService);
+      const service = TestBed.inject(AIImportService);
+      // The wizard's own confirm ends in router.navigate, and provideRouter([])
+      // has nowhere to send it.
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+
+      component.onFilesSelected([
+        new File(
+          [JSON.stringify({
+            transactions: [
+              { description: 'Kerosene delivery', amount: -554, type: 'expense', date: { seconds: 1723593600 } },
+              { description: 'Kettle refund', amount: 555, type: 'income', date: { seconds: 1723593600 } }
+            ]
+          })],
+          'progress-backup.json',
+          { type: 'application/json' }
+        )
+      ]);
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 2);
+
+      // Both rows are priced and selected and neither is a receipt, so the
+      // review step is complete and the linear stepper takes Confirm.
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex).toBe(3);
+
+      const bar = () => host.querySelector('.importing-section mat-progress-bar');
+      const line = () => host.querySelector('.importing-status');
+      const readings: (string | null | undefined)[][] = [];
+
+      const progressSpy = spyOn(service.processingProgress, 'set').and.callThrough();
+      // Captured before the spy stands in for it: the fake has to write the
+      // signal it replaced, or the template it feeds would render nothing.
+      const setRow = service.processingRow.set;
+      const rowSpy = spyOn(service.processingRow, 'set').and.callFake(row => {
+        setRow(row);
+        if (row) {
+          setTimeout(() => {
+            fixture.detectChanges();
+            readings.push([bar()?.getAttribute('aria-valuenow'), line()?.textContent?.trim()]);
+          }, 0);
+        }
+      });
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.map(d => d['amount'] as number).sort((a, b) => a - b)).toEqual([554, 555]);
+
+      // Material binds aria-valuenow to value in determinate mode, so the
+      // attribute is the bar's own figure rather than a class the test picked.
+      //
+      // Karma loads no catalog, so the line's second reading is the bare key
+      // on both sides of the comparison: what this pins is which key the
+      // confirm step renders and that the line is on screen while the write
+      // runs, never the interpolated sentence. The placeholders inside it are
+      // translation-keys.spec.ts's to guard.
+      expect(readings).toEqual([
+        ['50', translation.t('import.importingRow', { done: 1, total: 2 })],
+        ['100', translation.t('import.importingRow', { done: 2, total: 2 })]
+      ]);
+      expect(progressSpy.calls.allArgs())
+        .withContext('reset once, then once per row — never per file or per batch')
+        .toEqual([[0], [50], [100]]);
+      expect(rowSpy.calls.mostRecent().args[0])
+        .withContext('the row outlives no write')
+        .toBeNull();
+
+      expect(component.isImporting()).toBeFalse();
+      fixture.detectChanges();
+      expect(host.querySelector('.importing-section')).toBeNull();
+
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a partial write\'s record names the failed row by its id, and the wizard re-offers exactly that row',
+    async () => {
+      // The refusal comes from the write itself here — the service's suite
+      // mocks addTransaction and the wizard's mocks the service — and the
+      // two lists are deliberately out of step: the deselected row above the
+      // failing one means it is third on the card and second in what was
+      // submitted, so a record read back by position would re-offer the
+      // wrong row. The record names it by id instead.
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const component = fixture.componentInstance;
+
+      component.onFilesSelected([
+        new File(
+          [JSON.stringify({
+            transactions: [
+              { description: 'Firewood order', amount: -556, type: 'expense', date: { seconds: 1723593600 } },
+              { description: 'Ash collection', amount: 557, type: 'income', date: { seconds: 1723593600 } },
+              { description: 'Statement carry-over', amount: 0, type: 'expense', date: { seconds: 1723593600 } },
+              { description: 'Chimney sweep', amount: -558, type: 'expense', date: { seconds: 1723593600 } }
+            ]
+          })],
+          'partial-backup.json',
+          { type: 'application/json' }
+        )
+      ]);
+      await component.processFiles();
+      await until(fixture, () => component.extractedTransactions().length === 4);
+
+      component.stepper.selectedIndex = 2;
+      fixture.detectChanges();
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      const rows = component.extractedTransactions();
+      const second = rows[1];
+      const zeroRow = rows[2];
+      // The write filters on the row's own flag, which is what puts the
+      // failing row at a different position in each list.
+      component.onTransactionsUpdated(
+        rows.map(r => (r.id === second.id ? { ...r, selected: false } : r))
+      );
+      fixture.detectChanges();
+
+      // Called from the review step, not from Confirm: the unpriced row holds
+      // unfilledRows, so the linear stepper refuses index 3 and the Import
+      // button is disabled. What is under test is the write's own refusal,
+      // which the guard exists to keep a reviewer away from.
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.map(d => d['amount'] as number).sort((a, b) => a - b))
+        .withContext('the deselected row and the unpriced one are both absent')
+        .toEqual([556, 558]);
+
+      expect(component.isImporting()).toBeFalse();
+      expect(component.extractedTransactions().map(t => [t.id, t.selected]))
+        .withContext('exactly the refused row is back, ticked for a second try')
+        .toEqual([[zeroRow.id, true]]);
+      expect(component.duplicateChecks()).toEqual([]);
+
+      const imports = await getDocs(collection(firestore, `users/${uid}/imports`));
+      const record = imports.docs
+        .map(d => d.data())
+        .find(d => d['fileName'] === 'partial-backup.json');
+      expect(record?.['status']).toBe('partial');
+      const errors = record?.['errors'] as ImportHistory['errors'];
+      expect(errors?.length).toBe(1);
+      expect(errors?.[0].transactionId).toBe(zeroRow.id);
+      expect(errors?.[0].row)
+        .withContext('the position in what was submitted, not on the card')
+        .toBe(2);
+      // Refused before any write reaches Firestore; were that guard ever to
+      // go, the rules would refuse it and the message would be a denial.
+      expect(errors?.[0].message).toBe(INVALID_AMOUNT_ERROR);
+
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    'a scanned fraction is whole on the card and in the ledger',
+    async () => {
+      // A reader that reports fractional yen. The rounding happens where the
+      // review row is built, so the card shows the figure the ledger will
+      // hold — including the split trigger, which is offered on the rounded
+      // amount rather than on the reading behind it.
+      stubReceiptSeams({
+        merchant: 'セブン-イレブン',
+        amount: 559.4,
+        currency: 'JPY',
+        date: new Date(2026, 7, 14),
+        suggestedCategory: 'other_expense',
+        confidence: 0.9,
+        fieldConfidence: { amount: 0.9, date: 0.9 }
+      });
+
+      const importService = TestBed.inject(AIImportService);
+      spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      const before = new Set(
+        (await getDocs(collection(firestore, `users/${uid}/transactions`))).docs.map(d => d.id)
+      );
+
+      const result = await importService.importFromImage(
+        new File([new Uint8Array([1])], 'fraction.jpg', { type: 'image/jpeg' })
+      );
+      expect(result.transactions.length).toBe(1);
+
+      history.replaceState({ importResult: result, fromCamera: true, multiImage: false }, '');
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+      const component = fixture.componentInstance;
+      expect(component.stepper.selectedIndex).toBe(2);
+
+      const card = host.querySelector<HTMLElement>('.transaction-card')!;
+      expect(component.extractedTransactions()[0].amount).toBe(559);
+      const amountText = card.querySelector('.amount-text')?.textContent ?? '';
+      // The model figure above is the discriminator: JPY formats with no
+      // decimals, so the card would read ¥559 over an unrounded 559.4 too —
+      // the currency's own formatting never exposes a sub-unit reading.
+      expect(amountText).toContain('559');
+      expect(card.querySelector('.split-trigger'))
+        .withContext('the rounded figure clears the two-minor-unit floor')
+        .not.toBeNull();
+
+      // The receipt was printed on another day, and the row answers for
+      // itself before Import is released.
+      card.querySelector<HTMLButtonElement>('.extra-chip.date-check .extra-accept')!.click();
+      fixture.detectChanges();
+
+      component.stepper.selectedIndex = 3;
+      fixture.detectChanges();
+      expect(host.querySelector<HTMLButtonElement>('.confirm-step .import-button')!.disabled)
+        .toBeFalse();
+
+      await component.confirmImport();
+
+      const after = await getDocs(collection(firestore, `users/${uid}/transactions`));
+      const landed = after.docs.filter(d => !before.has(d.id)).map(d => d.data());
+      expect(landed.length).toBe(1);
+      expect(landed[0]['amount']).toBe(559);
+      expect(landed[0]['currency']).toBe('JPY');
 
       history.replaceState({}, '');
       fixture.destroy();

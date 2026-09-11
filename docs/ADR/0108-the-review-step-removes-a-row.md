@@ -1,6 +1,6 @@
 # 108. The review step removes a row
 
-**Status:** Accepted, implemented · **Date:** 2026-09-10 · **Issues:** #391
+**Status:** Accepted, implemented; amended for #400 (2026-09-11) · **Date:** 2026-09-10 · **Issues:** #391
 
 Reference documentation lives in [../import-fields.md](../import-fields.md)
 and [../receipt-import.md](../receipt-import.md).
@@ -147,7 +147,7 @@ once the survivor is re-checked against a batch the departed twin has left.
   the set through as `dateAttentionIds` — fold over the rows that are
   *present* and ask the set about each, so an id with no row is asked about by
   nobody; and `nextImportRowId` is a monotonic counter, so a later row cannot
-  take the departed id and inherit its stamp.
+  take the departed id and inherit its stamp. See *Amended for #400* below.
 - **The count in the header and both gates follow immediately**, because they
   are computed over `extractedTransactions()` and the card emits the new list
   before anything reads it.
@@ -187,9 +187,35 @@ once the survivor is re-checked against a batch the departed twin has left.
 - **The stale `receiptRowIds` entry is left in place.** Inert today for the
   two reasons above, but it is a set that no longer describes the batch, and
   the next reader of it would have to know that. Filed as a follow-up rather
-  than fixed here.
+  than fixed here. Closed by the amendment below, #400.
 - **Nothing announces the removal.** The row leaves and focus moves; no live
   region says a row went. 0107's gap, in the place where the change to the
   list is largest.
 - **Remove is not on the confirm step.** The rows are settled at Continue;
   a reviewer who spots the wrong row on the confirmation card has to go back.
+
+## Amended for #400 (2026-09-11)
+
+**`receiptRowIds` is pruned wherever a row leaves.** The consequence above —
+"`receiptRowIds` keeps a stale id, and it is inert" — and the known gap that
+followed it are both answered by one private update on the wizard,
+`keepReceiptRows(present)`, called from `onTransactionsUpdated` alongside the
+pruning of `overruled`, `recheckStamp` and `duplicateChecks`, and again in the
+partial-import branch, which narrows the batch to the refused rows without
+going through that handler.
+
+The reasoning that made the stale entry harmless still holds and is why this
+is an amendment rather than a fix for a defect: both readers fold over the
+rows that are *present* and ask the set about each, so an id with no row was
+asked about by nobody, and `nextImportRowId` is monotonic, so no later row
+could inherit the stamp. What changes is that the set now describes the batch
+it names, which is what the next reader of it will assume.
+
+The update returns the **same** `Set` when nothing left, because
+`unansweredDates` is a computed keyed on the signal and a new set on every
+emission would recompute it for every edit that changes no membership.
+
+One asymmetry is left standing: `onFilesSelected` resets
+`extractedTransactions` to `[]` without resetting the id set, where
+`processFiles` resets both. It is inert — the review step is unreachable until
+`processFiles` has run and reset both — and it is not part of this amendment.

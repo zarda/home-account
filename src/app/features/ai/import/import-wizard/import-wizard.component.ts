@@ -71,7 +71,10 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   @ViewChild('stepper') stepper!: MatStepper;
 
-  acceptedFileTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp';
+  // JSON here is the backup door (importFromJSON) — the share sheet stays
+  // shorter (share-intake.service.ts) since a share is never where a backup
+  // comes from.
+  acceptedFileTypes = '.csv,.pdf,.png,.jpg,.jpeg,.webp,.json';
 
   // Flag to track if the review data arrived already extracted, via router
   // state, rather than through this wizard's own processFiles.
@@ -175,8 +178,6 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
    * and gets no copy of its own.
    */
   readonly rechecksInFlight = signal(0);
-  importProgress = signal(0);
-  importStatus = signal('');
 
   // Multi-image metadata
   multiImageMetadata = signal<MultiImageMetadata | null>(null);
@@ -185,6 +186,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   isProcessing = this.importService.isProcessing;
   processingStatus = this.importService.processingStatus;
   processingProgress = this.importService.processingProgress;
+  processingRow = this.importService.processingRow;
   categories = this.categoryService.categories;
 
   /**
@@ -644,6 +646,21 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     if (gone.length > 0) {
       this.duplicateChecks.update(checks => checks.filter(c => present.has(c.transactionId)));
     }
+    this.keepReceiptRows(present);
+  }
+
+  /**
+   * The set names the batch's receipt rows and is written once per batch,
+   * so it is pruned wherever a row leaves rather than left to describe a
+   * batch that moved on. The same `Set` is returned when nothing left, so
+   * `unansweredDates` — a computed keyed on this signal — is not recomputed
+   * for a no-op.
+   */
+  private keepReceiptRows(present: Set<string>): void {
+    this.receiptRowIds.update(ids => {
+      const kept = new Set([...ids].filter(id => present.has(id)));
+      return kept.size === ids.size ? ids : kept;
+    });
   }
 
   /**
@@ -809,17 +826,14 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   async confirmImport(): Promise<void> {
     this.isImporting.set(true);
-    this.importProgress.set(0);
 
     try {
       const batch = this.batchDescriptor();
-      // The service iterates the selected subset and numbers its per-row
-      // errors against it (1-based); snapshot the same subset now so those
-      // numbers can be mapped back to rows. Safe to take before the await:
-      // every step is [editable]="!isImporting()", and the CDK stepper
-      // refuses a move back onto a step that is not editable, so the review
-      // UI cannot be reached and edited while the write is in flight.
-      const submitted = this.extractedTransactions().filter(t => t.selected);
+      // The seal keeps the list unchanged during the write: every step is
+      // [editable]="!isImporting()", and the CDK stepper refuses a move back
+      // onto a step that is not editable, so the review UI cannot be reached
+      // and edited while the write is in flight — `extractedTransactions()`
+      // read after the await is still the set that was submitted.
       // The receipt attempt's provenance rides the record for image batches;
       // a CSV-only batch has none, and an absent slot means nobody looked.
       const diagnostics = this.fromCamera
@@ -863,13 +877,22 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // report success, leaving the user's reconciliation silently short.
         // Keep exactly the failed rows on the review step for correction and
         // a second confirm — the saved ones are removed so confirming again
-        // cannot double-import them.
-        const failedRows = (result.errors ?? [])
-          .map(e => (typeof e.row === 'number' ? submitted[e.row - 1] : undefined))
-          .filter((t): t is CategorizedImportTransaction => t !== undefined)
+        // cannot double-import them, and the rows the reviewer deselected,
+        // which were never submitted, go with them: the list is rebuilt from
+        // the failed ids alone and holds nothing else.
+        //
+        // The record names its failed rows by id, so matching `result.errors`
+        // back onto rows is a lookup, not a re-run of the service's own
+        // "selected" filter.
+        const failedIds = new Set(
+          (result.errors ?? []).map(e => e.transactionId).filter((id): id is string => !!id)
+        );
+        const failedRows = this.extractedTransactions()
+          .filter(t => failedIds.has(t.id))
           .map(t => ({ ...t, selected: true, isDuplicate: false }));
 
         this.extractedTransactions.set(failedRows);
+        this.keepReceiptRows(new Set(failedRows.map(t => t.id)));
         this.duplicateChecks.set([]);
         this.selectedTransactionIds.set(new Set(failedRows.map(t => t.id)));
 

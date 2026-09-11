@@ -216,7 +216,9 @@ then is the same no-op a stale split commit is.
   two consolidated rows showed 2, two rows of one photo included. The
   extraction result's own `multiImageMetadata.itemsMerged` counts something
   else — the reader's `wasMerged` over the raw rows, before consolidation
-  stamps its own — is 0 in practice, and is rendered nowhere.
+  stamps its own — is 0 in practice, and is rendered nowhere: that figure is
+  removed by [ADR 0116](0116-the-merged-count-has-one-producer.md), #392, and
+  the survivor's own count stands.
 - **A split doubles that count.** A row consolidation folded from several
   items carries `imageMetadata.wasMerged: true`; the kept half keeps the
   block through the spread and the part takes a copy, so after a split
@@ -349,4 +351,5 @@ then is the same no-op a stale split commit is.
   folded in.
 - **The survivor says "1 item merged" where the extraction result's
   `itemsMerged` says 0**, as above; neither figure is wrong about what it
-  counts, and the second is displayed nowhere.
+  counts, and the second is displayed nowhere. Closed by
+  [ADR 0116](0116-the-merged-count-has-one-producer.md), #392.

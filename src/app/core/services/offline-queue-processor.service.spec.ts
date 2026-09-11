@@ -401,6 +401,20 @@ describe('OfflineQueueProcessorService', () => {
       expect(Object.keys(dto).sort()).toEqual(['amount', 'categoryId', 'currency', 'date', 'description', 'type']);
     });
 
+    it('writes a queued yen fraction whole', async () => {
+      // No review card ever sees a drained row, so the mapper is the only
+      // thing standing between what the reader said and the ledger.
+      queue.getQueuedImageAsFile.and.resolveTo(imageFile());
+      ai.processReceipt.and.resolveTo(processingResult([extracted({ amount: 179.4, currency: 'JPY' })]));
+
+      dispatchImage('img_11');
+      await waitFor(() => queue.updateImageStatus.calls.any());
+
+      const dto = transactions.addTransaction.calls.mostRecent().args[0];
+      expect(dto.amount).toBe(179);
+      expect(dto.currency).toBe('JPY');
+    });
+
     it('never writes a review mark', async () => {
       queue.getQueuedImageAsFile.and.resolveTo(imageFile());
       ai.processReceipt.and.resolveTo(processingResult([extracted({ currencyFellBack: true, currency: 'USD' })]));

@@ -779,13 +779,16 @@ describe('ExportService', () => {
 
       const result = service.parseImportedData(raw, 'USD');
 
-      // Nothing the backup carried is flattened back to a default.
+      // Nothing the backup carried is flattened back to a default. Amount is
+      // the one exception: re-import still corrects it to the currency's own
+      // minor unit rather than writing the figure back as typed.
       expect(result[0].currency).toBe('JPY');
       expect(result[0].categoryId).toBe('food_groceries');
       expect(result[0].note).toBe('weekly shop');
       expect(result[0].tags).toEqual(['groceries', 'reimbursable']);
       expect(result[0].location).toEqual({ name: 'Aoyama Market', lat: 35.66, lng: 139.71 });
       expect(result[0].period).toBe('monthly');
+      expect(result[0].amount).withContext('a legacy fractional yen row is written whole on re-import').toBe(13);
     });
 
     it('should use absolute value for amount', () => {

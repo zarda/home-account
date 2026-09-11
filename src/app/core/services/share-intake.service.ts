@@ -9,8 +9,12 @@ import { SharedIntakeFile } from '../plugins/share-intake.plugin';
 
 /**
  * What a share may hand the import wizard — the dropzone's accepted set
- * (`file-dropzone.component.ts`), expressed as MIME types with an extension
- * fallback for the platforms that share CSVs with a blank or vendor type.
+ * (`file-dropzone.component.ts`) less the JSON backup, expressed as MIME
+ * types with an extension fallback for the platforms that share CSVs with a
+ * blank or vendor type. A backup never arrives through an OS share sheet;
+ * this door also validates nothing past "`transactions` is an array", and
+ * the share target (`public/manifest.json`) lags behind on every installed
+ * client, so widening it here would promise a path this app cannot open.
  */
 export const SHARED_FILE_ACCEPT_TYPES = [
   'image/png',

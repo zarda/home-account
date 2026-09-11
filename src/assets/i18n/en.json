@@ -1010,7 +1010,7 @@
     "reviewStep": "Review",
     "confirmStep": "Import",
     "dropzoneTitle": "Drop files here or click to upload",
-    "dropzoneHint": "Supports CSV, PDF, and images",
+    "dropzoneHint": "Supports CSV, PDF, images, and JSON backups",
     "browseFiles": "Browse Files",
     "addMoreFiles": "Add more files",
     "preview": "Preview",
@@ -1057,6 +1057,7 @@
     },
     "importFailed": "Import failed: {{error}}",
     "importPartial": "Imported {{success}} of {{total}} transactions — {{failed}} could not be saved",
+    "importingRow": "Importing {{done}} of {{total}}...",
     "importPhotosSkipped": {
       "one": "The transactions were saved, but {{count}} receipt photo was not attached — image storage limit reached",
       "other": "The transactions were saved, but {{count}} receipt photos were not attached — image storage limit reached"

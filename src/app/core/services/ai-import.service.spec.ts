@@ -607,6 +607,28 @@ describe('AIImportService', () => {
       expect('dateAssumed' in row).toBeFalse();
       expect(row.fieldConfidence?.date).toBe(0.9);
     });
+
+    it('rounds the figure to the row\'s own currency', () => {
+      const [row] = service.convertStrategyResultToCategories(processed([
+        { amount: 538.4, currency: 'JPY' },
+      ]));
+
+      expect(row.amount).toBe(538);
+    });
+
+    it('shows a negative reading as its absolute, with the row\'s type kept', () => {
+      // The write flipped the sign anyway; the card now shows the figure the
+      // ledger will hold. Type is income here, opposite of what a
+      // sign-derived type would call it, so the assertion below only passes
+      // if the row's own type survives rather than being recomputed from
+      // the (now-positive) sign.
+      const [row] = service.convertStrategyResultToCategories(processed([
+        { amount: -12.5, currency: 'USD', type: 'income' },
+      ]));
+
+      expect(row.amount).toBe(12.5);
+      expect(row.type).toBe('income');
+    });
   });
 
   describe('remembered categories', () => {
@@ -1351,11 +1373,33 @@ describe('AIImportService', () => {
       ]);
 
       expect(result.transactions.length).toBe(1);
-      expect(result.transactions[0].amount).toBe(330.9);
+      // Consolidation prefers the printed total and rounds nothing itself;
+      // the builder is what makes the figure whole.
+      expect(result.transactions[0].amount)
+        .withContext('the door rounds the reported total to whole yen')
+        .toBe(331);
       expect(result.transactions[0].fieldConfidence).toBeUndefined();
     });
 
-    it('should count items the AI already flagged as merged', async () => {
+    it('rounds a summed receipt to whole yen', async () => {
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100.4, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1, merchant: 'Shop' },
+        { date: '2024-06-01', description: 'Item B', amount: 200.4, type: 'expense', currency: 'JPY',
+          imageIndex: 1, positionInImage: 'bottom', confidence: 0.7, receiptId: 1 }
+      ]));
+
+      const result = await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
+      ]);
+
+      // With no printed total to prefer, consolidation sums the items and
+      // leaves 300.8 alone; a yen row has nowhere to keep the fraction.
+      expect(result.transactions.length).toBe(1);
+      expect(result.transactions[0].amount).toBe(301);
+    });
+
+    it('keeps a lone item\'s own merged flag through consolidation', async () => {
       cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
         { date: '2024-06-01', description: 'Solo', amount: 10, type: 'expense', currency: 'JPY',
           imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 4, wasMerged: true }
@@ -1365,7 +1409,7 @@ describe('AIImportService', () => {
         makeFile('a.png', 'image/png'), makeFile('b.png', 'image/png')
       ]);
 
-      expect(result.multiImageMetadata?.itemsMerged).toBe(1);
+      expect(result.transactions[0].imageMetadata?.wasMerged).toBe(true);
     });
 
     it('should merge using AI-provided receipt details and a non-JPY currency', async () => {
@@ -1904,6 +1948,8 @@ describe('AIImportService', () => {
       expect(result.transactions[0].amount).toBe(5000);
       expect(result.transactions[1].amount).toBe(1200);
       expect(result.transactions[1].suggestedCategoryId).toBe('other_expense');
+      expect(result.transactions[0].categoryConfidence).toBe(1);
+      expect(result.transactions[1].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
       // The stored Timestamp a stringified backup carries, read as the instant
       // it names and left unmarked; the row that carries no date at all lands
       // on today wearing the mark that lets the card ask about it.
@@ -1911,6 +1957,58 @@ describe('AIImportService', () => {
       expect('dateAssumed' in result.transactions[0]).toBeFalse();
       expect(datedToday(result.transactions[1].date)).toBeTrue();
       expect(result.transactions[1].dateAssumed).toBeTrue();
+      expect(result.warnings.some(w => w.type === 'low_confidence'))
+        .withContext('the defaulted row is counted')
+        .toBeTrue();
+    });
+
+    it('grades an empty category id as a default, not as the backup\'s own', async () => {
+      const backup = {
+        transactions: [
+          { description: 'Blank', amount: -5, type: 'expense', categoryId: '' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('other_expense');
+      expect(result.transactions[0].categoryConfidence).toBe(UNRESOLVED_CATEGORY_CONFIDENCE);
+    });
+
+    it('treats a non-string category id as absent', async () => {
+      // A hand-edited or half-migrated backup can hold anything here. The
+      // typeof guard is what keeps a number or a null out of the id slot,
+      // where it would be written as the row's category.
+      const backup = {
+        transactions: [
+          { description: 'Numeric', amount: -5, type: 'expense', categoryId: 42 },
+          { description: 'Null', amount: -6, type: 'expense', categoryId: null }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions.map(t => t.suggestedCategoryId))
+        .toEqual(['other_expense', 'other_expense']);
+      expect(result.transactions.map(t => t.categoryConfidence))
+        .toEqual([UNRESOLVED_CATEGORY_CONFIDENCE, UNRESOLVED_CATEGORY_CONFIDENCE]);
+    });
+
+    it('keeps the full grade on a category the backup named', async () => {
+      const backup = {
+        transactions: [
+          { description: 'Groceries', amount: -5, type: 'expense', categoryId: 'food' }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].suggestedCategoryId).toBe('food');
+      expect(result.transactions[0].categoryConfidence).toBe(1);
+      expect(result.warnings.some(w => w.type === 'low_confidence')).toBeFalse();
     });
 
     it('resolves a backup date the way every other import door does', async () => {
@@ -1999,6 +2097,20 @@ describe('AIImportService', () => {
       for (const row of result.transactions) {
         expect('location' in row).toBeFalse();
       }
+    });
+
+    it('rounds a backup figure to the currency the row carries', async () => {
+      const backup = {
+        transactions: [
+          { description: 'Coffee', amount: -12.345, currency: 'USD', type: 'expense',
+            date: { seconds: 1700000000 } }
+        ]
+      };
+      const file = makeFile('backup.json', 'application/json', JSON.stringify(backup));
+
+      const result = await service.importFromJSON(file);
+
+      expect(result.transactions[0].amount).toBe(12.35);
     });
   });
 
@@ -2183,6 +2295,18 @@ describe('AIImportService', () => {
       expect(result[0].currency).toBe('EUR');
       expect('currencyFellBack' in result[0]).toBeFalse();
     });
+
+    it('rounds each figure to its own row\'s currency', async () => {
+      const result = await service.categorizeTransactions([
+        { date: '2026-01-01', description: 'Konbini', amount: 179.33, type: 'expense', currency: 'JPY' },
+        { date: '2026-01-01', description: 'Coffee', amount: 4.126, type: 'expense', currency: 'USD' }
+      ]);
+
+      // A yen row holds no fraction and a dollar row holds two places, so
+      // the same door writes two different roundings.
+      expect(result[0].amount).toBe(179);
+      expect(result[1].amount).toBe(4.13);
+    });
   });
 
   describe('confirmImport', () => {
@@ -2259,6 +2383,23 @@ describe('AIImportService', () => {
       const dto = transactionService.addTransaction.calls.mostRecent().args[0];
       expect(dto.currency).toBe('JPY');
       expect('currencyFellBack' in dto).toBeFalse();
+    });
+
+    it('reports each row as it is written and clears the row when the write ends', async () => {
+      const rowSpy = spyOn(service.processingRow, 'set').and.callThrough();
+      const progressSpy = spyOn(service.processingProgress, 'set').and.callThrough();
+
+      await service.confirmImport(
+        [selected({ id: 'a' }), selected({ id: 'b' })],
+        'r.png', 10, 'image', 'receipt_image'
+      );
+
+      expect(rowSpy.calls.allArgs()).toEqual([
+        [{ done: 1, total: 2 }],
+        [{ done: 2, total: 2 }],
+        [null]
+      ]);
+      expect(progressSpy.calls.allArgs()).toEqual([[0], [50], [100]]);
     });
 
     describe('history read-back', () => {
@@ -2412,6 +2553,7 @@ describe('AIImportService', () => {
       expect(stats.errorCount).toBe(1);
       expect(stats.successCount).toBe(1);
       expect(stats.errors?.length).toBe(1);
+      expect(stats.errors?.[0]).toEqual(jasmine.objectContaining({ row: 1, transactionId: 'a' }));
     });
 
     it('should coerce string and invalid dates to valid Date objects', async () => {

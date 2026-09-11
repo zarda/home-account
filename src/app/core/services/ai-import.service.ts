@@ -61,7 +61,7 @@ import {
   CurrencySuggestion
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
-import { locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { importAmount, locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
@@ -113,7 +113,10 @@ export class AIImportService {
   isProcessing = signal<boolean>(false);
   processingStatus = signal<string>('');
   processingProgress = signal<number>(0);
-  
+  // The confirm step renders this translated, so the write's progress is a
+  // structured fact rather than an English sentence like processingStatus.
+  processingRow = signal<{ done: number; total: number } | null>(null);
+
   // New signals for processing
   processingSource = signal<'cloud' | 'native' | null>(null);
   isOfflineMode = computed(() => !this.pwaService.isOnline());
@@ -356,11 +359,15 @@ export class AIImportService {
 
     return result.transactions.map(tx => {
       const resolved = resolveImportDate(tx.date, tx.fieldConfidence?.date);
+      const money = resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency);
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('strategy'),
         description: tx.description,
-        amount: tx.amount,
-        ...resolveImportCurrency(tx.currencyFellBack ? '' : tx.currency, baseCurrency),
+        // A reader that reports an expense as a negative loses the sign here
+        // rather than at the write, which flipped it anyway: the card is
+        // meant to show the figure the ledger will hold.
+        amount: importAmount(tx.amount, money.currency),
+        ...money,
         date: resolved.date,
         type: tx.type,
         ...gradeCategorySuggestion(tx),
@@ -541,7 +548,6 @@ export class AIImportService {
         files,
         markedTransactions,
         duplicates,
-        extractedTransactions,
         answerIncomplete
       );
       result.diagnostics = this.cloudDiagnostics(startedAt, provider);
@@ -636,11 +642,14 @@ export class AIImportService {
     return categorizedByAI.map((t, index) => {
       const original = transactions[index];
       const resolved = resolutions[index];
+      const money = resolveImportCurrency(original.currency, baseCurrency);
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('multi_img'),
         description: t.description,
-        amount: Math.abs(t.amount),
-        ...resolveImportCurrency(original.currency, baseCurrency),
+        // Consolidation sums items and prefers a printed total without
+        // rounding either; a receipt's own currency decides what survives.
+        amount: importAmount(t.amount, money.currency),
+        ...money,
         date: resolved.date,
         type: original.type,
         suggestedCategoryId: original.category || t.suggestedCategoryId,
@@ -820,7 +829,6 @@ export class AIImportService {
     files: File[],
     transactions: CategorizedImportTransaction[],
     duplicates: DuplicateCheck[],
-    extractedTransactions: MultiImageExtractedTransaction[],
     answerIncomplete = false
   ): ImportResult {
     const warnings: ImportWarning[] = [];
@@ -861,9 +869,6 @@ export class AIImportService {
       ? transactions.reduce((sum, t) => sum + t.categoryConfidence, 0) / transactions.length
       : 0;
 
-    // Count merged items
-    const mergedCount = extractedTransactions.filter(t => t.wasMerged).length;
-
     // Calculate total file size
     const totalFileSize = files.reduce((sum, f) => sum + f.size, 0);
 
@@ -884,7 +889,6 @@ export class AIImportService {
       sourceFiles: files,
       multiImageMetadata: {
         totalImages: files.length,
-        itemsMerged: mergedCount,
         deduplicationMethod: 'ai',
         imageIds: files.map((_, i) => `image_${i}`)
       }
@@ -1074,15 +1078,21 @@ export class AIImportService {
           // `.seconds` here by hand was what left that row silently dated
           // today, and a `date` of any other shape an Invalid Date.
           const resolved = resolveImportDate(t['date']);
+          const categoryId = typeof t['categoryId'] === 'string' && t['categoryId'] ? t['categoryId'] : undefined;
+          const money = resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency);
           return {
             id: nextImportRowId('json'),
             description: t['description'] as string || 'Unknown',
-            amount: Math.abs(t['amount'] as number || 0),
-            ...resolveImportCurrency(readCurrencyCode(t['currency']), baseCurrency),
+            amount: importAmount((t['amount'] as number) || 0, money.currency),
+            ...money,
             date: resolved.date,
             type: (t['type'] as 'income' | 'expense') || 'expense',
-            suggestedCategoryId: (t['categoryId'] as string) || 'other_expense',
-            categoryConfidence: 1.0, // From backup, category is known
+            // A category the backup named is the reviewer's earlier pick and
+            // keeps the full grade; a row that had none is defaulted and
+            // graded the way every door grades a default (0045), so the
+            // chip's dot and the low_confidence tally see it.
+            suggestedCategoryId: categoryId ?? FALLBACK_CATEGORY_ID,
+            categoryConfidence: categoryId ? 1.0 : UNRESOLVED_CATEGORY_CONFIDENCE,
             isDuplicate: false,
             selected: true,
             // A backup row carries what its transaction held; anything absent
@@ -1141,12 +1151,13 @@ export class AIImportService {
     return transactions.map(t => {
       const suggestedCategoryId = t.category || 'other_expense';
       const resolved = resolveImportDate(t.date, t.dateConfidence);
+      const money = resolveImportCurrency(t.currency, baseCurrency);
 
       const row: CategorizedImportTransaction = {
         id: nextImportRowId('import'),
         description: t.description,
-        amount: Math.abs(t.amount),
-        ...resolveImportCurrency(t.currency, baseCurrency),
+        amount: importAmount(t.amount, money.currency),
+        ...money,
         date: resolved.date,
         type: t.type || 'expense',
         suggestedCategoryId: suggestedCategoryId,
@@ -1241,7 +1252,7 @@ export class AIImportService {
       for (let i = 0; i < selectedTransactions.length; i++) {
         const txn = selectedTransactions[i];
         this.processingProgress.set(Math.round(((i + 1) / selectedTransactions.length) * 100));
-        this.processingStatus.set(`Importing ${i + 1} of ${selectedTransactions.length}...`);
+        this.processingRow.set({ done: i + 1, total: selectedTransactions.length });
 
         try {
           // A Date, a date-only string the model produced, or nothing at all.
@@ -1308,6 +1319,7 @@ export class AIImportService {
           errorCount++;
           errors.push({
             row: i + 1,
+            transactionId: txn.id,
             message: error instanceof Error ? error.message : 'Unknown error',
             originalValue: txn.description
           });
@@ -1398,6 +1410,8 @@ export class AIImportService {
       throw error;
     } finally {
       this.isProcessing.set(false);
+      // The row is a fact about a write in progress; it outlives none.
+      this.processingRow.set(null);
     }
 
     // Read back the completed record. Deliberately outside the try above:

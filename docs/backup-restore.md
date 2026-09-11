@@ -34,6 +34,41 @@ budget period after taking the backup, restoring that file leaves your removal
 in place rather than bringing the old value back. Restoring is how you recover
 data, not how you undo an edit.
 
+## Two ways back in
+
+There are two doors, and they are not two sizes of the same one.
+
+**The `/data` restore** is this document's subject: the whole account, every
+section, each record written at its own id and merged into whatever is already
+there. Nothing is reviewed, nothing is checked against the rows you already
+have, and the figures go back exactly as the file holds them — including a
+fractional amount in a currency that has no place for one, if an older version
+of the app wrote it. It is the recovery path.
+
+**The import wizard's file picker** takes the same file and does something
+narrower. Only the `transactions` array is read; categories, budgets, rules,
+goals and snapshots are ignored. Every row lands on the review card as a new
+transaction with a new id — not at the id the backup names, so this cannot
+restore *over* anything — and it is duplicate-checked against the account
+before you confirm. A row whose category the backup did not record is filed
+under the catch-all and flagged low-confidence rather than presented as
+settled, and every amount is rounded to its currency's minor unit on the way
+in. What does not come with it, against the table below: the row's id, its
+`createdAt`, its stored rate and base-currency figure — the amount is
+re-converted at **today's** rate instead — its goal link and that link's
+figure, and its recurring-rule link, so a row the file flagged recurring
+arrives with the flag and no rule behind it. Receipt images are sourced by
+neither door. Use it to bring some
+transactions back, or to bring them into a different account, and look at
+them first
+([ADR 0113](ADR/0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md)).
+
+The row the `/data` path never asks about is the duplicate: restoring a file
+onto an account that still holds those rows is a no-op *because* of the
+merge-by-id, not because anything compared them. Import the same file through
+the wizard instead and the rows are new documents, so the duplicate pass is
+the only thing standing between you and a second copy.
+
 ## What comes back verbatim, what is recomputed, and what is never sourced
 
 | Section | Verbatim from the file | Recomputed after the restore | Never sourced from a file |

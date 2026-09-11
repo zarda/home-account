@@ -381,10 +381,12 @@
           <div class="importing-section">
             <mat-progress-bar
               mode="determinate"
-              [value]="importProgress()"
+              [value]="processingProgress()"
               class="custom-progress"
             ></mat-progress-bar>
-            <p class="importing-status">{{ importStatus() }}</p>
+            @if (processingRow(); as row) {
+              <p class="importing-status">{{ 'import.importingRow' | translate:{ done: row.done, total: row.total } }}</p>
+            }
           </div>
         }
 

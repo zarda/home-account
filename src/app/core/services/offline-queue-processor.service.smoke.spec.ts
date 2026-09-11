@@ -65,14 +65,14 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
   }
 
   /** One income row, so the write path skips budget recalculation. */
-  function reads(amount: number, description: string): void {
+  function reads(amount: number, description: string, currency = 'USD'): void {
     ai.processReceipt.and.resolveTo({
       transactions: [{
         date: new Date(2026, 5, 15),
         description,
         amount,
         type: 'income',
-        currency: 'USD',
+        currency,
         confidence: 0.9,
         source: 'cloud',
         suggestedCategoryId: 'salary',
@@ -403,5 +403,23 @@ describe('OfflineQueueProcessorService (emulator smoke test)', () => {
     );
     const row = stored.find((t) => t.amount === 73.28);
     expect(row?.date.toMillis()).toBe(original.getTime());
+  }, 20000);
+
+  // This door builds no review row, so toCreateTransactionDTO's own rounding
+  // is the only thing between a fractional reading and the ledger — and yen
+  // has no minor unit to hold the fraction in.
+  it('writes a queued yen fraction whole', async () => {
+    reads(179.4, 'Queued yen', 'JPY');
+    const id = await queue.queueImage(receiptFile());
+
+    window.dispatchEvent(new CustomEvent('process-queued-image', { detail: { id } }));
+    await waitFor(async () => (await queue.getPendingImages()).length === 0);
+
+    const stored = await firestoreService.getCollection<{
+      amount: number; currency: string; description: string;
+    }>(`users/${uid}/transactions`);
+    const row = stored.find((t) => t.description === 'Queued yen');
+    expect(row?.amount).toBe(179);
+    expect(row?.currency).toBe('JPY');
   }, 20000);
 });

@@ -1,4 +1,4 @@
-import { locationSlot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
+import { importAmount, locationSlot, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from './import-dto.utils';
 import { parseDateInput } from './transaction-date.utils';
 
 describe('toCreateTransactionDTO', () => {
@@ -108,6 +108,31 @@ describe('toCreateTransactionDTO', () => {
 
     expect('note' in dto).toBeFalse();
   });
+
+  it('rounds the amount to the currency it writes', () => {
+    // The door builders round where a row is built, but the offline drain
+    // reaches this mapper with no builder behind it, so the guard has to sit
+    // here too.
+    const dto = toCreateTransactionDTO({ amount: 179.33, currency: 'JPY', date }, 'USD');
+
+    expect(dto.amount).toBe(179);
+  });
+
+  it('rounds to the base currency\'s unit when the row carries none', () => {
+    const dto = toCreateTransactionDTO({ amount: 12.5, date }, 'JPY');
+
+    expect(dto.amount).toBe(13);
+  });
+
+  it('folds a NaN amount to 0 rather than writing NaN', () => {
+    // `roundToMinorUnit`'s trailing `|| 0` is what folds it, and the mapper
+    // inherited that when it started rounding. addTransaction refuses both
+    // readings alike (`Number.isFinite` then `<= 0`), so what this pins is
+    // the shape of the figure that leaves the mapper, not the refusal.
+    const dto = toCreateTransactionDTO({ amount: Number.NaN, date }, 'USD');
+
+    expect(dto.amount).toBe(0);
+  });
 });
 
 describe('resolveImportCurrency', () => {
@@ -117,6 +142,23 @@ describe('resolveImportCurrency', () => {
   it('substitutes the base currency and says so when nothing was read', () => {
     expect(resolveImportCurrency('', 'USD')).toEqual({ currency: 'USD', currencyFellBack: true });
     expect(resolveImportCurrency(undefined, 'USD')).toEqual({ currency: 'USD', currencyFellBack: true });
+  });
+});
+
+describe('importAmount', () => {
+  it('rounds to what the row\'s own currency can hold', () => {
+    expect(importAmount(179.33, 'JPY')).toBe(179);
+    expect(importAmount(1.2345, 'KWD')).toBe(1.235);
+  });
+
+  it('writes the figure unsigned', () => {
+    // Direction lives in `type`; a reader that reported an expense as a
+    // negative must not also flip the stored figure.
+    expect(importAmount(-4.126, 'USD')).toBe(4.13);
+  });
+
+  it('lands a figure under the currency\'s unit on zero', () => {
+    expect(importAmount(0.4, 'JPY')).toBe(0);
   });
 });
 

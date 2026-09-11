@@ -107,16 +107,21 @@ reverse — why a thing is the way it is, not how to use it.
 | [0100](0100-a-receipt-dated-before-today-is-a-question-the-reviewer-answers.md) | A receipt dated before today is a question the reviewer answers | Accepted; closes a gap of 0074 | 2026-09-04 |
 | [0101](0101-a-corrected-row-is-checked-for-duplicates-again.md) | A corrected row is checked for duplicates again | Accepted; extends 0063; corrected for #387 | 2026-09-04 |
 | [0102](0102-the-review-card-adds-a-tag-and-edits-a-location.md) | The review card adds a tag and edits a location | Accepted; closes a gap of 0068; extends 0099; hit-box gap closed by 0110 | 2026-09-06 |
-| [0103](0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md) | The review step adds a row, and the wizard is sealed while it writes | Accepted; extends 0100; amended for #371; removal gap closed by 0108 | 2026-09-06 |
+| [0103](0103-the-review-step-adds-a-row-and-the-wizard-is-sealed-while-it-writes.md) | The review step adds a row, and the wizard is sealed while it writes | Accepted; extends 0100; amended for #371; removal gap closed by 0108, progress gap by 0114, JSON-door gap by 0113 | 2026-09-06 |
 | [0104](0104-a-web-reminder-is-raised-through-the-worker-the-app-already-registers.md) | A web reminder is raised through the worker the app already registers | Accepted; extends 0092; a second job for 0019's worker | 2026-09-08 |
 | [0105](0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md) | The cache-size card is removed, and the dead worker with it | Accepted; applies 0048 and 0097; install-surface gap closed by 0112 | 2026-09-08 |
-| [0106](0106-the-review-step-splits-a-row-and-merges-two.md) | The review step splits a row, and merges two | Accepted; extends 0099 and 0103; excepts 0060; widens 0101; Remove gap closed by 0108; decimal gap closed by 0109; the dead helper it deferred is recorded by 0111 | 2026-09-08 |
+| [0106](0106-the-review-step-splits-a-row-and-merges-two.md) | The review step splits a row, and merges two | Accepted; extends 0099 and 0103; excepts 0060; widens 0101; Remove gap closed by 0108; decimal gap closed by 0109; the dead helper it deferred is recorded by 0111; merged-count gap closed by 0116 | 2026-09-08 |
 | [0107](0107-the-review-card-has-one-editing-machine.md) | The review card has one editing machine | Accepted; extends 0099 and 0102 | 2026-09-10 |
-| [0108](0108-the-review-step-removes-a-row.md) | The review step removes a row | Accepted; extends 0103 and 0106; closes a gap of each | 2026-09-10 |
-| [0109](0109-a-hand-typed-amount-is-whole-in-its-currency.md) | A hand-typed amount is whole in its currency | Accepted; extends 0099 | 2026-09-10 |
+| [0108](0108-the-review-step-removes-a-row.md) | The review step removes a row | Accepted; extends 0103 and 0106; closes a gap of each; amended for #400 | 2026-09-10 |
+| [0109](0109-a-hand-typed-amount-is-whole-in-its-currency.md) | A hand-typed amount is whole in its currency | Accepted; extends 0099; the two follow-up gaps closed by 0117 | 2026-09-10 |
 | [0110](0110-the-probe-measures-the-card-at-phone-width-and-in-both-directions.md) | The probe measures the card at phone width, and in both directions | Accepted; extends 0010 and 0071; closes a gap of 0102 | 2026-09-10 |
-| [0111](0111-the-position-overlap-pass-is-removed.md) | The position-overlap pass is removed | Accepted; applies 0048; records a helper 0106 deferred | 2026-09-10 |
+| [0111](0111-the-position-overlap-pass-is-removed.md) | The position-overlap pass is removed | Accepted; applies 0048; records a helper 0106 deferred; merged-count figure removed by 0116 | 2026-09-10 |
 | [0112](0112-pwaservice-keeps-only-the-surface-something-calls.md) | PwaService keeps only the surface something calls | Accepted; applies 0048 and 0105; closes a gap of 0105 | 2026-09-10 |
+| [0113](0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md) | The wizard's picker takes a backup, and grades the category it defaulted | Accepted; applies 0045; extends 0062 and 0074; closes a gap of 0103 | 2026-09-11 |
+| [0114](0114-the-confirm-step-reads-the-writes-progress-from-the-service.md) | The confirm step reads the write's progress from the service | Accepted; extends 0103; closes a gap of 0103 | 2026-09-11 |
+| [0115](0115-a-failed-row-is-named-by-its-id.md) | A failed row is named by its id | Accepted; extends 0103; restates a boundary of 0060 | 2026-09-11 |
+| [0116](0116-the-merged-count-has-one-producer.md) | The merged count has one producer | Accepted; applies 0048; closes a gap of 0106; narrows one of 0111 | 2026-09-11 |
+| [0117](0117-every-doors-figure-is-whole-in-its-currency.md) | Every door's figure is whole in its currency | Accepted; extends 0109; closes two gaps of 0109 | 2026-09-11 |
 
 ## What belongs here
 
