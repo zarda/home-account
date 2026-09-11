@@ -92,7 +92,7 @@ reverse — why a thing is the way it is, not how to use it.
 | [0085](0085-the-deploy-keys-rotation-is-an-issue-the-repo-opens-for-itself.md) | The deploy key's rotation is an issue the repo opens for itself | Accepted | 2026-08-31 |
 | [0086](0086-the-firebase-tools-major-stays-pinned-by-a-gate-not-a-habit.md) | The firebase-tools major stays pinned by a gate, not a habit | Accepted | 2026-08-31 |
 | [0087](0087-the-deploy-is-not-green-until-its-indexes-are-built.md) | The deploy is not green until its indexes are built | Accepted; closes a gap of 0077 | 2026-08-31 |
-| [0088](0088-the-smoke-harness-owns-the-noise-it-makes.md) | The smoke harness owns the noise it makes | Accepted; root-cause gap closed by 0089, NG0911 follow-up closed by 0090 | 2026-08-31 |
+| [0088](0088-the-smoke-harness-owns-the-noise-it-makes.md) | The smoke harness owns the noise it makes | Accepted; root-cause gap closed by 0089, NG0911 follow-up closed by 0090; unit-sweep claim corrected by 0123 | 2026-08-31 |
 | [0089](0089-the-auth-listener-dies-with-the-injector-that-registered-it.md) | The auth listener dies with the injector that registered it | Accepted; closes a gap of 0088 | 2026-08-31 |
 | [0090](0090-a-render-callback-is-registered-only-while-the-view-can-run-it.md) | A render callback is registered only while the view can run it | Accepted; follow-up to 0088 | 2026-08-31 |
 | [0091](0091-the-upcoming-card-reads-the-live-schedule-not-the-ledger.md) | The upcoming card reads the live schedule, not the ledger | Accepted | 2026-09-01 |
@@ -112,16 +112,22 @@ reverse — why a thing is the way it is, not how to use it.
 | [0105](0105-the-cache-size-card-is-removed-and-the-dead-worker-with-it.md) | The cache-size card is removed, and the dead worker with it | Accepted; applies 0048 and 0097; install-surface gap closed by 0112 | 2026-09-08 |
 | [0106](0106-the-review-step-splits-a-row-and-merges-two.md) | The review step splits a row, and merges two | Accepted; extends 0099 and 0103; excepts 0060; widens 0101; Remove gap closed by 0108; decimal gap closed by 0109; the dead helper it deferred is recorded by 0111; merged-count gap closed by 0116 | 2026-09-08 |
 | [0107](0107-the-review-card-has-one-editing-machine.md) | The review card has one editing machine | Accepted; extends 0099 and 0102 | 2026-09-10 |
-| [0108](0108-the-review-step-removes-a-row.md) | The review step removes a row | Accepted; extends 0103 and 0106; closes a gap of each; amended for #400 | 2026-09-10 |
+| [0108](0108-the-review-step-removes-a-row.md) | The review step removes a row | Accepted; extends 0103 and 0106; closes a gap of each; amended for #400 and #415 | 2026-09-10 |
 | [0109](0109-a-hand-typed-amount-is-whole-in-its-currency.md) | A hand-typed amount is whole in its currency | Accepted; extends 0099; the two follow-up gaps closed by 0117 | 2026-09-10 |
-| [0110](0110-the-probe-measures-the-card-at-phone-width-and-in-both-directions.md) | The probe measures the card at phone width, and in both directions | Accepted; extends 0010 and 0071; closes a gap of 0102 | 2026-09-10 |
+| [0110](0110-the-probe-measures-the-card-at-phone-width-and-in-both-directions.md) | The probe measures the card at phone width, and in both directions | Accepted; extends 0010 and 0071; closes a gap of 0102; caret follow-up closed by 0122 | 2026-09-10 |
 | [0111](0111-the-position-overlap-pass-is-removed.md) | The position-overlap pass is removed | Accepted; applies 0048; records a helper 0106 deferred; merged-count figure removed by 0116 | 2026-09-10 |
 | [0112](0112-pwaservice-keeps-only-the-surface-something-calls.md) | PwaService keeps only the surface something calls | Accepted; applies 0048 and 0105; closes a gap of 0105 | 2026-09-10 |
 | [0113](0113-the-wizards-picker-takes-a-backup-and-grades-the-category-it-defaulted.md) | The wizard's picker takes a backup, and grades the category it defaulted | Accepted; applies 0045; extends 0062 and 0074; closes a gap of 0103 | 2026-09-11 |
-| [0114](0114-the-confirm-step-reads-the-writes-progress-from-the-service.md) | The confirm step reads the write's progress from the service | Accepted; extends 0103; closes a gap of 0103 | 2026-09-11 |
-| [0115](0115-a-failed-row-is-named-by-its-id.md) | A failed row is named by its id | Accepted; extends 0103; restates a boundary of 0060 | 2026-09-11 |
+| [0114](0114-the-confirm-step-reads-the-writes-progress-from-the-service.md) | The confirm step reads the write's progress from the service | Accepted; extends 0103; closes a gap of 0103; three gaps closed by 0118 | 2026-09-11 |
+| [0115](0115-a-failed-row-is-named-by-its-id.md) | A failed row is named by its id | Accepted; extends 0103; restates a boundary of 0060; deselected-rows gap closed by 0120 | 2026-09-11 |
 | [0116](0116-the-merged-count-has-one-producer.md) | The merged count has one producer | Accepted; applies 0048; closes a gap of 0106; narrows one of 0111 | 2026-09-11 |
-| [0117](0117-every-doors-figure-is-whole-in-its-currency.md) | Every door's figure is whole in its currency | Accepted; extends 0109; closes two gaps of 0109 | 2026-09-11 |
+| [0117](0117-every-doors-figure-is-whole-in-its-currency.md) | Every door's figure is whole in its currency | Accepted; extends 0109; closes two gaps of 0109; bulk-switch gap closed by 0121 | 2026-09-11 |
+| [0118](0118-the-processing-step-names-its-step-and-the-write-owns-its-signals.md) | The processing step names its step, and the write owns its signals | Accepted; extends 0114; closes three gaps of 0114 | 2026-09-11 |
+| [0119](0119-a-batchs-totals-are-per-currency.md) | A batch's totals are per currency | Accepted; extends 0117 and 0059 | 2026-09-11 |
+| [0120](0120-a-partial-import-keeps-every-row-it-did-not-write.md) | A partial import keeps every row it did not write | Accepted; extends 0115; closes a gap of 0115 | 2026-09-11 |
+| [0121](0121-a-bulk-currency-switch-says-how-many-rows-it-blanked.md) | A bulk currency switch says how many rows it blanked | Accepted; extends 0117; closes a gap of 0117; amends 0108 | 2026-09-11 |
+| [0122](0122-the-chips-caret-trails-the-name-and-drops-at-phone-width.md) | The chip's caret trails the name, and drops at phone width | Accepted; extends 0010 and 0110; closes a note of 0110 | 2026-09-11 |
+| [0123](0123-the-unit-sweep-is-silent-on-a-normal-path.md) | The unit sweep is silent on a normal path | Accepted; corrects 0088; applies 0037 | 2026-09-11 |
 
 ## What belongs here
 

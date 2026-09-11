@@ -11,6 +11,7 @@ import { TranslationService } from '../../../../core/services/translation.servic
 import { CurrencyService } from '../../../../core/services/currency.service';
 import { CurrencyChoiceSessionService } from '../../../../core/services/currency-choice-session.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
+import { NotificationService } from '../../../../core/services/notification.service';
 import { toCreateTransactionDTO } from '../../../../core/utils/import-dto.utils';
 import { needsDateAnswer } from '../../../../core/utils/import-review.utils';
 
@@ -61,10 +62,12 @@ describe('TransactionPreviewTableComponent', () => {
   ];
   let mockTransactions: CategorizedImportTransaction[];
   let currencySession: jasmine.SpyObj<CurrencyChoiceSessionService>;
+  let notifications: jasmine.SpyObj<NotificationService>;
 
   beforeEach(async () => {
     mockTransactions = createMockTransactions();
     currencySession = jasmine.createSpyObj('CurrencyChoiceSessionService', ['remember', 'current', 'clear']);
+    notifications = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
 
     await TestBed.configureTestingModule({
       imports: [TransactionPreviewTableComponent, NoopAnimationsModule],
@@ -95,6 +98,7 @@ describe('TransactionPreviewTableComponent', () => {
           },
         },
         { provide: CurrencyChoiceSessionService, useValue: currencySession },
+        { provide: NotificationService, useValue: notifications },
       ],
     })
       .overrideComponent(TransactionPreviewTableComponent, {
@@ -762,6 +766,44 @@ describe('TransactionPreviewTableComponent', () => {
 
       expect(emitted[0][0].amount).toBe(0);
       expect(component.amountIsUnfilled(emitted[0][0])).toBeTrue();
+    });
+
+    it('says how many rows a bulk switch blanked', () => {
+      component.transactions = [
+        makeRow({ id: 'a', currency: 'USD', amount: 0.4, selected: true }),
+        makeRow({ id: 'b', currency: 'USD', amount: 0.3, selected: true }),
+        makeRow({ id: 'c', currency: 'USD', amount: 12.34, selected: true }),
+      ];
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        'import.bulkCurrencyBlanked:{"count":2,"currency":"JPY"}'
+      );
+    });
+
+    it('says nothing when a bulk switch blanks no row', () => {
+      component.transactions = [
+        makeRow({ id: 'a', currency: 'USD', amount: 12.34, selected: true }),
+        makeRow({ id: 'b', currency: 'USD', amount: 5, selected: true }),
+      ];
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(notifications.info).not.toHaveBeenCalled();
+    });
+
+    it('does not count a row that was already unfilled', () => {
+      component.transactions = [
+        makeRow({ id: 'a', currency: 'USD', amount: 0, selected: true }),
+        makeRow({ id: 'b', currency: 'USD', amount: 0.4, selected: true }),
+      ];
+
+      component.applyCurrencyToSelected('JPY');
+
+      expect(notifications.info).toHaveBeenCalledOnceWith(
+        'import.bulkCurrencyBlanked:{"count":1,"currency":"JPY"}'
+      );
     });
   });
 

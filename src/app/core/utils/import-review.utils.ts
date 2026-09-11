@@ -1,4 +1,4 @@
-import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata, roundToMinorUnit } from '../../models';
+import { CategorizedImportTransaction, FieldConfidence, ImagePositionMetadata, ImportCurrencyTotals, roundToMinorUnit } from '../../models';
 import { dayKey } from './transaction-date.utils';
 import { normalizeTags } from './tag.utils';
 
@@ -134,6 +134,41 @@ export function descriptionIsUnfilled(row: CategorizedImportTransaction): boolea
  */
 export function rowIsUnfilled(row: CategorizedImportTransaction): boolean {
   return row.selected && (amountIsUnfilled(row) || descriptionIsUnfilled(row));
+}
+
+/**
+ * A batch's money added up, one figure per currency the rows are in.
+ *
+ * One fold for the two places a batch is totalled — the confirm step and the
+ * record it writes — so the screen and the stored figure cannot disagree.
+ * Nothing is converted: a review row carries no write-time rate, and
+ * `CurrencyService`'s live map starts at `{USD: 1}` until the first fetch
+ * lands, so a pre-rates render would silently sum a foreign batch 1:1. Two
+ * figures in two currencies are honest where one is not.
+ *
+ * Keyed on the currency code in a `Map`, so the order out is the order the
+ * currencies were first seen rather than an alphabet nobody scrolled past. A
+ * row whose currency nobody read is the base currency's, the rule
+ * `toCreateTransactionDTO` already writes by. Each total is rounded on the
+ * way out because a fold of figures already whole still drifts in binary.
+ */
+export function sumByCurrency(
+  rows: readonly { amount: number; currency?: string; type: 'income' | 'expense' }[],
+  baseCurrency: string
+): ImportCurrencyTotals[] {
+  const totals = new Map<string, ImportCurrencyTotals>();
+  for (const row of rows) {
+    const currency = row.currency || baseCurrency;
+    const entry = totals.get(currency) ?? { currency, income: 0, expenses: 0 };
+    if (row.type === 'income') entry.income += row.amount;
+    else entry.expenses += row.amount;
+    totals.set(currency, entry);
+  }
+  return [...totals.values()].map(entry => ({
+    currency: entry.currency,
+    income: roundToMinorUnit(entry.income, entry.currency),
+    expenses: roundToMinorUnit(entry.expenses, entry.currency),
+  }));
 }
 
 /**

@@ -73,7 +73,6 @@ export class GeminiService extends CloudLLMProviderBase {
     const apiKey = customApiKey || (environment as { geminiApiKey?: string }).geminiApiKey;
 
     if (!apiKey || apiKey.startsWith('${')) {
-      console.warn('[GeminiService] No valid API key found. Custom:', !!customApiKey, 'Environment:', !!(environment as { geminiApiKey?: string }).geminiApiKey);
       this.clear();
       return;
     }
@@ -629,21 +628,18 @@ export class GeminiService extends CloudLLMProviderBase {
       // Strategy: Find the FINAL/LAST occurrence of advice that starts with key markers
       const adviceMarkers = ['Immediately halt', 'To address', 'To cover', 'To resolve', 'To bridge', 'Since you', 'You can', 'Focus on', 'Prioritize', 'Your priority', 'Halt all'];
       let lastAdviceIndex = -1;
-      let adviceMarkerFound = '';
 
       // Find the LAST occurrence of any advice marker (most likely to be final advice)
       for (const marker of adviceMarkers) {
         const index = cleaned.lastIndexOf(marker);
         if (index >= 0 && index > lastAdviceIndex) {
           lastAdviceIndex = index;
-          adviceMarkerFound = marker;
         }
       }
 
       // If we found an advice marker, extract from there to the end
       if (lastAdviceIndex >= 0) {
         cleaned = cleaned.substring(lastAdviceIndex);
-        console.log(`[GeminiService] Gemma 4 detected - extracted advice from marker: "${adviceMarkerFound}"`);
       }
 
       // Remove draft markers and metadata patterns
@@ -655,7 +651,6 @@ export class GeminiService extends CloudLLMProviderBase {
       cleaned = cleaned.replace(/^(Draft\s+\d+:|Wait,|Let's|Actually,|One\s+more|Final\s+check|Final\s+selection|Action\s+\d+:|\d+\.\s+)/gm, '');
     } else {
       // LIGHT filtering for Gemini models (cleaner output naturally)
-      console.log(`[GeminiService] Gemini model detected (${this.currentTextModelId}) - using light filtering`);
     }
 
     // Remove asterisks and formatting (all models)
@@ -722,9 +717,6 @@ export class GeminiService extends CloudLLMProviderBase {
       result = restoreDecimalPoints(uniqueSentences.slice(0, 3).join(' ').trim());
     }
 
-    // Log deduplication results
-    console.log(`[GeminiService] Deduplication: ${sentences.length} sentences → ${uniqueSentences.length} unique → ${Math.min(uniqueSentences.length, 3)} final`);
-
     return result.length > 20 ? result : text.trim();
   }
 
@@ -742,7 +734,6 @@ export class GeminiService extends CloudLLMProviderBase {
 
     if (firstHeaderIndex > 0) {
       // Strip everything before the first markdown header — that's Gemma 4 reasoning/drafting
-      console.log(`[GeminiService] Stripping ${firstHeaderIndex} chars of reasoning before first ## header`);
       cleaned = cleaned.substring(firstHeaderIndex);
     }
 

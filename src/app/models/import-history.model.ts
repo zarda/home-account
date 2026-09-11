@@ -20,6 +20,12 @@ export type ReceiptFailureClass =
   | 'rate_limit' | 'auth' | 'network' | 'quota' | 'server' | 'timeout' | 'incomplete'
   | 'no_provider' | 'nothing_extracted' | 'queue_write' | 'unknown';
 
+export interface ImportCurrencyTotals {
+  currency: string;
+  income: number;
+  expenses: number;
+}
+
 export interface ImportHistory {
   id: string;
   userId: string;
@@ -34,6 +40,15 @@ export interface ImportHistory {
   errorCount: number;
   totalIncome: number;
   totalExpenses: number;
+  /**
+   * What the write actually landed, per currency and whole in each, in the
+   * order the currencies were first seen. Absent on records completed before
+   * the field existed: `totalIncome`/`totalExpenses` are a raw sum across
+   * whatever currencies the batch carried, so they are meaningful only for a
+   * one-currency import — which is why they are kept for those records and
+   * not read for these.
+   */
+  totalsByCurrency?: ImportCurrencyTotals[];
   status: ImportStatus;
   errors?: ImportError[];
   duplicatesSkipped: number;
@@ -269,6 +284,16 @@ export interface MultiImageMetadata {
   deduplicationMethod: 'ai' | 'position' | 'manual';  // How deduplication was performed
   imageIds: string[];              // Ordered list of image identifiers
 }
+
+/**
+ * What an import door is doing right now, named rather than narrated: the
+ * wizard resolves the name through the catalogs, because a line the user
+ * reads lives there (ADR 0036) and a door has no business writing English.
+ * One step also carries the figures its line interpolates.
+ */
+export type ProcessingStep =
+  | { name: 'reading' | 'extracting' | 'converting' | 'categorizing' | 'duplicates' }
+  | { name: 'readingImage'; done: number; total: number };
 
 export interface ImportResult {
   source: ImportSource;

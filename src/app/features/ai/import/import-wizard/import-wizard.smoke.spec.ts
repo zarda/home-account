@@ -2661,7 +2661,7 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       const bar = () => host.querySelector('.importing-section mat-progress-bar');
       const line = () => host.querySelector('.importing-status');
-      const readings: (string | null | undefined)[][] = [];
+      const readings: (string | boolean | null | undefined)[][] = [];
 
       const progressSpy = spyOn(service.processingProgress, 'set').and.callThrough();
       // Captured before the spy stands in for it: the fake has to write the
@@ -2672,7 +2672,11 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
         if (row) {
           setTimeout(() => {
             fixture.detectChanges();
-            readings.push([bar()?.getAttribute('aria-valuenow'), line()?.textContent?.trim()]);
+            readings.push([
+              bar()?.getAttribute('aria-valuenow'),
+              line()?.textContent?.trim(),
+              component.stepper.steps.get(1)?.completed,
+            ]);
           }, 0);
         }
       });
@@ -2691,10 +2695,12 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // confirm step renders and that the line is on screen while the write
       // runs, never the interpolated sentence. The placeholders inside it are
       // translation-keys.spec.ts's to guard.
-      expect(readings).toEqual([
-        ['50', translation.t('import.importingRow', { done: 1, total: 2 })],
-        ['100', translation.t('import.importingRow', { done: 2, total: 2 })]
-      ]);
+      expect(readings)
+        .withContext('a step already passed does not un-complete while the rows are written')
+        .toEqual([
+          ['50', translation.t('import.importingRow', { done: 1, total: 2 }), true],
+          ['100', translation.t('import.importingRow', { done: 2, total: 2 }), true]
+        ]);
       expect(progressSpy.calls.allArgs())
         .withContext('reset once, then once per row — never per file or per batch')
         .toEqual([[0], [50], [100]]);
@@ -2782,9 +2788,14 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
 
       expect(component.isImporting()).toBeFalse();
       expect(component.extractedTransactions().map(t => [t.id, t.selected]))
-        .withContext('exactly the refused row is back, ticked for a second try')
-        .toEqual([[zeroRow.id, true]]);
-      expect(component.duplicateChecks()).toEqual([]);
+        .withContext('the refused row is back and ticked; the deselected one never left and is still unticked')
+        .toEqual([[second.id, false], [zeroRow.id, true]]);
+      // The failed and succeeded rows' checks leave with them; the
+      // deselected row was never touched, so its own verdict — a fresh row,
+      // no match — stands as it was.
+      expect(component.duplicateChecks()).toEqual([
+        { transactionId: second.id, isDuplicate: false, matchType: 'none', confidence: 0 },
+      ]);
 
       const imports = await getDocs(collection(firestore, `users/${uid}/imports`));
       const record = imports.docs
@@ -2800,6 +2811,13 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // Refused before any write reaches Firestore; were that guard ever to
       // go, the rules would refuse it and the message would be a denial.
       expect(errors?.[0].message).toBe(INVALID_AMOUNT_ERROR);
+      // The two rows the write took, and neither the deselected one nor the
+      // refused one. The file names no currency, so every row is the
+      // account's base — and reading the field back at all is the proof the
+      // deployed rules accept it.
+      expect(record?.['totalsByCurrency'])
+        .withContext('what landed, per currency')
+        .toEqual([{ currency: 'USD', income: 0, expenses: 1114 }]);
 
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -2877,6 +2895,43 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       expect(landed[0]['currency']).toBe('JPY');
 
       history.replaceState({}, '');
+      fixture.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+    },
+    30000
+  );
+
+  it(
+    "the processing step's line is the catalog's, not the service's sentence",
+    async () => {
+      stubReceiptSeams();
+
+      // No hand-off here, and the wizard reads whatever state stands.
+      history.replaceState({}, '');
+
+      const translation = TestBed.inject(TranslationService);
+      const service = TestBed.inject(AIImportService);
+
+      const fixture = TestBed.createComponent(ImportWizardComponent);
+      fixture.detectChanges();
+
+      const host = fixture.nativeElement as HTMLElement;
+
+      // Every mat-step body is eager — none uses matStepContent — so the
+      // processing card is in the DOM without navigating to it, and the two
+      // signals the real service would write are written here directly
+      // instead of running a door to reach one step of it.
+      service.processingStep.set({ name: 'categorizing' });
+      service.isProcessing.set(true);
+      fixture.detectChanges();
+
+      // Karma loads no catalog, so the line is the bare key on both sides of
+      // the comparison: what this pins is which key the step renders and that
+      // it is on screen, never the sentence the catalogs carry.
+      expect(host.querySelector('.processing-status')?.textContent?.trim())
+        .toBe(translation.t('import.categorizingTransactions'));
+
+      service.isProcessing.set(false);
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));
     },

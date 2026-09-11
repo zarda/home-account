@@ -10,6 +10,7 @@ import {
   rowIsUnfilled,
   sameSplit,
   splitImportRow,
+  sumByCurrency,
   withoutFieldConfidence,
 } from './import-review.utils';
 import { CategorizedImportTransaction, ImagePositionMetadata } from '../../models';
@@ -244,6 +245,55 @@ describe('import-review.utils', () => {
       // A deselected row is not going to be imported, so nothing about it
       // holds Continue — the same rule needsDateAnswer follows.
       expect(rowIsUnfilled(row({ selected: false, amount: 0, description: '' }))).toBeFalse();
+    });
+  });
+
+  describe('sumByCurrency', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction> = {}): CategorizedImportTransaction => ({
+      id: 'r1',
+      description: 'Coffee',
+      amount: 5,
+      currency: 'USD',
+      date: new Date(2026, 5, 15, 9, 0),
+      type: 'expense',
+      suggestedCategoryId: 'food',
+      categoryConfidence: 0.8,
+      isDuplicate: false,
+      selected: true,
+      ...overrides,
+    });
+
+    it('keeps each currency to itself, in the order the currencies were first seen', () => {
+      // USD first and JPY second, not the other way around: 'JPY' < 'USD',
+      // so a fixture that happened to see JPY first would read identically
+      // whether the fold kept first-seen order or sorted the codes. Seeing
+      // USD — the code that sorts last — first is what a sort would get
+      // wrong, so only this order actually pins first-seen over alphabetical.
+      expect(sumByCurrency([
+        row({ id: 'a', currency: 'USD', amount: 4.13 }),
+        row({ id: 'b', currency: 'JPY', amount: 179 }),
+        row({ id: 'c', currency: 'JPY', amount: 500, type: 'income' }),
+        row({ id: 'd', currency: 'USD', amount: 0.4 }),
+      ], 'TWD')).toEqual([
+        { currency: 'USD', income: 0, expenses: 4.53 },
+        { currency: 'JPY', income: 500, expenses: 179 },
+      ]);
+    });
+
+    it('folds a row whose currency nobody read into the base currency', () => {
+      expect(sumByCurrency([row({ currency: '', amount: 12 })], 'TWD'))
+        .toEqual([{ currency: 'TWD', income: 0, expenses: 12 }]);
+    });
+
+    it('rounds each total to its own currency\'s minor unit', () => {
+      // A fold of figures already whole still drifts in binary: 0.1 + 0.2 is
+      // 0.30000000000000004, and the card would print every digit of it.
+      expect(sumByCurrency([row({ id: 'a', amount: 0.1 }), row({ id: 'b', amount: 0.2 })], 'USD'))
+        .toEqual([{ currency: 'USD', income: 0, expenses: 0.3 }]);
+    });
+
+    it('gives nothing at all for an empty batch', () => {
+      expect(sumByCurrency([], 'USD')).toEqual([]);
     });
   });
 

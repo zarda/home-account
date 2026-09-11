@@ -320,6 +320,8 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
   const name = () => (fixture.nativeElement.querySelector('.category-name') as HTMLElement).textContent?.trim();
   const icon = () => fixture.nativeElement.querySelector('.category-icon') as HTMLElement;
   const dot = () => fixture.nativeElement.querySelector('.confidence-dot') as HTMLElement;
+  const label = () => fixture.nativeElement.querySelector('.mdc-button__label') as HTMLElement;
+  const caret = () => fixture.nativeElement.querySelector('.dropdown-icon') as HTMLElement;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -358,5 +360,13 @@ describe('CategorySuggestionComponent, the chip through its own template', () =>
     expect(dot().classList.contains('high-confidence')).toBeTrue();
     expect(dot().classList.contains('low-confidence')).toBeFalse();
     expect(dot().getAttribute('aria-label')).toContain('confidenceHigh');
+  });
+
+  it('projects the caret after the name', () => {
+    const follows = (a: Element, b: Element) =>
+      !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    expect(follows(icon(), label())).withContext('label after the category icon').toBeTrue();
+    expect(follows(label(), caret())).withContext('caret after the label').toBeTrue();
   });
 });

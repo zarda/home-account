@@ -1527,6 +1527,22 @@ describe('firestore.rules (emulator smoke test)', () => {
         'transactionIds as a string'
       );
     });
+
+    it('accepts the per-currency totals on a completed record', async () => {
+      await expectAllowed(
+        setDoc(doc(firestore, path('imports')), validImport({
+          totalsByCurrency: [{ currency: 'USD', income: 0, expenses: 4.53 }],
+        })),
+        'import with per-currency totals'
+      );
+    });
+
+    it('rejects totalsByCurrency that is not a list', async () => {
+      await expectDenied(
+        setDoc(doc(firestore, path('imports')), validImport({ totalsByCurrency: 'USD' })),
+        'totalsByCurrency as a string'
+      );
+    });
   });
 
   describe('user profile', () => {

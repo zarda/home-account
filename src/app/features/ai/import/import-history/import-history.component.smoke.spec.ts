@@ -143,8 +143,13 @@ describe('ImportHistoryComponent transaction shortcut (emulator smoke test)', ()
 
   beforeEach(async () => {
     router = jasmine.createSpyObj('Router', ['navigate'], { events: EMPTY });
-    const translation = jasmine.createSpyObj('TranslationService', ['t']);
+    // Nothing here stubs CurrencyService, so the card renders every record's
+    // totals through the real one — and formatCurrency reads the active
+    // locale from this service, so a spy answering only `t` throws the
+    // moment the template renders a total.
+    const translation = jasmine.createSpyObj('TranslationService', ['t', 'getIntlLocale']);
     translation.t.and.callFake((key: string) => key);
+    translation.getIntlLocale.and.returnValue('en-US');
 
     await TestBed.configureTestingModule({
       imports: [ImportHistoryComponent],

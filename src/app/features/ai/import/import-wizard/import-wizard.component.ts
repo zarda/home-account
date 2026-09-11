@@ -14,6 +14,7 @@ import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/servic
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import {
   CategorizedImportTransaction,
   ImportResult,
@@ -33,7 +34,7 @@ import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/r
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
-import { needsDateAnswer, rowIsUnfilled } from '../../../../core/utils/import-review.utils';
+import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
 
 @Component({
   selector: 'app-import-wizard',
@@ -63,6 +64,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private receiptAttempts = inject(ReceiptAttemptService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
+  private currencyService = inject(CurrencyService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private shareIntake = inject(ShareIntakeService);
@@ -184,7 +186,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Service bindings
   isProcessing = this.importService.isProcessing;
-  processingStatus = this.importService.processingStatus;
+  processingStep = this.importService.processingStep;
   processingProgress = this.importService.processingProgress;
   processingRow = this.importService.processingRow;
   categories = this.categoryService.categories;
@@ -205,6 +207,25 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   imagePreviewUrls = signal<{ name: string; url: string }[]>([]);
 
   // Computed
+  /**
+   * The processing step's line, resolved from the name the service set.
+   *
+   * A switch of literal keys rather than a lookup table: check-i18n.mjs walks
+   * literal `t(` arguments and is blind to a key held in a variable, so a
+   * table would take every one of these out of its sight.
+   */
+  processingStepText = computed(() => {
+    const step = this.processingStep();
+    switch (step?.name) {
+      case 'reading': return this.t('import.readingFile');
+      case 'readingImage': return this.t('import.readingImageOf', { done: step.done, total: step.total });
+      case 'extracting': return this.t('import.extractingData');
+      case 'converting': return this.t('import.convertingRows');
+      case 'categorizing': return this.t('import.categorizingTransactions');
+      case 'duplicates': return this.t('import.checkingDuplicates');
+      default: return '';
+    }
+  });
   uploadComplete = computed(() => this.selectedFiles().length > 0);
   processingComplete = computed(() =>
     !this.isProcessing() && this.extractedTransactions().length > 0
@@ -257,17 +278,32 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.extractedTransactions().filter(t => t.selected).length;
   });
 
-  selectedIncome = computed(() => {
-    return this.extractedTransactions()
-      .filter(t => t.selected && t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-  });
+  /**
+   * What the reviewer is about to import, one figure per currency. The same
+   * fold the record is written through, so the card and the stored figure
+   * cannot disagree — and never one figure across currencies, which is money
+   * nobody spent rendered under one of the symbols.
+   */
+  selectedTotals = computed(() =>
+    sumByCurrency(this.extractedTransactions().filter(t => t.selected), this.baseCurrency)
+  );
 
-  selectedExpenses = computed(() => {
-    return this.extractedTransactions()
-      .filter(t => t.selected && t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-  });
+  /**
+   * One line per currency that has a figure on that side, formatted by the
+   * app's own formatter rather than the `currency` pipe, which takes a code
+   * nobody was passing it and printed every batch in dollars. A side nothing
+   * is on still gets a line, in the base currency: the card is a fixed three
+   * across and an empty one reads as a rendering fault.
+   */
+  incomeLines = computed(() => this.moneyLines(this.selectedTotals().map(t => [t.currency, t.income])));
+  expenseLines = computed(() => this.moneyLines(this.selectedTotals().map(t => [t.currency, t.expenses])));
+
+  private moneyLines(figures: [string, number][]): string[] {
+    const lines = figures
+      .filter(([, amount]) => amount > 0)
+      .map(([currency, amount]) => this.currencyService.formatCurrency(amount, currency));
+    return lines.length ? lines : [this.currencyService.formatCurrency(0, this.baseCurrency)];
+  }
 
   duplicatesSkipped = computed(() => {
     return this.extractedTransactions().filter(t => t.isDuplicate && !t.selected).length;
@@ -414,6 +450,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     );
     // Reset processing state
     this.extractedTransactions.set([]);
+    // The set names the batch's receipt rows, so it is written wherever the
+    // batch is — inert here, because the set is only ever read against the
+    // rows emptied on the line above, but a reader of this method should not
+    // have to go to processFiles to know that.
+    this.receiptRowIds.set(new Set());
     this.processingError.set(null);
   }
 
@@ -875,11 +916,12 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         // Some rows were rejected (a zero-amount summary line, a rules
         // denial). Navigating away would destroy the only copy of them and
         // report success, leaving the user's reconciliation silently short.
-        // Keep exactly the failed rows on the review step for correction and
-        // a second confirm — the saved ones are removed so confirming again
-        // cannot double-import them, and the rows the reviewer deselected,
-        // which were never submitted, go with them: the list is rebuilt from
-        // the failed ids alone and holds nothing else.
+        // Only the saved rows leave, so a second confirm cannot double-import
+        // them. A row the reviewer deselected was never submitted and is
+        // named in no record, so it stays as it was, unticked, for the
+        // reviewer to change their mind. A failed row comes back ticked,
+        // with its duplicate mark and its duplicate check cleared, because
+        // it is being offered for a second try.
         //
         // The record names its failed rows by id, so matching `result.errors`
         // back onto rows is a lookup, not a re-run of the service's own
@@ -887,14 +929,17 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
         const failedIds = new Set(
           (result.errors ?? []).map(e => e.transactionId).filter((id): id is string => !!id)
         );
-        const failedRows = this.extractedTransactions()
-          .filter(t => failedIds.has(t.id))
-          .map(t => ({ ...t, selected: true, isDuplicate: false }));
+        const kept = this.extractedTransactions()
+          .filter(t => failedIds.has(t.id) || !t.selected)
+          .map(t => (failedIds.has(t.id) ? { ...t, selected: true, isDuplicate: false } : t));
+        const keptIds = new Set(kept.map(t => t.id));
 
-        this.extractedTransactions.set(failedRows);
-        this.keepReceiptRows(new Set(failedRows.map(t => t.id)));
-        this.duplicateChecks.set([]);
-        this.selectedTransactionIds.set(new Set(failedRows.map(t => t.id)));
+        this.extractedTransactions.set(kept);
+        this.keepReceiptRows(keptIds);
+        this.duplicateChecks.update(checks =>
+          checks.filter(c => keptIds.has(c.transactionId) && !failedIds.has(c.transactionId))
+        );
+        this.selectedTransactionIds.set(new Set(kept.filter(t => t.selected).map(t => t.id)));
 
         this.notifications.error(this.t('import.importPartial', {
           success: result.successCount,

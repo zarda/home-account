@@ -12,6 +12,7 @@ import {
 describe('CurrencyService', () => {
   let service: CurrencyService;
   let mockFirestore: MockFirestoreService;
+  let consoleErrorSpy: jasmine.Spy;
 
   beforeEach(() => {
     // A rates cache leaked from another spec file would win over the
@@ -24,6 +25,9 @@ describe('CurrencyService', () => {
     // (and write cached rates through the Firestore mock) mid-test.
     // Reject it so specs stay deterministic.
     spyOn(window, 'fetch').and.rejectWith(new Error('network disabled in specs'));
+    // Before the inject below: initializeRates() runs from the constructor,
+    // so a spy attached any later would miss it.
+    consoleErrorSpy = spyOn(console, 'error');
 
     TestBed.configureTestingModule({
       providers: [
@@ -48,6 +52,11 @@ describe('CurrencyService', () => {
 
   afterEach(() => {
     mockFirestore.clearMocks();
+  });
+
+  it('an offline start is not an error', async () => {
+    await service.ensureRatesLoaded();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
   describe('getExchangeRate', () => {

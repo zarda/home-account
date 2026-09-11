@@ -14,6 +14,17 @@ import { AnnouncerService } from '../../../../core/services/announcer.service';
 import { LocaleFormatService } from '../../../../core/services/locale-format.service';
 import { ImportHistory } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
+import { AuthService } from '../../../../core/services/auth.service';
+
+// The real CurrencyService is root-provided and fetches rates from its
+// constructor, and the real AuthService injects Firebase `Auth` and
+// `Firestore`. Both suites below need the pair: the second one renders the
+// real template, so a missing fake fails it at construction rather than in an
+// assertion. The formatter's code-and-figure shape is what every expectation
+// here reads.
+const currencyStub = { formatCurrency: (amount: number, code: string) => `${code} ${amount}` };
+const authStub = { currentUser: () => ({ preferences: { baseCurrency: 'TWD' } }) };
 
 describe('ImportHistoryComponent', () => {
   let component: ImportHistoryComponent;
@@ -98,7 +109,9 @@ describe('ImportHistoryComponent', () => {
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: AnnouncerService, useValue: mockAnnouncer },
         { provide: MatDialog, useValue: mockDialog },
-        { provide: Router, useValue: mockRouter }
+        { provide: Router, useValue: mockRouter },
+        { provide: CurrencyService, useValue: currencyStub },
+        { provide: AuthService, useValue: authStub }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -389,6 +402,42 @@ describe('ImportHistoryComponent', () => {
       ]);
     });
   });
+
+  describe('a record\'s totals', () => {
+    beforeEach(() => { fixture.detectChanges(); });
+
+    it('renders a record written before the per-currency figures in the account\'s base', () => {
+      // One raw sum across whatever the batch carried, so the base currency
+      // is the least wrong symbol for it — and the right one for the
+      // one-currency imports nearly all of these are.
+      const legacy = { ...mockHistory[0], totalIncome: 0, totalExpenses: 215 };
+
+      expect(component.totalLines(legacy, 'income')).toEqual(['TWD 0']);
+      expect(component.totalLines(legacy, 'expenses')).toEqual(['TWD 215']);
+    });
+
+    it('renders one line per currency that has a figure, for a record that carries them', () => {
+      const mixed: ImportHistory = {
+        ...mockHistory[0],
+        totalsByCurrency: [
+          { currency: 'JPY', income: 500, expenses: 179 },
+          { currency: 'USD', income: 0, expenses: 4.53 },
+        ],
+      };
+
+      expect(component.totalLines(mixed, 'expenses')).toEqual(['JPY 179', 'USD 4.53']);
+      expect(component.totalLines(mixed, 'income')).toEqual(['JPY 500']);
+    });
+
+    it('still gives a record with nothing on one side a zero line there', () => {
+      const oneWay: ImportHistory = {
+        ...mockHistory[0],
+        totalsByCurrency: [{ currency: 'JPY', income: 0, expenses: 179 }],
+      };
+
+      expect(component.totalLines(oneWay, 'income')).toEqual(['TWD 0']);
+    });
+  });
 });
 
 // A sibling suite, not a nested describe: the outer file overrides the
@@ -449,7 +498,9 @@ describe('ImportHistoryComponent transaction shortcut', () => {
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']) },
         { provide: LocaleFormatService, useValue: { locale: 'en-US', formatDate: () => '' } },
         { provide: MatDialog, useValue: jasmine.createSpyObj('MatDialog', ['open']) },
-        { provide: Router, useValue: router }
+        { provide: Router, useValue: router },
+        { provide: CurrencyService, useValue: currencyStub },
+        { provide: AuthService, useValue: authStub }
       ]
     }).compileComponents();
 

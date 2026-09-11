@@ -138,6 +138,12 @@ successful one from `ImportResult.diagnostics`. A record for an import that
 completed with at least one row also carries `transactionIds`, the ids it
 created, in selected-row order
 ([ADR 0075](ADR/0075-a-successful-import-remembers-the-transactions-it-created.md)).
+A record also carries `totalsByCurrency` — what a write actually landed,
+per currency and whole in each, in the order the currencies were first
+seen. A record completed before the field existed carries none of it: its
+single `totalIncome`/`totalExpenses` pair is a raw sum across whatever the
+batch carried, meaningful only for a one-currency import
+([ADR 0119](ADR/0119-a-batchs-totals-are-per-currency.md)).
 See [receipt-import.md](receipt-import.md#failure-surfacing).
 
 ## Photos

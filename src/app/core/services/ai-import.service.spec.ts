@@ -186,7 +186,7 @@ describe('AIImportService', () => {
   describe('initial state', () => {
     it('should start idle', () => {
       expect(service.isProcessing()).toBeFalse();
-      expect(service.processingStatus()).toBe('');
+      expect(service.processingStep()).toBeNull();
       expect(service.processingProgress()).toBe(0);
       expect(service.processingSource()).toBeNull();
     });
@@ -1282,6 +1282,30 @@ describe('AIImportService', () => {
       expect(result.transactions.map(t => t.imageMetadata?.receiptId)).toEqual([1, 2]);
     });
 
+    it('names each image as it is read', async () => {
+      const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
+      cloudLLMProvider.extractTransactionsFromMultipleImages.and.returnValue(Promise.resolve([
+        { date: '2024-06-01', description: 'Item A', amount: 100, type: 'expense', currency: 'JPY',
+          imageIndex: 0, positionInImage: 'top', confidence: 0.9, receiptId: 1 }
+      ]));
+
+      await service.importFromMultipleImages([
+        makeFile('a.png', 'image/png'),
+        makeFile('b.png', 'image/png')
+      ]);
+
+      // This is the only step that carries figures, and it carries them as
+      // figures: the wizard interpolates them into the catalog's line, which
+      // a counter the service had already written into a sentence could not.
+      const reads = setSpy.calls.allArgs()
+        .map(([step]) => step)
+        .filter(step => step?.name === 'readingImage');
+      expect(reads).toEqual([
+        { name: 'readingImage', done: 1, total: 2 },
+        { name: 'readingImage', done: 2, total: 2 }
+      ]);
+    });
+
     it('should throw when no provider is configured', async () => {
       cloudLLMProvider.hasAnyCloudProvider.and.returnValue(false);
       await expectAsync(
@@ -1893,17 +1917,29 @@ describe('AIImportService', () => {
     });
 
     it('names the categorization step for what it does', async () => {
-      const setSpy = spyOn(service.processingStatus, 'set').and.callThrough();
+      const setSpy = spyOn(service.processingStep, 'set').and.callThrough();
       exportService.importFromCSV.and.returnValue(csvRows());
 
       await service.importFromCSV(makeFile('data.csv', 'text/csv'));
 
-      const statuses = setSpy.calls.allArgs().map(([status]) => status);
+      const names = setSpy.calls.allArgs().map(([step]) => step?.name);
       // Whichever rung answers — memory, model or the flagged floor — the
-      // step is categorization; the old string claimed an AI call the path
-      // never made.
-      expect(statuses).toContain('Categorizing transactions...');
-      expect(statuses).not.toContain('Categorizing with AI...');
+      // step is categorization; the string this replaced claimed an AI call
+      // the path never made.
+      expect(names).toContain('categorizing');
+      expect(names.indexOf('duplicates'))
+        .withContext('the duplicate check follows the categorization it grades')
+        .toBeGreaterThan(names.indexOf('categorizing'));
+    });
+
+    it('clears the step when the door closes', async () => {
+      exportService.importFromCSV.and.returnValue(csvRows());
+
+      await service.importFromCSV(makeFile('data.csv', 'text/csv'));
+
+      // The step names what a door is doing; once the door has closed there
+      // is nothing to name, and the wizard's line goes with it.
+      expect(service.processingStep()).toBeNull();
     });
 
     it('never offers a currency suggestion for a fallen-back row', async () => {
@@ -2402,6 +2438,30 @@ describe('AIImportService', () => {
       expect(progressSpy.calls.allArgs()).toEqual([[0], [50], [100]]);
     });
 
+    it('leaves the extraction\'s flag alone while it writes, and starts the next write\'s bar at zero', async () => {
+      let release!: (id: string) => void;
+      transactionService.addTransaction.and.returnValue(new Promise<string>(resolve => (release = resolve)));
+
+      const pending = service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image');
+      expect(service.isProcessing()).toBeFalse();
+
+      release('txn-id');
+      await pending;
+
+      // Standing regression guard: the row outlives no write.
+      expect(service.processingRow()).toBeNull();
+
+      // Nothing resets the bar at the end of a write, so it sits at 100
+      // here. A second write must not inherit that — only its own head
+      // reset stands between it and a stale full bar.
+      transactionService.addTransaction.and.returnValue(new Promise<string>(resolve => (release = resolve)));
+      const second = service.confirmImport([selected()], 'r.png', 10, 'image', 'receipt_image');
+      expect(service.processingProgress()).toBe(0);
+
+      release('txn-id');
+      await second;
+    });
+
     describe('history read-back', () => {
       it('skips a null first emission and resolves on the record', async () => {
         // subscribeToDocument emits null while the write is still landing;
@@ -2454,6 +2514,35 @@ describe('AIImportService', () => {
       const stats = importHistoryService.completeImport.calls.mostRecent().args[1];
       expect(stats.totalIncome).toBe(100);
       expect(stats.totalExpenses).toBe(40);
+    });
+
+    it('records the batch per currency, beside the raw pair, over the rows the write took', async () => {
+      transactionService.addTransaction.and.returnValues(
+        Promise.resolve('txn-1'),
+        Promise.reject(new Error('save failed')),
+        Promise.resolve('txn-3')
+      );
+
+      await service.confirmImport(
+        [
+          selected({ id: 'a', currency: 'JPY', amount: 179 }),
+          selected({ id: 'b', currency: 'JPY', amount: 500, type: 'income' }),
+          selected({ id: 'c', currency: 'USD', amount: 4.13 })
+        ],
+        'r.png', 10, 'image', 'receipt_image'
+      );
+
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+      // The refused row is in neither figure: both are accumulated past the
+      // write, so a row that never landed is nowhere in the record.
+      expect(stats['totalsByCurrency']).toEqual([
+        { currency: 'JPY', income: 0, expenses: 179 },
+        { currency: 'USD', income: 0, expenses: 4.13 }
+      ]);
+      // The scalar pair is untouched — a raw sum across both currencies, kept
+      // for the one-currency records that read it.
+      expect(stats['totalIncome']).toBe(0);
+      expect(stats['totalExpenses']).toBe(183.13);
     });
 
     describe('budget recalculation', () => {

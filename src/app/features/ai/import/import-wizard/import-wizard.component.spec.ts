@@ -12,10 +12,11 @@ import { DuplicateDetectionService } from '../../../../core/services/duplicate-d
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
 import { AnnouncerService } from '../../../../core/services/announcer.service';
-import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult } from '../../../../models';
+import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult, ProcessingStep } from '../../../../models';
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import { blankImportRow } from '../../../../core/utils/import-review.utils';
 
 function attemptStub() {
@@ -95,7 +96,7 @@ describe('ImportWizardComponent', () => {
   beforeEach(async () => {
     mockImportService = jasmine.createSpyObj('AIImportService', ['importFromFile', 'importFromMultipleImages', 'importFromStatementImages', 'confirmImport', 'parseAIError', 'tagVocabulary', 'baseCurrency'], {
       isProcessing: signal(false),
-      processingStatus: signal(''),
+      processingStep: signal(null),
       processingProgress: signal(0),
       processingRow: signal(null)
     });
@@ -181,7 +182,12 @@ describe('ImportWizardComponent', () => {
         { provide: DuplicateDetectionService, useValue: mockDuplicateService },
         { provide: ShareIntakeService, useValue: mockShareIntake },
         { provide: ReceiptAttemptService, useValue: attempts.service },
-        { provide: ActivatedRoute, useValue: routeStub }
+        { provide: ActivatedRoute, useValue: routeStub },
+        // The real one is root-provided and fetches rates from its
+        // constructor. The code-and-figure shape is what the assertions read:
+        // the app's own formatter is the thing under test only in that it is
+        // asked once per currency.
+        { provide: CurrencyService, useValue: { formatCurrency: (a: number, c: string) => `${c} ${a}` } }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -225,6 +231,35 @@ describe('ImportWizardComponent', () => {
       // import-wizard.smoke.spec.ts.
       expect(component.processingRow).toBe(mockImportService.processingRow);
       expect(component.processingProgress).toBe(mockImportService.processingProgress);
+    });
+  });
+
+  describe('processingStepText', () => {
+    // The fake TranslationService echoes the key it was handed, so every
+    // reading below is the key the step resolved to and never the sentence:
+    // which line each step reads is this file's to pin, the wording is the
+    // catalogs'.
+    const resolve = (step: ProcessingStep | null): string => {
+      mockImportService.processingStep.set(step);
+      return component.processingStepText();
+    };
+
+    it('says nothing while no door is open', () => {
+      expect(resolve(null)).toBe('');
+    });
+
+    it('reads each step off the catalogs', () => {
+      expect(resolve({ name: 'reading' })).toBe('import.readingFile');
+      expect(resolve({ name: 'extracting' })).toBe('import.extractingData');
+      expect(resolve({ name: 'converting' })).toBe('import.convertingRows');
+      expect(resolve({ name: 'categorizing' })).toBe('import.categorizingTransactions');
+      expect(resolve({ name: 'duplicates' })).toBe('import.checkingDuplicates');
+    });
+
+    it('hands the image counter to its line as parameters', () => {
+      expect(resolve({ name: 'readingImage', done: 1, total: 2 })).toBe('import.readingImageOf');
+      expect(mockTranslationService.t)
+        .toHaveBeenCalledWith('import.readingImageOf', { done: 1, total: 2 });
     });
   });
 
@@ -500,8 +535,12 @@ describe('ImportWizardComponent', () => {
       component.extractedTransactions.set([
         { ...mockTransactions[0], id: 'saved', date: yesterday(), dateReviewed: true },
         { ...mockTransactions[0], id: 'failed', date: yesterday(), dateReviewed: true },
+        {
+          ...mockTransactions[0], id: 'deselected', date: yesterday(), dateReviewed: true,
+          selected: false,
+        },
       ]);
-      component.receiptRowIds.set(new Set(['saved', 'failed']));
+      component.receiptRowIds.set(new Set(['saved', 'failed', 'deselected']));
       mockImportService.confirmImport.and.returnValue(Promise.resolve({
         id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
         source: 'image' as const, fileType: 'receipt_image' as const,
@@ -516,10 +555,10 @@ describe('ImportWizardComponent', () => {
       component.confirmImport();
       tick();
 
-      expect(component.extractedTransactions().map(t => t.id)).toEqual(['failed']);
-      // The saved row left the batch and the set with it; the failed one
-      // stays named, which is the point of the case.
-      expect(component.receiptRowIds()).toEqual(new Set(['failed']));
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['failed', 'deselected']);
+      // The saved row left the batch and the set with it; the failed row and
+      // the deselected one — never submitted — both stay named.
+      expect(component.receiptRowIds()).toEqual(new Set(['failed', 'deselected']));
       expect(component.unansweredDates()).withContext('already answered, so not asked again').toBe(0);
       // The set still names the row: stripped of its answer, it is asked again.
       component.onTransactionsUpdated([{ ...mockTransactions[0], id: 'failed', date: yesterday() }]);
@@ -581,19 +620,47 @@ describe('ImportWizardComponent', () => {
     });
   });
 
-  describe('selectedIncome', () => {
-    it('should sum income transactions', () => {
-      component.extractedTransactions.set(mockTransactions);
-
-      expect(component.selectedIncome()).toBe(3000);
+  describe('the confirm step\'s totals', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction>): CategorizedImportTransaction => ({
+      ...mockTransactions[0], ...overrides,
     });
-  });
 
-  describe('selectedExpenses', () => {
-    it('should sum expense transactions', () => {
-      component.extractedTransactions.set(mockTransactions);
+    it('gives one formatted line per currency the batch is in, first-seen order', () => {
+      // Added blind these are 183.53 of nothing, and the bare currency pipe
+      // printed that as dollars whatever the rows carried.
+      //
+      // USD first and JPY second: 'JPY' < 'USD', so a fixture that saw JPY
+      // first would read the same whether the lines came out in first-seen
+      // or alphabetical order. Seeing USD — the code that sorts last — first
+      // is what an alphabetical sort would get wrong.
+      component.extractedTransactions.set([
+        row({ id: 'usd', currency: 'USD', amount: 4.13 }),
+        row({ id: 'jpy', currency: 'JPY', amount: 179 }),
+        row({ id: 'usd-2', currency: 'USD', amount: 0.4 }),
+      ]);
 
-      expect(component.selectedExpenses()).toBe(5);
+      expect(component.expenseLines()).toEqual(['USD 4.53', 'JPY 179']);
+    });
+
+    it('gives one zero line in the base currency for a side nothing is on', () => {
+      component.extractedTransactions.set([
+        row({ id: 'jpy', currency: 'JPY', amount: 179 }),
+        row({ id: 'usd', currency: 'USD', amount: 4.13 }),
+      ]);
+
+      // Never empty: the card holds a figure even when the batch is all one
+      // way, and the base currency is what an account's own zero is in.
+      expect(component.incomeLines()).toEqual(['USD 0']);
+    });
+
+    it('counts a row the reviewer left out for nothing', () => {
+      component.extractedTransactions.set([
+        row({ id: 'jpy', currency: 'JPY', amount: 179 }),
+        row({ id: 'left-out', currency: 'USD', amount: 4.13, selected: false }),
+      ]);
+
+      expect(component.expenseLines()).toEqual(['JPY 179']);
+      expect(component.incomeLines()).toEqual(['USD 0']);
     });
   });
 
@@ -612,6 +679,14 @@ describe('ImportWizardComponent', () => {
       component.onFilesSelected([]);
 
       expect(component.extractedTransactions().length).toBe(0);
+    });
+
+    it('resets the receipt-row set with the rows', () => {
+      component.receiptRowIds.set(new Set(['txn1']));
+
+      component.onFilesSelected([new File([''], 'a.csv', { type: 'text/csv' })]);
+
+      expect(component.receiptRowIds()).toEqual(new Set());
     });
 
     it('should reset processing error', () => {
@@ -1117,7 +1192,7 @@ describe('ImportWizardComponent', () => {
       expect(notifications.error).toHaveBeenCalledWith('import.importFailed');
     }));
 
-    it('keeps exactly the failed rows on screen after a partial import', fakeAsync(() => {
+    it('keeps the failed rows selected and the deselected ones as they were after a partial import', fakeAsync(() => {
       const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({
         ...mockTransactions[0], id, selected, isDuplicate,
       });
@@ -1126,6 +1201,9 @@ describe('ImportWizardComponent', () => {
       // isn't reading position — only transactionId 'b' can land it on `b`.
       component.extractedTransactions.set([
         row('a', true), row('dup', false, true), row('b', true), row('c', true),
+      ]);
+      component.duplicateChecks.set([
+        { transactionId: 'dup', isDuplicate: true, matchType: 'exact', existingTransactionId: 'stored-1', confidence: 1 },
       ]);
       mockImportService.confirmImport.and.returnValue(Promise.resolve({
         id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
@@ -1144,11 +1222,40 @@ describe('ImportWizardComponent', () => {
       expect(mockRouter.navigate).not.toHaveBeenCalled();
       expect(notifications.error).toHaveBeenCalledWith('import.importPartial');
       expect(notifications.success).not.toHaveBeenCalled();
-      expect(component.extractedTransactions().map(t => t.id)).toEqual(['b']);
-      expect(component.extractedTransactions()[0].selected).toBeTrue();
-      expect(component.selectedTransactionIds().has('b')).toBeTrue();
-      expect(component.duplicateChecks()).toEqual([]);
+      expect(component.extractedTransactions().map(t => t.id)).toEqual(['dup', 'b']);
+      expect(component.extractedTransactions()[0].selected).toBeFalse();
+      expect(component.extractedTransactions()[0].isDuplicate).toBeTrue();
+      expect(component.extractedTransactions()[1].selected).toBeTrue();
+      expect(component.extractedTransactions()[1].isDuplicate).toBeFalse();
+      expect(component.selectedTransactionIds()).toEqual(new Set(['b']));
+      expect(component.duplicateChecks()).toEqual([
+        { transactionId: 'dup', isDuplicate: true, matchType: 'exact', existingTransactionId: 'stored-1', confidence: 1 },
+      ]);
       expect(component.isImporting()).toBeFalse();
+    }));
+
+    it('keeps a row the reviewer deselected, still deselected and out of the selected set', fakeAsync(() => {
+      const row = (id: string, selected: boolean, isDuplicate = false): CategorizedImportTransaction => ({
+        ...mockTransactions[0], id, selected, isDuplicate,
+      });
+      component.extractedTransactions.set([row('a', true), row('keep', false), row('b', true)]);
+      mockImportService.confirmImport.and.returnValue(Promise.resolve({
+        id: 'history1', userId: 'user1', importedAt: { seconds: 0 } as never,
+        source: 'csv' as const, fileType: 'generic_csv' as const,
+        fileName: 'test.csv', fileSize: 1024,
+        transactionCount: 3, successCount: 2, skippedCount: 0, errorCount: 1,
+        totalIncome: 0, totalExpenses: 10, duplicatesSkipped: 0,
+        status: 'partial' as const,
+        errors: [{ row: 1, transactionId: 'b', message: 'INVALID_TRANSACTION_AMOUNT', originalValue: 'Coffee' }],
+      }));
+
+      component.confirmImport();
+      tick();
+
+      expect(component.extractedTransactions().map(t => [t.id, t.selected])).toEqual([
+        ['keep', false], ['b', true],
+      ]);
+      expect(component.selectedTransactionIds()).toEqual(new Set(['b']));
     }));
 
     it('treats a failed read-back as saved: info toast, still navigates', fakeAsync(() => {

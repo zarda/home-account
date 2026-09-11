@@ -121,6 +121,10 @@ onwards, and changing a row's currency on the card re-rounds it to the new
 one. Rounding an already-rounded figure returns it, so the second pass costs
 nothing
 ([ADR 0117](ADR/0117-every-doors-figure-is-whole-in-its-currency.md)).
+Those confirm totals are one line per currency the batch is in — never one
+figure across two, which is money nobody spent under a symbol the account may
+never have used — and the record stores them the same way, through the same
+fold ([ADR 0119](ADR/0119-a-batchs-totals-are-per-currency.md)).
 
 The decision and its rejected alternatives are recorded in
 [ADR 0013](ADR/0013-the-printed-total-is-the-amount-not-the-item-sum.md).
@@ -213,6 +217,10 @@ rung names no country, so its chip just reads "Use {currency}?"). The
 wizard's review card carries the same chip per row; its ladder has no
 position rung, and the bulk currency action applies only what you chose
 ([ADR 0062](ADR/0062-the-review-step-can-correct-every-field-the-import-writes.md)).
+A bulk switch that rounds any selected figure away to nothing says how many —
+a count and the currency, once, after the switch; the per-row chip stays
+silent, as it always has
+([ADR 0121](ADR/0121-a-bulk-currency-switch-says-how-many-rows-it-blanked.md)).
 
 **What is never overridden or written.** A read currency is never replaced by
 a suggestion. The country the model read is review-step state: it is stored
@@ -466,17 +474,26 @@ billing cap renders as the wizard's typed error card (with its retry or
 go-to-settings action) instead of "no transactions found", and the strategy
 layer can fall back between engines on the throw. A row whose date could not be
 read cannot fail the batch either — it is re-dated and marked instead, as
-below. A partial save keeps exactly the failed rows on the review step —
-editable and re-confirmable, with the saved ones removed so a second confirm
-cannot double-import — and the completion toast carries both counts. The rows
-that come back are the ones the record **names by id**, not by position: the
-record's `row` number counts the submitted subset, which is not what the
-reviewer is looking at once anything has been deselected
+below. A partial save keeps the failed rows on the review step — ticked,
+editable and re-confirmable, with their duplicate mark and duplicate check
+cleared — **and** every row the reviewer had left unticked, exactly as it
+was: only the saved rows leave, so a second confirm cannot double-import
+them and a deselected row is still there to change one's mind about
+([ADR 0120](ADR/0120-a-partial-import-keeps-every-row-it-did-not-write.md)).
+The completion toast carries both counts, and both are counts of the rows
+that were submitted — so the step can hold more rows than the sentence
+mentions. The failed rows it offers back are the ones the record **names by
+id**, not by position: the record's `row` number counts the submitted subset,
+which is not what the reviewer is looking at once anything has been deselected
 ([ADR 0115](ADR/0115-a-failed-row-is-named-by-its-id.md)). While the write
 runs, the confirm step's bar and the line under it are the import service's
 own progress — the row being written out of the total — rather than figures
 the wizard keeps
 ([ADR 0114](ADR/0114-the-confirm-step-reads-the-writes-progress-from-the-service.md)).
+The processing step's line is the same arrangement one step earlier: the
+service names the step it is on and the wizard renders that name through the
+catalogs, so nothing on either step is a sentence a service wrote
+([ADR 0118](ADR/0118-the-processing-step-names-its-step-and-the-write-owns-its-signals.md)).
 When every row saved but the summary read-back fails, the wizard says so and
 moves on; the full record, including per-row errors, is on the Import History
 page.
