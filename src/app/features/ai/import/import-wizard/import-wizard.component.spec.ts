@@ -681,6 +681,14 @@ describe('ImportWizardComponent', () => {
       expect(component.extractedTransactions().length).toBe(0);
     });
 
+    it('resets the receipt-row set with the rows', () => {
+      component.receiptRowIds.set(new Set(['txn1']));
+
+      component.onFilesSelected([new File([''], 'a.csv', { type: 'text/csv' })]);
+
+      expect(component.receiptRowIds()).toEqual(new Set());
+    });
+
     it('should reset processing error', () => {
       component.processingError.set('Some error');
 

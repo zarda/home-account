@@ -450,6 +450,11 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     );
     // Reset processing state
     this.extractedTransactions.set([]);
+    // The set names the batch's receipt rows, so it is written wherever the
+    // batch is — inert here, because the set is only ever read against the
+    // rows emptied on the line above, but a reader of this method should not
+    // have to go to processFiles to know that.
+    this.receiptRowIds.set(new Set());
     this.processingError.set(null);
   }
 
