@@ -128,3 +128,8 @@ verdict for a second attempt.
   the two reasons above; the next reader of `ImportError` has to know that the
   number is a position in the submitted subset, which is a thing no surface
   displays.
+- **A partial import drops the rows the reviewer had deselected.** The list
+  is rebuilt from the failed ids alone, so a deselected row — never
+  submitted, never saved — leaves with the saved ones, and the reviewer's
+  only way back to it is the file. Pre-existing: the position mapping drew
+  from the selected subset too. Out of this record's scope; tracked in #415.

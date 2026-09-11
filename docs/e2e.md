@@ -1028,7 +1028,7 @@ the Import button reads *Import 2 Transactions*, enabled, with no date
 question and no unfilled row to hold it — and no progress bar under the
 cards, which is shown only while a write runs. The income and expense cards
 add the figures up without converting them, so on a two-currency batch that
-total says nothing; the count is what is read here.
+total says nothing (#414); the count is what is read here.
 
 Then **Back**, **Back**, and out by the wizard's back arrow. Import is never
 pressed.

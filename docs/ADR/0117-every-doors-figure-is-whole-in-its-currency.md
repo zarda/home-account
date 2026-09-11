@@ -182,3 +182,8 @@ count on the confirm summary.
   (`offline-queue-processor.service.ts:172-179`), so the whole image is
   marked failed even though the other rows already landed — a loud failure
   on a path with no reviewer, almost certainly right, and untested.
+- **A bulk currency switch can blank several rows at once.**
+  `applyCurrencyToSelected` rounds every selected row, so a batch of sub-unit
+  rows switched to a zero-decimal currency becomes that many unfilled rows in
+  one gesture, with only the placeholders and the held Continue to say so —
+  the per-row chip's trade-off, magnified. Tracked in #415.

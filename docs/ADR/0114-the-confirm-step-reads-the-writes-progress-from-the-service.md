@@ -142,13 +142,13 @@ Three levels, and they do not overlap as much as one would like:
   `processingStatus()` is bound directly on that step, and the strings it
   carries — *Reading CSV...*, *Categorizing transactions...* — have never been
   in a catalog. This record moved the confirm step's line and deliberately did
-  not widen to the other one. Filed as a follow-up.
+  not widen to the other one. Tracked in #414.
 - **`isProcessing` is set for the whole write, so the processing step
   un-completes behind the seal.** `confirmImport` sets it true and the
   wizard's `processingComplete` is computed off it, so a step already passed
   reports itself incomplete for the duration. Nothing is visibly wrong because
   the seal refuses every move back to it, which is the only reason it does not
-  matter. Filed as a follow-up.
+  matter. Tracked in #414.
 - **The service never resets `processingProgress` after a write.** It ends at
   100 and stays there; the next import's first `set` is what moves it. Between
   two imports in one session the confirm step's bar is a full bar describing
