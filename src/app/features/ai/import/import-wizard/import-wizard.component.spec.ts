@@ -16,6 +16,7 @@ import { Category, CategorizedImportTransaction, DuplicateCheck, ImportResult, P
 import { NotificationService } from '../../../../core/services/notification.service';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { ReceiptAttempt, ReceiptAttemptService } from '../../../../core/services/receipt-attempt.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import { blankImportRow } from '../../../../core/utils/import-review.utils';
 
 function attemptStub() {
@@ -181,7 +182,12 @@ describe('ImportWizardComponent', () => {
         { provide: DuplicateDetectionService, useValue: mockDuplicateService },
         { provide: ShareIntakeService, useValue: mockShareIntake },
         { provide: ReceiptAttemptService, useValue: attempts.service },
-        { provide: ActivatedRoute, useValue: routeStub }
+        { provide: ActivatedRoute, useValue: routeStub },
+        // The real one is root-provided and fetches rates from its
+        // constructor. The code-and-figure shape is what the assertions read:
+        // the app's own formatter is the thing under test only in that it is
+        // asked once per currency.
+        { provide: CurrencyService, useValue: { formatCurrency: (a: number, c: string) => `${c} ${a}` } }
       ],
       schemas: [NO_ERRORS_SCHEMA]
     })
@@ -610,19 +616,47 @@ describe('ImportWizardComponent', () => {
     });
   });
 
-  describe('selectedIncome', () => {
-    it('should sum income transactions', () => {
-      component.extractedTransactions.set(mockTransactions);
-
-      expect(component.selectedIncome()).toBe(3000);
+  describe('the confirm step\'s totals', () => {
+    const row = (overrides: Partial<CategorizedImportTransaction>): CategorizedImportTransaction => ({
+      ...mockTransactions[0], ...overrides,
     });
-  });
 
-  describe('selectedExpenses', () => {
-    it('should sum expense transactions', () => {
-      component.extractedTransactions.set(mockTransactions);
+    it('gives one formatted line per currency the batch is in, first-seen order', () => {
+      // Added blind these are 183.53 of nothing, and the bare currency pipe
+      // printed that as dollars whatever the rows carried.
+      //
+      // USD first and JPY second: 'JPY' < 'USD', so a fixture that saw JPY
+      // first would read the same whether the lines came out in first-seen
+      // or alphabetical order. Seeing USD — the code that sorts last — first
+      // is what an alphabetical sort would get wrong.
+      component.extractedTransactions.set([
+        row({ id: 'usd', currency: 'USD', amount: 4.13 }),
+        row({ id: 'jpy', currency: 'JPY', amount: 179 }),
+        row({ id: 'usd-2', currency: 'USD', amount: 0.4 }),
+      ]);
 
-      expect(component.selectedExpenses()).toBe(5);
+      expect(component.expenseLines()).toEqual(['USD 4.53', 'JPY 179']);
+    });
+
+    it('gives one zero line in the base currency for a side nothing is on', () => {
+      component.extractedTransactions.set([
+        row({ id: 'jpy', currency: 'JPY', amount: 179 }),
+        row({ id: 'usd', currency: 'USD', amount: 4.13 }),
+      ]);
+
+      // Never empty: the card holds a figure even when the batch is all one
+      // way, and the base currency is what an account's own zero is in.
+      expect(component.incomeLines()).toEqual(['USD 0']);
+    });
+
+    it('counts a row the reviewer left out for nothing', () => {
+      component.extractedTransactions.set([
+        row({ id: 'jpy', currency: 'JPY', amount: 179 }),
+        row({ id: 'left-out', currency: 'USD', amount: 4.13, selected: false }),
+      ]);
+
+      expect(component.expenseLines()).toEqual(['JPY 179']);
+      expect(component.incomeLines()).toEqual(['USD 0']);
     });
   });
 

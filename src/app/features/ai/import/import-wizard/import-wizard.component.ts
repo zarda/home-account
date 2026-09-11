@@ -14,6 +14,7 @@ import { AIImportService, IMPORT_READBACK_FAILED } from '../../../../core/servic
 import { DuplicateDetectionService } from '../../../../core/services/duplicate-detection.service';
 import { CategoryService } from '../../../../core/services/category.service';
 import { TranslationService } from '../../../../core/services/translation.service';
+import { CurrencyService } from '../../../../core/services/currency.service';
 import {
   CategorizedImportTransaction,
   ImportResult,
@@ -33,7 +34,7 @@ import { ReceiptAttemptService, provenanceOf } from '../../../../core/services/r
 import { ReceiptAttemptDiagnostics } from '../../../../core/services/ai-types';
 import { ShareIntakeService } from '../../../../core/services/share-intake.service';
 import { looksLikeImageFile } from '../../../../core/utils/file.utils';
-import { needsDateAnswer, rowIsUnfilled } from '../../../../core/utils/import-review.utils';
+import { needsDateAnswer, rowIsUnfilled, sumByCurrency } from '../../../../core/utils/import-review.utils';
 
 @Component({
   selector: 'app-import-wizard',
@@ -63,6 +64,7 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
   private receiptAttempts = inject(ReceiptAttemptService);
   private categoryService = inject(CategoryService);
   private translationService = inject(TranslationService);
+  private currencyService = inject(CurrencyService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private shareIntake = inject(ShareIntakeService);
@@ -276,17 +278,32 @@ export class ImportWizardComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.extractedTransactions().filter(t => t.selected).length;
   });
 
-  selectedIncome = computed(() => {
-    return this.extractedTransactions()
-      .filter(t => t.selected && t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-  });
+  /**
+   * What the reviewer is about to import, one figure per currency. The same
+   * fold the record is written through, so the card and the stored figure
+   * cannot disagree — and never one figure across currencies, which is money
+   * nobody spent rendered under one of the symbols.
+   */
+  selectedTotals = computed(() =>
+    sumByCurrency(this.extractedTransactions().filter(t => t.selected), this.baseCurrency)
+  );
 
-  selectedExpenses = computed(() => {
-    return this.extractedTransactions()
-      .filter(t => t.selected && t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-  });
+  /**
+   * One line per currency that has a figure on that side, formatted by the
+   * app's own formatter rather than the `currency` pipe, which takes a code
+   * nobody was passing it and printed every batch in dollars. A side nothing
+   * is on still gets a line, in the base currency: the card is a fixed three
+   * across and an empty one reads as a rendering fault.
+   */
+  incomeLines = computed(() => this.moneyLines(this.selectedTotals().map(t => [t.currency, t.income])));
+  expenseLines = computed(() => this.moneyLines(this.selectedTotals().map(t => [t.currency, t.expenses])));
+
+  private moneyLines(figures: [string, number][]): string[] {
+    const lines = figures
+      .filter(([, amount]) => amount > 0)
+      .map(([currency, amount]) => this.currencyService.formatCurrency(amount, currency));
+    return lines.length ? lines : [this.currencyService.formatCurrency(0, this.baseCurrency)];
+  }
 
   duplicatesSkipped = computed(() => {
     return this.extractedTransactions().filter(t => t.isDuplicate && !t.selected).length;

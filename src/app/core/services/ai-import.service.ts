@@ -47,6 +47,7 @@ import {
   ImportResult,
   ImportWarning,
   CategorizedImportTransaction,
+  ImportCurrencyTotals,
   ImportHistory,
   ImportProvenance,
   ImportSource,
@@ -63,6 +64,7 @@ import {
 } from '../../models';
 import { dayKey, parseDateInput } from '../utils/transaction-date.utils';
 import { importAmount, locationSlotFrom, resolveImportCurrency, resolveImportDate, toCreateTransactionDTO } from '../utils/import-dto.utils';
+import { sumByCurrency } from '../utils/import-review.utils';
 import { matchRecurringRule } from '../utils/recurring-conversion.utils';
 import { planReceiptAttachments } from '../utils/receipt-attachment.utils';
 
@@ -1247,6 +1249,10 @@ export class AIImportService {
     let totalExpenses = 0;
     const errors: ImportHistory['errors'] = [];
     const transactionIds: string[] = [];
+    // The rows the write actually took, kept so the record's per-currency
+    // totals cover exactly what landed — the scalar pair beside them is
+    // accumulated the same way, past the write and never before it.
+    const written: CategorizedImportTransaction[] = [];
 
     // Get user's base currency for fallback
     const baseCurrency = baseCurrencyOf(this.authService.currentUser());
@@ -1316,6 +1322,7 @@ export class AIImportService {
           }
           successCount++;
           transactionIds.push(savedId);
+          written.push(txn);
 
           if (txn.type === 'income') {
             totalIncome += txn.amount;
@@ -1355,6 +1362,7 @@ export class AIImportService {
         errorCount: number;
         totalIncome: number;
         totalExpenses: number;
+        totalsByCurrency?: ImportCurrencyTotals[];
         duplicatesSkipped: number;
         errors?: ImportHistory['errors'];
         receiptsSkipped?: number;
@@ -1367,6 +1375,7 @@ export class AIImportService {
         errorCount,
         totalIncome,
         totalExpenses,
+        totalsByCurrency: sumByCurrency(written, baseCurrency),
         duplicatesSkipped: skippedDuplicates
       };
 

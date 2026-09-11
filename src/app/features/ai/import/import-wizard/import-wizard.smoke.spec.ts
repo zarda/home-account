@@ -2806,6 +2806,13 @@ describe('ImportWizardComponent camera handoff (emulator smoke test)', () => {
       // Refused before any write reaches Firestore; were that guard ever to
       // go, the rules would refuse it and the message would be a denial.
       expect(errors?.[0].message).toBe(INVALID_AMOUNT_ERROR);
+      // The two rows the write took, and neither the deselected one nor the
+      // refused one. The file names no currency, so every row is the
+      // account's base — and reading the field back at all is the proof the
+      // deployed rules accept it.
+      expect(record?.['totalsByCurrency'])
+        .withContext('what landed, per currency')
+        .toEqual([{ currency: 'USD', income: 0, expenses: 1114 }]);
 
       fixture.destroy();
       await new Promise(resolve => setTimeout(resolve, 300));

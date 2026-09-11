@@ -3,7 +3,7 @@ import { Observable, of, map } from 'rxjs';
 import { Timestamp } from '@angular/fire/firestore';
 import { FirestoreService } from './firestore.service';
 import { AuthService } from './auth.service';
-import { ImportHistory, ImportProvenance, ImportStatus } from '../../models';
+import { ImportCurrencyTotals, ImportHistory, ImportProvenance, ImportStatus } from '../../models';
 
 /**
  * How many records the history page subscribes to. Every failed receipt
@@ -190,6 +190,7 @@ export class ImportHistoryService {
       errorCount: number;
       totalIncome: number;
       totalExpenses: number;
+      totalsByCurrency?: ImportCurrencyTotals[];
       duplicatesSkipped: number;
       errors?: ImportHistory['errors'];
       receiptsSkipped?: number;

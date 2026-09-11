@@ -2516,6 +2516,35 @@ describe('AIImportService', () => {
       expect(stats.totalExpenses).toBe(40);
     });
 
+    it('records the batch per currency, beside the raw pair, over the rows the write took', async () => {
+      transactionService.addTransaction.and.returnValues(
+        Promise.resolve('txn-1'),
+        Promise.reject(new Error('save failed')),
+        Promise.resolve('txn-3')
+      );
+
+      await service.confirmImport(
+        [
+          selected({ id: 'a', currency: 'JPY', amount: 179 }),
+          selected({ id: 'b', currency: 'JPY', amount: 500, type: 'income' }),
+          selected({ id: 'c', currency: 'USD', amount: 4.13 })
+        ],
+        'r.png', 10, 'image', 'receipt_image'
+      );
+
+      const stats = importHistoryService.completeImport.calls.mostRecent().args[1] as Record<string, unknown>;
+      // The refused row is in neither figure: both are accumulated past the
+      // write, so a row that never landed is nowhere in the record.
+      expect(stats['totalsByCurrency']).toEqual([
+        { currency: 'JPY', income: 0, expenses: 179 },
+        { currency: 'USD', income: 0, expenses: 4.13 }
+      ]);
+      // The scalar pair is untouched — a raw sum across both currencies, kept
+      // for the one-currency records that read it.
+      expect(stats['totalIncome']).toBe(0);
+      expect(stats['totalExpenses']).toBe(183.13);
+    });
+
     describe('budget recalculation', () => {
       it('recalculates each distinct expense category once, after the loop', async () => {
         const order: string[] = [];

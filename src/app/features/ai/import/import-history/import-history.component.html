@@ -54,11 +54,15 @@
               </div>
               <div class="stat income">
                 <span class="label">{{ 'common.income' | translate }}</span>
-                <span class="value">+{{ item.totalIncome | currency }}</span>
+                @for (line of totalLines(item, 'income'); track $index) {
+                  <span class="value">+{{ line }}</span>
+                }
               </div>
               <div class="stat expense">
                 <span class="label">{{ 'common.expense' | translate }}</span>
-                <span class="value">-{{ item.totalExpenses | currency }}</span>
+                @for (line of totalLines(item, 'expenses'); track $index) {
+                  <span class="value">-{{ line }}</span>
+                }
               </div>
               @if (item.duplicatesSkipped > 0) {
                 <div class="stat skipped">
