@@ -198,10 +198,16 @@ bought, and it cost a flicker on every import.
   `[message]`. It is the same defect on a different door, and closing it is
   the same shape of change: a step signal resolved through literal `t()`
   calls. Not filed as its own issue at the time of writing.
-- **The `converting` step never paints on the CSV door.** As above. Either
-  that door's conversion gets a moment of its own or the step comes off it;
-  the key is not orphaned either way, because the JSON door sets `converting`
-  and then maps every row before it names another step.
+- **The `converting` step never reaches the screen on either door.**
+  `importFromCSV` sets it and overwrites it with `categorizing` a couple
+  of lines later; `importFromJSON` sets it and overwrites it with
+  `duplicates` after a synchronous `data.transactions.map(...)` — no
+  `await`, no async callback, either way. The English sentences these
+  steps replaced sat in the same adjacent pairs, so this is carried, not
+  introduced. `i18n:check` cannot catch it: the wizard's literal
+  `t('import.convertingRows')` call site satisfies a checker that proves
+  a key is referenced, not that it is reachable on screen. Either door's
+  conversion needs a moment of its own, or the step comes off both.
 - **The three step indicators still key on the percentage.** They read
   `processingProgress() >= 10`, `>= 30`, `>= 60`, which is a second,
   independent statement about what the door is doing, in thresholds rather
